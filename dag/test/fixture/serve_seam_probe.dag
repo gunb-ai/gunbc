@@ -12,3 +12,20 @@ fn serve_seam_probe(method: String, path: String, body: String) -> ServeWireResp
     body: join(["probe method=", method, " path=", path, " body=", body], ""),
   }
 }
+
+// THE BUDGET-BREACH ARM OF THE SAME PROBE. Its only job is to consume thread CPU inside ONE
+// evaluation, so a `gunbc serve --eval-budget-cpu-ms <small>` process reaches the real exceeded
+// path in v1_interpreter and renders the real refusal, rather than a host test constructing a
+// refusal value directly. It lives beside serve_seam_probe because both exist for the same reason
+// -- to pose a question to the accept loop that the full handler graph cannot pose cheaply.
+fn serve_budget_burn(n: Int) -> Int {
+  if n <= 0 { 0 } else { serve_budget_burn(n: n - 1) }
+}
+
+fn serve_budget_breach_probe(method: String, path: String, body: String, release_revision: String) -> ServeWireResponse {
+  ServeWireResponse {
+    status: 200,
+    content_type_label: "text/plain; charset=utf-8",
+    body: join(["burned method=", method, " path=", path, " body=", body, " rev=", release_revision, " value=", to_string(serve_budget_burn(n: 200000000))], ""),
+  }
+}

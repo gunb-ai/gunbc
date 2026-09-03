@@ -1,0 +1,76 @@
+module gunbc.recurring_failure_mode.empty_capture_read_as_clean_result
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data empty_capture_read_as_clean_result: RecurringFailureMode = RecurringFailureMode {
+  identity: "empty_capture_read_as_clean_result" as NonEmptyStr,
+
+  receipts: [
+    "**an empty capture read as a clean result** (an instrument refuses on one stream while the reader keeps the other, so the capture is EMPTY and the empty capture is consumed as a finding of nothing. ",
+
+    "It is a specialization of `blank is not evidence` narrowed to a mechanism that recurs: the refusal is well-formed and honest, it simply travels on a channel nobody kept. ",
+
+    "SPECIMEN, 2026-09-02, reading a failing CI job during gunbc PR 9984: `gh run view --job <id> --log > f` writes ZERO BYTES and puts `run is still in progress; logs will be available when it is complete` on stderr, so the redirect captures nothing while the job is already recorded as completed failure. ",
+
+    "A grep for `panicked` or `FAILED` over that file then reports no failures for a job that failed. ",
+
+    "Two adjacent instances in the same call: `gh api .../actions/jobs/<id>/logs` writes zero bytes without --allow-escape-sequences, again refusing on stderr; and the same subcommand takes a JOB id rather than a run id, where the wrong id also yields nothing useful. ",
+
+    "THE ASYMMETRY IS WHAT MAKES IT RECUR: the failure direction is always benign. ",
+
+    "An empty capture never manufactures a false alarm, only a false all-clear, so nothing in the reader's experience trains them to check it. ",
+
+    "RUNG FOUND AT: mitigatable at the reading site -- measuring the capture's size before consuming it converts the silent case into a loud one -- and silent wrongness wherever that check is absent, which is the default. ",
+
+    "CEILING: mechanically preventable for instruments this repository owns, since a reader that must consume a typed outcome cannot consume a byte count of zero as a verdict; it stays mitigatable for third-party command-line tools, whose stream discipline is outside the modeled guarantee and is observed rather than proven. ",
+
+    "NEXT-RUNG TRIGGER: a repository instrument-reading surface whose result type distinguishes READ SUCCESSFULLY AND FOUND NOTHING from DID NOT READ, sufficient that a zero-byte capture cannot inhabit the first -- at which point the diligence rule below is subsumed for every call routed through it, and remains diligence for calls that are not. ",
+
+    "RECOGNITION RULE: before believing a quiet result, ask which stream the instrument refuses on and which stream you kept. ",
+
+    "If a refusal and a clean result produce the same bytes in the channel you read, you have no observation. ",
+
+    "The mechanical form, and it is a two-step rather than a byte-count rule, because inferring failure from size alone fabricates a refusal for the query that legitimately returned nothing: a zero-byte capture is NOT A VERDICT IN EITHER DIRECTION, so consult the instrument's typed status -- its exit code, and the stream its refusal travels on -- before consuming the emptiness. ",
+
+    "Where the status says the instrument ran and the capture is empty, that is FOUND NOTHING and is a real observation; where the status says it refused, or the status is unavailable, the capture is DID NOT READ and no conclusion may be drawn from it. ",
+
+    "The failure of the original habit is not that it read zero as one of those two, it is that it read zero WITHOUT ASKING which. ",
+
+    "FOURTH INSTANCE, 2026-09-02, gunbc PR 10078, AND IT DEFEATS BOTH RULES ABOVE AS WRITTEN: reading the newly promoted aggregate's receipt line via `gh api .../actions/jobs/<id>/logs` produced NINETY-NINE BYTES ON STDOUT -- the refusal string `the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway` written into the PAYLOAD channel rather than onto stderr. ",
+
+    "Both steps of the mechanical rule miss it: the capture is not zero-length, and the stream question -- which stream does the refusal travel on -- answers THE ONE YOU KEPT. ",
+
+    "A grep for the receipt line over that file finds nothing and exits non-zero, which is indistinguishable from THE RECEIPT LINE IS ABSENT -- and absent would have meant the freshly promoted lane was consuming nothing and the promotion was cosmetic. ",
+
+    "THE SHARPENING THIS INSTANCE ADDS is to the asymmetry claimed above: an empty capture never manufactures a false alarm is true of the CAPTURE and false of the CONSUMER, because a grep that searches for a symptom's ABSENCE converts the benign direction into a confident positive finding -- and a finding gets acted on where a green gets ignored, so the harm here is the greater one, not the lesser. ",
+
+    "The rule that actually caught it is a THIRD beside the two above and is independent of both: size the artifact against what the subject plausibly weighs before reading a grep over it as a result. ",
+
+    "Ninety-nine bytes is not a job log, whatever the exit code says. ",
+
+    "FIFTH INSTANCE, 2026-09-02, gunbc PR 10086, AND IT IS A THIRD SHAPE RATHER THAN A REPEAT: A COMPLETED JOB WHOSE LOG READS ZERO BYTES WITH NO REFUSAL ON EITHER STREAM. ",
+
+    "`gh run view --job 100322901366 --log` returned zero bytes and printed nothing on stderr -- not the documented in-progress refusal, no refusal at all -- while `gh api repos/gunb-ai/gunbc/actions/jobs/100322901366/logs --allow-escape-sequences` returned 442,248 bytes carrying the cause. ",
+
+    "A grep over the empty capture finds nothing and exits non-zero, which reads as THE JOB LOG CONTAINS NO FAILURE for the very job that failed. ",
+
+    "WHAT THIS INSTANCE BREAKS IS THE ROW ITSELF, and that is why it is filed rather than counted: the fallback advice accumulated above is CIRCULAR. ",
+
+    "The fourth instance names `gh run view` as the escape from a refusing `gh api`; this instance names `gh api` as the escape from a silent `gh run view`. ",
+
+    "The two routes are each other's documented remedy and both failed on 2026-09-02, in OPPOSITE directions -- ninety-nine bytes of refusal on the PAYLOAD channel from the api route, zero bytes and NO refusal from run view -- so a reader following this row lands on whichever route happens to be broken that day. ",
+
+    "The two mechanical steps written above are route-dependent for one shared reason: each interrogates HOW THE INSTRUMENT REFUSED -- which stream the refusal travels on, what the exit status says -- and an instrument that emits no refusal at all answers neither question. ",
+
+    "Consulting the typed status here yields SUCCESS over an empty capture, which is precisely the DID NOT READ case wearing the FOUND NOTHING answer. ",
+
+    "ONLY THE SUBJECT-WEIGHT CHECK SURVIVES, and it survives because it interrogates the ARTIFACT rather than the instrument, so it is indifferent to which route broke. ",
+
+    "COROLLARY, and it is the operative addition: when the weight is implausible, RE-READ BY THE OTHER ROUTE -- not because the other route is trustworthy, it demonstrably is not, but because 442,248 bytes against zero for one subject is a DISCRIMINATING COMPARISON, where either number read alone is not a measurement of anything.)",
+
+    "A FURTHER FORM, AND THE CAPTURE WAS A SHELL FILTER RATHER THAN A FILE READ (2026-09-03). Regenerating a projection after appending a receipt, the author ran the generated-artifact gate piped through a `grep -c` of its write lines and read the resulting `0` as NOTHING NEEDED WRITING. The run had in fact REFUSED: an appended phrase carried a double-quoted fragment inside a `.dag` string literal, terminating the string early, so the remaining prose parsed as field accesses on the row type and resolve failed with a typed, located diagnostic naming the line and every stray token. The substrate behaved exactly as DESIGN section 5 requires -- loud, located, no fabricated output. THE FILTER DISCARDED THE REFUSAL AND KEPT ONLY ITS ABSENCE OF SUCCESS LINES, and absence-of-success is indistinguishable from nothing-to-do at a count. WHY IT BELONGS ON THIS ROW RATHER THAN A NEW ONE: the defect is not the unbalanced quote, which the compiler caught immediately; it is that a zero-valued capture was read as a clean result by a reader who had never established what the command's FAILURE looks like on the channel being captured. GENERAL FORM, the reusable half: filtering the output of a command whose failure mode you have not established converts a refusal into a silence, and a silence into a green. A zero is evidence only once the same capture has been shown NONZERO on a known-good input, which for a shell filter means running it once against a case that must produce the line being counted. The repair was to re-run UNFILTERED, which surfaced the diagnostic immediately.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.yaml_inline_comment_ingested_as_scalar_content
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data yaml_inline_comment_ingested_as_scalar_content: RecurringFailureMode = RecurringFailureMode {
+  identity: "yaml_inline_comment_ingested_as_scalar_content" as NonEmptyStr,
+
+  receipts: [
+    "**a YAML inline comment is ingested as scalar content** (a bounded YAML reader that does not model comment separation accepts `key: value # comment` and stores `value # comment` as the value, so a syntactically valid document is silently assigned the wrong tree. ",
+
+    "Measured 2026-09-01 against `extdeps.languages.yaml.ingest` `ingest_yaml_source`: a column-zero full-line comment and an indented full-line comment both refused loudly as malformed mapping entries; an inline trailing comment was accepted and reserialized as a quoted scalar containing the comment; a hash-leading line inside a block literal was accepted and preserved as content. ",
+
+    "The last arm is the discriminating control because generated workflow run blocks contain shell comments and issue references such as `#5828`; a line-wide hash filter would reject or delete real scalar content. ",
+
+    "Repair: full-line comments are skipped only at parser block boundaries, never in literal collection, while recognizable unquoted inline comments now produce `YamlIngestRejected` until lexical inline separation is modeled. ",
+
+    "**APPROXIMATION DIRECTION:** the temporary predicate intentionally over-refuses richer unquoted scalar forms containing separation-whitespace (space or tab) followed by hash that this bounded parser does not model, excludes double-quoted scalars, and never examines block-literal content; it does not claim full YAML comment lexing. ",
+
+    "Rung: mitigatable -- the silent wrong tree becomes a typed refusal. ",
+
+    "Ceiling: structurally guaranteed once comment separation is a lexical production in the YAML grammar, so comment bytes cannot enter scalar content except through quoted or block scalar productions. ",
+
+    "Next-rung trigger: inline YAML 1.2.2 comment separation modeled lexically rather than recognized by the temporary value-text refusal.",
+  ],
+
+  evidence: [],
+}
