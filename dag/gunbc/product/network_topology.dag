@@ -13,8 +13,6 @@ type NetworkLocality =
   | WslBridged
   | DockerBridge
   | TailscaleOverlay
-  | DirectAttachFabric
-
 type NetworkAddressability = Unicast | Multicast | Broadcast
 type NetworkEgressClass =
     None
