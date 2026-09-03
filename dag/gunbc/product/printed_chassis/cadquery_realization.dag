@@ -1,7 +1,6 @@
 module product.printed_chassis.cadquery_realization
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import v2.std.algebra { zip_map }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import std.decimal {
   ExactDecimal,
@@ -16,10 +15,27 @@ import product.printed_chassis.coupon {
   OpThroughHole,
   PlateDimensions,
   HoleDiameterCouponGeometry,
+  LengthLadder,
+  LadderConstruction,
+  LadderReady,
+  LadderStepIsZero,
+  LadderTooFewRungs,
+  hole_ladder_spec,
 }
 import product.printed_chassis.realization_contract {
   AdmittedRealizationV0,
   admitted_realization_geometry,
+  realization_contract,
+  judge_realization,
+  RealizationVerdict,
+  RealizationAccepted,
+  RealizationRejected,
+  RealizationRefusedAtWire,
+  RawRealizationEnvelope,
+  raw_realization_envelope,
+  RawOperationRow,
+  raw_operation_row,
+  contract_schema_version,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // THE HANDLER TAKES ONE ARGUMENT AND IT IS THE CAPABILITY, WHICH IS THE WHOLE DESIGN.
@@ -88,19 +104,30 @@ fn micrometre_half_millimetre_wire(m: Micrometer) -> MillimetreRendering {
   }
 }
 
-// THE CUT OVERTRAVEL IS DECLARED, AND IT IS NOT A COMPENSATING CLEARANCE.
+// THE CUT OVERTRAVEL IS A BOUNDED REALIZATION PARAMETER WITH AN OPEN CONFORMANCE OBLIGATION.
 //
 // A cutting cylinder exactly as tall as the plate ends coplanar with both faces, which is the
 // classic CSG robustness failure: the kernel must decide whether two touching surfaces intersect,
 // and different kernels answer differently. The cure is to start the cut below the plate and end it
 // above.
 //
-// It is stated here rather than folded into the emission because the distinction from a forbidden
-// fudge is exact and worth being able to check: overtravel runs along the cut AXIS only, so it
-// changes no measured quantity. The hole diameter is untouched, the hole centre is untouched, and
-// the plate thickness is untouched, because the plate is not what is being extended. A clearance
-// that widened a hole to "help it fit" would change the very number the coupon exists to measure;
-// this cannot, and w_overtravel_moves_no_measured_dimension is what says so by execution.
+// WHAT THE SOURCE-LEVEL EVIDENCE ACTUALLY ESTABLISHES, stated at the grain it holds: overtravel
+// appears only in the cutter's Z origin and the cutter's extrude depth, and no plate dimension, hole
+// centre or hole radius is rendered from a term containing it. That is a property of the EMITTED
+// TEXT and it is what the witness executes.
+//
+// WHAT IT DOES NOT ESTABLISH is that the resulting SOLID is unchanged -- complete through-cuts,
+// unmoved centres, unchanged diameters, unchanged plate. That requires reading the kernel's output
+// back, which cannot be done in this container, so it is an open conformance obligation whose
+// trigger is a runner with cadquery importable. Until then this value is a declared realization
+// parameter, NOT a proven non-semantic constant.
+//
+// The previous annotation here claimed the witness "re-emits with the overtravel doubled and
+// requires the program to differ ONLY there". It never did: the body asserts that the model's own
+// centre and radius wires appear in one emitted program, and the whole-program expectation reads
+// this same declaration, so a changed value moves expectation and emission together and the suite
+// stays green either way. The claim was stronger than the execution, which is rung inflation on the
+// one number this handler adds that the authority layer did not state.
 data cut_overtravel: Micrometer = micrometer(count: 1000)
 
 // THE EMISSION REFUSES RATHER THAN EMITTING A NUMBER IT COULD NOT RENDER, and the refusal names the
@@ -135,57 +162,98 @@ type CadQueryEmission
 // THE SCAN KEEPS THE FIRST REFUSAL AS A VALUE, NOT AS A LIST TO INDEX BACK INTO.
 //
 // An earlier cut of this carried `refused: List<Int>` and read `.first()` out of it after checking
-// the length. That reintroduces the option-accessor trap for the third time in this program: the
-// Absent arm is unreachable given the length check, and an unreachable arm still has to answer
-// something, and the something is invented. A coproduct that holds the first refusal has no arm to
-// invent -- it is the same shape as the rung scan keeping the first divergence, for the same reason.
+// the length. That reintroduces the option-accessor trap: the Absent arm is unreachable given the
+// length check, and an unreachable arm still has to answer something, and the something is
+// invented. A coproduct that holds the first refusal has no arm to invent.
 type DimensionRefusal
   = NoDimensionRefused
   | DimensionRefused { micrometres: Int }
-
-type WireScan sole_constructor {
-  wires: List<String>
-  refusal: DimensionRefusal
-}
-
-fn scan_wire(acc: WireScan, r: MillimetreRendering) -> WireScan {
-  match r {
-    MillimetreRendered { wire: w } =>
-      WireScan { wires: concat(acc.wires, [w as String]), refusal: acc.refusal }
-    MillimetreScaleRefused { micrometres: um } =>
-      match acc.refusal {
-        DimensionRefused { micrometres: _ } => acc
-        NoDimensionRefused => WireScan { wires: acc.wires, refusal: DimensionRefused { micrometres: um } }
-      }
-  }
-}
-
-fn wire_scan(renderings: List<MillimetreRendering>) -> WireScan {
-  fold(renderings, init: WireScan { wires: [], refusal: NoDimensionRefused }, f: scan_wire)
-}
 
 type LineEmission
   = LineEmitted { text: String }
   | LineDimensionUnrenderable { micrometres: Int }
 
-// THE NUMBERS GO BETWEEN THE LITERALS, AND SAYING IT THAT WAY REMOVES THE INDEXING.
+// ONE ROW PER SUBSTITUTION, BECAUSE THE PARALLEL-LIST CUT OF THIS SILENTLY TRUNCATED.
 //
-// The alternative was to render into a list and read positions 0..4 back out to build the line,
-// which needs an indexed accessor whose out-of-range arm is unreachable and therefore invented --
-// the same defect as the scan above, one layer up. Pairing each literal fragment with the wire that
-// follows it is what emission actually IS, and zip_map refuses a length mismatch rather than
-// truncating to the shorter side, so a fragment list that fell out of step with its wires cannot
-// quietly drop the tail.
-fn interleave(fragments: List<String>, wires: List<String>, tail: String) -> String {
-  join(concat(zip_map(a: fragments, b: wires, f: fn(f, w) { join([f, w], "") }), [tail]), "")
+// The previous cut rendered dimensions into one list, held the literal fragments in a second, and
+// paired them with zip_map -- and its annotation asserted that zip_map refuses a length mismatch.
+// It does not: v2.std.algebra.zip_map answers Empty as soon as EITHER side is exhausted, so it
+// truncates to the shorter input. Four fragments against three wires produced a shorter but
+// syntactically plausible Python line, which is the fabricated-plausible-output failure in the one
+// artifact whose errors are invisible until the plastic is measured. That is the third appearance
+// of the positional-parallel-list defect in this program -- it was removed from the raw operation
+// envelope and from the wire scan -- and this time the comment asserted the safety property the
+// callee did not have, which is worse than silence because it was cited as the reason it was safe.
+//
+// Carrying the literal and the number it precedes AS ONE VALUE deletes the state rather than
+// checking for it: there is no correspondence to fall out of step, so no length to adjudicate and
+// no arity divergence to report.
+type SourceSubstitution sole_constructor {
+  prefix: String
+  rendering: MillimetreRendering
 }
 
-fn line_or_refusal(scan: WireScan, fragments: List<String>, tail: String) -> LineEmission {
-  match scan.refusal {
-    DimensionRefused { micrometres: um } => LineDimensionUnrenderable { micrometres: um }
-    NoDimensionRefused =>
-      LineEmitted { text: interleave(fragments: fragments, wires: scan.wires, tail: tail) }
+type LineBuild sole_constructor {
+  text: String
+  refusal: DimensionRefusal
+}
+
+fn build_substitution(acc: LineBuild, s: SourceSubstitution) -> LineBuild {
+  match s.rendering {
+    MillimetreRendered { wire: w } =>
+      LineBuild { text: join([acc.text, s.prefix, w as String], ""), refusal: acc.refusal }
+    MillimetreScaleRefused { micrometres: um } =>
+      match acc.refusal {
+        DimensionRefused { micrometres: _ } => acc
+        NoDimensionRefused => LineBuild { text: acc.text, refusal: DimensionRefused { micrometres: um } }
+      }
   }
+}
+
+fn emit_line(substitutions: List<SourceSubstitution>, tail: String) -> LineEmission {
+  let b = fold(substitutions, init: LineBuild { text: "", refusal: NoDimensionRefused }, f: build_substitution)
+  match b.refusal {
+    DimensionRefused { micrometres: um } => LineDimensionUnrenderable { micrometres: um }
+    NoDimensionRefused => LineEmitted { text: join([b.text, tail], "") }
+  }
+}
+
+// THE INSTRUCTION IS THE CAPABILITY CARRIED INWARD, AND THE HELPERS ARE WHERE THE WALL LEAKED.
+//
+// realize_admitted took only AdmittedRealizationV0 and the annotation above claimed that was the
+// whole route -- "not even a private one, because a private one is reachable by the next function
+// added to this module". The module then exposed exactly that: plate_line(plate: PlateDimensions)
+// and cut_line(op: CouponOperation, thickness: Micrometer), both callable on bare geometry any
+// foreign caller could mint. Sealing CadQueryProgram did not close it, because the authority-bearing
+// act is GEOMETRY BECOMING SOURCE, not wrapping a finished string.
+//
+// So the renderers now consume a sealed instruction that only the admitted-to-plan mint can
+// construct. A function added to this module later cannot reach the emitters with arbitrary
+// geometry, because it cannot build their argument.
+// THE SEAL IS A RECORD WRAPPER, BECAUSE sole_constructor DOES NOT SEAL COPRODUCT VARIANTS.
+//
+// The first cut declared this as `type CadQueryInstructionV0 sole_constructor = RealizePlateV0 {...}
+// | RealizeThroughHoleV0 {...}` and asserted in a comment that it closed the bare-geometry route.
+// It did not. A foreign module writing `RealizePlateV0 { plate: plate }` compiles CLEAN: the witness
+// went red on its first run, and the repository's own enrolled audit probe for this exact form --
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses -- is red
+// too, so the gap is general and not a mistake in this declaration. The marker on a coproduct is
+// currently decoration.
+//
+// What IS sealed by execution is the RECORD form, which is what AdmittedRealizationV0's enrolled
+// red/green/differential establishes. So the subject stays an ordinary coproduct that anyone may
+// build, and the capability is the sealed record WRAPPING it: a foreign caller can describe a plate
+// instruction all it likes and still cannot produce the CadQueryInstructionV0 the emitters consume.
+type InstructionSubjectV0
+  = RealizePlateV0 { plate: PlateDimensions }
+  | RealizeThroughHoleV0 { operation: CouponOperation, plate_thickness: Micrometer }
+
+type CadQueryInstructionV0 sole_constructor {
+  subject: InstructionSubjectV0
+}
+
+type CadQueryEmissionPlanV0 sole_constructor {
+  instructions: List<CadQueryInstructionV0>
 }
 
 // The plate corner sits at the ORIGIN and centered is explicitly false on all three axes, which is
@@ -194,48 +262,44 @@ fn line_or_refusal(scan: WireScan, fragments: List<String>, tail: String) -> Lin
 // which the coupon authority states from the corner -- would land half a plate away. That is the
 // "helpful centering" this handler is forbidden to do, and it is forbidden precisely because it is
 // the default: an emitter that simply omitted the argument would silently adopt it.
-fn plate_line(plate: PlateDimensions) -> LineEmission {
-  line_or_refusal(
-    scan: wire_scan(renderings: [
-      micrometre_millimetre_wire(m: plate.size_x),
-      micrometre_millimetre_wire(m: plate.size_y),
-      micrometre_millimetre_wire(m: plate.size_z),
-    ]),
-    fragments: ["result = cq.Workplane(\"XY\").box(", ", ", ", "],
-    tail: ", centered=(False, False, False))\n",
-  )
-}
-
-// One cut per modeled hole, each naming its own three numbers. A loop in the EMITTED program would
-// be shorter and would put the hole population inside a Python list this repository cannot read
-// back: the trace wall wants one model feature to one realized feature, and a generated loop over a
-// generated list makes that correspondence a property of the emitted program's runtime rather than
-// of its text.
-//
-// The cut starts one overtravel BELOW the plate and runs thickness plus two overtravels, so both
-// ends clear the faces. Neither number touches a measured quantity -- see cut_overtravel above.
-fn cut_line(op: CouponOperation, thickness: Micrometer) -> LineEmission {
-  match op {
-    OpThroughHole { diameter: d, center_x: cx, center_y: cy } =>
-      line_or_refusal(
-        scan: wire_scan(renderings: [
-          micrometre_millimetre_wire(m: cut_overtravel),
-          micrometre_millimetre_wire(m: cx),
-          micrometre_millimetre_wire(m: cy),
-          micrometre_half_millimetre_wire(m: d),
-          micrometre_millimetre_wire(
-            m: micrometer(count: micrometer_count(m: thickness) + 2 * micrometer_count(m: cut_overtravel)),
-          ),
-        ]),
-        fragments: [
-          "result = result.cut(cq.Workplane(\"XY\", origin=(0, 0, -",
-          ")).moveTo(",
-          ", ",
-          ").circle(",
-          ").extrude(",
+// THE TWO EMITTERS TAKE SEALED INSTRUCTIONS AND NOTHING ELSE, which is what closes the route the
+// header claimed was already closed. They were plate_line(plate: PlateDimensions) and
+// cut_line(op: CouponOperation, thickness: Micrometer): module-level functions callable on geometry
+// any foreign caller could mint, which meant bare values could become CadQuery source without an
+// admitted capability ever existing. Keeping them behind a dispatcher would not have helped -- they
+// would still have been callable directly -- so the geometry is destructured from the instruction
+// inside the arm, and no function in this module accepts a plate, an operation, a centre, a
+// diameter or a thickness as an emission argument any more.
+fn instruction_line(i: CadQueryInstructionV0) -> LineEmission {
+  match i.subject {
+    RealizePlateV0 { plate: p } =>
+      emit_line(
+        substitutions: [
+          SourceSubstitution { prefix: "result = cq.Workplane(\"XY\").box(", rendering: micrometre_millimetre_wire(m: p.size_x) },
+          SourceSubstitution { prefix: ", ", rendering: micrometre_millimetre_wire(m: p.size_y) },
+          SourceSubstitution { prefix: ", ", rendering: micrometre_millimetre_wire(m: p.size_z) },
         ],
-        tail: "))\n",
+        tail: ", centered=(False, False, False))\n",
       )
+    RealizeThroughHoleV0 { operation: op, plate_thickness: t } =>
+      match op {
+        OpThroughHole { diameter: d, center_x: cx, center_y: cy } =>
+          emit_line(
+            substitutions: [
+              SourceSubstitution { prefix: "result = result.cut(cq.Workplane(\"XY\", origin=(0, 0, -", rendering: micrometre_millimetre_wire(m: cut_overtravel) },
+              SourceSubstitution { prefix: ")).moveTo(", rendering: micrometre_millimetre_wire(m: cx) },
+              SourceSubstitution { prefix: ", ", rendering: micrometre_millimetre_wire(m: cy) },
+              SourceSubstitution { prefix: ").circle(", rendering: micrometre_half_millimetre_wire(m: d) },
+              SourceSubstitution {
+                prefix: ").extrude(",
+                rendering: micrometre_millimetre_wire(
+                  m: micrometer(count: micrometer_count(m: t) + 2 * micrometer_count(m: cut_overtravel)),
+                ),
+              },
+            ],
+            tail: "))\n",
+          )
+      }
   }
 }
 
@@ -247,6 +311,24 @@ fn cut_line(op: CouponOperation, thickness: Micrometer) -> LineEmission {
 // datum's identity would survive only as a position in the output. It is emitted from the datum
 // field, before the ladder, so the correspondence between one model feature and one realized
 // feature holds for the datum as a distinct subject rather than as row zero of a longer list.
+// THE ONLY MINT: an admitted capability in, a sealed instruction population out. The datum is its
+// own instruction ahead of the ladder, so the trace correspondence survives into the plan rather
+// than becoming row zero of a longer list.
+fn cadquery_emission_plan(a: AdmittedRealizationV0) -> CadQueryEmissionPlanV0 {
+  let g = admitted_realization_geometry(a: a)
+  CadQueryEmissionPlanV0 {
+    instructions: concat(
+      [
+        CadQueryInstructionV0 { subject: RealizePlateV0 { plate: g.plate } },
+        CadQueryInstructionV0 { subject: RealizeThroughHoleV0 { operation: g.orientation_datum, plate_thickness: g.plate.size_z } },
+      ],
+      fold(g.ladder_holes, init: [], f: fn(acc, op) {
+        concat(acc, [CadQueryInstructionV0 { subject: RealizeThroughHoleV0 { operation: op, plate_thickness: g.plate.size_z } }])
+      }),
+    ),
+  }
+}
+
 type LineScan sole_constructor {
   lines: List<String>
   refusal: DimensionRefusal
@@ -265,7 +347,25 @@ fn scan_line(acc: LineScan, e: LineEmission) -> LineScan {
 
 data cadquery_preamble: String = "import cadquery as cq\n"
 
-data cadquery_export: String = "cq.exporters.export(result, \"hole_diameter_ladder_r1.stl\")\n"
+// THE PROGRAM CONSTRUCTS THE SOLID AND EXPORTS NOTHING, BECAUSE EXPORT IS A SECOND AUTHORITY.
+//
+// This module previously ended every program with
+//   cq.exporters.export(result, "hole_diameter_ladder_r1.stl")
+// which is five unmodeled decisions in one line: STL rather than STEP or 3MF, a filename, a
+// destination relative to whatever working directory the process happens to have, format inferred
+// from the extension, and CadQuery's DEFAULT tessellation policy. None of those are neutral for a
+// hole-diameter calibration coupon: STL is a mesh format, so every modeled circle becomes a polygon
+// whose fidelity is set by linear and angular tolerances -- the emitter would have been choosing,
+// invisibly, how round the holes this coupon exists to MEASURE come out. That is exactly the design
+// decision taken in the realization layer that the header above forbids, and the module was doing it
+// while claiming it did not.
+//
+// The honest cut is subtractive: the program builds `result` and stops. A CadQueryExportProfile --
+// format, output unit, destination identity, linear and angular tolerance, relative policy,
+// ASCII/binary, parallel meshing, toolchain identity -- is a real modeling obligation and is NOT
+// authored here, because there is no kernel in this container to execute any tolerance choice
+// against and a profile authored blind would be seven literals with no oracle. It is carried as an
+// open obligation with its trigger: a runner with cadquery importable.
 
 // THE ONE ENTRY POINT, AND ITS ARGUMENT IS THE CAPABILITY.
 //
@@ -274,14 +374,9 @@ data cadquery_export: String = "cq.exporters.export(result, \"hole_diameter_ladd
 // private one is reachable by the next function added to this module, and the pairing this
 // discharges was writable rather than reachable, which is the same distinction.
 fn realize_admitted(a: AdmittedRealizationV0) -> CadQueryEmission {
-  let g = admitted_realization_geometry(a: a)
+  let plan = cadquery_emission_plan(a: a)
   let scan = fold(
-    concat(
-      [plate_line(plate: g.plate), cut_line(op: g.orientation_datum, thickness: g.plate.size_z)],
-      fold(g.ladder_holes, init: [], f: fn(acc, op) {
-        concat(acc, [cut_line(op: op, thickness: g.plate.size_z)])
-      }),
-    ),
+    map(plan.instructions, i => instruction_line(i: i)),
     init: LineScan { lines: [], refusal: NoDimensionRefused },
     f: scan_line,
   )
@@ -290,8 +385,74 @@ fn realize_admitted(a: AdmittedRealizationV0) -> CadQueryEmission {
     NoDimensionRefused =>
       CadQueryEmitted {
         program: CadQueryProgram {
-          source: join([cadquery_preamble, join(scan.lines, ""), cadquery_export], "") as NonEmptyStr,
+          source: join([cadquery_preamble, join(scan.lines, "")], "") as NonEmptyStr,
         },
       }
+  }
+}
+
+// THE REPOSITORY'S OWN ARTIFACT GENERATION GOES THROUGH THE JUDGMENT, WHICH LOOKS REDUNDANT AND IS
+// THE POINT.
+//
+// This function has the canonical specimen in hand already, so projecting it straight into the
+// emitter would be shorter. It instead builds a wire envelope from that specimen, hands it to
+// judge_realization, and emits from whatever admitted carrier comes back -- a round trip through the
+// transport for geometry that never left the model.
+//
+// The shorter path would have required realize_admitted to accept something other than an admitted
+// carrier, or a second mint for internal use, and either one re-opens the pairing for the sake of
+// the one caller that could most easily be trusted not to abuse it. There is exactly one route from
+// geometry to a cut, and the repository's own generator is not an exception to it. The round trip
+// also means this artifact is evidence that the whole chain executes, rather than evidence that the
+// emitter alone does.
+type CouponProgramGeneration
+  = CouponProgramGenerated { content: String }
+  | CouponProgramRefused { reason: String }
+
+fn coupon_wire_row(op: CouponOperation) -> RawOperationRow {
+  match op {
+    OpThroughHole { diameter: d, center_x: x, center_y: y } =>
+      raw_operation_row(
+        kind: "through_hole",
+        diameter_um: micrometer_count(m: d),
+        center_x_um: micrometer_count(m: x),
+        center_y_um: micrometer_count(m: y),
+      )
+  }
+}
+
+fn expected_coupon_cadquery_program() -> CouponProgramGeneration {
+  match hole_ladder_spec {
+    LadderStepIsZero =>
+      CouponProgramRefused { reason: "coupon ladder declaration refused: step is zero" }
+    LadderTooFewRungs { supplied: _ } =>
+      CouponProgramRefused { reason: "coupon ladder declaration refused: too few rungs" }
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let g = contract.specimen.geometry
+      let envelope = raw_realization_envelope(
+        schema_version: contract_schema_version,
+        plate_x_um: micrometer_count(m: g.plate.size_x),
+        plate_y_um: micrometer_count(m: g.plate.size_y),
+        plate_z_um: micrometer_count(m: g.plate.size_z),
+        orientation_datum: coupon_wire_row(op: g.orientation_datum),
+        ladder_holes: fold(g.ladder_holes, init: [], f: fn(acc, op) {
+          concat(acc, [coupon_wire_row(op: op)])
+        }),
+      )
+      match judge_realization(contract: contract, envelope: envelope) {
+        RealizationRefusedAtWire { refusal: _ } =>
+          CouponProgramRefused { reason: "canonical coupon envelope refused at the wire" }
+        RealizationRejected { divergence: _ } =>
+          CouponProgramRefused { reason: "canonical coupon envelope diverged from its own contract" }
+        RealizationAccepted { admitted: a } =>
+          match realize_admitted(a: a) {
+            CadQueryDimensionUnrenderable { micrometres: _ } =>
+              CouponProgramRefused { reason: "a coupon dimension could not be rendered as an exact decimal" }
+            CadQueryEmitted { program: p } =>
+              CouponProgramGenerated { content: cadquery_program_source(p: p) as String }
+          }
+      }
+    }
   }
 }

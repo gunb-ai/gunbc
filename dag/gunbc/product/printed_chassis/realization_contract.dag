@@ -635,6 +635,20 @@ fn admitted_realization_identity(a: AdmittedRealizationV0) -> CouponSpecimenIden
 // The rejection arm takes GeometryDivergence and not GeometryConformance, for the same reason
 // RealizationRefusedAtWire takes EnvelopeRefusal: a rejection whose payload can spell "conforms" is
 // a state no route produces and nothing prevents.
+// THE ACTUATOR PAIRING OBLIGATION IS DISCHARGED, AND ITS VOCABULARY IS DELETED WITH IT.
+//
+// It read ActuatorGeometryPairingUnbound while judge_realization returned a verdict and no geometry,
+// so a handler had to pair the two itself and the mis-pairing was writable. The accepting arm now
+// carries AdmittedRealizationV0, minted inside the judgment from the contract's canonical specimen,
+// so there is no pair left to associate and no way to obtain admitted geometry without a judgment.
+//
+// An earlier cut kept the coproduct with an empty roster, arguing that deleting it would leave the
+// next obligation nowhere typed to land and that an empty roster says "asked and nothing open"
+// where absence says "nobody asked". Both are true statements about a roster that something READS.
+// Nothing read this one: no gate required it to be empty before actuation, so the forcing it claimed
+// to preserve did not exist, and a carrier kept for a future member it does not yet have is the
+// speculative-framework move this program rejects elsewhere. The discharged property is now carried
+// where it executes -- in the type of the accepting arm, which every consumer must match on.
 type RealizationVerdict
   = RealizationRefusedAtWire { refusal: EnvelopeRefusal }
   | RealizationRejected { divergence: GeometryDivergence }
@@ -656,30 +670,3 @@ fn judge_realization(
     EnvelopeRefused { refusal: r } => RealizationRefusedAtWire { refusal: r }
   }
 }
-
-// THE ACTUATOR PAIRING OBLIGATION IS DISCHARGED, AND THE ROSTER IS EMPTY RATHER THAN DELETED.
-//
-// It read ActuatorGeometryPairingUnbound while judge_realization returned a verdict and no geometry,
-// so a handler had to pair the two itself and the mis-pairing was writable. The accepting arm now
-// carries AdmittedRealizationV0, minted inside the judgment from the contract's canonical specimen,
-// so there is no pair left to associate and no way to obtain admitted geometry without a judgment.
-// The route the obligation named -- MintSealedGeometryFromCanonicalSpecimenAtJudgment -- is what was
-// built, which is the point of naming a route rather than recording a wish.
-//
-// THE VOCABULARY STAYS AND THE ROSTER GOES EMPTY. Deleting the coproduct with its last member would
-// take the forcing with it: the next obligation this layer discovers would have nowhere typed to
-// land and would arrive as prose, which is the state the coupon module's own roster was repaired
-// out of. An empty roster is also a stronger statement than an absent one -- it says this layer was
-// asked and has nothing open, where absence says nobody asked. The route fold stays total over a
-// vocabulary that still has one arm, so it costs nothing and reds on the next addition.
-type RealizationV0Obligation = ActuatorGeometryPairingUnbound {}
-
-type RealizationV0Route = MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
-
-fn realization_v0_route(o: RealizationV0Obligation) -> RealizationV0Route {
-  match o {
-    ActuatorGeometryPairingUnbound {} => MintSealedGeometryFromCanonicalSpecimenAtJudgment {}
-  }
-}
-
-data realization_v0_open_obligations: List<RealizationV0Obligation> = []

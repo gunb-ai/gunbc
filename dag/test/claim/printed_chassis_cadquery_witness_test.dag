@@ -24,7 +24,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ONLY WAY TO REACH THE HANDLER IS THROUGH A JUDGMENT, so every witness here goes through
 // judge_realization rather than constructing an admitted value -- which it could not do anyway,
-// since AdmittedRealizationV0 is sole_constructor. That is not test ceremony: it is the discharged
+// since AdmittedRealizationV0 is sole_constructor, a seal whose executing evidence is the red/green
+// differential in test.claim.printed_chassis_admitted_realization_seal_witness and NOT this file.
+// That distinction is the point: this annotation previously asserted the seal with no probe naming
+// that type anywhere, which is citing a wall as coverage while its RED went unauthored. It is the
+// discharged
 // pairing being exercised by its consumer, which is the only place the discharge is observable.
 fn row_of(op: CouponOperation) -> RawOperationRow {
   match op {
@@ -183,12 +187,9 @@ fn expected_program(g: HoleDiameterCouponGeometry) -> String {
         ], ""),
         join([expected_cut_line(op: g.orientation_datum, thickness: g.plate.size_z), "\n"], ""),
       ],
-      concat(
-        fold(g.ladder_holes, init: [], f: fn(acc, op) {
-          concat(acc, [join([expected_cut_line(op: op, thickness: g.plate.size_z), "\n"], "")])
-        }),
-        ["cq.exporters.export(result, \"hole_diameter_ladder_r1.stl\")\n"],
-      ),
+      fold(g.ladder_holes, init: [], f: fn(acc, op) {
+        concat(acc, [join([expected_cut_line(op: op, thickness: g.plate.size_z), "\n"], "")])
+      }),
     ),
     "",
   )
@@ -234,10 +235,16 @@ test fn w_the_millimetre_rendering_loses_nothing_on_odd_micrometres() -> Bool {
 // Overtravel is the one number this handler adds that the authority layer did not state, so it is
 // the one place a forbidden compensating clearance could hide. The distinction is exact: overtravel
 // runs along the cut AXIS, so it may change where a cutting cylinder starts and how tall it is, and
-// it may NOT change any hole diameter, any hole centre, or the plate. This witness re-emits with the
-// overtravel doubled in the expectation and requires the program to differ ONLY there -- so an
-// overtravel that had leaked into a radius or a centre would show up as a program that no longer
-// matches its own model-rebuilt expectation.
+// it may NOT change any hole diameter, any hole centre, or the plate.
+//
+// WHAT THIS WITNESS EXECUTES, stated to match its body rather than overstate it: every hole's centre
+// and radius wire is rebuilt FROM THE MODEL and required to appear verbatim in the emitted source,
+// so an overtravel term that had leaked into a radius or a centre would leave the model-derived wire
+// absent and go red. It does NOT re-emit with a doubled overtravel and diff the two programs -- an
+// earlier version of this comment claimed it did, and no such body ever existed. It also cannot
+// constrain the VALUE, because the whole-program expectation reads the same cut_overtravel
+// declaration the emitter reads, so the two move together. The value's conformance is the open
+// kernel-readback obligation recorded beside the declaration.
 //
 // Concretely: every hole's diameter and centre wire is asserted to appear exactly as the model
 // states it, with no term involving overtravel. If overtravel were added to a radius, the emitted
