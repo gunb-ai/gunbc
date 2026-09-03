@@ -69,10 +69,37 @@ type RequiredStatusCheckWire {
   integration_id: Int
 }
 
+// ONE RECORD FOR A KEY GITHUB SENDS WITH DIFFERENT CONTENTS PER RULE TYPE, AND THE REASON IT IS
+// NOT A COPRODUCT IS A TRANSPORT FACT RATHER THAN A MODELLING PREFERENCE.
+//
+// `parameters` is one JSON key whose object differs by the rule's `type`: a required_status_checks
+// rule sends a strict policy and a roster, a merge_queue rule sends seven scheduling fields, a
+// deletion rule sends nothing. The shape that says that is a coproduct discriminated on the type
+// tag -- and it cannot be READ here. The REST realization decodes a nested object into an untagged
+// map and the record is a static read-shape over it, so a coproduct arm would have no constructor
+// tag to match on and every read would refuse. So the record is the UNION OF THE READABLE SHAPES,
+// which is what the transport can actually answer.
+//
+// THAT IS SAFE ONLY BECAUSE EVERY READ IS GUARDED BY THE TYPE TAG FIRST. required_status_check_standing
+// and merge_queue_standing each `filter` on the rule type before touching a field, so no field is
+// ever read off a rule whose `parameters` object does not carry it. The guard is the invariant this
+// shape depends on: a reader that folded over unfiltered rules would read a key GitHub never sent.
+//
+// NEXT-RUNG TRIGGER, named as the capability rather than as an artifact: a transport decode that
+// carries a discriminator from the enclosing object into a tagged value, so `parameters` can be a
+// coproduct selected by `type` and the guard becomes unnecessary rather than load-bearing. Until
+// that exists, this is mitigatable-by-guard and is stated as such.
 type RulesetRuleParametersWire {
   strict_required_status_checks_policy: Bool
   do_not_enforce_on_create: Bool
   required_status_checks: List<RequiredStatusCheckWire>
+  check_response_timeout_minutes: Int
+  grouping_strategy: String
+  max_entries_to_build: Int
+  max_entries_to_merge: Int
+  merge_method: String
+  min_entries_to_merge: Int
+  min_entries_to_merge_wait_minutes: Int
 }
 
 type RulesetRuleWire {
@@ -356,6 +383,11 @@ fn required_status_check_row(context: String, integration_id: Int) -> RequiredSt
   RequiredStatusCheckWire { context: context, integration_id: integration_id }
 }
 
+// THE CONSTRUCTOR OMITS THE merge_queue FIELDS AND THAT IS DELIBERATE, NOT AN OVERSIGHT. This
+// builds the rule GitHub is SENT, and the PUT body carries exactly the keys present; supplying
+// zeroes for seven scheduling fields GitHub does not accept on a required_status_checks rule would
+// be a fabricated value on the wire. An omitted field is unwritten rather than defaulted, so a read
+// of one refuses -- which is the guard above restated at the write end.
 fn required_status_checks_rule(
   checks: List<RequiredStatusCheckWire>,
   strict: Bool,
