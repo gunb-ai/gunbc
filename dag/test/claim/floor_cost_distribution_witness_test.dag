@@ -12,8 +12,16 @@ import tools.floor_cost_distribution_instrument {
   refused_load_lines
 }
 import gunbc.floor_cost_distribution {
+  ClaimCostColumns,
+  claim_cost_columns,
+  CrossingRecurrence,
+  identity_inflation_permille_at_equal_work,
+  crossing_recurrence,
+  recurring_crossers,
   FloorCostRow,
   RunCost,
+  SameHeadAttemptPair,
+  EvalStepDeterminismViolation,
   CostBand,
   LadderStep,
   parse_claim_cost_line,
@@ -30,7 +38,9 @@ import gunbc.floor_cost_distribution {
   repair_ladder,
   identity_inflation_permille,
   permille_percentile,
-  implied_clean_run_budget
+  implied_clean_run_budget,
+  same_head_eval_step_violations,
+  same_head_eval_steps_are_deterministic
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -43,13 +53,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Shape: two runs over the same three identities in two modules, one of which ("hot") crosses the
 // 500ms ceiling on run B only. That is the exact shape the real analysis turns on -- a row whose
 // membership in the crossing set depends on the run rather than on the row.
-data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cpu_ms: millisecond(count: 400) }
-data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cpu_ms: millisecond(count: 200) }
-data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cpu_ms: millisecond(count: 50) }
+data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cpu_ms: millisecond(count: 400) , eval_steps: 9000 }
+data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cpu_ms: millisecond(count: 200) , eval_steps: 4000 }
+data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cpu_ms: millisecond(count: 50) , eval_steps: 900 }
 
-data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cpu_ms: millisecond(count: 600) }
-data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cpu_ms: millisecond(count: 300) }
-data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cpu_ms: millisecond(count: 100) }
+data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cpu_ms: millisecond(count: 600) , eval_steps: 9000 }
+data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cpu_ms: millisecond(count: 300) , eval_steps: 4400 }
+data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cpu_ms: millisecond(count: 100) , eval_steps: 900 }
 
 data run_a: RunCost = RunCost { run: "runA" as NonEmptyStr, rows: [row_a1, row_a2, row_a3] }
 data run_b: RunCost = RunCost { run: "runB" as NonEmptyStr, rows: [row_b1, row_b2, row_b3] }
@@ -57,6 +67,41 @@ data both_runs: List<RunCost> = [run_a, run_b]
 
 // PARSING: the artifact's own preamble must not become rows.
 data sample_tsv: String = "# summary\texecuted=3\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t1000\t100\nm.mid.y\tm.mid\tpass\ttrue\t201\t200\t900\t100"
+
+// The layout the current artifact ships, resolved from its own header rather than assumed.
+data sample_columns: ClaimCostColumns = ClaimCostColumns { identity: 0, module: 1, verdict_reached: 3, cpu_ms: 5, eval_steps: 6 }
+
+// THE OLD VINTAGE, VERBATIM. Run 33661252708's artifact has no `eval_steps` column at all -- the
+// header is one field shorter and index 6 holds `cost_line_ms`, the constant 100. A positional
+// parser reads that as a step count and produces microseconds-per-step near 2500 instead of near
+// 2: not an error, a PLAUSIBLE NUMBER, which is why this is a refusal and not a warning.
+data old_vintage_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t100"
+
+test fn an_artifact_without_the_steps_column_yields_no_rows_rather_than_reading_the_next_one() -> Bool {
+  count(parse_claim_cost_tsv(text: old_vintage_tsv)) == 0
+    && match claim_cost_columns(header_line: "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms") {
+         Present { value: _ } => false
+         Absent => true
+       }
+}
+
+// AND THE POSITIVE CONTROL FOR THAT REFUSAL, so an empty population cannot be read as "the parser
+// is broken": the same rows under a header that DOES carry the column parse normally.
+test fn the_same_shape_with_a_steps_column_parses() -> Bool {
+  count(parse_claim_cost_tsv(text: sample_tsv)) == 2
+}
+
+// COLUMNS ARE FOUND BY NAME, WHICH MEANS A REORDERED HEADER STILL READS CORRECTLY. This is the
+// discriminating red for the whole change: under a positional parser this fixture returns a row
+// whose cpu and steps are swapped, and swapped values are two plausible numbers rather than an
+// error.
+test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
+  let reordered = "identity\tmodule\teval_steps\tcpu_ms\tverdict_reached\nm.hot.x\tm.hot\t1000\t400\ttrue"
+  match parse_claim_cost_tsv(text: reordered) |> first {
+    Absent => false
+    Present { value: r } => millisecond_count(m: r.cpu_ms) == 400 && r.eval_steps == 1000
+  }
+}
 
 test fn the_summary_and_header_lines_are_not_rows() -> Bool {
   count(parse_claim_cost_tsv(text: sample_tsv)) == 2
@@ -73,9 +118,9 @@ test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool
 // line must produce NO row rather than a zero-cost one. A fabricated zero would sit silently in
 // the bottom band and make the population look safer than it is.
 test fn an_unparseable_line_yields_no_row_rather_than_a_zero_cost_row() -> Bool {
-  match parse_claim_cost_line(line: "m.broken\tm\tpass") {
+  match parse_claim_cost_line(line: "m.broken\tm\tpass", columns: sample_columns) {
     Present { value: _ } => false
-    Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\t10\tNOT-A-NUMBER\t1\t100") {
+    Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\t10\tNOT-A-NUMBER\t1\t100", columns: sample_columns) {
       Present { value: _ } => false
       Absent => true
     }
@@ -175,4 +220,137 @@ test fn an_unreadable_or_empty_run_is_named_and_never_counted_as_loaded() -> Boo
 // cannot be satisfied by a function that always reports something.
 test fn a_complete_sample_produces_no_refusal_lines() -> Bool {
   count(refused_load_lines(loads: [RunLoaded { run: run_a }, RunLoaded { run: run_b }])) == 0
+}
+
+// THE STEP COUNT COMES FROM ITS OWN COLUMN, and this is worth a witness because it is the column
+// every other one in this artifact could be mistaken for: the row carries wall, cpu, steps and a
+// diagnostic line threshold side by side, and reading the wrong one produces a plausible number
+// rather than an error. 1000 is the steps field of the fixture's first row; 400 is its cpu and 402
+// its wall.
+test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
+  match parse_claim_cost_tsv(text: sample_tsv) |> first {
+    Absent => false
+    Present { value: r } => r.eval_steps == 1000 && millisecond_count(m: r.cpu_ms) == 400
+  }
+}
+
+// THE WORK-CONTROLLED PAIRING, AND ITS DISCRIMINATING RED IS THE ROW WHOSE WORK CHANGED. Fixture
+// shape: `m.hot.x` runs 9000 steps in both runs and moves 400 -> 600ms, which is inflation;
+// `m.mid.y` moves 200 -> 300ms but its steps move 4000 -> 4400, so its cost change is not
+// separable and it must be DROPPED rather than counted at 1500 permille. A pairing that admitted
+// it would report a work change as contention, which is the whole confound this exists to remove.
+test fn equal_work_pairing_admits_the_unchanged_row_and_drops_the_changed_one() -> Bool {
+  let controlled = identity_inflation_permille_at_equal_work(base: run_a, other: run_b, min_base_ms: millisecond(count: 100))
+  let uncontrolled = identity_inflation_permille(base: run_a, other: run_b, min_base_ms: millisecond(count: 100))
+  count(controlled) == 1 && count(uncontrolled) == 2
+    && match controlled |> first { Absent => false  Present { value: v } => v == 1500 }
+}
+
+// AND THE REACH IS REPORTABLE, which is the first thing a reader should doubt: a work-controlled
+// figure over one row of two is a clean instrument over half the population, and the caller must
+// be able to say so rather than quoting the percentile alone.
+test fn the_controlled_population_is_smaller_than_the_paired_one_and_countable() -> Bool {
+  count(identity_inflation_permille_at_equal_work(base: run_a, other: run_b, min_base_ms: millisecond(count: 100)))
+    < count(identity_inflation_permille(base: run_a, other: run_b, min_base_ms: millisecond(count: 100)))
+}
+
+// RECURRENCE OVER THE FIXTURE: `m.hot.x` crosses on run B alone, so it recurs ONCE and the
+// recurring-crosser population is EMPTY. That is the shape a run-level cause produces, and an
+// empty answer here is the finding rather than the absence of one.
+test fn a_single_run_crossing_recurs_once_and_no_identity_recurs() -> Bool {
+  let rec = crossing_recurrence(runs: both_runs, ceiling_ms: millisecond(count: 500), excluded_modules: [])
+  count(rec) == 1
+    && match rec |> first { Absent => false  Present { value: r } => r.identity == "m.hot.x" && r.runs_crossed == 1 }
+    && count(recurring_crossers(recurrence: rec)) == 0
+}
+
+// THE POSITIVE CONTROL FOR RECURRENCE, so the empty answer above is not vacuous: over a run pair
+// where the SAME identity crosses twice, it is counted twice and reported as recurring. Without
+// this, `recurring_crossers` returning empty would be indistinguishable from a join that never
+// matches anything.
+test fn an_identity_crossing_in_two_runs_is_counted_twice_and_reported_recurring() -> Bool {
+  let hot_a = RunCost { run: "hotA" as NonEmptyStr, rows: [row_b1] }
+  let hot_b = RunCost { run: "hotB" as NonEmptyStr, rows: [row_b1] }
+  let rec = crossing_recurrence(runs: [hot_a, hot_b], ceiling_ms: millisecond(count: 500), excluded_modules: [])
+  count(rec) == 1
+    && count(recurring_crossers(recurrence: rec)) == 1
+    && match rec |> first { Absent => false  Present { value: r } => r.runs_crossed == 2 }
+}
+
+// SAME HEAD, TWO ATTEMPTS, AND CPU IS DELIBERATELY DIFFERENT. The equal pair stays green because
+// this wall judges work identity, not runner speed. The changed row is the discriminating red:
+// filtering unequal-step rows out (the distribution instrument's correct behavior) would make
+// the wall green over exactly the evidence it exists to refuse.
+test fn same_head_completed_claims_require_exact_step_equality() -> Bool {
+  let equal = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [row_b1]
+  }
+  let drifted = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a2],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [row_b2]
+  }
+  let different_trees = SameHeadAttemptPair {
+    left_head: "head-a" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "head-b" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [row_b1]
+  }
+  same_head_eval_steps_are_deterministic(pair: equal)
+    && !same_head_eval_steps_are_deterministic(pair: drifted)
+    && match same_head_eval_step_violations(pair: drifted) |> first {
+         Present { value: CompletedIdentityStepsDiffer { identity: id, module: m, left_attempt: _, left_steps: a, right_attempt: _, right_steps: b } } =>
+           id == "m.mid.y" && m == "m.mid" && a == 4000 && b == 4400
+         _ => false
+       }
+    && match same_head_eval_step_violations(pair: different_trees) |> first {
+         Present { value: AttemptHeadsDiffer { left_head: a, left_attempt: _, right_head: b, right_attempt: _ } } => a == "head-a" && b == "head-b"
+         _ => false
+       }
+}
+
+// Population equality is part of the wall. Comparing only the intersection would certify a run
+// after the differing row vanished or failed to reach verdict, the two easiest ways for an exact
+// equality check to become vacuous.
+test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_comparison() -> Bool {
+  let interrupted = FloorCostRow {
+    identity: "m.hot.x",
+    module: "m.hot",
+    verdict_reached: false,
+    cpu_ms: millisecond(count: 500),
+    eval_steps: 8000
+  }
+  let missing = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: []
+  }
+  let unavailable = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [interrupted]
+  }
+  match same_head_eval_step_violations(pair: missing) |> first {
+    Present { value: CompletedIdentityAbsent { identity: id, module: m, completed_attempt: _, absent_attempt: _ } } => id == "m.hot.x" && m == "m.hot"
+    _ => false
+  } && match same_head_eval_step_violations(pair: unavailable) |> first {
+    Present { value: CompletedIdentityUnavailable { identity: id, module: m, completed_attempt: _, unavailable_attempt: _ } } => id == "m.hot.x" && m == "m.hot"
+    _ => false
+  }
 }

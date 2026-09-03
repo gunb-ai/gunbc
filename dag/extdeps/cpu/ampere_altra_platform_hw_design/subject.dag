@@ -7,7 +7,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.publication { SpecificationDocumentDate }
+import extdeps.publication { SpecificationDocumentDate, HeldSpecificationSupersessionStanding, HeldRevisionIsCurrentPublicCopy, NewerRevisionExistsUnretrieved, NewerRevisionPubliclyServed }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -44,16 +44,6 @@ data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuth
 type AltraPlatformHwDesignRev1_00 {}
 
 type AltraPlatformHwDesignRevision = AltraPlatformHwDesignRev1_00
-
-type HeldSpecificationSupersessionStanding
-  = HeldRevisionIsCurrentPublicCopy
-  | NewerRevisionExistsUnretrieved {
-      newer_version_label: NonEmptyStr,
-      newer_publication_date: SpecificationDocumentDate,
-      index_authority: ExternalAuthority,
-      held_version_label: NonEmptyStr,
-      detail: NonEmptyStr,
-    }
 
 data altra_platform_hw_design_title: NonEmptyStr = "Ampere Altra Platform Hardware Design Specification"
 
