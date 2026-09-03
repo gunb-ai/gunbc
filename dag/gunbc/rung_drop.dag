@@ -40,12 +40,26 @@ module gunbc.rung_drop
 // a blank line, 0 conflicts with both edits present. Removing the blank lines here restores the
 // defect this carrier was reshaped to remove.
 //
-// THE RUNG IS UNCHANGED AND IS STATED RATHER THAN CLAIMED BY THE SPLIT. Nothing refuses a second
-// `data` row added to one of those files or to the roster module, which reintroduces the geometry.
-// The next-rung trigger is the same missing capability the one-line note named -- a
-// declaration-extent producer sufficient to refuse a second growth-surface row in one file at
-// authoring time -- and it has not landed. The split makes the DEFAULT safe; it does not make the
-// unsafe shape unwritable.
+// THE RUNG IS UNCHANGED AND IS STATED RATHER THAN CLAIMED BY THE SPLIT, AND THIS PARAGRAPH IS NOT A
+// WALL. Every property above is enforced by nothing. A second `data` row added to one of these files
+// reintroduces the geometry; deleting the blank lines reintroduces the field-adjacency conflict; and
+// neither is refused by any executing check, so the reader who does the damage is precisely the
+// reader not reading this. A note that says "load-bearing" informs whoever is already looking, which
+// is an inert lens and is why the rung stays where it is. RUNG: 1, mitigated -- the shape is safe by
+// default and by nothing else. CEILING: 2, mechanically preventable; not higher, because git's text
+// merge is external reality and no model here can make a shared line unwritable in another clone.
+// NEXT-RUNG TRIGGER, naming the capability and not an artifact: a declaration-extent producer able
+// to refuse BOTH a second growth-surface row in one file AND the removal of the separation between
+// an amendable row's fields, at authoring time on the real acceptance path. It has not landed.
+//
+// WHICH SIDE OF THE PROJECTION LINE THESE FILES SIT ON, because the answer decides whether the
+// separation can survive. They are HAND-AUTHORED. `gunbc.generated_artifact` emits exactly three
+// `.dag` artifacts, all under `dag/gunbc/stage0/`, and no registry row names anything here; the one
+// generated artifact in this family is `docs/design-rung-drops.md`, which these rows feed. So today
+// nothing regenerates a row file and the blank lines survive because no producer touches them. If a
+// producer is ever given these files, EMITTING THE SEPARATION IS PART OF ITS CONTRACT: an emitter
+// that renders a row without it silently restores the defect on the first projection, and would do
+// so while every content oracle stayed green, since the projection's bytes do not depend on it.
 //
 // WHY THE ANALYTIC FIELDS ARE NOT FILLED HERE, recorded so the next author does not read their
 // absence as an oversight. Splitting `authored` into the five 4b(3) fields means deciding, per row,
