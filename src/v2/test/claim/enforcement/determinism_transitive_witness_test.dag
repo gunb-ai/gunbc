@@ -22,6 +22,7 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
 
 // ── the live judgment ─────────────────────────────────────────────────────────────────────────
@@ -57,6 +58,20 @@ import v2.std.text { String }
 // widening the subject is a cost decision measured against the floor's per-subject line, not a
 // property this row establishes. That is the honest reading of a caller-named subject -- the scope
 // is exactly what the caller declared, and it is declared here in one place.
+
+// THE STAMP IS PART OF THE CLAUSE, NOT HOUSEKEEPING. Clause 2 asks for a consumer whose DECLARED
+// substrate matches the inputs it reads and which cannot predict-skip. This module reads the live
+// tree from the row below, and it carried no disposition row while it did -- #10156 removed the
+// stamp when it withdrew the consumer, correctly, and restoring the consumer without restoring the
+// stamp would have left the substrate undeclared while the file claimed the clause was met.
+//
+// UNDECLARED IS NOT THE SAME AS DECLARED-TRUE HERE, even though the two coincide today.
+// v2.std.live_tree records that the selection consumer treats an undeclared entry as ReadsLiveTree,
+// so an unstamped row would in fact never predict-skip -- the clause's fourth criterion would hold
+// by DEFAULT. It would not hold by DECLARATION, and the criterion is about the declaration: a row
+// relying on a fail-closed default asserts nothing about its own inputs, and the same file records
+// that a stamp is checked by nothing, so a silent row and a lying row are indistinguishable.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data determinism_live_subject_roots: List<String> = ["src/v2/lens/affected_set"]
 

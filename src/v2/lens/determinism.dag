@@ -233,21 +233,33 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // this judgment "determinism" would not have made that live read tree-grain. So the facts arrive as
 // PARAMETERS and no live producer is imported here.
 //
-// THERE IS NO LIVE CONSUMER OF THIS PRODUCER TODAY, AND THIS PARAGRAPH SAID OTHERWISE UNTIL
-// REVIEW 59343 CAUGHT IT. It named v2.test.claim.enforcement.determinism_transitive_witness as a
-// corpus-cadence consumer "stamped ReadsLiveTree, whose failure reaches the required PR floor", and
-// claimed that wording satisfied the amended clause 2. That consumer was WITHDRAWN in this same
-// change; the stamp is gone with it, and the only consumers left are the three fixture rows in that
-// module. Leaving the sentence standing was rung inflation in the precise §4b(1) sense -- a module
-// describing a guarantee that its own sibling file says was removed -- and the reviewer was right
-// that the two files contradicted each other.
+// THE LIVE CONSUMER EXISTS AND CLAUSE 2's TRIGGER HAS FIRED (gunbc#10245). The trigger is a
+// CAPABILITY -- a consumer whose declared substrate and cadence truthfully match the inputs it
+// reads, whose failure reaches the required PR floor, and which cannot predict-skip -- so it is
+// answered criterion by criterion rather than by pointing at an artifact.
+// v2.test.claim.enforcement.determinism_transitive_witness determinism_transitive_live_closure_holds
+// meets all four: it declares ReadsLiveTree in its own entry file, which is both the substrate
+// declaration and the thing that makes it unskippable by affected-set selection; it reads exactly
+// the roots it names, since fn_arrow_decl_facts_live now takes pool_roots and the same roots bound
+// the closure it walks; and it is an ordinary required-floor row, not a long-lane or cadence one.
+// A vacuity control stands beside it, because a live green over a subject that yields no
+// declarations would satisfy the letter of all four and prove nothing.
 //
-// WHAT IS TRUE: this producer is pure, parameterized, and exercised by fixture rows that
-// discriminate. What clause 2 asks for is a consumer whose declared substrate and cadence match its
-// inputs, whose failure reaches the required PR floor, and which cannot predict-skip. That
-// capability DOES NOT EXIST on this branch, the trigger has therefore not fired, and the obligation
-// is carried at work item node://adhoc-ac804155-cdd -- see the withdrawal annotation in
-// v2.test.claim.enforcement.determinism_transitive_witness for the blocker and the measurements.
+// WHAT UNBLOCKED IT, since a reader finding this true needs to know what changed rather than to
+// re-derive it: the acquisition had no caller-named subject, so no live-tree consumer of this
+// producer could reach the floor's per-subject line at any grain -- decomposition INVERTED on a
+// zero-arity whole-tree walk. gunbc#10245 gave it one. The scope this buys is exactly what the
+// consumer declares and no more; widening it is a cost decision, not a property established here.
+//
+// THIS PARAGRAPH HAS BEEN WRONG ONCE, IN THE OTHER DIRECTION, AND THAT HISTORY IS KEPT BECAUSE IT
+// IS THE USEFUL PART. Until review 59343 caught it, it named that same witness as a live consumer
+// "stamped ReadsLiveTree, whose failure reaches the required PR floor" AFTER gunbc#10156 had
+// withdrawn the consumer and removed the stamp -- rung inflation in the precise §4b(1) sense, a
+// module describing a guarantee its own sibling file contradicted. It was rewritten to be true at
+// withdrawal time, and is rewritten here rather than left standing, because restoring the consumer
+// makes the withdrawal-time wording false from the opposite side. Two files carry the two halves of
+// this clause's story and they have contradicted each other once; the fix both times is to edit
+// them in one change.
 //
 // The clause deliberately does not say "corpus cadence forever": if a later compiler representation
 // carries transitive declaration reachability on the InferredTree itself, a pure tree-grain
