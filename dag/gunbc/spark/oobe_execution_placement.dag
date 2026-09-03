@@ -155,12 +155,26 @@ type ForwardingPlanDecision
   = ForwardingPlanAdmitted { plan: ForwardingPlan }
   | ForwardingPlanRefused { cause: ForwardingPlanRefusalCause }
 
-type LeaseIdentity = NonEmptyStr where brand("LeaseIdentity")
+// NAMED ForwardingLeaseIdentity AND NOT LeaseIdentity, because that name is taken by
+// product.fabric.execution and the two are not the same fact. One spelling carrying two materially
+// different meanings is the §3 meaning fork, and it would have been a quiet one: both are "a lease",
+// so every reader would assume the other module's fencing applied here.
+//
+// THE COINCIDENCE IS REAL AND IS NOT BEING UNIFIED YET, which is worth stating rather than leaving
+// for someone to rediscover. The fabric lease carries a resource fingerprint and a GENERATION
+// because a stale holder can invalidate a live one, and a forwarding lease has the same hazard in
+// principle: a stale forwarder still bound to a listener while a new one is being established.
+// §2 says to unify on a PROVEN coincidence, and this one is not proven -- this lane has never
+// observed a stale forwarder, so inventing a generation here to match the shape would be modeling
+// a fencing problem we have not had, and the fingerprint would have nothing real to hash. The
+// trigger for unification is the first observed stale forwarder; until then these are two leases
+// that rhyme.
+type ForwardingLeaseIdentity = NonEmptyStr where brand("ForwardingLeaseIdentity")
 
 // THE OBLIGATION NAMES WHO MUST CLOSE WHAT. A teardown that named only the lease would not say
 // which host holds the process, and a reaper on the wrong host cannot discharge it.
 type TeardownObligation {
-  lease: LeaseIdentity
+  lease: ForwardingLeaseIdentity
   owner: HostIdentity
   owned_listener: SocketAddress
 }
@@ -172,7 +186,7 @@ type TeardownObligation {
 // Releasing the forward is also NOT evidence that the relay's radio association has been restored;
 // those are separate brackets with separate receipts.
 type TeardownReceipt {
-  lease: LeaseIdentity
+  lease: ForwardingLeaseIdentity
   listener_absent_on: HostIdentity
   listener: SocketAddress
 }
@@ -191,19 +205,19 @@ type EndpointReadinessReceipt {
 }
 
 type ForwardingLeaseState
-  = ForwardingLeaseReserved { lease: LeaseIdentity, teardown: TeardownObligation }
-  | ForwardingLeaseEstablishing { lease: LeaseIdentity, teardown: TeardownObligation }
+  = ForwardingLeaseReserved { lease: ForwardingLeaseIdentity, teardown: TeardownObligation }
+  | ForwardingLeaseEstablishing { lease: ForwardingLeaseIdentity, teardown: TeardownObligation }
   | ForwardingLeaseEstablished {
-      lease: LeaseIdentity,
+      lease: ForwardingLeaseIdentity,
       teardown: TeardownObligation,
       readiness: EndpointReadinessReceipt,
     }
   | ForwardingLeaseEstablishmentFailed {
-      lease: LeaseIdentity,
+      lease: ForwardingLeaseIdentity,
       teardown: TeardownObligation,
       residue: LeaseResidue,
     }
-  | ForwardingLeaseReleaseFailed { lease: LeaseIdentity, residue: LeaseResidue }
+  | ForwardingLeaseReleaseFailed { lease: ForwardingLeaseIdentity, residue: LeaseResidue }
   | ForwardingLeaseReleased { receipt: TeardownReceipt }
 
 // ------------------------------------------------------------------------------------------
