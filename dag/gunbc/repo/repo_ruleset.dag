@@ -451,6 +451,8 @@ type RulesetDivergence
   | StrictPolicyDrift { observed: Bool }
   | DoNotEnforceOnCreateDrift { observed: Bool }
   | RulesetRuleUnexpected { rule: String }
+  | RulesetBypassActorUnexpected { actor: String }
+  | RulesetBypassRosterUnobserved { reader: String }
   | MergeQueueUndeclared { grouping_strategy: String, merge_method: String }
   | MergeQueueRuleAbsent
   | MergeQueueRuleAmbiguous { count: Int }
@@ -532,6 +534,27 @@ fn rule_unexpected_divergences(observed: List<RulesetRuleType>) -> List<RulesetD
       append(acc, items: [RulesetRuleUnexpected { rule: label }])
     }
   })
+}
+
+// THE REPORTING HALF FOR ACTORS, WHICH verify HAD NO WAY TO SEE. `observation_divergences` bound
+// the roster to `_`, so an undeclared bypass actor was invisible to verify even after converge
+// learned to refuse on it -- the refusal stops the write, and nothing told anyone the grant was
+// there. The rule side has both halves (`RulesetRuleUnexpected` reported, actuation refused) and
+// this is that pair completed for actors.
+//
+// AN UNOBSERVED ROSTER IS ITS OWN DIVERGENCE RATHER THAN SILENCE, because "we could not see whether
+// a bypass exists" and "no bypass exists" are the distinction this module's reader-versus-roster
+// split was built to keep, and verify reporting nothing would collapse them at exactly the moment a
+// reader wants to know.
+fn bypass_actor_unexpected_divergences(roster: BypassActorRosterObservation) -> List<RulesetDivergence> {
+  match roster {
+    BypassRosterUnavailable { reader: r, cause: _ } =>
+      [RulesetBypassRosterUnobserved { reader: r as String }]
+    BypassRosterObserved { actors: as_ } =>
+      map(as_, a => RulesetBypassActorUnexpected {
+        actor: concat(concat(concat(a.actor_type, "/"), to_string(a.actor_id)), concat(" mode=", a.bypass_mode)),
+      })
+  }
 }
 
 // A LIVE RULE THIS PROJECTION CANNOT EXPRESS IS AN ACTUATION REFUSAL, NOT A DIVERGENCE TO REPAIR.
@@ -966,6 +989,9 @@ fn render_divergence(d: RulesetDivergence) -> String {
     DoNotEnforceOnCreateDrift { observed: o } =>
       concat("do_not_enforce_on_create is ", to_string(o))
     RulesetRuleUnexpected { rule: r } => concat("undeclared rule present: ", r)
+    RulesetBypassActorUnexpected { actor: a } => concat("undeclared bypass actor present: ", a)
+    RulesetBypassRosterUnobserved { reader: r } =>
+      concat("the bypass-actor roster was not observed by this reader, so whether the ruleset grants a bypass is UNKNOWN rather than none: ", r)
     MergeQueueUndeclared { grouping_strategy: g, merge_method: m } =>
       join(["a merge queue is configured that no signed desire declares: grouping ", g, ", merge method ", m], "")
     MergeQueueRuleAbsent => "merge_queue rule absent while the merge queue is signed off"
@@ -995,17 +1021,20 @@ fn observation_divergences(observation: RulesetObservation) -> List<RulesetDiver
       rule_types: rt,
       standing: st,
       merge_queue: mq,
-      bypass_roster: _,
-    } => observed_ruleset_divergences(
-      name: n,
-      enforcement: e,
-      target: t,
-      bypass: b,
-      include: inc,
-      exclude: exc,
-      rule_types: rt,
-      standing: st,
-      merge_queue: mq,
+      bypass_roster: br,
+    } => append(
+      observed_ruleset_divergences(
+        name: n,
+        enforcement: e,
+        target: t,
+        bypass: b,
+        include: inc,
+        exclude: exc,
+        rule_types: rt,
+        standing: st,
+        merge_queue: mq,
+      ),
+      items: bypass_actor_unexpected_divergences(roster: br),
     )
   }
 }

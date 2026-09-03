@@ -24,6 +24,7 @@ import gunbc.repo_ruleset {
   merge_queue_projection_refusal,
   signed_desire_projection_refusal_for,
   bypass_roster_projection_refusal,
+  bypass_actor_unexpected_divergences,
   merge_queue_check_response_timeout,
 }
 import v2.std.collection { Absent, Present }
@@ -615,4 +616,34 @@ test fn w_an_observed_empty_bypass_roster_does_not_refuse() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// verify REPORTS THE ACTOR IT WOULD HAVE DELETED, which converge refusing does not accomplish on
+// its own: the refusal stops the write and tells nobody the grant is there. This is the reporting
+// half of the pair the rule side already had.
+test fn w_RED_verify_reports_an_undeclared_bypass_actor() -> Bool {
+  string_contains(
+    s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved {
+      actors: [RulesetBypassActor { actor_type: "RepositoryRole", actor_id: 2, bypass_mode: "always" }],
+    })),
+    pattern: "undeclared bypass actor present: RepositoryRole/2 mode=always",
+  )
+}
+
+// AN UNOBSERVED ROSTER IS REPORTED AS UNKNOWN RATHER THAN AS NOTHING. Reporting silence here would
+// collapse "we could not see whether a bypass exists" into "no bypass exists" -- the one distinction
+// the reader-versus-roster split exists to keep -- at exactly the moment a reader wants to know.
+test fn w_RED_verify_reports_an_unobserved_bypass_roster_as_unknown() -> Bool {
+  string_contains(
+    s: render_divergences(ds: bypass_actor_unexpected_divergences(
+      roster: bypass_roster_unavailable_from_get(reader: "some-reader" as NonEmptyStr)
+    )),
+    pattern: "UNKNOWN rather than none",
+  )
+}
+
+// THE POSITIVE CONTROL: an observed empty roster contributes NO divergence, so verify does not
+// invent a finding on a ruleset that genuinely grants no bypass.
+test fn w_an_observed_empty_roster_contributes_no_divergence() -> Bool {
+  length(bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: [] })) == 0
 }
