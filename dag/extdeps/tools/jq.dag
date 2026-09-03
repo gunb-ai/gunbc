@@ -400,13 +400,10 @@ fn jq_option_arguments(invocation: JqInvocation, binding_arguments: List<CliArgu
   list_snoc_item(
     xs: list_append(
       left: list_append(
-        left: list_append(
-          left: jq_selected_option_argument(selection: jq_selection_for_output_encoding(encoding: invocation.output_encoding)),
-          right: jq_selected_option_argument(selection: jq_selection_for_exit_policy(policy: invocation.exit_policy))
-        ),
-        right: binding_arguments
+        left: jq_selected_option_argument(selection: jq_selection_for_output_encoding(encoding: invocation.output_encoding)),
+        right: jq_selected_option_argument(selection: jq_selection_for_exit_policy(policy: invocation.exit_policy))
       ),
-      right: Empty
+      right: binding_arguments
     ),
     item: CliArgumentSyntax {
       fragments: [BoundToken { token_class: ^jq_program_operand, binding: ^jq_program_text }]
