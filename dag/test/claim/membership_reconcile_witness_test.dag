@@ -385,6 +385,7 @@ test fn w_duplicate_scoped_key_refuses() -> Bool {
     MembershipReconcileDuplicateScopedKey { roster: MembershipDesiredRoster, first: f, duplicate: d, key: _ } =>
       f.value.mid == "route" && d.value.mid == "route" && f.value.ver == "1" && d.value.ver == "2"
     MembershipReconcileScopedReady { plan: _ } => false
+    MembershipReconcileDuplicateScopedKey { roster: MembershipObservedRoster, key: _, first: _, duplicate: _ } => false
   }
 }
 

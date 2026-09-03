@@ -150,6 +150,25 @@ test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
 // CONTROL 4 -- a mirror the partition does not own refuses BEFORE any build, naming the mirror.
 // cli_run.rs is a real hand-authored host module in the compared population and is owned by no
 // partition row, so this is the live shape of the coverage hole, not an invented name.
+//
+// A SECOND INSTANCE WAS FILED HERE AND IS NOW CLOSED -- KEPT BECAUSE THE DISTINCTION IT DREW
+// OUTLIVED IT, NOT AS A LIVE CLAIM. v1_compiler_compiler_tests_rust.rs refused the same way on
+// 2026-09-02: an authored edit to v1.compiler.compiler_tests_rust drifted that mirror and
+// --regen-round-cost refused its partitioned rebuild with MirrorHasNoOwningPackage naming it.
+// #10037 then gave that mirror an owner in the v1-infer partition, and
+// witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds below asserts exactly that. So the
+// second instance is CLOSED, and this text no longer claims otherwise; the executing witness is
+// the authority on its current state, and prose here that still called it live would be a carrier
+// citing a dead condition.
+//
+// WHY THE DISTINCTION IS STILL WORTH CARRYING. cli_run.rs IS listed in
+// HAND_MAINTAINED_STAGE0_FILES; the compiler-tests mirror was NOT, which by the regen's own rule
+// means it is EMITTED rather than copied. One instance on a hand-authored file is consistent with
+// the roster simply not having caught up -- a bookkeeping gap. An instance on a GENERATED mirror
+// said the crate-partition authority did not cover files the regen itself produces, which is a gap
+// in the partition's coverage of its own output. That is why the second instance was evidence
+// rather than a duplicate, and it is why the remaining cli_run.rs instance should NOT be read as
+// establishing the generated-output gap: the case that did establish it has been repaired.
 test fn witness_unowned_mirror_refuses_holds() -> Bool {
   match witness_decide(changed: ["cli_run.rs"]) {
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } => m == "cli_run.rs"

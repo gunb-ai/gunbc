@@ -1,12 +1,21 @@
 module test.claim.cli_dispatch_surface
 
+import gunbc.cli_dispatch_surface {
+  dispatch_local_binding_names,
+  gunbc_cli_dispatch_executor_binding_prefix
+}
+import extdeps.languages.rust.emit {
+  rust_value_binding_candidate,
+  fresh_rust_value_binding_name
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHAT THIS WITNESS SEPARATES, because the two halves have different oracles.
 //
 // The FOLD's behaviour is checked against a controlled fixture below -- rows authored here, with
 // the expected gap authored beside them, so the assertion has a referent independent of the
-// production population. Checking `cli_emitter_gap_of` against the gunbc rows instead would be
+// production population. Checking `cli_shipped_dispatch_gap_of` against the gunbc rows instead would be
 // `measure() == measure()`: a transcription of the same declarations the fold reads.
 //
 // The LIVE rows are checked only for structural invariants that hold for any well-formed CLI --
@@ -32,18 +41,18 @@ fn fixture_subcommands() -> List<CliSubcommandRow> {
       variant: "Alpha",
       doc: [],
       operands: [],
-      options: [option_row(long: "kept", emission: EmittedByEmitMainRs), option_row(long: "missing", emission: AbsentFromEmitMainRs)],
+      options: [option_row(long: "kept", emission: CarriedByGeneratedDispatch), option_row(long: "missing", emission: AbsentFromShippedDispatch)],
       realization: CliRetainedHostKernel,
-      emission: EmittedByEmitMainRs
+      emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {
       verb: "beta",
       variant: "Beta",
       doc: [],
       operands: [],
-      options: [option_row(long: "one", emission: AbsentFromEmitMainRs), option_row(long: "two", emission: AbsentFromEmitMainRs)],
+      options: [option_row(long: "one", emission: AbsentFromShippedDispatch), option_row(long: "two", emission: AbsentFromShippedDispatch)],
       realization: CliRetainedHostKernel,
-      emission: AbsentFromEmitMainRs
+      emission: AbsentFromShippedDispatch
     }
   ]
 }
@@ -58,7 +67,7 @@ fn render_names(names: List<String>) -> String {
 // not at all. A fold that listed an absent verb's options beside it would answer
 // "alpha.missing,beta,beta.one,beta.two" and go red here.
 test fn gap_subsumes_options_under_an_absent_verb() -> Bool {
-  render_names(names: cli_emitter_gap_of(subcommands: fixture_subcommands())) == "alpha.missing,beta"
+  render_names(names: cli_shipped_dispatch_gap_of(subcommands: fixture_subcommands())) == "alpha.missing,beta"
 }
 
 test fn gap_is_empty_when_every_row_is_emitted() -> Bool {
@@ -68,12 +77,64 @@ test fn gap_is_empty_when_every_row_is_emitted() -> Bool {
       variant: "Alpha",
       doc: [],
       operands: [],
-      options: [option_row(long: "kept", emission: EmittedByEmitMainRs)],
+      options: [option_row(long: "kept", emission: CarriedByGeneratedDispatch)],
       realization: CliRetainedHostKernel,
-      emission: EmittedByEmitMainRs
+      emission: CarriedByGeneratedDispatch
     }
   ]
-  cli_emitter_gap_of(subcommands: all_present) |> count == 0
+  cli_shipped_dispatch_gap_of(subcommands: all_present) |> count == 0
+}
+
+// DISCRIMINATING RED for the generated-binding collision wall. The fixture gives an authored
+// field the emitter's preferred executor spelling. A fixed private spelling makes the generated
+// arm shadow its executor; the bounded fresh-name construction shifts both the parameter and its
+// use to the next spelling. `fresh_rust_value_binding_name` constructs exactly N+1 distinct
+// candidates for N fields with a forward fold, so termination is bounded by the finite population
+// rather than justified by open recursion.
+test fn generated_dispatch_executor_name_shifts_when_a_modeled_field_collides() -> Bool {
+  let prefix = gunbc_cli_dispatch_executor_binding_prefix()
+  let collision = rust_value_binding_candidate(prefix: prefix, index: 0)
+  let shifted = rust_value_binding_candidate(prefix: prefix, index: 1)
+  let rows = [
+    CliSubcommandRow {
+      verb: "fixture",
+      variant: "Fixture",
+      doc: [],
+      operands: [],
+      options: [option_row(long: collision, emission: CarriedByGeneratedDispatch)],
+      realization: CliRetainedHostKernel,
+      emission: CarriedByGeneratedDispatch
+    }
+  ]
+  fresh_rust_value_binding_name(blocked: dispatch_local_binding_names(rows: rows), prefix: prefix) == Present { value: shifted }
+}
+
+test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_stable() -> Bool {
+  let prefix = gunbc_cli_dispatch_executor_binding_prefix()
+  let base = rust_value_binding_candidate(prefix: prefix, index: 0)
+  let next = rust_value_binding_candidate(prefix: prefix, index: 1)
+  let third = rust_value_binding_candidate(prefix: prefix, index: 2)
+  fresh_rust_value_binding_name(blocked: [], prefix: prefix) == Present { value: base }
+    && fresh_rust_value_binding_name(blocked: [base], prefix: prefix) == Present { value: next }
+    && fresh_rust_value_binding_name(blocked: [base, base], prefix: prefix) == Present { value: next }
+    && fresh_rust_value_binding_name(blocked: [base, next], prefix: prefix) == Present { value: third }
+    && fresh_rust_value_binding_name(blocked: [next, base], prefix: prefix) == Present { value: third }
+}
+
+// KNOWN RED: the interpreter returns the raw element or Null for terminal `first`, while emitted
+// Rust returns Optional<T>. Keep this exact discriminator enrolled when the primitive is repaired;
+// its transition to green removes the expected-red roster row, not the executing evidence.
+test fn interpreter_first_returns_the_modeled_optional() -> Bool {
+  (["x"] |> filter(n => true) |> first) == Present { value: "x" }
+}
+
+// The bootstrap execution class is not an author-selectable tag over an arbitrary
+// DeclarationRef. Its sole admitted identity projects to the whole product-build declaration;
+// ordinary target producers have no constructor in this closed population.
+test fn bootstrap_successor_admission_is_closed_over_the_product_build_operation() -> Bool {
+  let operation = admitted_bootstrap_operation_declaration(identity: GunbcProductBuildBootstrapOperation {})
+  operation == gunbc_build_operation_ref()
+    && operation.field == WholeDeclaration
 }
 
 fn occurrences(names: List<String>, needle: String) -> Int {
@@ -122,15 +183,6 @@ test fn dirty_version_identity_cannot_impersonate_the_commit() -> Bool {
 // coverage while carrying no information (DESIGN section 4b). The guarantee climbed; the check
 // went with the machinery it replaced, and this note is what remains of it.
 
-// The gap is the reason the divergence registration for `main.rs` still stands. If it ever
-// empties, that registration's restoration trigger has fired and the row must be deleted -- so
-// this asserts the two are consistent TODAY, and goes red the moment the surface closes without
-// the registration being removed.
-test fn gap_is_non_empty_while_the_divergence_row_stands() -> Bool {
-  gunbc_cli_emitter_gap() |> count > 0
-    && emitter_produced_divergent_registrations |> any(row => row.basename == "main")
-}
-
 // ---------------------------------------------------------------------------------------------
 // THE OPERAND AXIS
 // ---------------------------------------------------------------------------------------------
@@ -152,18 +204,18 @@ fn fixture_subcommands_with_an_operand() -> List<CliSubcommandRow> {
           value: CliAbsoluteLabelOperand {},
           arity: CliExactlyOneOperand {},
           doc: [],
-          emission: AbsentFromEmitMainRs
+          emission: AbsentFromShippedDispatch
         }
       ],
-      options: [option_row(long: "kept", emission: EmittedByEmitMainRs)],
+      options: [option_row(long: "kept", emission: CarriedByGeneratedDispatch)],
       realization: CliRetainedHostKernel,
-      emission: EmittedByEmitMainRs
+      emission: CarriedByGeneratedDispatch
     }
   ]
 }
 
 test fn gap_lists_an_unemitted_operand_under_a_present_verb() -> Bool {
-  render_names(names: cli_emitter_gap_of(subcommands: fixture_subcommands_with_an_operand()))
+  render_names(names: cli_shipped_dispatch_gap_of(subcommands: fixture_subcommands_with_an_operand()))
     == "alpha.LABEL"
 }
 
@@ -198,23 +250,46 @@ test fn the_test_verb_names_no_host_function() -> Bool {
     CliDelegatesToHostFn { symbol: _ } => false
     CliRetainedHostKernel => false
     CliRefusesUnwired { successor: _ } => false
+    CliInvokesBootstrapDagOperation { binding: _ } => false
+    CliKnownOperationNoRealization { operation: _ } => false
   })
+}
+
+// DISCRIMINATING RED FOR THE NOW-LOAD-BEARING REALIZATION AXIS. Replacing the build row's
+// binding with this arm keeps the operation known and changes only realization availability;
+// it must therefore name that distinction rather than collapsing into unknown program or fallback.
+test fn a_known_operation_without_a_realization_refuses_as_such() -> Bool {
+  match cli_realization_missing_refusal(
+    realization: CliKnownOperationNoRealization { operation: gunbc_build_operation_ref() },
+  ) {
+    Present { value } => value == "known operation, no realization: gunbc.devboot.build.gunbc_build_cli_entry"
+    Absent => false
+  }
+}
+
+test fn the_live_build_operation_has_a_realization_binding() -> Bool {
+  gunbc_cli_subcommands() |> filter(sub => sub.verb == "build") |> all(sub =>
+    match cli_realization_missing_refusal(realization: sub.realization) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  ) && ((gunbc_cli_subcommands() |> filter(sub => sub.verb == "build") |> count) == 1)
 }
 
 // THE SCM VERB'S GAP IS COUNTED, NOT SILENT -- which is the whole reason the row was declared before
 // its handler exists.
 //
-// `gunbc scm` is declared in this surface and `AbsentFromEmitMainRs`, so the CLI authority states the
-// verb while the emitter renders nothing for it. That is only worth doing if the absence is OBSERVED:
-// a declared-but-unemitted verb that no consumer counted would be the parallel-ledger failure the
+// `gunbc scm` is declared in this surface and `AbsentFromShippedDispatch`, so the CLI authority states
+// the verb while the installed generated carrier excludes it. That is only worth doing if the absence
+// is OBSERVED: a declared-but-unshipped verb that no consumer counted would be the parallel-ledger failure the
 // declaration exists to end -- the gap living in prose instead of on the carrier.
 //
 // The membership fold is INLINE rather than a top-level helper deliberately: this file's siblings
 // record that two separate top-level `string_contains` definitions already exist in witness files and
 // that top-level names are corpus-wide with silent duplicate selection (#8707), so a third would make
 // that binding arbitrary for every module in the shared scope.
-test fn the_scm_verb_is_listed_in_the_emitter_gap() -> Bool {
-  fold(gunbc_cli_emitter_gap(), init: false, f: fn(found, entry) {
+test fn the_scm_verb_is_listed_in_the_shipped_dispatch_gap() -> Bool {
+  fold(gunbc_cli_shipped_dispatch_gap(), init: false, f: fn(found, entry) {
     if found { true } else { entry == "scm" }
   })
 }
