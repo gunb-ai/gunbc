@@ -889,24 +889,29 @@ pub struct TransitionAdmission {
 /// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
 /// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
 ///
-/// TWENTY-SECOND DISSOLUTION (2026-09-03). The four `gunbc#10028 irrefutability-predicate
-/// dissolution (review 59122)` rows are removed by their own trigger, which fired: #10028 merged as
-/// 8f8e513a23, and main now declares `match_pattern_is_irrefutable` in v1.std.core
-/// (src/v1/00_core.dag) with v1.compiler.emit_rust referencing it from there. The base therefore
-/// binds the spelling to the target and no run after it can produce those deltas.
+/// TWENTY-THIRD DISSOLUTION (2026-09-03). Six incoming rows are removed by their own trigger, and
+/// each was checked against the base before the deletion rather than after a run reported it:
 ///
-/// THIS IS THE THIRD SUCH SET IN THREE CONFLICTS ON THIS BRANCH -- 47 gunbc#10106 rows, then 17
-/// gunbc#10156 rows, now these four -- AND THE FIRST ONE DECIDED BEFORE THE RUN RATHER THAN BY IT.
-/// The previous two were unioned in from main on the reasoning that incoming rows should be kept,
-/// and both cost a required run to discover they were already closed. The rule was right and its
-/// input was guessed both times.
+/// - the four `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows. #10028 merged
+///   as 8f8e513a23 and main declares `match_pattern_is_irrefutable` in v1.std.core
+///   (src/v1/00_core.dag), with v1.compiler.emit_rust referencing it from there;
+/// - the two `recurring_failure_mode_roster` rows. Main declares that datum in
+///   gunbc.recurring_failure_mode.roster (dag/gunbc/recurring_failure_mode/roster.dag), which is the
+///   target the rows name, so gunbc.design_ledgers now resolves the spelling there.
 ///
-/// SO THE RULE IS NOW OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict in this roster, keep the
-/// rows THIS branch authored and whose transitions are open, and for every incoming row VERIFY
-/// consumption directly -- read whether the base already binds the spelling to the target -- before
-/// carrying it. Consumption is decidable from the tree, so guessing it is a choice. A branch that
-/// merges main is downstream of main's own sweep, so the prior on an incoming row is that it has
-/// already landed, and the discriminator is the RECEIPT rather than which side authored it.
+/// In both cases the base already binds the spelling to the target, so the delta is not producible
+/// and the row can only be stale.
+///
+/// FIVE CONFLICTS ON THIS ROSTER, FOUR CARRYING ALREADY-CONSUMED ROWS -- 47 for gunbc#10106, 17 for
+/// gunbc#10156, then these six. The first two were unioned in on the reasoning that incoming rows
+/// should be kept, and each cost a required run to discover they were closed. The rule was right
+/// both times and its INPUT was guessed.
+///
+/// SO THE RULE IS OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict here, keep the rows THIS
+/// branch authored whose transitions are open, and for every incoming row READ THE BASE -- does it
+/// already bind that spelling to that target? -- before carrying it. Consumption is decidable from
+/// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
+/// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
 ///
 /// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
 /// `physical_asset_identity_eq` was authored privately inside
@@ -916,7 +921,7 @@ pub struct TransitionAdmission {
 /// when product.inventory needed the same comparison: inventory is a generic authority, so importing
 /// a specific product's helper to obtain an equality would invert the layering. The spelling is
 /// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
-/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for the deletions
+/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
 /// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
 ///
 /// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the

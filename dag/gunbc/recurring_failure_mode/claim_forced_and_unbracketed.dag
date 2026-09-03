@@ -1,0 +1,66 @@
+module gunbc.recurring_failure_mode.claim_forced_and_unbracketed
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data claim_forced_and_unbracketed: RecurringFailureMode = RecurringFailureMode {
+  identity: "claim_forced_and_unbracketed" as NonEmptyStr,
+
+  receipts: [
+    "**CLAIM-FORCED AND UNBRACKETED -- a shared memoized host artifact whose identity is not knowable before the fold and which records no fill bracket.** INVALID STATE: the artifact is shared, so a later claim reads it warm, but nothing brackets the fill, so the whole build lands on whichever claim reached it first. ",
+
+    "HARM, AND THE REASON THIS CLASS HIDES: the number that lands is REAL -- a true measurement of something, charged to a row that does not own it -- SO NOTHING LOOKS WRONG. ",
+
+    "The row's reported cost becomes a function of DISCOVERY ORDER rather than of the row, and because the required floor's safety limit is a FAIL-STOP, an order-dependent number decides whether the line stops. ",
+
+    "DISTINGUISHING FACT, AND IT IS THE FORCING CLASS RATHER THAN ANY OBSERVED FIELD: an artifact every identity of which is knowable before the fold is PREPARATION-FORCEABLE -- the floor builds it ahead and bills preparation, no claim window ever contains that build, and it therefore carries NO fill bracket CORRECTLY. ",
+
+    "ABSENCE OF A BRACKET IS NOT EVIDENCE OF A DEFECT, and reasoning from that absence is the specific misread this class invites. ",
+
+    "An artifact only a claim can force must record its fill, at which point the claim is charged the marginal half. ",
+
+    "The third state is the conjunction: claim-forced AND unbracketed. ",
+
+    "RECOGNITION RULE, AND IT IS NOT AVAILABLE FROM THE COST LOG: a cost log reports what a run OBSERVED, while regime membership is a property of the CONSTRUCTION -- is the artifact memoized, is it shared, is every identity it can be asked for knowable before the fold. ",
+
+    "Those are decidable by reading the producer and are not recoverable from a measurement, so a row's absence from shared-fill accounting is equally consistent with preparation-forceable, with not-shared-at-all, and with this class -- and the floor output cannot separate the three. ",
+
+    "SPECIMEN OF THE MISCLASSIFICATION RATHER THAN OF THE CLASS (2026-09-03): one subject was placed in four different regimes in three hours, every placement derived from floor output and each one propagated onward, and it was settled by reading the call site -- v1_interpreter eval_fn_arrow_decl_facts_live has no memo, cache or fill bracket at all, so there is no first toucher and no free later reader, and it reaches the interpreter as a HOST BRIDGE ARM and therefore has no resolved .dag fn node to install in a roster keyed on such nodes. ",
+
+    "Its sharing tier is unreachable BY CONSTRUCTION rather than by omission, and its cost is its own. ",
+
+    "THAT ROW IS CORRECTLY BILLED, AND ADMITTING IT TO A MISATTRIBUTION CENSUS WOULD CORRUPT THE POPULATION -- six callers each paying the same unshared walk is a real defect, but it is SHARED WORK NEVER MADE SHAREABLE, whose cost can be made cheap, and not one row carrying cost it does not own. ",
+
+    "PRIOR INCIDENT, WITH A NUMBER: the census memo sat in this state from gunbc#9428 and refused the required floor at 5812ms against a 5000ms fail-stop while two later claims read the same compiles free. ",
+
+    "COMPOUNDING RISK, WHICH IS WHY THIS OUTRANKS AN ORDINARY COST DEFECT: gunbc#9517 proposes freezing rows above the line in a shrink-only contract, and a row frozen for cost it does not own can never be made cheap, so it can never leave -- a misattributed measurement becomes PERMANENT. ",
+
+    "RUNG FOUND AT: mitigatable, on review diligence, which is the authoring change's own honest self-assessment and not a grade assigned here -- the two treatments are two hand-written call sites with no carrier relating them, so this state stays WRITABLE and nothing refuses it. ",
+
+    "CEILING: STRUCTURALLY IMPOSSIBLE, and it is attainable rather than aspirational because forcing class is DECIDABLE from the artifact's own construction -- the ceiling is not limited by decidability but by a missing carrier. ",
+
+    "NEXT-RUNG TRIGGER, QUOTED VERBATIM FROM THE AUTHORING CHANGE RATHER THAN RE-COINED, because re-wording an existing well-formed trigger is the nicknaming DESIGN section 3 forbids: a memoized host artifact DECLARES its forcing class and the warm-or-net treatment is DERIVED from that declaration, at which point the third state has no spelling and the bracket cannot be forgotten. ",
+
+    "It names a CAPABILITY rather than an artifact, which is what section 4b(3) requires. ",
+
+    "WHY THIS ROW EXISTS AT ALL, GIVEN THAT THE ANALYSIS ABOVE WAS ALREADY AUTHORED: the rung sentence and its trigger were written on 2026-08-27 in gunbc#9477 as a `//` ANNOTATION in gunbc.shared_fill_attribution_seed_growth, and section 4c is explicit that no Accepted program can read an annotation -- the file says so about itself, that nothing refuses this state and the next memo reintroduces it. ",
+
+    "The TYPED row in that module is a SeedGrowthJustification whose trigger is to DELETE two hand-Rust functions once the memoized compiles are MODELED operations; that is a different subject and would be discharged by a change leaving this state exactly as writable as it is today. ",
+
+    "The class appeared in NEITHER ledger section 4b names until this row, which is why filing it forks nothing. ",
+
+    "RELATION TO THE CAPABILITY ROW, CITED ONE-WAY FROM HERE AND DELIBERATELY NOT BACK, AND WITH AN EXPLICIT LIMIT ON WHAT THE CITATION BUYS -- an earlier draft of this sentence claimed the two triggers CANNOT DRIFT because each row named the other, and that was an overclaim of exactly the kind section 4b(1) forbids: `RecurringFailureMode` and `RungDrop` carry NO TYPED RELATION FIELD, so editing either trigger invalidates nothing, refuses nothing and fails no check. ",
+
+    "Cross-citation makes the relationship REVIEW-VISIBLE and nothing stronger; a typed parent reference would be a different design and is what a mechanical anti-drift claim would require. ",
+
+    "THE CITATION IS ONE-WAY BECAUSE THE NARROWER ROW OWNS THE RELATIONSHIP and because the parent declares in its own opening that IT NAMES NO CAUSE -- enumerating mechanisms there would start undoing the rename that removed a refuted attribution from its identity. ",
+
+    "So: gunbc.rung_drop `floor_cost_claim_qualification_unavailable` declares the GENERAL loss -- claim cost is not a stable property of the claim -- and names its closure-level component insensitive to the claim's own assertion work. ",
+
+    "THIS ROW IS ONE NAMED MECHANISM DEFEATING THAT INVARIANCE, nested inside it rather than disjoint from it, and it is filed separately because it has its own narrower and INDEPENDENTLY SATISFIABLE trigger: buried inside the capability row, discharging this mechanism would read as discharging the capability, which it does not. ",
+
+    "Satisfying this trigger removes one mechanism and leaves that row standing on its position-sensitive component, whose cause and bound remain unestablished.",
+  ],
+
+  evidence: [],
+}
