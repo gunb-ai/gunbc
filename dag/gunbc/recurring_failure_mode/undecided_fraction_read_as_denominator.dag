@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.undecided_fraction_read_as_denominator
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data undecided_fraction_read_as_denominator: RecurringFailureMode = RecurringFailureMode {
+  identity: "undecided_fraction_read_as_denominator" as NonEmptyStr,
+
+  receipts: [
+    "**a census with an unresolvable fraction of its population reports a denominator it does not have** (an occurrence census that emits a third disposition for `could not determine` is honest at the row grain and misleading at the total grain: rows scored `identity unavailable` are neither agreements nor divergences, so any ratio taken over the reported total silently treats them as decided. ",
+
+    "**SPECIMEN, unowned and unexplained at filing (2026-09-01).** The `v1.tests.claim.carrier_realization_census` run over the `src/v2/compiler/01_tokenize.dag` closure produced 121 `IdentityUnavailable` rows -- roughly a tenth of its population. ",
+
+    "The earlier run recorded in docs/plans/carrier-realization-arbiter-repair-design.md, over the same subject module at the FRONT-END phase on 2026-08-21, reported `1142 rows: 1134 Agrees, 8 DivergesWithExactIdentity, 0 IdentityUnavailable`. ",
+
+    "Zero to a tenth, across a phase change nobody predicted it for. ",
+
+    "**BOTH RUNS ARE NAMED RATHER THAN THEIR NUMBERS INHERITED**: the earlier is the front-end-phase run the design itself later withdraws as measuring the wrong phase, and the later is the typed-graph census landed by `gunbc#9900`. ",
+
+    "They are not the same instrument and the pair is recorded to locate the question, not to compute a delta from. ",
+
+    "**RECOGNITION RULE: an instrument with a `cannot answer` disposition, whose consumers aggregate over the reported total.** Ask what fraction is undecided before reading any ratio, and treat the undecided fraction as a separate finding rather than as noise. ",
+
+    "**WHY IT IS FILED WITHOUT INVESTIGATION**: identity being unavailable is a different defect from the readers disagreeing, it has no owner, and it was found while running a control for an unrelated question. ",
+
+    "A row that records it with both runs named is what stops the next reader taking the census denominator at face value.)",
+  ],
+
+  evidence: [],
+}

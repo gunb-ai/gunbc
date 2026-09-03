@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.compensating_errors_cancel_in_the_aggregate
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data compensating_errors_cancel_in_the_aggregate: RecurringFailureMode = RecurringFailureMode {
+  identity: "compensating_errors_cancel_in_the_aggregate" as NonEmptyStr,
+
+  receipts: [
+    "**compensating errors cancel in the aggregate** (a completeness check compares a COUNT on each side instead of joining the two populations by IDENTITY, so a member missing from one side and a phantom member on the other cancel exactly, and the check reports the coverage it was written to refuse. ",
+
+    "The green is not a near miss: it is the check confirming a roster that covers nothing of the sort, and it is louder the longer both defects stand, because each new member added to either side keeps the totals in step. ",
+
+    "Distinct from `executed_conjunct_discriminates_nothing`, where the conjunct can never go red: this one goes red readily on a SINGLE defect and is blind only to defects in opposing directions -- which is precisely the pair a long-lived roster accumulates, since the same neglect that leaves a new member unrostered leaves a deleted member rostered. ",
+
+    "Receipt (2026-09-01): `test.claim.language_source_scaffold_index_test.compiler_tests_rust_blobs_are_all_rostered` asserted `declared_fn_count(ct_) == rostered_count_for(v1.compiler.compiler_tests_rust)`. ",
+
+    "The tree carried 44 `ct_` blobs and 40 roster rows, so it was RED and enrolled in `v2.workflow.floor_expected_red` -- but the residues were not 4 of one kind. ",
+
+    "FIVE live blobs were unrostered and ONE row, `ct_caret_parse_smoke_native_witness_tests`, had outlived the blob #8532 deleted from the carrier. ",
+
+    "Rostering four of the five would have balanced the counts at 44 and greened the witness with one blob still unmarked and one row still naming a declaration that does not exist. ",
+
+    "The count was never the claim; it was a NECESSARY CONDITION of the claim being read as the claim. ",
+
+    "**Recognition rule: for any check whose sentence contains \"every\", \"all\" or \"covers\", ask what it would report if one member were missing from one side AND one phantom stood on the other. ",
+
+    "If the answer is \"green\", the check measures a cardinality and reports a coverage, and the two are joined by an assumption nothing enforces.** The remedy is the join: name the two residues separately -- present-not-covered and covered-not-present -- and assert each is empty, so the two directions red with distinct meanings and neither can pay for the other. ",
+
+    "Cardinality then survives as a third conjunct answering the one question containment cannot, a DUPLICATE within one side, and it is no longer the assertion. ",
+
+    "The evidence must not stop at the repaired tree, since a repaired population makes both live arms permanently green and the join indistinguishable from the count it replaced: the discriminating REDs belong over authored fixtures, with the equal-counts-different-identities case enrolled explicitly, because that is the one case the previous form accepted. ",
+
+    "NO SWEEP FOR SIBLINGS WAS PERFORMED, and that is a declared boundary rather than coverage: the recognition rule above is cheap enough to apply to any check whose sentence contains every, all or covers, and this repository certainly holds others, but the receipt below establishes the class at ONE subject and says nothing about the population. ",
+
+    "Reading this row as a census of aggregate-cardinality checks would be the same substitution it names.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.join_judged_against_its_sibling_rather_than_its_declared_context
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data join_judged_against_its_sibling_rather_than_its_declared_context: RecurringFailureMode = RecurringFailureMode {
+  identity: "join_judged_against_its_sibling_rather_than_its_declared_context" as NonEmptyStr,
+
+  receipts: [
+    "**join judged against its sibling rather than against its declared context** (INVALID STATE: v1.compiler.infer's if-expression join infers both branches independently, then tests them against EACH OTHER with node_type_compatible; the enclosing declared return type is never consulted. ",
+
+    "There is synthesis plus a sibling compatibility test and NO CHECKING MODE. ",
+
+    "HARM: a well-typed coproduct construction -- one variant of the declared return per arm -- is REFUSED, which is a false positive at the ordinary compiler floor, and DESIGN section 4b makes a floor failure a below-baseline regression rather than something a higher-order capability offsets. ",
+
+    "DISTINGUISHING FACT, and it is what makes the defect narrow and cheap: prefer_specific_type ALREADY COMPUTES THE CORRECT JOIN for the refused pair. ",
+
+    "For Coproduct(ClaimCostReading) against Product(RightCensoredCost) it returns the left, the declared return, because every re-selection arm falls through -- not same_kind, both fully resolved, the left not a bare leaf. ",
+
+    "So the diagnostic fires BESIDE a unification the compiler just computed right, corroborated by the refusing runs carrying that as their only blocking error: no downstream mismatch at the declared return and none at the call site, either of which a wrong unification would have produced. ",
+
+    "The check is refusing a pair it can already join. ",
+
+    "RUNG FOUND AT: mitigatable -- the refusal is loud, typed and located, and nothing silent is produced; what is wrong is the verdict, not its containment. ",
+
+    "CEILING, WITH ITS REASON: structurally guaranteed. ",
+
+    "Whether a branch inhabits a DECLARED type is decidable wherever both the declaration and the branch resolve, so the join can be a checking judgement against the declared context with synthesis reserved for the undeclared case; it cannot reach structural impossibility, because an if-expression whose arms disagree under no declared context is authorable by construction and must still be refused rather than made unwritable. ",
+
+    "NEXT-RUNG TRIGGER, named as the capability: a checking-mode judgement for branch joins -- each arm judged against the expected type when one is in scope, with the sibling comparison retained only as the synthesis fallback where no expectation exists -- sufficient to accept every arm that inhabits the declared return and to refuse every arm that does not. ",
+
+    "NOT A CLAUSE OF ITS ROOT AND DELIBERATELY FILED SEPARATELY: the specimen that exposed this join was mis-resolved upstream by binding_chosen_by_pool_membership_rather_than_by_the_declared_rule, and a repair here that silenced the diagnostic would entrench that fault by deleting the evidence carrying it. ",
+
+    "Resolution is repaired first; this join is its own lane.)",
+  ],
+
+  evidence: [],
+}

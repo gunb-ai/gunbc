@@ -1,0 +1,70 @@
+module gunbc.recurring_failure_mode.recurrence_ledger_scoped_below_the_recurrence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data recurrence_ledger_scoped_below_the_recurrence: RecurringFailureMode = RecurringFailureMode {
+  identity: "recurrence_ledger_scoped_below_the_recurrence" as NonEmptyStr,
+
+  receipts: [
+    "**a recurrence ledger scoped below the recurrence it must find** (an instrument counts repetition WITHIN a unit of work and is reset at that unit's boundary, while the repetition that matters happens ACROSS those units. ",
+
+    "Every unit then reports the same honest answer -- ONE -- and the aggregate nobody computes is the only place the duplication exists. ",
+
+    "The instrument is not wrong at its own grain and never reads as broken: it runs, it is enabled, it prints, and its output is empty of the thing being looked for, which is indistinguishable from that thing being absent. ",
+
+    "**The recognition rule is a question about RANGE, not about correctness: name the scope over which the redundancy you are hunting is defined, and check that the ledger's lifetime is at least that scope.** If the ledger is cleared more often than the redundancy recurs, its silence is a property of its reset schedule. ",
+
+    "**THE KINSHIP THAT MAKES IT LEGIBLE, and it is `censored_estimator_drops_its_own_tail` in a different medium: a cost paid once per unit and attributed to one arbitrary consumer never reaches count>=2 inside that unit, so the ledger that ranks REPETITION cannot observe the population it exists to rank.** The estimator is censored not by a threshold but by a scope. ",
+
+    "**THE FIELD TELL, and it is the one that identifies this class from the outside before anyone reads the instrument: the repair mechanism ALREADY EXISTS and its coverage is hand-authored, because candidates are discovered when the unrepaired cost causes a failure somewhere unrelated.** A roster that grows one row at a time, each row traceable to an incident on somebody else's change, is a roster whose discovery instrument is blind -- the incidents are doing the ranking, and their cost is paid by whoever was passing. ",
+
+    "Distinct from `instrument_output_read_as_subject_content`, where a report is complete for the reporter and read past its promise -- here the report IS complete for its declared scope and the CONSUMER'S QUESTION LIVES AT A WIDER ONE -- and distinct from `selection_view_read_as_population`, where a threshold over measured values is mistaken for the class: no selection happens here at all, the population is simply unrepresentable in the ledger's key space. ",
+
+    "SPECIMEN, WITH THE FULL CAUSAL CHAIN MEASURED (2026-09-02, gunbc#10036 lane). ",
+
+    "The required floor charges each claim a per-claim CPU ceiling and builds a FRESH EVALUATION FRAME PER CLAIM -- deliberately, so one witness cannot contaminate the next -- so every claim re-derives the pure substrate its import closure reaches. ",
+
+    "`v1_compiler.v1_interpreter`'s recompute-trace ledger ranks pure calls with count>=2 within ONE `InterpContext`, and `claim_executor` prints and drops it at every claim frame exit; a producer evaluated EXACTLY ONCE per claim, in 3477 claims, has count=1 in every ledger and appears in none. ",
+
+    "The repair mechanism already existed -- `v2.workflow.floor_pure_producer_share` serves one evaluation of a declared pure producer across frames -- and its roster was six hand-authored rows, because nothing produced its candidates. ",
+
+    "**SO THE DISCOVERY MECHANISM WAS THE COST: roster coverage was found when a per-claim budget refusal landed on an unrelated lane's pull request, four lanes in one day, every one of those runs reporting failed=0.** THE DISCRIMINATOR THAT PROVED THE CHARGE WAS NOT THE CLAIM'S OWN WORK, and it is reusable: a witness and its DISCRIMINATING RED do materially different work, so when they cost the same to within 2ms while both sit near the ceiling, the cost is not the assertion's -- 296/294, 333/331 and 384/382 on main run 33615659836's `required_floor_claim_cost.tsv`, against a corpus p50 of 2ms; one 34-row module spans 0ms to the ceiling in three bands that track WHICH SHARED PRODUCER a row forces rather than what it asserts. ",
+
+    "**WHAT THE SPECIMEN REFUTES IS BOTH OF THE OBVIOUS REMEDIES, AND THAT IS WHY THE CLASS IS FILED RATHER THAN THE INSTANCE FIXED.** Raising the ceiling moves a line that the corpus distribution says is correctly placed, to accommodate a charge that is wrong, and it destroys the only signal that anything is slow; quarantining the family converts a cost problem into a coverage problem silently. ",
+
+    "Both are the absorbing arm DESIGN section 5 forbids, and the second cannot even be reached, because the family is not anomalous -- its own work is among the smallest in the corpus. ",
+
+    "REPAIR: fold each unit's ledger into a run-scoped census keyed on the DECLARATION identity plus the argument row, so cross-unit demand becomes a run product; the receipt is `v1_compiler.v1_interpreter` `absorb_claim_recompute_demand` and the artifact `gunbc.witness_floor_workflow` `required_floor_cross_claim_demand_path`, whose own discriminating red asserts the per-frame ledger's blindness beside the census's answer so re-scoping it back reds. ",
+
+    "A SECOND, INDEPENDENT CONSEQUENCE, AND IT RETIRES PART OF A DECLARED DROP RATHER THAN THE DROP: `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` names a missing carrier -- the per-claim cost artifact modeled as data a function can read -- and states that its attention subset is a HAND derivation rather than a run product. ",
+
+    "That is buildable, so what a cross-unit census plus that modeled fold retires is BLIND CANDIDATE DISCOVERY, INCIDENT-AS-DISCOVERY, AND THE MISSING CARRIER. ",
+
+    "**WHAT IT DOES NOT RETIRE, AND SAYING OTHERWISE WOULD BE THE RUNG INFLATION THIS LEDGER EXISTS TO CATCH: environment-independent claim-cost qualification.** Naming every shared producer does not make a claim's remaining evaluator work invariant across execution envelopes -- host scheduling, contention and cache state still move it -- so the per-claim line stays an ATTEMPT-SAFETY boundary and that drop keeps standing on its own subject. ",
+
+    "**THE SAME DISCIPLINE APPLIES TO WHAT THE CENSUS ITSELF EXPLAINS.** A per-unit constant is BY CONSTRUCTION identical on two runs of one tree, so it accounts for the LEVEL and not the VARIANCE; a run-to-run delta is separately measured (byte-identical evaluator steps against 1.31-1.80x cpu over a byte-identical payload). ",
+
+    "The two COMPOSE into the observed shape -- the constant puts a family AT the line and something run-to-run decides which of its rows cross -- and that composition is why the victim WANDERS rather than repeating -- the prediction this account makes and the rival 'fixed set of expensive rows' account does not. ",
+
+    "**TWO RECEIPTS, NEITHER A CROSS-RUN COMPARISON.** (i) ZERO MARGIN: two rows of one module measured 502ms and EXACTLY 500ms against the 500ms budget. ",
+
+    "(ii) ONE ROW OBSERVED CROSSING THE TWO POPULATIONS ON ONE TREE -- run 33620893203 attempt 1 records `an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held` as INTERRUPTED-BEFORE-VERDICT with `cost=UNMEASURED`, and ATTEMPT 2 OF THE SAME RUN records it as COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500, reaching its verdict. ",
+
+    "**THAT PAIR IS A BOUND BESIDE A VALUE, NOT TWO MEASUREMENTS OF ONE QUANTITY, AND THE DIFFERENCE IS THE WHOLE POINT:** the interrupted arm knows only that the cost exceeded the ceiling by an unknown amount, and its reported figure names where the POLL observed the ceiling -- a property of the budget, which its own diagnostic spends three clauses saying. ",
+
+    "Writing the pair as two costs would say the row got a couple of milliseconds cheaper and crossed a line, which is a story about the row; what actually changed between the attempts is WHAT THE OBSERVER COULD SAY. ",
+
+    "Those are the two populations the budget cut separated BECAUSE THEY ARE DIFFERENT FACTS WITH DIFFERENT REMEDIES, and at this margin which one a row lands in is decided by whether the poll fired before or after the work finished: a fact about the poll, not about the row. ",
+
+    "**THE CITATION DISCIPLINE THAT MADE THAT RECOVERABLE IS PART OF THE CLASS, because the evidence was retracted and then restored on it: CITE THE ATTEMPT, NOT THE RUN OR THE JOB.** A bare run id and a bare job id both resolve to the LATEST attempt, so a rerun silently changes what a stable citation serves -- no error, and nothing visible from the citing end, which is why the first retraction looked sound. ",
+
+    "`/actions/runs/<id>/attempts/<n>/logs` serves the attempt that was actually read; a figure cited without an attempt should carry `run_attempt` beside it so a reader can tell whether the citation still points at what its author saw. ",
+
+    "**AND THE STANDING RECOMMENDATION IS UNCHANGED BY EITHER DIRECTION OF THAT CORRECTION: A REMEDY MUST NEVER BE KEYED TO WHICH ROWS TIPPED.** A producer census survived the retraction and the restoration without a word changing in what it reports; a ranking of tipped rows would have been rebuilt twice. ",
+
+    "Two independent arguments for one conclusion: dispersion shows the charge is not the ASSERTION's, wandering shows it is not the ROW's.)",
+  ],
+
+  evidence: [],
+}
