@@ -671,6 +671,7 @@ data authority_target_same_expression_equivalence_stall: GuaranteeStall = Guaran
 }
 
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  generated_artifact_registry_membership_stall,
   authority_target_same_expression_equivalence_stall,
   runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
