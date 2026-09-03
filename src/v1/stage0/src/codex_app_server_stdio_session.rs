@@ -124,8 +124,7 @@ pub fn run_codex_app_server_stdio_session(
     // Give Codex its existing clean-EOF exit path, but observe it without reaping: the unreaped
     // leader pins the process-group identity until teardown has finished signalling and observing
     // every descendant. A bounded window also prevents an inherited pipe from blocking teardown.
-    let natural_exit =
-        crate::process_group::wait_for_leader_exit_without_reaping(pid, NATURAL_EXIT_GRACE);
+    let natural_exit = wait_for_natural_exit(pid, NATURAL_EXIT_GRACE);
     let termination = crate::process_group::terminate_process_group(
         &mut child,
         pid,
@@ -147,24 +146,26 @@ pub fn run_codex_app_server_stdio_session(
     if let Some(message) = natural_exit_error(natural_exit) {
         return Err(with_protocol_failure(message));
     }
-    if !termination.group_is_gone() {
+    if !termination.is_settled() {
         return Err(with_protocol_failure(format!(
-            "codex process-group teardown left residue: {:?}",
-            termination.residue
+            "codex process-group teardown did not settle: {termination:?}"
         )));
     }
-    let mut exit_code = match termination.leader {
-        crate::process_group::ProcessGroupWait::Exited { code } => code,
-        crate::process_group::ProcessGroupWait::Signaled { signal } => 128 + signal,
-        crate::process_group::ProcessGroupWait::TimedOut => {
-            return Err(with_protocol_failure(
-                "timed out reaping codex child after process-group teardown".to_string(),
-            ))
-        }
-        crate::process_group::ProcessGroupWait::WaitFailed { detail } => {
+    let mut exit_code = match termination {
+        crate::process_group::ProcessGroupTermination::Settled {
+            leader: crate::process_group::SettledLeader::Exited { code },
+            escalated_to_kill: _,
+        } => code,
+        crate::process_group::ProcessGroupTermination::Settled {
+            leader: crate::process_group::SettledLeader::Signaled { signal },
+            escalated_to_kill: _,
+        } => 128 + signal,
+        unsettled @ crate::process_group::ProcessGroupTermination::Unsettled { .. } => {
+            // Kept exhaustive even though `is_settled` refused this arm above: extracting the
+            // settled leader must not gain an absorbing fallback if the coproduct grows.
             return Err(with_protocol_failure(format!(
-                "reap codex child after process-group teardown: {detail}"
-            )))
+                "codex process-group teardown did not settle: {unsettled:?}"
+            )));
         }
     };
 
@@ -202,16 +203,44 @@ pub fn run_codex_app_server_stdio_session(
     }
 }
 
-fn natural_exit_error(
-    observation: crate::process_group::ProcessGroupNaturalExit,
-) -> Option<String> {
+fn natural_exit_error(observation: CodexNaturalExit) -> Option<String> {
     match observation {
-        crate::process_group::ProcessGroupNaturalExit::Exited => None,
-        crate::process_group::ProcessGroupNaturalExit::TimedOut => Some(format!(
+        CodexNaturalExit::Exited => None,
+        CodexNaturalExit::TimedOut => Some(format!(
             "codex did not exit naturally within {NATURAL_EXIT_GRACE:?}; process group was terminated"
         )),
-        crate::process_group::ProcessGroupNaturalExit::ObservationFailed { detail } => {
+        CodexNaturalExit::ObservationFailed { detail } => {
             Some(format!("observe codex natural exit: {detail}"))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CodexNaturalExit {
+    Exited,
+    TimedOut,
+    ObservationFailed { detail: String },
+}
+
+fn wait_for_natural_exit(pid: u32, budget: Duration) -> CodexNaturalExit {
+    let deadline = Instant::now() + budget;
+    loop {
+        match crate::process_group::observe_leader_without_reaping(pid) {
+            crate::process_group::LeaderObservation::ExitedUnreaped => {
+                return CodexNaturalExit::Exited
+            }
+            crate::process_group::LeaderObservation::Running if Instant::now() < deadline => {
+                thread::sleep(POLL_INTERVAL);
+            }
+            crate::process_group::LeaderObservation::Running => return CodexNaturalExit::TimedOut,
+            crate::process_group::LeaderObservation::LeaderVanished => {
+                return CodexNaturalExit::ObservationFailed {
+                    detail: format!("leader {pid} absent before it was reaped"),
+                }
+            }
+            crate::process_group::LeaderObservation::ObservationFailed { detail } => {
+                return CodexNaturalExit::ObservationFailed { detail }
+            }
         }
     }
 }
@@ -545,8 +574,7 @@ mod tests {
 
     #[test]
     fn natural_exit_timeout_is_a_refusal_not_a_silent_termination() {
-        let error = natural_exit_error(crate::process_group::ProcessGroupNaturalExit::TimedOut)
-            .expect("timeout must refuse");
+        let error = natural_exit_error(CodexNaturalExit::TimedOut).expect("timeout must refuse");
         assert!(error.contains("did not exit naturally"));
         assert!(error.contains("process group was terminated"));
     }

@@ -392,6 +392,7 @@ test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -
         HostShellEmittedOwner { module_basename: _, host_package: _ } => false
         RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
         BinaryEntrypointOwner { target: _, package_name: _ } => false
+        WetActuatorLibModuleOwner { module_basename: _, host_package: _, declaration_route: _ } => false
       }
     })
     && (stage0_host_shell_emitted_owner_count(census: census) == 0)

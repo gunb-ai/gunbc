@@ -139,6 +139,12 @@ test fn green_place_pin_coherent_references_gunbc_gate_not_input_satisfied() -> 
         && noop == host_standup_p5_green_place_noop_gate_authority
         && marker == host_standup_p5_green_place_marker_gate_authority
         && desired == host_standup_p5_desired_pin_authority
+    GreenPlaceFromGunbcGate {
+      noop_satisfied_authority: _,
+      marker_satisfied_authority: _,
+      desired_pin_authority: _,
+      gate_verdict: true,
+    } => false
     GreenPlacePinGap { interim_realization: _ } => false
     GreenPlacePinRefused { reason: _ } => false
   }
@@ -166,6 +172,9 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
     AssimilationIncomplete { input: NodeRegistered, reason: r } =>
       string_contains(s: r, pattern: "P5:gap-refused:")
     AssimilationComplete => false
+    AssimilationIncomplete { input: ResourcesPresent, reason: _ } => false
+    AssimilationIncomplete { input: GreenPlacePinCoherent, reason: _ } => false
+    AssimilationIncomplete { input: RunnerSlotHealthy, reason: _ } => false
   }
     && match assimilation_complete(gate: AssimilationCompleteGate {
       obligations: [
@@ -185,6 +194,9 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
     }, required: ci_required) {
       AssimilationIncomplete { input: ResourcesPresent, reason: _ } => true
       AssimilationComplete => false
+      AssimilationIncomplete { input: NodeRegistered, reason: _ } => false
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: _ } => false
+      AssimilationIncomplete { input: RunnerSlotHealthy, reason: _ } => false
     }
 }
 
@@ -257,6 +269,9 @@ test fn assimilation_gate_refuses_when_unrequired_obligation_present() -> Bool {
     AssimilationIncomplete { input: RunnerSlotHealthy, reason: r } =>
       string_contains(s: r, pattern: "unrequired-obligation-present")
     AssimilationComplete => false
+    AssimilationIncomplete { input: NodeRegistered, reason: _ } => false
+    AssimilationIncomplete { input: ResourcesPresent, reason: _ } => false
+    AssimilationIncomplete { input: GreenPlacePinCoherent, reason: _ } => false
   }
 }
 
@@ -271,6 +286,8 @@ test fn p3_green_place_contributes_via_gunbc_gate_after_pinned_tree_lands() -> B
         string_contains(s: r, pattern: "gunbc gate verdict false")
       AssimilationIncomplete { input: NodeRegistered, reason: _ } => true
       AssimilationComplete => false
+      AssimilationIncomplete { input: ResourcesPresent, reason: _ } => false
+      AssimilationIncomplete { input: RunnerSlotHealthy, reason: _ } => false
     }
 }
 
@@ -283,6 +300,9 @@ test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
       AssimilationIncomplete { input: NodeRegistered, reason: r } =>
         string_contains(s: r, pattern: "P5:gap-refused:")
       AssimilationComplete => false
+      AssimilationIncomplete { input: ResourcesPresent, reason: _ } => false
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: _ } => false
+      AssimilationIncomplete { input: RunnerSlotHealthy, reason: _ } => false
     }
 }
 

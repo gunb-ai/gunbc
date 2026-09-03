@@ -202,6 +202,29 @@ pub(crate) enum EvaluationBudgetConsequenceRefusal {
     WorktreeCleanupFailed {
         observation: CommandObservation,
     },
+    /// A GIT OBSERVATION THAT DID NOT COMPLETE, kept apart from every verdict derived from git's
+    /// output. `stdout_of` used to answer `String::new()` for a timed-out or signalled command, so
+    /// a git that never ran produced an empty HEAD which then compared unequal and was reported as
+    /// ParentCheckoutChanged -- a located, confident, WRONG subject. The instrument must not name a
+    /// culprit on evidence it failed to collect.
+    GitObservationFailed {
+        what: &'static str,
+        observation: CommandObservation,
+    },
+    /// A MEMBER THE RESPONSE DID NOT CARRY. Absent is not empty: defaulting a missing `code` to ""
+    /// and then comparing it merely reports a disagreement about the wrong thing, and defaulting a
+    /// missing `limit_ms` to 0 invents a number the server never sent.
+    /// A STREAM THAT DID NOT END. The serve process's own account of the breach is evidence, and a
+    /// truncated prefix is not that account -- so an incomplete drain refuses rather than being
+    /// compared as though it were the whole output.
+    ServeStreamsIncomplete {
+        stdout: StreamOutcome,
+        stderr: StreamOutcome,
+    },
+    ResponseMemberAbsent {
+        member: &'static str,
+        body: String,
+    },
     ParentCheckoutChanged {
         detail: String,
     },
@@ -218,11 +241,19 @@ pub(crate) struct EvaluationBudgetConsequenceReceipt {
     pub(crate) moved_occurrences: usize,
     pub(crate) former_occurrences: usize,
     pub(crate) elapsed_nanos: u128,
-    /// WHICH BINARIES ACTUALLY ANSWERED. The source has always CLAIMED that the pre-perturbation
-    /// candidate's digest is what identifies the producer that noticed the drift; until now it
-    /// claimed it in prose while the receipt carried no digest at all, so a reader could not tell
-    /// the binary that produced the dry red from the one rebuilt in its place -- they occupy the
-    /// same path, and the second overwrites the first.
+    /// WHICH BINARIES WERE ON DISK AT EACH STEP -- and deliberately NOT which image a process had
+    /// loaded. `file_digest` hashes the file at a path; it does not inspect the executable mapped
+    /// into the serve child. The earlier heading here said "which binaries actually answered",
+    /// which claimed process-incarnation identity on evidence that only establishes on-disk
+    /// artifact identity, and the gap is real: a process could in principle be running an image
+    /// that no longer matches the file it was launched from.
+    ///
+    /// The narrower claim is the one this rung rests on and it is sufficient for it: the dry-gate
+    /// and serving digests DIFFER, which establishes that the rebuild changed the artifact rather
+    /// than the run having reused one binary throughout -- they occupy the same path, and the
+    /// second overwrites the first. Binding the loaded image itself (via /proc/<pid>/exe, or an
+    /// inherited executable handle) would strengthen this to process-incarnation identity and is
+    /// not claimed here.
     pub(crate) orchestrator_digest: String,
     pub(crate) dry_gate_gunbc_digest: String,
     pub(crate) serving_gunbc_digest: String,
@@ -288,9 +319,10 @@ fn worktree_admin_area_present(worktree: &Path) -> Result<(), String> {
     }
 }
 
-/// SHA-256 of a file's bytes. Used to give the receipt an identity for each artifact it depends
-/// on, so "the tool that noticed" and "the tool that served" are distinguishable after the fact
-/// rather than only assertable at the time.
+/// SHA-256 of a file's bytes AT A PATH. Used to give the receipt an on-disk identity for each
+/// artifact it depends on, so "the tool that noticed" and "the tool that served" are distinguishable
+/// after the fact rather than only assertable at the time. It says nothing about the image any
+/// process actually loaded -- see the receipt's digest fields for what is and is not claimed.
 fn file_digest(path: &Path) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     let bytes = std::fs::read(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
@@ -346,7 +378,7 @@ fn observe(mut command: Command, budget: Duration) -> CommandObservation {
             let termination = terminate_process_group(&mut child, pid, Duration::from_secs(10));
             let stdout = out_drain.finish_within(drain_budget);
             let stderr = err_drain.finish_within(drain_budget);
-            if termination.group_is_gone() {
+            if termination.is_settled() {
                 CommandObservation::TimedOut {
                     after: budget,
                     termination,
@@ -375,10 +407,14 @@ fn observe(mut command: Command, budget: Duration) -> CommandObservation {
     }
 }
 
+/// SUCCESS IS EXIT ZERO **AND** BOTH STREAMS COMPLETE. Zero exit alone was accepted here while the
+/// stream terminals were ignored, so a command whose output was truncated -- or whose reader failed
+/// -- still counted as a clean success, and its partial text was then read as the whole answer.
 fn completed_zero(observation: &CommandObservation) -> bool {
     matches!(
         observation,
-        CommandObservation::Completed { exit_code: 0, .. }
+        CommandObservation::Completed { exit_code: 0, stdout, stderr }
+            if stdout.is_complete() && stderr.is_complete()
     )
 }
 
@@ -393,6 +429,30 @@ fn stdout_of(observation: &CommandObservation) -> String {
         CommandObservation::Completed { stdout, .. } => stdout.text().to_string(),
         _ => String::new(),
     }
+}
+
+/// READ GIT'S OUTPUT, OR REFUSE -- never both silently. Every caller that DERIVES a verdict from
+/// git's stdout goes through here, so a command that timed out, was signalled, or could not be
+/// waited on becomes `GitObservationFailed` naming what was being read, instead of an empty string
+/// that the next comparison confidently misattributes. `stdout_of` survives only where the
+/// observation has ALREADY been adjudicated by `completed_zero` on the line above.
+fn git_stdout(
+    workdir: &Path,
+    args: &[&str],
+    budget: Duration,
+    what: &'static str,
+) -> Result<String, EvaluationBudgetConsequenceRefusal> {
+    let observation = git(workdir, args, budget);
+    // ALL THREE FACTS, JOINED. Accepting any `Completed` was the residue of this repair's first
+    // attempt: a nonzero `rev-parse` with empty stdout, or a zero-exit command whose stdout was only
+    // an unfinished prefix, still produced an apparently successful read that the next comparison
+    // then attributed to an innocent subject -- the very failure this function was added to remove.
+    if completed_zero(&observation) {
+        if let CommandObservation::Completed { stdout, .. } = &observation {
+            return Ok(stdout.text().to_string());
+        }
+    }
+    Err(EvaluationBudgetConsequenceRefusal::GitObservationFailed { what, observation })
 }
 
 /// LAST-RESORT TEARDOWN ONLY. The explicit finalizer below produces the ADJUDICABLE cleanup
@@ -418,32 +478,52 @@ impl Drop for ServeGuard {
 /// read at any moment, and blocking is impossible because the reader never stops.
 struct PipeDrain {
     text: Arc<Mutex<String>>,
+    /// HOW THE READER STOPPED, written by the reader itself. Without this the thread merely
+    /// finishing is indistinguishable from EOF, so a read error became "complete output".
+    end: Arc<Mutex<Option<Result<(), String>>>>,
     handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl PipeDrain {
     fn spawn<R: Read + Send + 'static>(pipe: Option<R>) -> PipeDrain {
         let text = Arc::new(Mutex::new(String::new()));
+        let end: Arc<Mutex<Option<Result<(), String>>>> = Arc::new(Mutex::new(None));
         let sink = Arc::clone(&text);
+        let end_sink = Arc::clone(&end);
         let handle = std::thread::spawn(move || {
-            if let Some(pipe) = pipe {
-                let mut reader = std::io::BufReader::new(pipe);
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    match reader.read_line(&mut line) {
-                        Ok(0) | Err(_) => return,
-                        Ok(_) => {
-                            if let Ok(mut held) = sink.lock() {
+            // EOF AND FAILURE ARE RECORDED SEPARATELY. They used to share one `return`, so a reader
+            // that died on a read error left a finished thread that the terminal below then called
+            // `Closed` -- a truncated stream judged complete.
+            let outcome = match pipe {
+                None => Ok(()),
+                Some(pipe) => {
+                    let mut reader = std::io::BufReader::new(pipe);
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        match reader.read_line(&mut line) {
+                            Ok(0) => break Ok(()),
+                            Err(e) => break Err(format!("reading child stream: {e}")),
+                            Ok(_) => {
+                                let mut held = match sink.lock() {
+                                    Ok(held) => held,
+                                    Err(poisoned) => poisoned.into_inner(),
+                                };
                                 held.push_str(&line);
                             }
                         }
                     }
                 }
-            }
+            };
+            let mut slot = match end_sink.lock() {
+                Ok(slot) => slot,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            *slot = Some(outcome);
         });
         PipeDrain {
             text,
+            end,
             handle: Some(handle),
         }
     }
@@ -458,23 +538,44 @@ impl PipeDrain {
     fn finish_within(&mut self, budget: Duration) -> StreamOutcome {
         let deadline = Instant::now() + budget;
         loop {
-            match &self.handle {
-                None => {
-                    return StreamOutcome::Closed {
-                        text: self.snapshot(),
-                    }
-                }
-                Some(handle) => {
-                    if handle.is_finished() {
-                        self.handle = None;
-                        return StreamOutcome::Closed {
-                            text: self.snapshot(),
+            let finished = match &self.handle {
+                None => true,
+                Some(handle) => handle.is_finished(),
+            };
+            if finished {
+                // JOINED, not merely observed finished. A panicking reader also finishes, and only
+                // the join distinguishes it from one that reached EOF.
+                if let Some(handle) = self.handle.take() {
+                    if handle.join().is_err() {
+                        return StreamOutcome::ReaderPanicked {
+                            partial: self.snapshot(),
                         };
                     }
                 }
+                let end = {
+                    let slot = match self.end.lock() {
+                        Ok(slot) => slot,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    slot.clone()
+                };
+                return match end {
+                    Some(Ok(())) => StreamOutcome::Closed {
+                        text: self.snapshot(),
+                    },
+                    Some(Err(cause)) => StreamOutcome::ReadFailed {
+                        partial: self.snapshot(),
+                        cause,
+                    },
+                    // Finished and joined without recording an end: the reader did not run to its
+                    // own terminal, which is not something to interpret as EOF.
+                    None => StreamOutcome::ReaderPanicked {
+                        partial: self.snapshot(),
+                    },
+                };
             }
             if Instant::now() >= deadline {
-                return StreamOutcome::Unfinished {
+                return StreamOutcome::DeadlineExceeded {
                     partial: self.snapshot(),
                     after: budget,
                 };
@@ -483,17 +584,14 @@ impl PipeDrain {
         }
     }
 
+    /// A POISONED LOCK IS NOT AN EMPTY STREAM. The previous `unwrap_or_default()` answered "" for a
+    /// poisoned mutex, which is a silent widen in the one place the text is the evidence; the data
+    /// behind a poisoned lock is still there and is returned.
     fn snapshot(&self) -> String {
-        self.text.lock().map(|t| t.clone()).unwrap_or_default()
-    }
-
-    /// Join the reader, so the returned text is the child's COMPLETE output rather than whatever
-    /// had arrived when the caller happened to look.
-    fn finish(&mut self) -> String {
-        if let Some(handle) = self.handle.take() {
-            let _ = handle.join();
+        match self.text.lock() {
+            Ok(text) => text.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
-        self.snapshot()
     }
 }
 
@@ -502,16 +600,29 @@ impl PipeDrain {
 /// PREFIX. Collapsing the two would let a truncated read be judged as a complete one.
 #[derive(Debug, Clone)]
 pub(crate) enum StreamOutcome {
+    /// EOF was reached and the text is the child's COMPLETE output.
     Closed { text: String },
-    Unfinished { partial: String, after: Duration },
+    /// The reader failed mid-stream; the text is a PREFIX.
+    ReadFailed { partial: String, cause: String },
+    /// Something still held the write end when the budget ran out; the text is a PREFIX.
+    DeadlineExceeded { partial: String, after: Duration },
+    /// The reader thread did not reach its own terminal; the text is whatever had arrived.
+    ReaderPanicked { partial: String },
 }
 
 impl StreamOutcome {
     pub(crate) fn text(&self) -> &str {
         match self {
             StreamOutcome::Closed { text } => text,
-            StreamOutcome::Unfinished { partial, .. } => partial,
+            StreamOutcome::ReadFailed { partial, .. } => partial,
+            StreamOutcome::DeadlineExceeded { partial, .. } => partial,
+            StreamOutcome::ReaderPanicked { partial } => partial,
         }
+    }
+
+    /// Whether this text may be treated as the stream's WHOLE content. Only one arm may.
+    pub(crate) fn is_complete(&self) -> bool {
+        matches!(self, StreamOutcome::Closed { .. })
     }
 }
 
@@ -575,8 +686,14 @@ fn await_serve_ready(
     loop {
         // The child's own state first: a process that has exited cannot become ready later, and
         // reading the pipes first would race a server that died between the two observations.
-        match child.try_wait() {
-            Ok(Some(_)) => {
+        // NOT `try_wait`. Asking it CONSUMES the exit status, and this arm must tear the group down
+        // AFTER noticing the leader died -- so a reap here would release the pid and hand the
+        // following signal a number that may already belong to somebody else. That is the exact
+        // wrong-subject actuation `terminate_process_group` is ordered to avoid, and this call site
+        // was violating its precondition. /proc reaps nothing, so the identity stays pinned until
+        // `terminate_process_group` does the reap itself, last.
+        match crate::process_group::observe_leader_without_reaping(pid) {
+            crate::process_group::LeaderObservation::ExitedUnreaped => {
                 let termination = terminate_process_group(child, pid, Duration::from_secs(10));
                 return ServeReadiness::ExitedBeforeReady {
                     termination,
@@ -584,10 +701,19 @@ fn await_serve_ready(
                     stderr: err.snapshot(),
                 };
             }
-            Ok(None) => {}
-            Err(e) => {
+            crate::process_group::LeaderObservation::Running => {}
+            // The pid left /proc without us reaping it. We no longer own the identity, so this
+            // refuses instead of signalling or inferring group membership from a released number.
+            crate::process_group::LeaderObservation::LeaderVanished => {
                 return ServeReadiness::ReadinessObservationFailed {
-                    cause: format!("try_wait during readiness: {e}"),
+                    cause: format!("serve leader {pid} left /proc before it was reaped"),
+                    stdout: out.snapshot(),
+                    stderr: err.snapshot(),
+                }
+            }
+            crate::process_group::LeaderObservation::ObservationFailed { detail } => {
+                return ServeReadiness::ReadinessObservationFailed {
+                    cause: format!("observing serve leader during readiness: {detail}"),
                     stdout: out.snapshot(),
                     stderr: err.snapshot(),
                 }
@@ -663,6 +789,14 @@ impl JsonObject {
 /// Parse a flat JSON object of string and unsigned-integer members. Nested values and arrays are
 /// REFUSED rather than skipped: this instrument asserts about a document whose shape it knows, and
 /// silently tolerating a shape it does not know is how a check stops discriminating.
+/// WHERE THE DECODER IS INSIDE THE OBJECT, so that "a comma is allowed here" is a state rather than
+/// a thing the loop re-decides from whatever character it happens to see.
+enum JsonMemberPosition {
+    First,
+    AfterMember,
+    AfterComma,
+}
+
 fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
     let mut chars = text.trim().chars().peekable();
     if chars.next() != Some('{') {
@@ -672,22 +806,38 @@ fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
         ));
     }
     let mut object = JsonObject::default();
+    // SEPARATORS ARE REQUIRED, EXACTLY ONCE, BETWEEN MEMBERS. The previous loop consumed a comma
+    // wherever it found one and also accepted a fresh quoted key with no comma before it, so
+    // `{,"a":1}`, `{"a":1,}`, `{"a":1,,"b":2}` and `{"a":1 "b":2}` were all read as well-formed.
+    // A decoder that accepts documents JSON rejects is not establishing "the body is JSON"; it is
+    // establishing "the body is something this function tolerates".
+    let mut expect = JsonMemberPosition::First;
     loop {
         while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
             chars.next();
         }
-        match chars.peek() {
-            Some('}') => {
+        match (&expect, chars.peek()) {
+            // Only an EMPTY object may close here; after a comma a close is a trailing separator.
+            (JsonMemberPosition::First, Some('}'))
+            | (JsonMemberPosition::AfterMember, Some('}')) => {
                 chars.next();
                 break;
             }
-            Some(',') => {
+            (JsonMemberPosition::AfterMember, Some(',')) => {
                 chars.next();
+                expect = JsonMemberPosition::AfterComma;
                 continue;
             }
-            Some('"') => {}
-            other => return Err(format!("expected a member name, found {other:?}")),
+            (JsonMemberPosition::First, Some('"'))
+            | (JsonMemberPosition::AfterComma, Some('"')) => {}
+            (JsonMemberPosition::AfterMember, other) => {
+                return Err(format!(
+                    "expected ',' or '}}' after a member, found {other:?}"
+                ))
+            }
+            (_, other) => return Err(format!("expected a member name, found {other:?}")),
         }
+        expect = JsonMemberPosition::AfterMember;
         let key = read_json_string(&mut chars)?;
         while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
             chars.next();
@@ -786,7 +936,10 @@ fn post_for_breach(port: u16, budget: Duration) -> Result<BreachResponse, String
     stream
         .read_to_end(&mut raw)
         .map_err(|e| format!("read: {e}"))?;
-    let text = String::from_utf8_lossy(&raw).into_owned();
+    // NOT LOSSY. The response declares `charset=utf-8`, so invalid bytes are a broken response, and
+    // replacing them with U+FFFD would let the instrument compare a repaired body against the
+    // authority value and call the agreement real.
+    let text = String::from_utf8(raw).map_err(|e| format!("response is not valid UTF-8: {e}"))?;
     let (head, body) = text
         .split_once("\r\n\r\n")
         .ok_or_else(|| format!("no header/body boundary: {}", &text[..text.len().min(200)]))?;
@@ -838,12 +991,23 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
             },
         );
     }
-    let head = stdout_of(&git(repo_root, &["rev-parse", "HEAD"], short))
-        .trim()
-        .to_string();
-    let tree = stdout_of(&git(repo_root, &["rev-parse", "HEAD^{tree}"], short))
-        .trim()
-        .to_string();
+    let head = match git_stdout(repo_root, &["rev-parse", "HEAD"], short, "parent HEAD") {
+        Ok(v) => v,
+        Err(refusal) => return EvaluationBudgetConsequenceFalsifierOutcome::Refused(refusal),
+    }
+    .trim()
+    .to_string();
+    let tree = match git_stdout(
+        repo_root,
+        &["rev-parse", "HEAD^{tree}"],
+        short,
+        "parent tree",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return EvaluationBudgetConsequenceFalsifierOutcome::Refused(refusal),
+    }
+    .trim()
+    .to_string();
     // DELIBERATELY NOT A WHOLE-INVENTORY SNAPSHOT. The first run of this instrument compared
     // `git worktree list` before and after and refused ParentCheckoutChanged -- correctly by its
     // own rule and wrongly as a fact, because this repository is shared: other sessions add and
@@ -917,9 +1081,32 @@ fn finalize(
             long,
         );
         if !completed_zero(&removed) {
-            return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
-                observation: removed,
-            });
+            // GIT DECLINING TO REMOVE IT IS NOT THE SAME FACT AS THE DIRECTORY SURVIVING, and this
+            // repository is a SHARED checkout: a `git worktree prune` run by any other session
+            // deregisters this instrument's worktree mid-transaction, after which `worktree remove`
+            // answers "is not a working tree" for a directory that is still very much there. That is
+            // an environmental event about the registry, not a fact about the subject -- the same
+            // distinction `ExperimentWorktreeUnregistered` already draws on the build path, drawn
+            // here on the teardown path rather than duplicated as a second notion of the same thing.
+            //
+            // The obligation this function actually owes is that OUR directory is gone and no
+            // registration of ours survives. When git has already forgotten the path, discharging
+            // that obligation is ours to finish, so we remove the tree directly. This does NOT widen
+            // the refusal: every post-condition below still runs unchanged, and a directory or a
+            // registration that survives this still refuses. The path is our own scratch directory
+            // under a name this run generated, so nothing else can be addressed by it.
+            let deregistered = matches!(
+                &removed,
+                CommandObservation::Completed { exit_code, stderr, .. }
+                    if *exit_code != 0 && stderr.text().contains("is not a working tree")
+            );
+            if deregistered {
+                let _ = std::fs::remove_dir_all(worktree);
+            } else {
+                return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
+                    observation: removed,
+                });
+            }
         }
     }
     let _ = git(repo_root, &["worktree", "prune"], short);
@@ -941,13 +1128,37 @@ fn finalize(
     }
     // THE PARENT IS RE-VERIFIED, not assumed. An instrument that mutates a copy must prove it did
     // not mutate the original, and "we intended not to" is not that proof.
-    let head_after = stdout_of(&git(repo_root, &["rev-parse", "HEAD"], short))
-        .trim()
-        .to_string();
-    let tree_after = stdout_of(&git(repo_root, &["rev-parse", "HEAD^{tree}"], short))
-        .trim()
-        .to_string();
-    let status_after = stdout_of(&git(repo_root, &["status", "--porcelain"], short));
+    let head_after = match git_stdout(
+        repo_root,
+        &["rev-parse", "HEAD"],
+        short,
+        "parent HEAD after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    }
+    .trim()
+    .to_string();
+    let tree_after = match git_stdout(
+        repo_root,
+        &["rev-parse", "HEAD^{tree}"],
+        short,
+        "parent tree after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    }
+    .trim()
+    .to_string();
+    let status_after = match git_stdout(
+        repo_root,
+        &["status", "--porcelain"],
+        short,
+        "parent status after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    };
     if head_after != head || tree_after != tree || !status_after.trim().is_empty() {
         return Some(EvaluationBudgetConsequenceRefusal::ParentCheckoutChanged {
             detail: format!(
@@ -958,7 +1169,15 @@ fn finalize(
     }
     // ITS OWN ROW, AND ONLY ITS OWN. A surviving registration for this instrument's worktree is a
     // leak it caused; every other row in that list belongs to somebody else.
-    let inventory_after = stdout_of(&git(repo_root, &["worktree", "list"], short));
+    let inventory_after = match git_stdout(
+        repo_root,
+        &["worktree", "list"],
+        short,
+        "worktree inventory after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    };
     if inventory_after.contains(worktree_str) {
         return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
             observation: CommandObservation::Completed {
@@ -981,7 +1200,22 @@ fn cargo_in(
     args: &[&str],
     budget: Duration,
 ) -> CommandObservation {
-    let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
+    // THE CARGO THAT INVOKED THIS TEST, NEVER WHATEVER PATH OFFERS. This instrument's whole claim
+    // is same-identity evidence -- that the binary it judges was produced from the source it
+    // perturbed -- so silently building with a DIFFERENT toolchain than the one running the test is
+    // precisely the substitution it exists to detect. Cargo always sets CARGO for a test process;
+    // its absence means this is not being run the way the receipt assumes, and that is a refusal
+    // rather than a default.
+    let cargo = match std::env::var("CARGO") {
+        Ok(path) => path,
+        Err(_) => {
+            return CommandObservation::SpawnRefused {
+                detail: "CARGO is unset: refusing to PATH-search a cargo whose identity is unknown"
+                    .to_string(),
+            }
+        }
+    };
+    let mut command = Command::new(cargo);
     command
         .args(args)
         .current_dir(worktree)
@@ -1093,7 +1327,15 @@ fn run_bound_transaction(
             detail: format!("writing perturbed {AUTHORITY_REL}: {e}"),
         });
     }
-    let changed = stdout_of(&git(worktree, &["status", "--porcelain"], short));
+    let changed = match git_stdout(
+        worktree,
+        &["status", "--porcelain"],
+        short,
+        "perturbed worktree status",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Outcome::Refused(refusal),
+    };
     let changed_paths: Vec<String> = changed
         .lines()
         .map(|line| {
@@ -1420,11 +1662,32 @@ fn serve_and_judge(
         }
     };
 
+    // TEARDOWN IS ADJUDICATED BEFORE THE STREAMS ARE DRAINED. This order is the point: an unsettled
+    // teardown means a descendant may still hold the pipe's write end, so draining first would block
+    // forever on precisely the arm that was supposed to report the failure -- the instrument hanging
+    // instead of refusing.
+    if !teardown.is_settled() {
+        return Outcome::Refused(Refusal::ProcessTerminationFailed {
+            termination: teardown,
+        });
+    }
+
     // The server's own stderr, complete. The breach diagnostic is the SUBJECT PROCESS'S account of
     // the same event the body describes, and joining the two is what distinguishes a server that
     // refused from one that merely rendered a refusal-shaped body.
-    let serve_stdout = out_drain.finish();
-    let serve_stderr = err_drain.finish();
+    //
+    // BOUNDED even here, and the completeness is CHECKED rather than assumed: the unbounded join
+    // this replaced could not fail, it could only hang.
+    let serve_stdout_outcome = out_drain.finish_within(Duration::from_secs(30));
+    let serve_stderr_outcome = err_drain.finish_within(Duration::from_secs(30));
+    if !serve_stdout_outcome.is_complete() || !serve_stderr_outcome.is_complete() {
+        return Outcome::Refused(Refusal::ServeStreamsIncomplete {
+            stdout: serve_stdout_outcome,
+            stderr: serve_stderr_outcome,
+        });
+    }
+    let serve_stdout = serve_stdout_outcome.text().to_string();
+    let serve_stderr = serve_stderr_outcome.text().to_string();
 
     // 8. JUDGE THE RESPONSE.
     let judged = match response {
@@ -1438,16 +1701,36 @@ fn serve_and_judge(
             } = response;
             let moved_occurrences = body.matches(&format!("\"{moved_value}\"")).count();
             let former_occurrences = body.matches(&format!("\"{original_value}\"")).count();
-            let code = fields.string("code").unwrap_or_default().to_string();
-            let entry = fields.string("entry").unwrap_or_default().to_string();
-            let clock = fields.string("clock").unwrap_or_default().to_string();
-            let limit_ms = fields.number("limit_ms").unwrap_or_default();
-            let elapsed_nanos = fields.number("elapsed_ns").unwrap_or_default();
+            // ABSENT IS NOT EMPTY. Defaulting a missing member and comparing it downstream reports
+            // a disagreement about the WRONG thing -- "code " rather than "the body carried no
+            // code" -- and a defaulted `limit_ms` of 0 invents a number the server never sent.
+            macro_rules! member {
+                ($getter:expr, $name:literal) => {
+                    match $getter {
+                        Some(value) => value,
+                        None => {
+                            return Outcome::Refused(Refusal::ResponseMemberAbsent {
+                                member: $name,
+                                body: body.clone(),
+                            })
+                        }
+                    }
+                };
+            }
+            let code = member!(fields.string("code"), "code").to_string();
+            let entry = member!(fields.string("entry"), "entry").to_string();
+            let clock = member!(fields.string("clock"), "clock").to_string();
+            let limit_ms = member!(fields.number("limit_ms"), "limit_ms");
+            let elapsed_nanos = member!(fields.number("elapsed_ns"), "elapsed_ns");
 
             // The diagnostic the subject printed for THIS breach, reconstructed from the body's own
             // fields. If the two disagree, the body is not an account of what the server did.
-            let expected_diagnostic =
-                format!("serve: refused {entry} on {clock} clock: elapsed_ns={elapsed_nanos} limit_ms={limit_ms}");
+            let expected_diagnostic = super::serve_budget_refusal::budget_refusal_diagnostic_text(
+                &entry,
+                &clock,
+                elapsed_nanos,
+                limit_ms,
+            );
 
             let disagreement = if status != 500 {
                 Some(format!("status {status}"))
@@ -1505,17 +1788,6 @@ fn serve_and_judge(
         }
     };
 
-    // A teardown that did not settle is terminal even when the response agreed: an instrument that
-    // reports a green while leaving a process group alive has not finished its transaction.
-    // The question is GROUP ABSENCE, not leader exit. A leader that exited cleanly while a helper
-    // still holds the port is a failed teardown, and reading the leader's status alone is what
-    // would call it a success.
-    if !teardown.group_is_gone() {
-        return Outcome::Refused(Refusal::ProcessTerminationFailed {
-            termination: teardown,
-        });
-    }
-
     // 10a. RESTORE THE AUTHORITY AND REGENERATE, inside the disposable copy, so the tree comparison
     // below is against the bound original rather than against whatever the experiment left.
     if let Err(e) = std::fs::write(authority_path, original_source) {
@@ -1529,7 +1801,15 @@ fn serve_and_judge(
             detail: format!("regeneration after restore did not complete: {restored:?}"),
         });
     }
-    let residue = stdout_of(&git(worktree, &["status", "--porcelain"], short));
+    let residue = match git_stdout(
+        worktree,
+        &["status", "--porcelain"],
+        short,
+        "restored worktree status",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Outcome::Refused(refusal),
+    };
     let residual_paths: Vec<&str> = residue
         .lines()
         .map(|line| line.split_whitespace().last().unwrap_or_default())
@@ -1615,5 +1895,172 @@ mod json_decoder_walls {
     fn an_unmodelled_member_shape_refuses_rather_than_being_skipped() {
         assert!(parse_flat_json_object(r#"{"nested":{"code":"x"}}"#).is_err());
         assert!(parse_flat_json_object(r#"{"list":[1,2]}"#).is_err());
+    }
+}
+
+/// THE FAILURE ARMS OF THE OBSERVATION MECHANISM, ON THE ORDINARY MERGE PATH.
+///
+/// The product falsifier is `#[ignore]` and runs once per landing head, so it is the wrong place to
+/// establish that these arms REFUSE: it exercises the happy path, where none of them fire. These are
+/// `--lib` tests for that reason -- each one drives a failure the instrument must not paper over,
+/// and each goes red if the corresponding widen is restored.
+#[cfg(test)]
+mod observation_failure_arms {
+    use super::*;
+
+    /// Review 59152/59127's separator finding, one case per malformed form. The valid object is
+    /// asserted in `json_decoder_walls`, so these cannot all pass on a decoder that rejects
+    /// everything.
+    #[test]
+    fn every_malformed_member_separator_refuses() {
+        for body in [
+            r#"{,"code":"x"}"#,
+            r#"{"code":"x",}"#,
+            r#"{"code":"x",,"entry":"y"}"#,
+            r#"{"code":"x" "entry":"y"}"#,
+        ] {
+            assert!(
+                parse_flat_json_object(body).is_err(),
+                "decoder accepted malformed separators: {body}"
+            );
+        }
+        // The positive control belongs beside them: a decoder that refused everything would pass
+        // every assertion above.
+        assert!(parse_flat_json_object(r#"{"code":"x","entry":"y"}"#).is_ok());
+        assert!(parse_flat_json_object("{}").is_ok());
+    }
+
+    /// A truncated stream is not a complete one, and `completed_zero` is the join that decides
+    /// whether a command's output may be read as its whole answer.
+    #[test]
+    fn zero_exit_with_an_unfinished_stream_is_not_a_successful_observation() {
+        let drained = CommandObservation::Completed {
+            exit_code: 0,
+            stdout: StreamOutcome::Closed {
+                text: "abc".to_string(),
+            },
+            stderr: StreamOutcome::Closed {
+                text: String::new(),
+            },
+        };
+        assert!(
+            completed_zero(&drained),
+            "positive control must be accepted"
+        );
+
+        for truncated in [
+            StreamOutcome::DeadlineExceeded {
+                partial: "ab".to_string(),
+                after: Duration::from_millis(1),
+            },
+            StreamOutcome::ReadFailed {
+                partial: "ab".to_string(),
+                cause: "boom".to_string(),
+            },
+            StreamOutcome::ReaderPanicked {
+                partial: "ab".to_string(),
+            },
+        ] {
+            assert!(!truncated.is_complete());
+            assert!(
+                !completed_zero(&CommandObservation::Completed {
+                    exit_code: 0,
+                    stdout: truncated,
+                    stderr: StreamOutcome::Closed {
+                        text: String::new()
+                    },
+                }),
+                "a zero exit with an incomplete stream was accepted as success"
+            );
+        }
+    }
+
+    /// A nonzero git with empty stdout must not become an apparently successful empty read -- that
+    /// is the shape that produced an empty HEAD and then blamed an innocent subject.
+    #[test]
+    fn a_nonzero_git_does_not_become_an_empty_successful_read() {
+        let repo = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let refused = git_stdout(
+            &repo,
+            &[
+                "rev-parse",
+                "--verify",
+                "definitely-not-a-real-ref^{commit}",
+            ],
+            Duration::from_secs(30),
+            "control",
+        );
+        match refused {
+            Err(EvaluationBudgetConsequenceRefusal::GitObservationFailed { what, .. }) => {
+                assert_eq!(what, "control")
+            }
+            other => panic!("expected GitObservationFailed, got {other:?}"),
+        }
+        // Positive control: an ordinary git read still succeeds, so the assertion above is not
+        // passing because every git call refuses.
+        assert!(git_stdout(
+            &repo,
+            &["rev-parse", "HEAD"],
+            Duration::from_secs(30),
+            "control"
+        )
+        .is_ok());
+    }
+
+    /// A reader that fails mid-stream must not be reported as EOF. Before the terminal recorded WHY
+    /// the reader stopped, both spellings were a bare `return` and the thread merely finishing was
+    /// read as `Closed`.
+    #[test]
+    fn a_failing_reader_does_not_become_a_closed_stream() {
+        struct FailsAfterOneLine {
+            sent: bool,
+        }
+        impl Read for FailsAfterOneLine {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.sent {
+                    return Err(std::io::Error::other("stream broke"));
+                }
+                self.sent = true;
+                let line = b"first\n";
+                buf[..line.len()].copy_from_slice(line);
+                Ok(line.len())
+            }
+        }
+        let mut drain = PipeDrain::spawn(Some(FailsAfterOneLine { sent: false }));
+        match drain.finish_within(Duration::from_secs(10)) {
+            StreamOutcome::ReadFailed { partial, .. } => assert_eq!(partial, "first\n"),
+            other => panic!("a failed read was reported as {other:?}"),
+        }
+
+        // Positive control: a reader that reaches EOF still reports Closed with its whole text.
+        let mut clean = PipeDrain::spawn(Some(std::io::Cursor::new(b"only\n".to_vec())));
+        match clean.finish_within(Duration::from_secs(10)) {
+            StreamOutcome::Closed { text } => assert_eq!(text, "only\n"),
+            other => panic!("a clean EOF was reported as {other:?}"),
+        }
+    }
+
+    /// A descendant holding the write end must produce a BOUNDED refusal, not a hang. This is the
+    /// arm the unbounded `finish()` could not reach: it had no failure outcome, only blocking.
+    #[test]
+    fn a_pipe_held_open_by_a_survivor_ends_the_drain_rather_than_hanging() {
+        let mut command = Command::new("sh");
+        // The shell exits immediately while its background child keeps stdout open.
+        command
+            .arg("-c")
+            .arg("sleep 30 & exit 0")
+            .stdout(std::process::Stdio::piped());
+        let mut child = crate::process_group::spawn_in_new_process_group(&mut command)
+            .expect("spawn a shell that leaves a descendant holding the pipe");
+        let pid = child.id();
+        let mut drain = PipeDrain::spawn(child.stdout.take());
+        let outcome = drain.finish_within(Duration::from_millis(500));
+        // Tear the group down before asserting, so a failure here cannot leak the sleeper.
+        let _ =
+            crate::process_group::terminate_process_group(&mut child, pid, Duration::from_secs(10));
+        match outcome {
+            StreamOutcome::DeadlineExceeded { .. } => {}
+            other => panic!("expected a bounded deadline outcome, got {other:?}"),
+        }
     }
 }

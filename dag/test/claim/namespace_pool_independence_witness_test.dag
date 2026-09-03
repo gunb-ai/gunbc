@@ -266,6 +266,15 @@ test fn colliding_root_exported_homonym_refuses_ambiguity_holds() -> Bool {
                       )
                       && first_ambiguous != second_ambiguous
                   Absent => false
+                  Present { value: ReferenceBindingProjectionBound { provider: _ } } => false
+                  Present { value: ReferenceBindingProjectionUnbound { occurrence: _ } } => false
+                  Present { value: ReferenceBindingProjectionTransportRefused { refusal: _ } } => false
+                  Present { value: ReferenceBindingProjectionModulePathRefused { refusal: _ } } => false
+                  Present { value: ReferenceBindingProjectionExposureRefused { refusal: _ } } => false
+                  Present { value: ReferenceBindingProjectionAuthoredOrderRefused { refusal: _ } } => false
+                  Present { value: ReferenceBindingProjectionDeclarationBucketRefused { occurrence: _ } } => false
+                  Present { value: ReferenceBindingProjectionModulePathMissing { occurrence: _ } } => false
+                  Present { value: ReferenceBindingProjectionWrongCategory { occurrence: _, observed: _ } } => false
                 }
             _ => false
           }

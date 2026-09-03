@@ -123,67 +123,71 @@ fn process_group_members(pgid: u32) -> Result<Vec<ProcEntry>, String> {
             Ok(pid) => pid,
             Err(_) => continue,
         };
-        // A process that exits between the readdir and the read is not an error: it is simply not
-        // a member any more.
+        // ONLY DISAPPEARANCE MAY BE SKIPPED. A process that exits between the readdir and the read
+        // is genuinely no longer a member, and NotFound is how that is spelled. EVERY OTHER failure
+        // means this numeric process COULD be in the target group and we could not tell -- skipping
+        // it would let an unreadable /proc manufacture an empty vector and then `GroupAbsent`,
+        // which is the instrument reporting "the group is gone" on evidence it never collected.
         let stat = match std::fs::read_to_string(entry.path().join("stat")) {
             Ok(stat) => stat,
-            Err(_) => continue,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("reading /proc/{pid}/stat: {e}")),
         };
         let tail = match stat.rfind(')') {
             Some(at) => &stat[at + 1..],
-            None => continue,
+            None => return Err(format!("/proc/{pid}/stat has no comm terminator")),
         };
         let fields: Vec<&str> = tail.split_whitespace().collect();
         // After the ')' the fields are: state, ppid, pgrp, ...
         let (state, pgrp) = match (fields.first(), fields.get(2)) {
             (Some(state), Some(pgrp)) => (*state, *pgrp),
-            _ => continue,
+            _ => return Err(format!("/proc/{pid}/stat has no state and pgrp fields")),
         };
-        if pgrp.parse::<u32>().ok() == Some(pgid) {
-            found.push(ProcEntry {
-                pid,
-                state: state.chars().next().unwrap_or('?'),
-            });
+        let pgrp: u32 = match pgrp.parse() {
+            Ok(pgrp) => pgrp,
+            Err(e) => return Err(format!("/proc/{pid}/stat pgrp {pgrp:?}: {e}")),
+        };
+        if pgrp == pgid {
+            let state = match state.chars().next() {
+                Some(state) => state,
+                None => return Err(format!("/proc/{pid}/stat has an empty state field")),
+            };
+            found.push(ProcEntry { pid, state });
         }
     }
     Ok(found)
 }
 
-/// WHAT THE NATURAL-EXIT WINDOW OBSERVED without consuming the leader's exit status. Keeping
-/// timeout distinct from observation failure lets a caller choose teardown after an ordinary
-/// overrun without pretending that an unreadable `/proc` established the leader was still alive.
+/// WHAT THE LEADER IS DOING, OBSERVED WITHOUT REAPING IT.
+///
+/// `Child::try_wait` cannot answer this question, because asking it CONSUMES the exit status: after
+/// it returns `Some`, the pid is released and any later signal or membership read addresses a number
+/// that may already belong to somebody else. A caller that must tear the group down after noticing
+/// the leader died therefore cannot use it. /proc can be read as often as we like and reaps nothing,
+/// and a zombie is the positive observation -- exited, but still owning the pid, so the group
+/// identity stays pinned for the teardown that follows.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProcessGroupNaturalExit {
-    Exited,
-    TimedOut,
-    ObservationFailed { detail: String },
+pub(crate) enum LeaderObservation {
+    Running,
+    /// Exited and NOT yet reaped, so its pid still pins the group.
+    ExitedUnreaped,
+    /// The pid is not in /proc at all. For an unreaped child of this process this should not happen,
+    /// and it is NOT reported as absence-of-group: something else released the identity.
+    LeaderVanished,
+    ObservationFailed {
+        detail: String,
+    },
 }
 
-/// Give a process-group leader a bounded opportunity to exit naturally while keeping it unreaped.
-/// A zombie is the positive observation: it has exited, but still owns its PID and therefore pins
-/// the group identity for the teardown that follows.
-pub(crate) fn wait_for_leader_exit_without_reaping(
-    pid: u32,
-    budget: Duration,
-) -> ProcessGroupNaturalExit {
-    let deadline = Instant::now() + budget;
-    loop {
-        let members = match process_group_members(pid) {
-            Ok(members) => members,
-            Err(detail) => return ProcessGroupNaturalExit::ObservationFailed { detail },
-        };
-        match members.iter().find(|entry| entry.pid == pid as i32) {
-            Some(entry) if entry.state == 'Z' => return ProcessGroupNaturalExit::Exited,
-            Some(_) if Instant::now() < deadline => {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Some(_) => return ProcessGroupNaturalExit::TimedOut,
-            None => {
-                return ProcessGroupNaturalExit::ObservationFailed {
-                    detail: format!("leader {pid} absent before it was reaped"),
-                }
-            }
-        }
+pub(crate) fn observe_leader_without_reaping(pid: u32) -> LeaderObservation {
+    let members = match process_group_members(pid) {
+        Ok(members) => members,
+        Err(detail) => return LeaderObservation::ObservationFailed { detail },
+    };
+    match members.iter().find(|entry| entry.pid == pid as i32) {
+        Some(entry) if entry.state == 'Z' => LeaderObservation::ExitedUnreaped,
+        Some(_) => LeaderObservation::Running,
+        None => LeaderObservation::LeaderVanished,
     }
 }
 
@@ -206,18 +210,64 @@ pub(crate) enum ProcessGroupResidue {
 /// needed. Kept as three fields rather than one enum because a caller adjudicating cleanup and a
 /// caller adjudicating the subject's exit are asking different questions of the same event.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProcessGroupTermination {
-    pub(crate) leader: ProcessGroupWait,
-    pub(crate) residue: ProcessGroupResidue,
-    pub(crate) escalated_to_kill: bool,
+pub(crate) enum ProcessGroupTermination {
+    /// EVERY REQUIRED FACT IS PRESENT, and this arm cannot be built without them. The leader is
+    /// adjudicated -- exited or signalled, never timed out or unobserved -- AND nothing else in the
+    /// group survived a COMPLETE observation.
+    Settled {
+        leader: SettledLeader,
+        escalated_to_kill: bool,
+    },
+    /// Anything else, carrying what was actually seen.
+    Unsettled {
+        leader: ProcessGroupWait,
+        residue: ProcessGroupResidue,
+        escalated_to_kill: bool,
+    },
+}
+
+/// The leader outcomes that can appear in a SETTLED teardown. `TimedOut` and `WaitFailed` are
+/// deliberately absent: they are the states in which we do not know what the leader is doing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SettledLeader {
+    Exited { code: i32 },
+    Signaled { signal: i32 },
 }
 
 impl ProcessGroupTermination {
-    /// Teardown succeeded only when nothing but the leader remained. A leader that exited cleanly
-    /// while a child still holds the port is a FAILED teardown, and this is the single place that
-    /// says so.
-    pub(crate) fn group_is_gone(&self) -> bool {
-        matches!(self.residue, ProcessGroupResidue::GroupAbsent)
+    /// THE SUCCESS QUESTION HAS ONE ANSWER AND IT IS THE CONSTRUCTOR. The previous shape was a
+    /// struct plus a `group_is_gone()` predicate that consulted only `residue`, so a leader that had
+    /// TIMED OUT -- still running, for all we knew -- could coexist with a "successful" teardown
+    /// boolean, and every caller had to REMEMBER that the predicate omitted the leader. Making
+    /// `Settled` unconstructible without an adjudicated leader removes the thing to remember.
+    pub(crate) fn is_settled(&self) -> bool {
+        matches!(self, ProcessGroupTermination::Settled { .. })
+    }
+
+    fn build(
+        leader: ProcessGroupWait,
+        residue: ProcessGroupResidue,
+        escalated_to_kill: bool,
+    ) -> ProcessGroupTermination {
+        match (&leader, &residue) {
+            (ProcessGroupWait::Exited { code }, ProcessGroupResidue::GroupAbsent) => {
+                ProcessGroupTermination::Settled {
+                    leader: SettledLeader::Exited { code: *code },
+                    escalated_to_kill,
+                }
+            }
+            (ProcessGroupWait::Signaled { signal }, ProcessGroupResidue::GroupAbsent) => {
+                ProcessGroupTermination::Settled {
+                    leader: SettledLeader::Signaled { signal: *signal },
+                    escalated_to_kill,
+                }
+            }
+            _ => ProcessGroupTermination::Unsettled {
+                leader,
+                residue,
+                escalated_to_kill,
+            },
+        }
     }
 }
 
@@ -292,34 +342,106 @@ pub(crate) fn terminate_process_group(
 
     // The reap is LAST. Nothing below it may signal or observe the group by number.
     let leader = wait_for_exit(child, grace);
-    ProcessGroupTermination {
-        leader,
-        residue,
-        escalated_to_kill,
-    }
+    ProcessGroupTermination::build(leader, residue, escalated_to_kill)
 }
 
+/// THE TEARDOWN TERMINAL'S FAILURE ARMS, on the ordinary merge path.
 #[cfg(test)]
-mod tests {
+mod termination_terminal {
     use super::*;
 
+    /// An unadjudicated leader may not appear in a SETTLED teardown, no matter how clean the
+    /// residue looks. This is the case the old `group_is_gone()` predicate answered `true` for:
+    /// it consulted only the residue, so a leader that was still running for all we knew coexisted
+    /// with a "successful" teardown.
     #[test]
-    fn natural_exit_observation_keeps_group_identity_pinned_until_teardown() {
+    fn an_unadjudicated_leader_cannot_construct_settled() {
+        for leader in [
+            ProcessGroupWait::TimedOut,
+            ProcessGroupWait::WaitFailed {
+                detail: "boom".to_string(),
+            },
+        ] {
+            let terminal = ProcessGroupTermination::build(
+                leader.clone(),
+                ProcessGroupResidue::GroupAbsent,
+                false,
+            );
+            assert!(
+                !terminal.is_settled(),
+                "an absent residue promoted {leader:?} to settled"
+            );
+        }
+
+        // Positive controls: an adjudicated leader with an absent residue IS settled, so the
+        // assertions above are not passing because nothing can ever settle.
+        assert!(ProcessGroupTermination::build(
+            ProcessGroupWait::Exited { code: 0 },
+            ProcessGroupResidue::GroupAbsent,
+            false
+        )
+        .is_settled());
+        assert!(ProcessGroupTermination::build(
+            ProcessGroupWait::Signaled { signal: 15 },
+            ProcessGroupResidue::GroupAbsent,
+            true
+        )
+        .is_settled());
+    }
+
+    /// Nor may an adjudicated leader settle over a residue that was never completely observed. An
+    /// instrument that could not see the group has not established that the group is gone.
+    #[test]
+    fn an_unobserved_or_surviving_residue_cannot_construct_settled() {
+        for residue in [
+            ProcessGroupResidue::ResidueObservationFailed {
+                detail: "/proc unreadable".to_string(),
+            },
+            ProcessGroupResidue::GroupPresent {
+                after: Duration::from_secs(1),
+                pids: vec![4242],
+            },
+        ] {
+            assert!(!ProcessGroupTermination::build(
+                ProcessGroupWait::Exited { code: 0 },
+                residue.clone(),
+                false
+            )
+            .is_settled());
+        }
+    }
+
+    /// The readiness path must be able to notice a dead leader WITHOUT reaping it, because it tears
+    /// the group down afterwards and a reaped pid may already belong to someone else.
+    #[test]
+    fn a_dead_leader_is_observed_as_exited_while_its_pid_is_still_pinned() {
         let mut command = Command::new("sh");
-        command.arg("-c").arg("exit 23");
-        let mut child = spawn_in_new_process_group(&mut command).unwrap();
+        command.arg("-c").arg("exit 7");
+        let mut child = spawn_in_new_process_group(&mut command).expect("spawn");
         let pid = child.id();
 
-        assert_eq!(
-            wait_for_leader_exit_without_reaping(pid, Duration::from_secs(2)),
-            ProcessGroupNaturalExit::Exited
-        );
-        // The exited leader still owns the numeric identity that teardown is about to address.
-        // Replacing the non-reaping observation with Child::wait makes this assertion red.
+        // Poll for the exit through /proc rather than through try_wait, which would reap it.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            match observe_leader_without_reaping(pid) {
+                LeaderObservation::ExitedUnreaped => break,
+                LeaderObservation::Running if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20))
+                }
+                other => panic!("expected an unreaped exit, observed {other:?}"),
+            }
+        }
+        // Still ours: the number can be addressed because nothing has reaped it. Replacing the
+        // observation with Child::wait makes this assertion red.
         assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
 
-        let termination = terminate_process_group(&mut child, pid, Duration::from_secs(2));
-        assert_eq!(termination.leader, ProcessGroupWait::Exited { code: 23 });
-        assert_eq!(termination.residue, ProcessGroupResidue::GroupAbsent);
+        let terminal = terminate_process_group(&mut child, pid, Duration::from_secs(10));
+        assert_eq!(
+            terminal,
+            ProcessGroupTermination::Settled {
+                leader: SettledLeader::Exited { code: 7 },
+                escalated_to_kill: false
+            }
+        );
     }
 }
