@@ -4,7 +4,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
-import v2.extdeps.languages.dag_add_fixture { dag_add_binary_body_fixture }
+import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
 import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
@@ -123,3 +123,4 @@ test fn add_body_edge_targets_binary_transform() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
