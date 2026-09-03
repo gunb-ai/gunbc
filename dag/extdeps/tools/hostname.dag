@@ -1,10 +1,26 @@
 module extdeps.tools.hostname
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.compilers.cli_surface {
+  CliArgumentSyntax,
+  CliSurface,
+  cli_argument_text,
+  cli_surface_arguments,
+  process_argv_expansion,
+  serialize_cli_arguments
+}
+import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule }
+import v2.std.compilers.target_model { BoundToken, FixedToken }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.node { Symbol }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.dns.domain_name { DnsLabel }
+import extdeps.shell.exec { ProcessObservation, process_observation }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -24,10 +40,6 @@ fn hostname_short_read_argv() -> List<String> {
   ["hostname", "-s"]
 }
 
-fn hostname_set_argv(desired: DnsLabel) -> List<String> {
-  ["hostnamectl", "set-hostname", desired as String]
-}
-
 service os.Hostname {
   operation ReadShort {
     input {}
@@ -45,22 +57,185 @@ service os.Hostname {
       0 => { value: "localhost", success: true } "hermetic os.Hostname.ReadShort"
     }
   }
+}
 
-  operation Set {
-    input { desired: DnsLabel }
-    output {
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["hostnamectl", "set-hostname", "{desired}"] }
-    exit {
-      0 => Unit
-      nonzero => String "hostnamectl set-hostname failed"
-    }
-    mock_response {
-      0 => { success: true, stderr: "" } "hermetic os.Hostname.Set"
+// ---------------------------------------------------------------------------------------------
+// THE HOSTNAMECTL SET-HOSTNAME VERTICAL (CLI-invocation substrate).
+// docs/plans/cli-invocation-emission-design.md
+//
+// `os.Hostname.Set` stood here with a hand-authored argv row:
+//     transport shell { argv: ["hostnamectl", "set-hostname", "{desired}"] }
+// That row is the defect this vertical removes: the subcommand and the operand were opaque
+// literals in a transport DSL, so the operation's own realization was a hand-typed flag list --
+// the #8467 grain (op's flags must derive from cited rows). The caller now describes WHAT it
+// wants of hostnamectl (a desired label); the subcommand is a cited row and the argv is derived.
+// ---------------------------------------------------------------------------------------------
+
+// THE SUBCOMMAND IS ONE CITED ROW, not a hand-typed literal. The freedesktop hostnamectl(1)
+// manual names the set-hostname verb; this row is that name, and every argv derivation reads
+// it -- a caller cannot reach argv with a differently-spelled verb. `os.Hostname.Set` IS the
+// set-hostname operation, so the verb is the operation's identity and is never a field a caller
+// supplies.
+data hostnamectl_set_hostname_verb: NonEmptyStr = "set-hostname" as NonEmptyStr
+
+// THE INVOCATION THE CALLER DESCRIBES. It states the desired label and nothing else: no flag,
+// no subcommand, no argv position. A DnsLabel keeps the operand inside the hostnamectl-safe
+// grammar (the same bound `deployed_intent_v1` relies on).
+type HostnameSetInvocation { desired: DnsLabel }
+
+// LEVEL ONE of the derivation: the desired label is a BOUND token (its spelling arrives with
+// the invocation), the subcommand is a FIXED token (its spelling is the cited row, owned by the
+// lex table below). The executable is not a surface token -- the handler fixes it, exactly as
+// jq's handler fixes "jq" -- so the surface is [set-hostname, desired], two arguments.
+type HostnameSetProcessPlan {
+  arguments: List<CliArgumentSyntax>
+  binding_spellings: Map<Symbol, String>
+}
+
+fn hostname_set_invocation_lower(invocation: HostnameSetInvocation) -> HostnameSetProcessPlan {
+  HostnameSetProcessPlan {
+    arguments: [
+      CliArgumentSyntax {
+        fragments: [FixedToken { token_class: ^hostnamectl_set_hostname_subcommand }]
+      },
+      CliArgumentSyntax {
+        fragments: [BoundToken { token_class: ^hostnamectl_set_hostname_operand, binding: ^hostname_set_desired_text }]
+      }
+    ],
+    binding_spellings: map_insert(
+      m: empty_map(),
+      key: ^hostname_set_desired_text,
+      value: invocation.desired as String
+    )
+  }
+}
+
+// THE LEX TABLE hostnamectl itself authors: one row per token identity, spelling from the cited
+// verb row. A caller cannot supply this -- the FixedToken's spelling comes from here, so a
+// caller cannot reach argv with a differently-spelled verb through the surface either.
+fn hostname_set_cli_lex_rules() -> ModeledLexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TokenRule {
+          token_class: ^hostnamectl_set_hostname_subcommand,
+          pattern: LiteralPattern { text: hostnamectl_set_hostname_verb as String }
+        }
+      ]
     }
   }
+}
+
+// THE SEALED PLAN. `sole_constructor` means the only mint is the lowering below: a caller cannot
+// hand the handler a surface it authored, so the argv reaching the process is exactly the one
+// the row-driven lowering produced.
+type HostnameSetAdmittedProcessPlan sole_constructor { surface: CliSurface }
+
+fn hostname_set_invocation_process_plan(invocation: HostnameSetInvocation) -> Outcome<HostnameSetAdmittedProcessPlan> {
+  let plan = hostname_set_invocation_lower(invocation: invocation)
+  bind_outcome(
+    o: serialize_cli_arguments(
+      arguments: plan.arguments,
+      lex: hostname_set_cli_lex_rules(),
+      binding_spellings: plan.binding_spellings
+    ),
+    f: fn(surface) {
+      outcome_accepted(HostnameSetAdmittedProcessPlan { surface: surface })
+    }
+  )
+}
+
+// The argv-only projection, retained because witnesses assert over it directly.
+fn hostname_set_invocation_cli_arguments(invocation: HostnameSetInvocation) -> Outcome<CliSurface> {
+  let plan = hostname_set_invocation_lower(invocation: invocation)
+  serialize_cli_arguments(
+    arguments: plan.arguments,
+    lex: hostname_set_cli_lex_rules(),
+    binding_spellings: plan.binding_spellings
+  )
+}
+
+// THE FULL-ARGV PROJECTION, DERIVED -- kept so a consumer that needs the plain argv vector the
+// LOCAL process runs (witnesses) reads the SAME words the handler executes. The executable is
+// the handler's fixed tool name (the same literal the hostnamectl.Process.Run transport row
+// spells); the subcommand and the operand are the rendered surface, so the verb can never drift
+// from the cited row.
+//
+// REFUSAL-CARRYING, NOT A WIDEN: a lowering refusal surfaces as Rejected (DESIGN section 5 --
+// a failure arm refuses, it does not widen into an empty argv that a caller could mistake for
+// a real projection). Every consumer matches the Outcome; nothing reads a bare list that has
+// already swallowed the refusal.
+fn hostname_set_argv(desired: DnsLabel) -> Outcome<List<String>> {
+  bind_outcome(
+    o: hostname_set_invocation_cli_arguments(invocation: HostnameSetInvocation { desired: desired }),
+    f: fn(surface) {
+      outcome_accepted(
+        list_append(
+          left: ["hostnamectl"],
+          right: hostname_set_surface_words(surface: surface),
+        )
+      )
+    }
+  )
+}
+
+fn hostname_set_surface_words(surface: CliSurface) -> List<String> {
+  fold_list(
+    xs: cli_surface_arguments(surface: surface),
+    empty: Empty,
+    cons: fn(acc, argument) {
+      list_snoc_item(xs: acc, item: cli_argument_text(argument: argument))
+    }
+  )
+}
+
+// THE EXECUTION HANDLER. `arguments` arrives already lowered from a sealed plan; the only
+// literal is the executable, the same shape as jq.Process's RunWithoutStdin. The argv here is
+// NOT a second authority on hostnamectl's flags.
+//
+// NOT readonly: this executes set-hostname, a host mutation -- the same reason os.Hostname.Set
+// carried no readonly marker. The process handler is a realization, not an observation.
+service hostnamectl.Process {
+  operation Run {
+    input { arguments: ProcessArgvExpansion }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["hostnamectl", arguments] }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { exit_code: 0, stdout: "", stderr: "" } "hermetic hostnamectl.Process.Run"
+    }
+  }
+}
+
+// THE EXIT CONTRACT, ONE ROW. hostnamectl(1) exits 0 when the hostname was set and nonzero
+// otherwise; this is the tool's documented contract, not a hand-typed flag. The domain never
+// reads a raw exit code -- it consumes HostnameSetOutcome.
+type HostnameSetOutcome
+  = HostnameSetApplied
+  | HostnameSetFailed { exit_code: Int, stderr: String }
+
+fn hostname_set_classify_observation(observation: ProcessObservation) -> HostnameSetOutcome {
+  if observation.exit_code == 0 {
+    HostnameSetApplied
+  } else {
+    HostnameSetFailed { exit_code: observation.exit_code, stderr: observation.stderr }
+  }
+}
+
+// EXECUTION. The one function a domain module calls to actually run hostnamectl. It takes the
+// SEALED plan, so the arguments reaching the process are the ones the row-driven lowering
+// produced -- a caller cannot hand it an argv it authored.
+fn hostname_set_execute_plan(plan: HostnameSetAdmittedProcessPlan) -> ProcessObservation {
+  let arguments = process_argv_expansion(surface: plan.surface)
+  let ran = hostnamectl.Process.Run(arguments: arguments)
+  process_observation(exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr)
 }
 
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of

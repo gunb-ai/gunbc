@@ -9,12 +9,8 @@ import std.witness_admission {
   FalsifierSubstrateLongLane,
   witness_cadence_has_scheduled_route,
 }
-import gunbc.guarantee_rung_drop {
-  GuaranteeRungDrop,
-  LostAsPassenger,
-  Mitigatable,
-  OutsideTheLadder,
-}
+import gunbc.rung_drop { RungDrop }
+import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
 import v2.std.algebra { fold_list, any }
 
 // THE CENSUS OF AUTHORITY ROWS THAT CITE A DELETED EXECUTION CADENCE, AND THE ONE
@@ -122,14 +118,14 @@ type CoverageNotEstablished {
 }
 
 // LostWithDeletedCadence carries `lost_with` BESIDE the drop rather than inside it, and the
-// addition is stated rather than smuggled: `GuaranteeRungDrop` is the DESIGN 4b(3) record and
+// addition is stated rather than smuggled: `RungDrop` is the DESIGN 4b(3) record and
 // has no cadence field, because a rung can fall for reasons that name no cadence at all.
 // Adding one there would have widened a shared authority to serve this census; carrying it
 // here keeps the join local and leaves that carrier alone.
 type DeletedCadenceReferenceStanding
   = HistoricalReceipt { event: PastExecutionReceipt }
   | ReboundToExecutingConsumer { consumer: ExecutingConsumerReceipt }
-  | LostWithDeletedCadence { drop: GuaranteeRungDrop, lost_with: WitnessConsumerCadence }
+  | LostWithDeletedCadence { drop: RungDrop, lost_with: WitnessConsumerCadence }
   | PremiseInvalidated { affected_decision: DeclarationRef, current_coverage: CoverageNotEstablished }
 
 type DeletedCadenceReference {
@@ -218,32 +214,6 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
 // thing -- the executor -- so eighteen copies of the same five fields would be eighteen places
 // to update when the route returns. That is also why the five sites added 2026-09-01 enrol here
 // instead of carrying drops of their own.
-data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
-  subject: "authority rows whose stated enforcement, audit or backstop was the affected-set falsifier cadence",
-  previous: Mitigatable,
-  temporary: OutsideTheLadder,
-  reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
-  population: [
-    "gunbc.ci_materialization ci_floor_materialization_receipt_note",
-    "gunbc.legacy_test_behavior_disposition dag_comment_wall_family_closed_loop_note",
-    "v2.lens.witness_cost_locality witness_cost_locality_law",
-    "v2.lens.witness_cost_locality per_pr_admission_law",
-    "gunbc.ci_layer_roots enforcement_coverage_exclusion_note",
-    "gunbc.ci_layer_roots bin_witness_wet_note",
-    "tools.namespace_import_closure_behavioral_transport nic_doc",
-    "v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings falsifier_self_host_wet_module_bindings_revocation_note",
-    "test.claim.instrument_sandbox_witness fixture_line_remaining",
-    "test.claim.self_host_use_site_verdict_behavioral_witness self_host_use_site_verdict_behavioral_receipt_holds",
-    "test.claim.self_host_body_producer_behavioral_witness self_host_body_producer_behavioral_receipt_holds",
-    "test.claim.self_host_logic_behavioral_witness self_host_logic_behavioral_receipt_holds",
-    "test.claim.long.dag_compile_clean_perturb_corpus perturb_cross_tree_import_corpus_green_holds",
-    "test.claim.expectation_frontier_witness undeclared_effects_emit_the_frontier_receipt_holds",
-    "v2.std.live_tree live_tree_disposition_stamp_provenance",
-    "v1_compiler.cli_run parse_entry_live_tree_disposition",
-  ],
-  restoration_trigger: "a workflow or scheduled entry point exists that runs a predict-only cold comparison over the corpus, at which point each row above is reclassified from PremiseInvalidated to ReboundToExecutingConsumer with that consumer's receipt",
-}
-
 // THE EIGHTEEN SITES (twelve at landing, five witness-test sites added 2026-09-01, one added
 // 2026-09-02). Two more than the sixteen the drop population names, because two of them are
 // HistoricalReceipt rows and a historical receipt is not a population a re-add restores.

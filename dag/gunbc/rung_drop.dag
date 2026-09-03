@@ -1,5 +1,48 @@
 module gunbc.rung_drop
 
+import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.guarantee_rung {
+  GuaranteeRung, OutsideTheLadder, Mitigatable, MechanicallyPreventable,
+  StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_label,
+}
+
+// THIS MODULE IS THE SINGLE AUTHORITY FOR A DESIGN section 4b(3) DECLARED DROP -- THE RECORD AND
+// THE POPULATION BOTH. It was not, and the fork was live in main: gunbc.guarantee_rung_drop carried
+// a SECOND record for the same declaration, `GuaranteeRungDrop`, with the five 4b(3) fields typed,
+// and four Standing drops were declared through it IN SITU at their own subjects' modules. Those
+// four appeared in no roster, in the projected drop roster nowhere, and in DESIGN.md's "the ones
+// standing today" list nowhere -- while DESIGN section 4b(3) states that declared drops are rostered
+// IN FULL and names this module as the authority. That is not untidiness. It is the document that
+// states the obligation under-reporting the live safety accounting by four rows, in a file loaded in
+// full on every turn of every session. The fork is removed by cutting at the root: GuaranteeRungDrop
+// is deleted, not deprecated, and its rows, its refusal rendering and its witness land here.
+//
+// CUTTING A MODULE AT THE ROOT INVALIDATES ITS CITATIONS, AND THE SWEEP THAT FINDS THEM NEEDS A
+// DISCRIMINATOR THAT IS NOT BACKTICKS AND NOT TENSE. Deleting gunbc.guarantee_rung_drop left eight
+// textual occurrences of the name across three authorities and their three projections. Two were
+// LIVE and were repaired here and in gunbc.recurring_failure_mode; the rest stand. The rule that
+// separates them is whether the sentence ASSERTS SOMETHING TRUE OF THE PRESENT CORPUS or RECOUNTS
+// AN EVENT. An assertion ("carries", "is filed as") becomes FALSE when the module is deleted; a
+// recounting ("carried", "the deleted", "gunbc#10021 appended one row to it") becomes MORE true,
+// because the deletion is what makes the past tense correct.
+//
+// TWO PROXIES FAIL ON THIS POPULATION AND BOTH WERE TRIED. Backticked-means-live and past-tense-
+// means-historical each classify four of the five authority occurrences correctly and DISAGREE on
+// the fifth, which is backticked AND surrounded by past-tense verbs, so a rule built on either
+// returns no answer for it rather than a wrong one. That occurrence is also a third form neither
+// proxy names: a backticked FILE PATH, `dag/gunbc/guarantee_rung_drop.dag`, recounting a merge
+// conflict that happened in a file that existed at the time. Under the assertion-versus-event rule
+// it stands, and it is recorded as a DECISION rather than as a row a narrow pattern failed to
+// reach -- an assert-count-is-1 guard that passes because the pattern is narrow reads exactly like
+// one that passes because the file is clean.
+//
+// THE OTHER HALF OF THAT MODULE WAS A DIFFERENT SUBJECT AND SURVIVES UNDER ITS OWN NAME. A
+// section 4b(2) STALL -- a class sitting below its attainable ceiling, naming what blocks the climb
+// -- is not a variant of a drop: nothing FELL when a stall begins, so previous/temporary/reason have
+// no answer and forcing one would fabricate an event. Those rows are gunbc.guarantee_stall now, and
+// the ladder both subjects are stated in is gunbc.guarantee_rung, imported by both rather than
+// homed inside either.
+
 // ONE ROW PER DECLARED RUNG DROP, FOR THE REASON gunbc.recurring_failure_mode ALREADY RECORDS ONE
 // ROW PER FAILURE CLASS. These five declarations lived as five `li(text:)` blobs inside
 // gunbc.design_document's Building & checks list -- 64,977 characters, 40% of the whole projected
@@ -13,7 +56,8 @@ module gunbc.rung_drop
 // THIS CUT IS MECHANICAL AND ITS ORACLE IS CONTENT PRESERVATION. Each row carries its authored
 // paragraph BYTE-FOR-BYTE in `authored`; only the typed `identity`, `subject` and `declared` fields
 // are new, and they are read off the paragraph own opening sentence rather than composed. The
-// projection renders the roster in source order into docs/design-rung-drops.md, so every sentence that
+// projection renders the roster in source order into the file `gunbc.design_ledgers` names, so every
+// sentence that
 // was in DESIGN.md is still generated from this repository and still adjudicated by the
 // generated-artifact phase -- what changed is WHICH file it lands in, and therefore what every
 // session loads on every turn.
@@ -26,11 +70,31 @@ module gunbc.rung_drop
 // collided with certainty -- three lanes in one night. That row carries the corrected rule and the
 // reason both shapes fail; it is not restated here. What is carrier-specific is the answer: a row is
 // a FILE under `dag/gunbc/rung_drop/`, so two lanes amending two rows share no line and a lane
-// declaring a NEW drop adds a file git resolves with no merge at all. The only text left shared is
-// `gunbc.rung_drop.roster`, one bare identifier per row: two lanes appending there still conflict --
-// measured, two regions -- but each region is a whole line on both sides with no shared suffix, so
-// the additive resolution is correct and total, which is the one property the one-line row bought
-// and this shape keeps.
+// declaring a NEW drop adds a file git resolves with no merge at all. What text remains shared is
+// enumerations only, `gunbc.rung_drop.roster` first among them at one bare identifier per row: two
+// lanes appending there still conflict -- measured, two regions -- but each region is a whole line on
+// both sides with no shared suffix, so the additive resolution is correct and total, which is the one
+// property the one-line row bought and this shape keeps. The next paragraph counts the rest of them,
+// because "the only text left shared" is the sentence a reader would cite as though it were four
+// fewer lists than it is.
+//
+// THE SHARED APPEND POINTS THAT REMAIN, COUNTED RATHER THAN CLAIMED AWAY, because a split that
+// reports "no shared text" while three shared lists survive is the rung inflation this carrier is
+// about. A NEW PROSE drop touches four places: its own new file (no merge), one roster line in
+// `gunbc.rung_drop.roster`, one arm in `LegacyProseIdentity`, and one line in
+// `legacy_prose_identity_roster` -- plus one arm in `legacy_prose_identity`, which is a match block
+// and therefore a fifth. A NEW TYPED drop touches two: its file and the roster line. So the split
+// removes the row bodies from the conflict surface and leaves the ENUMERATIONS on it, and what makes
+// those tolerable is not that they are absent but that every one of them is a WHOLE LINE with no
+// shared suffix -- the additive resolution is correct at each. That is a strictly weaker claim than
+// "disjoint edits no longer conflict", and it is the true one: two lanes declaring two new prose
+// drops still conflict in four regions. They just resolve by keeping both sides.
+//
+// AND THE TYPED ARM IS THE ONE WITH NO SHARED APPEND POINT AT ALL, which is worth saying because it
+// is the direction the debt is supposed to move. `RungDropDeclaration`'s prose arm is enumerated on
+// purpose -- the note below records why -- so the four lists above are the visible cost of the arm,
+// and they go away with it rather than needing their own repair. A per-row split that fills the five
+// 4b(3) fields deletes one arm from each of the three lists as it lands.
 //
 // THE BLANK LINE BETWEEN FIELDS IS LOAD-BEARING AND IS NOT FORMATTING. One field per line does NOT
 // make two field edits independent: a three-way merge needs an UNCHANGED line BETWEEN two changed
@@ -80,17 +144,41 @@ module gunbc.rung_drop
 // that renders a row without it silently restores the defect on the first projection, and would do
 // so while every content oracle stayed green, since the projection's bytes do not depend on it.
 //
-// WHY THE ANALYTIC FIELDS ARE NOT FILLED HERE, recorded so the next author does not read their
-// absence as an oversight. Splitting `authored` into the five 4b(3) fields means deciding, per row,
-// which of its sentences is the reason and which is the population -- and three of these five
-// paragraphs argue at length about exactly that question, one of them declaring that its population
-// is unbounded and that this is an unmet requirement rather than a satisfied one. Deriving typed
-// fields from that is semantic rewriting, it has no oracle, and doing it inside a relocation would
-// make a content change indistinguishable from a move. It lands in a follow-up where each row is a
-// readable diff, which is the same sequencing gunbc.recurring_failure_mode took and for the same
-// stated reason.
-
-import std.types { String, NonEmptyStr, List }
+// WHY 21 ROWS STILL CARRY THEIR DECLARATION AS PROSE, AND WHY THAT IS A CLOSED SET RATHER THAN AN
+// OPTION. Splitting `authored` into the five 4b(3) fields means deciding, per row, which of its
+// sentences is the reason and which is the population -- and several of these paragraphs argue at
+// length about exactly that question, one of them declaring that its population is unbounded and
+// that this is an unmet requirement rather than a satisfied one. Deriving typed fields from that is
+// semantic rewriting with no oracle: it is fabricated plausible output, and it would be
+// unfalsifiable afterwards because nothing retains the original. So the record states the
+// difference instead of hiding it -- `RungDropDeclaration` has a typed arm and a prose arm, and
+// which arm a row is in is a FOLD over one roster rather than an invisible condition.
+//
+// THE PROSE ARM IS ENUMERATED, WHICH IS THE WHOLE REASON IT IS ADMISSIBLE. An arm that any future
+// row could choose without saying so is the cheapest way to declare a drop, so the typed fields
+// would never get filled and the coproduct would stop being a debt record and become the default --
+// the absorbing fallback with a nicer type name. `LegacyProseIdentity` therefore names every prose
+// row individually, and a row cannot enter the arm without an edit to this enumeration that a
+// reader sees in the diff. Each per-row split deletes one arm, and the arm count is the remaining
+// debt.
+//
+// THE RUNG IS MECHANICALLY PREVENTABLE, NOT STRUCTURALLY IMPOSSIBLE, AND THE CORRECTION IS RECORDED
+// HERE BECAUSE THIS CARRIER FIRST CLAIMED OTHERWISE. The first version of this note said a further
+// prose row had NO CONSTRUCTOR and was structurally impossible. That was falsified within hours of
+// being authored, and by ordinary work rather than by an attack: `spark_serving_local_artifact_not_reproducible`
+// was authored on another lane against the pre-consolidation shape and landed in main while the
+// consolidation was still open. Admitting it cost exactly one arm. So what the enumeration
+// guarantees is that the arm cannot grow SILENTLY -- growth is an edit to a closed list, visible in
+// review and counted by the fold below -- and what it does not guarantee is that the arm cannot
+// grow. Leaving the stronger sentence standing would have been the rung inflation DESIGN
+// section 4b(1) names, in the carrier whose whole subject is honest rung accounting.
+//
+// WHY THAT ROW WAS ADMITTED AS PROSE RATHER THAN TYPED, since the alternative was available and was
+// rejected on the same ground the other rows are: its paragraph states its previous rung, its
+// temporary rung and its restoration trigger verbatim, but NOT its population and NOT its reason.
+// Filling those two by reading the prose is the semantic rewriting with no oracle that this arm
+// exists to avoid, and doing it to a row authored on another lane would be doing it to someone
+// else's declaration.
 
 // WHETHER THE ROW'S RESTORATION TRIGGER HAS FIRED, MODELED RATHER THAN LEFT TO ITS PARAGRAPH.
 // DESIGN 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so retirement is a
@@ -114,11 +202,270 @@ type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }
 
+// THE REASON A RUNG FELL, A CLOSED COPRODUCT BECAUSE THE REASONS ARE A SMALL NAMED SET AND NAMING
+// THEM IS WHAT LETS THE SAME CLASS BE RECOGNISED TWICE.
+// LostAsPassenger is the class this carrier was first written for: nothing deleted the subject,
+// something the subject rode on was deleted. A deletion census accounts for what it deleted and
+// never for what was riding on it, so this reason is invisible to the cut that causes it and the
+// carrier it names is the thing whose own re-add will NOT restore the passenger.
+type RungDropReason
+  = LostAsPassenger { carrier: String }
+  | DeletedWithoutReplacement
+  | ReplacementStaged { replacement: String }
+
+// THE ENUMERATED SET OF ROWS WHOSE DECLARATION IS STILL PROSE. One nullary arm per such row -- see
+// the note above on what that enumeration does and does not guarantee, and on the concurrent row
+// that established the difference. The spelling of each identity lives in
+// `legacy_prose_identity` and nowhere else, so the row's `identity` field and its arm are joined by
+// one authority; test.claim.rung_drop_standing_partition_witness_test asserts that join as an exact
+// set equality in both directions, which is what would go red if a row and its arm disagreed.
+type LegacyProseIdentity
+  = FloorCut
+  | MeasurementBankruptcy
+  | RegenProducer
+  | CitedSymbolCensus
+  | EmitStageBlocking
+  | LensEnforcementCensuses
+  | RequiredGateBankruptcy
+  | TextBoundaryIdentityWall
+  | FabricEvidenceGating
+  | EmittedBytesWitnessRequiredLane
+  | DirectCallArgSeamV2Exemption
+  | FloorCostClaimQualificationUnavailable
+  | SparkRoleScopedRetirementProductionRoot
+  | FloorCutHeal
+  | FloorCutEffectGates
+  | FloorCutFmtGate
+  | FloorCutMergeAdmissionStamping
+  | FloorCutFalsifierCadence
+  | BuiltinSignatureArityPairingFabricates
+  | ConcatBinarySignatureExemptFromArgBinding
+  | NamespaceAdmissionConsumedRowDeletion
+  | SparkServingLocalArtifactNotReproducible
+  | DashboardMergeReadySemanticAdmissibility
+  | FloorCutRegenSecondGenerationAgreement
+  | FloorCutReceiptDiscriminatingArms
+  | FloorCutBehaviouralRegressionDifferential
+
+fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
+  match l {
+    FloorCut => "floor_cut"
+    MeasurementBankruptcy => "measurement_bankruptcy"
+    RegenProducer => "regen_producer"
+    CitedSymbolCensus => "cited_symbol_census"
+    EmitStageBlocking => "emit_stage_blocking"
+    LensEnforcementCensuses => "lens_enforcement_censuses"
+    RequiredGateBankruptcy => "required_gate_bankruptcy"
+    TextBoundaryIdentityWall => "text_boundary_identity_wall"
+    FabricEvidenceGating => "fabric_evidence_gating"
+    EmittedBytesWitnessRequiredLane => "emitted_bytes_witness_required_lane"
+    DirectCallArgSeamV2Exemption => "direct_call_arg_seam_v2_exemption"
+    FloorCostClaimQualificationUnavailable => "floor_cost_claim_qualification_unavailable"
+    SparkRoleScopedRetirementProductionRoot => "spark_role_scoped_retirement_production_root"
+    FloorCutHeal => "floor_cut_heal"
+    FloorCutEffectGates => "floor_cut_effect_gates"
+    FloorCutFmtGate => "floor_cut_fmt_gate"
+    FloorCutMergeAdmissionStamping => "floor_cut_merge_admission_stamping"
+    FloorCutFalsifierCadence => "floor_cut_falsifier_cadence"
+    BuiltinSignatureArityPairingFabricates => "builtin_signature_arity_pairing_fabricates"
+    ConcatBinarySignatureExemptFromArgBinding => "concat_binary_signature_exempt_from_arg_binding"
+    NamespaceAdmissionConsumedRowDeletion => "namespace_admission_consumed_row_deletion"
+    SparkServingLocalArtifactNotReproducible => "spark_serving_local_artifact_not_reproducible"
+    DashboardMergeReadySemanticAdmissibility => "dashboard_merge_ready_semantic_admissibility"
+    FloorCutRegenSecondGenerationAgreement => "floor_cut_regen_second_generation_agreement"
+    FloorCutReceiptDiscriminatingArms => "floor_cut_receipt_discriminating_arms"
+    FloorCutBehaviouralRegressionDifferential => "floor_cut_behavioural_regression_differential"
+  }
+}
+
+// THE DECLARATION ITSELF: SECTION 4b(3)'s FIVE FIELDS, OR THE PARAGRAPH THAT PREDATES THEM.
+// `TypedDeclaration` is the shape 4b(3) specifies -- previous rung, temporary rung, reason, bounded
+// population, restoration trigger -- and it is the arm every new drop is declared through.
+type RungDropDeclaration
+  = TypedDeclaration {
+      previous: GuaranteeRung
+      temporary: GuaranteeRung
+      reason: RungDropReason
+      population: List<String>
+      restoration_trigger: String
+    }
+  | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
+
 type RungDrop {
   identity: NonEmptyStr
   subject: String
   declared: String
   standing: RungDropStanding
-  authored: String
+  declaration: RungDropDeclaration
 }
 
+// THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its
+// own message would be a second authority for the same fact (DESIGN section 3), and the two would
+// drift in the ordinary way: someone updates the row and the refusal keeps telling the reader
+// something that stopped being true. The prose arm renders as its own paragraph, which IS its
+// declaration text -- not a fabricated reconstruction of fields it does not have.
+fn rung_drop_declaration_message(d: RungDrop) -> String {
+  match d.declaration {
+    TypedDeclaration {
+      previous: p, temporary: t, reason: rs, population: pop, restoration_trigger: rt
+    } => concat(
+      concat(d.subject, concat(": RUNG DROP, ", guarantee_rung_label(r: p))),
+      concat(
+        concat(" -> ", concat(guarantee_rung_label(r: t), concat(" (", rung_drop_reason_label(r: rs)))),
+        concat(
+          concat("). Population: ", join(pop, ", ")),
+          concat(". Restored when: ", concat(rt, "."))
+        )
+      )
+    )
+    AuthoredProse { legacy: _, authored: a } => a
+  }
+}
+
+fn rung_drop_reason_label(r: RungDropReason) -> String {
+  match r {
+    LostAsPassenger { carrier: c } => concat("lost as a passenger of ", c)
+    DeletedWithoutReplacement => "deleted without replacement"
+    ReplacementStaged { replacement: r2 } => concat("replacement staged: ", r2)
+  }
+}
+
+// WHETHER THE ROW SITS OFF THE LADDER, AS A THREE-WAY JUDGMENT RATHER THAN A Bool. A prose row does
+// not carry a temporary rung, so there is no honest true or false for it -- answering either would
+// be the fabricated plausible output DESIGN section 5 forbids, and answering `false` in particular
+// would silently report an off-ladder class as on it. NotJudgeableFromProse is the refusal arm, and
+// it is what gives the prose arm a visible cost at every consumer rather than a free ride.
+type OffLadderJudgment
+  = OffLadder
+  | OnLadderAt { rung: GuaranteeRung }
+  | NotJudgeableFromProse
+
+fn rung_drop_off_ladder_judgment(d: RungDrop) -> OffLadderJudgment {
+  match d.declaration {
+    TypedDeclaration {
+      previous: _, temporary: t, reason: _, population: _, restoration_trigger: _
+    } => match t {
+      OutsideTheLadder => OffLadder
+      Mitigatable => OnLadderAt { rung: t }
+      MechanicallyPreventable => OnLadderAt { rung: t }
+      StructurallyGuaranteed => OnLadderAt { rung: t }
+      StructurallyImpossible => OnLadderAt { rung: t }
+    }
+    AuthoredProse { legacy: _, authored: _ } => NotJudgeableFromProse
+  }
+}
+
+// THE REMAINING PROSE DEBT, AS A FOLD OVER THE ONE ROSTER. This is the property the coproduct buys:
+// how many declarations are still unsplit is a number this repository can read, rather than a
+// condition nobody can see. It reaches zero when every row carries TypedDeclaration, at which point
+// the prose arm and LegacyProseIdentity are both deleted -- the dissolution is the arm going away,
+// not a flag being flipped.
+fn authored_prose_rung_drops(ds: List<RungDrop>) -> List<RungDrop> {
+  filter(ds, d => match d.declaration {
+    TypedDeclaration {
+      previous: _, temporary: _, reason: _, population: _, restoration_trigger: _
+    } => false
+    AuthoredProse { legacy: _, authored: _ } => true
+  })
+}
+
+// THE IDENTITIES THE PROSE ARM CLAIMS, READ OFF THE ARM RATHER THAN OFF THE ROW. Paired with the
+// identities the rows themselves carry, this is the join that would go red if a row and its arm
+// disagreed -- the assertion lives in test.claim.rung_drop_standing_partition_witness_test, in both
+// directions, because one direction alone admits a row whose arm belongs to a different drop.
+fn authored_prose_arm_identities(ds: List<RungDrop>) -> List<String> {
+  map(authored_prose_rung_drops(ds), d => match d.declaration {
+    TypedDeclaration {
+      previous: _, temporary: _, reason: _, population: _, restoration_trigger: _
+    } => ""
+    AuthoredProse { legacy: l, authored: _ } => legacy_prose_identity(l: l)
+  })
+}
+
+// THE CLOSED PROSE UNIVERSE, ENUMERATED, so the debt is joined at IDENTITY grain against a
+// controlled roster rather than compared to a number somebody typed. A count equality against a
+// literal would be the change detector DESIGN section 5 rejects; this list is the subject universe
+// itself, and the coproduct above is what makes it closed. An arm deleted by a per-row split must
+// leave here too or the join refuses -- which is the typed disposition the debt contract requires.
+data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
+  FloorCut,
+  MeasurementBankruptcy,
+  RegenProducer,
+  CitedSymbolCensus,
+  EmitStageBlocking,
+  LensEnforcementCensuses,
+  RequiredGateBankruptcy,
+  TextBoundaryIdentityWall,
+  FabricEvidenceGating,
+  EmittedBytesWitnessRequiredLane,
+  DirectCallArgSeamV2Exemption,
+  FloorCostClaimQualificationUnavailable,
+  SparkRoleScopedRetirementProductionRoot,
+  FloorCutHeal,
+  FloorCutEffectGates,
+  FloorCutFmtGate,
+  FloorCutMergeAdmissionStamping,
+  FloorCutFalsifierCadence,
+  BuiltinSignatureArityPairingFabricates,
+  ConcatBinarySignatureExemptFromArgBinding,
+  NamespaceAdmissionConsumedRowDeletion,
+  SparkServingLocalArtifactNotReproducible,
+  DashboardMergeReadySemanticAdmissibility,
+  FloorCutBehaviouralRegressionDifferential,
+  FloorCutReceiptDiscriminatingArms,
+  FloorCutRegenSecondGenerationAgreement,
+]
+
+// EVERY PROSE ROW NAMES ITS OWN IDENTITY. Set equality between the arms and the rows would pass on
+// two rows that had swapped arms, so the agreement is asserted PER ROW against the row's own
+// identity field. This is the check that gives the two spellings one authority.
+fn authored_prose_identity_agrees(d: RungDrop) -> Bool {
+  match d.declaration {
+    TypedDeclaration {
+      previous: _, temporary: _, reason: _, population: _, restoration_trigger: _
+    } => true
+    AuthoredProse { legacy: l, authored: _ } => legacy_prose_identity(l: l) == d.identity
+  }
+}
+
+fn every_authored_prose_row_names_its_arm(ds: List<RungDrop>) -> Bool {
+  fold(ds, init: true, f: fn(acc, d) { acc && authored_prose_identity_agrees(d: d) })
+}
+
+// EVERY ARM IS CLAIMED BY EXACTLY ONE ROW -- the other direction, and the one that catches an arm
+// silently going unused (a row deleted rather than split) or claimed twice.
+fn every_legacy_arm_is_claimed_exactly_once(ds: List<RungDrop>) -> Bool {
+  let claimed = authored_prose_arm_identities(ds)
+  fold(legacy_prose_identity_roster, init: true, f: fn(acc, l) {
+    acc && length(xs: filter(claimed, i => i == legacy_prose_identity(l: l))) == 1
+  })
+}
+
+// THE FOUR ROWS THIS CONSOLIDATION RESCUED, ENUMERATED BY NAME, because nothing else pins them.
+// The prose side is pinned from both ends -- every arm claimed exactly once, every row agreeing
+// with its arm -- so a prose row that vanished would refuse. The typed side had no such anchor: a
+// fold over the roster answers the same for four typed rows as for three, and the roster-shape
+// count compares the prose arm against the arm roster and never looks at the typed side at all. So
+// a consolidated row could have disappeared in a later merge and every assertion in this file would
+// still have passed. These four were rostered NOWHERE before this change, which is the whole
+// finding, and a control that could lose one silently would be the finding recurring inside its own
+// repair.
+//
+// PRESENCE, NOT SET EQUALITY, AND THE DIFFERENCE IS DELIBERATE. Asserting that the typed rows are
+// EXACTLY these four would refuse the next honest typed drop -- the growth this consolidation
+// exists to make the normal path -- which is a change detector on healthy work. Asserting that each
+// of these four is present exactly once refuses only what must never happen: one of them silently
+// leaving. A new row is admitted; a lost row is not.
+data consolidated_typed_drop_identities: List<String> = [
+  "source_root_ingest_gate",
+  "spark_serving_fleet_global_configuration",
+  "witness_deferral_freeze_forward_rule",
+  "deleted_cadence_reference",
+]
+
+fn every_consolidated_typed_drop_is_rostered_once(ds: List<RungDrop>) -> Bool {
+  let ids = map(ds, d => d.identity)
+  fold(consolidated_typed_drop_identities, init: true, f: fn(acc, want) {
+    acc && length(xs: filter(ids, i => i == want)) == 1
+  })
+}

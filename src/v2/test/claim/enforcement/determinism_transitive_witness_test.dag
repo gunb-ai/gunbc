@@ -1,0 +1,204 @@
+module v2.test.claim.enforcement.determinism_transitive_witness
+
+import v2.lens.determinism {
+  determinism_transitive_findings,
+  determinism_transitive_holds
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Diagnostic }
+import v2.std.fn_index { FnArrowDecl }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode
+}
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.text { String }
+
+// ── the live judgment: WITHDRAWN, AND WHY ────────────────────────────────────────────────────
+//
+// Clause 2 of this cut required a live required-floor consumer -- a witness whose declared
+// substrate and cadence truthfully match the inputs it reads, whose failure reaches the required
+// PR floor, and which cannot predict-skip. `determinism_transitive_live_closure_holds` WAS that
+// consumer and it is withdrawn here, not satisfied and not abandoned. The obligation stands and is
+// BLOCKED; the blocker is named below. It is not retired by this file and no rung drop is retired
+// by it either.
+//
+// THE OBLIGATION HAS A CARRIER SO IT IS NOT AN UNTRACKED STALL (DESIGN section 4b(2)): work item
+// node://adhoc-ac804155-cdd, "Give v2.std.fn_index fn_arrow_decl_facts_live a caller-named subject".
+// A withdrawn clause described only in a merged PR body is a sentence in a squashed commit that
+// nobody greps, which is how a conjunctive brief silently becomes a completed one.
+//
+// WHY IT CANNOT STAND TODAY. Measured on required run 33709585360 (required_floor_claim_cost.tsv,
+// 3523 rows): the live row cost 473/481/561ms across three samples of a byte-identical head and was
+// the single most expensive subject on the floor, #1 of 3523. The operator has since regrounded the
+// per-subject line from 500ms to 100ms, so it is over by ~5x rather than marginally.
+//
+// AND IT CANNOT BE DECOMPOSED TO GET THERE, which is the part that makes this a block rather than a
+// task. `fn_arrow_decl_facts_live` is ZERO-ARITY in both .dag and host, and always walks the whole
+// of `ctx.modules`. Splitting one live witness into N witnesses over corpus slices therefore costs
+// N x acquisition, not acquisition/N -- decomposition INVERTS on this subject. The smallest live
+// subject expressible still pays one whole-tree acquisition (~300ms measured) before it evaluates
+// anything, so no live-tree witness reaches 100ms at any grain.
+//
+// THE BLOCKER, STATED AS A CAPABILITY AND NOT AN ARTIFACT: the acquisition has no caller-named
+// subject. Its two siblings `module_graph_facts` and `reference_edges` take `pool_roots` and are
+// enrolled in the floor's cross-claim fill netting; this one takes nothing, so its cost cannot be
+// shared without inventing a key, and every available key is either wrong (a pool-roots-shaped key
+// would serve one claim another claim's declaration set) or worthless (a ctx.modules digest costs
+// what the walk costs). Giving `fn_arrow_decl_facts_live` a declared subject is what unblocks this,
+// and it is a program across effect_reach, live_read_classification, wiring_liveness,
+// corpus_dependency_view and the origin probe -- deliberately not smuggled into this cut.
+//
+// WHAT STILL EXECUTES. The three fixture rows below are the discriminating evidence for clauses 1
+// and 3: they run on the required floor at 39/3/2ms and they discriminate -- a leak in reached code
+// is found, an IDENTICAL leak outside the call graph is not. The deletion of both duplicate walks
+// is proven by them. What is missing is a live consumer, which is clause 2 itself, not evidence for
+// it.
+//
+// The long lane is NOT the answer and was checked: long claims are declined from the required floor
+// (declined_long=366) and no CI job runs that lane -- witnesses.yml carries exactly two
+// --required-lane invocations, `build` and `witnesses`. Enrolling there would make clause 2's
+// required-floor reach false while the row still read as enrolled.
+
+// ── fixtures ──────────────────────────────────────────────────────────────────────────────────
+
+data fixture_modules: List<String> = ["fix.det.entry", "fix.det.reached", "fix.det.unreached"]
+
+fn atom_node(lexeme: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// A call node as node_is_call recognises one: a Transform whose first positional child is a
+// callee reference.
+fn call_node(callee: String) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// THE FN-ARROW SKELETON IS FLAT, AND THE FIXTURE MUST BE TOO. call_reachable_decls reads callees
+// from `decl.output` at DEPTH ONE — atom_identities_in_node returns the node's own identity and
+// those of its IMMEDIATE children — because the skeleton the Rust marshal produces hoists callee
+// atoms onto the body root. A first version of this fixture wrapped the callee atom inside the call
+// node, one level deeper. Nothing was reachable, and BOTH discrimination rows below agreed for that
+// reason rather than for the reason they claim: the leak-is-found row went red, and the
+// leak-outside-the-graph row went green while proving nothing at all. That is the empty-fixture
+// failure in miniature — two rows in apparent agreement, one shared wrong cause — so the shape is
+// recorded here rather than silently corrected.
+//
+// A CALL EDGE is therefore a bare atom child of the body root; a LEAKING CALL is a call node child,
+// which determinism_findings reaches because it folds the whole subtree.
+
+fn body_referencing(callee: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn body_invoking_primitive(primitive: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: call_node(callee: primitive) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn calling_decl(qualified_name: String, name: String, callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: body_referencing(callee: callee),
+    params: []
+  }
+}
+
+fn primitive_decl(qualified_name: String, name: String, primitive: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: body_invoking_primitive(primitive: primitive),
+    params: []
+  }
+}
+
+// `map_keys` carries HostUnspecifiedOrder in std.primitive_identity — the per-process hash seed
+// makes its returned order not a function of its input. `sorted_map_keys` is the CanonicalOrder
+// twin, so the pair discriminates the classification rather than merely the presence of a call.
+data leaking_callee: String = "map_keys"
+data deterministic_callee: String = "sorted_map_keys"
+
+// entry -> reached -> (leak). The leak is TWO HOPS from the entry and in a DIFFERENT module, which
+// is exactly the shape the per-tree door cannot see.
+fn decls_with_leak_reached() -> List<FnArrowDecl> {
+  [
+    calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+    primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: leaking_callee),
+    primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: deterministic_callee)
+  ]
+}
+
+// The SAME leak, moved to a declaration nothing calls. Reachability is the only thing that can
+// tell these two populations apart.
+fn decls_with_leak_unreached() -> List<FnArrowDecl> {
+  [
+    calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+    primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee),
+    primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+  ]
+}
+
+fn findings_over(decls: List<FnArrowDecl>) -> List<Diagnostic> {
+  determinism_transitive_findings(
+    entry_module: "fix.det.entry",
+    closure_modules: fixture_modules,
+    decls: decls
+  )
+}
+
+// ── discriminating controls ───────────────────────────────────────────────────────────────────
+
+// RED CONTROL. A leak two hops out, in another module, is FOUND. This is the state the per-tree
+// door accepts today, so this row is the whole point of the transitive judgment.
+test fn transitive_leak_in_reached_declaration_is_found() -> Bool {
+  length(xs: findings_over(decls: decls_with_leak_reached())) > 0
+}
+
+// THE CONTROL THAT PROVES REACHABILITY IS LOAD-BEARING RATHER THAN DECORATIVE, and the one that
+// would still be green if this consumer folded every declaration in the corpus instead of the
+// reachable ones. Same leak, same fixture, same primitive — moved out of the call graph. A judgment
+// that flagged it would be answering "does a leak exist anywhere" rather than "can this entry reach
+// one", and the reachability authority would be doing no work.
+test fn identical_leak_outside_the_call_graph_is_not_found() -> Bool {
+  length(xs: findings_over(decls: decls_with_leak_unreached())) == 0
+}
+
+// POSITIVE CONTROL ON THE PLANT: the fixture shape itself is clean when the reached body calls the
+// canonically-ordered twin, so the red above is caused by the CLASSIFICATION of the callee and not
+// by the fixture merely containing a call node.
+test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool {
+  determinism_transitive_holds(
+    entry_module: "fix.det.entry",
+    closure_modules: fixture_modules,
+    decls: [
+      calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+      primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee)
+    ]
+  )
+}

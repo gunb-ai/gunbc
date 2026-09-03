@@ -1,0 +1,703 @@
+module test.claim.spark_serving_admission_fence_witness
+
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.spark.serving_realization {
+  SparkServingReactivationVerdict,
+  ReactivationRequired,
+  ReactivationNotRequired,
+  ReactivationNotApplicable,
+  ReactivationUndecidable,
+  SparkServingRunningDefinition,
+  RunningDefinitionObserved,
+  RunningDefinitionUnstamped,
+  RunningDefinitionNotRunning,
+  RunningDefinitionUnobserved,
+  RestartUserUnitForChangedDefinition,
+  RestartSystemUnitForChangedDefinition,
+}
+import gunbc.spark.serving_observe {
+  SparkServingInvocationIdentity,
+  InvocationIdentityObserved,
+  InvocationIdentityNotRunning,
+  InvocationIdentityUnobserved,
+}
+import gunbc.remote_operation { PlannedRemoteStep, remote_operations_argv_only }
+import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
+import extdeps.systemd.systemctl { systemctl_user_restart_argv }
+import gunbc.spark.serving_admission_fence {
+  ServingServiceLocus,
+  spark_serving_locus,
+  ServingAdmissionState,
+  AdmissionUnbound,
+  AdmissionOpen,
+  AdmissionDraining,
+  ServingTurnAdmission,
+  TurnAdmitted,
+  TurnAdmissionRefused,
+  spark_serving_admit_turn,
+  ServingOccupancyGrain,
+  AllClientsRouteThroughLeaseAuthority,
+  ExternalOccupancyOutsideModeledGuarantee,
+  ServingFenceTransition,
+  FenceHeld,
+  FenceTransitionRefused,
+  spark_serving_begin_drain,
+  spark_serving_state_under_fence,
+  ServingDrainVerdict,
+  DrainedToZero,
+  DrainIncomplete,
+  DrainInvalidated,
+  DrainOccupancyUnmodeled,
+  spark_serving_adjudicate_drain,
+  ServingTurnSettlement,
+  TurnInterrupted,
+  TurnUnaffected,
+  ServingTurnLease,
+  SparkServingBoundReactivationPlanning,
+  BoundReactivationPlanned,
+  BoundReactivationNotRequired,
+  BoundReactivationRefused,
+  spark_serving_guarded_bound_reactivation,
+  spark_serving_bound_reactivation_steps,
+  PlannedBoundReactivationExecution,
+  ServingPostRestartHealth,
+  PostRestartHealthy,
+  PostRestartUnhealthy,
+  PostRestartHealthUnobserved,
+  ServingReplanStanding,
+  ReplanEmpty,
+  ReplanNonEmpty,
+  ReplanUnobserved,
+  ServingReactivationReadback,
+  ReactivationConfirmed,
+  ReactivationReadbackRefused,
+  spark_serving_reactivation_readback,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THESE CLAIMS ESTABLISH, AND THE LINE THEY DO NOT CROSS.
+//
+// Every value here is authored by a fixture. No host is contacted, no restart is executed, and the
+// arms that end in a live receipt -- a held fence, a drained population, a confirmed readback -- are
+// exercised only against these constructed inputs. DCH-0r's own receipt is a restart run against a
+// held fence on srv5 or srv6 with a post-restart incarnation readback, and nothing below is that
+// receipt or a substitute for it.
+//
+// What they DO establish is that the adjudication refuses the protocol's failure shapes and admits
+// exactly one success shape, which is the half that can be executed without a host. The drained
+// evidence in these tests is reached the only way it can be reached -- through the compare-and-swap
+// and the adjudicator -- because `ServingDrainFence` and `ServingDrainedEvidence` are
+// sole_constructor and no fixture can author one.
+
+data locus_host: HostIdentity = "srv5" as HostIdentity
+
+data other_host: HostIdentity = "srv6" as HostIdentity
+
+data j0: NonEmptyStr = "invocation-0000000000000000000000000000aa" as NonEmptyStr
+
+data j1: NonEmptyStr = "invocation-0000000000000000000000000000bb" as NonEmptyStr
+
+data d0: NonEmptyStr = "spec-identity-stale" as NonEmptyStr
+
+data d_star: NonEmptyStr = "spec-identity-desired" as NonEmptyStr
+
+data maintenance: NonEmptyStr = "dch-0r-maintenance" as NonEmptyStr
+
+fn fixture_locus() -> ServingServiceLocus {
+  spark_serving_locus(host: locus_host)
+}
+
+fn open_at_pre_state() -> ServingAdmissionState {
+  AdmissionOpen {
+    locus: fixture_locus(),
+    admitted_invocation: j0,
+    admitted_definition: d0,
+  }
+}
+
+fn admitted_lease(turn: NonEmptyStr, invocation: NonEmptyStr) -> ServingTurnLease? {
+  match spark_serving_admit_turn(
+    state: AdmissionOpen {
+      locus: fixture_locus(),
+      admitted_invocation: invocation,
+      admitted_definition: d0,
+    },
+    locus: fixture_locus(),
+    turn_id: turn,
+    observed_invocation: InvocationIdentityObserved { invocation_identity: invocation },
+    observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+  ) {
+    TurnAdmitted { lease: l } => Present { value: l }
+    TurnAdmissionRefused { cause: _ } => none
+  }
+}
+
+fn leases_of(turn: NonEmptyStr, invocation: NonEmptyStr) -> List<ServingTurnLease> {
+  match admitted_lease(turn: turn, invocation: invocation) {
+    Present { value: l } => [l]
+    Absent => []
+  }
+}
+
+fn admission_is_admitted(a: ServingTurnAdmission) -> Bool {
+  match a {
+    TurnAdmitted { lease: _ } => true
+    TurnAdmissionRefused { cause: _ } => false
+  }
+}
+
+fn held_fence_for(grain_state: ServingAdmissionState) -> ServingFenceTransition {
+  spark_serving_begin_drain(
+    state: grain_state,
+    locus: fixture_locus(),
+    maintenance: maintenance,
+    expected_invocation: j0,
+    expected_definition: d0,
+    desired_definition: d_star,
+  )
+}
+
+fn drain_under_fence(
+  occupancy: ServingOccupancyGrain,
+  leases: List<ServingTurnLease>,
+  revalidated: SparkServingInvocationIdentity,
+) -> ServingDrainVerdict {
+  match held_fence_for(grain_state: open_at_pre_state()) {
+    FenceTransitionRefused { cause: why } =>
+      DrainOccupancyUnmodeled { cause: why }
+    FenceHeld { fence: f } =>
+      spark_serving_adjudicate_drain(
+        fence: f,
+        occupancy: occupancy,
+        leases: leases,
+        revalidated_invocation: revalidated,
+      )
+  }
+}
+
+fn clean_drain() -> ServingDrainVerdict {
+  drain_under_fence(
+    occupancy: AllClientsRouteThroughLeaseAuthority,
+    leases: [],
+    revalidated: InvocationIdentityObserved { invocation_identity: j0 },
+  )
+}
+
+fn drain_is_zero(v: ServingDrainVerdict) -> Bool {
+  match v {
+    DrainedToZero { evidence: _ } => true
+    DrainIncomplete { remaining: _, cause: _ } => false
+    DrainInvalidated { cause: _, settlements: _ } => false
+    DrainOccupancyUnmodeled { cause: _ } => false
+  }
+}
+
+fn drain_settlement_interrupted_count(v: ServingDrainVerdict) -> Int {
+  match v {
+    DrainInvalidated { cause: _, settlements: ss } =>
+      length(filter(ss, s => match s {
+        TurnInterrupted { turn_id: _, cause: _ } => true
+        TurnUnaffected { turn_id: _ } => false
+      }))
+    DrainedToZero { evidence: _ } => 0
+    DrainIncomplete { remaining: _, cause: _ } => 0
+    DrainOccupancyUnmodeled { cause: _ } => 0
+  }
+}
+
+fn planning_is_planned(p: SparkServingBoundReactivationPlanning) -> Bool {
+  match p {
+    BoundReactivationPlanned { execution: _ } => true
+    BoundReactivationNotRequired => false
+    BoundReactivationRefused { cause: _ } => false
+  }
+}
+
+fn planning_step_count(p: SparkServingBoundReactivationPlanning) -> Int {
+  match p {
+    BoundReactivationPlanned { execution: x } =>
+      length(spark_serving_bound_reactivation_steps(execution: x))
+    BoundReactivationNotRequired => 0
+    BoundReactivationRefused { cause: _ } => 0
+  }
+}
+
+fn planned_restart(drain: ServingDrainVerdict) -> SparkServingBoundReactivationPlanning {
+  spark_serving_guarded_bound_reactivation(
+    remedy: ReactivationRequired { effect: RestartUserUnitForChangedDefinition },
+    drain: drain,
+  )
+}
+
+fn readback_of(
+  post_invocation: SparkServingInvocationIdentity,
+  post_definition: SparkServingRunningDefinition,
+  registered: NonEmptyStr,
+  health: ServingPostRestartHealth,
+  replan: ServingReplanStanding,
+) -> ServingReactivationReadback {
+  match planned_restart(drain: clean_drain()) {
+    BoundReactivationPlanned { execution: x } =>
+      spark_serving_reactivation_readback(
+        execution: x,
+        post_invocation: post_invocation,
+        post_definition: post_definition,
+        registered_definition: registered,
+        health: health,
+        replan: replan,
+      )
+    BoundReactivationNotRequired =>
+      ReactivationReadbackRefused { cause: "fixture: no plan was produced" as NonEmptyStr }
+    BoundReactivationRefused { cause: why } =>
+      ReactivationReadbackRefused { cause: why }
+  }
+}
+
+fn readback_confirmed(r: ServingReactivationReadback) -> Bool {
+  match r {
+    ReactivationConfirmed { reopened: _ } => true
+    ReactivationReadbackRefused { cause: _ } => false
+  }
+}
+
+fn confirmed_reopened_state(r: ServingReactivationReadback) -> ServingAdmissionState {
+  match r {
+    ReactivationConfirmed { reopened: s } => s
+    ReactivationReadbackRefused { cause: _ } => AdmissionUnbound { locus: fixture_locus() }
+  }
+}
+
+fn healthy_readback() -> ServingReactivationReadback {
+  readback_of(
+    post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+    post_definition: RunningDefinitionObserved { definition_identity: d_star },
+    registered: d_star,
+    health: PostRestartHealthy { invocation: j1 },
+    replan: ReplanEmpty,
+  )
+}
+
+// THE FENCE REFUSES AT THE LOCUS, NOT AT THE INCARNATION. This is the correction the 2026-09-02
+// ruling made, and it is the claim that fails first if anyone re-narrows the fence: while draining,
+// a turn arriving with the EXPECTED pre-invocation is refused, and so is one arriving with a new
+// invocation that appeared mid-drain. The control is the same call against an Open state, which
+// admits -- so the refusal is the fence and not a fixture that cannot be admitted at all.
+test fn w_draining_refuses_every_admission_whatever_invocation_is_present() -> Bool {
+  let draining = AdmissionDraining {
+    locus: fixture_locus(),
+    maintenance: maintenance,
+    expected_invocation: j0,
+  }
+  !admission_is_admitted(
+    spark_serving_admit_turn(
+      state: draining,
+      locus: fixture_locus(),
+      turn_id: "turn-a" as NonEmptyStr,
+      observed_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+      observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+    ),
+  )
+    && !admission_is_admitted(
+      spark_serving_admit_turn(
+        state: draining,
+        locus: fixture_locus(),
+        turn_id: "turn-b" as NonEmptyStr,
+        observed_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+        observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+      ),
+    )
+    && admission_is_admitted(
+      spark_serving_admit_turn(
+        state: open_at_pre_state(),
+        locus: fixture_locus(),
+        turn_id: "turn-c" as NonEmptyStr,
+        observed_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+        observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+      ),
+    )
+}
+
+// AN OUT-OF-BAND RESTART REFUSES IMMEDIATELY RATHER THAN GRANTING A TURN AGAINST AN UNVALIDATED
+// BACKEND. Step 8 of the protocol is the recheck, and without it a reopened locus keeps admitting
+// turns after the process it was validated against has been replaced by something nobody looked at.
+test fn w_an_admission_against_an_unvalidated_pair_refuses() -> Bool {
+  !admission_is_admitted(
+    spark_serving_admit_turn(
+      state: open_at_pre_state(),
+      locus: fixture_locus(),
+      turn_id: "turn-d" as NonEmptyStr,
+      observed_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+      observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+    ),
+  )
+    && !admission_is_admitted(
+      spark_serving_admit_turn(
+        state: open_at_pre_state(),
+        locus: fixture_locus(),
+        turn_id: "turn-e" as NonEmptyStr,
+        observed_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+        observed_definition: RunningDefinitionUnobserved {
+          cause: "environ unreadable" as NonEmptyStr,
+        },
+      ),
+    )
+    && !admission_is_admitted(
+      spark_serving_admit_turn(
+        state: AdmissionUnbound { locus: fixture_locus() },
+        locus: fixture_locus(),
+        turn_id: "turn-f" as NonEmptyStr,
+        observed_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+        observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+      ),
+    )
+}
+
+// THE FENCE IS A COMPARE-AND-SWAP. A pre-state read against a service that has since been replaced
+// does not get a fence, and neither does a locus that is already draining or was never validated.
+test fn w_the_drain_transition_refuses_unless_the_pre_invocation_still_holds() -> Bool {
+  let stale_pre_state = AdmissionOpen {
+    locus: fixture_locus(),
+    admitted_invocation: j1,
+    admitted_definition: d0,
+  }
+  match held_fence_for(grain_state: open_at_pre_state()) {
+    FenceHeld { fence: _ } =>
+      match held_fence_for(grain_state: stale_pre_state) {
+        FenceHeld { fence: _ } => false
+        FenceTransitionRefused { cause: _ } =>
+          match held_fence_for(grain_state: AdmissionUnbound { locus: fixture_locus() }) {
+            FenceHeld { fence: _ } => false
+            FenceTransitionRefused { cause: _ } =>
+              match held_fence_for(
+                grain_state: AdmissionDraining {
+                  locus: fixture_locus(),
+                  maintenance: maintenance,
+                  expected_invocation: j0,
+                },
+              ) {
+                FenceHeld { fence: _ } => false
+                FenceTransitionRefused { cause: _ } => true
+              }
+          }
+      }
+    FenceTransitionRefused { cause: _ } => false
+  }
+}
+
+// HOLDING THE FENCE IS REFUSING ADMISSIONS, AND THE TWO ARE ONE VALUE. The state under a held fence
+// is derived from the fence, so there is no way to hold one and keep admitting.
+test fn w_the_state_under_a_held_fence_refuses_admissions() -> Bool {
+  match held_fence_for(grain_state: open_at_pre_state()) {
+    FenceTransitionRefused { cause: _ } => false
+    FenceHeld { fence: f } =>
+      !admission_is_admitted(
+        spark_serving_admit_turn(
+          state: spark_serving_state_under_fence(fence: f),
+          locus: fixture_locus(),
+          turn_id: "turn-g" as NonEmptyStr,
+          observed_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+          observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+        ),
+      )
+  }
+}
+
+// THE GUARANTEE GRAIN IS THE HARDEST REFUSAL, and this is the RED that goes green the moment anyone
+// decides a managed-turn census is good enough for a service-wide claim. The two calls differ on
+// exactly one axis: the grain. Same zero leases, same revalidated invocation, same fence.
+test fn w_an_unmodeled_external_population_refuses_the_drain() -> Bool {
+  !drain_is_zero(
+    drain_under_fence(
+      occupancy: ExternalOccupancyOutsideModeledGuarantee {
+        cause: "no lease authority observes clients outside DCH" as NonEmptyStr,
+      },
+      leases: [],
+      revalidated: InvocationIdentityObserved { invocation_identity: j0 },
+    ),
+  )
+    && drain_is_zero(clean_drain())
+}
+
+// A POPULATION THAT HAS NOT DRAINED IS NOT ZERO, and a lease bound to some other invocation at this
+// locus still counts -- draining is locus-keyed, so a census that skipped it would reach a zero that
+// is only zero for the generation it happened to ask about.
+test fn w_leases_still_held_at_the_locus_refuse_the_drain() -> Bool {
+  !drain_is_zero(
+    drain_under_fence(
+      occupancy: AllClientsRouteThroughLeaseAuthority,
+      leases: leases_of(turn: "turn-h" as NonEmptyStr, invocation: j0),
+      revalidated: InvocationIdentityObserved { invocation_identity: j0 },
+    ),
+  )
+    && !drain_is_zero(
+      drain_under_fence(
+        occupancy: AllClientsRouteThroughLeaseAuthority,
+        leases: leases_of(turn: "turn-i" as NonEmptyStr, invocation: j1),
+        revalidated: InvocationIdentityObserved { invocation_identity: j0 },
+      ),
+    )
+}
+
+// AN INVOCATION THAT MOVED UNDER THE FENCE INVALIDATES THE DRAIN AND SETTLES THE AFFECTED TURNS.
+// The settlement is attributable because each lease binds the invocation it was admitted against:
+// the turn bound to J0 is interrupted by a service now running J1, while a turn already bound to J1
+// is not.
+test fn w_an_invocation_that_moves_under_the_fence_invalidates_and_settles() -> Bool {
+  let moved = drain_under_fence(
+    occupancy: AllClientsRouteThroughLeaseAuthority,
+    leases: leases_of(turn: "turn-j" as NonEmptyStr, invocation: j0),
+    revalidated: InvocationIdentityObserved { invocation_identity: j1 },
+  )
+  !drain_is_zero(moved)
+    && drain_settlement_interrupted_count(moved) == 1
+    && drain_settlement_interrupted_count(
+      drain_under_fence(
+        occupancy: AllClientsRouteThroughLeaseAuthority,
+        leases: leases_of(turn: "turn-k" as NonEmptyStr, invocation: j1),
+        revalidated: InvocationIdentityObserved { invocation_identity: j1 },
+      ),
+    ) == 0
+    && !drain_is_zero(
+      drain_under_fence(
+        occupancy: AllClientsRouteThroughLeaseAuthority,
+        leases: [],
+        revalidated: InvocationIdentityNotRunning,
+      ),
+    )
+    && !drain_is_zero(
+      drain_under_fence(
+        occupancy: AllClientsRouteThroughLeaseAuthority,
+        leases: [],
+        revalidated: InvocationIdentityUnobserved {
+          cause: "systemd returned an empty InvocationID" as NonEmptyStr,
+        },
+      ),
+    )
+}
+
+// THE PRODUCER IS GUARDED BY BOTH HALVES, AND NEITHER IS DERIVABLE FROM THE OTHER. A restart is
+// planned only when the remedy establishes staleness AND the drain reached zero under a held fence;
+// every other pairing refuses with a located cause.
+test fn w_a_restart_is_planned_only_from_a_remedy_and_a_drained_fence() -> Bool {
+  planning_is_planned(planned_restart(drain: clean_drain()))
+    && planning_step_count(planned_restart(drain: clean_drain())) > 0
+    && !planning_is_planned(
+      planned_restart(
+        drain: drain_under_fence(
+          occupancy: AllClientsRouteThroughLeaseAuthority,
+          leases: leases_of(turn: "turn-l" as NonEmptyStr, invocation: j0),
+          revalidated: InvocationIdentityObserved { invocation_identity: j0 },
+        ),
+      ),
+    )
+    && !planning_is_planned(
+      planned_restart(
+        drain: drain_under_fence(
+          occupancy: ExternalOccupancyOutsideModeledGuarantee {
+            cause: "no lease authority observes clients outside DCH" as NonEmptyStr,
+          },
+          leases: [],
+          revalidated: InvocationIdentityObserved { invocation_identity: j0 },
+        ),
+      ),
+    )
+    && !planning_is_planned(
+      spark_serving_guarded_bound_reactivation(
+        remedy: ReactivationUndecidable {
+          cause: "the running definition was not observed" as NonEmptyStr,
+        },
+        drain: clean_drain(),
+      ),
+    )
+    && !planning_is_planned(
+      spark_serving_guarded_bound_reactivation(
+        remedy: ReactivationNotApplicable { cause: "the unit is not running" as NonEmptyStr },
+        drain: clean_drain(),
+      ),
+    )
+}
+
+// A CONVERGED HOST PLANS NOTHING, AND THE NOT-REQUIRED ANSWER IS NOT A REFUSAL. Collapsing the two
+// would make a converged host indistinguishable from one whose fence could not be held.
+test fn w_a_converged_remedy_plans_nothing_without_refusing() -> Bool {
+  match spark_serving_guarded_bound_reactivation(
+    remedy: ReactivationNotRequired,
+    drain: clean_drain(),
+  ) {
+    BoundReactivationNotRequired => true
+    BoundReactivationPlanned { execution: _ } => false
+    BoundReactivationRefused { cause: _ } => false
+  }
+}
+
+// AN EFFECT WITH NO MODELED REMOTE REALIZATION REFUSES RATHER THAN PLANNING AN EMPTY EXECUTION.
+// The system-unit path is not implemented in this slice, exactly as every other system-scope effect
+// in the realizer refuses, and an execution carrying zero steps would report a restart that ran
+// nothing.
+test fn w_an_unrealizable_restart_refuses_rather_than_planning_no_steps() -> Bool {
+  !planning_is_planned(
+    spark_serving_guarded_bound_reactivation(
+      remedy: ReactivationRequired { effect: RestartSystemUnitForChangedDefinition },
+      drain: clean_drain(),
+    ),
+  )
+}
+
+// THE READBACK REQUIRES A CHANGED INVOCATION, WHICH IS THE CONJUNCT A RESTART THAT SILENTLY DID
+// NOTHING FAILS. Every other conjunct is already satisfied in this fixture -- the definition is
+// desired, the registration is desired, the service is healthy and the replan is empty -- so the
+// refusal is attributable to the identity and to nothing else.
+test fn w_an_unchanged_invocation_refuses_the_readback() -> Bool {
+  !readback_confirmed(
+    readback_of(
+      post_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+      post_definition: RunningDefinitionObserved { definition_identity: d_star },
+      registered: d_star,
+      health: PostRestartHealthy { invocation: j0 },
+      replan: ReplanEmpty,
+    ),
+  )
+    && readback_confirmed(healthy_readback())
+}
+
+// THE OTHER FOUR CONJUNCTS, EACH FAILED ALONE. A readback that required only the identity would
+// confirm a host whose registered definition is stale, whose health belongs to a different process,
+// or whose replan still has rows -- and the last is precisely the "exit zero is not convergence"
+// rule the plan states.
+test fn w_each_remaining_readback_conjunct_refuses_alone() -> Bool {
+  !readback_confirmed(
+    readback_of(
+      post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+      post_definition: RunningDefinitionObserved { definition_identity: d0 },
+      registered: d_star,
+      health: PostRestartHealthy { invocation: j1 },
+      replan: ReplanEmpty,
+    ),
+  )
+    && !readback_confirmed(
+      readback_of(
+        post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+        post_definition: RunningDefinitionObserved { definition_identity: d_star },
+        registered: d0,
+        health: PostRestartHealthy { invocation: j1 },
+        replan: ReplanEmpty,
+      ),
+    )
+    && !readback_confirmed(
+      readback_of(
+        post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+        post_definition: RunningDefinitionObserved { definition_identity: d_star },
+        registered: d_star,
+        health: PostRestartHealthy { invocation: j0 },
+        replan: ReplanEmpty,
+      ),
+    )
+    && !readback_confirmed(
+      readback_of(
+        post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+        post_definition: RunningDefinitionObserved { definition_identity: d_star },
+        registered: d_star,
+        health: PostRestartUnhealthy {
+          cause: "the readiness probe reported not ready" as NonEmptyStr,
+        },
+        replan: ReplanEmpty,
+      ),
+    )
+    && !readback_confirmed(
+      readback_of(
+        post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+        post_definition: RunningDefinitionObserved { definition_identity: d_star },
+        registered: d_star,
+        health: PostRestartHealthUnobserved {
+          cause: "the health probe did not run" as NonEmptyStr,
+        },
+        replan: ReplanEmpty,
+      ),
+    )
+    && !readback_confirmed(
+      readback_of(
+        post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+        post_definition: RunningDefinitionObserved { definition_identity: d_star },
+        registered: d_star,
+        health: PostRestartHealthy { invocation: j1 },
+        replan: ReplanNonEmpty { rows: 2 },
+      ),
+    )
+    && !readback_confirmed(
+      readback_of(
+        post_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+        post_definition: RunningDefinitionObserved { definition_identity: d_star },
+        registered: d_star,
+        health: PostRestartHealthy { invocation: j1 },
+        replan: ReplanUnobserved { cause: "no replan was run" as NonEmptyStr },
+      ),
+    )
+}
+
+// THE REOPENING IS BOUND TO WHAT WAS READ, NOT TO WHAT WAS WANTED, and the loop closes: a turn
+// arriving at the reopened locus with the OLD invocation is refused, while one arriving with the
+// invocation the restart produced is admitted.
+test fn w_the_reopened_locus_admits_only_the_validated_pair() -> Bool {
+  let reopened = confirmed_reopened_state(healthy_readback())
+  admission_is_admitted(
+    spark_serving_admit_turn(
+      state: reopened,
+      locus: fixture_locus(),
+      turn_id: "turn-m" as NonEmptyStr,
+      observed_invocation: InvocationIdentityObserved { invocation_identity: j1 },
+      observed_definition: RunningDefinitionObserved { definition_identity: d_star },
+    ),
+  )
+    && !admission_is_admitted(
+      spark_serving_admit_turn(
+        state: reopened,
+        locus: fixture_locus(),
+        turn_id: "turn-n" as NonEmptyStr,
+        observed_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+        observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+      ),
+    )
+}
+
+// A FENCE HELD AT ONE LOCUS SAYS NOTHING ABOUT ANOTHER. The state and the request are compared, so a
+// drain adjudicated for srv5 cannot be spent on srv6.
+test fn w_a_fence_at_one_locus_does_not_answer_for_another() -> Bool {
+  !admission_is_admitted(
+    spark_serving_admit_turn(
+      state: open_at_pre_state(),
+      locus: spark_serving_locus(host: other_host),
+      turn_id: "turn-o" as NonEmptyStr,
+      observed_invocation: InvocationIdentityObserved { invocation_identity: j0 },
+      observed_definition: RunningDefinitionObserved { definition_identity: d0 },
+    ),
+  )
+}
+
+// THE RESTART'S WORDS ARE THE SYSTEMCTL AUTHORITY'S WORDS, ASSERTED AGAINST IT RATHER THAN AGAINST A
+// LITERAL REPEATED HERE. A literal would pass while the unit this restarts and the unit every other
+// effect addresses drifted apart, which is the exact failure the shared authority exists to prevent --
+// and it would keep passing after a scope parameter replaced the hand-encoded `--user`.
+//
+// The sudo half is asserted rather than assumed for the reason the install siblings assert it: this
+// acts on the invoking account's own manager, so a sudo word here would be a privilege escalation the
+// effect does not call for.
+test fn w_the_restart_step_carries_the_systemctl_authoritys_words_and_no_sudo() -> Bool {
+  match planned_restart(drain: clean_drain()) {
+    BoundReactivationNotRequired => false
+    BoundReactivationRefused { cause: _ } => false
+    BoundReactivationPlanned { execution: x } =>
+      match remote_operations_argv_only(
+        operations: map(spark_serving_bound_reactivation_steps(execution: x), st => st.operation),
+      ).first() {
+        Absent => false
+        Present { value: argv } =>
+          join(argv, "\0")
+            == join(systemctl_user_restart_argv(unit: spark_serving_unit_name as NonEmptyStr), "\0")
+            && !any(argv, w => w == "sudo")
+      }
+  }
+}

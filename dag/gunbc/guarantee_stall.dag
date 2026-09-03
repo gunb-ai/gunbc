@@ -1,108 +1,16 @@
-module gunbc.guarantee_rung_drop
+module gunbc.guarantee_stall
 
 import std.types { String, List, Bool, Int }
 import v2.std.algebra { Cons, Empty, fold_list }
-
-// THE TYPED CARRIER FOR A DESIGN section 4b(3) RUNG DROP.
-//
-// DESIGN section 4b(3) states the obligation: "a change may lower a rung only by declaring
-// previous rung, temporary rung, reason, bounded population, and restoration trigger". Those are
-// five fields of one record. Written as a paragraph they are five facts no consumer can read, and
-// section 4c is explicit that a ruling, a status or a dissolution condition captured as free-form
-// String commentary is misplaced data. This module exists so a rung drop is declared once, in a
-// shape that can be counted, joined and rendered, rather than narrated per site.
-//
-// WHAT IS TYPED AND WHAT IS NOT, stated rather than left to be discovered. The ladder itself is a
-// closed vocabulary and is modeled as one, so an unrepresentable rung cannot be written and a
-// census over rung drops is a fold rather than a text scan. The REASON is a closed coproduct too,
-// because the reasons a rung falls are a small named set and naming them is what lets the same
-// class be recognised twice. The population and the restoration trigger carry cited names as
-// data: a symbol name is a citation (DESIGN section 3 -- cite the symbol), not commentary, and
-// the distinction this module enforces is between a fact a consumer reads and a paragraph it
-// cannot. Irreducible rationale about WHY a particular drop has its shape stays where rationale
-// belongs, in an annotation beside the row.
-
-type GuaranteeRung
-  = OutsideTheLadder
-  | Mitigatable
-  | MechanicallyPreventable
-  | StructurallyGuaranteed
-  | StructurallyImpossible
-
-// LostAsPassenger is the class this carrier was first written for: nothing deleted the subject,
-// something the subject rode on was deleted. A deletion census accounts for what it deleted and
-// never for what was riding on it, so this reason is invisible to the cut that causes it and the
-// carrier it names is the thing whose own re-add will NOT restore the passenger.
-type RungDropReason
-  = LostAsPassenger { carrier: String }
-  | DeletedWithoutReplacement
-  | ReplacementStaged { replacement: String }
-
-type GuaranteeRungDrop {
-  subject: String
-  previous: GuaranteeRung
-  temporary: GuaranteeRung
-  reason: RungDropReason
-  population: List<String>
-  restoration_trigger: String
+import gunbc.guarantee_rung {
+  GuaranteeRung, OutsideTheLadder, Mitigatable, MechanicallyPreventable,
+  StructurallyGuaranteed, StructurallyImpossible,
+  guarantee_rung_label, guarantee_rung_index,
 }
 
-fn guarantee_rung_label(r: GuaranteeRung) -> String {
-  match r {
-    OutsideTheLadder => "outside the ladder"
-    Mitigatable => "mitigatable"
-    MechanicallyPreventable => "mechanically preventable"
-    StructurallyGuaranteed => "structurally guaranteed"
-    StructurallyImpossible => "structurally impossible"
-  }
-}
-
-fn rung_drop_reason_label(r: RungDropReason) -> String {
-  match r {
-    LostAsPassenger { carrier: c } => concat("lost as a passenger of ", c)
-    DeletedWithoutReplacement => "deleted without replacement"
-    ReplacementStaged { replacement: r2 } => concat("replacement staged: ", r2)
-  }
-}
-
-fn rung_drop_population_render(names: List<String>) -> String {
-  fold_list(
-    xs: names,
-    empty: "",
-    cons: fn(acc, n) { if acc == "" { n } else { concat(acc, concat(", ", n)) } },
-  )
-}
-
-// THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its
-// own message would be a second authority for the same fact (DESIGN section 3), and the two would
-// drift in the ordinary way: someone updates the row and the refusal keeps telling the reader
-// something that stopped being true.
-fn rung_drop_refusal_message(d: GuaranteeRungDrop) -> String {
-  concat(
-    concat(d.subject, concat(": RUNG DROP, ", guarantee_rung_label(r: d.previous))),
-    concat(
-      concat(" -> ", concat(guarantee_rung_label(r: d.temporary), concat(" (", rung_drop_reason_label(r: d.reason)))),
-      concat(
-        concat("). Population: ", rung_drop_population_render(names: d.population)),
-        concat(". Restored when: ", concat(d.restoration_trigger, "."))
-      )
-    )
-  )
-}
-
-fn rung_drop_is_off_ladder(d: GuaranteeRungDrop) -> Bool {
-  match d.temporary {
-    OutsideTheLadder => true
-    Mitigatable => false
-    MechanicallyPreventable => false
-    StructurallyGuaranteed => false
-    StructurallyImpossible => false
-  }
-}
-
-// THE PEER CARRIER FOR A DESIGN section 4b(2) STALL, and it is a different fact from the drop
-// above rather than a variant of it. A DROP is an event: something that held a rung stopped
-// holding it, and the fields record what was lost. A STALL is a standing state: a class sits
+// THE CARRIER FOR A DESIGN section 4b(2) STALL, and it is a different fact from a section 4b(3)
+// DROP (gunbc.rung_drop) rather than a variant of it. A DROP is an event: something that held a
+// rung stopped holding it, and the fields record what was lost. A STALL is a standing state: a class sits
 // below its attainable ceiling and has not moved, and section 4b(2) obliges it to say WHY it has
 // not -- separating "cannot climb further" from "can climb after one grounding" from "can climb
 // now but unbuilt", because only the first is permanent. Nothing was lost when a stall begins, so
@@ -162,19 +70,6 @@ type GuaranteeStall {
   population: StallPopulation
   next_rung_trigger: String
 }
-
-// THE LADDER'S ORDER, which is a property of the closed vocabulary and not a preference. It exists
-// so "below its ceiling" is decided by a fold instead of by a reader comparing two labels.
-fn guarantee_rung_index(r: GuaranteeRung) -> Int {
-  match r {
-    OutsideTheLadder => 0
-    Mitigatable => 1
-    MechanicallyPreventable => 2
-    StructurallyGuaranteed => 3
-    StructurallyImpossible => 4
-  }
-}
-
 // A STALL WHOSE CURRENT RUNG EQUALS ITS CEILING IS NOT A STALL. The type cannot forbid writing one
 // -- that would need a dependent pair over the two rungs -- so this is validation standing where
 // construction is not available, declared as such rather than presented as a wall.
@@ -182,13 +77,13 @@ fn stall_is_below_ceiling(s: GuaranteeStall) -> Bool {
   guarantee_rung_index(r: s.current) < guarantee_rung_index(r: s.ceiling)
 }
 
-fn stall_is_permanent(s: GuaranteeStall) -> Bool {
-  match s.blocker {
-    CannotClimbFurther { why: _ } => true
-    AwaitsOneGrounding { grounding: _ } => false
-    ClimbableButUnbuilt => false
-  }
-}
+// NO `GuaranteeStall -> Bool` PERMANENCE ACCESSOR LIVES HERE, AND ITS ABSENCE IS THE POINT.
+// `stall_is_permanent` stood here until gunbc#10106 and was a second, weaker spelling of the arm
+// the row already carries: DESIGN section 5 prices a check that re-states a constraint the model
+// carries as a second representation of it, and the practical cost is that every later caller
+// reaches for the Bool instead of the variant it came from, so "why is this permanent" stops being
+// answerable at the use site. Consumers match `ClimbBlocker` themselves -- exhaustively, which is
+// what makes a new arm a compile error at every consumer rather than a silent `false`.
 
 fn climb_blocker_label(b: ClimbBlocker) -> String {
   match b {
@@ -200,13 +95,13 @@ fn climb_blocker_label(b: ClimbBlocker) -> String {
 
 fn stall_population_render(p: StallPopulation) -> String {
   match p {
-    BoundedPopulation { members: ms } => rung_drop_population_render(names: ms)
+    BoundedPopulation { members: ms } => join(ms, ", ")
     UncountedNotEnumerable { reason: r } => concat("UNCOUNTED, not enumerable: ", r)
   }
 }
 
-// ONE RENDERING, for the reason the drop's renderer already gives: a consumer that spelled its own
-// message would be a second authority for the row's own fields and the two would drift.
+// ONE RENDERING, for the reason gunbc.rung_drop's renderer already gives: a consumer that spelled
+// its own message would be a second authority for the row's own fields and the two would drift.
 fn stall_report_message(s: GuaranteeStall) -> String {
   concat(
     concat(s.subject, concat(": STALLED at ", guarantee_rung_label(r: s.current))),
@@ -221,7 +116,7 @@ fn stall_report_message(s: GuaranteeStall) -> String {
 }
 
 // THE FIRST ROW IS THIS MODULE'S OWN CLASS, and it is homed here for the reason every other row is
-// homed with its class: the stall is in the ladder machinery itself, whose authority is this file.
+// homed with its class: the stall is in the stall machinery itself, whose authority is this file.
 // The population is UncountedNotEnumerable rather than the 133 sites the sweep found, deliberately.
 // A measured figure copied into a row is a transcription of an instrument's output, which this
 // repository rules against, and it would additionally be the wrong number: 133 counts PHRASE
@@ -312,7 +207,7 @@ data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
   population: UncountedNotEnumerable {
     reason: "a next-rung trigger is authored as prose, so it has no identity to count at. The majority of sites sit inside // annotations, which DESIGN section 4c makes unreadable to any Accepted program, so no lens can enumerate them however it is written -- the shortfall is the representation, not the sweep"
   },
-  next_rung_trigger: "every class this repository declares below its ceiling declares it through gunbc.guarantee_rung_drop GuaranteeStall rather than in prose, at which point the population becomes a fold over rows and a stall missing its trigger has no spelling. Not satisfied by this carrier existing: one row is a carrier with a consumer, not a migrated population, and the 4b(2) obligation stays review diligence for every class still stalling in an annotation"
+  next_rung_trigger: "every class this repository declares below its ceiling declares it through gunbc.guarantee_stall GuaranteeStall rather than in prose, at which point the population becomes a fold over rows and a stall missing its trigger has no spelling. Not satisfied by this carrier existing: one row is a carrier with a consumer, not a migrated population, and the 4b(2) obligation stays review diligence for every class still stalling in an annotation"
 }
 
 // DECLINED-LIVE-TREE CENSUS, observed by required-floor run 32882641450 after the root decline
@@ -542,7 +437,7 @@ data heterogeneous_child_list_stall: GuaranteeStall = GuaranteeStall {
 // alternative today is still this authored roster or no consumer, but
 // declaration enumeration is no longer the blocker.
 // TRIGGER: fail-closed typed data-value reflection enumerates exactly every top-level data
-// declaration in gunbc.guarantee_rung_drop whose declared type is GuaranteeStall, and no declaration
+// declaration in gunbc.guarantee_stall whose declared type is GuaranteeStall, and no declaration
 // outside that module, and projects each fully evaluated value in deterministic source order,
 // SUFFICIENT FOR reconstructing every field of every GuaranteeStall row and refusing any initializer
 // form or field value it cannot project rather than substituting NotVariantValue. At that point this
@@ -658,7 +553,105 @@ data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeS
   next_rung_trigger: "a modeled Git-native bootstrap sufficient to initialize an empty deployed repository from the admitted runner checkout at the exact candidate, with HEAD, index and tracked worktree read back as that one revision before any later deployment member runs; copying any .git path as files, relaxing ConvergencePreStateUnobservable, or merely creating an empty git directory does not satisfy the capability"
 }
 
+// THE PROSE HALF OF THE DROP ROSTER, DECLARED AS A STALL BECAUSE THAT IS WHAT IT IS. 26 of
+// gunbc.rung_drop's rows state their DESIGN section 4b(3) fields -- previous rung, temporary rung,
+// reason, population, restoration trigger -- only inside an `authored` paragraph, so for those rows
+// the obligation 4b(3) states is met by a human reading and by nothing a program can fold. The four
+// rows consolidated from the deleted gunbc.guarantee_rung_drop carry the fields typed, which is
+// what makes this a stall with a known repair rather than a limit.
+//
+// GROWTH OF THE ARM IS VISIBLE BUT NOT PREVENTED, AND THIS ROW SAID OTHERWISE FIRST. Its first
+// version asserted that a further prose row was structurally impossible because
+// gunbc.rung_drop LegacyProseIdentity had no constructor for one. That was falsified within hours by
+// spark_serving_local_artifact_not_reproducible, authored on another lane against the
+// pre-consolidation shape and landed in main mid-consolidation; admitting it cost one arm. The
+// enumeration makes growth UNSILENT -- an edit to a named list, visible in review, counted by a fold
+// -- and that is mechanically preventable, not structural. What stalls is the SHRINKING of the arm,
+// which is per-row work with no mechanical oracle:
+// deciding which sentence of a paragraph is its reason and which its population is semantic
+// rewriting, and several of these paragraphs argue at length about that very question. Each split
+// deletes one arm from that coproduct, so the arm count IS the remaining debt and nothing has to be
+// counted separately.
+//
+// THE TRIGGER NAMES THE CAPABILITY, not the last row. A trigger reading "the final row is split"
+// would be satisfiable by a split that fabricated fields, which is the failure the prose arm exists
+// to avoid; the capability is that every drop's five fields are readable AS DATA, which no
+// fabricated split delivers.
+data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a declared section 4b(3) rung drop states its five fields only as prose, so its reason, population and restoration trigger are unreadable by any fold",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: [
+      "gunbc.rung_drop spark_serving_local_artifact_not_reproducible",
+      "gunbc.rung_drop floor_cut",
+      "gunbc.rung_drop measurement_bankruptcy",
+      "gunbc.rung_drop regen_producer",
+      "gunbc.rung_drop cited_symbol_census",
+      "gunbc.rung_drop emit_stage_blocking",
+      "gunbc.rung_drop lens_enforcement_censuses",
+      "gunbc.rung_drop required_gate_bankruptcy",
+      "gunbc.rung_drop text_boundary_identity_wall",
+      "gunbc.rung_drop fabric_evidence_gating",
+      "gunbc.rung_drop emitted_bytes_witness_required_lane",
+      "gunbc.rung_drop direct_call_arg_seam_v2_exemption",
+      "gunbc.rung_drop floor_cost_claim_qualification_unavailable",
+      "gunbc.rung_drop spark_role_scoped_retirement_production_root",
+      "gunbc.rung_drop floor_cut_heal",
+      "gunbc.rung_drop floor_cut_effect_gates",
+      "gunbc.rung_drop floor_cut_fmt_gate",
+      "gunbc.rung_drop floor_cut_merge_admission_stamping",
+      "gunbc.rung_drop floor_cut_falsifier_cadence",
+      "gunbc.rung_drop builtin_signature_arity_pairing_fabricates",
+      "gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding",
+      "gunbc.rung_drop namespace_admission_consumed_row_deletion",
+      "gunbc.rung_drop dashboard_merge_ready_semantic_admissibility",
+      "gunbc.rung_drop floor_cut_behavioural_regression_differential",
+      "gunbc.rung_drop floor_cut_receipt_discriminating_arms",
+      "gunbc.rung_drop floor_cut_regen_second_generation_agreement"
+    ]
+  },
+  next_rung_trigger: "EVERY row in gunbc.rung_drop rung_drop_roster carries TypedDeclaration -- its previous rung, temporary rung, reason, bounded population and restoration trigger readable as data and not as a paragraph -- with each split reviewed as its own readable diff against the paragraph it replaces, at which point LegacyProseIdentity and the AuthoredProse arm are both deleted and the class is structurally impossible rather than empty"
+}
+
+// ONE EXPRESSION, TWO EVALUATORS -- AND WHY THIS IS A STALL RATHER THAN A DROP, which is the whole
+// reason it is in this carrier. Nothing ever required this comparison, so no rung was lowered and
+// there is no previous rung to restore; a `RungDrop` row would make the declared-drop ledger report
+// a newly discovered gap as a regression, which is the rung inflation section 4b(1) forbids applied
+// to the compiler's own self-description. It was drafted as a drop on gunbc#10154 and moved here
+// (codex review 59064) rather than kept with a disclaimer, because a row denying the meaning of the
+// carrier it sits in is a meaning fork, not a caveat.
+//
+// WHY IT IS NOT `gunbc.recurring_failure_mode` `realization_arms_diverge_on_whether_the_program_refuses`,
+// stated with a specimen on each side because the question a reader actually has is which row owns a
+// given specimen. The two subjects CROSS. IN THIS ROW AND NOT IN THAT ONE: .dag evaluates both
+// operands of a conjunction and emitted Rust short-circuits, so where the right operand is total the
+// two arms agree on every answer and differ only in WHAT RAN -- no refusal fires, so there is no
+// refusal divergence for that row to see and every result-comparison oracle is green through it. IN
+// THAT ROW AND NOT IN THIS ONE: a divergence between two realization arms NEITHER of which is the
+// authority, which is not an authority-versus-target relation at all. Neither contains the other.
+//
+// THE CEILING IS 2 AND NOT HIGHER BECAUSE THIS ROW OWNS DETECTION, NOT CONSTRUCTION. Making the
+// divergence unwritable -- evaluation order modeled as a property of a connective and consulted by
+// both realizations -- is that failure-mode row's trigger. This row is the executed check over
+// whatever construction does not yet cover, which is the order section 5 states, so the two coexist.
+//
+// THE POPULATION IS HONESTLY UNCOUNTABLE AND A GREP UNDERSTATES IT BY CONSTRUCTION: the interpreter
+// is the STRICTER arm, so any author who wrote the guard idiom over a refusing right operand hit the
+// refusal while authoring and rewrote it. The surviving matches are the cases that do NOT carry the
+// consequence, so a low count is not evidence the class is small.
+data authority_target_same_expression_equivalence_stall: GuaranteeStall = GuaranteeStall {
+  subject: "one expression evaluated by the .dag authority and by the emitted target is never compared by execution, so the two may agree on the returned value and differ on which subexpressions ran",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable { reason: "the affected population is every expression whose two realizations could diverge, and it is survivorship-filtered: the interpreter is the stricter arm, so sites where the divergence carried a consequence were rewritten while authoring and only the harmless matches survive to be grepped" },
+  next_rung_trigger: "a lane that runs ONE expression through BOTH realizations and refuses a divergence, sufficient for an emission differing from its authority in value OR in what it evaluates being caught, demonstrated by a red on a fixture where the two agree on the returned value and differ on which subexpressions ran; the fixture is already executed and dated on gunbc#10139, so what is owed is enrolment and not a harness, and enrolling behavioral_differential discharges the seed-Rust versus emitted-Rust axis ONLY and does not touch this row"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  authority_target_same_expression_equivalence_stall,
   runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
@@ -678,6 +671,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   builtin_parameter_name_forked_across_hand_authored_sites_stall,
   algebra_operation_associativity_undeclarable_stall,
   deployed_repository_empty_root_bootstrap_stall,
+  prose_declared_rung_drop_stall,
 ]
 
 // A STALL AT ITS CEILING IS NOT A STALL: the row would describe a class that already arrived, and
