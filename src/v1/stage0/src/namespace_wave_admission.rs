@@ -746,35 +746,24 @@ pub struct TransitionAdmission {
 ///
 /// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
 /// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
-/// AND THE ROSTER RE-OPENS ONCE MORE, for the same reason and by the same rule. The sweep above is
-/// main's and it is correct: the gunbc#10077 rows were consumed and the change that re-tensed their
-/// trigger owed their deletion. It restored the resting state to empty ON MAIN. This merge then
-/// re-opens it with the five gunbc#10011 rows below, whose transition has NOT merged -- verified
-/// rather than assumed, because assuming is what I got wrong the last two times: main still
-/// declares HeldSpecificationSupersessionStanding in
-/// extdeps.cpu.ampere_altra_platform_hw_design.subject and extdeps.publication does not carry it,
-/// so the deltas these three adjudicate are still producible and none of them is consumed.
 ///
-/// TWO OF THE FIVE ARE GONE AND THAT IS THE SAME TRIGGER FIRING, NOT A SEPARATE DECISION. They
-/// adjudicated bindings inside `platform_facts_are_from_the_latest_revision`, and review 59072
-/// established that predicate as the dissolved variant-test shape, so this change DELETES the
-/// declaration rather than widening its match. A row naming a declaration that no longer exists
-/// matches no producible delta -- it is STALE, and a stale row refuses every unrelated PR in the
-/// repository, which is the failure mode this whole roster exists to avoid. Deleting the
-/// declaration and keeping its admission rows would have been the fabricated-debt shape: a
-/// permission over nothing that reads as coverage.
+/// THE gunbc#10011 ROWS ARE GONE, AND THEIR TRIGGER IS WHAT REMOVED THEM. They arrived here through
+/// a merge conflict: main had re-opened this roster for the supersession-standing transition while
+/// this branch re-opened it for an identity-equality relocation, so the resolution kept both — a
+/// union, because dropping either side would have left a live delta unadjudicated and refused an
+/// unrelated PR. Main's own note recorded that the #10011 transition had NOT merged at the time it
+/// was written, and that was true when written.
 ///
-/// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
-/// deletion -- the specification record's field type, and the standing row's declared type and
-/// constructor. Their transition is still open for the reason stated above.
+/// IT IS NO LONGER TRUE, AND THE RUN SAID SO BEFORE I DID. The merge that brought those rows here
+/// also brought the landed transition: extdeps.publication now DECLARES
+/// HeldSpecificationSupersessionStanding and extdeps.cpu.ampere_altra_platform_hw_design.subject
+/// IMPORTS it from there, so the base itself binds those spellings to their target and the three
+/// deltas are no longer producible. The wave phase reported them as CONSUMED and refused this
+/// change, which is the roster working: a consumed row is charged to whoever next touches the file,
+/// and this merge touched it. Verified against the two modules rather than inferred from the
+/// refusal, because main's note is explicit that assuming consumption is what went wrong twice.
 ///
-/// AND ONE MORE ROW JOINS THEM FROM A DIFFERENT SUBJECT (gunbc#10218), which is a union rather than
-/// a choice: main re-opened this roster for the supersession-standing transition while this branch
-/// re-opened it for an identity-equality relocation, and both transitions are open at once.
-/// Resolving the conflict by taking either side alone would have dropped a live admission and
-/// refused an unrelated change -- the failure this roster exists to prevent, arrived at through
-/// merge resolution instead of through authoring.
-///
+/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
 /// `physical_asset_identity_eq` was authored privately inside
 /// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
 /// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
@@ -782,52 +771,20 @@ pub struct TransitionAdmission {
 /// when product.inventory needed the same comparison: inventory is a generic authority, so
 /// importing a specific product's helper to obtain an equality would invert the layering. The
 /// spelling is unchanged on both sides and only its TARGET moved, which is exactly TargetChanged.
-/// Its consumption is decidable on the same rule as the rows above: once gunbc#10218 merges, the
-/// base binds the spelling to product.placement_supply, the delta stops being producible, and the
-/// row is stale and owed deletion by the next roster-touching change.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: specification record field type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "AltraPlatformHwDesignSpecification",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+/// Its consumption is decidable on the identical rule: once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
+/// deletion by the next roster-touching change.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "gunbc#10218 identity-equality re-home: PhysicalAssetIdentity comparison moves to \
+            the module that owns the type",
+    subject: AdmissionSubject::Binding {
+        module: "product.printed_chassis.manufacturing_manifest",
+        in_declaration: "scan_printer_assets",
+        spelling: "physical_asset_identity_eq",
+        target: "product.placement_supply",
     },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, declared type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, constructor",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "NewerRevisionExistsUnretrieved",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10218 identity-equality re-home: PhysicalAssetIdentity comparison moves to \
-                the module that owns the type",
-        subject: AdmissionSubject::Binding {
-            module: "product.printed_chassis.manufacturing_manifest",
-            in_declaration: "scan_printer_assets",
-            spelling: "physical_asset_identity_eq",
-            target: "product.placement_supply",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

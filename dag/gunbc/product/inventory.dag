@@ -512,6 +512,67 @@ fn departure_origin_position(origin: DepartureOrigin) -> StockPosition {
   }
 }
 
+// PROVENANCE MAY ONLY BE READ FROM A LEDGER THE AUTHORITY ADMITTED, and this carrier is what makes
+// that structural rather than remembered. Review 59291 found the hole: the first cut of
+// asset_source_lot_standing took a raw List<InventoryEvent> and scanned it directly, so it would
+// happily resolve a source lot out of an event population fold_inventory_ledger REFUSES -- an
+// installation before acquisition, a zero-quantity event, an install exceeding available stock, more
+// named assets than units. Its own witnesses proved the defect rather than the behaviour: every
+// fixture was a lone QuantityInstalled with no LotAcquired before it, which this module rejects as
+// EventBeforeAcquisition. That is two live interpretations of whether an event happened, which is
+// the §3 fork, and it let provenance be derived from evidence the authority had already refused.
+//
+// A validation would have been the weaker repair: check the fold, then scan the raw list anyway, and
+// the invalid pairing -- admitted lot, unadmitted events -- stays writable. The seal removes it. An
+// AdmittedInventoryLedger is minted ONLY on the LedgerSettled arm, so a consumer holding one is
+// holding events this module has already applied end to end.
+//
+// IT RETAINS THE WHOLE ProcurementLot, NOT ITS IDENTITY, and that is the difference between a seal
+// and a seal-shaped hole. fold_inventory_ledger judges a PRODUCT -- ProcurementLot x events -- and
+// its verdict depends on more than the identity written into each event: available stock originates
+// from lot.quantity_acquired, and the landed-cost and catalog facts travel with the record. A
+// carrier holding only the identity would forget WHICH LOT VALUE supplied the quantity that made the
+// fold settle, so a later reader could pair this admitted event list with a different ProcurementLot
+// bearing the same identity and different contents. That is the unbound pairing again, one level in:
+// events admitted under lot value A, later interpreted under lot value B. The first cut of this
+// carrier made exactly that mistake.
+//
+// THE EVENTS FIELD IS DELIBERATELY READABLE. It is not the geometry case, where a transported value
+// asserts something about an independent canonical model and must never actuate. Here the event
+// sequence IS the subject the authority judged, and once the fold settles those events ARE the
+// admitted history; there is no canonical list that should replace them. The seal protects
+// construction and pairing, not secrecy: a caller may INSPECT admitted events and may not MANUFACTURE
+// an admitted ledger.
+type AdmittedInventoryLedger sole_constructor {
+  lot: ProcurementLot
+  events: List<InventoryEvent>
+}
+
+type InventoryLedgerAdmission
+  = LedgerAdmitted { admitted: AdmittedInventoryLedger }
+  | LedgerAdmissionRefused {
+      lot: InventoryLotIdentity,
+      cause: LedgerRefusalCause,
+      event_ordinal: Nat,
+      event_label: NonEmptyStr
+    }
+
+fn admit_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> InventoryLedgerAdmission {
+  match fold_inventory_ledger(lot: lot, events: events) {
+    LedgerSettled { state: _ } =>
+      LedgerAdmitted { admitted: AdmittedInventoryLedger { lot: lot, events: events } }
+    LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l } =>
+      LedgerAdmissionRefused { lot: lot.identity, cause: c, event_ordinal: o, event_label: l }
+  }
+}
+
+fn scan_admitted_ledgers(ledgers: List<AdmittedInventoryLedger>, asset: PhysicalAssetIdentity) -> AssetLotScan {
+  fold(ledgers, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, l) {
+    let inner = scan_asset_lot_hits(events: l.events, asset: asset)
+    AssetLotScan { hits: concat(acc.hits, inner.hits), next_ordinal: acc.next_ordinal + inner.next_ordinal }
+  })
+}
+
 // WHICH LOT NAMED THIS PHYSICAL ASSET -- the narrowest generic projection over the event ledger, and
 // it lives HERE because this module owns what an installation event says. A consumer that needs an
 // asset's provenance must not re-read assets, origin or stock semantics for itself: that would be a
@@ -552,10 +613,23 @@ type AssetLotScan sole_constructor {
 
 // The asset may appear more than once WITHIN one event's list, and that counts as more than one
 // occurrence: a list naming the same asset twice is malformed evidence, not one sighting.
+//
+// ONE FOLD, NOT map OVER filter. The first cut spelled this `map(filter(a, ...), _ => hit)`, which
+// traverses twice and -- the reason it was caught rather than merely suboptimal -- put a literal
+// `_ =>` inside the match body, where the non-fold-residue detector reads a top-level wildcard arm
+// and flags the function as unrostered residue. The single fold removes both at once: one traversal,
+// and every arm of the match below stays explicitly enumerated, which is what makes adding a
+// variant to InventoryEvent a compile error here rather than a silently dropped event kind.
 fn asset_hits_in_event(event: InventoryEvent, asset: PhysicalAssetIdentity, ordinal: Nat) -> List<AssetLotHit> {
   match event {
     QuantityInstalled { lot: l, quantity: _, origin: _, assets: a } =>
-      map(filter(a, x => physical_asset_identity_eq(a: x, b: asset)), _ => AssetLotHit { lot: l, ordinal: ordinal })
+      fold(a, init: [], f: fn(acc, x) {
+        if physical_asset_identity_eq(a: x, b: asset) {
+          concat(acc, [AssetLotHit { lot: l, ordinal: ordinal }])
+        } else {
+          acc
+        }
+      })
     LotAcquired { lot: _ } => []
     LotReceived { lot: _, quantity: _ } => []
     QuantityQualified { lot: _, quantity: _ } => []
@@ -605,8 +679,8 @@ fn conflict_over_lots(asset: PhysicalAssetIdentity, lots: List<InventoryLotIdent
 // CONFLICT OUTRANKS DUPLICATE, because two lots is the more specific and more actionable statement:
 // reporting "seen twice" for an asset claimed by two different lots would discard the fact a reader
 // most needs. Duplicate is what remains when the repetition is within ONE lot.
-fn asset_source_lot_standing(events: List<InventoryEvent>, asset: PhysicalAssetIdentity) -> AssetSourceLotStanding {
-  let scan = scan_asset_lot_hits(events: events, asset: asset)
+fn asset_source_lot_standing(ledgers: List<AdmittedInventoryLedger>, asset: PhysicalAssetIdentity) -> AssetSourceLotStanding {
+  let scan = scan_admitted_ledgers(ledgers: ledgers, asset: asset)
   let lots = distinct_hit_lots(hits: scan.hits)
   let n = count(scan.hits)
   if n == 0 {
