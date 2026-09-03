@@ -164,14 +164,18 @@ drift is frozen in `v2.workflow.floor_cost_debt` precisely so it is not granted 
 Which of the two remedies fits the emit and execution families — and whether a `bind_outcome` repair
 buys real margin or only a rank change — is a decision this measurement informs and does not make.
 
-## 6. The premise is measured false: the crossers are not above the ceiling, and the budget is not mis-set
+## 6. The premise is measured false: there is no fixed above-ceiling identity set, and the budget is not mis-set
 
 *Added after the §5 question was worked. It is recorded here rather than in the thread that produced
 it because the belief it refutes is the one a reader re-forms from the same symptom — a red floor
 lane naming a handful of emit rows — and re-deriving it costs a night.*
 
 **The claim being retired: "three (later seven) self-host witness modules sit above the 500ms hard
-CPU ceiling." Measured, no row in that family sits above the ceiling.** Both remedies §5 names are
+CPU ceiling." Measured, no fixed above-ceiling identity set exists.** Completed green runs place this
+family's band below 500ms; run variance can carry its top across, and four completed-over-cost rows
+were observed at 506–515ms. What is retired is that the family is *intrinsically* above the ceiling —
+a row does not stably "sit" on either side of an attempt-safety boundary — not the crossings
+themselves, which are real and recur. Both remedies §5 names are
 refused for this family on evidence, and the ceiling is correctly denominated. What remains is a
 different subject, stated at the end.
 
