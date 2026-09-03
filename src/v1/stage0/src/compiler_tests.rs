@@ -527,9 +527,11 @@ mod compiler_tests {
     /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
     /// two emitted crates, which is minutes rather than milliseconds, so it is ENROLLED AND OPT-IN --
     /// `cargo test --release -p v1-compiler --lib function_value_adapter_fixture_closure_discrimination
-    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. `rust-unit-tests` is
-    /// additionally not a `needs` of the required aggregate, so even un-ignored a red here would be
-    /// visible and would not block through the required context. CANDIDATE EVIDENCE, NO WALL: an
+    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. CANDIDATE
+    /// EVIDENCE, NO WALL, AND THE `#[ignore]` IS THE WHOLE OF THAT. A second clause stood here
+    /// until gunbc#10078, saying `rust-unit-tests` is additionally not a `needs` of the required
+    /// aggregate; the lane IS required now, so it is removed rather than softened -- deleting the
+    /// `#[ignore]` is by itself sufficient to put this on the acceptance path. Until then: an
     /// `#[ignore]` is a cost decision and NOT a rung, and nothing here may be cited as coverage that
     /// executes on the merge path or as a rung for the adapter.
     #[test]

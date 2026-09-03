@@ -1,0 +1,158 @@
+module extdeps.filesystem.rust_realization
+
+// THE RUST REALIZATION OF create-new PUBLISH, AS ONE AUTHORITY BOTH CONSUMERS COPY.
+//
+// `extdeps.filesystem` owns the INTERFACE shape of a filesystem operation. This module owns one
+// REALIZATION of it -- the Rust transport handler bound to that shape -- which DESIGN section 3
+// keeps peripheral to the interface rather than inside it. It is a separate module for the reason
+// the section gives: interface, realization and policy are three facts, not one row.
+//
+// WHY IT EXISTS AT ALL. `Filesystem.WriteCreateNew` had TWO Rust realizations. The seed interpreter
+// carried a hand-written `write_file_create_new`, and `v1.compiler.emit_rust` carried a string of
+// Rust source emitted into every compiled program. One fact, two authorities -- and review
+// 5089156132 on gunbc#10069 measured the consequence: finding 3 repaired the interpreter to
+// stage-then-publish while the emitted spelling still opened the target directly, so a failed
+// emitted write left a partial repository that the model reported as never created. Repairing the
+// reachable authority left the other lying, which is DESIGN section 4b rung honesty: a class's rung
+// is the MINIMUM across its paths, so a fix on one path raises nothing.
+//
+// #10069 brought the two spellings back into agreement BY HAND, and said so in its own annotation:
+// nothing but review held them in step. This module is the construction that replaces that review.
+//
+// THE SEAM IS A COMPLETE NAMED FUNCTION, NOT A BLOCK, AND THAT CHOICE IS THE WHOLE DESIGN.
+//
+// The obvious repair -- keep the emitted bare block and teach the seed to build a function from it
+// -- was proposed and REFUSED on external review, correctly. That translator would have to know
+// what the block assumes in scope and how its result channel maps onto `io::Result`, which makes it
+// a THIRD hand-maintained authority sitting on the seam. It would be worse than the fork it
+// replaces: a fork fails loudly the moment the two sides disagree, while a translator keeps
+// producing something plausible from inputs it has misunderstood.
+//
+// So the row below is a whole function definition, and BOTH consumers copy these exact bytes. The
+// emitted crate places it in its `v1_rt` runtime module and reaches it through `v1_rt::`; the
+// crate root was tried first and does not work, because the seed is split across crates and a
+// root-level definition is not reachable from them; the seed receives the same text as a
+// committed generated artifact and
+// calls it. What is true, and what the earlier wording overstated, is that no HAND-MAINTAINED
+// semantic translator stands between the authority and either projection -- there is no second
+// spelling for anyone to edit. Text on one route DOES get transformed: that projection passes
+// through rustfmt, a canonicalizer this repo does not own, and it has already moved these bytes
+// twice during this change. So the seam is not absent, it is CHECKED: the executed control requires
+// the canonical block to be at rustfmt's fixed point, which is what makes the two routes agree.
+//
+// IT RETURNS `io::Result<()>`, NOT THE FILE RESULT TUPLE, and that is not seed ergonomics. The
+// `(success, content, error, byte_count)` tuple is the RESULT-CHANNEL POLICY of the File transport:
+// a stringified error and a byte count. Making it canonical would stringify `std::io::Error` inside
+// the realization and discard the host's structured failure before any consumer asked for that
+// loss -- policy fused into realization, the layer inversion DESIGN section 3 names. Each consumer
+// projects the outcome into whatever channel it owns; that projection is ordinary consumer code,
+// not a second implementation.
+//
+// THE STAGING NAME IS ALLOCATED, NOT CALCULATED, AND THE DIFFERENCE IS THE WHOLE REPAIR.
+//
+// #10069 shipped `{path}.gunbc-create-{pid}`: unique per TARGET, but not per THREAD. Two threads of
+// one process creating the same target derived the same name, so the loser failed its exclusive
+// open on the TEMPORARY and reported AlreadyExists against an internal name it had never asked to
+// write. Refusing was right -- one of two racers must lose -- but the refusal did not locate itself
+// at the operator's subject, and if the winner then failed too, both calls could refuse with no
+// target ever published.
+//
+// A PER-ATTEMPT SEQUENCE ALONE DOES NOT CLOSE THAT CLASS, which external review established after
+// the first version of this module tried exactly that. A sequence makes the name unique among LIVE
+// calls in one process; it does not make an occupied candidate unobservable. This function
+// deliberately ignores removal failure after publication, so stale staging files are an ADMITTED
+// physical state, and a later process may reuse the pid and restart its sequence at zero. A one-shot
+// candidate that returns its own AlreadyExists therefore reproduces the identical defect -- target
+// absent, legitimate create refused because an INTERNAL filename was occupied -- at a lower
+// frequency, which is worse than the original for being harder to observe.
+//
+// So the loop SEARCHES: an occupied candidate is skipped and the next one tried; any other open
+// error is the host's and is returned unchanged; reaching the attempt budget REFUSES, carrying the
+// distinct StagingCandidateBudgetExhausted diagnostic under ErrorKind::Other. That is a distinct
+// DIAGNOSTIC, not a typed Rust cause -- there is no custom payload to downcast to, and calling it
+// typed would claim a structure the code does not have. What it does buy is mechanical: real target
+// occupancy is AlreadyExists, an internal budget end is Other, and no production decision should
+// parse the message text. Crucially the occupied arm does not remove the file it found -- that file
+// belongs to another attempt, and deleting it would convert a naming collision into data loss.
+//
+// EXHAUSTION IS NOT AlreadyExists, AND THAT IS THE SAME DISTINCTION ONE LEVEL UP. The first loop
+// reported exhaustion with ErrorKind::AlreadyExists, which external review caught. AlreadyExists is
+// precisely the kind by which a caller of a create-only write concludes THE TARGET IS PRESENT, DO
+// NOT OVERWRITE IT. Returning it when the target is absent and the real cause is an internal
+// staging deficit is #10069's defect re-expressed in the TYPE rather than in the filename: an
+// internal condition wearing the domain refusal's identity, so no consumer can distinguish "your
+// file is already there" from "this function could not obtain a private name". The two demand
+// opposite responses -- the first is a correct terminal refusal, the second is a defect that should
+// be reported as one -- so they may not share a discriminant.
+//
+// THE u64 WRAP IS NOT A SEPARATE HAZARD, and the reason is a property of the loop rather than of the
+// counter. Wrapping would make the sequence revisit values it has used, which before the loop would
+// have been a silent collision; now a revisited value is simply an occupied candidate, which is the
+// one case the loop is built to survive. A wrap check would therefore refuse a state the function
+// already handles correctly -- validation standing where construction is present.
+// THE ATTEMPT BUDGET IS A NAMED REALIZATION LIMIT, NOT A DERIVED ONE, AND SAYING SO IS THE POINT.
+//
+// There is no filesystem law from which "the correct number of stale internal names to tolerate"
+// follows, so deriving one would be a false warrant. What the number bounds is WORK, not safety:
+// any finite ceiling keeps the operation fail-closed, because the arm it selects REFUSES. It is
+// therefore stated as what it is -- one WriteCreateNew act may perform at most this many exclusive
+// staging-candidate acquisition attempts before refusing with StagingCandidateBudgetExhausted.
+//
+// It lives here, named, rather than as a literal inside the generated Rust, so that the function
+// and its controls consume ONE authority. A test that retyped 1024 would be a second authority for
+// the same fact, and would keep passing if this row changed -- which is the failure this module
+// exists to remove, in miniature.
+data rust_file_create_staging_candidate_attempt_limit: Int = 1024
+
+fn rust_file_create_staging_candidate_attempt_limit_def() -> String {
+  concat(
+    "pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = ",
+    "{rust_file_create_staging_candidate_attempt_limit}",
+    ";\n",
+  )
+}
+
+data rust_file_write_create_new_fn_def: String = "fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {\n    use std::io::Write;\n    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);\n    let mut attempted: u32 = 0;\n    let (mut staged, staging_path) = loop {\n        if attempted >= GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT {\n            return Err(std::io::Error::other(format!(\n                \"gunbc create-new: StagingCandidateBudgetExhausted attempted={} limit={}\",\n                attempted, GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT\n            )));\n        }\n        attempted += 1;\n        let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);\n        let candidate = format!(\"{}.gunbc-create-{}-{}\", file_path, std::process::id(), seq);\n        match std::fs::OpenOptions::new()\n            .write(true)\n            .create_new(true)\n            .open(&candidate)\n        {\n            Ok(file) => break (file, candidate),\n            Err(occupied) if occupied.kind() == std::io::ErrorKind::AlreadyExists => continue,\n            Err(host) => return Err(host),\n        }\n    };\n    if let Err(staging_err) = staged.write_all(content) {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(staging_err);\n    }\n    if let Err(sync_err) = staged.sync_all() {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(sync_err);\n    }\n    drop(staged);\n    let published = std::fs::hard_link(&staging_path, file_path);\n    let _ = std::fs::remove_file(&staging_path);\n    published\n}\n"
+
+// THE SEED'S COPY, AS A COMMITTED GENERATED ARTIFACT.
+//
+// The emitted crate receives the definition through its own `v1_rt` runtime module. The seed
+// cannot use that path: it is
+// ordinary Rust compiled by cargo, and it cannot execute a String. So it receives the SAME BYTES as
+// a generated .rs module that the stage0 crate compiles and calls, enrolled in
+// gunbc.generated_artifact like every other committed projection -- which means the regeneration
+// and fixed-point gates refuse drift on it rather than a reviewer noticing.
+//
+// THE HEADER IS THE ORDINARY GENERATED-ARTIFACT HEADER, so the merge driver and the drift gate
+// treat this file exactly as they treat the others. `pub` is required by BOTH projections, not
+// just this one: the seed interpreter calls across modules, and the emitted program's generated
+// modules reach their copy as `v1_rt::gunbc_file_write_create_new`. The emitted copy is NOT
+// crate-root -- that was tried and does not work under the split-crate seed -- so it is qualified
+// like any other cross-module call.
+fn expected_gunbc_file_transport_generated_rs() -> String {
+  join([
+    "// Generated by v1 compiler -- do not edit.\n",
+    "// Source module: extdeps.filesystem.rust_realization\n",
+    "\n",
+    rust_file_create_new_canonical_block(),
+  ], "")
+}
+
+// ONE CANONICAL BLOCK, SO THE COMPARED RANGE COVERS THE LIMIT AS WELL AS THE FUNCTION. The limit
+// and the function that reads it travel as a single unit.
+//
+// AN EARLIER VERSION OF THIS COMMENT CLAIMED COMPILATION WAS THE PROPERTY THAT KEPT THEM TOGETHER --
+// that a projection copying the function while leaving the constant behind would not compile. That
+// is false, and it was falsified BY A MUTATION RUN AGAINST THIS VERY MODULE: one projection at 1024
+// against the other at 512 compiles on both sides, matches byte-for-byte across the whole function,
+// and behaves differently. Compilation proves the PRESENCE of a constant with the expected name. It
+// says nothing about AGREEMENT on its value. What proves agreement is extracting from the constant
+// through the function and comparing bytes, which is why the control's range starts where it does.
+fn rust_file_create_new_canonical_block() -> String {
+  concat(
+    rust_file_create_staging_candidate_attempt_limit_def(),
+    "\n",
+    "pub ",
+    rust_file_write_create_new_fn_def,
+  )
+}

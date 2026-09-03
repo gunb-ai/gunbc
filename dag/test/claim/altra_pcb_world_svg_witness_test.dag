@@ -100,29 +100,41 @@ import product.altra_motherboard.pcb_world {
   altra_pcb_world,
   altra_pcb_world_for,
   admit_pcb_world,
+  AltraPcbWorldDesignNotAdmitted,
+  AltraPcbWorldPlacementNotAdmitted,
+  AltraPcbWorldSettledInHub,
   outline_copies_mt_jade_reference,
 }
 import product.altra_motherboard.placement {
   BoardBodyLayoutStanding,
   BodyLayoutCheckedOverEstablishedSubsetOnly,
   altra_reference_plan,
+  BoardPlanConstruction,
+  BoardPlanReady,
+  BoardPlanOutlineRefused,
+  BoardPlanUnavailableForDesign,
+  BoardPlanDesignNotAdmitted,
   altra_1p_minimum_ref,
 }
-import product.altra_motherboard.scene_emission { emit_altra_board_scene }
 import product.altra_motherboard.minimal_design {
-  AltraMinimalMotherboard,
   ActiveDdrTopology,
+  AltraMinimalMotherboard,
   DdrChannel0,
   DdrChannel1,
   DdrChannel2,
   DdrChannel3,
   DdrChannel4,
   DdrChannel5,
+  DdrChannel6,
+  DdrChannel7,
   FirstDimmOnChannel,
-  MemoryConfiguration,
   Production,
+  RevARoutedMemoryDesign,
+  RoutedDdrTopology,
+  ShipsWithProductionPopulation,
   altra_1p_minimum,
 }
+import product.altra_motherboard.scene_emission { emit_altra_board_scene }
 import extdeps.cpu_attachment.ilm4926 { ilm4926 }
 import extdeps.cpu.ampere_altra_package {
   altra_package_body_width,
@@ -260,11 +272,16 @@ fn drop_label(xs: List<NonEmptyStr>, needle: String) -> List<NonEmptyStr> {
 
 fn six_channel_design() -> AltraMinimalMotherboard {
   AltraMinimalMotherboard {
-    intent: Production,
-    memory: MemoryConfiguration {
-      topology: ActiveDdrTopology {
-        populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
-        positions_per_channel: [FirstDimmOnChannel],
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation {
+        production: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
       },
     },
     pcie_lanes_broken_out: 4,
@@ -348,17 +365,22 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
     Absent => false
     Present { value: w } =>
       match admit_pcb_world(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), w: w) {
-        PartialPcbWorldReady { value: _ } => false
-        AdmittedPcbWorld { value: _ } => false
-        PcbWorldRefused { cause: c } =>
-          match c {
-            PcbCapabilityStillPending { capability: cap } => (cap as String) == "stackup"
-            PcbCapabilityRefused { capability: _, cause: _ } => false
-            PcbDesignPlanUnavailable { only_available: _ } => false
-            PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
-            PcbPlacementNotAdmitted => false
-            PcbBoardOutlineRefused { cause: _ } => false
-            PcbOutlineCopiedFromCitedForeignBoard => false
+        AltraPcbWorldDesignNotAdmitted { causes: _ } => false
+        AltraPcbWorldPlacementNotAdmitted { causes: _ } => false
+        AltraPcbWorldSettledInHub { inner: h } =>
+          match h {
+            PartialPcbWorldReady { value: _ } => false
+            AdmittedPcbWorld { value: _ } => false
+            PcbWorldRefused { cause: c } =>
+              match c {
+                PcbCapabilityStillPending { capability: cap } => (cap as String) == "stackup"
+                PcbCapabilityRefused { capability: _, cause: _ } => false
+                PcbDesignPlanUnavailable { only_available: _ } => false
+                PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+                PcbPlacementNotAdmitted => false
+                PcbBoardOutlineRefused { cause: _ } => false
+                PcbOutlineCopiedFromCitedForeignBoard => false
+              }
           }
       }
   }
@@ -387,8 +409,10 @@ test fn w_the_world_carries_the_plan_design_identity() -> Bool {
     Absent => false
     Present { value: w } =>
       match altra_reference_plan() {
-        OrthogonalRefused { cause: _ } => false
-        OrthogonalReady { value: plan } =>
+        BoardPlanOutlineRefused { cause: _ } => false
+        BoardPlanDesignNotAdmitted { causes: _ } => false
+        BoardPlanUnavailableForDesign { only_available: _ } => false
+        BoardPlanReady { value: plan } =>
           declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design)
             && declaration_ref_eq(a: plan.design, b: altra_1p_minimum_ref())
       }
@@ -764,18 +788,23 @@ test fn w_a_world_whose_capabilities_are_all_refused_is_not_admitted() -> Bool {
     Absent => false
     Present { value: w } =>
       match admit_pcb_world(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), w: all_capabilities_refused(w: w)) {
-        PartialPcbWorldReady { value: _ } => false
-        AdmittedPcbWorld { value: _ } => false
-        PcbWorldRefused { cause: c } =>
-          match c {
-            PcbCapabilityRefused { capability: cap, cause: why } =>
-              (cap as String) == "stackup" && (why as String) == "planted refusal: stackup"
-            PcbCapabilityStillPending { capability: _ } => false
-            PcbDesignPlanUnavailable { only_available: _ } => false
-            PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
-            PcbPlacementNotAdmitted => false
-            PcbBoardOutlineRefused { cause: _ } => false
-            PcbOutlineCopiedFromCitedForeignBoard => false
+        AltraPcbWorldDesignNotAdmitted { causes: _ } => false
+        AltraPcbWorldPlacementNotAdmitted { causes: _ } => false
+        AltraPcbWorldSettledInHub { inner: h } =>
+          match h {
+            PartialPcbWorldReady { value: _ } => false
+            AdmittedPcbWorld { value: _ } => false
+            PcbWorldRefused { cause: c } =>
+              match c {
+                PcbCapabilityRefused { capability: cap, cause: why } =>
+                  (cap as String) == "stackup" && (why as String) == "planted refusal: stackup"
+                PcbCapabilityStillPending { capability: _ } => false
+                PcbDesignPlanUnavailable { only_available: _ } => false
+                PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+                PcbPlacementNotAdmitted => false
+                PcbBoardOutlineRefused { cause: _ } => false
+                PcbOutlineCopiedFromCitedForeignBoard => false
+              }
           }
       }
   }
@@ -932,5 +961,100 @@ test fn w_the_second_function_label_clears_the_first_ones_cause_line() -> Bool {
     Present { value: s } =>
       expected_second_function_label() != ""
         && string_contains(s: s, pattern: expected_second_function_label())
+  }
+}
+
+// CONTROL 3 -- TWO BOARDS THAT SHIP THE SAME MEMORY ARE STILL DIFFERENT BOARDS IF THE COPPER
+// DIFFERS. The twin below is `altra_1p_minimum` in every axis the previous comparison could see:
+// identical production population, identical PCIe breakout, identical governing intent. It differs
+// only in routing eight channels instead of four -- a different stackup, a different layer count,
+// a different fabrication order. Complete-design comparison must therefore separate them, and the
+// world must refuse to hand this board the plan that was drawn for the four-channel one.
+//
+// THIS IS THE ARM THAT WAS SILENTLY WRONG BEFORE THE CUT. The old comparison read intent, populated
+// topology and lane count and had no routed axis at all, so it answered EQUAL here and the twin
+// would have been handed a plan drawn for different copper. The witness is written against the
+// refusal rather than against the comparison so that it is a claim about what a consumer does.
+fn same_population_different_copper() -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3,
+                          DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation {
+        production: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+test fn w_a_board_differing_only_in_routed_copper_is_refused_the_canonical_plan() -> Bool {
+  match altra_pcb_world_for(d: same_population_different_copper()) {
+    PcbWorldRefused { cause: c } =>
+      match c {
+        PcbDesignPlanUnavailable { only_available: _ } => true
+        PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+        PcbCapabilityStillPending { capability: _ } => false
+        PcbCapabilityRefused { capability: _, cause: _ } => false
+        PcbPlacementNotAdmitted => false
+        PcbBoardOutlineRefused { cause: _ } => false
+        PcbOutlineCopiedFromCitedForeignBoard => false
+      }
+    PartialPcbWorldReady { value: _ } => false
+    AdmittedPcbWorld { value: _ } => false
+  }
+}
+
+// THE PAIRED POSITIVE CONTROL. The canonical board itself still reaches a world, so the witness
+// above is discriminating on the routed axis rather than reporting that this entry point refuses
+// everything handed to it.
+test fn w_the_canonical_board_still_reaches_its_world() -> Bool {
+  match altra_pcb_world_for(d: altra_1p_minimum) {
+    PartialPcbWorldReady { value: _ } => true
+    AdmittedPcbWorld { value: _ } => true
+    PcbWorldRefused { cause: _ } => false
+  }
+}
+
+// A BOARD THE JUDGE REFUSES CANNOT REACH A WORLD, and this witness deliberately claims only that.
+// An earlier revision of this block asserted it as evidence that the JUDGE prevents an unadmitted
+// board from being planned. Review 5095322755 showed it cannot: `altra_pcb_world_for` compares the
+// board against the canonical one first, so this non-canonical board refuses as
+// PcbDesignPlanUnavailable before admission is consulted, and deleting the judge would leave this
+// green. The gate evidence now lives where it discriminates, on the plan constructor itself
+// (`w_RED_the_plan_constructor_refuses_a_board_the_judge_rejects` in the placement suite).
+//
+// IT IS KEPT RATHER THAN DELETED because the claim it DOES support is still worth holding: no
+// board unequal to the canonical one reaches a world through this entry point. The name says that
+// and nothing more.
+fn a_board_unequal_to_the_canonical_one() -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    design: RevARoutedMemoryDesign {
+      routed: RoutedDdrTopology {
+        routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+        routed_positions_per_channel: [FirstDimmOnChannel],
+      },
+      lifecycle: ShipsWithProductionPopulation {
+        production: ActiveDdrTopology {
+          populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4],
+          positions_per_channel: [FirstDimmOnChannel],
+        },
+      },
+    },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+test fn w_a_board_unequal_to_the_canonical_one_reaches_no_world() -> Bool {
+  match altra_pcb_world_for(d: a_board_unequal_to_the_canonical_one()) {
+    PcbWorldRefused { cause: _ } => true
+    PartialPcbWorldReady { value: _ } => false
+    AdmittedPcbWorld { value: _ } => false
   }
 }

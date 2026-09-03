@@ -45,6 +45,7 @@ provisioning/srv2/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv3/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv4/gunbc-ghrunner.sudoers merge=generated-artifact
 src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
+src/v1/stage0/src/gunbc_file_transport_generated.rs merge=generated-artifact
 src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
 src/v1/stage0/src/*.rs merge=generated-artifact
 src/v1/stage0/Cargo.toml merge=generated-artifact

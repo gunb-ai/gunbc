@@ -1,7 +1,7 @@
 module test.claim.hermetic_mock_fidelity_witness
 
 import std.types { String, Bool }
-import gunbc.guarantee_rung_drop { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 import gunbc.hermetic_mock_fidelity {
   HermeticMockRow,
   UnconditionalArm,
