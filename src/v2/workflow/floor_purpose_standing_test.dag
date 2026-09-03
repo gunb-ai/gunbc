@@ -1,0 +1,129 @@
+module v2.workflow.floor_purpose_standing_test
+
+import v2.std.logic { Bool, True, False }
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.witness_purpose {
+  WitnessPurpose,
+  BehavioralDiscriminator,
+  PopulationTotality,
+  DiscriminatedOutcome,
+  RefusalRequired,
+  AcceptanceRequired,
+}
+import v2.workflow.floor_purpose_standing {
+  WitnessPurposeStanding,
+  PurposeDeclared,
+  PurposeUndeclaredGrandfathered,
+  PurposeUndeclared,
+  WitnessChangeStanding,
+  WitnessChanged,
+  WitnessUnchanged,
+  NonExecutionConsequence,
+  SilencedWall,
+  OpenQuestion,
+  ConsequenceUndeclared,
+  non_execution_consequence,
+  non_execution_silenced_a_wall,
+  non_execution_consequence_is_undeclared,
+  purpose_admission_refuses,
+}
+
+fn watched_decision() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.self_host_compile_phase_live_gate_witness",
+    decl_name: "live_tree_frontier_verdict",
+  )
+}
+
+fn wall_standing() -> WitnessPurposeStanding {
+  PurposeDeclared {
+    purpose: BehavioralDiscriminator {
+      discriminates: RefusalRequired { refuser: watched_decision() },
+    },
+  }
+}
+
+fn control_standing() -> WitnessPurposeStanding {
+  PurposeDeclared {
+    purpose: BehavioralDiscriminator {
+      discriminates: AcceptanceRequired { acceptor: watched_decision() },
+    },
+  }
+}
+
+// THE WHOLE POINT, IN ONE ASSERTION. Two rows that did not run, identical in every fact the floor
+// carried before this model -- same terminal state, same absent verdict -- and they separate on
+// what their absence COST. If the two consequences ever collapse, this goes red.
+test fn a_silenced_wall_and_an_open_question_do_not_report_alike() -> Bool {
+  let silenced = non_execution_consequence(standing: wall_standing())
+  let open = non_execution_consequence(standing: control_standing())
+  non_execution_silenced_a_wall(consequence: silenced)
+    && !non_execution_silenced_a_wall(consequence: open)
+}
+
+// THE SILENCED WALL NAMES THE DECISION THAT STOPPED BEING CHECKED. A consequence that said only
+// "a wall was silenced" would rank the population without telling anyone WHAT to go look at, and
+// the payload is the difference between a count and a lead.
+test fn a_silenced_wall_names_the_decision_it_stopped_checking() -> Bool {
+  match non_execution_consequence(standing: wall_standing()) {
+    SilencedWall { refuser: r } => r == watched_decision()
+    OpenQuestion => false
+    ConsequenceUndeclared => false
+  }
+}
+
+// THE FAIL-CLOSED DIRECTION, AND THE ONE DEGRADATION THAT WOULD MAKE THIS MODEL FAIL OPEN. An
+// undeclared row must NOT read as an open question -- that is the benign arm, and reporting unknown
+// as benign would let the entire grandfather roster read as carrying no walls on day one. It must
+// answer false to "silenced a wall" AND true to "is undeclared", which is a state no other standing
+// reaches.
+test fn an_undeclared_row_is_unknown_rather_than_benign() -> Bool {
+  let undeclared = non_execution_consequence(standing: PurposeUndeclaredGrandfathered {})
+  let open = non_execution_consequence(standing: control_standing())
+  !non_execution_silenced_a_wall(consequence: undeclared)
+    && non_execution_consequence_is_undeclared(consequence: undeclared)
+    && !non_execution_consequence_is_undeclared(consequence: open)
+}
+
+// A DECLARED NON-DISCRIMINATOR PURPOSE SILENCES NO WALL, so the key cannot be read as "anything
+// that declared a purpose is load-bearing".
+test fn a_declared_non_discriminator_purpose_silences_no_wall() -> Bool {
+  !non_execution_silenced_a_wall(
+    consequence: non_execution_consequence(
+      standing: PurposeDeclared {
+        purpose: PopulationTotality { population: watched_decision() },
+      },
+    ),
+  )
+}
+
+// ADMISSION, THE STRUCTURAL HALF: a NEW row with no declared purpose is refused outright, on either
+// change standing. This is what makes "an enrolled witness with no declared purpose" unwritable
+// going forward rather than merely discouraged.
+test fn a_new_row_without_a_declared_purpose_is_refused() -> Bool {
+  purpose_admission_refuses(standing: PurposeUndeclared {}, change: WitnessChanged {})
+    && purpose_admission_refuses(standing: PurposeUndeclared {}, change: WitnessUnchanged {})
+}
+
+// THE SHRINK MECHANISM, ASSERTED RATHER THAN DESCRIBED, and this is the test that separates a debt
+// contract from a permanent exemption. The SAME grandfathered standing is admitted when the witness
+// is untouched and REFUSED once it changes -- so the roster can only lose members, and it loses them
+// exactly when someone is already editing the row. If the change standing ever stops being read,
+// the roster stops shrinking and this goes red.
+test fn a_grandfathered_row_must_declare_once_it_changes() -> Bool {
+  !purpose_admission_refuses(
+      standing: PurposeUndeclaredGrandfathered {},
+      change: WitnessUnchanged {},
+    )
+    && purpose_admission_refuses(
+      standing: PurposeUndeclaredGrandfathered {},
+      change: WitnessChanged {},
+    )
+}
+
+// A DECLARED ROW IS ADMITTED ON BOTH CHANGE STANDINGS, which is the positive control for the
+// admission fold: without it, an admission that refused everything would satisfy the two tests above.
+test fn a_declared_row_is_admitted_whether_or_not_it_changed() -> Bool {
+  !purpose_admission_refuses(standing: wall_standing(), change: WitnessChanged {})
+    && !purpose_admission_refuses(standing: wall_standing(), change: WitnessUnchanged {})
+}
