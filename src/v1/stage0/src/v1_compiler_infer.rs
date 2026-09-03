@@ -5585,6 +5585,7 @@ pub fn call_argument_selects_formal_index(
 pub struct CallFormalApplication {
     pub index: i64,
     pub param_name: String,
+    pub formal_raw: Rc<Node>,
     pub formal_subst: Rc<Node>,
     pub formal: Rc<Node>,
     pub matched_arg: Option<Rc<Node>>,
@@ -5627,6 +5628,7 @@ pub fn build_call_application_plan(
                     Rc::new(CallFormalApplication {
                         index: pair.0.clone(),
                         param_name: param_name.clone(),
+                        formal_raw: formal_raw.clone(),
                         formal_subst: formal_subst.clone(),
                         formal: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
                             formal_subst.clone(),
@@ -5814,8 +5816,36 @@ pub fn direct_call_generic_type_argument_inhabitance_diags(
                                                 .first()
                                                 .cloned()
                                             {
-                                                Some(produced_child) => {
-                                                    declared_type_obligation_diags(
+                                                Some(produced_child) => match app
+                                                    .formal_raw
+                                                    .children
+                                                    .clone()
+                                                    .iter()
+                                                    .cloned()
+                                                    .skip(declared_pair.0.clone() as usize)
+                                                    .collect::<Vec<_>>()
+                                                    .first()
+                                                    .cloned()
+                                                {
+                                                    Some(raw_declared_child) => {
+                                                        if (applied_type_argument_identity_known(
+                                                            crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                crate::v1_compiler_infer_types::child_type_node(
+                                                                    raw_declared_child.clone(),
+                                                                ),
+                                                            ),
+                                                            scope.clone(),
+                                                        ) && applied_type_argument_identity_known(
+                                                            crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                crate::v1_compiler_infer_types::child_type_node(
+                                                                    produced_child.clone(),
+                                                                ),
+                                                            ),
+                                                            scope.clone(),
+                                                        )) {
+                                                            declared_type_obligation_diags(
                                                         Rc::new(DeclaredTypeObligation {
                                                             position: DeclaredTypePosition::PositionGenericTypeArgument,
                                                             subject: app.param_name.clone(),
@@ -5833,7 +5863,12 @@ pub fn direct_call_generic_type_argument_inhabitance_diags(
                                                         }),
                                                         scope.clone(),
                                                     )
-                                                }
+                                                        } else {
+                                                            Rc::new(vec![])
+                                                        }
+                                                    }
+                                                    std::option::Option::None => Rc::new(vec![]),
+                                                },
                                                 std::option::Option::None => Rc::new(vec![]),
                                             })
                                             .iter()

@@ -3891,6 +3891,7 @@ fn call_argument_selects_formal_index(argument: Node, argument_index: Int, forma
 type CallFormalApplication {
   index: Int
   param_name: String
+  formal_raw: Node
   formal_subst: Node
   formal: Node
   matched_arg: Optional<Node>
@@ -3930,6 +3931,7 @@ fn build_call_application_plan(
       CallFormalApplication {
         index: pair.first,
         param_name: param_name,
+        formal_raw: formal_raw,
         formal_subst: formal_subst,
         formal: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name),
         matched_arg: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
@@ -4016,7 +4018,10 @@ fn direct_call_argument_inhabitance_diags(
 // formal/actual seam, and leave the position-agnostic relation unchanged. Both sides must expose
 // the same applied constructor and arity; a bare, malformed, or different carrier is not this
 // position and produces no fabricated comparison. Every aligned argument gets its own obligation,
-// so this is the generic-argument position rather than a List-specific second relation.
+// so this is the generic-argument position rather than a List-specific second relation. A raw
+// generic formal (K/V/T) and an inference placeholder (`element`) do not yet name an identity that
+// this nominal obligation can judge; keep those with the existing outer obligation instead of
+// manufacturing false mismatches from an unresolved substitution.
 fn direct_call_generic_type_argument_inhabitance_diags(
   plan: List<CallFormalApplication>,
   scope: InferScope
@@ -4038,20 +4043,29 @@ fn direct_call_generic_type_argument_inhabitance_diags(
             flat_map(
               app.formal_subst.children |> enumerate,
               declared_pair =>
-                match actual.children |> skip(declared_pair.first) |> first {
-                  Present { value: produced_child } =>
-                    declared_type_obligation_diags(
-                      obligation: DeclaredTypeObligation {
-                        position: PositionGenericTypeArgument,
-                        subject: app.param_name,
-                        declared: peel_nominal_alias_identity(
-                          n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
-                        produced: peel_nominal_alias_identity(
-                          n: child_type_node(ch: produced_child), env: scope.type_env, module_name: scope.module_name),
-                        span: actual_expr.span
-                      },
-                      scope: scope
-                    )
+                match app.formal_raw.children |> skip(declared_pair.first) |> first {
+                  Present { value: raw_declared_child } =>
+                    match actual.children |> skip(declared_pair.first) |> first {
+                      Present { value: produced_child } =>
+                        if applied_type_argument_identity_known(
+                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: raw_declared_child)), scope: scope)
+                          && applied_type_argument_identity_known(
+                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: produced_child)), scope: scope) {
+                          declared_type_obligation_diags(
+                            obligation: DeclaredTypeObligation {
+                              position: PositionGenericTypeArgument,
+                              subject: app.param_name,
+                              declared: peel_nominal_alias_identity(
+                                n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
+                              produced: peel_nominal_alias_identity(
+                                n: child_type_node(ch: produced_child), env: scope.type_env, module_name: scope.module_name),
+                              span: actual_expr.span
+                            },
+                            scope: scope
+                          )
+                        } else { [] }
+                      Absent => []
+                    }
                   Absent => []
                 }
             )
