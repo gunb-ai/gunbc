@@ -216,9 +216,16 @@ data live_03_normalize_data_inits: List<DataInitDecl> = [
 // witness_layer_roots instead was measured exceeding the floor's cpu budget and returning NO
 // VERDICT -- a wider subject that buys nothing here, since the extra declarations are unreachable
 // from the seed.
-data effect_reach_live_subject_roots: List<String> = [
-  "dag/gunbc/instruments",
-  "dag/test/claim"
+data effect_reach_live_subject_roots: List<String> = []
+
+// FILE GRAIN, BECAUSE THE SUBJECT IS EXACTLY THE THREE MODULES live_03_normalize_facts NAMES.
+// Measured: the smallest directories containing them hold 1275 files and cost 14663ms of
+// acquisition against a 500ms line -- 29x over, for declarations the walk cannot reach, since it is
+// seeded from the entry module and bounded by the facts above. These three files cost about 35ms.
+data effect_reach_live_subject_files: List<String> = [
+  "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+  "dag/gunbc/instruments/self_host_curated_seed_linked_harness.dag",
+  "dag/gunbc/instruments/self_host_module_behavioral_transport_roster.dag"
 ]
 
 test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> Bool {
@@ -226,7 +233,10 @@ test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> B
     classification: effect_reach_classification_from_facts(
       entry_module: "test.claim.self_host_03_normalize_behavioral_witness",
       facts: live_03_normalize_facts,
-      decls: fn_arrow_decl_facts_live(pool_roots: effect_reach_live_subject_roots),
+      decls: fn_arrow_decl_facts_live(
+        pool_roots: effect_reach_live_subject_roots,
+        pool_files: effect_reach_live_subject_files
+      ),
       data_inits: live_03_normalize_data_inits
     )
   )

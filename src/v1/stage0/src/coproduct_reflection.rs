@@ -76,9 +76,14 @@ fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<Strin
     }
 }
 
-/// A caller-named `List<String>` subject argument, by NAME first and position second: the
-/// bridge receives `.dag` arguments with their authored labels, and a subject that could be
-/// silently taken from the wrong position is not caller-named.
+/// A caller-named `List<String>` subject argument, BY NAME ONLY.
+///
+/// An earlier revision fell back to the first positional argument when the name was absent. That
+/// was safe while the subject had one part and became a silent-wrong-answer hazard the moment it
+/// had two: `pool_files` would have quietly read `pool_roots`, and the producer would have answered
+/// over a subject the caller never declared -- with no refusal, because both are `List<String>`.
+/// A subject that can be taken from the wrong position is not caller-named, so an unnamed argument
+/// refuses here rather than guessing.
 fn expect_pool_roots(
     args: &[(Option<String>, Value)],
     param: &str,
@@ -88,9 +93,8 @@ fn expect_pool_roots(
         .iter()
         .find(|(name, _)| name.as_deref() == Some(param))
         .map(|(_, v)| v)
-        .or_else(|| args.first().map(|(_, v)| v))
         .ok_or_else(|| InterpError::TypeError {
-            msg: format!("{what} requires a `{param}: List<String>` argument"),
+            msg: format!("{what} requires a `{param}: List<String>` argument, passed by name"),
         })?;
     let items = match val {
         Value::List(items) => items.iter().cloned().collect::<Vec<_>>(),
@@ -365,7 +369,7 @@ use std::collections::BTreeMap as StdDeclParseMemoMap;
 
 thread_local! {
     static FLOOR_DECL_PARSE_MEMO: RefCell<
-        Option<StdDeclParseMemoMap<(Vec<String>, Vec<ItemKind>), (Vec<ParsedTypeDecl>, usize)>>,
+        Option<StdDeclParseMemoMap<(Vec<String>, Vec<String>, Vec<ItemKind>), (Vec<ParsedTypeDecl>, usize)>>,
     > = RefCell::new(None);
 }
 
@@ -455,6 +459,7 @@ pub fn decl_facts_for_roots_shared(pool_roots: &[String]) -> Rc<Vec<DeclFactRaw>
 
 fn floor_decl_parse_memo_lookup(
     roots: &[String],
+    files: &[String],
     want_kinds: &[ItemKind],
 ) -> Option<(Vec<ParsedTypeDecl>, usize)> {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
@@ -462,19 +467,24 @@ fn floor_decl_parse_memo_lookup(
         let Some(map) = slot.as_ref() else {
             return None;
         };
-        map.get(&(roots.to_vec(), want_kinds.to_vec())).cloned()
+        map.get(&(roots.to_vec(), files.to_vec(), want_kinds.to_vec()))
+            .cloned()
     })
 }
 
 fn floor_decl_parse_memo_store(
     roots: &[String],
+    files: &[String],
     want_kinds: &[ItemKind],
     result: &(Vec<ParsedTypeDecl>, usize),
 ) {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         let mut slot = cell.borrow_mut();
         if let Some(map) = slot.as_mut() {
-            map.insert((roots.to_vec(), want_kinds.to_vec()), result.clone());
+            map.insert(
+                (roots.to_vec(), files.to_vec(), want_kinds.to_vec()),
+                result.clone(),
+            );
         }
     });
 }
@@ -494,13 +504,22 @@ fn inventory_entry_under_abs_roots(
 fn decls_parse_only_from_inventory(
     inventory: &[crate::cli_run::PreparedSourceView],
     roots: &[String],
+    files: &[String],
     want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
+    let declared_files: std::collections::BTreeSet<PathBuf> = files
+        .iter()
+        .map(|f| ws.join(f.replace('\\', "/")))
+        .collect();
     let mut entries: Vec<&crate::cli_run::PreparedSourceView> = inventory
         .iter()
-        .filter(|e| inventory_entry_under_abs_roots(&e.source.path, roots, &ws))
+        .filter(|e| {
+            let abs = ws.join(e.source.path.replace('\\', "/"));
+            inventory_entry_under_abs_roots(&e.source.path, roots, &ws)
+                || declared_files.contains(&abs)
+        })
         .collect();
     entries.sort_by(|a, b| a.source.path.cmp(&b.source.path));
     let module_count = entries.len();
@@ -548,21 +567,40 @@ pub fn pool_decl_parse_wall_ms(
 ) -> Result<(u128, usize), String> {
     let started = std::time::Instant::now();
     let (_, module_count) = if let Some(inv) = inventory {
-        decls_parse_only_from_inventory(inv, pool_roots, want_kinds, "pool_decl_parse_wall_ms")?
+        decls_parse_only_from_inventory(
+            inv,
+            pool_roots,
+            &[],
+            want_kinds,
+            "pool_decl_parse_wall_ms",
+        )?
     } else {
-        decls_parse_only_from_disk(pool_roots, want_kinds, "pool_decl_parse_wall_ms")?
+        decls_parse_only_from_disk(pool_roots, &[], want_kinds, "pool_decl_parse_wall_ms")?
     };
     Ok((started.elapsed().as_millis(), module_count))
 }
 
 fn decls_parse_only_from_disk(
     roots: &[String],
+    files: &[String],
     want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
     let index = crate::cli_run::build_module_path_index(roots);
     let mut modules: Vec<(String, String)> = index.into_iter().collect();
+    // DECLARED FILE-GRAIN MEMBERS, joined into the same population the directory roots produce.
+    // Keyed by module path like the index is, so a file also covered by a directory root is one
+    // member and not two -- naming both is a redundant declaration, never a doubled population.
+    for f in files {
+        let abs = ws.join(f);
+        if let Some(module_path) = crate::cli_run::extract_module_path(&abs) {
+            let rel = f.replace('\\', "/");
+            if !modules.iter().any(|(m, _)| m == &module_path) {
+                modules.push((module_path, rel));
+            }
+        }
+    }
     modules.sort();
     let module_count = modules.len();
     let mut out = Vec::new();
@@ -632,9 +670,10 @@ fn dag_files_under_abs_roots(abs_roots: &[String]) -> Vec<PathBuf> {
 /// name a set of files on disk, and the inventory either contains all of them or does not. A miss
 /// falls through to the disk walk, which is the SAME ANSWER computed the slower way -- not a wider
 /// one, not a default, and not a degraded one. Answering from a subset would be the fail-open arm.
-fn inventory_covers_abs_roots(
+fn inventory_covers_subject(
     inventory: &[crate::cli_run::PreparedSourceView],
     abs_roots: &[String],
+    files: &[String],
 ) -> bool {
     let ws = workspace_root();
     let present: std::collections::BTreeSet<PathBuf> = inventory
@@ -644,24 +683,28 @@ fn inventory_covers_abs_roots(
     dag_files_under_abs_roots(abs_roots)
         .iter()
         .all(|f| present.contains(f))
+        && files
+            .iter()
+            .all(|f| present.contains(&ws.join(f.replace('\\', "/"))))
 }
 
 fn decls_parse_only_fail_closed(
     roots: &[String],
+    files: &[String],
     want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
-    if let Some(cached) = floor_decl_parse_memo_lookup(roots, want_kinds) {
+    if let Some(cached) = floor_decl_parse_memo_lookup(roots, files, want_kinds) {
         return Ok(cached);
     }
     let inventory = crate::cli_run::floor_prepared_inventory_snapshot()
-        .filter(|inv| inventory_covers_abs_roots(inv, roots));
+        .filter(|inv| inventory_covers_subject(inv, roots, files));
     let result = if let Some(inventory) = inventory {
-        decls_parse_only_from_inventory(&inventory, roots, want_kinds, caller)?
+        decls_parse_only_from_inventory(&inventory, roots, files, want_kinds, caller)?
     } else {
-        decls_parse_only_from_disk(roots, want_kinds, caller)?
+        decls_parse_only_from_disk(roots, files, want_kinds, caller)?
     };
-    floor_decl_parse_memo_store(roots, want_kinds, &result);
+    floor_decl_parse_memo_store(roots, files, want_kinds, &result);
     Ok(result)
 }
 
@@ -725,9 +768,13 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
-    let (type_decls, module_count) =
-        decls_parse_only_fail_closed(&abs_pool_roots, &[ItemKind::TypeItem], "concept_decl_facts")
-            .map_err(|msg| InterpError::TypeError { msg })?;
+    let (type_decls, module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[],
+        &[ItemKind::TypeItem],
+        "concept_decl_facts",
+    )
+    .map_err(|msg| InterpError::TypeError { msg })?;
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
     for decl in type_decls {
@@ -806,6 +853,7 @@ pub fn eval_data_decl_type_facts(
         .collect();
     let (data_decls, module_count) = decls_parse_only_fail_closed(
         &abs_pool_roots,
+        &[],
         &[ItemKind::DataItem],
         "data_decl_type_facts",
     )
@@ -1276,6 +1324,7 @@ pub fn eval_fn_arrow_decl_facts_live(
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let pool_roots = expect_pool_roots(args, "pool_roots", "fn_arrow_decl_facts_live")?;
+    let pool_files = expect_pool_roots(args, "pool_files", "fn_arrow_decl_facts_live")?;
     let pool_root_defects_found = pool_root_defects(&pool_roots);
     if !pool_root_defects_found.is_empty() {
         return Err(
@@ -1286,6 +1335,25 @@ pub fn eval_fn_arrow_decl_facts_live(
             },
         );
     }
+    let pool_file_defects_found = pool_file_defects(&pool_files);
+    if !pool_file_defects_found.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: pool_file_refusal_message(
+                &pool_file_defects_found,
+                pool_files.len(),
+                "fn_arrow_decl_facts_live",
+            ),
+        });
+    }
+    if pool_roots.is_empty() && pool_files.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "fn_arrow_decl_facts_live was given an EMPTY subject: no pool_roots and no \
+                  pool_files. An empty subject answers with an empty population, and every row \
+                  over it passes by having nothing to look at -- name at least one directory or \
+                  one .dag file."
+                .to_string(),
+        });
+    }
     let ws = crate::cli_run::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()
@@ -1293,6 +1361,7 @@ pub fn eval_fn_arrow_decl_facts_live(
         .collect();
     let (fn_decls, _module_count) = decls_parse_only_fail_closed(
         &abs_pool_roots,
+        &pool_files,
         &[ItemKind::FnItem, ItemKind::FuncItem],
         "fn_arrow_decl_facts_live",
     )
@@ -1434,6 +1503,79 @@ pub enum PoolRootDefect {
     NamesFile,
     /// The path is a directory and holds no `.dag` file anywhere beneath it.
     DirectoryHasNoDagFiles,
+}
+
+/// Why a declared pool FILE contributed nothing. The file-grain sibling of `PoolRootDefect`, and
+/// deliberately a SECOND enum rather than three more variants on that one.
+///
+/// GRAIN IS DECLARED, NOT INFERRED FROM THE PATH. A subject names directories in `pool_roots` and
+/// single modules in `pool_files`, and which parameter the author wrote is the declaration -- so
+/// `PoolRootDefect::NamesFile` keeps refusing a file in `pool_roots` exactly as it does today.
+/// That refusal is load-bearing and was NOT relaxed to admit file grain: it catches the likeliest
+/// authoring error, a module path written without `.dag`, and `dag/extdeps/external_authority` is
+/// the receipt that the distinction finds real defects. Widening it would have deleted the ability
+/// to tell "the author typo'd a directory" from "the author means one module" -- one answer for two
+/// states, which is the conflation the three states above exist to close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolFileDefect {
+    /// The path does not exist.
+    Missing,
+    /// The path exists and is a DIRECTORY -- the mirror of `NamesFile`, and the same class of
+    /// authoring error read from the other side.
+    NamesDirectory,
+    /// The path is a file but not a `.dag` source, so it contributes no declarations.
+    NotDagSource,
+}
+
+impl PoolFileDefect {
+    fn cause(self) -> &'static str {
+        match self {
+            PoolFileDefect::Missing => "the path does not exist",
+            PoolFileDefect::NamesDirectory => {
+                "this names a DIRECTORY; a pool file must be one .dag source (name it in pool_roots instead)"
+            }
+            PoolFileDefect::NotDagSource => "the file exists but is not a .dag source",
+        }
+    }
+}
+
+/// Classify one declared pool file. `None` means it contributes.
+pub fn classify_pool_file(path: &str) -> Option<PoolFileDefect> {
+    let file_path = workspace_root().join(path);
+    if !file_path.exists() {
+        return Some(PoolFileDefect::Missing);
+    }
+    if file_path.is_dir() {
+        return Some(PoolFileDefect::NamesDirectory);
+    }
+    if file_path.extension().and_then(|e| e.to_str()) != Some("dag") {
+        return Some(PoolFileDefect::NotDagSource);
+    }
+    None
+}
+
+pub fn pool_file_defects(pool_files: &[String]) -> Vec<(String, PoolFileDefect)> {
+    pool_files
+        .iter()
+        .filter_map(|f| classify_pool_file(f).map(|d| (f.clone(), d)))
+        .collect()
+}
+
+/// Render the file-grain defects, same shape as `pool_root_refusal_message`.
+pub fn pool_file_refusal_message(
+    defects: &[(String, PoolFileDefect)],
+    declared: usize,
+    caller: &str,
+) -> String {
+    let rows: Vec<String> = defects
+        .iter()
+        .map(|(f, d)| format!("  file {:?}: {:?} -- {}", f, d, d.cause()))
+        .collect();
+    format!(
+        "{caller} was given {declared} declared pool file(s), {bad} of which contribute nothing. A declared file that contributes nothing is not a narrower subject -- it is a subject that silently lost part of itself, so every row over it keeps passing on a population smaller than its author declared, and nothing says so. Fix or delete each file named below.\n{rows}",
+        bad = defects.len(),
+        rows = rows.join("\n")
+    )
 }
 
 impl PoolRootDefect {

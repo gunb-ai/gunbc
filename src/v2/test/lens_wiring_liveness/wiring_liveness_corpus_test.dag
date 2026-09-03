@@ -156,10 +156,21 @@ test fn wiring_corpus_fixture_surface_holds() -> Bool {
 // verdict and states the range in one place instead of leaving it to be inferred from a filename.
 // A corpus-grain wiring judgment is a cost decision against the per-subject floor line and is not
 // this row's to take.
-data wiring_liveness_subject_roots: List<String> = ["src/v2/test/lens_wiring_liveness"]
+data wiring_liveness_subject_roots: List<String> = []
+
+// FILE GRAIN, AND HERE IT IS A SCOPE FIX AS MUCH AS A COST ONE. This module's directory holds two
+// SIBLING witness files that were never in this witness's subject, and naming the directory hands
+// their declarations to the cleanliness clause below -- a widening, not a narrowing. The subject is
+// this one module, so it is named as one file.
+data wiring_liveness_subject_files: List<String> = [
+  "src/v2/test/lens_wiring_liveness/wiring_liveness_corpus_test.dag"
+]
 
 test fn wiring_liveness_corpus_witnesses() -> Bool {
-  let decls = fn_arrow_decl_facts_live(pool_roots: wiring_liveness_subject_roots)
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: wiring_liveness_subject_roots,
+    pool_files: wiring_liveness_subject_files
+  )
   return witness_dead_wire_detected()
     && (length(xs: decls) > 0)
     && probe_present_with_params(decls: decls)

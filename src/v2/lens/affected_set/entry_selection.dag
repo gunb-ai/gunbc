@@ -27,6 +27,9 @@ import v2.std.node { Node }
 import v2.std.text { String, string_is_empty }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
 
+// This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
+data no_declared_pool_files: List<String> = []
+
 data entry_file_touched_grain_interim: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -139,7 +142,7 @@ fn edit_locus_nodes_for_touched_path(
   touched_path: String,
   exclude_substrings: List<String>
 ) -> List<Node> {
-  let decls = fn_arrow_decl_facts_live(pool_roots: pool_roots)
+  let decls = fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files)
   fold(
     modules_matching_touched_path(
       pool_roots: pool_roots,
@@ -190,7 +193,7 @@ fn file_paths_for_frontier_nodes(
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> List<String> {
-  let decls = fn_arrow_decl_facts_live(pool_roots: pool_roots)
+  let decls = fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files)
   let modules = module_declaration_facts_live(pool_roots: pool_roots)
   fold(frontier, init: [], f: fn(paths, node) {
     fold(decls, init: paths, f: fn(acc, decl) {

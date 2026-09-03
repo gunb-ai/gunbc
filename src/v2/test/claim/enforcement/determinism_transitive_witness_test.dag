@@ -75,6 +75,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data determinism_live_subject_roots: List<String> = ["src/v2/lens/affected_set"]
 
+// Directory grain: this subject IS a directory, and both files under it are in scope.
+data determinism_live_subject_files: List<String> = []
+
 data determinism_live_entry_module: String = "v2.lens.affected_set.entry_selection"
 
 data determinism_live_empty_modules: List<String> = []
@@ -91,7 +94,10 @@ test fn determinism_transitive_live_closure_holds() -> Bool {
   determinism_transitive_holds(
     entry_module: determinism_live_entry_module,
     closure_modules: determinism_live_closure_modules(),
-    decls: fn_arrow_decl_facts_live(pool_roots: determinism_live_subject_roots)
+    decls: fn_arrow_decl_facts_live(
+      pool_roots: determinism_live_subject_roots,
+      pool_files: determinism_live_subject_files
+    )
   )
 }
 
@@ -100,7 +106,12 @@ test fn determinism_transitive_live_closure_holds() -> Bool {
 // judgment would hold vacuously and report nothing -- which is the failure the fixture rows below
 // cannot see, because they supply their own declarations.
 test fn the_live_subject_is_not_empty() -> Bool {
-  length(xs: fn_arrow_decl_facts_live(pool_roots: determinism_live_subject_roots)) > 0
+  length(
+    xs: fn_arrow_decl_facts_live(
+      pool_roots: determinism_live_subject_roots,
+      pool_files: determinism_live_subject_files
+    )
+  ) > 0
     && length(xs: determinism_live_closure_modules()) > 0
     && contains(
       xs: determinism_live_closure_modules(),

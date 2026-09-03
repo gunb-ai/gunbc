@@ -18,6 +18,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
+// This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
+data no_declared_pool_files: List<String> = []
+
 type WiringRelation {
   output: Node
   declared_input: Node
@@ -145,7 +148,7 @@ fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
 }
 
 fn wiring_liveness_corpus_verdict(pool_roots: List<String>) -> LensVerdict {
-  fold(fn_arrow_decl_facts_live(pool_roots: pool_roots), init: Holds, f: fn(acc, decl) {
+  fold(fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files), init: Holds, f: fn(acc, decl) {
     match acc {
       Violation { diagnostic: _ } => acc
       _ => wiring_decl_verdict(decl: decl)
@@ -154,7 +157,7 @@ fn wiring_liveness_corpus_verdict(pool_roots: List<String>) -> LensVerdict {
 }
 
 fn wiring_liveness_corpus_dead_wires(pool_roots: List<String>) -> List<WiringDeadWire> {
-  wiring_dead_wires_over(decls: fn_arrow_decl_facts_live(pool_roots: pool_roots))
+  wiring_dead_wires_over(decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files))
 }
 
 fn wiring_liveness_corpus_dead_wire_count(pool_roots: List<String>) -> Int {

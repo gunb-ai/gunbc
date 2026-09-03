@@ -70,8 +70,28 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // keys the parse by (roots, kinds), so the floor's shared-artifact memo serves every claim
 // naming the same roots from one walk, and a claim that wants less than the corpus names less
 // and pays less. Neither was expressible while the subject was undeclared.
-fn fn_arrow_decl_facts_live(pool_roots: List<String>) -> List<FnArrowDecl> {
-  fn_arrow_decl_facts_live(pool_roots: pool_roots)
+// THE SUBJECT HAS TWO GRAINS AND THE CALLER DECLARES WHICH, gunbc#10245. `pool_roots` names
+// DIRECTORIES and `pool_files` names single .dag modules; the population is their union. Grain is
+// declared by which parameter the author wrote, never inferred from the path, so a FILE written in
+// `pool_roots` still refuses on PoolRootDefect::NamesFile exactly as it did before file grain
+// existed -- that refusal catches a module path written without `.dag` and was not relaxed to
+// admit this. An empty subject -- neither roots nor files -- refuses, because an empty population
+// makes every row over it pass by having nothing to look at.
+//
+// FILE GRAIN EXISTS BECAUSE DIRECTORY GRAIN COULD NOT EXPRESS REAL SUBJECTS, MEASURED. Acquisition
+// is pool-proportional at about 11ms per file with no floor and no knee (2 files 19ms, 3 files
+// 22ms, 63 files 543ms, 76 files 825ms, 1275 files 14663ms). Three consumers need 1, 2 and 3
+// modules; the smallest DIRECTORIES containing them hold 3, 63 and 1275 files, which costs one of
+// them 29x the floor's per-subject line and hands another two sibling fixtures that were never in
+// its subject. gunbc.ci_layer_roots already ruled file-grain pools unavailable, and that ruling
+// stands on its own frame: it measured [dag, src/v2] against [dag/gunbc], two LARGE pools four
+// seconds apart, which supports "cost barely moves between two large pools" and does not reach the
+// small region these consumers occupy.
+fn fn_arrow_decl_facts_live(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> List<FnArrowDecl> {
+  fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: pool_files)
 }
 
 // SINGLE AUTHORITY FOR CALL REACHABILITY OVER FN-ARROW DECLARATIONS. Two lenses

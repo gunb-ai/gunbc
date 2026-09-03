@@ -11,6 +11,9 @@ import v2.std.fn_index { fn_arrow_decl_facts_live }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
+// This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
+data no_declared_pool_files: List<String> = []
+
 data corpus_dependency_view_resolve_budget: Minute = minute(count: 90)
 
 type CorpusDependencyViewResolvePhaseMark {
@@ -70,7 +73,7 @@ data corpus_dependency_view_per_pr_execution_gate: Disposition = Scaffold {
 // module refuses in the producer, typed and located, on the same PoolRootContributesNothing arm
 // every other pool-root producer already refuses on.
 fn corpus_dependency_views_live(pool_roots: List<String>) -> List<DependencyView> {
-  fold(fn_arrow_decl_facts_live(pool_roots: pool_roots), init: [], f: fn(acc, decl) {
+  fold(fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files), init: [], f: fn(acc, decl) {
     append_dependency_views(
       left: acc,
       right: dependency_lens(root: decl.output)
@@ -83,5 +86,5 @@ fn corpus_dependency_view_edge_count(pool_roots: List<String>) -> Int {
 }
 
 fn corpus_dependency_view_decl_count(pool_roots: List<String>) -> Int {
-  length(xs: fn_arrow_decl_facts_live(pool_roots: pool_roots))
+  length(xs: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files))
 }
