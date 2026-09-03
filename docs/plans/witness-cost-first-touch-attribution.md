@@ -750,12 +750,22 @@ milliseconds are not; a cost story that milliseconds support and steps refute is
 The same discriminator that says work is not ownership says here that a millisecond drop is not a
 work reduction.
 
-The measured lead, found by the instrument that actually establishes ownership rather than by step
-clustering, is the cross-claim demand census keyed by PRODUCER IDENTITY:
-`target_project_arrow_body_to_value_expression`, 95 claims / 117 evals, 4396ms total with
+The census does name where the family's cost sits, and it is worth recording which instrument found
+it: the cross-claim demand artifact keyed by PRODUCER IDENTITY reports
+`target_project_arrow_body_to_value_expression` at 95 claims / 117 evals, 4396ms total with
 **4350ms cross-claim** across the emit family including all four rows. That is a producer named by
-the demand artifact, not a cluster inferred from step totals — and admission still requires the
-controlled present-versus-absent pair, which has not been run.
+identity, not a cluster inferred from step totals.
+
+**It is NOT a candidate, and this document disqualifies it below.** That function carries
+`handle_transform: fn(Node, Node, TargetModel) -> …`, so it meets the fn-typed-parameter exclusion:
+reification refuses the argument, the key cannot be formed, and the store refuses AT PUBLICATION.
+A controlled present-versus-absent pair would measure noise against nothing, because the absent arm
+is the only arm — the row never stores. **The demand it names is real; the route to serving it is
+closed until the key can be formed.**
+
+Recorded rather than dropped because the reading is the useful part: the largest cross-claim
+producer in this family is unreachable by the serve mechanism, which is a fact about the mechanism's
+coverage and not a gap in the census.
 
 ### Screening candidates from the census, by reading a declaration
 
