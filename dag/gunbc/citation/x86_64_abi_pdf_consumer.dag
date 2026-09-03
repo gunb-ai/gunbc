@@ -41,13 +41,14 @@ import extdeps.standards.rfc_8118 {
   SequenceConstructed,
   PdfOpenFragmentSelectorConstructed,
   PdfOpenFragmentSelectorRefused,
-  NavigableUriRefusalCause,
+  PdfOpenFragmentSelectorRefusalCause,
   NavigableUriProjected,
   NavigableUriRefused,
   PdfProfileParameterWireRefused,
   PdfProfileParameterWired,
   PdfOpenParameterSequenceWired,
-  PdfOpenParameterPercentEncodeRefused,
+  NavigableUriPercentEncodeRefused,
+  PdfOpenParameterPercentEncodeRefusal,
   BaseLocatorAlreadyCarriesFragment,
 }
 import std.claim_evidence {
@@ -89,7 +90,7 @@ type X86_64AbiPdfRetrievalObservationConstruction = X86_64AbiPdfRetrievalObserve
 
 type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: X86_64AbiPdfPinRefusalCause }
 
-type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: NavigableUriRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: PdfProfileRefusalCause }
+type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: PdfOpenFragmentSelectorRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: PdfProfileRefusalCause }
 
 type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorConstructed(CitationSelector) | X86_64AbiPdfCitationSelectorRefused { cause: X86_64AbiPdfCitationSelectorRefusalCause }
 
@@ -273,12 +274,6 @@ fn x86_64_abi_syscall_evidence_link_construction() -> X86_64AbiEvidenceLinkConst
   }
 }
 
-fn witness_syscall_citation_below_digest_matched_rung() -> Bool {
-  match x86_64_abi_syscall_citation_rung_disposition {
-    BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable } => true
-  }
-}
-
 fn witness_syscall_evidence_link_binds_fact() -> Bool {
   match x86_64_abi_syscall_evidence_link_construction() {
     X86_64AbiEvidenceLinkConstructed(link) =>
@@ -322,7 +317,11 @@ fn x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
           X86_64AbiPdfNavigableUriRefused {
             cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
           }
-        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: c } } =>
+        NavigableUriRefused {
+          cause: NavigableUriPercentEncodeRefused {
+            refusal: PdfOpenParameterPercentEncodeRefusal { parameter: p, cause: c },
+          },
+        } =>
           X86_64AbiPdfNavigableUriRefused {
             cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: c },
           }
