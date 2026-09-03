@@ -6,6 +6,9 @@ module gunbc.tools.bmc_first_contact
 // second local netrc_content would be a fork of an authority whose whole point is that there is one
 // of it, and bare resolution over a whole-corpus pool is not a stable binding to reason about when
 // the question is "which write verb ran".
+import extdeps.transports.rest {
+  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
 import gunbc.tools.bmc_onboard { bmc_onboard_netrc_path, write_netrc }
 
 
@@ -41,5 +44,10 @@ func bmc_first_contact() -> ProcessExit
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
 
-  return if resp.success { ExitSuccess } else { exit_failure(reason: resp.body) }
+  return match resp.outcome {
+    RestOk => ExitSuccess
+    RestStatusRefused { status: _, body: b } => exit_failure(reason: b)
+    RestTransportRefused { cause: c } => exit_failure(reason: c)
+    RestBodyUndecodable { status: _, cause: c } => exit_failure(reason: c)
+  }
 }

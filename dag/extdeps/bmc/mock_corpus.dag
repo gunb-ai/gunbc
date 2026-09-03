@@ -2,13 +2,10 @@ module extdeps.bmc.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
 
-data redfish_http_mock_case_get_system: PublishedMockCase = PublishedMockCase {
-  operation_key: "redfish.Http.GetSystem",
-  service: "redfish.Http",
-  operation: "GetSystem",
-  case_id: 0
-}
-
+// GetSystem's PublishedMockCase was DELETED with its Lane A migration (2026-09-03): it is now
+// a transport rest row, whose hermetic replay is keyed by rest_exchange fixture identity
+// (extdeps.transports.rest rest_exchange_resolution), not by PublishedMockCase — a shell-op
+// replay row standing beside a rest op would be a dead claim that the op replays.
 data redfish_http_mock_case_get_chassis_sensors: PublishedMockCase = PublishedMockCase {
   operation_key: "redfish.Http.GetChassisSensors",
   service: "redfish.Http",
@@ -52,7 +49,6 @@ data bmc_ipmi_tool_mock_case_sel_list: PublishedMockCase = PublishedMockCase {
 }
 
 data bmc_published_mock_corpus: List<PublishedMockCase> = [
-  redfish_http_mock_case_get_system,
   redfish_http_mock_case_get_chassis_sensors,
   redfish_http_mock_case_get_power,
   redfish_http_mock_case_get_thermal,

@@ -1,6 +1,7 @@
 module extdeps.bmc.http
 
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
@@ -21,7 +22,7 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
   }
 }
 
-data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the three axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), and request-body-from-file. Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
+data redfish_http_hardwired_transport_note: String = "§3(b) declared debt, SHRINKING: GetSystem (2026-09-03) is a declarative transport rest row — auth_netrc + InsecureAcceptAnyCert + modeled success — realized by the shared HTTP-client machinery; the remaining operations below still re-spell the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). The note dissolves when every operation is a declarative transport row — the remaining rows need the same three axes GetSystem now carries (netrc/basic auth, insecure-TLS, request-body-from-file) plus, for the mutating ops, the inline body record or a body-from-file axis. Until then the argv rows stay — live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
 
 // LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status.
 // Every argv carries --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on 401/403/404/5xx and
@@ -61,6 +62,13 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // until it lands the class sits at mitigatable and this note is diligence.
 service redfish.Http {
 
+  // Empty base + absolute-form path templates: the bmc_host is a per-call input, so each op's
+  // path carries the full https://{bmc_host}/... target (extdeps.transports.rest RestTargetForm
+  // AbsoluteFormTarget; the interp/emit concat base_url + path is the current realization).
+  config {
+    endpoint: ""
+  }
+
   operation GetServiceRoot {
     input { bmc_host: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -74,16 +82,31 @@ service redfish.Http {
     }
   }
 
+  // LANE A MIGRATION (transport_argv_anemia_dissolution): GetSystem is a declarative
+  // transport rest row. The curl argv is derived by the realization — the success flag is a
+  // modeled response block (grounded 2xx), never a hand-typed `--fail-with-body`; auth is
+  // netrc-file via `auth_netrc` (the credential never touches argv); TLS is the modeled
+  // InsecureAcceptAnyCert posture for the fleet's self-signed BMC certs. The interpreter
+  // realizes the posture through the accept-any agent (see v1_interpreter
+  // RestAcceptAnyVerifier); consumers read `outcome` for graceful failure (RestStatusRefused
+  // carries the OpenBMC error body), which is what bmc_onboard's credential probe requires.
   operation GetSystem {
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String, outcome: RestOutcome }
     readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/system"]
+    transport rest {
+      method: GET,
+      path: "https://{bmc_host}/redfish/v1/Systems/system",
+      tls: InsecureAcceptAnyCert,
+      auth_netrc: { file: netrc_file },
+      response_format: Text
     }
-    exit {
-      0 => Unit
-      nonzero => String "redfish system GET failed"
+    response {
+      200 => String
+      401 => String
+      403 => String
+      404 => String
+      5xx => String
     }
   }
 

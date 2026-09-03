@@ -47,8 +47,8 @@ fn taad_lanes() -> List<MarkdownBlock> {
     h2(text: "Two lanes"),
     h3(text: "Lane A — HTTP transport dissolution (curl argv -> transport rest)"),
     ol(items: [
-      li(text: "Extend the rest model with the 4 items above (3 axes + modeled success)."),
-      li(text: "Convert the 10 redfish.Http.* ops (dag/extdeps/bmc/http.dag) from hand-argv transport shell to declarative transport rest rows."),
+      li(text: "Extend the rest model with the 4 items above (3 axes + modeled success). LANDED (2026-09-03): the netrc-file auth mode (`auth_netrc: { file }`) — parse/interp/emit + one-auth-authority rule, witnessed. The TLS-verify toggle and modeled success already existed; request-body-from-file is the remaining axis (the mutating ops may instead pass inline body records)."),
+      li(text: "Convert the 10 redfish.Http.* ops (dag/extdeps/bmc/http.dag) from hand-argv transport shell to declarative transport rest rows. LANDED (2026-09-03): GetSystem (auth_netrc + InsecureAcceptAnyCert + modeled success + outcome-based graceful failure) and its six call sites; the remaining ops are GetServiceRoot, GetChassisSensors, GetPower, GetThermal, SetAccountPassword, SetBootSourceOverride, ResetSystem."),
       li(text: "Convert http.Client's 3 shell-handler ops (Get / PostJsonFromFile / DownloadToFile)."),
       li(text: "Sweep the remaining HTTP shell-transports. Deliverable: the curl-fail-open class is EXTINCT by construction, and the --fail-with-body interim patches (this branch) are deleted. Priced by the fail-open class it removes, not elegance."),
     ]),

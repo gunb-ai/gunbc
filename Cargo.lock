@@ -843,6 +843,7 @@ dependencies = [
  "im",
  "lazy_static",
  "libc",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",

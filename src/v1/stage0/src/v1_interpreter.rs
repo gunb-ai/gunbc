@@ -13491,20 +13491,96 @@ fn rest_netrc_credentials(content: &str, host: &str) -> Option<(String, String)>
     }
 }
 
+/// The accept-any TLS verifier that realizes a rest transport `tls: InsecureAcceptAnyCert`
+/// row in the interpreter — the modeled dissolution of curl's `-k` for self-signed BMC
+/// endpoints. Every verification question is answered true; the verifier is selected ONLY
+/// for operations that declare InsecureAcceptAnyCert (absent = VerifyPeer, fail-closed).
+///
+/// REVISIT OF THE 2026-07-16 EMIT-ONLY RULING, DELIBERATE AND BOUNDED. The ruling refused to
+/// carry an accept-any rustls verifier into the retiring seed. The redfish ops (the only
+/// declared users of this posture) already carry `-k` by hand today, and `gunbc run` executes
+/// them through the shell handler — so the interpreter already realizes this bypass on those
+/// hosts, through curl. Realizing it in-process for the SAME declared ops removes the
+/// argv/file indirection without widening the population that bypasses verification: absent
+/// or VerifyPeer stays fail-closed, and an unrecognized posture still refuses. The emitted
+/// reqwest path is unchanged (`danger_accept_invalid_certs`).
+#[derive(Debug)]
+struct RestAcceptAnyVerifier;
+
+impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _server_name: &rustls::pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        use rustls::SignatureScheme::*;
+        vec![
+            RSA_PKCS1_SHA1,
+            ECDSA_SHA1_Legacy,
+            RSA_PKCS1_SHA256,
+            ECDSA_NISTP256_SHA256,
+            RSA_PKCS1_SHA384,
+            ECDSA_NISTP384_SHA384,
+            RSA_PKCS1_SHA512,
+            ECDSA_NISTP521_SHA512,
+            RSA_PSS_SHA256,
+            RSA_PSS_SHA384,
+            RSA_PSS_SHA512,
+            ED25519,
+            ED448,
+            ML_DSA_44,
+            ML_DSA_65,
+            ML_DSA_87,
+        ]
+    }
+}
+
+/// The ureq agent that realizes `InsecureAcceptAnyCert` — one accept-any rustls client
+/// config, built once per dispatching op (dispatch_rest builds it on the arm that selects
+/// the posture; the agent is cheap to construct and never reused across requests).
+fn rest_accept_any_agent() -> ureq::Agent {
+    let config = rustls::ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(std::sync::Arc::new(RestAcceptAnyVerifier))
+        .with_no_client_auth();
+    ureq::builder()
+        .tls_config(std::sync::Arc::new(config))
+        .build()
+}
+
 /// The interpreter's disposition for a rest transport `tls:` posture (extdeps.transports.rest
-/// TlsPosture). `VerifyPeer` proceeds on the stock verifier; `InsecureAcceptAnyCert` is
-/// emit-only (operator decision 2026-07-16), so the interpreter refuses it rather than carry
-/// a cert-verification bypass into the retiring seed; an unrecognized posture also refuses.
-/// Pure so each arm is execution-witnessable.
-fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
+/// TlsPosture). `VerifyPeer` (and absent) proceed on the stock verifier — `None`;
+/// `InsecureAcceptAnyCert` selects the accept-any agent — `Some`; an unrecognized posture
+/// refuses. Pure so each arm is execution-witnessable.
+fn rest_tls_posture_interp_disposition(posture: &str) -> Result<Option<ureq::Agent>, String> {
     match posture {
-        "VerifyPeer" => Ok(()),
-        "InsecureAcceptAnyCert" => Err(
-            "rest transport tls: InsecureAcceptAnyCert is realized emit-only (reqwest \
-             danger_accept_invalid_certs); the interpreter refuses it by design rather than carry \
-             a cert-verification bypass into the retiring seed — run such ops through emitted code"
-                .to_string(),
-        ),
+        "VerifyPeer" => Ok(None),
+        "InsecureAcceptAnyCert" => Ok(Some(rest_accept_any_agent())),
         other => Err(format!(
             "rest transport tls: unrecognized posture '{}'",
             other
@@ -14214,32 +14290,38 @@ fn dispatch_rest(
 
     // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
     // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution
-    // of curl's `-k` for self-signed BMC endpoints, realized EMIT-ONLY (operator, 2026-07-16):
-    // emitted reqwest code uses `.danger_accept_invalid_certs(true)`; the interpreter refuses
-    // it rather than carry an accept-any rustls verifier into the retiring seed. So a present
-    // InsecureAcceptAnyCert is a typed refusal here (redfish etc. run through emitted code) —
-    // never a silent no-op sending under VerifyPeer while the row asked for insecure. An
-    // unrecognized posture also refuses.
-    if let Some(tls_node) =
+    // of curl's `-k` for self-signed BMC endpoints, selected via the accept-any agent — the
+    // interpreter realization of the posture (see RestAcceptAnyVerifier for the deliberate,
+    // bounded revisit of the 2026-07-16 emit-only ruling). An unrecognized posture refuses —
+    // never a silent no-op sending under VerifyPeer while the row asked for insecure.
+    let accept_any_agent: Option<ureq::Agent> = if let Some(tls_node) =
         find_property(transport.properties.clone(), "tls".to_string(), si.clone())
     {
         let posture = authored_name_at(si.clone(), tls_node);
-        if let Err(msg) = rest_tls_posture_interp_disposition(&posture) {
-            return Err(InterpError::TypeError { msg });
+        match rest_tls_posture_interp_disposition(&posture) {
+            Ok(agent) => agent,
+            Err(msg) => return Err(InterpError::TypeError { msg }),
         }
-    }
+    } else {
+        None
+    };
 
     trace_emit(
         OutputChannel::ShellTrace,
         &format!("[rest] {} {}", method, url),
     );
 
-    let mut request = match method.as_str() {
-        "GET" => ureq::get(&url),
-        "POST" => ureq::post(&url),
-        "PUT" => ureq::put(&url),
-        "DELETE" => ureq::delete(&url),
-        "PATCH" => ureq::patch(&url),
+    let mut request = match (&accept_any_agent, method.as_str()) {
+        (Some(agent), "GET") => agent.get(&url),
+        (Some(agent), "POST") => agent.post(&url),
+        (Some(agent), "PUT") => agent.put(&url),
+        (Some(agent), "DELETE") => agent.delete(&url),
+        (Some(agent), "PATCH") => agent.patch(&url),
+        (None, "GET") => ureq::get(&url),
+        (None, "POST") => ureq::post(&url),
+        (None, "PUT") => ureq::put(&url),
+        (None, "DELETE") => ureq::delete(&url),
+        (None, "PATCH") => ureq::patch(&url),
         _ => {
             return Err(InterpError::TypeError {
                 msg: format!("unsupported HTTP method: {}", method),
@@ -19112,9 +19194,16 @@ mod dispatch_rest_decision_tests {
 
     #[test]
     fn tls_posture_disposition_fails_closed() {
-        // VerifyPeer proceeds; InsecureAcceptAnyCert and unknown refuse (emit-only decision).
-        assert!(rest_tls_posture_interp_disposition("VerifyPeer").is_ok());
-        assert!(rest_tls_posture_interp_disposition("InsecureAcceptAnyCert").is_err());
+        // VerifyPeer (and absent) proceed on the stock verifier; InsecureAcceptAnyCert selects
+        // the accept-any agent; an unknown posture refuses.
+        assert!(matches!(
+            rest_tls_posture_interp_disposition("VerifyPeer"),
+            Ok(None)
+        ));
+        assert!(matches!(
+            rest_tls_posture_interp_disposition("InsecureAcceptAnyCert"),
+            Ok(Some(_))
+        ));
         assert!(rest_tls_posture_interp_disposition("TrustEveryone").is_err());
     }
 

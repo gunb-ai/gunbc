@@ -1,6 +1,9 @@
 module gunbc.tools.bmc_onboard
 
 import extdeps.bmc.http
+import extdeps.transports.rest {
+  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
@@ -169,10 +172,14 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
     return exit_failure(reason: "rotate: netrc write for post-rotation reauth failed")
   }
   verify = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
-  return if verify.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
+  return match verify.outcome {
+    RestOk => ExitSuccess
+    RestStatusRefused { status: _, body: b } =>
+      exit_failure(reason: concat("rotate: reauth with new credential rejected: ", b))
+    RestTransportRefused { cause: c } =>
+      exit_failure(reason: concat("rotate: reauth transport refused: ", c))
+    RestBodyUndecodable { status: _, cause: c } =>
+      exit_failure(reason: concat("rotate: reauth body undecodable: ", c))
   }
 }
 
@@ -244,8 +251,14 @@ func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessToke
     bmc_host: host,
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
-  if acq.success == false {
-    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
+  match acq.outcome {
+    RestOk => Unit
+    RestStatusRefused { status: _, body: b } =>
+      return exit_failure(reason: concat("acquire: factory login failed: ", b))
+    RestTransportRefused { cause: c } =>
+      return exit_failure(reason: concat("acquire: BMC transport refused: ", c))
+    RestBodyUndecodable { status: _, cause: c } =>
+      return exit_failure(reason: concat("acquire: BMC body undecodable: ", c))
   }
 
   return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
@@ -269,7 +282,12 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
     bmc_host: host,
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
-  if factory_check.success {
+  if match factory_check.outcome {
+    RestOk => true
+    RestStatusRefused { status: _, body: _ } => false
+    RestTransportRefused { cause: _ } => false
+    RestBodyUndecodable { status: _, cause: _ } => false
+  } {
     return FactoryCredentialActive
   }
 
@@ -294,10 +312,14 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
             bmc_host: host,
             netrc_file: bmc_onboard_netrc_path as NonEmptyStr
           )
-          return if rotated_verify.success {
-            RotatedCredentialActive
-          } else {
-            CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+          return match rotated_verify.outcome {
+            RestOk => RotatedCredentialActive
+            RestStatusRefused { status: _, body: _ } =>
+              CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+            RestTransportRefused { cause: _ } =>
+              CredentialStateUnknown { reason: "stored credential transport refused" }
+            RestBodyUndecodable { status: _, cause: _ } =>
+              CredentialStateUnknown { reason: "stored credential body undecodable" }
           }
         }
         SmAccessVersionSecretDecodeRefused { cause: _ } =>
