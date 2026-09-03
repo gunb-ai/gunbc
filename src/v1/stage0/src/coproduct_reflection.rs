@@ -903,6 +903,41 @@ fn conj_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
     )
 }
 
+fn nullary_behavior_variant(ctx: &InterpContext, name: &str) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Behavior"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn node_kind_computation_node(ctx: &InterpContext, behavior: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("NodeKind"),
+        variant_name: ctx.sym("ComputationNode"),
+        fields: Rc::new(vec![(ctx.sym("behavior"), behavior)]),
+    }
+}
+
+// A CALL IS A CALL IN BOTH REPRESENTATIONS. `v2.std.node_query::node_is_call` recognises a call as
+// a `ComputationNode { behavior: Transform }` whose first positional child is a callee reference --
+// the shape `v2.compiler.body_lowering_fold` produces for the lowered body, and the shape every
+// call-shaped lens matches on. This marshal emitted `TypeNode { connective: Conj }` for EVERY node
+// including calls, so `node_is_call` was false on every skeleton node the corpus can produce, and
+// each lens folding a skeleton through it (`v2.lens.determinism` transitive findings,
+// `v2.lens.machine_shape`, the origin probe's call walk) was GREEN BY CONSTRUCTION: the state it
+// refuses had no constructor on its own input. That is DESIGN §4b's decoration -- worse than an
+// absent check, because it was cited as coverage -- and its §3 receipt was already standing in
+// `v2.lens.no_dual_representation_test.scan`, which carried a SECOND call predicate spelled against
+// the Conj shape because the shared one could not answer here.
+fn transform_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
+    node_record(
+        ctx,
+        node_kind_computation_node(ctx, nullary_behavior_variant(ctx, "Transform")),
+        edges,
+    )
+}
+
 fn marshal_skeleton(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -1026,7 +1061,18 @@ fn marshal_generic(
             refs.remove(&pname);
         }
     }
-    (conj_record(ctx, edges), refs)
+    // The callee atom is `edges[0]` on exactly this condition: an `ExprCall` with a non-empty
+    // authored name takes either the parameter-reference arm or the callee-atom arm above, and both
+    // push the identity leaf before any child skeleton. A call through an unnamed callee expression
+    // stays `Conj` -- it has no callee reference to be first, so `node_is_call` would refuse it
+    // anyway, and claiming the Transform kind without one would be the shape without the fact.
+    let is_call_shaped =
+        matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty();
+    if is_call_shaped {
+        (transform_record(ctx, edges), refs)
+    } else {
+        (conj_record(ctx, edges), refs)
+    }
 }
 
 // A statement sequence -- a block's children, or a standalone `let` (optional children[1] is
@@ -2070,6 +2116,100 @@ mod parse_only_uppercase_variant_regression_tests {
             skeleton_children_len(&ctx, &skel),
             1,
             "infer-stamped VariantValueBinding must still emit the skeleton atom"
+        );
+    }
+
+    fn call_expr(
+        callee: &str,
+        args: Vec<Rc<crate::v1_std_core::Node>>,
+    ) -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            callee.to_string(),
+            Rc::new(ExprData::ExprCall {
+                call_semantics: None,
+                descent_evidence: None,
+            }),
+            Rc::new(args.into()),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn var_expr(name: &str) -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn field(ctx: &InterpContext, value: &Value, key: &str) -> Option<Value> {
+        match value {
+            Value::Record { fields, .. } => {
+                let k = ctx.sym(key);
+                fields
+                    .iter()
+                    .find(|(fk, _)| *fk == k)
+                    .map(|(_, v)| v.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn kind_is(ctx: &InterpContext, skel: &Value, expected: &str) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(Value::Variant { variant_name, .. }) => variant_name == ctx.sym(expected),
+            _ => false,
+        }
+    }
+
+    fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
+        match field(ctx, skel, "children") {
+            Some(Value::List(items)) => items
+                .iter()
+                .next()
+                .and_then(|edge| field(ctx, edge, "target")),
+            _ => None,
+        }
+    }
+
+    // THE DISCRIMINATING PAIR FOR THE CALL CARRIER. `v2.std.node_query::node_is_call` accepts a
+    // node only when its kind is `ComputationNode { behavior: Transform }` AND its first positional
+    // child is a callee reference. Before this marshal emitted the carrier, the first assertion
+    // below read `TypeNode` for every node the corpus could produce, so every call-shaped lens over
+    // a skeleton was green with no reachable red. The second row is the control that keeps the fix
+    // from degenerating into "everything is a call".
+    #[test]
+    fn marshaled_call_carries_the_transform_call_carrier() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) =
+            marshal_generic(&ctx, &call_expr("map_keys", vec![var_expr("m")]), &[], &si);
+        assert!(
+            kind_is(&ctx, &skel, "ComputationNode"),
+            "a marshaled call must carry the ComputationNode call carrier node_is_call matches"
+        );
+        let callee = first_child_target(&ctx, &skel).expect("call skeleton has a first child");
+        assert!(
+            kind_is(&ctx, &callee, "TypeNode"),
+            "the first positional child of a marshaled call must be the callee identity leaf"
+        );
+    }
+
+    #[test]
+    fn marshaled_non_call_stays_a_conj_type_node() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &var_expr("m"), &[], &si);
+        assert!(
+            kind_is(&ctx, &skel, "TypeNode"),
+            "only a call node may carry the call carrier"
         );
     }
 

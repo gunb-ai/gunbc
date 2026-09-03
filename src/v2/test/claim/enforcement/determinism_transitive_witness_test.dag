@@ -1,6 +1,7 @@
 module v2.test.claim.enforcement.determinism_transitive_witness
 
 import v2.lens.determinism {
+  determinism_findings,
   determinism_transitive_findings,
   determinism_transitive_holds
 }
@@ -93,23 +94,25 @@ fn call_node(callee: String) -> Node {
 
 // THE FN-ARROW SKELETON IS FLAT, AND THE FIXTURE MUST BE TOO. call_reachable_decls reads callees
 // from `decl.output` at DEPTH ONE — atom_identities_in_node returns the node's own identity and
-// those of its IMMEDIATE children — because the skeleton the Rust marshal produces hoists callee
-// atoms onto the body root. A first version of this fixture wrapped the callee atom inside the call
-// node, one level deeper. Nothing was reachable, and BOTH discrimination rows below agreed for that
-// reason rather than for the reason they claim: the leak-is-found row went red, and the
-// leak-outside-the-graph row went green while proving nothing at all. That is the empty-fixture
-// failure in miniature — two rows in apparent agreement, one shared wrong cause — so the shape is
-// recorded here rather than silently corrected.
+// those of its IMMEDIATE children — so a reachable callee must be an atom child of the body root.
+// A first version of this fixture wrapped the callee atom one level deeper. Nothing was reachable,
+// and BOTH discrimination rows below agreed for that reason rather than for the reason they claim:
+// the leak-is-found row went red, and the leak-outside-the-graph row went green while proving
+// nothing at all. That is the empty-fixture failure in miniature — two rows in apparent agreement,
+// one shared wrong cause — so the shape is recorded here rather than silently corrected.
 //
-// A CALL EDGE is therefore a bare atom child of the body root; a LEAKING CALL is a call node child,
-// which determinism_findings reaches because it folds the whole subtree.
+// THE SEED BODY IS NOW THE CALL CARRIER ITSELF and this is the second correction of the same
+// mistake in this fixture, in the opposite direction. It stood as a Conj root carrying a bare
+// callee atom — a shape NO marshal produced, because the marshal spelled a call `Conj` while
+// node_is_call demanded `ComputationNode { behavior: Transform }`, so nothing the corpus could hand
+// these lenses was ever a call. The marshal now emits the carrier
+// (v1.stage0.coproduct_reflection transform_record), which is what makes `call_node` below the
+// shape of a real `fn seed() -> X { reached_fn(..) }` body rather than a shape invented to make the
+// row pass. A LEAKING CALL two hops out is a call node nested under a body root, which
+// determinism_findings reaches because it folds the whole subtree.
 
 fn body_referencing(callee: String) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  call_node(callee: callee)
 }
 
 fn body_invoking_primitive(primitive: String) -> Node {
@@ -201,4 +204,44 @@ test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool {
       primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee)
     ]
   )
+}
+
+// ── the shape pair: A CORRECT LENS AND AN INEXPRESSIBLE SUBJECT ARE NOT DISTINGUISHABLE BY ONE
+// GREEN ───────────────────────────────────────────────────────────────────────────────────────
+//
+// These two rows differ in ONE field -- the node kind -- and in nothing else: same callee atom, same
+// child geometry, same classification lookup. They exist because the defect this file was blind to
+// was not a wrong lens. `node_is_call` was right, `local_determinism_axis` was right, and every
+// judgment downstream of them was right; what was false was that the SUBJECT the corpus produced
+// could express a call at all. The fn-arrow marshal spelled every node `TypeNode { connective: Conj
+// }`, so `determinism_transitive_holds` over `fn_arrow_decl_facts_live()` was green for the whole
+// corpus with no authorable red anywhere in it -- DESIGN §4b's decoration, cited as coverage.
+//
+// A SINGLE PASSING ROW CANNOT SEPARATE THOSE TWO STATES, which is why the pair is enrolled rather
+// than one row: `fires` alone is satisfied by a lens that fires on everything, and `blind` alone is
+// satisfied by a lens that fires on nothing. Together they say the kind is what decides.
+//
+// The `blind` row is EXPECTING-GREEN AND STAYS ENROLLED (§4b(4)): it was the evidence that the
+// emitted shape was unreachable, and now that the marshal emits the carrier
+// (`v1.stage0.coproduct_reflection` `transform_record`) it is the regression control that keeps a
+// Conj node from silently becoming a call again. WHAT NEITHER ROW ESTABLISHES, because no .dag row
+// can: that the MARSHAL emits the accepted shape. Both build their nodes by hand, which is exactly
+// the failure this pair descends from. That fact is executed in the seed instead, on the required
+// `cargo test -p v1-compiler --lib` path, by `marshaled_call_carries_the_transform_call_carrier`
+// with `marshaled_non_call_stays_a_conj_type_node` as its control.
+
+fn conj_shaped_call(callee: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn the_lens_fires_on_a_transform_shaped_call() -> Bool {
+  length(xs: determinism_findings(root: call_node(callee: leaking_callee))) > 0
+}
+
+test fn the_lens_is_blind_to_the_conj_shape_the_marshal_no_longer_emits() -> Bool {
+  length(xs: determinism_findings(root: conj_shaped_call(callee: leaking_callee))) == 0
 }

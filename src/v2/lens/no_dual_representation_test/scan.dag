@@ -1,7 +1,6 @@
 module v2.lens.no_dual_representation_test.scan
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
+import v2.std.algebra { fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.data_index {
   DataInitDecl,
@@ -14,17 +13,25 @@ import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
+  ComputationNode,
   Conj,
   Edge,
   Node,
   NodeFold,
   Positional,
   Symbol,
+  Transform,
   TypeNode,
   fold_node,
   node_synthetic
 }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node_query {
+  call_argument_targets,
+  call_callee_target,
+  node_is_call,
+  node_positional_child_targets
+}
 import v2.std.text { Char, String }
 
 type DualRepViolationKind
@@ -117,9 +124,13 @@ fn eq_conj(lhs: Node, rhs: Node) -> Node {
   )
 }
 
+// The shape the fn-arrow marshal emits for a call, and it is the SAME shape `node_is_call`
+// recognises. It was `TypeNode { connective: Conj }` here, matching a marshal that spelled every
+// node Conj; the fixture agreed with the marshal and both disagreed with the substrate's own call
+// carrier, so this module needed a private call predicate to read its own input.
 fn call_node(callee: Symbol, args: List<Node>) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: ComputationNode { behavior: Transform },
     children: fold(
       args,
       init: [pos_edge(target: atom_node(sym: callee))],
@@ -199,40 +210,23 @@ fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
   )
 }
 
-fn skeleton_is_callee_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
-  }
-}
-
-fn skeleton_is_call(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        Present { value: callee } => skeleton_is_callee_atom(node: callee)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
+// THE FORKED CALL PREDICATE IS GONE. This module carried `skeleton_is_call`,
+// `skeleton_is_callee_atom`, `skeleton_callee_target` and `skeleton_call_argument_targets` --
+// `v2.std.node_query`'s `node_is_call` / `call_callee_target` / `call_argument_targets` respelled
+// against `TypeNode { connective: Conj }`, because the marshal spelled calls that way and the
+// shared authority could not answer over this input. That is one question with two answers, which
+// §3 forbids: the fork was not a different judgment, it was the same judgment re-derived because
+// its authority had been made inapplicable. The marshal now emits the call carrier, so the
+// authority applies and the copies are deleted rather than parameterised.
 fn skeleton_callee_target(node: Node) -> Node {
-  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-    Present { value: callee } => callee
-    Absent => atom_node(sym: empty_sym)
-  }
-}
-
-fn skeleton_call_argument_targets(node: Node) -> List<Node> {
-  match list_tail(xs: node_positional_child_targets(node: node)) {
-    TailFound { tail: args } => args
-    TailAbsent => Empty
+  match call_callee_target(node: node) {
+    Accepted { value: callee, diagnostics: _ } => callee
+    Rejected { diagnostics: _ } => atom_node(sym: empty_sym)
   }
 }
 
 fn callee_name_from_call(operand: Node) -> String {
-  if skeleton_is_call(node: operand) {
+  if node_is_call(node: operand) {
     node_atom_name(n: skeleton_callee_target(node: operand))
   } else {
     ""
@@ -240,7 +234,7 @@ fn callee_name_from_call(operand: Node) -> String {
 }
 
 fn first_call_arg_name(operand: Node) -> String {
-  match list_at_optional(xs: skeleton_call_argument_targets(node: operand), index: 0) {
+  match list_at_optional(xs: call_argument_targets(node: operand), index: 0) {
     Present { value: arg } => node_atom_name(n: arg)
     Absent => ""
   }
@@ -309,6 +303,11 @@ fn lookup_fn_fact(fns: List<DualRepFnFact>, name: String) -> DualRepFnFact {
   })
 }
 
+// EVERY NON-ATOM NODE DESCENDS, not just Conj. The recursive arm was
+// `TypeNode { connective: Conj }` when Conj was the only kind a skeleton could carry; a call now
+// carries the Transform call carrier, and a Conj-only arm would have returned the enclosing body
+// UNSUBSTITUTED -- an alpha-equivalence answer of `not equivalent` for the only bodies this check
+// is about.
 fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Node {
   match output.kind {
     TypeNode { connective: Atom { identity: sym } } =>
@@ -317,7 +316,7 @@ fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Nod
       } else {
         output
       }
-    TypeNode { connective: Conj } =>
+    _ =>
       node_synthetic(
         kind: output.kind,
         children: fold(
@@ -338,7 +337,6 @@ fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Nod
           }
         )
       )
-    _ => output
   }
 }
 
@@ -380,7 +378,7 @@ fn classify_eq_node_site(
     } else {
       empty_dual_rep_violations
     }
-  } else if skeleton_is_call(node: site.lhs)
+  } else if node_is_call(node: site.lhs)
     && body_alpha_equivalent_to_single_arg_call(lhs: site.lhs, rhs: site.rhs, fns: fns)
   {
     [
