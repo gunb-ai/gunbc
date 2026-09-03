@@ -69,6 +69,20 @@ import gunbc.merge_admission {
 // that stale bases are refused. NEXT INSTANCE: add a line here rather than escalating. The class is
 // owned, the remedy is named, and re-escalation costs a lane its afternoon to reach this same
 // ruling.
+//
+// NEXT INSTANCE, ADDED AS THIS PARAGRAPH INSTRUCTS (2026-09-03): gunbc#9981. Its `witnesses` run on
+// its own head COMPLETED SUCCESSFULLY at 20:26:54Z and it merged at 20:29:53Z, so it is emphatically
+// NOT the absent-receipt class below -- it had its receipt. That run was CREATED at 19:37:37Z,
+// twelve minutes before cfe19ea7 landed at 19:49:43Z, so the receipt was minted against a base that
+// had ceased to be the tip, and the squash landed on a tree already refusing at resolve. RunPrCi at
+// tip0, MergePr advancing the tip, MergePr(#9981) landing squash_result_tree against a tip0 receipt:
+// admitted under PerPrGateOnly, refused under KeyedReceipt as MergeDeniedStaleBase.
+//
+// THE TWO HOLES EACH TOOK ONE COMMIT THAT NIGHT, FORTY MINUTES APART, and separating them is the
+// point of recording it. #10236 landed through the absent-receipt hole and #9981 through this one.
+// A reader who counts two broken merges and reaches for one cause gets the remedy wrong for one of
+// them: a merge queue closes both, blocking unreported contexts closes only the first, and a
+// current-base rerun closes only the second.
 
 // THE MERGE STEP CAN RUN BEFORE ANY EVIDENCE EXISTS, AND THAT IS A THIRD CLASS, NOT A SHARPER
 // TELLING OF THE STALE-BASE ONE (measured 2026-09-03, gunbc#10236). The two paragraphs above are
@@ -148,9 +162,14 @@ import gunbc.merge_admission {
 // construction -- nothing merges without the queue's own run on the queued ref -- and it is the
 // same construction `gunbc.repo_ruleset` `desired_strict_required_status_checks_policy` already
 // records as the reason strict is false. Measured today: zero `merge_group` runs exist for
-// `witnesses.yml`, so the queue is not configured. Enabling it is a repository setting no lane in
-// this repository can actuate, which is why the loss is declared in `gunbc.rung_drop`
-// `merge_admission_absent_required_context` rather than fixed here.
+// `witnesses.yml`, so the queue is not configured.
+//
+// AND IT IS NOT BEING BUILT, BY RULING RATHER THAN BY OMISSION (2026-09-03). Escalated with three
+// options -- enable the queue, make unreported required contexts blocking, or hold the hole open --
+// and the operator ruled the third: "Leave the hole open for now - i know merging is not sound."
+// The class is therefore carried as `gunbc.guarantee_stall` `merge_admission_terminal_verdict_stall`
+// with the capability as its trigger, an informed acceptance rather than an unowned gap. A STALL
+// AND NOT A `gunbc.rung_drop` ROW: 4b(3) asserts a regression, and nothing regressed here.
 
 // The interleaving witness enumerates EVERY event sequence of exact length 4 over its alphabet (no
 // sampling, no silent cap — the witness asserts the full count so truncation cannot read as
