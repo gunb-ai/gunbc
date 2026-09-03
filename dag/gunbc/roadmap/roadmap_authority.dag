@@ -361,10 +361,30 @@ fn superseded(identity: String,
 // the live tree (SubstrateInputsOnly), so it is a statement about the repository rather than a
 // fixture — a raw shell literal reappearing in that transport module reds it for real.
 
+// THE BINDING NOW DISCRIMINATES, which is the half observation_raw_print_retirement_contract_note
+// records this contract as deliberately not supplying. It named
+// corpus_dag_compile_clean_transport_clean_holds -- an ALREADY-GREEN validation -- so Verify proved
+// only that the path RUNS: admission, argv derivation, receipt production. A verifier that returned
+// green unconditionally was indistinguishable from a working one, because nothing it ran could
+// return anything else.
+//
+// It now names a validation that FAILS TODAY. usb_gadget_setup_script prefixes "set -e" and joins
+// rendered shell lines, so the witness asserting no shell control word is red, and the red is this
+// node's own acceptance condition rather than a planted fixture: the node asks for a described
+// operation instead of written shell text, and the witness asserts exactly that no shell text is
+// produced. The transition red -> green IS the work being finished.
+//
+// THE WITNESS IS ENROLLED IN floor_expected_red, NOT QuarantineProbeExpectRed, and the difference
+// is executional rather than stylistic. The sibling note above recommends the quarantine cadence,
+// and that recommendation is STALE: std.witness_admission records that falsifier.yml -- the
+// workflow scheduling QuarantineProbeExpectRed -- was deleted at 611fd02770 (#8283), so every row
+// classified into that cadence "has read as covered ever since despite executing nowhere".
+// Enrolling here would have put a deliberately-red acceptance test somewhere it never runs, which
+// is the failure that note itself documents. The floor executes.
 fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
-    function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
+    entry: "dag/test/claim/shell_to_dag_stub_witness_test.dag" as FilePath,
+    function: "usb_gadget_setup_emits_no_shell_control_word" as NonEmptyStr,
   )
 }
 

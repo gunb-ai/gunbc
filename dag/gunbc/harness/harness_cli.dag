@@ -1,7 +1,7 @@
 module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
-import std.measure { TokenCount }
+import std.measure { TokenCount, token_count, token_count_value }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
@@ -48,7 +48,27 @@ data harness_default_duration_limit_seconds: Int = 120
 
 data harness_default_step_budget: Int = 8
 
-data harness_default_max_tokens: Int = 2048
+// THE OUTPUT BUDGET, DERIVED FROM WHAT THE MODEL ACTUALLY DECLARES -- which is that it declares no
+// output ceiling at all. extdeps.deepseek.deepseek_v4 records the research: no primary source
+// documents a maximum output for V4-Flash, and the GGUF carries no output or thinking key. What
+// bounds output is the ENGINE, measured against the router: input plus output must fit the context,
+// with no separate ceiling beneath it.
+//
+// SO THIS IS A POLICY ROW, NOT A CAPABILITY ROW, and it lives here rather than in extdeps for that
+// reason. A deepseek_v4_max_output_tokens row would have attributed the serving engine's admission
+// rule to the model, which is the authority substitution the corpus keeps catching.
+//
+// 64Ki IS CHOSEN AGAINST TWO MEASURED FACTS. The 2048 it replaces was chat-shaped and its cost is
+// visible in the transcripts: a thinking model spent its whole allowance reasoning and emitted the
+// same sentence twice rather than acting, and a heredoc carrying real file content does not fit in
+// it -- a worker that cannot emit a file cannot write one. Against the other side, observed turns
+// peak near 40k input tokens, so 64Ki of output sits far under the shared 1M window and cannot be
+// the binding constraint. It is deliberately generous rather than tuned: nothing yet measures what
+// a successful edit actually costs, and the honest reading of an unmeasured axis is headroom.
+//
+// DISSOLVES ON: a measured distribution of output tokens across attempts that COMPLETE a task, at
+// which point this is derived from that distribution instead of chosen against a ceiling.
+data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 65536))
 
 data harness_default_system_prompt: String = "You are a coding harness worker running inside the gunbc repository. You have one tool, run_command, which runs a shell command in the repository root and returns its combined output and exit code. Use it when you need to observe the repository. Be brief."
 
@@ -170,7 +190,7 @@ fn harness_worker_config(
   }
 }
 
-data harness_worker_system_prompt: String = "You are a coding worker running inside a git worktree for one roadmap task. You have one tool, run_command, which runs a shell command in the worktree and returns its combined output and exit code. Make the exact change the brief asks for and nothing else. Verify your work with run_command before you finish. Do not commit; the harness handles publication."
+data harness_worker_system_prompt: String = "You are a coding worker running inside a git worktree for one task. You have one tool, run_command, which runs a shell command in the worktree and returns its combined output and exit code. It is how you OBSERVE the tree AND how you CHANGE it: write files with a heredoc (cat > path <<''EOF'' ... EOF) or edit them in place, then re-read to confirm. Reading alone completes nothing -- a task is done when the files differ and the acceptance check passes. Make the exact change the brief asks for and nothing else. Verify with run_command before you finish, and if the brief names an acceptance command, run it. Do not commit; the harness handles publication."
 
 data harness_worker_step_budget: Int = 24
 

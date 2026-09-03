@@ -1,0 +1,86 @@
+module extdeps.deepseek.deepseek_v4
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE DEEPSEEK V4 FAMILY, as its own extdeps authority because it is an independently versioned
+// upstream model rather than a property of whatever happens to serve it. gunbc.harness pins a model
+// STRING today; this module is the row that string should become, so a caller can ask what the
+// model allows instead of carrying a literal beside it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+  }
+}
+
+// THE CONTEXT LENGTH IS DOCUMENTED AND AGREES WITH WHAT IS SERVED, which is why it is a row rather
+// than an observation. The model card states both V4-Pro and V4-Flash support "a context length of
+// one million tokens", and the GGUF actually loaded on srv5/srv6 carries
+// deepseek4.context_length = 1048576 -- read from Ollama /api/show on 2026-09-03, identical on both
+// hosts. Documented and served agree, so the row is citable rather than merely measured.
+data deepseek_v4_context_length: TokenCount = token_count(count: 1048576)
+
+// THE NATIVE WINDOW BEFORE ROPE SCALING, AND WHY IT IS CARRIED SEPARATELY. The same GGUF metadata
+// carries deepseek4.rope.scaling.original_context_length = 65536. The 1M figure above is therefore a
+// SCALED ceiling over a 64K native window, not a natively-trained length, and the distinction is
+// load-bearing for anyone sizing a working window: scaled context is admissible, not equivalent.
+// A consumer that treats 1M as "designed for" has read the ceiling as a capability.
+data deepseek_v4_native_context_length: TokenCount = token_count(count: 65536)
+
+// THE THREE REASONING MODES, cited to the model card, which names exactly these three for both
+// V4-Pro and V4-Flash. OpenRouter's API surface spells the top two as reasoning efforts `high` and
+// `xhigh`, with xhigh mapping to max -- a wire spelling of the same three, not a fourth mode.
+type DeepseekV4ReasoningMode
+  = DeepseekV4NonThink
+  | DeepseekV4ThinkHigh
+  | DeepseekV4ThinkMax
+
+fn deepseek_v4_reasoning_mode_wire(mode: DeepseekV4ReasoningMode) -> NonEmptyStr {
+  match mode {
+    DeepseekV4NonThink => "non-think" as NonEmptyStr
+    DeepseekV4ThinkHigh => "high" as NonEmptyStr
+    DeepseekV4ThinkMax => "xhigh" as NonEmptyStr
+  }
+}
+
+// THE ONLY DOCUMENTED BUDGET FACT, AND IT IS A CONTEXT FLOOR RATHER THAN AN OUTPUT CEILING. The
+// model card says, of Think Max: "we recommend setting the context window to at least 384K tokens".
+// That is a MINIMUM WINDOW under which max reasoning should not be requested, not a cap on what the
+// model may emit.
+//
+// THIS CORRECTS A FIGURE THAT READS AS AN OUTPUT LIMIT IN SECONDARY SOURCES. A search aggregation
+// reports "both V4-Pro and V4-Flash expose 384K max output tokens"; three primary pages -- the
+// model card, the DeepSeek V4 blog post, and OpenRouter's model page -- state no maximum output at
+// all, and the model card's only 384K is the recommendation above. Copying the aggregation would
+// have written a context floor into the corpus under the name of an output ceiling.
+data deepseek_v4_think_max_recommended_context_floor: TokenCount = token_count(count: 393216)
+
+fn deepseek_v4_think_max_is_recommended_at(window: TokenCount) -> Bool {
+  token_count_value(t: window) >= token_count_value(t: deepseek_v4_think_max_recommended_context_floor)
+}
+
+// WHAT THIS MODEL DOES NOT DECLARE, stated as a row because its ABSENCE is the fact a consumer
+// needs. No primary source documents a maximum output token count, and the GGUF metadata carries no
+// output or thinking-budget key -- only context_length and the rope scaling above. So there is no
+// model-side output ceiling to couple a harness budget to.
+//
+// WHAT BOUNDS OUTPUT IS THE ENGINE, AND IT IS THE SHARED WINDOW. Measured against the serving
+// router on 2026-09-03: max_tokens 1048576 is refused with "This model's maximum context length is
+// 1048576 tokens. However, you requested 1048576 output tokens and your prompt contains 52
+// characters", while 262144 and 131072 both answer 200. So the constraint is
+// INPUT PLUS OUTPUT <= CONTEXT, with no separate output ceiling beneath it.
+//
+// A caller wanting an output budget therefore derives it from the window MINUS the input it has, and
+// attributing that bound to the MODEL would be authority substitution: it is a property of the
+// serving engine's admission, which is why it is recorded here as an absence plus a measurement
+// rather than as a deepseek_v4_max_output_tokens row.
+data deepseek_v4_declares_no_output_ceiling: Bool = true
+
+fn deepseek_v4_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
+  let w = token_count_value(t: window)
+  let i = token_count_value(t: input_tokens)
+  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+}
