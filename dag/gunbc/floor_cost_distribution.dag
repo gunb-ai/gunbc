@@ -451,7 +451,10 @@ type SameHeadAttemptPair {
 // rust_crate_partition_witness.witness_partition_fold_unit_count_holds, one of the 15: cold and
 // resolved-graph-cache-warm executions returned byte-identical 88-byte PASS output. That rules out
 // semantic cache impurity for the specimen; it does NOT rule out a cache hit changing only the
-// instrumentation count, which is still an open candidate. This detector names the first divergent
+// instrumentation count by itself. The two retained same-head artifacts disfavor that explanation
+// independently: attempt 3 is LOWER for five drifting identities and HIGHER for ten, whereas a warm
+// cache skipping work predicts one direction. The remaining order- or hidden-state mechanism is
+// open. This detector names the first divergent
 // ROW available in the cost artifact (identity, module, attempts and both counts). The artifact carries no expression trace,
 // so claiming a first divergent evaluator point here would fabricate precision the producer does
 // not expose.
