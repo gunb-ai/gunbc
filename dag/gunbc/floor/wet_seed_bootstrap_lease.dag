@@ -2,6 +2,7 @@ module gunbc.wet_seed_bootstrap_lease
 
 import v2.workflow.floor_wet_route { BootstrapExecutorSnapshotReceipt }
 import v2.std.optional { Optional, Absent, Present }
+import std.types { EpochSecs }
 
 // THE DECLARED ONE-SHOT BOOTSTRAP LEASE ROW (parent lease ruling 2026-08-30), homed OUTSIDE
 // the wet semantic closure on purpose: `v2.workflow.floor_wet_route` is inside its own wet
@@ -54,4 +55,42 @@ import v2.std.optional { Optional, Absent, Present }
 // construction. If no executor drift occurs while it runs, no lease is needed at all — which is
 // the outcome to prefer, because the ruling that authorized a lease authorized ONE envelope (v7)
 // and explicitly authorized no successor. Flipping this row again requires its own grant.
-data wet_seed_bootstrap_lease_declared: Optional<BootstrapExecutorSnapshotReceipt> = Absent {}
+
+// FLIPPED TO PRESENT 2026-09-03, UNDER AN OPERATOR GRANT AND NOT A MANAGER RULING. The grant
+// was given by the operator in response to an escalation on gunbc#9725, which is the authority
+// this module's paragraph above reserves the flip to. It is recorded as an operator grant
+// deliberately: the escalating lane refused to self-authorize and its manager refused to grant
+// what the artifact reserves to the operator, so a later reader must be able to tell which
+// authority actually answered. A manager decision here would have been authorization inherited
+// from an adjacent authority, which is the thing the reservation exists to stop.
+//
+// WHAT MOVED, AND IT IS THE RACE THIS MECHANISM WAS BUILT FOR, EXERCISED FOR THE FIRST TIME ON
+// A REAL RECEIPT. The wet lane ran 2h31m on run 33745596102. Its SEMANTIC subject digest still
+// matches the evaluated tree exactly -- the floor's own refusal says so, "the same semantic
+// subject ran under a superseded seed build". Only the EXECUTOR axis moved: the envelope was
+// executed under seed executor b6a2c43b and the evaluated tree computes 3dcd74ec, because CI
+// evaluates the MERGE REF and main merged src/v1/stage0 while the lane was running. No semantic
+// fact changed under the receipt; the seed it ran on was superseded mid-flight.
+//
+// THIS ROW ADMITS EXACTLY ONE ENVELOPE AND CANNOT BE READ AS A STANDING PERMISSION. All four
+// exact facts below are pinned with no wildcard: the envelope digest is the sha256 of the
+// committed latest-attempt.json bytes, the attempt_seq, the semantic subject digest, and the
+// roster digest. `wet_seed_bootstrap_admission` refuses with NotApplicable if ANY of the four
+// fails to join, so a later receipt -- a refresh, a re-dispatch, a second attempt -- does not
+// inherit this admission and needs its own grant. The grant covers this receipt and nothing
+// after it.
+//
+// THE WINDOW IS CLOSED-FORM AND CHECKED AGAINST THE EVALUATED TREE'S COMMIT TIME, not against
+// wall clock at read time, so the admission cannot be extended by re-running later.
+data wet_seed_bootstrap_lease_declared: Optional<BootstrapExecutorSnapshotReceipt> = Present {
+  value: BootstrapExecutorSnapshotReceipt {
+    lease_identity: "wet-executor-bootstrap-2026-09-03-run-33745596102",
+    exact_envelope_digest: "ffa6ca1592d15448ebb454343f80daa51f357c5f84e8b5e7b131c9410b675be7",
+    exact_attempt_seq: 1,
+    exact_semantic_subject_digest: "b6aee692e0fb274d3ca76a8089a6fda05b2d86ea8c46dd2a4bbd6c14c070b493",
+    exact_roster_digest: "ab78f9748327de68df15f8e0bb6521180ad3fb5a9b6342409e0d27e928668fdf",
+    observed_executor_contract_digest: "b6a2c43b221f78196425310dad8b0ff410e2d9f1f33727abe13beca6d11d9188",
+    executed_at_unix_secs: 1788432786 as EpochSecs,
+    not_after_unix_secs: 1788461586 as EpochSecs
+  }
+}

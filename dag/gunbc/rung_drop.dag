@@ -526,7 +526,35 @@ data floor_cut_receipt_discriminating_arms: RungDrop = RungDrop { identity: "flo
 // nothing here, because the class is that there are two.
 data wet_lane_seed_admission_pairing_unfused: RungDrop = RungDrop { identity: "wet_lane_seed_admission_pairing_unfused" as NonEmptyStr, subject: "The seed-side pairing of wet-lane receipt standing with bootstrap-lease admission, in `v1_compiler.cli_run.required_floor_runner` -- one decision at one call site.", declared: "2026-09-03", standing: Standing, declaration: TypedDeclaration { previous: StructurallyImpossible, temporary: Mitigatable, reason: ReplacementStaged { replacement: "v2.workflow.floor_wet_route wet_route_gate_disposition_for_receipt -- the fused gate that derives the bootstrap admission from the envelope it judges, making the mismatched pair unconstructible. It exists and has no executing consumer for this decision: the seed reimplements the gate rather than invoking it." }, population: ["v1_compiler.cli_run.required_floor_runner -- the single production site pairing wet_lane_receipt_standing with wet_seed_bootstrap_admission, one decision, held by lexical proximity and a comment"], restoration_trigger: "THE SEED'S ADMISSION DECISION IS TAKEN BY THE FUSED ENTRY RATHER THAN REIMPLEMENTED. Vehicle: the seed decoder port inside the wet-route authority cutover, sufficient only when the seed floor run reaches its wet-lane verdict THROUGH wet_route_gate_disposition_for_receipt -- not when it merely decodes the same types, and not when a second implementation is shown to agree. Agreement between two implementations retires nothing here, because the class is that there are two." } }
 
+// THE ONE-SHOT EXECUTOR-SNAPSHOT ADMISSION, GRANTED BY OPERATOR RULING 2026-09-03 IN RESPONSE TO
+// AN ESCALATION ON gunbc#9725. Recorded as an OPERATOR grant and not a manager ruling, because
+// the reservation in gunbc.wet_seed_bootstrap_lease names the operator and a reader must be able
+// to tell which authority answered: the escalating lane refused to self-authorize, and its
+// manager refused to grant what the artifact reserves to the operator.
+//
+// WHAT IS ADMITTED, AND IT IS NARROW BY CONSTRUCTION. One envelope, pinned on four exact facts
+// (envelope digest, attempt_seq, semantic subject digest, roster digest) with no wildcard, past
+// exactly one standing -- ReceiptExecutorSnapshotDifferent -- and never past a semantic-subject,
+// contract, roster, expiry or missing standing. The SEMANTIC subject matched the evaluated tree
+// exactly; the floor's own refusal says "the same semantic subject ran under a superseded seed
+// build". Only the executor axis moved, and it moved because CI evaluates the MERGE REF while
+// main merged src/v1/stage0 during a 2h31m dispatch.
+//
+// THIS IS A DECLARED SAFETY REGRESSION WITH A FINITE RUNWAY, NOT A FIX. What is lost for the
+// duration: the floor accepts a receipt whose executing seed is not the evaluated tree's seed,
+// so for this one envelope the executor axis is asserted rather than verified. The window is
+// closed-form -- executed_at plus a fixed 28,800s, checked against the EVALUATED TREE'S COMMIT
+// TIME rather than wall clock, so it cannot be extended by re-running later.
+//
+// AND THE MECHANISM WORKED, INCLUDING THE PART WHERE IT STOPPED THE AUTHOR. The axis moved under
+// a live run and the outcome was a typed refusal naming both digests, an escalation to the named
+// authority, and a bounded grant -- not a silent stale-evidence admission, and not a lost 2h31m
+// dispatch. A lease that admits nothing until someone with the authority says so is the shape
+// this row is evidence for.
+data wet_executor_bootstrap_lease: RungDrop = RungDrop { identity: "wet_executor_bootstrap_lease" as NonEmptyStr, subject: "The wet-lane receipt executor-contract axis, for exactly one envelope: run 33745596102, attempt_seq 1, envelope digest ffa6ca15", declared: "2026-09-03", standing: Standing, declaration: TypedDeclaration { previous: StructurallyGuaranteed, temporary: Mitigatable, reason: ReplacementStaged { replacement: "gunbc.wet_seed_bootstrap_lease wet_seed_bootstrap_lease_declared -- the declared one-shot lease, pinned to four exact facts and refusing with NotApplicable if any fails to join, so no later receipt inherits this admission" }, population: ["one wet-lane receipt envelope: run 33745596102, attempt_seq 1, envelope digest ffa6ca1592d15448ebb454343f80daa51f357c5f84e8b5e7b131c9410b675be7, admitted past ReceiptExecutorSnapshotDifferent and no other standing"], restoration_trigger: "THE EXECUTOR AXIS IS DERIVED FROM THE EVALUATED TREE RATHER THAN THE DISPATCH TREE. The artifact must be SUFFICIENT FOR this: a dispatch whose executor contract moves mid-run produces a receipt admissible with NO grant, because the axis the floor checks is a property of the tree being evaluated and not of the seed the lane happened to execute on. NOT satisfied by the next receipt landing executor-exact, and NOT by the executor snapshot happening to match -- both are luck while the capability stays dead, and a trigger a favourable runner slot can fire names less than the capability it restores." } }
+
 data rung_drop_roster: List<RungDrop> = [
+  wet_executor_bootstrap_lease,
   wet_lane_seed_admission_pairing_unfused,
   floor_cut_heal,
   floor_cut_effect_gates,
