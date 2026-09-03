@@ -20499,6 +20499,9 @@ fn resolved_initializer_decl_ref(
         Some(InferredNode::TypeVariable { .. }) => {
             return Err("unresolved initializer type variable".to_string());
         }
+        Some(InferredNode::Divergent) => {
+            return Err("initializer diverges, so it names no declared type".to_string());
+        }
         None => None,
     };
     if let Some(name) = inferred_name {

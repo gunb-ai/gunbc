@@ -32,8 +32,7 @@ import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierEmpty,
   CompilePhaseFrontierValidated,
   CompilePhaseFrontierInvalid,
-  compile_phase_frontier_standing,
-  self_host_compile_phase_frontier_receipts,
+  current_compile_phase_frontier_standing,
   self_host_compile_phase_ratchet_enrolment,
 }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
@@ -418,7 +417,7 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
   match m {
     SelfHostWholeCorpusPopulationDerived =>
-      match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+      match current_compile_phase_frontier_standing() {
         CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
           subject: "self-host S2: whole-corpus compile-phase population derived from the latest validated frontier receipt" as NonEmptyStr,
           outstanding: if latest.board.partition_complete { [] } else { latest.unplaced_identities }
@@ -491,7 +490,7 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         )
       )
     SelfHostCorpusEmitsCleanly =>
-      match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+      match current_compile_phase_frontier_standing() {
         CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
           subject: "self-host: error diagnostics in the latest validated whole-corpus compile-phase receipt (coded and codeless)" as NonEmptyStr,
           outstanding: latest.raw_error_diagnostic_identities
