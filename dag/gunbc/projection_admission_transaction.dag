@@ -53,6 +53,27 @@ import gunbc.generated_artifact {
 // PROJECTED ledger, and editing it to record a fact about projection churn would cost exactly the
 // serialized regeneration this lane exists to remove.
 //
+// THE DISPLACED COST, MEASURED ON THIS PULL REQUEST RATHER THAN ARGUED (2026-09-03). Five lanes
+// contended the failure-mode ledger and four the rung-drop ledger, one lane in both; every pair
+// conflicted, and the order was decided by a manager reading merge-tree output by hand. This
+// module's own change was one of the five and had to be resolved against a peer that landed first.
+// The projections REFUSE under the generated-artifact merge driver, so they cannot be resolved
+// wrongly -- but the AUTHORITIES they project from are `merge: unspecified`, so they collide
+// textually instead, and every appender after the first pays a resolve. That asymmetry is a
+// separate subject about the ledger authorities' grain and is deliberately not addressed here.
+//
+// THE CORRECTNESS ARGUMENT FOR ADMISSION-TIME DERIVATION IS STRONGER THAN THE COST ONE, and it is
+// what this paragraph exists for. Resolving an append/append roster conflict by UNION is sound
+// only if nothing was deliberately DELETED on the other side: a union silently re-adds a row
+// someone removed on purpose, git reports a clean resolve either way, and the re-added row then
+// looks like it was always there. Nothing in the merge output distinguishes the two cases, so the
+// check has to be made against the merge base before resolving -- on this change, one row added
+// and none removed. A resolve performed inside an admission transaction over the composed
+// candidate has the merge base and both sides in hand at the moment it decides; a human resolving
+// on a mutable branch has to remember to look. That is a silent-wrongness class (section 5), not
+// an efficiency complaint, and it is the reason the transaction is worth more than the queue it
+// replaces.
+
 // RUNG (DESIGN section 4b): the class sits at MITIGATABLE today. Stale projections are writable
 // and cycles are wasted, but the generated-artifact merge driver refuses a diverged projection and
 // the read-only `generated-artifact` required phase refuses drift, so the harm is contained rather
