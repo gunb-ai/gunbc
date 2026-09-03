@@ -278,8 +278,35 @@ fn step0_row_key(row: CompileDiagnosticCensusRow) -> String {
   )
 }
 
-fn step0_histogram_index(rows: List<CompileDiagnosticCensusRow>) -> Map<String, Int> {
-  fold(rows, init: empty_map(), f: fn(acc, row) { map_insert(acc, step0_row_key(row: row), row.count) })
+// THE INDEX REFUSES A CENSUS THAT IS NOT UNIQUELY KEYED, and this arm is not hypothetical: it is
+// how the defect was found. Replacing the nested scan with an index changed gross_increases by 5 and
+// nothing else, at the same revision on the same corpus -- a first-match scan and a last-write index
+// disagree exactly when two rows share a key. So the census carries more than one row for some
+// (diagnostic_class, subject_name, blocking) triple, the bucket join is NOT WELL DEFINED over it,
+// and picking either row would be an answer chosen by an implementation detail. It refuses instead,
+// with the duplicate count, and the pair standing carries that refusal rather than a number.
+type Step0HistogramIndex
+  = HistogramIndexed { index: Map<String, Int> }
+  | HistogramNotUniquelyKeyed { duplicate_keys: Int }
+
+type Step0IndexFold {
+  index: Map<String, Int>
+  duplicates: Int
+}
+
+fn step0_histogram_index(rows: List<CompileDiagnosticCensusRow>) -> Step0HistogramIndex {
+  let built = fold(rows, init: Step0IndexFold { index: empty_map(), duplicates: 0 }, f: fn(acc, row) {
+    let key = step0_row_key(row: row)
+    match map_get(acc.index, key) {
+      Present { value: _ } => Step0IndexFold { index: acc.index, duplicates: acc.duplicates + 1 }
+      Absent => Step0IndexFold { index: map_insert(acc.index, key, row.count), duplicates: acc.duplicates }
+    }
+  })
+  if built.duplicates > 0 {
+    HistogramNotUniquelyKeyed { duplicate_keys: built.duplicates }
+  } else {
+    HistogramIndexed { index: built.index }
+  }
 }
 
 fn step0_differential_left_step(
@@ -341,16 +368,32 @@ fn step0_differential_right_step(
   }
 }
 
+type Step0DifferentialOutcome
+  = Step0DifferentialUndefined { cause: NonEmptyStr }
+  | Step0DifferentialComputed { differential: Step0HistogramDifferential }
+
 fn step0_histogram_differential(
   pre: List<CompileDiagnosticCensusRow>,
   post: List<CompileDiagnosticCensusRow>
-) -> Step0HistogramDifferential {
-  let pre_index = step0_histogram_index(rows: pre)
-  let post_index = step0_histogram_index(rows: post)
-  let left = fold(pre, init: Step0HistogramDifferential {
-    gross_increases: 0, gross_decreases: 0, unchanged_buckets: 0, pre_only_buckets: 0, post_only_buckets: 0
-  }, f: fn(acc, row) { step0_differential_left_step(acc: acc, post_index: post_index, row: row) })
-  fold(post, init: left, f: fn(acc, row) { step0_differential_right_step(acc: acc, pre_index: pre_index, row: row) })
+) -> Step0DifferentialOutcome {
+  match step0_histogram_index(rows: pre) {
+    HistogramNotUniquelyKeyed { duplicate_keys: duplicates } => Step0DifferentialUndefined {
+      cause: concat("the pre-strip census carries more than one row for one (class, subject, blocking) key -- duplicate rows: ", to_string(duplicates)) as NonEmptyStr
+    }
+    HistogramIndexed { index: pre_index } => match step0_histogram_index(rows: post) {
+      HistogramNotUniquelyKeyed { duplicate_keys: duplicates } => Step0DifferentialUndefined {
+        cause: concat("the post-strip census carries more than one row for one (class, subject, blocking) key -- duplicate rows: ", to_string(duplicates)) as NonEmptyStr
+      }
+      HistogramIndexed { index: post_index } => {
+        let left = fold(pre, init: Step0HistogramDifferential {
+          gross_increases: 0, gross_decreases: 0, unchanged_buckets: 0, pre_only_buckets: 0, post_only_buckets: 0
+        }, f: fn(acc, row) { step0_differential_left_step(acc: acc, post_index: post_index, row: row) })
+        Step0DifferentialComputed {
+          differential: fold(post, init: left, f: fn(acc, row) { step0_differential_right_step(acc: acc, pre_index: pre_index, row: row) })
+        }
+      }
+    }
+  }
 }
 
 fn step0_differential_is_identity(differential: Step0HistogramDifferential) -> Bool {
@@ -368,13 +411,14 @@ fn step0_differential_standing(
     Absent => OccurrenceJoinUnavailable { cause: "the pre-strip compile produced no census, so there is nothing to compare" as NonEmptyStr }
     Present { value: pre_rows } => match step0_standing_histogram(standing: post) {
       Absent => OccurrenceJoinUnavailable { cause: "the post-strip compile produced no census, so there is nothing to compare" as NonEmptyStr }
-      Present { value: post_rows } => {
-        let differential = step0_histogram_differential(pre: pre_rows, post: post_rows)
-        if step0_differential_is_identity(differential: differential) {
-          HistogramsIdentical
-        } else {
-          HistogramBucketsChanged { differential: differential }
-        }
+      Present { value: post_rows } => match step0_histogram_differential(pre: pre_rows, post: post_rows) {
+        Step0DifferentialUndefined { cause: cause } => OccurrenceJoinUnavailable { cause: cause }
+        Step0DifferentialComputed { differential: differential } =>
+          if step0_differential_is_identity(differential: differential) {
+            HistogramsIdentical
+          } else {
+            HistogramBucketsChanged { differential: differential }
+          }
       }
     }
   }
@@ -422,12 +466,15 @@ fn step0_order_invariance(
     Absent => OrderInvarianceNotMeasured { cause: concat("the ", concat(arm, " arm produced no census in the first order")) as NonEmptyStr }
     Present { value: first_rows } => match step0_standing_histogram(standing: second_pass) {
       Absent => OrderInvarianceNotMeasured { cause: concat("the ", concat(arm, " arm produced no census in the second order")) as NonEmptyStr }
-      Present { value: second_rows } =>
-        if step0_differential_is_identity(differential: step0_histogram_differential(pre: first_rows, post: second_rows)) {
-          OrderInvarianceHeld
-        } else {
-          OrderInvarianceViolated { detail: concat("the ", concat(arm, " arm's census depends on the order the pair was compiled in")) as NonEmptyStr }
-        }
+      Present { value: second_rows } => match step0_histogram_differential(pre: first_rows, post: second_rows) {
+        Step0DifferentialUndefined { cause: cause } => OrderInvarianceNotMeasured { cause: cause }
+        Step0DifferentialComputed { differential: differential } =>
+          if step0_differential_is_identity(differential: differential) {
+            OrderInvarianceHeld
+          } else {
+            OrderInvarianceViolated { detail: concat("the ", concat(arm, " arm's census depends on the order the pair was compiled in")) as NonEmptyStr }
+          }
+      }
     }
   }
 }

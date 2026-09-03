@@ -16,8 +16,13 @@ import gunbc.namespace_step0_candidate_run {
   Step0SubjectPartitionOutcome,
   Step0SubjectPartitioned,
   Step0SubjectPartitionRefused,
+  Step0DifferentialOutcome,
+  Step0DifferentialUndefined,
+  Step0DifferentialComputed,
+  step0_histogram_differential,
   step0_partition_step
 }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 import gunbc.namespace_step0_binding_provenance_contract {
   BindingProvenanceObservable,
   BindingProvenanceUnobservable,
@@ -927,4 +932,53 @@ test fn a_partition_refusal_is_not_repaired_by_a_later_member() -> Bool {
       Present { value: refused } => partition_refused(outcome: step0_partition_step(outcome: refused, member: good))
     }
   }
+}
+
+// -------------------------------------------------------- the join refuses a non-uniquely-keyed census
+//
+// THIS RED IS HOW THE DEFECT WAS FOUND, not a hypothetical. Replacing the nested scan with an index
+// changed gross_increases by 5 and nothing else, at the same revision on the same corpus: a
+// first-match scan and a last-write index disagree exactly when two rows share a key. Picking either
+// row would make the differential an answer chosen by an implementation detail, so it refuses.
+fn duplicated_census() -> List<CompileDiagnosticCensusRow> {
+  [
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 7 }
+  ]
+}
+
+fn distinct_census() -> List<CompileDiagnosticCensusRow> {
+  [
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/b.dag", blocking: true, count: 7 }
+  ]
+}
+
+fn differential_is_undefined(outcome: Step0DifferentialOutcome) -> Bool {
+  match outcome {
+    Step0DifferentialUndefined { cause: _ } => true
+    Step0DifferentialComputed { differential: _ } => false
+  }
+}
+
+test fn a_census_with_two_rows_for_one_bucket_makes_the_differential_undefined() -> Bool {
+  differential_is_undefined(outcome: step0_histogram_differential(pre: distinct_census(), post: duplicated_census()))
+    && differential_is_undefined(outcome: step0_histogram_differential(pre: duplicated_census(), post: distinct_census()))
+}
+
+// The positive control, so the refusal above discriminates rather than refusing every census.
+test fn a_uniquely_keyed_census_pair_computes_its_differential() -> Bool {
+  !differential_is_undefined(outcome: step0_histogram_differential(pre: distinct_census(), post: distinct_census()))
+}
+
+// blocking is part of the key, so the same class and subject at two severities are two buckets and
+// not a duplicate.
+test fn the_same_class_and_subject_at_two_severities_are_two_buckets() -> Bool {
+  !differential_is_undefined(outcome: step0_histogram_differential(
+    pre: distinct_census(),
+    post: [
+      CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
+      CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: false, count: 7 }
+    ]
+  ))
 }

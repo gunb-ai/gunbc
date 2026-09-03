@@ -181,6 +181,18 @@ data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may
 // roster above, and treating it as complete would inherit an unmeasured blind spot as a baseline.
 data step0_census_candidate_producer_standing: NonEmptyStr = "compile_clean_unlisted_import_census is a CANDIDATE producer whose coverage of the reference-family roster is unestablished; it selects UnlistedImportUse diagnostic rows from a masked type-name emission path and has not been shown to discriminate bare call targets, constructors, bare variants or dispatch" as NonEmptyStr
 
+// A STATEMENT COUNT IS NOT AN EDGE COUNT, AND THE DIFFERENCE IS NOT ROUNDING. The strip reports
+// removed STATEMENTS, and a braced list binds several names in one statement -- so an edge or
+// binding denominator derived from the statement figure is a different population wearing the same
+// number. Worse, the natural derivation is from OBSERVED USES, and that erases exactly the names it
+// should be counting: an imported binding with zero uses contributes no use to observe, so a
+// use-derived census balances while the unused names inside multi-name statements vanish from it.
+//
+// So the removed-edge projection is a LEFT JOIN, not a filter: the complete imported-binding roster
+// on the left, uses on the right, and zero-use bindings RETAINED with a zero. Anything else answers
+// a question about uses and reports it as a question about imports.
+data step0_removed_edge_projection_law: NonEmptyStr = "removed_statements is a STATEMENT-grain count and no edge or binding denominator may be derived from it; the removed-edge projection is the complete imported-binding roster LEFT JOINED to observed uses, retaining zero-use imported bindings, because a projection derived from uses alone silently erases the unused names inside multi-name import statements" as NonEmptyStr
+
 // THE PRODUCER'S FIRST OBLIGATION IS A LIVENESS CONTROL, AND IT IS NOT OPTIONAL. On a totally
 // stripped corpus the advisory diagnostic this candidate producer selects may vanish ENTIRELY --
 // UnlistedImportUse is emitted about an import LIST, and a source with no import list can stop
@@ -193,6 +205,49 @@ data step0_census_candidate_producer_standing: NonEmptyStr = "compile_clean_unli
 // The second reading is the absorbing fallback wearing a measurement's clothes -- the mechanism
 // cannot see, so it reports the empty answer, and the empty answer is exactly what a clean corpus
 // would look like.
+// THE ZERO RULE IS DENOMINATOR-RELATIVE. "observed == 0 implies the instrument is broken" is as
+// wrong as its opposite: a genuinely empty population is not an instrument defect. What decides
+// between them is a denominator produced INDEPENDENTLY of the diagnostic -- the reference-occurrence
+// population this contract's denominator law already fixes -- and the five states below are the
+// total reading of (denominator, observed). Equality is still not admission: it is a necessary
+// condition, and the sufficient one is that every occurrence has exactly one join.
+type Step0CensusLivenessState
+  = ReferencePopulationUnavailable
+  | LegitimateEmptyPopulation
+  | ProvenanceProducerSilent
+  | ProvenanceCensusIncomplete
+  | ProvenanceObservationOrphanedOrDuplicated
+
+fn step0_census_liveness_state_statement(state: Step0CensusLivenessState) -> NonEmptyStr {
+  match state {
+    ReferencePopulationUnavailable =>
+      "the reference-occurrence denominator could not be produced, so no reading of the observed figure is available in either direction" as NonEmptyStr
+    LegitimateEmptyPopulation =>
+      "the denominator is zero AND a total eligibility fold proves it zero, so an observed zero is the population and not a silence; a denominator merely absent does not reach this state" as NonEmptyStr
+    ProvenanceProducerSilent =>
+      "the denominator is nonzero and the producer observed nothing, which is a typed refusal ABOUT THE INSTRUMENT and never a finding that the corpus is clean" as NonEmptyStr
+    ProvenanceCensusIncomplete =>
+      "the producer observed fewer occurrences than the denominator carries, so the census has coverage debt and its figure is a lower bound rather than a measurement" as NonEmptyStr
+    ProvenanceObservationOrphanedOrDuplicated =>
+      "the producer observed more occurrences than the denominator carries, so an observation is orphaned or double-counted and the join is not one-to-one" as NonEmptyStr
+  }
+}
+
+data step0_census_liveness_states: List<Step0CensusLivenessState> = [
+  ReferencePopulationUnavailable,
+  LegitimateEmptyPopulation,
+  ProvenanceProducerSilent,
+  ProvenanceCensusIncomplete,
+  ProvenanceObservationOrphanedOrDuplicated
+]
+
+// AND Unobserved MAY NOT BE AUTHORED BY THE DIAGNOSTIC PRODUCER. A silent producer cannot report the
+// occurrence it failed to see, so Unobserved is DERIVED by a total anti-join against the independent
+// denominator. If occurrence discovery were itself derived from the diagnostic's own emissions, the
+// diagnostic going silent would make the denominator zero and conservation would pass VACUOUSLY --
+// the absorbing filter rebuilt one layer above the one subject collection just removed.
+data step0_unobserved_derivation_law: NonEmptyStr = "Unobserved is never authored by the diagnostic producer and is derived by a total anti-join against a reference-occurrence denominator produced independently of that diagnostic; a denominator derived from the diagnostic's own emissions makes conservation pass vacuously the moment the diagnostic goes silent" as NonEmptyStr
+
 type Step0CensusLivenessObligation
   = LivenessControlRequiredBeforeAnyFigure
   | ZeroWithoutLivenessIsAnInstrumentRefusal
@@ -203,7 +258,7 @@ fn step0_census_liveness_obligation_statement(obligation: Step0CensusLivenessObl
     LivenessControlRequiredBeforeAnyFigure =>
       "before any census figure over a stripped population is read, the producer must emit a nonzero on a subject known to contain the class; a producer that has not been shown to emit at all has measured nothing" as NonEmptyStr
     ZeroWithoutLivenessIsAnInstrumentRefusal =>
-      "a zero from a producer with no passing liveness control is a typed refusal about the instrument and may never be recorded as a finding about the corpus, because a blind instrument and a clean corpus produce the same number" as NonEmptyStr
+      "an observed zero is read against the denominator, never on its own: with a nonzero denominator it is ProvenanceProducerSilent, a typed refusal about the instrument, and it is LegitimateEmptyPopulation only where a total eligibility fold proves the denominator zero" as NonEmptyStr
     ListedImportLivenessSubjectRequired =>
       "the liveness subject must exercise the LISTED-import path the diagnostic is attached to, since a totally stripped source may carry no import list for the diagnostic to be about" as NonEmptyStr
   }
@@ -234,7 +289,10 @@ type Step0BindingProvenanceReceiptContract {
   receipt_fields: List<Step0CensusReceiptField>
   no_policy_promotion_rule: NonEmptyStr
   candidate_producer_standing: NonEmptyStr
+  removed_edge_projection_law: NonEmptyStr
   liveness_obligations: List<Step0CensusLivenessObligation>
+  liveness_states: List<Step0CensusLivenessState>
+  unobserved_derivation_law: NonEmptyStr
   producer_standing: Step0BindingProvenanceProducerStanding
 }
 
@@ -250,7 +308,10 @@ data step0_binding_provenance_receipt_contract: Step0BindingProvenanceReceiptCon
   receipt_fields: step0_census_receipt_fields,
   no_policy_promotion_rule: step0_census_no_policy_promotion_rule,
   candidate_producer_standing: step0_census_candidate_producer_standing,
+  removed_edge_projection_law: step0_removed_edge_projection_law,
   liveness_obligations: step0_census_liveness_obligations,
+  liveness_states: step0_census_liveness_states,
+  unobserved_derivation_law: step0_unobserved_derivation_law,
   producer_standing: NoProducerInhabits
 }
 
