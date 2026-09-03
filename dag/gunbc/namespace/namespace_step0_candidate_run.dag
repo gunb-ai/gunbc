@@ -1,6 +1,6 @@
 module gunbc.namespace_step0_candidate_run
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.import {
   ImportStatementsParsed,
@@ -261,30 +261,33 @@ fn step0_compile_population(sources: List<FixtureSource>, entry: NonEmptyStr) ->
 
 // ------------------------------------------------------------------ the bucket-grain differential
 //
-// The join is on the census's OWN key, matched field by field rather than through a rendered string:
-// a concatenated key would be a second naming scheme for a tuple the row already carries, and one
-// whose separator can appear inside a subject name.
-fn step0_rows_share_a_bucket(left: CompileDiagnosticCensusRow, right: CompileDiagnosticCensusRow) -> Bool {
-  (left.diagnostic_class as String) == (right.diagnostic_class as String)
-    && left.subject_name == right.subject_name
-    && left.blocking == right.blocking
+// THE JOIN IS INDEXED, NOT NESTED. The first cut scanned the opposite histogram for every row, and
+// the corpus proved the cost shape rather than leaving it hypothetical: 2,446 pre-strip rows against
+// 10,084 post-strip rows is ~24.7M row comparisons per differential and three differentials per
+// dispatch. DESIGN section 6 says a proven cost-shape defect is always fixed regardless of the
+// realized n, so each side is indexed once and probed once -- linear in the two histograms.
+//
+// THE INDEX KEY IS AN INTERNAL ADDRESS, NOT A SECOND NAME FOR THE BUCKET. Section 3's objection to
+// rendered keys is about CITATION -- naming a thing a second way so the two names can drift. Nothing
+// here is cited by this string: it is built and consumed inside one fold, from the row's own three
+// key fields, and the newline separator cannot appear in a diagnostic class.
+fn step0_row_key(row: CompileDiagnosticCensusRow) -> String {
+  concat(
+    if row.blocking { "blocking\n" } else { "advisory\n" },
+    concat(row.diagnostic_class as String, concat("\n", row.subject_name))
+  )
 }
 
-fn step0_find_bucket(rows: List<CompileDiagnosticCensusRow>, probe: CompileDiagnosticCensusRow) -> CompileDiagnosticCensusRow? {
-  fold(rows, init: none, f: fn(acc, row) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if step0_rows_share_a_bucket(left: row, right: probe) { Present { value: row } } else { none }
-    }
-  })
+fn step0_histogram_index(rows: List<CompileDiagnosticCensusRow>) -> Map<String, Int> {
+  fold(rows, init: empty_map(), f: fn(acc, row) { map_insert(acc, step0_row_key(row: row), row.count) })
 }
 
 fn step0_differential_left_step(
   acc: Step0HistogramDifferential,
-  post: List<CompileDiagnosticCensusRow>,
+  post_index: Map<String, Int>,
   row: CompileDiagnosticCensusRow
 ) -> Step0HistogramDifferential {
-  match step0_find_bucket(rows: post, probe: row) {
+  match map_get(post_index, step0_row_key(row: row)) {
     Absent => Step0HistogramDifferential {
       gross_increases: acc.gross_increases,
       gross_decreases: acc.gross_decreases + row.count,
@@ -293,18 +296,18 @@ fn step0_differential_left_step(
       post_only_buckets: acc.post_only_buckets
     }
     Present { value: other } =>
-      if other.count > row.count {
+      if other > row.count {
         Step0HistogramDifferential {
-          gross_increases: acc.gross_increases + (other.count - row.count),
+          gross_increases: acc.gross_increases + (other - row.count),
           gross_decreases: acc.gross_decreases,
           unchanged_buckets: acc.unchanged_buckets,
           pre_only_buckets: acc.pre_only_buckets,
           post_only_buckets: acc.post_only_buckets
         }
-      } else if row.count > other.count {
+      } else if row.count > other {
         Step0HistogramDifferential {
           gross_increases: acc.gross_increases,
-          gross_decreases: acc.gross_decreases + (row.count - other.count),
+          gross_decreases: acc.gross_decreases + (row.count - other),
           unchanged_buckets: acc.unchanged_buckets,
           pre_only_buckets: acc.pre_only_buckets,
           post_only_buckets: acc.post_only_buckets
@@ -323,10 +326,10 @@ fn step0_differential_left_step(
 
 fn step0_differential_right_step(
   acc: Step0HistogramDifferential,
-  pre: List<CompileDiagnosticCensusRow>,
+  pre_index: Map<String, Int>,
   row: CompileDiagnosticCensusRow
 ) -> Step0HistogramDifferential {
-  match step0_find_bucket(rows: pre, probe: row) {
+  match map_get(pre_index, step0_row_key(row: row)) {
     Present { value: _ } => acc
     Absent => Step0HistogramDifferential {
       gross_increases: acc.gross_increases + row.count,
@@ -342,10 +345,12 @@ fn step0_histogram_differential(
   pre: List<CompileDiagnosticCensusRow>,
   post: List<CompileDiagnosticCensusRow>
 ) -> Step0HistogramDifferential {
+  let pre_index = step0_histogram_index(rows: pre)
+  let post_index = step0_histogram_index(rows: post)
   let left = fold(pre, init: Step0HistogramDifferential {
     gross_increases: 0, gross_decreases: 0, unchanged_buckets: 0, pre_only_buckets: 0, post_only_buckets: 0
-  }, f: fn(acc, row) { step0_differential_left_step(acc: acc, post: post, row: row) })
-  fold(post, init: left, f: fn(acc, row) { step0_differential_right_step(acc: acc, pre: pre, row: row) })
+  }, f: fn(acc, row) { step0_differential_left_step(acc: acc, post_index: post_index, row: row) })
+  fold(post, init: left, f: fn(acc, row) { step0_differential_right_step(acc: acc, pre_index: pre_index, row: row) })
 }
 
 fn step0_differential_is_identity(differential: Step0HistogramDifferential) -> Bool {
