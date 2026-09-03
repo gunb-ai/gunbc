@@ -125,9 +125,12 @@ pub fn run_codex_app_server_stdio_session(
     // leader pins the process-group identity until teardown has finished signalling and observing
     // every descendant. A bounded window also prevents an inherited pipe from blocking teardown.
     let natural_exit = wait_for_natural_exit(pid, NATURAL_EXIT_GRACE);
+    let identity = crate::process_group::pin_process_group_identity(pid).map_err(|observed| {
+        format!("codex process-group identity was lost before teardown: {observed:?}")
+    })?;
     let termination = crate::process_group::terminate_process_group(
         &mut child,
-        pid,
+        &identity,
         PROCESS_GROUP_TERMINATION_GRACE,
     );
 
@@ -151,21 +154,14 @@ pub fn run_codex_app_server_stdio_session(
             "codex process-group teardown did not settle: {termination:?}"
         )));
     }
-    let mut exit_code = match termination {
-        crate::process_group::ProcessGroupTermination::Settled {
-            leader: crate::process_group::SettledLeader::Exited { code },
-            escalated_to_kill: _,
-        } => code,
-        crate::process_group::ProcessGroupTermination::Settled {
-            leader: crate::process_group::SettledLeader::Signaled { signal },
-            escalated_to_kill: _,
-        } => 128 + signal,
-        unsettled @ crate::process_group::ProcessGroupTermination::Unsettled { .. } => {
-            // Kept exhaustive even though `is_settled` refused this arm above: extracting the
-            // settled leader must not gain an absorbing fallback if the coproduct grows.
+    let mut exit_code = match termination.settled_leader() {
+        Some(crate::process_group::SettledLeader::Exited { code }) => *code,
+        Some(crate::process_group::SettledLeader::Signaled { signal }) => 128 + *signal,
+        None => {
             return Err(with_protocol_failure(format!(
-                "codex process-group teardown did not settle: {unsettled:?}"
-            )));
+                "settled codex process-group teardown carried no settled leader: {}",
+                termination.state_debug()
+            )))
         }
     };
 

@@ -31,7 +31,8 @@
 //! live INSIDE the typed causes, never in place of them.
 
 use crate::process_group::{
-    spawn_in_new_process_group, terminate_process_group, ProcessGroupTermination, ProcessGroupWait,
+    pin_process_group_identity, spawn_in_new_process_group, terminate_process_group,
+    ProcessGroupTermination, ProcessGroupWait,
 };
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -375,9 +376,29 @@ fn observe(mut command: Command, budget: Duration) -> CommandObservation {
             // A command that overran its budget is terminated here rather than left running, so a
             // timeout cannot leak a process into the next step's environment -- and whether that
             // termination actually SUCCEEDED is carried in the observation rather than discarded.
-            let termination = terminate_process_group(&mut child, pid, Duration::from_secs(10));
+            let termination = match pin_process_group_identity(pid) {
+                Ok(identity) => Some(terminate_process_group(
+                    &mut child,
+                    &identity,
+                    Duration::from_secs(10),
+                )),
+                Err(_) => None,
+            };
             let stdout = out_drain.finish_within(drain_budget);
             let stderr = err_drain.finish_within(drain_budget);
+            // An identity we cannot prove is ours is not torn down at all. `None` therefore reports
+            // an UNSETTLED teardown, never a successful one.
+            let termination = match termination {
+                Some(termination) => termination,
+                None => {
+                    return CommandObservation::TimedOutWithTerminationFailure {
+                        after: budget,
+                        termination: ProcessGroupTermination::identity_lost(),
+                        stdout,
+                        stderr,
+                    }
+                }
+            };
             if termination.is_settled() {
                 CommandObservation::TimedOut {
                     after: budget,
@@ -395,8 +416,15 @@ fn observe(mut command: Command, budget: Duration) -> CommandObservation {
             }
         }
         ProcessGroupWait::WaitFailed { detail } => {
-            // The child may still be running: a wait that failed established nothing about it.
-            let termination = terminate_process_group(&mut child, pid, Duration::from_secs(10));
+            // The child may still be running: a wait that failed established nothing about it --
+            // which is exactly why this arm may not actuate on the identity it failed to establish.
+            // It re-establishes the identity first, and refuses to signal when it cannot.
+            let termination = match pin_process_group_identity(pid) {
+                Ok(identity) => {
+                    terminate_process_group(&mut child, &identity, Duration::from_secs(10))
+                }
+                Err(_) => ProcessGroupTermination::identity_lost(),
+            };
             CommandObservation::WaitFailedAfterSpawn {
                 detail,
                 termination,
@@ -424,18 +452,33 @@ fn git(workdir: &Path, args: &[&str], budget: Duration) -> CommandObservation {
     observe(command, budget)
 }
 
-fn stdout_of(observation: &CommandObservation) -> String {
+/// THE ONE TEXT-BEARING SUCCESS EXTRACTOR. `stdout_of` used to stand here answering `String::new()`
+/// for any non-`Completed` observation and the raw text for a `Completed` one whose streams were
+/// truncated -- so a timed-out, signalled, or half-read command produced text that the next
+/// comparison treated as the command's answer. It is DELETED rather than fixed in place: leaving the
+/// unsafe spelling available beside a safe one is how call sites keep finding it.
+///
+/// `Err` carries the whole observation, so a refusal can say what actually happened.
+fn completed_drained(observation: &CommandObservation) -> Result<(i32, String, String), ()> {
     match observation {
-        CommandObservation::Completed { stdout, .. } => stdout.text().to_string(),
-        _ => String::new(),
+        CommandObservation::Completed {
+            exit_code,
+            stdout,
+            stderr,
+        } if stdout.is_complete() && stderr.is_complete() => Ok((
+            *exit_code,
+            stdout.text().to_string(),
+            stderr.text().to_string(),
+        )),
+        _ => Err(()),
     }
 }
 
 /// READ GIT'S OUTPUT, OR REFUSE -- never both silently. Every caller that DERIVES a verdict from
 /// git's stdout goes through here, so a command that timed out, was signalled, or could not be
 /// waited on becomes `GitObservationFailed` naming what was being read, instead of an empty string
-/// that the next comparison confidently misattributes. `stdout_of` survives only where the
-/// observation has ALREADY been adjudicated by `completed_zero` on the line above.
+/// that the next comparison confidently misattributes. There is no unadjudicated spelling left to
+/// reach for: `completed_drained` is the only extractor, and it refuses a truncated stream.
 fn git_stdout(
     workdir: &Path,
     args: &[&str],
@@ -466,7 +509,21 @@ struct ServeGuard {
 impl Drop for ServeGuard {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
-            let _ = terminate_process_group(&mut child, self.pid, Duration::from_secs(10));
+            // THE GUARD OBEYS THE SAME ALGEBRA AS THE EXPLICIT PATHS. Removing the signal from the
+            // identity-lost arms above would be pointless if destruction then sent the same numeric
+            // signal invisibly -- a drop cannot report anything, so an unprovable identity here
+            // would be the quietest possible wrong-subject actuation. If the pin fails the child is
+            // left unadjudicated, which is worse than a clean teardown and far better than
+            // signalling whoever inherited the number.
+            match pin_process_group_identity(self.pid) {
+                Ok(identity) => {
+                    let _ = terminate_process_group(&mut child, &identity, Duration::from_secs(10));
+                }
+                // Reap our own handle without signalling: the number is no longer provably ours.
+                Err(_) => {
+                    let _ = child.wait();
+                }
+            }
         }
     }
 }
@@ -595,9 +652,11 @@ impl PipeDrain {
     }
 }
 
-/// WHETHER A STREAM ACTUALLY ENDED. `Closed` means EOF was reached and the text is the child's
-/// complete output; `Unfinished` means something still holds the write end, so the text is a
-/// PREFIX. Collapsing the two would let a truncated read be judged as a complete one.
+/// WHETHER A STREAM ACTUALLY ENDED, and if not, WHY. `Closed` is the only arm whose text is the
+/// child's complete output; `ReadFailed`, `DeadlineExceeded` and `ReaderPanicked` each carry a
+/// PREFIX and say what stopped the reader. Collapsing any of them into `Closed` would let a
+/// truncated read be judged as a complete one -- which is precisely what a single `Unfinished` arm,
+/// and before it a bare thread return, allowed.
 #[derive(Debug, Clone)]
 pub(crate) enum StreamOutcome {
     /// EOF was reached and the text is the child's COMPLETE output.
@@ -694,7 +753,13 @@ fn await_serve_ready(
         // `terminate_process_group` does the reap itself, last.
         match crate::process_group::observe_leader_without_reaping(pid) {
             crate::process_group::LeaderObservation::ExitedUnreaped => {
-                let termination = terminate_process_group(child, pid, Duration::from_secs(10));
+                // Still unreaped, so the identity is provably ours and the teardown may signal.
+                let termination = match pin_process_group_identity(pid) {
+                    Ok(identity) => {
+                        terminate_process_group(child, &identity, Duration::from_secs(10))
+                    }
+                    Err(_) => ProcessGroupTermination::identity_lost(),
+                };
                 return ServeReadiness::ExitedBeforeReady {
                     termination,
                     stdout: out.snapshot(),
@@ -789,6 +854,21 @@ impl JsonObject {
 /// Parse a flat JSON object of string and unsigned-integer members. Nested values and arrays are
 /// REFUSED rather than skipped: this instrument asserts about a document whose shape it knows, and
 /// silently tolerating a shape it does not know is how a check stops discriminating.
+/// A DIAGNOSTIC PREVIEW THAT CANNOT PANIC. Slicing by BYTE offset -- `&text[..text.len().min(200)]`
+/// -- panics when the cut lands inside a multibyte character, so a malformed document containing
+/// any non-ASCII text could kill the instrument while it was building the typed refusal that was
+/// supposed to describe it. Counting CHARACTERS cannot land mid-character.
+fn preview(text: &str) -> String {
+    text.chars().take(200).collect()
+}
+
+/// DECODE RESPONSE BYTES, OR REFUSE. Factored out so the invalid-UTF-8 arm has an authorable red:
+/// the response declares charset=utf-8, and `from_utf8_lossy` would repair broken bytes into U+FFFD
+/// and let the instrument compare a body the server never sent.
+fn decode_response_bytes(raw: Vec<u8>) -> Result<String, String> {
+    String::from_utf8(raw).map_err(|e| format!("response is not valid UTF-8: {e}"))
+}
+
 /// WHERE THE DECODER IS INSIDE THE OBJECT, so that "a comma is allowed here" is a state rather than
 /// a thing the loop re-decides from whatever character it happens to see.
 enum JsonMemberPosition {
@@ -800,10 +880,7 @@ enum JsonMemberPosition {
 fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
     let mut chars = text.trim().chars().peekable();
     if chars.next() != Some('{') {
-        return Err(format!(
-            "body is not a JSON object: {}",
-            &text[..text.len().min(200)]
-        ));
+        return Err(format!("body is not a JSON object: {}", preview(text)));
     }
     let mut object = JsonObject::default();
     // SEPARATORS ARE REQUIRED, EXACTLY ONCE, BETWEEN MEMBERS. The previous loop consumed a comma
@@ -864,6 +941,14 @@ fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
                 while matches!(chars.peek(), Some(c) if c.is_ascii_digit()) {
                     digits.push(chars.next().unwrap_or_default());
                 }
+                // JSON HAS NO LEADING ZEROS. `01` parses perfectly well as 1, which is exactly the
+                // problem: the decoder would accept a document JSON rejects and then report the
+                // number as though the body had been well formed.
+                if digits.len() > 1 && digits.starts_with('0') {
+                    return Err(format!(
+                        "member {key} carries {digits}, which has a leading zero"
+                    ));
+                }
                 let value = digits
                     .parse::<u128>()
                     .map_err(|e| format!("member {key} is not an unsigned integer: {e}"))?;
@@ -886,7 +971,7 @@ fn parse_flat_json_object(text: &str) -> Result<JsonObject, String> {
     if !trailing.trim().is_empty() {
         return Err(format!(
             "trailing bytes after the closing brace: {}",
-            &trailing[..trailing.len().min(120)]
+            preview(&trailing)
         ));
     }
     Ok(object)
@@ -908,6 +993,15 @@ fn read_json_string(chars: &mut std::iter::Peekable<std::str::Chars>) -> Result<
                 Some(c @ ('"' | '\\' | '/')) => out.push(c),
                 other => return Err(format!("unmodelled escape \\{other:?}")),
             },
+            // RAW CONTROL CHARACTERS ARE NOT LEGAL IN A JSON STRING. Accepting U+0000..U+001F
+            // unescaped means the decoder is admitting documents JSON rejects while the receipt
+            // claims the body IS JSON.
+            Some(c) if (c as u32) < 0x20 => {
+                return Err(format!(
+                    "unescaped control character U+{:04X} inside a string",
+                    c as u32
+                ))
+            }
             Some(c) => out.push(c),
         }
     }
@@ -939,10 +1033,10 @@ fn post_for_breach(port: u16, budget: Duration) -> Result<BreachResponse, String
     // NOT LOSSY. The response declares `charset=utf-8`, so invalid bytes are a broken response, and
     // replacing them with U+FFFD would let the instrument compare a repaired body against the
     // authority value and call the agreement real.
-    let text = String::from_utf8(raw).map_err(|e| format!("response is not valid UTF-8: {e}"))?;
+    let text = decode_response_bytes(raw)?;
     let (head, body) = text
         .split_once("\r\n\r\n")
-        .ok_or_else(|| format!("no header/body boundary: {}", &text[..text.len().min(200)]))?;
+        .ok_or_else(|| format!("no header/body boundary: {}", preview(&text)))?;
     let mut lines = head.lines();
     let status = lines
         .next()
@@ -984,10 +1078,25 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
     // 1. BIND AND ISOLATE. A dirty parent means the "restored tree" comparison at the end would be
     // against a moving target, so it refuses here rather than producing an unfalsifiable green.
     let status = git(repo_root, &["status", "--porcelain"], short);
-    if !completed_zero(&status) || !stdout_of(&status).trim().is_empty() {
+    // AN OBSERVATION FAILURE IS NOT A DIRTY CHECKOUT. This arm used to read `stdout_of`, so a git
+    // timeout, wait failure, signal, or failed reader became `SourceCheckoutNotClean` -- usually
+    // with an EMPTY status string, naming the source checkout as the culprit on evidence that was
+    // never collected. It is the same class as the empty-HEAD defect, one function along.
+    let status_text = match completed_drained(&status) {
+        Ok((0, stdout, _)) => stdout,
+        Ok(_) | Err(()) => {
+            return EvaluationBudgetConsequenceFalsifierOutcome::Refused(
+                EvaluationBudgetConsequenceRefusal::GitObservationFailed {
+                    what: "parent status",
+                    observation: status,
+                },
+            )
+        }
+    };
+    if !status_text.trim().is_empty() {
         return EvaluationBudgetConsequenceFalsifierOutcome::Refused(
             EvaluationBudgetConsequenceRefusal::SourceCheckoutNotClean {
-                status: stdout_of(&status),
+                status: status_text,
             },
         );
     }
@@ -1098,7 +1207,12 @@ fn finalize(
             let deregistered = matches!(
                 &removed,
                 CommandObservation::Completed { exit_code, stderr, .. }
-                    if *exit_code != 0 && stderr.text().contains("is not a working tree")
+                    // The stderr must be COMPLETE before its text decides anything: a truncated
+                    // error stream that happens to contain this phrase, or one that lost it to
+                    // truncation, would both mis-route the teardown.
+                    if *exit_code != 0
+                        && stderr.is_complete()
+                        && stderr.text().contains("is not a working tree")
             );
             if deregistered {
                 let _ = std::fs::remove_dir_all(worktree);
@@ -1263,8 +1377,9 @@ fn run_bound_transaction(
     let target_dir = worktree.join("target-falsifier");
     let gunbc = target_dir.join("release").join("gunbc");
 
-    // 2. BUILD THE UNPERTURBED CANDIDATE TOOL, before anything moves. Its digest is the answer to
-    // "which producer noticed the drift", and an ambient binary on PATH is never that answer.
+    // 2. BUILD THE UNPERTURBED CANDIDATE TOOL, before anything moves. Its digest identifies the
+    // ARTIFACT ON DISK that produced the dry red -- not the image any process loaded, which this
+    // receipt does not claim -- and an ambient binary on PATH is never that artifact.
     let built = cargo_in(
         worktree,
         &target_dir,
@@ -1281,8 +1396,8 @@ fn run_bound_transaction(
     }
 
     // The digest is taken HERE, while this binary is still the only one that has existed at this
-    // path. Taken later it would be the rebuilt one, and the receipt would name the wrong producer
-    // for the dry red with no way for a reader to notice.
+    // path. Taken later it would be the rebuilt one, and the receipt would carry the wrong on-disk
+    // artifact for the dry red with no way for a reader to notice.
     let dry_gate_gunbc_digest = match file_digest(&gunbc) {
         Ok(digest) => digest,
         Err(detail) => return Outcome::Refused(Refusal::DigestUnavailable { detail }),
@@ -1360,10 +1475,17 @@ fn run_bound_transaction(
             exit_code,
             stdout,
             stderr,
-        } => (*exit_code, stdout.clone(), stderr.clone()),
+        } if stdout.is_complete() && stderr.is_complete() => (
+            *exit_code,
+            stdout.text().to_string(),
+            stderr.text().to_string(),
+        ),
+        // A COMPLETED GATE WHOSE OUTPUT WAS TRUNCATED IS NOT A GATE RESULT. The drift population is
+        // counted from this text, so a prefix carrying one expected drift line would establish
+        // "exactly one named drift" while the rest of the output was never seen.
         _ => return Outcome::Refused(Refusal::DryGateDidNotComplete { observation: dry }),
     };
-    let dry_text = format!("{}{}", dry_stdout.text(), dry_stderr.text());
+    let dry_text = format!("{dry_stdout}{dry_stderr}");
     if dry_code == 0 {
         return Outcome::Refused(Refusal::DryGateDriftPopulationWrong {
             detail: "the gate accepted a perturbed authority with no regeneration".to_string(),
@@ -1609,9 +1731,12 @@ fn serve_and_judge(
             stderr,
         } => {
             let termination = match guard.child.take() {
-                Some(mut child) => {
-                    terminate_process_group(&mut child, pid, Duration::from_secs(10))
-                }
+                Some(mut child) => match pin_process_group_identity(pid) {
+                    Ok(identity) => {
+                        terminate_process_group(&mut child, &identity, Duration::from_secs(10))
+                    }
+                    Err(_) => ProcessGroupTermination::identity_lost(),
+                },
                 None => {
                     return Outcome::Refused(Refusal::ProcessTerminationUnobservable {
                         detail: "serve child vanished between readiness and teardown".to_string(),
@@ -1631,9 +1756,12 @@ fn serve_and_judge(
             stderr,
         } => {
             let termination = match guard.child.take() {
-                Some(mut child) => {
-                    terminate_process_group(&mut child, pid, Duration::from_secs(10))
-                }
+                Some(mut child) => match pin_process_group_identity(pid) {
+                    Ok(identity) => {
+                        terminate_process_group(&mut child, &identity, Duration::from_secs(10))
+                    }
+                    Err(_) => ProcessGroupTermination::identity_lost(),
+                },
                 None => {
                     return Outcome::Refused(Refusal::ProcessTerminationUnobservable {
                         detail: "serve child vanished between readiness and teardown".to_string(),
@@ -1654,7 +1782,10 @@ fn serve_and_judge(
     // 9. TERMINATE AND WAIT, before judging. A verdict reached while the subject is still running
     // would leave the port held whichever way the judgement went.
     let teardown = match guard.child.take() {
-        Some(mut child) => terminate_process_group(&mut child, pid, Duration::from_secs(30)),
+        Some(mut child) => match pin_process_group_identity(pid) {
+            Ok(identity) => terminate_process_group(&mut child, &identity, Duration::from_secs(30)),
+            Err(_) => ProcessGroupTermination::identity_lost(),
+        },
         None => {
             return Outcome::Refused(Refusal::ProcessTerminationUnobservable {
                 detail: "serve child was already taken before teardown".to_string(),
@@ -2040,6 +2171,73 @@ mod observation_failure_arms {
         }
     }
 
+    /// The reader-panic arm must be REACHED, not merely matched. Constructing
+    /// `StreamOutcome::ReaderPanicked` by hand tests the consumer; it never executes
+    /// `JoinHandle::join().is_err()`, which is the line that actually distinguishes a panicking
+    /// reader from one that reached EOF.
+    #[test]
+    fn a_panicking_reader_is_not_reported_as_a_closed_stream() {
+        struct PanicsWhenPolled;
+        impl Read for PanicsWhenPolled {
+            fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+                panic!("reader panics while draining");
+            }
+        }
+        // The panic is expected and its message would otherwise be printed by the default hook.
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let mut drain = PipeDrain::spawn(Some(PanicsWhenPolled));
+        let outcome = drain.finish_within(Duration::from_secs(10));
+        std::panic::set_hook(previous);
+        match outcome {
+            StreamOutcome::ReaderPanicked { .. } => {}
+            other => panic!("a panicking reader was reported as {other:?}"),
+        }
+    }
+
+    /// Invalid response bytes refuse. The strict `from_utf8` is the right implementation, but the
+    /// source spelling is not executing evidence -- the same standard applied to the #[ignore]
+    /// falsifier applies here.
+    #[test]
+    fn an_invalid_utf8_response_body_refuses_rather_than_being_repaired() {
+        // A lone continuation byte is not valid UTF-8; `from_utf8_lossy` would answer U+FFFD.
+        assert!(decode_response_bytes(vec![b'{', 0x80, b'}']).is_err());
+        // Positive control: ordinary bytes still decode.
+        assert_eq!(
+            decode_response_bytes(b"{\"a\":1}".to_vec()).expect("valid utf-8"),
+            "{\"a\":1}"
+        );
+    }
+
+    /// The decoder claims the body is JSON, so forms JSON rejects must refuse -- not merely the
+    /// separator forms found earlier.
+    #[test]
+    fn forms_that_json_rejects_are_refused() {
+        // A raw control character inside a string.
+        assert!(parse_flat_json_object("{\"code\":\"a\u{1}b\"}").is_err());
+        // A leading zero in a number.
+        assert!(parse_flat_json_object(r#"{"limit_ms":01}"#).is_err());
+        // Positive controls: a MODELLED escape and an ordinary number are still accepted, so the
+        // refusals above are not passing on a decoder that rejects every string. `\u` is not among
+        // the modelled escapes -- a narrow parser may refuse valid forms it does not model, and
+        // that refusal is deliberate rather than a gap this test should paper over.
+        assert!(parse_flat_json_object(r#"{"code":"a\nb"}"#).is_ok());
+        assert!(parse_flat_json_object(r#"{"limit_ms":10}"#).is_ok());
+        assert!(parse_flat_json_object(r#"{"limit_ms":0}"#).is_ok());
+    }
+
+    /// A refusal must be constructible for a multibyte document. The previews used to slice by BYTE
+    /// offset, so a malformed body containing any non-ASCII text panicked the instrument while it
+    /// was building the diagnostic meant to describe it.
+    #[test]
+    fn a_multibyte_malformed_document_refuses_without_panicking() {
+        let long_multibyte = "é".repeat(400);
+        let malformed = format!("not an object at all {long_multibyte}");
+        assert!(parse_flat_json_object(&malformed).is_err());
+        let trailing = format!("{{\"code\":\"x\"}} {long_multibyte}");
+        assert!(parse_flat_json_object(&trailing).is_err());
+    }
+
     /// A descendant holding the write end must produce a BOUNDED refusal, not a hang. This is the
     /// arm the unbounded `finish()` could not reach: it had no failure outcome, only blocking.
     #[test]
@@ -2056,8 +2254,20 @@ mod observation_failure_arms {
         let mut drain = PipeDrain::spawn(child.stdout.take());
         let outcome = drain.finish_within(Duration::from_millis(500));
         // Tear the group down before asserting, so a failure here cannot leak the sleeper.
-        let _ =
-            crate::process_group::terminate_process_group(&mut child, pid, Duration::from_secs(10));
+        // Reaping is always safe; it is SIGNALLING an unprovable identity that is not. So the lost
+        // arm still waits on our own handle, it simply sends nothing.
+        match crate::process_group::pin_process_group_identity(pid) {
+            Ok(identity) => {
+                let _ = crate::process_group::terminate_process_group(
+                    &mut child,
+                    &identity,
+                    Duration::from_secs(10),
+                );
+            }
+            Err(_) => {
+                let _ = child.wait();
+            }
+        }
         match outcome {
             StreamOutcome::DeadlineExceeded { .. } => {}
             other => panic!("expected a bounded deadline outcome, got {other:?}"),

@@ -112,75 +112,126 @@ struct ProcEntry {
 /// process whose name contains a space, which is precisely the kind of quiet misparse that would
 /// make this instrument report an empty group.
 fn process_group_members(pgid: u32) -> Result<Vec<ProcEntry>, String> {
-    process_group_members_under(std::path::Path::new("/proc"), pgid)
+    process_group_members_at(std::path::Path::new("/proc"), pgid)
 }
 
-/// The same scan against an arbitrary root, so the refusal arms below have an AUTHORABLE red.
+/// The production wrapper's scan, against an arbitrary root.
+fn process_group_members_at(root: &std::path::Path, pgid: u32) -> Result<Vec<ProcEntry>, String> {
+    let entries = std::fs::read_dir(root)
+        .map_err(|e| format!("reading {}: {e}", root.display()))?
+        .map(|entry| {
+            entry.map(|entry| {
+                (
+                    entry.file_name().to_string_lossy().into_owned(),
+                    entry.path(),
+                )
+            })
+        });
+    scan_process_group_members(entries, pgid)
+}
+
+/// THE SCAN'S TESTABLE CORE, over a FALLIBLE entry source.
 ///
-/// Production passes `/proc`. A test cannot make the real `/proc` return a malformed `stat`, so
-/// without this parameter the refusals here could only be asserted by reading the source -- and a
-/// wall whose red cannot be written anywhere the check could run is a decoration (DESIGN §4b). The
-/// parameter exists for the fixture; it is not a policy knob and no production path chooses a
-/// different root.
-fn process_group_members_under(
-    root: &std::path::Path,
+/// The source is a parameter for one reason: `Err(_) => continue` on the directory iterator was a
+/// live defect -- an entry that failed to enumerate might have named a member, so skipping it let an
+/// incomplete scan report an empty group and hence `GroupAbsent`. A real `/proc` cannot be made to
+/// yield an iterator error on demand, so with the iterator hard-wired the fix could only be asserted
+/// by reading the source. DESIGN §4b: where no harness can express the subject, the missing harness
+/// is the next-rung trigger -- so the harness is what gets built.
+fn scan_process_group_members(
+    entries: impl Iterator<Item = std::io::Result<(String, std::path::PathBuf)>>,
     pgid: u32,
 ) -> Result<Vec<ProcEntry>, String> {
     let mut found = Vec::new();
-    let entries =
-        std::fs::read_dir(root).map_err(|e| format!("reading {}: {e}", root.display()))?;
     for entry in entries {
-        // AN UNREADABLE DIRECTORY ENTRY IS NOT AN ABSENT PROCESS. Skipping it let an incomplete
-        // enumeration produce an empty vector and then `GroupAbsent` -- certifying teardown from a
-        // scan that never completed. This is the same class as the stat failure below; I repaired
-        // that one and left this one, and review 59209 caught it.
-        let entry = match entry {
+        // AN UNREADABLE DIRECTORY ENTRY IS NOT AN ABSENT PROCESS.
+        let (name, path) = match entry {
             Ok(entry) => entry,
             Err(e) => {
                 return Err(format!(
-                    "enumerating {}: {e} -- the scan is incomplete, so absence is not established",
-                    root.display()
+                    "enumerating the process table: {e} -- the scan is incomplete, so absence is not established"
                 ))
             }
         };
-        let name = entry.file_name();
-        let pid: i32 = match name.to_string_lossy().parse() {
+        // A NON-NUMERIC ENTRY IS NOT A PROCESS AT ALL. /proc carries `self`, `meminfo` and friends;
+        // ignoring them is not skipping evidence, because they never named a process.
+        let pid: i32 = match name.parse() {
             Ok(pid) => pid,
             Err(_) => continue,
         };
         // ONLY DISAPPEARANCE MAY BE SKIPPED. A process that exits between the readdir and the read
         // is genuinely no longer a member, and NotFound is how that is spelled. EVERY OTHER failure
-        // means this numeric process COULD be in the target group and we could not tell -- skipping
-        // it would let an unreadable /proc manufacture an empty vector and then `GroupAbsent`,
-        // which is the instrument reporting "the group is gone" on evidence it never collected.
-        let stat = match std::fs::read_to_string(entry.path().join("stat")) {
+        // means this numeric process COULD be in the target group and we could not tell.
+        let stat = match std::fs::read_to_string(path.join("stat")) {
             Ok(stat) => stat,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(format!("reading /proc/{pid}/stat: {e}")),
+            Err(e) => return Err(format!("reading the stat of process {pid}: {e}")),
         };
-        let tail = match stat.rfind(')') {
-            Some(at) => &stat[at + 1..],
-            None => return Err(format!("/proc/{pid}/stat has no comm terminator")),
-        };
-        let fields: Vec<&str> = tail.split_whitespace().collect();
-        // After the ')' the fields are: state, ppid, pgrp, ...
-        let (state, pgrp) = match (fields.first(), fields.get(2)) {
-            (Some(state), Some(pgrp)) => (*state, *pgrp),
-            _ => return Err(format!("/proc/{pid}/stat has no state and pgrp fields")),
-        };
-        let pgrp: u32 = match pgrp.parse() {
-            Ok(pgrp) => pgrp,
-            Err(e) => return Err(format!("/proc/{pid}/stat pgrp {pgrp:?}: {e}")),
-        };
-        if pgrp == pgid {
-            let state = match state.chars().next() {
-                Some(state) => state,
-                None => return Err(format!("/proc/{pid}/stat has an empty state field")),
-            };
-            found.push(ProcEntry { pid, state });
+        if let Some(entry) = parse_proc_stat(pid, &stat, pgid)? {
+            found.push(entry);
         }
     }
     Ok(found)
+}
+
+/// PARSE ONE `stat` LINE, STRICTLY, and say whether it names a member of `pgid`.
+///
+/// Separated so the malformed forms have one place to be stated and one place to be tested. It is
+/// strict about the fields it uses and about the identity it was handed: a line whose own pid prefix
+/// disagrees with the directory it came from is not a record this scan may interpret.
+fn parse_proc_stat(pid: i32, stat: &str, pgid: u32) -> Result<Option<ProcEntry>, String> {
+    // The comm field is parenthesised and may itself contain spaces and parentheses, so the fields
+    // after it are located from the LAST ')' rather than by splitting the whole line.
+    let close = match stat.rfind(')') {
+        Some(at) => at,
+        None => return Err(format!("the stat of process {pid} has no comm terminator")),
+    };
+    let head = &stat[..close];
+    let declared = head.split_whitespace().next().unwrap_or("");
+    match declared.parse::<i32>() {
+        Ok(declared) if declared == pid => {}
+        Ok(declared) => {
+            return Err(format!(
+                "the stat of process {pid} declares pid {declared}; the record does not describe the process it was read from"
+            ))
+        }
+        Err(e) => {
+            return Err(format!(
+                "the stat of process {pid} has an unparsable pid prefix {declared:?}: {e}"
+            ))
+        }
+    }
+    if !head.contains('(') {
+        return Err(format!("the stat of process {pid} has no comm opener"));
+    }
+    let fields: Vec<&str> = stat[close + 1..].split_whitespace().collect();
+    // After the ')' the fields are: state, ppid, pgrp, ...
+    let (state, pgrp) = match (fields.first(), fields.get(2)) {
+        (Some(state), Some(pgrp)) => (*state, *pgrp),
+        _ => {
+            return Err(format!(
+                "the stat of process {pid} has no state and pgrp fields"
+            ))
+        }
+    };
+    let mut state_chars = state.chars();
+    let (state, extra) = (state_chars.next(), state_chars.next());
+    let state = match (state, extra) {
+        (Some(state), None) => state,
+        _ => {
+            return Err(format!(
+                "the stat of process {pid} has a state field {state:?} that is not one character"
+            ))
+        }
+    };
+    let pgrp: u32 = pgrp
+        .parse()
+        .map_err(|e| format!("the stat of process {pid} has pgrp {pgrp:?}: {e}"))?;
+    if pgrp == pgid {
+        Ok(Some(ProcEntry { pid, state }))
+    } else {
+        Ok(None)
+    }
 }
 
 /// WHAT THE LEADER IS DOING, OBSERVED WITHOUT REAPING IT.
@@ -202,6 +253,45 @@ pub(crate) enum LeaderObservation {
     ObservationFailed {
         detail: String,
     },
+}
+
+/// PROOF THAT A GROUP IDENTITY IS STILL OURS TO ADDRESS.
+///
+/// A bare `u32` cannot carry this fact, and that is the whole reason this type exists. A pid is
+/// just a number: it says nothing about whether the process it named is still the one we started,
+/// and after a reap the kernel may hand the same number to anybody. Every caller that wanted to
+/// signal therefore had to REMEMBER to check first, and the review found two that did not -- a
+/// readiness path that had observed the leader LEAVE /proc, and a generic arm whose own comment
+/// said the failed wait had established nothing about the child, both of which then actuated on
+/// the identity they had just failed to establish.
+///
+/// So the check moves into the type. This value can only be produced by an observation that found
+/// the process still present and unreaped, and `terminate_process_group` cannot be called without
+/// one. Losing the identity now fails to COMPILE into a signal rather than being a rule to follow.
+pub(crate) struct PinnedProcessGroupIdentity {
+    pid: u32,
+}
+
+impl PinnedProcessGroupIdentity {
+    pub(crate) fn pid(&self) -> u32 {
+        self.pid
+    }
+}
+
+/// Establish that `pid` is still allocated and unreaped, and hand back the proof if it is.
+///
+/// `Err` carries what was observed instead, so a caller can report WHY it may not signal. It never
+/// returns a proof for a vanished or unobservable process: those are exactly the states in which a
+/// signal would be aimed at a number that may belong to somebody else.
+pub(crate) fn pin_process_group_identity(
+    pid: u32,
+) -> Result<PinnedProcessGroupIdentity, LeaderObservation> {
+    match observe_leader_without_reaping(pid) {
+        LeaderObservation::Running | LeaderObservation::ExitedUnreaped => {
+            Ok(PinnedProcessGroupIdentity { pid })
+        }
+        lost => Err(lost),
+    }
 }
 
 pub(crate) fn observe_leader_without_reaping(pid: u32) -> LeaderObservation {
@@ -232,10 +322,20 @@ pub(crate) enum ProcessGroupResidue {
 }
 
 /// The full teardown verdict: what the leader did, what survived it, and whether SIGKILL was
-/// needed. Kept as three fields rather than one enum because a caller adjudicating cleanup and a
-/// caller adjudicating the subject's exit are asking different questions of the same event.
+/// needed. A caller adjudicating cleanup and a caller adjudicating the subject's exit ask different
+/// questions of the same event, and both are answered from the state below.
+/// THE TEARDOWN VERDICT, SEALED. The state is private, so no module outside this one can write a
+/// `Settled` -- which the review correctly pointed out was still possible while the enum itself was
+/// `pub(crate)`: the builder's join could simply be bypassed, and my own positive test did exactly
+/// that. `Settled` is now reachable ONLY through `build`, which requires both an adjudicated leader
+/// and a completely observed absence.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProcessGroupTermination {
+pub(crate) struct ProcessGroupTermination {
+    state: ProcessGroupTerminationState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProcessGroupTerminationState {
     /// EVERY REQUIRED FACT IS PRESENT, and this arm cannot be built without them. The leader is
     /// adjudicated -- exited or signalled, never timed out or unobserved -- AND nothing else in the
     /// group survived a COMPLETE observation.
@@ -266,7 +366,39 @@ impl ProcessGroupTermination {
     /// boolean, and every caller had to REMEMBER that the predicate omitted the leader. Making
     /// `Settled` unconstructible without an adjudicated leader removes the thing to remember.
     pub(crate) fn is_settled(&self) -> bool {
-        matches!(self, ProcessGroupTermination::Settled { .. })
+        matches!(self.state, ProcessGroupTerminationState::Settled { .. })
+    }
+
+    /// What the teardown saw, for a caller that must report it. Read-only: there is no path from
+    /// this back to a constructor.
+    pub(crate) fn state_debug(&self) -> String {
+        format!("{:?}", self.state)
+    }
+
+    /// The adjudicated leader outcome, available only when the sealed terminal settled.
+    pub(crate) fn settled_leader(&self) -> Option<&SettledLeader> {
+        match &self.state {
+            ProcessGroupTerminationState::Settled { leader, .. } => Some(leader),
+            ProcessGroupTerminationState::Unsettled { .. } => None,
+        }
+    }
+
+    /// THE TEARDOWN THAT DID NOT HAPPEN, because the identity could not be proved still ours. It is
+    /// an ordinary UNSETTLED verdict: nothing was signalled, nothing was observed, and no caller may
+    /// read it as a clean group.
+    #[cfg(test)]
+    pub(crate) fn identity_lost() -> ProcessGroupTermination {
+        ProcessGroupTermination {
+            state: ProcessGroupTerminationState::Unsettled {
+                leader: ProcessGroupWait::WaitFailed {
+                    detail: "process-group identity could not be proved still pinned; no signal was sent".to_string(),
+                },
+                residue: ProcessGroupResidue::ResidueObservationFailed {
+                    detail: "the group was never observed, because it was never safely addressable".to_string(),
+                },
+                escalated_to_kill: false,
+            },
+        }
     }
 
     fn build(
@@ -274,25 +406,26 @@ impl ProcessGroupTermination {
         residue: ProcessGroupResidue,
         escalated_to_kill: bool,
     ) -> ProcessGroupTermination {
-        match (&leader, &residue) {
+        let state = match (&leader, &residue) {
             (ProcessGroupWait::Exited { code }, ProcessGroupResidue::GroupAbsent) => {
-                ProcessGroupTermination::Settled {
+                ProcessGroupTerminationState::Settled {
                     leader: SettledLeader::Exited { code: *code },
                     escalated_to_kill,
                 }
             }
             (ProcessGroupWait::Signaled { signal }, ProcessGroupResidue::GroupAbsent) => {
-                ProcessGroupTermination::Settled {
+                ProcessGroupTerminationState::Settled {
                     leader: SettledLeader::Signaled { signal: *signal },
                     escalated_to_kill,
                 }
             }
-            _ => ProcessGroupTermination::Unsettled {
+            _ => ProcessGroupTerminationState::Unsettled {
                 leader,
                 residue,
                 escalated_to_kill,
             },
-        }
+        };
+        ProcessGroupTermination { state }
     }
 }
 
@@ -312,9 +445,10 @@ impl ProcessGroupTermination {
 /// the reap it neither signals nor observes: a surviving group is REFUSED to the caller instead.
 pub(crate) fn terminate_process_group(
     child: &mut Child,
-    pid: u32,
+    identity: &PinnedProcessGroupIdentity,
     grace: Duration,
 ) -> ProcessGroupTermination {
+    let pid = identity.pid();
     signal_process_group(pid, libc::SIGTERM);
 
     // Membership is polled rather than waited on, because the question is about DESCENDANTS, and
@@ -460,14 +594,10 @@ mod termination_terminal {
         // observation with Child::wait makes this assertion red.
         assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
 
-        let terminal = terminate_process_group(&mut child, pid, Duration::from_secs(10));
-        assert_eq!(
-            terminal,
-            ProcessGroupTermination::Settled {
-                leader: SettledLeader::Exited { code: 7 },
-                escalated_to_kill: false
-            }
-        );
+        let identity = pin_process_group_identity(pid).expect("the unreaped leader is still ours");
+        let terminal = terminate_process_group(&mut child, &identity, Duration::from_secs(10));
+        assert!(terminal.is_settled(), "observed {}", terminal.state_debug());
+        assert!(terminal.state_debug().contains("Exited { code: 7 }"));
     }
 }
 
@@ -508,7 +638,7 @@ mod proc_scan_refusals {
             ("42", "42 (other) Z 1 41 41 0 -1 0"),
             ("43", "43 (elsewhere) S 1 99 99 0 -1 0"),
         ]);
-        let mut found = process_group_members_under(&root, 41).expect("a clean scan");
+        let mut found = process_group_members_at(&root, 41).expect("a clean scan");
         found.sort_by_key(|entry| entry.pid);
         assert_eq!(found.len(), 2, "expected pids 41 and 42, got {found:?}");
         assert_eq!(found[0].pid, 41);
@@ -516,6 +646,73 @@ mod proc_scan_refusals {
         assert_eq!(found[1].pid, 42);
         // The zombie is what `observe_leader_without_reaping` reads as an unreaped exit.
         assert_eq!(found[1].state, 'Z');
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// THE ITERATOR-ERROR ARM. This is the one the `Err(_) => continue` defect lived on, and it is
+    /// only reachable because the scan takes its entry source as a parameter.
+    #[test]
+    fn a_failed_directory_entry_refuses_rather_than_shortening_the_scan() {
+        let entries = vec![
+            Ok((
+                "41".to_string(),
+                std::path::PathBuf::from("/nonexistent-fixture/41"),
+            )),
+            Err(std::io::Error::other("the directory stream broke")),
+        ];
+        let scanned = scan_process_group_members(entries.into_iter(), 41);
+        assert!(
+            scanned.is_err(),
+            "a failed entry was skipped, so an incomplete scan could report absence"
+        );
+    }
+
+    /// THE POSITIVE CONTROL THE RULING NAMED: a group with no failures and no members really is
+    /// absent. Without it, a scanner that refused every empty result would pass every RED here.
+    #[test]
+    fn a_clean_scan_with_no_members_reports_an_empty_group() {
+        let root = fixture(&[("41", "41 (name) S 1 99 99 0 -1 0")]);
+        let found = process_group_members_at(&root, 7).expect("a clean scan");
+        assert!(
+            found.is_empty(),
+            "expected no members of group 7, got {found:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A non-numeric entry never named a process, so ignoring it is not skipping evidence. /proc is
+    /// full of them.
+    #[test]
+    fn nonnumeric_entries_are_ignored_rather_than_refused() {
+        let root = fixture(&[("41", "41 (name) S 1 41 41 0 -1 0")]);
+        std::fs::write(root.join("meminfo"), "MemTotal: 1 kB").expect("a nonnumeric file");
+        std::fs::create_dir_all(root.join("self")).expect("a nonnumeric directory");
+        let found = process_group_members_at(&root, 41).expect("nonnumeric entries are not errors");
+        assert_eq!(found.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A stat that fails to read for a reason OTHER than disappearance must refuse. A directory in
+    /// place of the file produces exactly such an error and is not NotFound.
+    #[test]
+    fn a_non_notfound_stat_read_failure_refuses() {
+        let root = fixture(&[("41", "41 (name) S 1 41 41 0 -1 0")]);
+        let awkward = root.join("42");
+        std::fs::create_dir_all(awkward.join("stat")).expect("a stat that is a directory");
+        let scanned = process_group_members_at(&root, 41);
+        assert!(
+            scanned.is_err(),
+            "an unreadable stat was skipped, so the scan could report absence"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A record whose own pid prefix disagrees with the directory it came from does not describe the
+    /// process it was read from, so it may not be interpreted as that process's state.
+    #[test]
+    fn a_stat_declaring_a_different_pid_refuses() {
+        let root = fixture(&[("41", "999 (name) S 1 41 41 0 -1 0")]);
+        assert!(process_group_members_at(&root, 41).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -527,9 +724,11 @@ mod proc_scan_refusals {
             ("no comm terminator", "41 unterminated S 1 41 41"),
             ("too few fields", "41 (name) S"),
             ("unparsable pgrp", "41 (name) S 1 not-a-number 41"),
+            ("multi-character state", "41 (name) SS 1 41 41"),
+            ("no comm opener", "41 name) S 1 41 41"),
         ] {
             let root = fixture(&[("41", stat)]);
-            let scanned = process_group_members_under(&root, 41);
+            let scanned = process_group_members_at(&root, 41);
             assert!(
                 scanned.is_err(),
                 "{label}: an unparsable entry was skipped, so the scan could report absence"
@@ -544,8 +743,7 @@ mod proc_scan_refusals {
     fn a_vanished_process_is_skipped_rather_than_refusing() {
         let root = fixture(&[("41", "41 (name) S 1 41 41 0 -1 0")]);
         std::fs::create_dir_all(root.join("42")).expect("a pid dir with no stat at all");
-        let found =
-            process_group_members_under(&root, 41).expect("a vanished entry is not an error");
+        let found = process_group_members_at(&root, 41).expect("a vanished entry is not an error");
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].pid, 41);
         let _ = std::fs::remove_dir_all(&root);
