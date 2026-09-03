@@ -35,6 +35,9 @@ import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v2.std.node_query { node_is_call, node_positional_child_targets }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.algebra { fold_list, length }
+import v2.std.fn_index { FnArrowDecl, call_reachable_decls }
+import v2.std.text { String }
 
 // The determinism roots are DERIVED from std.primitive_identity traversal facts, not enumerated
 // here. The deleted form was a two-row DeterminismRoot registry keyed on a raw authored Symbol, and
@@ -213,4 +216,77 @@ fn determinism_compile_gate(node: Node) -> Outcome<Witness<Node>> {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+// TRANSITIVE DETERMINISM: THE PER-TREE DOOR CANNOT ASK THIS QUESTION, AND MUST NOT BE MADE TO.
+//
+// determinism_compile_gate folds the InferredTree it is handed. A call to a DECLARED function
+// whose body reaches an order-leaking primitive is therefore invisible to it: the leak is real,
+// the tree is clean, and the gate accepts. Closing that requires the call graph, which is a fact
+// about the CORPUS rather than about the supplied tree.
+//
+// WHY THIS PRODUCER IS PURE AND PARAMETERIZED, and why no live read is here. v2.compiler.compile
+// imports THIS module, so anything reachable from here is reachable from every compile-importing
+// entry. always_required_root_lenses records what happened the last time a corpus scan was
+// reachable from the door: lens_module_gate was DE-ENROLLED after its wrapper ran a nullary live
+// walk on every compile, putting 31 SubstrateInputsOnly stamps in the lying-stamp census. Calling
+// this judgment "determinism" would not have made that live read tree-grain. So the facts arrive as
+// PARAMETERS and no live producer is imported here.
+//
+// THERE IS NO LIVE CONSUMER OF THIS PRODUCER TODAY, AND THIS PARAGRAPH SAID OTHERWISE UNTIL
+// REVIEW 59343 CAUGHT IT. It named v2.test.claim.enforcement.determinism_transitive_witness as a
+// corpus-cadence consumer "stamped ReadsLiveTree, whose failure reaches the required PR floor", and
+// claimed that wording satisfied the amended clause 2. That consumer was WITHDRAWN in this same
+// change; the stamp is gone with it, and the only consumers left are the three fixture rows in that
+// module. Leaving the sentence standing was rung inflation in the precise §4b(1) sense -- a module
+// describing a guarantee that its own sibling file says was removed -- and the reviewer was right
+// that the two files contradicted each other.
+//
+// WHAT IS TRUE: this producer is pure, parameterized, and exercised by fixture rows that
+// discriminate. What clause 2 asks for is a consumer whose declared substrate and cadence match its
+// inputs, whose failure reaches the required PR floor, and which cannot predict-skip. That
+// capability DOES NOT EXIST on this branch, the trigger has therefore not fired, and the obligation
+// is carried at work item node://adhoc-ac804155-cdd -- see the withdrawal annotation in
+// v2.test.claim.enforcement.determinism_transitive_witness for the blocker and the measurements.
+//
+// The clause deliberately does not say "corpus cadence forever": if a later compiler representation
+// carries transitive declaration reachability on the InferredTree itself, a pure tree-grain
+// consumer satisfies the same capability unchanged.
+
+data determinism_transitive_terminal_callees: List<String> = []
+
+data determinism_no_findings: List<Diagnostic> = []
+
+// NOTHING TERMINATES THE WALK. The reachability authority takes a roster of callee spellings whose
+// bodies are not entered, because its other two consumers stop at host effect sinks and at
+// live-read carriers respectively. Determinism has no such frontier: an order-leaking primitive is
+// exactly as disqualifying eight calls deep as it is in the entry body, so the roster is EMPTY and
+// empty here is a modeled answer rather than an unset parameter.
+fn determinism_transitive_findings(
+  entry_module: String,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>
+) -> List<Diagnostic> {
+  fold_list(
+    xs: call_reachable_decls(
+      entry_module: entry_module,
+      terminal_callee_symbols: determinism_transitive_terminal_callees,
+      closure_modules: closure_modules,
+      decls: decls
+    ),
+    empty: determinism_no_findings,
+    cons: fn(acc, decl) { concat(acc, determinism_findings(root: decl.output)) }
+  )
+}
+
+fn determinism_transitive_holds(
+  entry_module: String,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>
+) -> Bool {
+  length(xs: determinism_transitive_findings(
+    entry_module: entry_module,
+    closure_modules: closure_modules,
+    decls: decls
+  )) == 0
 }
