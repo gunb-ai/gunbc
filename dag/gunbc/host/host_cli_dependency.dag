@@ -44,9 +44,19 @@ data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequ
   },
 ]
 
+// The absence is its own type, not a variant used in type position. Before this split,
+// first_absent_codex_wet_materialization_host_cli_dependency named HostCliDependencyAbsent as its
+// element type; the type system has no such thing, so the column widened to the parent coproduct
+// and every consumer match was correctly reported non-exhaustive for a sibling that cannot occur
+// there. Naming the fact makes both consumer matches exhaustive with the arms they already have.
+type HostCliDependencyAbsence {
+  tool: NonEmptyStr
+  hint: String
+}
+
 type HostCliDependencyObservation
   = HostCliDependencyPresent
-  | HostCliDependencyAbsent { tool: NonEmptyStr, hint: String }
+  | HostCliDependencyAbsent { absence: HostCliDependencyAbsence }
 
 fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
   let check = shell.PosixCommandV.Check(command: tool.name)
@@ -54,8 +64,10 @@ fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
     HostCliDependencyPresent
   } else {
     HostCliDependencyAbsent {
-      tool: tool.name,
-      hint: install_hint(sources: tool.installable_via),
+      absence: HostCliDependencyAbsence {
+        tool: tool.name,
+        hint: install_hint(sources: tool.installable_via),
+      },
     }
   }
 }
@@ -68,7 +80,7 @@ fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement
   }
 }
 
-fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDependencyAbsent? {
+fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDependencyAbsence? {
   fold_list(
     xs: codex_wet_materialization_host_cli_requirements,
     empty: none,
@@ -79,13 +91,12 @@ fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDepend
           match cli_tool_for_enrollment_requirement(requirement: requirement) {
             Present { value: tool } =>
               match observe_host_cli_dependency(tool: tool) {
-                HostCliDependencyAbsent { tool: t, hint: h } =>
-                  Present { value: HostCliDependencyAbsent { tool: t, hint: h } }
+                HostCliDependencyAbsent { absence } => Present { value: absence }
                 HostCliDependencyPresent => none
               }
             Absent =>
               Present {
-                value: HostCliDependencyAbsent {
+                value: HostCliDependencyAbsence {
                   tool: requirement.tool,
                   hint: requirement.provision as String,
                 },
@@ -108,7 +119,9 @@ fn host_cli_dependency_failure_receipt(
 ) -> Optional<String> {
   match observation {
     HostCliDependencyPresent => optional_absent()
-    HostCliDependencyAbsent { tool, hint } =>
-      optional_present(value: host_dependency_absent_wire(tool: tool, hint: hint))
+    HostCliDependencyAbsent { absence } =>
+      optional_present(
+        value: host_dependency_absent_wire(tool: absence.tool, hint: absence.hint),
+      )
   }
 }

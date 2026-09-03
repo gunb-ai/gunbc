@@ -88,6 +88,57 @@ fn import_statement_keyword() -> String {
   "import"
 }
 
+// THE BOUNDARY THE CHECK IS ABOUT. `starts_with` and `string_contains` are substring predicates:
+// they cannot tell `import xy` from a statement importing module `x`, nor a declaration named
+// `imported_thing` from the keyword. The span comes from the parser, so a mismatch is already a
+// typed refusal rather than a silent cut -- but a check softer than the thing it is guarding is a
+// check that would not go red on the case it exists for. These two predicates read the span's text
+// POSITIONALLY: the keyword occupies its own token, and the module path is the exact run of bytes
+// that follows it, delimited by a character that cannot continue an identifier or a dotted path.
+// The delimiter set is an ALLOWLIST, so an unanticipated following byte refuses rather than
+// widening -- the failure arm never says "close enough".
+fn is_import_whitespace(c: String) -> Bool {
+  c == " " || c == "\t" || c == "\n" || c == "\r"
+}
+
+fn is_import_module_boundary(c: String) -> Bool {
+  is_import_whitespace(c: c) || c == "{"
+}
+
+fn statement_text_opens_with_the_import_keyword(statement_text: String) -> Bool {
+  let keyword_length = string_length(s: import_statement_keyword())
+  starts_with(s: statement_text, prefix: import_statement_keyword())
+    && string_length(s: statement_text) > keyword_length
+    && is_import_whitespace(c: char_at(s: statement_text, pos: keyword_length))
+}
+
+// The whitespace run between the keyword and the module path is walked rather than assumed to be
+// one character: a source that separates them with two spaces or a newline is a legitimate import
+// statement, and refusing it would be a false refusal wearing fail-closed clothing.
+fn import_module_start(statement_text: String, at: Int, limit: Int) -> Int {
+  if at >= limit {
+    at
+  } else if is_import_whitespace(c: char_at(s: statement_text, pos: at)) {
+    import_module_start(statement_text: statement_text, at: at + 1, limit: limit)
+  } else {
+    at
+  }
+}
+
+fn statement_text_names_module(statement_text: String, imported_module: String) -> Bool {
+  let text_length = string_length(s: statement_text)
+  let module_start = import_module_start(
+    statement_text: statement_text,
+    at: string_length(s: import_statement_keyword()),
+    limit: text_length
+  )
+  let module_end = module_start + string_length(s: imported_module)
+  string_length(s: imported_module) > 0
+    && module_end <= text_length
+    && substring(s: statement_text, start: module_start, end: module_end) == imported_module
+    && (module_end == text_length || is_import_module_boundary(c: char_at(s: statement_text, pos: module_end)))
+}
+
 // Segments are accumulated and joined once. Concatenating onto a growing string per statement is
 // the copied accumulator DESIGN's bare-minimum-cost rule refuses regardless of the realized n.
 fn import_strip_step(
@@ -110,9 +161,9 @@ fn import_strip_step(
         ImportStripHalted { refusal: ImportSpansOutOfAscendingOrder { previous_end: cursor, next_start: statement.span.start } }
       } else {
         let statement_text = substring(s: source, start: statement.span.start, end: statement.span.end)
-        if !starts_with(s: statement_text, prefix: import_statement_keyword()) {
+        if !statement_text_opens_with_the_import_keyword(statement_text: statement_text) {
           ImportStripHalted { refusal: ImportSpanDoesNotDelimitAnImportStatement { span: statement.span, source_text: statement_text } }
-        } else if !string_contains(s: statement_text, pattern: statement.imported_module) {
+        } else if !statement_text_names_module(statement_text: statement_text, imported_module: statement.imported_module) {
           ImportStripHalted { refusal: ImportSpanDoesNotNameItsModule { span: statement.span, imported_module: statement.imported_module, source_text: statement_text } }
         } else {
           ImportStripScanning {

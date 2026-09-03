@@ -190,25 +190,36 @@ type TypeResolutionVerdict
   = FullyResolved
   | UnderResolved
   | ContainerSpellingUnresolvable { name: String }
+  | DivergentExpression
 
 // Refusal dominates under-resolution dominates resolution: the strongest reason
 // the walk found is the one it reports, so a refused child is never averaged away
-// by resolved siblings.
+// by resolved siblings. review 58547: the acc match is spelled over all four
+// variants rather than a wildcard. A catch-all here would hide DivergentExpression
+// at the verdict layer in exactly the way an absent name hid it at the node layer,
+// which is the conflation this whole change exists to remove -- and the next
+// variant added would be absorbed silently instead of refusing. The arms are
+// deliberately identical in behaviour to the wildcard they replace: this states the
+// existing dominance order, it does not change it.
 fn combine_resolution_verdicts(acc: TypeResolutionVerdict, next: TypeResolutionVerdict) -> TypeResolutionVerdict {
+  let stronger_of_next = match next {
+    ContainerSpellingUnresolvable { name: _ } => next
+    UnderResolved => UnderResolved
+    DivergentExpression => next
+    FullyResolved => acc
+  }
   match acc {
     ContainerSpellingUnresolvable { name: _ } => acc
-    _ =>
-      match next {
-        ContainerSpellingUnresolvable { name: _ } => next
-        UnderResolved => UnderResolved
-        FullyResolved => acc
-      }
+    UnderResolved => stronger_of_next
+    DivergentExpression => stronger_of_next
+    FullyResolved => stronger_of_next
   }
 }
 
 fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
-  if self_is_type_var { UnderResolved }
+  if type_is_divergent(n: n) { DivergentExpression }
+  else if self_is_type_var { UnderResolved }
   else {
     match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
       ContainerSpellingUnknown { container_leaf: _ } =>
@@ -247,6 +258,21 @@ fn is_fully_resolved(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool
     FullyResolved => true
     UnderResolved => false
     ContainerSpellingUnresolvable { name: _ } => false
+    DivergentExpression => false
+  }
+}
+
+// The divergence fact, asked of a type node directly. A consumer that needs to tell
+// an expression producing NO value apart from a type it could not resolve asks this;
+// asking whether the name is empty answers both at once and therefore neither.
+fn type_is_divergent(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: inf } =>
+      match inf {
+        Divergent => true
+        _ => false
+      }
+    Absent => false
   }
 }
 

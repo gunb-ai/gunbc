@@ -88,6 +88,61 @@ pub fn import_statement_keyword() -> String {
     "import".to_string()
 }
 
+pub fn is_import_whitespace(c: String) -> bool {
+    ((((c.clone() == " ".to_string()) || (c.clone() == "\t".to_string()))
+        || (c.clone() == "\n".to_string()))
+        || (c.clone() == "\x0d".to_string()))
+}
+
+pub fn is_import_module_boundary(c: String) -> bool {
+    (is_import_whitespace(c.clone()) || (c.clone() == "{".to_string()))
+}
+
+pub fn statement_text_opens_with_the_import_keyword(statement_text: String) -> bool {
+    {
+        let keyword_length = v1_rt::string_length(&import_statement_keyword());
+        ((v1_rt::starts_with(statement_text.clone(), import_statement_keyword())
+            && (v1_rt::string_length(&statement_text) > keyword_length.clone()))
+            && is_import_whitespace(v1_rt::char_at(&statement_text, keyword_length.clone())))
+    }
+}
+
+pub fn import_module_start(mut statement_text: String, mut at: i64, mut limit: i64) -> i64 {
+    loop {
+        if (at.clone() >= limit.clone()) {
+            break at.clone();
+        } else {
+            if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
+                {
+                    let __tco_0 = (at + 1);
+                    at = __tco_0;
+                    continue;
+                }
+            } else {
+                break at.clone();
+            }
+        }
+    }
+}
+
+pub fn statement_text_names_module(statement_text: String, imported_module: String) -> bool {
+    {
+        let text_length = v1_rt::string_length(&statement_text);
+        let module_start = import_module_start(
+            statement_text.clone(),
+            v1_rt::string_length(&import_statement_keyword()),
+            text_length.clone(),
+        );
+        let module_end = (module_start.clone() + v1_rt::string_length(&imported_module));
+        ((((v1_rt::string_length(&imported_module) > 0)
+            && (module_end.clone() <= text_length.clone()))
+            && (v1_rt::substring(&statement_text, module_start.clone(), module_end.clone())
+                == imported_module.clone()))
+            && ((module_end.clone() == text_length.clone())
+                || is_import_module_boundary(v1_rt::char_at(&statement_text, module_end.clone()))))
+    }
+}
+
 pub fn import_strip_step(
     progress: Rc<ImportStripProgress>,
     source_file: String,
@@ -149,9 +204,8 @@ pub fn import_strip_step(
                                     statement.span.clone().start.clone(),
                                     statement.span.clone().end.clone(),
                                 );
-                                if !v1_rt::starts_with(
+                                if !statement_text_opens_with_the_import_keyword(
                                     statement_text.clone(),
-                                    import_statement_keyword(),
                                 ) {
                                     Rc::new(ImportStripProgress::ImportStripHalted {
     refusal: Rc::new(ImportStripRefusal::ImportSpanDoesNotDelimitAnImportStatement {
@@ -160,8 +214,8 @@ pub fn import_strip_step(
 }),
 })
                                 } else {
-                                    if !v1_rt::string_contains(
-                                        &statement_text,
+                                    if !statement_text_names_module(
+                                        statement_text.clone(),
                                         statement.imported_module.clone(),
                                     ) {
                                         Rc::new(ImportStripProgress::ImportStripHalted {
