@@ -21,12 +21,21 @@ pub struct ParsedImportStatement {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum ImportStatementParseCause {
+    SourceHasNoModuleDeclaration,
+    ModuleDeclarationPathMalformed,
+    ImportStatementMalformed,
+    ImportParseInstrumentAnomaly { detail: NonEmptyStr },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum ParsedImportStatements {
     ImportStatementsParsed {
         statements: Rc<Vec<Rc<ParsedImportStatement>>>,
     },
     ImportStatementParseRefused {
-        cause: NonEmptyStr,
+        cause: Rc<ImportStatementParseCause>,
     },
 }
 

@@ -86,6 +86,11 @@ import std.import {
   ParsedImportStatements,
   ImportStatementsParsed,
   ImportStatementParseRefused,
+  ImportStatementParseCause,
+  SourceHasNoModuleDeclaration,
+  ModuleDeclarationPathMalformed,
+  ImportStatementMalformed,
+  ImportParseInstrumentAnomaly,
 }
 
 import std.syntax {
@@ -2029,13 +2034,13 @@ fn parse_import_statement_extents_acc(
     let before = tokens.pos
     let r = parse_import(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) {
-      return ImportStatementParseRefused { cause: "an import statement did not parse" as NonEmptyStr }
+      return ImportStatementParseRefused { cause: ImportStatementMalformed }
     }
     match token_stream_first(stream: tokens) {
-      Absent => ImportStatementParseRefused { cause: "an import statement parsed from no token" as NonEmptyStr }
+      Absent => ImportStatementParseRefused { cause: ImportParseInstrumentAnomaly { detail: "an import statement parsed from no token" as NonEmptyStr } }
       Present { value: first } =>
         match last_consumed_token_end(all: tokens.all, from: before, until: r.tokens.pos, end: none) {
-          Absent => ImportStatementParseRefused { cause: "an import statement parsed without consuming a token" as NonEmptyStr }
+          Absent => ImportStatementParseRefused { cause: ImportParseInstrumentAnomaly { detail: "an import statement parsed without consuming a token" as NonEmptyStr } }
           Present { value: end } =>
             parse_import_statement_extents_acc(
               tokens: r.tokens,
@@ -2071,11 +2076,11 @@ fn parse_import_statement_extents(
   let stream = skip_newlines(tokens: token_stream_new(all: tokens))
   let r = expect(tokens: stream, expected: ExpectKeyword { text: "module" })
   if has_err(err: r.err) {
-    return ImportStatementParseRefused { cause: "source does not open with a module declaration" as NonEmptyStr }
+    return ImportStatementParseRefused { cause: SourceHasNoModuleDeclaration }
   }
   let r = parse_dotted_ident(tokens: r.tokens)
   if has_err(err: r.err) {
-    return ImportStatementParseRefused { cause: "module declaration does not name a dotted module path" as NonEmptyStr }
+    return ImportStatementParseRefused { cause: ModuleDeclarationPathMalformed }
   }
   parse_import_statement_extents_acc(tokens: skip_newlines(tokens: r.tokens), ctx: ctx, acc: [])
 }
