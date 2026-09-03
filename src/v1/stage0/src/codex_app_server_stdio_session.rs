@@ -26,6 +26,8 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 // stdin. Five seconds is therefore an explicit policy bound, not a measured fact: exceeding it is
 // reported as a refusal below, so evidence can move the bound instead of the overrun staying hidden.
 const NATURAL_EXIT_GRACE: Duration = Duration::from_secs(5);
+// Likewise, ten seconds is an explicit, unmeasured policy bound for TERM/KILL teardown. Exceeding
+// it produces an Unsettled verdict that the session reports as a refusal.
 const PROCESS_GROUP_TERMINATION_GRACE: Duration = Duration::from_secs(10);
 
 pub const EXIT_THREAD_START_TIMEOUT: i32 = 97;
