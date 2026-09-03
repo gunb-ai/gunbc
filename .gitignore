@@ -157,6 +157,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 # --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
 /.github/fleet-runner-deploy.manifest
+/manufacturing/hole_diameter_ladder_r1.py
 /provisioning/srv3/user-data
 /docs/plans/idea-machine.md
 /docs/plans/algebraic-rewrite-optimization.md

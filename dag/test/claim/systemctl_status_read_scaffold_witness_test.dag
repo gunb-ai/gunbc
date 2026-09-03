@@ -61,6 +61,8 @@ test fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {
           pattern: "never masked",
         )
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
