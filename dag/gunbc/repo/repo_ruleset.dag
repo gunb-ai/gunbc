@@ -146,8 +146,14 @@ data desired_ruleset_bypass_standing: ReaderBypassStanding = ThisReaderCannotByp
 // because the PUT is whole-ruleset (extdeps.github.rulesets Update): sending only the rule this
 // module cares about would DELETE the other two, which is exactly the read-modify-write hazard a
 // desired-state authority exists to remove.
+// THE TYPE ROSTER IS DERIVED FROM THE RULES AND IS NO LONGER A SECOND LIST BESIDE THEM. It was
+// authored as a literal `[DeletionRule, NonFastForwardRule, RequiredStatusChecksRule]` that a human
+// kept in agreement with `desired_ruleset_rules` -- one fact with two authorities, agreeing by
+// diligence. Anything reading the roster to reason about what converge SENDS was therefore reading
+// a proxy that coincided with its subject rather than being derived from it, and a rule added to
+// the projection without a matching hand-edit here would have been invisible to every such reader.
 fn desired_ruleset_rule_types() -> List<RulesetRuleType> {
-  [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule]
+  ruleset_rule_types(rules: desired_ruleset_rules())
 }
 
 fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
@@ -155,6 +161,23 @@ fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
     required_status_check_row(context: c, integration_id: github_actions_app_integration_id))
 }
 
+// WHY NO merge_queue RULE IS PROJECTED UNDER EITHER ARM, STATED AS A STRUCTURAL BLOCKER RATHER
+// THAN AS A TO-DO, because the difference decides whether the sign-off wall above is a guard or a
+// placeholder. `RulesetRuleParametersWire` is the union of every rule's readable parameter shape,
+// and two of its fields -- `strict_required_status_checks_policy` and `do_not_enforce_on_create` --
+// are non-optional Bools belonging to required_status_checks. A merge_queue rule built through this
+// record therefore cannot omit them, and sending them would put keys on the wire that GitHub does
+// not accept on a merge_queue rule: the fabricated wire value the constructor above refuses in the
+// other direction. The queue is not unprojected because someone forgot; it is unprojectable while
+// the parameters record is one flat union.
+//
+// THE CAPABILITY THAT ENDS THIS, named as a capability rather than as an artifact: a wire decoding
+// that admits a coproduct discriminated on a SIBLING KEY, so `parameters` can be per-rule-type and
+// each rule carries exactly its own fields. The REST realization decodes nested objects into
+// untagged maps today, which is why the union exists at all -- the same limitation this module's
+// read side documents, observed here at the write end. Until that lands, every arm of the wall
+// above is exercised against a fixture rule in `test.claim.repo_ruleset_witness_test`, and
+// production refuses because production genuinely cannot express the rule.
 fn desired_ruleset_rules() -> List<RulesetRuleWire> {
   [
     parameterless_rule(t: DeletionRule),
@@ -531,21 +554,120 @@ fn rule_unexpected_divergences(observed: List<RulesetRuleType>) -> List<RulesetD
 // green by construction and would be cited as coverage while asserting nothing (DESIGN section
 // 4b: ask whether the RED can be written before writing the check). A witness can hand it the
 // proposal as though signed, and does.
-fn signed_desire_projection_refusal_for(policy: MergeQueuePolicy?) -> NonEmptyStr? {
+// THE WALL READS THE PROJECTED RULES THEMSELVES, NOT A ROSTER THAT TRACKS THEM.
+//
+// Its first form asked whether `desired_ruleset_rule_types()` contained a merge_queue entry. That
+// question was answerable without ever touching what converge would send: the roster was a second
+// hand-maintained list, so the check passed or failed on the agreement between two authorities
+// rather than on the projection. Even with the roster now derived, a rule TYPE says nothing about
+// the seven parameters that decide what the queue actually does -- a merge_queue rule projected
+// with the wrong strategy, or with a parameter missing, carries the right type and the wrong queue.
+//
+// So the subject is the rule list, and it is read with `merge_queue_standing` -- THE SAME READER
+// THAT INTERPRETS THE LIVE GET. That is DESIGN section 4's one-grammar-both-directions applied to
+// this module: the projection is judged by the identical procedure that judges the live ruleset, so
+// "the signed policy is in force" and "the signed policy will be sent" cannot drift into two
+// different questions with two different answers. Every arm of the reader becomes a located
+// refusal, and per-field drift is reported as the field, the declared value and the projected one.
+type SignedProjectionRefusal
+  = NoQueueRuleProjected
+  | ProjectedQueueParametersIncomplete { missing: List<String> }
+  | ProjectedQueueAmbiguous { count: Int }
+  | ProjectedQueueSettingDrift { field: String, declared: String, projected: String }
+
+fn projected_queue_drift(policy: MergeQueuePolicy, standing: MergeQueueStanding) -> List<SignedProjectionRefusal> {
+  match standing {
+    NoMergeQueueRule => [NoQueueRuleProjected]
+    MultipleMergeQueueRules { count: c } => [ProjectedQueueAmbiguous { count: c }]
+    MergeQueueParametersIncomplete { missing: m } => [ProjectedQueueParametersIncomplete { missing: m }]
+    MergeQueueConfigured {
+      grouping_strategy: g,
+      merge_method: mm,
+      check_response_timeout: t,
+      max_entries_to_build: b,
+      max_entries_to_merge: x,
+      min_entries_to_merge: n,
+      min_entries_to_merge_wait: w,
+    } => concat_lists([
+      drift_str(
+        field: "grouping_strategy",
+        declared: merge_queue_grouping_strategy_wire_label(g: policy.grouping_strategy),
+        projected: merge_queue_grouping_strategy_wire_label(g: g),
+      ),
+      drift_str(
+        field: "merge_method",
+        declared: merge_queue_merge_method_wire_label(m: policy.merge_method),
+        projected: merge_queue_merge_method_wire_label(m: mm),
+      ),
+      drift_minute(field: "check_response_timeout_minutes", declared: policy.check_response_timeout, projected: t),
+      drift_entries(field: "max_entries_to_build", declared: policy.max_entries_to_build, projected: b),
+      drift_entries(field: "max_entries_to_merge", declared: policy.max_entries_to_merge, projected: x),
+      drift_entries(field: "min_entries_to_merge", declared: policy.min_entries_to_merge, projected: n),
+      drift_minute(field: "min_entries_to_merge_wait_minutes", declared: policy.min_entries_to_merge_wait, projected: w),
+    ])
+  }
+}
+
+fn concat_lists(xs: List<List<SignedProjectionRefusal>>) -> List<SignedProjectionRefusal> {
+  fold(xs, init: [], f: fn(acc, more) { append(acc, items: more) })
+}
+
+fn drift_str(field: String, declared: String, projected: String) -> List<SignedProjectionRefusal> {
+  if declared == projected {
+    []
+  } else {
+    [ProjectedQueueSettingDrift { field: field, declared: declared, projected: projected }]
+  }
+}
+
+fn drift_minute(field: String, declared: Minute, projected: Minute) -> List<SignedProjectionRefusal> {
+  drift_str(
+    field: field,
+    declared: to_string(minute_count(declared)),
+    projected: to_string(minute_count(projected)),
+  )
+}
+
+fn drift_entries(field: String, declared: MergeQueueEntryCount, projected: MergeQueueEntryCount) -> List<SignedProjectionRefusal> {
+  drift_str(
+    field: field,
+    declared: to_string(merge_queue_entry_count_value(declared)),
+    projected: to_string(merge_queue_entry_count_value(projected)),
+  )
+}
+
+fn render_signed_projection_refusal(r: SignedProjectionRefusal) -> String {
+  match r {
+    NoQueueRuleProjected => "no merge_queue rule is projected at all, so applying desired would PUT a ruleset without the signed queue and the divergence would never clear"
+    ProjectedQueueAmbiguous { count: c } => concat("the projection carries more than one merge_queue rule, count ", to_string(c))
+    ProjectedQueueParametersIncomplete { missing: m } => concat("the projected merge_queue rule is missing parameters: ", join(m, ", "))
+    ProjectedQueueSettingDrift { field: f, declared: d, projected: p } =>
+      concat(concat(concat(concat(concat("projected ", f), " is "), p), " but the signed policy declares "), d)
+  }
+}
+
+fn signed_desire_projection_refusal_for(
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> NonEmptyStr? {
   match policy {
     Absent => none
-    Present { value: _ } =>
-      if any(desired_ruleset_rule_types(), t =>
-        ruleset_rule_type_wire_label(t: t) == ruleset_rule_type_wire_label(t: MergeQueueRule)) {
+    Present { value: p } => {
+      let drift = projected_queue_drift(policy: p, standing: merge_queue_standing(rules: rules))
+      if length(drift) == 0 {
         none
       } else {
-        Present { value: "the merge queue is signed off but desired_ruleset_rules projects no merge_queue rule, so applying desired would PUT a ruleset without the signed queue and the divergence would never clear. Wire the merge_queue rule into the projection before actuating." }
+        Present { value: concat(
+          "the merge queue is signed off but the desired projection does not carry the signed policy, so converge would send a ruleset that cannot converge. Refusing rather than actuating. ",
+          join(map(drift, d => render_signed_projection_refusal(r: d)), "; "),
+        ) }
       }
+    }
   }
 }
 
 fn signed_desire_projection_refusal() -> NonEmptyStr? {
-  signed_desire_projection_refusal_for(policy: desired_merge_queue_policy())
+  signed_desire_projection_refusal_for(policy: desired_merge_queue_policy(), rules: desired_ruleset_rules())
 }
 
 fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmptyStr? {

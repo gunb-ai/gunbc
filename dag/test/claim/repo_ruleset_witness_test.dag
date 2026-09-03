@@ -1,6 +1,6 @@
 module test.claim.repo_ruleset_witness_test
 
-import std.types { Bool, String }
+import std.types { Bool, String, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
@@ -26,6 +26,10 @@ import gunbc.repo_ruleset {
 }
 import v2.std.collection { Absent, Present }
 import extdeps.github.rulesets {
+  RulesetRuleWire,
+  RulesetRuleParametersWire,
+  MergeQueueRule,
+  ruleset_rule_type_wire_label,
   ReaderBypassStanding,
   RulesetActive,
   RulesetEvaluate,
@@ -441,24 +445,118 @@ test fn w_the_required_status_checks_rule_reads_back_as_no_queue() -> Bool {
   }
 }
 
+// A merge_queue RULE AS A FIXTURE, WHICH IS THE ONLY PLACE ONE CAN BE WRITTEN TODAY. Production
+// cannot project this rule: the wire parameters record carries two non-optional Bools that belong
+// to required_status_checks, and a merge_queue rule built through it would put keys on the wire
+// that GitHub does not accept there -- a fabricated wire value, which is the same defect the
+// required_status_checks constructor refuses in the other direction. DESIGN section 4b is explicit
+// that a state unrepresentable in the ACCEPTED CORPUS may still be representable as source handed
+// to the compiler by a fixture, and that where the refusal is authorable there, declining to
+// enroll it is specification-without-execution. So every arm of the projection wall is exercised
+// here against a rule the production projection cannot yet build.
+fn fixture_merge_queue_rule(strategy: String, max_build: Int) -> RulesetRuleWire {
+  RulesetRuleWire {
+    type: ruleset_rule_type_wire_label(t: MergeQueueRule),
+    parameters: RulesetRuleParametersWire {
+      strict_required_status_checks_policy: false,
+      do_not_enforce_on_create: false,
+      required_status_checks: [],
+      check_response_timeout_minutes: Present { value: minute_count(merge_queue_check_response_timeout()) },
+      grouping_strategy: Present { value: strategy },
+      max_entries_to_build: Present { value: max_build },
+      max_entries_to_merge: Present { value: 1 },
+      merge_method: Present { value: "SQUASH" },
+      min_entries_to_merge: Present { value: 1 },
+      min_entries_to_merge_wait_minutes: Present { value: 5 },
+    },
+  }
+}
+
 // SIGNING OFF WITHOUT WIRING THE PROJECTION STOPS THE LINE INSTEAD OF SILENTLY UNDER-APPLYING.
 // desired_ruleset_rules appends no merge_queue rule under either arm today, so a flip to
 // MergeQueueSignedOff with nothing else changed would PUT a ruleset without the signed queue while
 // verify reported a divergence no apply could clear. The RED is authorable only because the check
-// takes the policy as an operand: the signed state does not exist in this tree, so a check reading
-// the desire row alone would be permanently green and would assert nothing.
+// takes BOTH the policy and the rules as operands: the signed state does not exist in this tree, so
+// a check reading the desire row alone would be permanently green and would assert nothing.
 test fn w_RED_signing_off_without_wiring_the_projection_refuses_to_actuate() -> Bool {
-  match signed_desire_projection_refusal_for(policy: Present { value: gunbc_merge_queue_proposal }) {
+  match signed_desire_projection_refusal_for(
+    policy: Present { value: gunbc_merge_queue_proposal },
+    rules: desired_ruleset_rules(),
+  ) {
     Present { value: cause } =>
       string_contains(s: cause, pattern: "never clear")
-        && string_contains(s: cause, pattern: "merge_queue rule")
+        && string_contains(s: cause, pattern: "no merge_queue rule is projected")
     Absent => false
   }
 }
 
+// THE POSITIVE CONTROL THAT MAKES THE WALL A CHECK AND NOT A CONSTANT. A projection carrying a
+// merge_queue rule whose seven parameters equal the signed policy is admitted. Without this arm the
+// refusal could be `always refuse when signed` and every RED above would still pass.
+test fn w_a_projection_carrying_the_signed_policy_is_admitted() -> Bool {
+  match signed_desire_projection_refusal_for(
+    policy: Present { value: gunbc_merge_queue_proposal },
+    rules: append(desired_ruleset_rules(), items: [fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1)]),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE RULE TYPE IS NOT THE POLICY, WHICH IS THE WHOLE REASON THE ROSTER WAS THE WRONG SUBJECT. This
+// projection carries a merge_queue rule -- the type roster is satisfied and the old check passed on
+// exactly this input -- and it configures the queue GitHub was NOT signed off for. The refusal
+// names the field, the declared value and the projected one.
+test fn w_RED_a_projected_queue_with_the_wrong_strategy_refuses_and_names_the_field() -> Bool {
+  match signed_desire_projection_refusal_for(
+    policy: Present { value: gunbc_merge_queue_proposal },
+    rules: append(desired_ruleset_rules(), items: [fixture_merge_queue_rule(strategy: "HEADGREEN", max_build: 1)]),
+  ) {
+    Present { value: cause } =>
+      string_contains(s: cause, pattern: "projected grouping_strategy is HEADGREEN")
+        && string_contains(s: cause, pattern: "declares ALLGREEN")
+    Absent => false
+  }
+}
+
+// A NUMERIC PARAMETER DRIFTS TOO, and it is the one the operator ruled on. max_entries_to_build was
+// commissioned at 1 against a proposal of 5; a projection sending 5 under a sign-off for 1 is the
+// operator's ruling silently reversed, and it refuses with both numbers rather than a Bool.
+test fn w_RED_a_projected_queue_with_a_drifted_entry_count_refuses_with_both_numbers() -> Bool {
+  match signed_desire_projection_refusal_for(
+    policy: Present { value: gunbc_merge_queue_proposal },
+    rules: append(desired_ruleset_rules(), items: [fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 5)]),
+  ) {
+    Present { value: cause } =>
+      string_contains(s: cause, pattern: "projected max_entries_to_build is 5")
+        && string_contains(s: cause, pattern: "declares 1")
+    Absent => false
+  }
+}
+
+// TWO PROJECTED QUEUE RULES ARE AMBIGUOUS RATHER THAN THE FIRST ONE WINNING.
+test fn w_RED_two_projected_merge_queue_rules_refuse_as_ambiguous() -> Bool {
+  match signed_desire_projection_refusal_for(
+    policy: Present { value: gunbc_merge_queue_proposal },
+    rules: append(desired_ruleset_rules(), items: [
+      fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1),
+      fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1),
+    ]),
+  ) {
+    Present { value: cause } => string_contains(s: cause, pattern: "more than one merge_queue rule")
+    Absent => false
+  }
+}
+
+// THE TYPE ROSTER IS DERIVED FROM THE RULES AND NOT AUTHORED BESIDE THEM. Appending a rule to the
+// projection must move the roster with no second edit; the literal it replaced could not.
+test fn w_the_desired_type_roster_is_derived_from_the_projected_rules() -> Bool {
+  length(desired_ruleset_rule_types()) == length(desired_ruleset_rules())
+}
+
 // THE POSITIVE CONTROL: an unsigned desire is not a refusal, or converge would be dead today.
 test fn w_an_unsigned_desire_does_not_trip_the_sign_off_refusal() -> Bool {
-  match signed_desire_projection_refusal_for(policy: none) {
+  match signed_desire_projection_refusal_for(policy: none, rules: desired_ruleset_rules()) {
     Absent => true
     Present { value: _ } => false
   }

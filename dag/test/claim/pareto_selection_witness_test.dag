@@ -12,7 +12,8 @@ import std.pareto {
   PairStanding, PairDominates, PairNoDominance, PairRefused, PairPendingEvidence,
   PairEvidenceIncomplete,
   AxisComparison, Better, Same, Worse, UndecidedOnEvidence, axis_comparison_interval,
-  compare_pair, entry_standing, pareto_label,
+  compare_pair, entry_standing, pareto_label, entry_contradicts_its_declaration,
+  AxisGap,
 }
 
 // SYNTHETIC FIXTURES ONLY. The spine is domain-blind, so its witness plants exact entries
@@ -37,7 +38,7 @@ data axis_cost_duplicate: SelectionAxis = SelectionAxis { identity: axis_cost_id
 data axis_power_duplicate: SelectionAxis = SelectionAxis { identity: axis_power_id, goal: LowerIsBetter }
 data duplicated_axes: List<SelectionAxis> = [axis_cost, axis_cost_duplicate, axis_power]
 
-data no_missing: List<NonEmptyStr> = []
+data no_missing: List<AxisGap> = []
 
 data id_cheap_strong: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_cheap_strong", field: WholeDeclaration }
 data id_dear_weak: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_dear_weak", field: WholeDeclaration }
@@ -97,7 +98,7 @@ data entry_quote_pending: ParetoEntry = ParetoEntry {
     AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 1) },
     AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 1) },
   ],
-  missing_inputs: ["a written quote is outstanding"],
+  missing_inputs: [AxisGap { axis: axis_cost_id, cause: "a written quote is outstanding" }],
 }
 
 data entry_reading_hole: ParetoEntry = ParetoEntry {
@@ -143,7 +144,68 @@ data entry_gap_but_best: ParetoEntry = ParetoEntry {
     AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 1) },
     AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 999) },
   ],
-  missing_inputs: ["a written quote is outstanding, so this row's cost is not evidence"],
+  missing_inputs: [AxisGap { axis: axis_cost_id, cause: "a written quote is outstanding, so this row's cost is not evidence" }],
+}
+
+// THE PROBE FOR AN AXIS-BLIND EXEMPTION. entry_contradicts_its_declaration computes
+// declares_its_gaps ONCE for the whole entry, outside its per-axis fold, so a gap declared about
+// ONE axis exempts the absent-reading check on EVERY axis. This row declares power unmeasured and
+// carries a power reading anyway, while silently having no COST reading - a projector defect on an
+// axis its declaration says nothing about. Its honest twin below declares the same gap and is
+// complete on the funded axes.
+//
+// The claim under test is NOT that dominance fails open: both rows reach NotComputable, which is
+// fail-shut and correct. What is lost is DISTINGUISHABILITY - the defective row and the honest row
+// produce the same empty contradiction list, so a dropped reading is indistinguishable from a
+// declaration. That is the exact conflation the per-defect-class split was made to end, one level
+// down: the split separated DUPLICATE from ABSENT, and left ABSENT blind to WHICH AXIS was excused.
+data id_gap_hides_a_hole: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_hides_a_hole", field: WholeDeclaration }
+data id_gap_declared_and_complete: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_declared_and_complete", field: WholeDeclaration }
+
+data entry_gap_hides_a_hole: ParetoEntry = ParetoEntry {
+  identity: id_gap_hides_a_hole,
+  display_label: "gap-hides-a-hole",
+  readings: [
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 700) },
+  ],
+  missing_inputs: [AxisGap { axis: axis_power_id, cause: "power is unmeasured pending a metered pilot" }],
+}
+
+// THE HONEST TWIN MUST ACTUALLY EXERCISE THE EXEMPTION, and the first version of this fixture did
+// not. It carried BOTH readings, so no absent-reading branch was ever reached for it and the
+// "never exempt" mutation left it green - a conjunct that discriminated nothing while reading as
+// though it guarded the over-scoping direction. It now has NO power reading, exactly the absence
+// its declared gap is about, so the exemption is on the executed path and removing it goes red.
+data entry_gap_declared_and_complete: ParetoEntry = ParetoEntry {
+  identity: id_gap_declared_and_complete,
+  display_label: "gap-covers-its-own-hole",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 50) },
+  ],
+  missing_inputs: [AxisGap { axis: axis_power_id, cause: "power is unmeasured pending a metered pilot" }],
+}
+
+data id_gap_names_an_unfunded_axis: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_names_an_unfunded_axis", field: WholeDeclaration }
+data axis_bandwidth_id: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "axis_bandwidth", field: WholeDeclaration }
+
+// A REAL AXIS THIS SELECTION DOES NOT FUND. Declared, well-formed, and deliberately absent from
+// both_axes -- because UNFUNDED means "not among the axes this selection weighs", never "names
+// nothing". Pointing the gap at a decl_name no module declares would have tested the citation
+// checker rather than the fold, and CI refused exactly that: `CITED-DECLARATION-ABSENT ... cites
+// axis_bandwidth, which that module does not declare` (DESIGN section 3, cite the symbol).
+data axis_bandwidth: SelectionAxis = SelectionAxis { identity: axis_bandwidth_id, goal: HigherIsBetter }
+
+// COMPLETE on every axis this selection funds, and carrying a gap that names an axis it does not.
+// Nothing here is incomplete: both folds over both_axes find their reading. The only defect is the
+// gap itself, which is why this fixture isolates the unfunded-axis clause from the other two.
+data entry_gap_names_an_unfunded_axis: ParetoEntry = ParetoEntry {
+  identity: id_gap_names_an_unfunded_axis,
+  display_label: "gap-names-an-unfunded-axis",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 120) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 480) },
+  ],
+  missing_inputs: [AxisGap { axis: axis_bandwidth_id, cause: "uplink is unmeasured pending a carrier turn-up" }],
 }
 
 data gap_best_field: List<ParetoEntry> = [
@@ -617,6 +679,42 @@ test fn a_subject_does_not_dominate_itself() -> Bool {
     && malformed_axes_outrank_self && malformed_projector_outranks_self && self_outranks_an_honest_gap
 }
 
+// CONTROL - A GAP DECLARED ABOUT ONE AXIS MAY NOT EXCUSE A HOLE ON ANOTHER. Red today: the
+// exemption is entry-wide, so both rows below yield an EMPTY contradiction list and the projector
+// defect is unnameable. Green requires the exemption to be scoped to the axis the gap names.
+//
+// BOTH KILLING MUTATIONS WERE EXECUTED, in opposite directions, because a one-sided control here
+// would pass under an over-scoping that named everything:
+//   restore declares_its_gaps to a whole-entry Bool  -> defect row unnamed, first half red
+//   never exempt (drop the gap_on_axis test)         -> honest row named, second half red
+// The second mutation did NOT go red on the first version of the honest fixture, which carried both
+// readings and so never reached the absent-reading branch at all - the conjunct read as a guard and
+// discriminated nothing. The fixture now omits exactly the reading its gap is about.
+test fn a_gap_on_one_axis_does_not_excuse_a_hole_on_another() -> Bool {
+  let defect_is_named = count(entry_contradicts_its_declaration(e: entry_gap_hides_a_hole, axes: both_axes)) > 0
+  let honest_row_is_not_named = count(entry_contradicts_its_declaration(e: entry_gap_declared_and_complete, axes: both_axes)) == 0
+  defect_is_named && honest_row_is_not_named
+}
+
+// CONTROL - A GAP MUST NAME A FUNDED AXIS. This is the THIRD semantic clause the scoped-gap repair
+// introduces, and the two mutations above cross neither of it: deleting the unfunded_gaps fold left
+// both of them green, so the arm had no falsifier and the rung it claims was not established by
+// executed evidence (DESIGN.md 4b(1)).
+//
+// The clause is a fail-closed arm, not a preservation. A gap whose axis ref is a typo names no
+// funded axis, so it excuses nothing and blocks nothing: under the entry-wide reading the row was
+// merely INCOMPLETE and stayed comparable-with-refusal. It now REFUSES. That verdict change is the
+// point of the arm and is stated on the PR rather than claimed away as "every verdict preserved".
+//
+// KILLING MUTATION EXECUTED: drop the unfunded_gaps fold -> the typo row is named by nobody and the
+// first half goes red. The second half pairs it against a row whose gap names a FUNDED axis on an
+// otherwise-complete entry, so an over-scoping that refused every gap-bearing row cannot pass either.
+test fn a_gap_must_name_an_axis_this_selection_funds() -> Bool {
+  let typo_gap_refuses = count(entry_contradicts_its_declaration(e: entry_gap_names_an_unfunded_axis, axes: both_axes)) > 0
+  let funded_gap_is_not_named = count(entry_contradicts_its_declaration(e: entry_quote_pending, axes: both_axes)) == 0
+  typo_gap_refuses && funded_gap_is_not_named
+}
+
 fn pareto_witness_report() -> NonEmptyStr {
   join([
     "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
@@ -636,6 +734,8 @@ fn pareto_witness_report() -> NonEmptyStr {
     " dup_axes_refuse_the_pair=", flag(b: a_duplicated_axis_roster_refuses_the_pair_too()),
     " causes_sized_by_defects=", flag(b: a_cause_population_is_sized_by_distinct_defects()),
     " no_self_dominance=", flag(b: a_subject_does_not_dominate_itself()),
+    " gap_scoped_to_its_axis=", flag(b: a_gap_on_one_axis_does_not_excuse_a_hole_on_another()),
+    " gap_names_a_funded_axis=", flag(b: a_gap_must_name_an_axis_this_selection_funds()),
   ], "")
 }
 
@@ -658,6 +758,8 @@ fn pareto_witness_main() -> ProcessExit {
     && witness_duplicate_axis_identity_refuses()
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
+    && a_gap_on_one_axis_does_not_excuse_a_hole_on_another()
+    && a_gap_must_name_an_axis_this_selection_funds()
   if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
 }
 
@@ -750,7 +852,7 @@ data entry_wide_a: ParetoEntry = ParetoEntry {
     AxisReading { axis: axis_cost_id, interval_micro: span(low: 100, high: 200) },
     AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 500) },
   ],
-  missing_inputs: [],
+  missing_inputs: no_missing,
 }
 
 data entry_wide_b: ParetoEntry = ParetoEntry {
@@ -760,7 +862,7 @@ data entry_wide_b: ParetoEntry = ParetoEntry {
     AxisReading { axis: axis_cost_id, interval_micro: span(low: 150, high: 250) },
     AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 400) },
   ],
-  missing_inputs: [],
+  missing_inputs: no_missing,
 }
 
 // entry_wide_c is known WORSE on power than wide_a while its cost overlaps: the directional
@@ -772,7 +874,7 @@ data entry_wide_c: ParetoEntry = ParetoEntry {
     AxisReading { axis: axis_cost_id, interval_micro: span(low: 150, high: 250) },
     AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 100) },
   ],
-  missing_inputs: [],
+  missing_inputs: no_missing,
 }
 
 // NO KNOWN WORSE AXIS + AN UNDECIDED ONE IS PENDING, because sharpening the undecided axis really
@@ -812,7 +914,7 @@ data entry_wide_d: ParetoEntry = ParetoEntry {
     AxisReading { axis: axis_cost_id, interval_micro: span(low: 150, high: 250) },
     AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 500) },
   ],
-  missing_inputs: [],
+  missing_inputs: no_missing,
 }
 
 // PENDING REACHES THE STANDING RATHER THAN THE FRONTIER, which is why the state is carried this far
@@ -899,7 +1001,7 @@ data entry_gap_and_duplicate: ParetoEntry = ParetoEntry {
     AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 10) },
     AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 999) },
   ],
-  missing_inputs: ["the power quote has not come back"],
+  missing_inputs: [AxisGap { axis: axis_power_id, cause: "the power quote has not come back" }],
 }
 
 // A DECLARED GAP DOES NOT EXCUSE MALFORMED EVIDENCE, and the exemption used to be per ENTRY rather

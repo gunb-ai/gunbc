@@ -953,7 +953,7 @@ case the row belongs to that carrier's root, not here).
 tuple. 27 sites.** Small, named for completeness. R5 is worth a second look for its *kind*
 rather than its size: two modules declaring one concept (`OccurrenceId` in both
 `std_occurrence_identity` and `v2_std_node`; `Nat` in both `std.nat` and `v2.std.nat`, the latter
-fork already declared in tree — the stall row `gunbc.guarantee_rung_drop`
+fork already declared in tree — the stall row `gunbc.guarantee_stall`
 `two_nat_authorities_stall` carries the rung, ceiling and trigger, since #9794 deleted the
 `nat_max_two_nat_authorities_note` narration this line used to cite). That is a §3 violation
 producing type errors, and no amount of emitter work fixes it.

@@ -3,7 +3,7 @@ module gunbc.merge_queue_admission
 import std.types { Bool, Int, CommitSha, String, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.checks { CheckConclusion, check_conclusion_is_success }
-import extdeps.github.actions { MergeGroup }
+import extdeps.github.actions { workflow_triggers_admit_merge_group }
 import extdeps.github.rulesets {
   MergeQueueStanding,
   NoMergeQueueRule,
@@ -374,7 +374,7 @@ type MergeQueueTerminal
 // this row, so reading the row is not a shortcut past the authority; it is the authority, without
 // the jobs attached.
 fn floor_workflow_admits_merge_group() -> Bool {
-  any(witness_floor_triggers(), t => match t { MergeGroup => true _ => false })
+  workflow_triggers_admit_merge_group(triggers: witness_floor_triggers())
 }
 
 // AN UNAVAILABLE ROSTER PRODUCES A CAUSE, NEVER AN ABSENCE OF ONE. This is the arm that makes
