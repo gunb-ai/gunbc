@@ -266,6 +266,27 @@ data step0_denominator_defects: List<Step0DenominatorDefect> = [
   }
 ]
 
+// THE CAPABILITY THAT WOULD SEPARATE A CONVERGED SET, NAMED AS A CAPABILITY AND NOT AS A ROSTER.
+// "a finer family roster" is not a trigger: a roster with no instrument behind it is the prose-law
+// problem again, and it would be satisfied by an edit that changes nothing about what can be
+// observed. Each arm below names something the OCCURRENCE WALK or the CATEGORY AXIS would have to
+// start doing.
+type Step0DiscriminationCapability
+  = TypeReferenceRolePositionStamped
+  | ConstructorArityAndPositionStamped
+  | CallableVersusValueAcquisitionStamped
+
+fn step0_discrimination_capability_statement(capability: Step0DiscriminationCapability) -> NonEmptyStr {
+  match capability {
+    TypeReferenceRolePositionStamped =>
+      "std.occurrence_identity OccurrenceCategory, or a role beside it, must distinguish a type named in an annotation position from a type named as a generic argument, and must give a qualified container.member reference a segment of its own rather than splitting it into a lexical value and a field" as NonEmptyStr
+    ConstructorArityAndPositionStamped =>
+      "the occurrence walk must EMIT an occurrence for a constructor applied in record-construction form and for a variant named in a match pattern -- today it emits none for either -- and must stamp constructor occurrences with arity and position rather than as lexical values" as NonEmptyStr
+    CallableVersusValueAcquisitionStamped =>
+      "call-head acquisition and bare-value acquisition must stay distinct for one spelling, which they already are, WITHOUT the named-argument label of a call being emitted as a reference occurrence -- the same stamping pass produces both behaviours, so this capability is one repair and not two" as NonEmptyStr
+  }
+}
+
 // THE CAPABILITY IS KEYED BY FAMILY AND NOT BY CATEGORY, because a category-keyed table has to
 // answer for categories no family converges on -- Field, Method -- and every answer there is
 // invented. An arbitrary arm in a trigger table is worse than a missing one: it reads as a named

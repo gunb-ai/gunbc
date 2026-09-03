@@ -193,12 +193,28 @@ data step0_census_receipt_fields: List<Step0CensusReceiptField> = [
 // substitute for the attribution; it is not a reason to skip the attribution.
 data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may not promote UnlistedImportUse from advisory to enforced in order to observe its own subject; the acceptance path may not be changed by the change that measures it" as NonEmptyStr
 
-// AND THE EXISTING CENSUS IS A CANDIDATE PRODUCER, NOT AN ESTABLISHED ONE. compile_clean_unlisted_import_census
-// iterates DIAGNOSTICS and selects only UnlistedImportUse rows, and that emission is attached to a
-// masked type-name path -- so its coverage of bare call targets, constructors, bare variants and
-// dispatch is UNESTABLISHED. It returning the right arm for one planted call is not coverage of the
-// roster above, and treating it as complete would inherit an unmeasured blind spot as a baseline.
-data step0_census_candidate_producer_standing: NonEmptyStr = "compile_clean_unlisted_import_census is a CANDIDATE producer whose coverage of the reference-family roster is unestablished; it selects UnlistedImportUse diagnostic rows from a masked type-name emission path and has not been shown to discriminate bare call targets, constructors, bare variants or dispatch" as NonEmptyStr
+// AND THE EXISTING CENSUS'S COVERAGE IS NOT UNPROVEN -- IT IS REFUTED. This row was written as a
+// caution: compile_clean_unlisted_import_census selects UnlistedImportUse rows from a masked
+// type-name emission path, so its coverage of the family roster was UNESTABLISHED. That standing has
+// been discharged in the harder direction. A calibration run over a hand-authored subject shows the
+// reference-occurrence producer emitting no denominator row at all for two families of the roster,
+// and emitting one for a named-argument label, which refers to no declaration. The population is
+// therefore short real occurrences and long invented ones at the same time, and the two errors are
+// over different populations and cannot cancel.
+//
+// WHY EVERY LAW ABOVE STAYS SATISFIED WHILE THAT IS TRUE, which is the part worth carrying forward:
+// the denominator and the observations come from ONE walk. So the conservation laws balance BY
+// CONSTRUCTION over whatever that walk produced, and a family it never emits is invisible to all of
+// them. The anti-join cannot reach it either -- an anti-join needs a population to join against, and
+// those occurrences were never in one. The unobserved-derivation law was written against a
+// denominator derived from the DIAGNOSTIC; the same disease was sitting one layer above it, in a
+// denominator derived from the observation walk.
+//
+// THE STANDING IS CITED AND NOT TRANSCRIBED. The verdict, the per-family observation table and the
+// defect roster live in gunbc.namespace_step0_census_calibration, and the executing instrument that
+// re-derives them is step0_calibration_probe in that module's witness. Copying its numbers here
+// would put a second authority beside the one that measures them.
+data step0_census_candidate_producer_standing: NonEmptyStr = "the reference-occurrence producer's coverage of the family roster is REFUTED, not merely unestablished: gunbc.namespace_step0_census_calibration records families for which it emits no denominator row and a non-reference for which it emits one, and that module's step0_calibration_standing is the sole authority for the verdict" as NonEmptyStr
 
 // A STATEMENT COUNT IS NOT AN EDGE COUNT, AND THE DIFFERENCE IS NOT ROUNDING. The strip reports
 // removed STATEMENTS, and a braced list binds several names in one statement -- so an edge or
