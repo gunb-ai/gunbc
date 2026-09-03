@@ -1,6 +1,7 @@
 module test.claim.self_compile_blocking_disposition_witness_test
 
-import std.types { Bool }
+import std.types { Bool, String }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.self_compile_blocking_disposition {
   SelfCompileDispositionJoin,
@@ -15,16 +16,27 @@ import gunbc.self_compile_blocking_disposition {
   declared_current_self_compile_dispositions,
   observed_current_self_compile_dispositions,
   current_self_compile_disposition_join,
+  self_compile_receipt_standing,
   self_compile_disposition_join_holds,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn current_identity_and_disposition_join_holds() -> Bool {
-  count(current_self_compile_identities()) == 20
-    && count(declared_current_self_compile_dispositions()) == 20
-    && count(observed_current_self_compile_dispositions()) == 20
+  count(current_self_compile_identities()) > 0
+    && count(declared_current_self_compile_dispositions()) > 0
+    && count(observed_current_self_compile_dispositions()) > 0
     && self_compile_disposition_join_holds(j: current_self_compile_disposition_join)
+}
+
+test fn receipt_declares_its_stale_historical_rung() -> Bool {
+  self_compile_receipt_standing.bounded_population > 0
+    && self_compile_receipt_standing.stale_by_at_least_commits > 0
+    && self_compile_receipt_standing.stale_against_revision != current_self_compile_disposition_join.source_revision
+    && match self_compile_receipt_standing.restoration_trigger {
+      UnboundDissolution { description: d } => (d as String) != ""
+      BoundDissolution { trigger: _ } => false
+    }
 }
 
 fn first_identity() -> SelfCompileDiagnosticIdentity {

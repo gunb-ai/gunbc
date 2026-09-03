@@ -1,6 +1,7 @@
 module gunbc.self_compile_blocking_disposition
 
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha, List }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // A self-compile refusal is not automatically a defect.  The subject is the diagnostic identity,
 // not the total printed beside the run: two diagnostics with the same spelling in one declaration
@@ -33,6 +34,30 @@ type SelfCompileDispositionJoin {
   render_target: NonEmptyStr
   declared: List<DeclaredSelfCompileDisposition>
   observed: List<ObservedSelfCompileDisposition>
+}
+
+// DECLARED DROP FOR THE RECEIPT ITSELF.  The join was fresh only at source_revision.  It cannot
+// reject a later tree because neither population is a live observation, so its present rung is a
+// revision-pinned historical receipt and never current-tree coverage.  The distance is an observed
+// lower bound (8bfae78d78..39fc622636), not a counter claimed to follow main after this row lands.
+type SelfCompileReceiptStanding {
+  previous_rung: NonEmptyStr
+  temporary_rung: NonEmptyStr
+  reason: NonEmptyStr
+  bounded_population: Int
+  stale_against_revision: CommitSha
+  stale_by_at_least_commits: Int
+  restoration_trigger: DissolutionCondition
+}
+
+data self_compile_receipt_standing: SelfCompileReceiptStanding = SelfCompileReceiptStanding {
+  previous_rung: "fresh identity-and-disposition receipt for its named source revision" as NonEmptyStr,
+  temporary_rung: "revision-pinned historical receipt; inapplicable as evidence about the current tree" as NonEmptyStr,
+  reason: "the substrate has no executing consumer that launches a whole-root compile, so the observation was captured by a local host run and cannot compare its source revision with current main" as NonEmptyStr,
+  bounded_population: 20,
+  stale_against_revision: "39fc6226366d48274e82d75bac8d9d71bf984c20",
+  stale_by_at_least_commits: 6,
+  restoration_trigger: unbound_dissolution(description: "dissolve-on: a .dag consumer launches the src/v2-primary whole-root compile under the admitted host-budget envelope, captures termination plus every blocking diagnostic identity and observed disposition from that execution, binds the observation to the compiled source revision, and REFUSES applicability when that revision differs from the tree under judgment; the declared roster is then joined to that producer-minted observation in both directions with exact multiplicity"),
 }
 
 fn diagnostic_identity(module_path: String, site: String, diagnostic: String, occurrence: Int) -> SelfCompileDiagnosticIdentity {
