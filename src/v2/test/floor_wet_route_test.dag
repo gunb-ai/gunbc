@@ -484,6 +484,88 @@ test fn wet_lease_naming_a_different_envelope_is_not_applicable_and_blocks() -> 
     )
 }
 
+// THE PIN IS FOUR-WAY AND TWO OF ITS LEGS HAD NO WITNESS. The fold refuses a lease whose
+// envelope digest, attempt_seq, semantic subject digest OR roster digest disagrees with the
+// receipt in hand, and only the envelope and semantic-subject legs were asserted. An unasserted
+// leg of a conjunction is indistinguishable from an absent one: deleting `exact_attempt_seq`
+// from the comparison would have kept every existing witness green. These two close that, and
+// they matter more than the arithmetic suggests -- the whole claim that this lease "admits
+// exactly one receipt" rests on all four legs holding, and a lease that ignored attempt_seq
+// would silently admit a LATER attempt against an earlier attempt's declared row, which is
+// precisely the stale-evidence class the route exists to refuse.
+test fn wet_lease_naming_a_different_attempt_seq_is_not_applicable_and_blocks() -> Bool {
+  let admission = wet_seed_bootstrap_admission(
+    lease: Present { value: fixture_lease() },
+    envelope_digest: "fixture-envelope-digest",
+    attempt_seq: 2,
+    semantic_subject_digest: fixture_digest,
+    roster_digest: "fixture-roster-digest",
+    evaluated_tree_commit_unix_secs: 1000001
+  )
+  let not_applicable = match admission {
+    BootstrapLeaseNotApplicable => true
+    BootstrapExecutorSnapshotLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapLeaseExpired { detail: _ } => false
+  }
+  not_applicable
+    && wet_route_disposition_blocks_floor(
+      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+    )
+}
+
+// AND THE ROSTER LEG, whose failure mode is the widest of the four: a lease written against one
+// routed population would otherwise admit a receipt executed against a different one, so rows
+// added to or removed from the roster since the lease was declared would ride in unexecuted.
+test fn wet_lease_naming_a_different_roster_is_not_applicable_and_blocks() -> Bool {
+  let admission = wet_seed_bootstrap_admission(
+    lease: Present { value: fixture_lease() },
+    envelope_digest: "fixture-envelope-digest",
+    attempt_seq: 1,
+    semantic_subject_digest: fixture_digest,
+    roster_digest: "a-different-roster-digest",
+    evaluated_tree_commit_unix_secs: 1000001
+  )
+  let not_applicable = match admission {
+    BootstrapLeaseNotApplicable => true
+    BootstrapExecutorSnapshotLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapLeaseExpired { detail: _ } => false
+  }
+  not_applicable
+    && wet_route_disposition_blocks_floor(
+      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+    )
+}
+
+// THE SEMANTIC-SUBJECT LEG OF THE PIN, WHICH HAD NO DISCRIMINATING WITNESS UNTIL NOW. The
+// witness below it -- `wet_lease_never_admits_a_semantic_subject_mismatch` -- looks like this
+// one's coverage and is not: it holds the lease APPLICABLE and varies the STANDING, asserting
+// that an admitted lease cannot launder a subject mismatch. That is a real and different
+// proposition. Deleting `exact_semantic_subject_digest` from the fold's pin leaves it GREEN,
+// measured by mutation, so the leg it appears to guard was decoration.
+//
+// This one varies the pin itself: a lease declared against one semantic subject, presented with
+// a receipt for another, must be NotApplicable -- the lease is a bounded admission of EXECUTOR
+// drift and must never admit a receipt about a different program.
+test fn wet_lease_declared_against_another_semantic_subject_is_not_applicable() -> Bool {
+  let admission = wet_seed_bootstrap_admission(
+    lease: Present { value: fixture_lease() },
+    envelope_digest: "fixture-envelope-digest",
+    attempt_seq: 1,
+    semantic_subject_digest: "a-different-semantic-subject-digest",
+    roster_digest: "fixture-roster-digest",
+    evaluated_tree_commit_unix_secs: 1000001
+  )
+  let not_applicable = match admission {
+    BootstrapLeaseNotApplicable => true
+    BootstrapExecutorSnapshotLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapLeaseExpired { detail: _ } => false
+  }
+  not_applicable
+    && wet_route_disposition_blocks_floor(
+      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+    )
+}
+
 // The non-widening half: an ADMITTED lease still refuses every standing that is not the
 // executor-snapshot arm — the semantic-subject mismatch stays blocked, so the lease can never
 // launder a different program.

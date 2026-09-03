@@ -250,6 +250,19 @@ fn floor_wet_route_receipt_schema_version() -> Int {
   2
 }
 
+// A NEGATIVE AGE REFUSES RATHER THAN CLAMPING, and the arm it replaced is the reason this note
+// exists. `raw_age < 0` used to become `0`, which reported the impossible state as
+// `ReceiptFreshExactSubject { age_secs: 0 }` -- the FRESHEST possible reading. That is DESIGN
+// section 5's absorbing fallback exactly: the arm that cannot compute an honest answer substituted
+// the most permissive one, and it did so silently, so a clock defect on the lane host would have
+// read as a perfect receipt forever.
+//
+// IT WAS NARROW, AND NARROW IS NOT THE SAME AS HARMLESS. The two walls above bound it: executed_at
+// may not exceed published_at, and published_at may not exceed the tree commit plus the declared
+// publication skew, so a negative age was bounded BELOW by that skew rather than unbounded. The
+// clamp was still a widen, and the correct shape for a bounded-but-impossible reading is a typed
+// refusal naming it, never a substituted value that happens to be small.
+//
 // WHAT THE AGE AXIS IS FOR, because it is NOT redundant with the subject axis and reading it
 // that way is the live trap. The standing fold reaches `ReceiptExpired` only AFTER the subject
 // digest, the executor contract digest and the roster join all match — so an exact receipt for
@@ -367,11 +380,15 @@ fn wet_lane_receipt_standing(
                   ReceiptContractMismatch { detail: "a row records an observed resolution that is not the identity it claims — the lane executed a different declaration than the routed identity names" }
                 } else {
                 let raw_age = wet_time_scalar(x: evaluated_tree_commit_unix_secs) - wet_time_scalar(x: e.executed_at_unix_secs)
-                let age = if raw_age < 0 { 0 } else { raw_age }
+                if raw_age < 0 {
+                  ReceiptContractMismatch { detail: "executed_at is later than the evaluated tree commit — a receipt cannot be executed after the tree it is a verdict about" }
+                } else {
+                let age = raw_age
                 if age > wet_time_scalar(x: floor_wet_route_receipt_staleness_budget_secs()) {
                   ReceiptExpired { age_secs: age }
                 } else {
                   ReceiptFreshExactSubject { age_secs: age }
+                }
                 }
                 }
               } else {

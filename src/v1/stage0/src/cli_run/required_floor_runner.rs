@@ -2421,6 +2421,15 @@ fn identity_home_is_declared_non_executing(module_path: &str) -> bool {
 /// and the terminal rows read through `claim_disposition` — the SAME projection the disposition
 /// TSV's outcome column uses, so this projection cannot disagree with the receipt about what a
 /// row's outcome was. It realizes the arms the .dag fold names; it does not invent a fifth.
+// EIGHT ARGUMENTS, AND THE GROUPING REFACTOR IS DELIBERATELY NOT TAKEN. The arity crossed the lint's
+// threshold by MERGE rather than by authoring: this branch added `wet_receipt_candidate_exact` for the
+// transported route while main added `wet_lane` and `candidate` for the hermetic one, and neither
+// change was over the line alone. The three do form one concept -- the wet join's inputs -- so a
+// struct would be the honest model, and that is exactly why it is not done HERE: this is the v1 seed,
+// which is frozen to growth for its own sake and admits changes only as they serve the v2 self-host
+// program (DESIGN section 3, v1_maintenance_standing). Restructuring a seed signature is investment in
+// the arm that shrinks toward zero. The allow matches the two this file already carries.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn changed_witness_projection_rows(
     changed: &[String],
     disposition_rows: &[RequiredFloorDispositionRow],
@@ -9773,8 +9782,10 @@ mod changed_witness_projection_tests {
             true,
             &HashSet::new(),
             &HashMap::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
-        assert_eq!(rows[0].standing, "routed-with-candidate-exact-receipt");
+        assert_eq!(rows[0].standing, "hermetic-route-gap-held-and-wet-passed");
         assert!(!rows[0].blocks);
     }
 
@@ -9792,6 +9803,8 @@ mod changed_witness_projection_tests {
             false,
             &HashSet::new(),
             &HashMap::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
         assert_eq!(rows[0].standing, "declined");
         assert!(rows[0].blocks);
@@ -10040,6 +10053,7 @@ mod changed_witness_projection_tests {
                 &changed,
                 &dispositions,
                 &terminal,
+                false,
                 &HashSet::new(),
                 &HashMap::new(),
                 lane,
