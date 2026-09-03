@@ -1,0 +1,305 @@
+module gunbc.harness.harness_turn
+
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.languages.json.emit {
+  JsonValue, json_kv, json_string, json_int, json_array, json_object, serialize_json,
+}
+import extdeps.http.client
+import extdeps.filesystem.filesystem_io
+import gunbc.harness.harness_wire {
+  HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
+  HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
+  harness_decode_response, harness_stop_reason_wire, harness_tool_result_block,
+  harness_srv6_backend_url,
+}
+import gunbc.harness.harness_tool {
+  HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,
+  harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
+  harness_run_command_schema,
+}
+import extdeps.llm.anthropic_messages_api {
+  AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
+  ModelContextWindowExceeded,
+}
+
+// THE TURN LOOP: post a request, and while the response stops on tool use, execute the tools and
+// post the results back. Everything else in this module exists to make that sentence honest.
+//
+// THE LOOP IS BOUNDED AND THE BOUND IS AN ARGUMENT. Execution here is forward and terminating by
+// construction (DESIGN section 4), so the recursion carries a step budget that strictly decreases
+// and the exhausted case is a NAMED terminal, not a silent stop. An unbounded "while tool_use"
+// would be a program whose termination depends on the remote model's behaviour, which is precisely
+// the fact we are least entitled to assume.
+
+type HarnessTurnConfig {
+  backend_url: String
+  model: String
+  max_tokens: Int
+  system_prompt: String
+  request_scratch_path: FilePath
+  environment: HarnessToolEnvironment
+}
+
+// A TERMINAL IS A PROVIDER OBSERVATION OR A HARNESS REFUSAL, and neither of them is "the task is
+// done". That separation is the whole of DCH-2's ruling on stop reasons, and it is structural here:
+// there is no TurnSucceeded constructor to reach for.
+//
+// The reason is measured rather than cautious. On this transport at least two upstream causes
+// produce the same observed end_turn -- a model genuinely finishing, and a serving package whose
+// configured stop string collides with ordinary content, which DCH-0p reproduced with a tiny prompt
+// and removed by rebuilding the package. The wire label cannot distinguish them, so the harness
+// reports the label and says so, and whether the WORK was done is decided by external pinned
+// verification against the attempt head -- never here.
+type HarnessTurnOutcome
+  = TurnProviderStopped {
+      wire_stop_reason: String
+      assistant_text: String
+      steps_taken: Int
+      input_tokens: Int
+      output_tokens: Int
+    }
+  | TurnStepBudgetExhausted { steps_taken: Int }
+  | TurnTransportRefused { detail: String }
+  | TurnResponseUnreadable { cause: String }
+  | TurnRequestUnwritable { path: String, detail: String }
+
+fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: r, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
+      join(["provider-stopped:", r], "")
+    TurnStepBudgetExhausted { steps_taken: _ } => "step-budget-exhausted"
+    TurnTransportRefused { detail: _ } => "transport-refused"
+    TurnResponseUnreadable { cause: _ } => "response-unreadable"
+    TurnRequestUnwritable { path: _, detail: _ } => "request-unwritable"
+  }
+}
+
+fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: r, assistant_text: t, steps_taken: n, input_tokens: i, output_tokens: o } =>
+      join([
+        "stop_reason=", r,
+        " steps=", to_string(value: n),
+        " input_tokens=", to_string(value: i),
+        " output_tokens=", to_string(value: o),
+        "\n--- assistant text ---\n", t,
+        "\n--- end ---\n",
+        "NOTE: the wire stop reason is a provider observation, not a claim that the task was done.",
+      ], "")
+    TurnStepBudgetExhausted { steps_taken: n } =>
+      join([
+        "the turn used its whole step budget of ", to_string(value: n),
+        " tool rounds without the provider reaching a terminal stop reason",
+      ], "")
+    TurnTransportRefused { detail: d } => d
+    TurnResponseUnreadable { cause: c } => c
+    TurnRequestUnwritable { path: p, detail: d } =>
+      join(["could not write the request body to ", p, ": ", d], "")
+  }
+}
+
+// REQUEST CONSTRUCTION. The message list is carried as already-encoded JSON values rather than as
+// modelled AnthropicChatMessage values, and that is a deliberate narrowing for this slice: the loop
+// appends an assistant turn it received as JSON and a user turn of tool results it just built, so
+// round-tripping both through the modelled type and back would add a decode it does not need and a
+// re-encode that could differ from the bytes the provider actually sent. The DCH-2 requirement to
+// echo an assistant turn back VERBATIM, thinking blocks included, is exactly the property that
+// re-encoding puts at risk.
+fn harness_request_json(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+) -> JsonValue {
+  json_object([
+    json_kv(key: "model", value: json_string(s: config.model)),
+    json_kv(key: "max_tokens", value: json_int(n: config.max_tokens)),
+    json_kv(key: "system", value: json_string(s: config.system_prompt)),
+    json_kv(key: "messages", value: json_array(elements: messages)),
+    json_kv(key: "tools", value: json_array(elements: [
+      json_object([
+        json_kv(key: "name", value: json_string(s: "run_command")),
+        json_kv(key: "description", value: json_string(
+          s: "Run a shell command in the attempt's working directory and return its combined output and exit code.",
+        )),
+        json_kv(key: "input_schema", value: harness_run_command_schema()),
+      ]),
+    ])),
+  ])
+}
+
+fn harness_assistant_message_json(blocks: List<HarnessWireBlock>) -> JsonValue {
+  json_object([
+    json_kv(key: "role", value: json_string(s: "assistant")),
+    json_kv(key: "content", value: json_array(elements: map(blocks, b => harness_wire_block_json(block: b)))),
+  ])
+}
+
+fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
+  match block {
+    WireTextBlock { text } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "text")),
+        json_kv(key: "text", value: json_string(s: text)),
+      ])
+    WireThinkingBlock { thinking } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "text")),
+        json_kv(key: "text", value: json_string(s: thinking)),
+      ])
+    WireToolUseBlock { id, name, input } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "tool_use")),
+        json_kv(key: "id", value: json_string(s: id)),
+        json_kv(key: "name", value: json_string(s: name)),
+        json_kv(key: "input", value: input),
+      ])
+  }
+}
+
+// ALL TOOL RESULTS FOR ONE TURN GO BACK IN ONE USER MESSAGE. Treated as a hypothesis with a
+// predicted failure rather than as a fact inherited from prior art: if this transport does not
+// require the batching, nothing breaks; if it does, splitting them is the failure that presents as
+// the model losing track of what it asked for.
+fn harness_tool_result_message_json(results: List<JsonValue>) -> JsonValue {
+  json_object([
+    json_kv(key: "role", value: json_string(s: "user")),
+    json_kv(key: "content", value: json_array(elements: results)),
+  ])
+}
+
+fn harness_user_text_message_json(text: String) -> JsonValue {
+  json_object([
+    json_kv(key: "role", value: json_string(s: "user")),
+    json_kv(key: "content", value: json_array(elements: [
+      json_object([
+        json_kv(key: "type", value: json_string(s: "text")),
+        json_kv(key: "text", value: json_string(s: text)),
+      ]),
+    ])),
+  ])
+}
+
+fn harness_blocks_text(blocks: List<HarnessWireBlock>) -> String {
+  join(
+    map(blocks, b => match b {
+      WireTextBlock { text } => text
+      WireThinkingBlock { thinking: _ } => ""
+      WireToolUseBlock { id: _, name: n, input: _ } => join(["[tool_use ", n, "]"], "")
+    }),
+    "",
+  )
+}
+
+fn harness_tool_use_blocks(blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
+  filter(blocks, b => match b {
+    WireToolUseBlock { id: _, name: _, input: _ } => true
+    _ => false
+  })
+}
+
+fn harness_tool_use_id(block: HarnessWireBlock) -> String {
+  match block {
+    WireToolUseBlock { id, name: _, input: _ } => id
+    _ => ""
+  }
+}
+
+fn harness_execute_and_encode(
+  environment: HarnessToolEnvironment,
+  block: HarnessWireBlock,
+) -> JsonValue {
+  let outcome = harness_execute_tool_use(environment: environment, block: block)
+  harness_tool_result_block(
+    tool_use_id: harness_tool_use_id(block: block),
+    text: harness_outcome_text(outcome: outcome),
+    is_error: harness_outcome_is_error(outcome: outcome),
+  )
+}
+
+// ONE ROUND: write the request, post it, decode the answer.
+fn harness_post_round(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+) -> HarnessResponseRead {
+  let body = serialize_json(v: harness_request_json(config: config, messages: messages))
+  let written = Filesystem.Write(path: config.request_scratch_path as String, content: body)
+  if !written.success {
+    HarnessResponseUnreadable {
+      cause: join([
+        "request body could not be written to ", config.request_scratch_path as String,
+        ": ", written.error,
+      ], ""),
+    }
+  } else {
+    let posted = http.Client.PostJsonFromFile(
+      url: config.backend_url as NonEmptyStr,
+      request_body_file: config.request_scratch_path as String as NonEmptyStr,
+    )
+    if !posted.success {
+      HarnessResponseUnreadable {
+        cause: join([
+          "the backend refused the request or the transport failed; body was: ", posted.body,
+        ], ""),
+      }
+    } else {
+      harness_decode_response(body: posted.body)
+    }
+  }
+}
+
+// THE LOOP. Each round either reaches a provider terminal, or executes the tool calls and recurses
+// with a strictly smaller budget. There is no arm that continues without either consuming a step or
+// terminating, which is what makes the descent argument readable rather than asserted.
+fn harness_turn_loop(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+  steps_remaining: Int,
+  steps_taken: Int,
+) -> HarnessTurnOutcome {
+  if steps_remaining <= 0 {
+    TurnStepBudgetExhausted { steps_taken: steps_taken }
+  } else {
+    match harness_post_round(config: config, messages: messages) {
+      HarnessResponseUnreadable { cause: c } => TurnResponseUnreadable { cause: c }
+      HarnessResponseParsed { blocks, stop_reason, input_tokens, output_tokens } => {
+        let uses = harness_tool_use_blocks(blocks: blocks)
+        if list_length(items: uses) == 0 {
+          TurnProviderStopped {
+            wire_stop_reason: harness_stop_reason_wire(reason: stop_reason),
+            assistant_text: harness_blocks_text(blocks: blocks),
+            steps_taken: steps_taken + 1,
+            input_tokens: input_tokens,
+            output_tokens: output_tokens,
+          }
+        } else {
+          harness_turn_loop(
+            config: config,
+            messages: concat(
+              messages,
+              [
+                harness_assistant_message_json(blocks: blocks),
+                harness_tool_result_message_json(
+                  results: map(uses, u => harness_execute_and_encode(
+                    environment: config.environment,
+                    block: u,
+                  )),
+                ),
+              ],
+            ),
+            steps_remaining: steps_remaining - 1,
+            steps_taken: steps_taken + 1,
+          )
+        }
+      }
+    }
+  }
+}
+
+fn harness_run_turn(config: HarnessTurnConfig, prompt: String, step_budget: Int) -> HarnessTurnOutcome {
+  harness_turn_loop(
+    config: config,
+    messages: [harness_user_text_message_json(text: prompt)],
+    steps_remaining: step_budget,
+    steps_taken: 0,
+  )
+}

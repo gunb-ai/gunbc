@@ -1,0 +1,328 @@
+module gunbc.harness.harness_wire
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  json_kv, json_string, json_int, json_array, json_object, serialize_json,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
+  JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  parse_json_document, json_object_unique_member, json_document_gap_text,
+}
+import extdeps.llm.anthropic_messages_api {
+  AnthropicChatMessage, UserMessage, AssistantMessage,
+  AnthropicUserContentBlock, UserTextBlock, UserToolResultBlock,
+  AnthropicAssistantContentBlock, AssistantTextBlock, AssistantToolUseBlock,
+  AnthropicToolDefinition,
+  AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
+  ModelContextWindowExceeded,
+}
+import extdeps.ollama.api { ollama_default_port }
+import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint }
+
+// THE WIRE CODEC FOR THE DEDICATED HARNESS, over the shape DCH-1 already hoisted off the vendor.
+//
+// extdeps.llm.anthropic_messages_api owns WHAT a messages request and response ARE; it carries no
+// codec, so nothing in the corpus could yet turn one of its values into bytes or bytes into one of
+// its values. This module is that codec and nothing else: no policy, no endpoint choice, no loop.
+//
+// It is authored HERE rather than in extdeps because a codec is a realization of the shape and the
+// shape is the specification -- the same split gunbc.provider_interface_binding already draws
+// between an interface and its transport. A second implementation of the same wire (the Anthropic
+// service itself, or a different local server) reuses this codec unchanged, which is the property
+// that makes the shared-standard modelling worth having.
+//
+// WHAT IS DELIBERATELY NOT HERE. Streaming is not decoded: DCH's own hypothesis list records that a
+// streaming request may terminate a response early where an otherwise identical non-streaming
+// request returns it complete, and that hypothesis has NO observation behind it yet. Encoding a
+// stream decoder before that isolating run would be building on an unmeasured claim, so the codec
+// speaks the non-streaming form only and a stream field is not emitted at all.
+
+// A WIRE STOP REASON IS DECODED TOTALLY OR REFUSED, never defaulted.
+//
+// The tempting arm is `_ => EndTurn`, and it is the absorbing fallback in its most expensive
+// position: an unrecognized stop reason would become the one value the harness reads as "the model
+// finished", so a NEW upstream terminal state would present as successful completion. The refusal
+// carries the unrecognized lexeme so the gap is nameable rather than silent.
+type HarnessStopReasonRead
+  = StopReasonRead { reason: AnthropicStopReason }
+  | StopReasonUnrecognized { wire: String }
+
+fn harness_decode_stop_reason(wire: String) -> HarnessStopReasonRead {
+  if wire == "end_turn" {
+    StopReasonRead { reason: EndTurn }
+  } else if wire == "tool_use" {
+    StopReasonRead { reason: ToolUse }
+  } else if wire == "max_tokens" {
+    StopReasonRead { reason: MaxTokens }
+  } else if wire == "stop_sequence" {
+    StopReasonRead { reason: StopSequence }
+  } else if wire == "pause_turn" {
+    StopReasonRead { reason: PauseTurn }
+  } else if wire == "refusal" {
+    StopReasonRead { reason: Refusal }
+  } else if wire == "model_context_window_exceeded" {
+    StopReasonRead { reason: ModelContextWindowExceeded }
+  } else {
+    StopReasonUnrecognized { wire: wire }
+  }
+}
+
+fn harness_stop_reason_wire(reason: AnthropicStopReason) -> String {
+  match reason {
+    EndTurn => "end_turn"
+    ToolUse => "tool_use"
+    MaxTokens => "max_tokens"
+    StopSequence => "stop_sequence"
+    PauseTurn => "pause_turn"
+    Refusal => "refusal"
+    ModelContextWindowExceeded => "model_context_window_exceeded"
+  }
+}
+
+// REQUEST ENCODING -------------------------------------------------------------------------
+
+fn harness_encode_user_block(block: AnthropicUserContentBlock) -> JsonValue {
+  match block {
+    UserTextBlock { text } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "text")),
+        json_kv(key: "text", value: json_string(s: text)),
+      ])
+    UserToolResultBlock { tool_use_id, content: _, is_error } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "tool_result")),
+        json_kv(key: "tool_use_id", value: json_string(s: tool_use_id)),
+        json_kv(key: "content", value: json_string(s: "")),
+        json_kv(
+          key: "is_error",
+          value: match is_error {
+            Present { value: flag } => JsonBool { value: flag }
+            Absent => JsonBool { value: false }
+          },
+        ),
+      ])
+  }
+}
+
+// THE TOOL RESULT'S TEXT DOES NOT COME THROUGH AnthropicToolResultContent, and that is a modelled
+// gap rather than an oversight to be papered over. That type carries the full block-list form --
+// text blocks, images, documents, citations -- and encoding it faithfully is the whole of the
+// structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads disposition the DCH-1
+// module already declares against itself. The harness needs exactly one shape of result today, a
+// string, so it carries one through its own constructor below rather than half-encoding a richer
+// type and producing a payload that satisfies the schema while dropping members.
+fn harness_tool_result_block(tool_use_id: String, text: String, is_error: Bool) -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "tool_result")),
+    json_kv(key: "tool_use_id", value: json_string(s: tool_use_id)),
+    json_kv(key: "content", value: json_string(s: text)),
+    json_kv(key: "is_error", value: JsonBool { value: is_error }),
+  ])
+}
+
+fn harness_encode_assistant_block(block: AnthropicAssistantContentBlock) -> JsonValue {
+  match block {
+    AssistantTextBlock { text } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "text")),
+        json_kv(key: "text", value: json_string(s: text)),
+      ])
+    AssistantToolUseBlock { id, name, input: _ } =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "tool_use")),
+        json_kv(key: "id", value: json_string(s: id)),
+        json_kv(key: "name", value: json_string(s: name)),
+        json_kv(key: "input", value: json_object([])),
+      ])
+  }
+}
+
+fn harness_encode_message(message: AnthropicChatMessage) -> JsonValue {
+  match message {
+    UserMessage { content } =>
+      json_object([
+        json_kv(key: "role", value: json_string(s: "user")),
+        json_kv(key: "content", value: json_array(elements: map(content, b => harness_encode_user_block(block: b)))),
+      ])
+    AssistantMessage { content } =>
+      json_object([
+        json_kv(key: "role", value: json_string(s: "assistant")),
+        json_kv(key: "content", value: json_array(elements: map(content, b => harness_encode_assistant_block(block: b)))),
+      ])
+  }
+}
+
+fn harness_encode_tool(tool: AnthropicToolDefinition, schema: JsonValue) -> JsonValue {
+  json_object([
+    json_kv(key: "name", value: json_string(s: tool.name)),
+    json_kv(key: "description", value: json_string(s: tool.description)),
+    json_kv(key: "input_schema", value: schema),
+  ])
+}
+
+// RESPONSE DECODING ------------------------------------------------------------------------
+
+type HarnessWireBlock
+  = WireTextBlock { text: String }
+  | WireThinkingBlock { thinking: String }
+  | WireToolUseBlock { id: String, name: String, input: JsonValue }
+
+type HarnessResponseRead
+  = HarnessResponseParsed {
+      blocks: List<HarnessWireBlock>
+      stop_reason: AnthropicStopReason
+      input_tokens: Int
+      output_tokens: Int
+    }
+  | HarnessResponseUnreadable { cause: String }
+
+fn harness_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => Present { value: s }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn harness_member_int(doc: JsonValue, key: String) -> Int {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: lex } => string_to_int_or_zero(s: lex as String)
+        _ => 0
+      }
+    _ => 0
+  }
+}
+
+fn string_to_int_or_zero(s: String) -> Int {
+  match parse_int(s: s) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn harness_decode_block(v: JsonValue) -> HarnessWireBlock? {
+  match harness_member_string(doc: v, key: "type") {
+    Absent => none
+    Present { value: kind } =>
+      if kind == "text" {
+        match harness_member_string(doc: v, key: "text") {
+          Present { value: t } => Present { value: WireTextBlock { text: t } }
+          Absent => none
+        }
+      } else if kind == "thinking" {
+        match harness_member_string(doc: v, key: "thinking") {
+          Present { value: t } => Present { value: WireThinkingBlock { thinking: t } }
+          Absent => none
+        }
+      } else if kind == "tool_use" {
+        match harness_member_string(doc: v, key: "id") {
+          Absent => none
+          Present { value: id } =>
+            match harness_member_string(doc: v, key: "name") {
+              Absent => none
+              Present { value: name } =>
+                Present {
+                  value: WireToolUseBlock {
+                    id: id,
+                    name: name,
+                    input: match json_object_unique_member(v: v, key: "input") {
+                      JsonMemberFound { value: iv } => iv
+                      _ => json_object([])
+                    },
+                  },
+                }
+            }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn harness_decode_blocks(v: JsonValue) -> List<HarnessWireBlock> {
+  match v {
+    JsonArray { elements: els } =>
+      els |> flat_map(e => match harness_decode_block(v: e) {
+        Present { value: b } => [b]
+        Absent => []
+      })
+    _ => []
+  }
+}
+
+// THE RESPONSE IS DECODED OR REFUSED, and every refusal names which member failed.
+//
+// The arms that matter are the ones a fabricating decoder would collapse: a body that is not JSON
+// at all, a body that is JSON but carries no stop_reason, and a stop_reason whose lexeme this
+// version does not know. All three are DIFFERENT failures with different remedies -- a transport
+// problem, a schema disagreement, and an upstream that has grown a state we do not model -- and a
+// decoder that answered `EndTurn` for any of them would report a completed turn for all three.
+fn harness_decode_response(body: String) -> HarnessResponseRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } =>
+      HarnessResponseUnreadable {
+        cause: join(["response body is not readable as JSON: ", json_document_gap_text(gap: g)], ""),
+      }
+    JsonDocumentParsed { value: doc } =>
+      match harness_member_string(doc: doc, key: "stop_reason") {
+        Absent =>
+          HarnessResponseUnreadable {
+            cause: "response carries no string stop_reason member; the turn's terminal state is unknown",
+          }
+        Present { value: wire } =>
+          match harness_decode_stop_reason(wire: wire) {
+            StopReasonUnrecognized { wire: w } =>
+              HarnessResponseUnreadable {
+                cause: join([
+                  "response carries an unrecognized stop_reason '", w,
+                  "'; refusing rather than reading an unmodelled terminal state as completion",
+                ], ""),
+              }
+            StopReasonRead { reason: r } =>
+              HarnessResponseParsed {
+                blocks: match json_object_unique_member(v: doc, key: "content") {
+                  JsonMemberFound { value: c } => harness_decode_blocks(v: c)
+                  _ => []
+                },
+                stop_reason: r,
+                input_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "input_tokens")
+                  _ => 0
+                },
+                output_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "output_tokens")
+                  _ => 0
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE BACKEND ENDPOINT, cited rather than spelled.
+//
+// The address comes from the enrolled fleet endpoint row DCH-0 authored, the port from
+// extdeps.ollama.api, and the path from the messages specification. Writing "192.168.1.225:11434"
+// here would be three literals standing where three authorities already answer, and each would rot
+// independently -- the address when the operator re-reserves it, which has already happened once
+// when both units moved to the wireless SSID.
+data harness_messages_path: String = "/v1/messages"
+
+fn harness_backend_url(address: String) -> String {
+  join(["http://", address, ":", to_string(value: ollama_default_port), harness_messages_path], "")
+}
+
+fn harness_srv6_backend_url() -> String {
+  harness_backend_url(address: srv6_host_lan_endpoint.address)
+}
+
+fn harness_srv5_backend_url() -> String {
+  harness_backend_url(address: srv5_host_lan_endpoint.address)
+}
