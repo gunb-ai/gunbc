@@ -159,17 +159,24 @@ fn hostname_set_invocation_cli_arguments(invocation: HostnameSetInvocation) -> O
 // LOCAL process runs (witnesses) reads the SAME words the handler executes. The executable is
 // the handler's fixed tool name (the same literal the hostnamectl.Process.Run transport row
 // spells); the subcommand and the operand are the rendered surface, so the verb can never drift
-// from the cited row. If the lowering refuses, the projection is empty (fail-closed) rather
-// than a fabricated plausible argv.
-fn hostname_set_argv(desired: DnsLabel) -> List<String> {
-  match hostname_set_invocation_cli_arguments(invocation: HostnameSetInvocation { desired: desired }) {
-    Rejected { diagnostics: _ } => Empty
-    Accepted { value: surface, diagnostics: _ } =>
-      list_append(
-        left: ["hostnamectl"],
-        right: hostname_set_surface_words(surface: surface),
+// from the cited row.
+//
+// REFUSAL-CARRYING, NOT A WIDEN: a lowering refusal surfaces as Rejected (DESIGN section 5 --
+// a failure arm refuses, it does not widen into an empty argv that a caller could mistake for
+// a real projection). Every consumer matches the Outcome; nothing reads a bare list that has
+// already swallowed the refusal.
+fn hostname_set_argv(desired: DnsLabel) -> Outcome<List<String>> {
+  bind_outcome(
+    o: hostname_set_invocation_cli_arguments(invocation: HostnameSetInvocation { desired: desired }),
+    f: fn(surface) {
+      outcome_accepted(
+        list_append(
+          left: ["hostnamectl"],
+          right: hostname_set_surface_words(surface: surface),
+        )
       )
-  }
+    }
+  )
 }
 
 fn hostname_set_surface_words(surface: CliSurface) -> List<String> {

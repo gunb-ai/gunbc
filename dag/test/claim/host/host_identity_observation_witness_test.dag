@@ -29,7 +29,11 @@ test fn witness_hostname_read_resolves_typed_cell_not_shell_script() -> Bool {
 }
 
 test fn witness_hostname_set_argv_is_typed_not_concat() -> Bool {
-  join(hostname_set_argv(desired: "srv9" as DnsLabel), " ") == "hostnamectl set-hostname srv9"
+  match hostname_set_argv(desired: "srv9" as DnsLabel) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: argv, diagnostics: _ } =>
+      join(argv, " ") == "hostnamectl set-hostname srv9"
+  }
 }
 
 test fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {

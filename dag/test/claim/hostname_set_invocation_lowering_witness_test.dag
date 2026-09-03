@@ -75,20 +75,26 @@ test fn set_invocation_lowers_to_exact_surface() -> Bool {
 }
 
 // The full argv the local process runs is the handler's executable plus the surface -- the same
-// words hostnamectl.Process.Run's transport row spells.
+// words hostnamectl.Process.Run's transport row spells. The projection is refusal-carrying: a
+// lowering refusal must surface as Rejected, never as a bare empty list that looks like a real
+// projection.
 test fn set_full_argv_is_executable_plus_surface() -> Bool {
   match hostname_set_argv(desired: "srv9" as DnsLabel) {
-    Empty => false
-    Cons { head: first, tail: rest } =>
-      match rest {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: argv, diagnostics: _ } =>
+      match argv {
         Empty => false
-        Cons { head: second, tail: after } =>
-          match after {
+        Cons { head: first, tail: rest } =>
+          match rest {
             Empty => false
-            Cons { head: third, tail: tail_end } =>
-              match tail_end {
-                Empty => (first == "hostnamectl") && (second == "set-hostname") && (third == "srv9")
-                Cons { head: _, tail: _ } => false
+            Cons { head: second, tail: after } =>
+              match after {
+                Empty => false
+                Cons { head: third, tail: tail_end } =>
+                  match tail_end {
+                    Empty => (first == "hostnamectl") && (second == "set-hostname") && (third == "srv9")
+                    Cons { head: _, tail: _ } => false
+                  }
               }
           }
       }
