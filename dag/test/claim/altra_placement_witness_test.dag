@@ -822,6 +822,13 @@ test fn w_slot_obligations_follow_routed_copper_not_the_shipped_population() -> 
     && requires_slot(d: d, c: DdrChannel7, p: FirstDimmOnChannel)
 }
 
+// THE INTENT IS READ AS A VARIANT, NOT AS ITS SPELLING. An earlier revision compared
+// `board_governing_intent(d: d) as String` to "Production", which review 59112 correctly called a
+// stringly read of a closed variant in the one diff that exists to remove second-authority reads --
+// and it is worse than redundant, because a rename of the variant would leave the comparison
+// silently false while every other assert here still passed. The match is exhaustive, so adding a
+// third intent reds this file instead of quietly selecting the false arm.
+//
 // CONTROL 2 -- THE BRING-UP POPULATION DOES NOT SHRINK THE BOARD EITHER. A board that comes up on
 // two DIMMs and ships on four still routes eight, so it still owes eight connectors; and because
 // its governing intent is Production rather than the bring-up of its first phase, it also owes the
@@ -838,8 +845,12 @@ test fn w_a_bring_up_then_fill_board_owes_the_routed_slots_and_the_production_ro
       },
       production: four_populated_one_position(),
     })
+  let governs_as_production = match board_governing_intent(d: d) {
+    Production => true
+    EngineeringBringUp => false
+  }
   memory_role_count(d: d) == 8
-    && (board_governing_intent(d: d) as String) == "Production"
+    && governs_as_production
     && role_is_required_under(r: HostNetworkPhy, intent: board_governing_intent(d: d))
     && role_is_required_under(r: ManagementNetworkPath, intent: board_governing_intent(d: d))
     && role_is_required_under(r: StorageEndpoint, intent: board_governing_intent(d: d))
