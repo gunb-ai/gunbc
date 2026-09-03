@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.absorbing_fallback
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data absorbing_fallback: RecurringFailureMode = RecurringFailureMode {
+  identity: "absorbing_fallback" as NonEmptyStr,
+
+  receipts: [
+    "absorbing fallback (a failure arm that widens — rerun everything, scan all keys, always run — instead of refusing; ⊤-as-answer conflated with ⊤-as-ignorance; the deficit's frequency zeroed by construction, the corpus-denominated cost breaking the budget later)",
+  ],
+
+  evidence: [],
+}
