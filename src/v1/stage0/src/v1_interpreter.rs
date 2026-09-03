@@ -12908,6 +12908,85 @@ use crate::gunbc_file_transport_generated::gunbc_file_write_create_new as write_
 #[cfg(test)]
 mod write_file_create_new_tests {
     // ---------------------------------------------------------------------------------------
+    // PROJECTION INTEGRITY, EXECUTED RATHER THAN ASSERTED.
+    //
+    // This module's whole claim is that ONE authority
+    // (extdeps.filesystem.rust_realization rust_file_write_create_new_fn_def) reaches two committed
+    // consumers verbatim. A one-time manual comparison is a receipt about the tree that existed when
+    // someone ran it; it is not enforcement, and external review required this to execute. A future
+    // rustfmt release or a generator edit could reopen the difference without touching the authority
+    // at all, and nothing would say so.
+    //
+    // THIS IS NOT THE FORBIDDEN EQUALITY WITNESS. That pattern pins two independently authored
+    // implementations to each other and calls the agreement a guarantee. There is one implementation
+    // here; this checks that its two PROJECTIONS carry it unchanged, which is necessary precisely
+    // because one of those paths passes through an external canonicalizer this repo does not own.
+    //
+    // The fourth assertion is the load-bearing one: `cargo fmt --all --check` is a declared rung
+    // drop as a merge gate, so nothing else in CI would notice the seed artifact drifting out of
+    // rustfmt's fixed point.
+    fn repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("stage0 crate sits three levels under the repo root")
+            .to_path_buf()
+    }
+
+    fn extract_create_new_definition(source: &str, what: &str) -> String {
+        let start = source
+            .find("pub fn gunbc_file_write_create_new")
+            .unwrap_or_else(|| panic!("{what} does not carry the create-new definition"));
+        let rest = &source[start..];
+        let end = rest
+            .find("\n}\n")
+            .unwrap_or_else(|| panic!("{what}'s definition is not brace-terminated"));
+        rest[..end + 3].to_string()
+    }
+
+    #[test]
+    fn both_projections_carry_the_one_authority_verbatim() {
+        let root = repo_root();
+        let seed_path = root.join("src/v1/stage0/src/gunbc_file_transport_generated.rs");
+        let runtime_path = root.join("src/v1/stage0/src/v1_rt.rs");
+
+        let seed_src = std::fs::read_to_string(&seed_path).expect("seed projection");
+        let runtime_src = std::fs::read_to_string(&runtime_path).expect("runtime projection");
+
+        let seed = extract_create_new_definition(&seed_src, "the generated seed module");
+        let runtime = extract_create_new_definition(&runtime_src, "emitted v1_rt");
+
+        // (2) exactly once in the runtime projection -- a second copy would be a second authority
+        assert_eq!(
+            runtime_src
+                .matches("pub fn gunbc_file_write_create_new")
+                .count(),
+            1,
+            "v1_rt must carry the definition exactly once",
+        );
+        // (3) the two extracted byte ranges are identical
+        assert_eq!(
+            seed, runtime,
+            "the seed artifact and emitted v1_rt must carry byte-identical definitions",
+        );
+
+        // (4) the seed artifact is already at rustfmt's fixed point
+        let fmt = std::process::Command::new("rustfmt")
+            .args(["--edition", "2021", "--emit", "stdout", "--quiet"])
+            .arg(&seed_path)
+            .output()
+            .expect("rustfmt must be available: this check refuses rather than skipping");
+        assert!(fmt.status.success(), "rustfmt failed on the seed artifact");
+        let formatted = String::from_utf8(fmt.stdout).expect("rustfmt output is utf-8");
+        assert_eq!(
+            extract_create_new_definition(&formatted, "rustfmt output"),
+            seed,
+            "the seed artifact must already be at rustfmt's fixed point, or the two projections \
+             will drift the next time a formatter runs over one of them",
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------
     // THE SAME-PROCESS STAGING COLLISION, AND WHY THE FIRST FORMULATION OF THIS CONTROL WAS
     // NOT DISCRIMINATING.
     //
@@ -12927,6 +13006,63 @@ mod write_file_create_new_tests {
     // collides with that leftover and refuses a create that was entirely legitimate; the sequence
     // suffix makes each attempt's staging name its own, so the create proceeds. Red on the defect,
     // green on the repair, with no timing dependence.
+    // THE GENERALIZED CONTROL: AN OCCUPIED CANDIDATE UNDER THE *CURRENT* RULE.
+    //
+    // External review established that the previous control, which plants the PID-only name #10069
+    // used, does not prove the class closed -- it only proves the literal suffix changed. Under the
+    // current rule that planted file is not a candidate at all, so the test passes without ever
+    // exercising an occupied candidate.
+    //
+    // The defect it failed to catch is real: a per-attempt sequence makes the name unique among LIVE
+    // calls in one process, but this function deliberately ignores removal failure after
+    // publication, so stale staging files are an admitted physical state, and a later process may
+    // reuse the pid and restart its sequence at zero. A one-shot candidate that returned its own
+    // AlreadyExists would reproduce the identical defect -- target absent, legitimate create refused
+    // because an INTERNAL name was occupied -- at a frequency low enough to be harder to observe.
+    //
+    // So this control plants the FIRST candidate the current rule derives, in a freshly spawned
+    // process so the sequence is known to start at zero, and requires the operation to SKIP it,
+    // acquire the next, and publish the requested target -- leaving the planted file untouched,
+    // because it belongs to another attempt and deleting it would turn a naming collision into data
+    // loss. It goes red against a one-shot candidate, which the previous control could not do.
+    #[test]
+    fn an_occupied_staging_candidate_is_skipped_rather_than_refused() {
+        let dir = std::env::temp_dir().join(format!("gunbc-occupied-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        // A forked child gives a known-fresh sequence: its first candidate is seq 0.
+        let child = unsafe { libc::fork() };
+        assert!(child >= 0, "fork");
+        if child == 0 {
+            let planted = format!("{}.gunbc-create-{}-0", target, std::process::id());
+            let ok = std::fs::write(&planted, b"a stale internal candidate").is_ok()
+                && super::write_file_create_new(&target, b"a fresh repository").is_ok()
+                && std::fs::read(&target).ok().as_deref() == Some(b"a fresh repository".as_slice())
+                // the occupied candidate must survive: it is another attempt's file
+                && std::fs::read(&planted).ok().as_deref()
+                    == Some(b"a stale internal candidate".as_slice());
+            unsafe { libc::_exit(if ok { 0 } else { 1 }) };
+        }
+        let mut status: libc::c_int = 0;
+        unsafe { libc::waitpid(child, &mut status, 0) };
+        let code = (status >> 8) & 0xff;
+        assert_eq!(
+            code, 0,
+            "an occupied staging candidate must be skipped, the next acquired, the target published, \
+             and the planted file left untouched",
+        );
+
+        assert_eq!(
+            std::fs::read(&path).expect("target must be published"),
+            b"a fresh repository",
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Kept as the historical mutation control for #10069's PID-only naming. It is NOT sufficient on
+    // its own -- see the generalized control above -- but it still pins the specific regression.
     #[test]
     fn a_leftover_staging_file_does_not_refuse_a_legitimate_create() {
         let dir = std::env::temp_dir().join(format!("gunbc-stale-staging-{}", std::process::id()));

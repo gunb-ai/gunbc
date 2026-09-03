@@ -1150,12 +1150,28 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
 pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let staging_path = format!("{}.gunbc-create-{}-{}", file_path, std::process::id(), seq);
-    let mut staged = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&staging_path)?;
+    const GUNBC_CREATE_MAX_CANDIDATES: u32 = 1024;
+    let mut attempted: u32 = 0;
+    let (mut staged, staging_path) = loop {
+        if attempted >= GUNBC_CREATE_MAX_CANDIDATES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "gunbc create-new: exhausted staging candidates without acquiring one",
+            ));
+        }
+        attempted += 1;
+        let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let candidate = format!("{}.gunbc-create-{}-{}", file_path, std::process::id(), seq);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => break (file, candidate),
+            Err(occupied) if occupied.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(host) => return Err(host),
+        }
+    };
     if let Err(staging_err) = staged.write_all(content) {
         let _ = std::fs::remove_file(&staging_path);
         return Err(staging_err);

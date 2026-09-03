@@ -42,33 +42,30 @@ module extdeps.filesystem.rust_realization
 // projects the outcome into whatever channel it owns; that projection is ordinary consumer code,
 // not a second implementation.
 //
-// THE STAGING NAME CARRIES A SEQUENCE, WHICH IS A DEFECT REPAIR, NOT DECORATION. The #10069
-// spelling was `{path}.gunbc-create-{pid}`, unique per TARGET but not per THREAD. Two threads of
-// one process creating the same target derived the same staging name, so the loser failed its
-// exclusive open on the TEMPORARY and reported `EEXIST` against an internal name it had never
-// asked to write. Refusing was right -- one of two racers must lose -- but the refusal did not
-// locate itself at the operator's subject, and if the winner then failed too, both calls could
-// refuse with no target ever published. A process-wide atomic sequence makes each attempt's staging
-// name its own, so the loser now falls through to `hard_link` and refuses on the REAL target.
-
-// PUBLISH-WHEN-COMPLETE, and the ordering is the guarantee rather than a checked property.
+// THE STAGING NAME IS ALLOCATED, NOT CALCULATED, AND THE DIFFERENCE IS THE WHOLE REPAIR.
 //
-// Content is written to an exclusive sibling and the target name is claimed with `hard_link`, which
-// refuses an existing target. So this operation's exclusivity lives in the PUBLISH step, and every
-// failure before it leaves the target ABSENT rather than present-and-partial. No preflight closes
-// that race and none is attempted: `O_EXCL` on the staging file and `hard_link` on the target are
-// what decide it.
+// #10069 shipped `{path}.gunbc-create-{pid}`: unique per TARGET, but not per THREAD. Two threads of
+// one process creating the same target derived the same name, so the loser failed its exclusive
+// open on the TEMPORARY and reported AlreadyExists against an internal name it had never asked to
+// write. Refusing was right -- one of two racers must lose -- but the refusal did not locate itself
+// at the operator's subject, and if the winner then failed too, both calls could refuse with no
+// target ever published.
 //
-// THE ROW IS AUTHORED IN RUSTFMT'S OWN SHAPE, and that is load-bearing rather than cosmetic.
-// Both consumers receive these bytes verbatim, but one of them is committed through a path
-// rustfmt normalizes. Authoring the chain broken across lines the way rustfmt would break it
-// keeps the two committed copies BYTE-IDENTICAL; leaving it on one line made them differ by a
-// reflow, which would have left this module claiming an identity its own artifacts refuted.
-// THE ONE FAILURE ARM THAT DOES NOT CLEAN UP IS THE FIRST, and that is not an oversight. If the
-// exclusive open fails, this call created nothing, so there is no staging file of ours to remove --
-// and removing one would delete a file another attempt owns. The three later arms each remove the
-// staging file they created. `?` is exact for the first arm for the same reason.
-data rust_file_write_create_new_fn_def: String = "fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {\n    use std::io::Write;\n    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);\n    let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);\n    let staging_path = format!(\"{}.gunbc-create-{}-{}\", file_path, std::process::id(), seq);\n    let mut staged = std::fs::OpenOptions::new()\n        .write(true)\n        .create_new(true)\n        .open(&staging_path)?;\n    if let Err(staging_err) = staged.write_all(content) {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(staging_err);\n    }\n    if let Err(sync_err) = staged.sync_all() {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(sync_err);\n    }\n    drop(staged);\n    let published = std::fs::hard_link(&staging_path, file_path);\n    let _ = std::fs::remove_file(&staging_path);\n    published\n}\n"
+// A PER-ATTEMPT SEQUENCE ALONE DOES NOT CLOSE THAT CLASS, which external review established after
+// the first version of this module tried exactly that. A sequence makes the name unique among LIVE
+// calls in one process; it does not make an occupied candidate unobservable. This function
+// deliberately ignores removal failure after publication, so stale staging files are an ADMITTED
+// physical state, and a later process may reuse the pid and restart its sequence at zero. A one-shot
+// candidate that returns its own AlreadyExists therefore reproduces the identical defect -- target
+// absent, legitimate create refused because an INTERNAL filename was occupied -- at a lower
+// frequency, which is worse than the original for being harder to observe.
+//
+// So the loop ALLOCATES: an occupied candidate is skipped and the next one tried; any other open
+// error is the host's and is returned unchanged; exhaustion is CHECKED and refuses with a typed
+// cause rather than wrapping around onto a sequence it has already used. Crucially the occupied arm
+// does not remove the file it found -- that file belongs to another attempt, and deleting it would
+// convert a naming collision into data loss.
+data rust_file_write_create_new_fn_def: String = "fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {\n    use std::io::Write;\n    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);\n    const GUNBC_CREATE_MAX_CANDIDATES: u32 = 1024;\n    let mut attempted: u32 = 0;\n    let (mut staged, staging_path) = loop {\n        if attempted >= GUNBC_CREATE_MAX_CANDIDATES {\n            return Err(std::io::Error::new(\n                std::io::ErrorKind::AlreadyExists,\n                \"gunbc create-new: exhausted staging candidates without acquiring one\",\n            ));\n        }\n        attempted += 1;\n        let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);\n        let candidate = format!(\"{}.gunbc-create-{}-{}\", file_path, std::process::id(), seq);\n        match std::fs::OpenOptions::new()\n            .write(true)\n            .create_new(true)\n            .open(&candidate)\n        {\n            Ok(file) => break (file, candidate),\n            Err(occupied) if occupied.kind() == std::io::ErrorKind::AlreadyExists => continue,\n            Err(host) => return Err(host),\n        }\n    };\n    if let Err(staging_err) = staged.write_all(content) {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(staging_err);\n    }\n    if let Err(sync_err) = staged.sync_all() {\n        let _ = std::fs::remove_file(&staging_path);\n        return Err(sync_err);\n    }\n    drop(staged);\n    let published = std::fs::hard_link(&staging_path, file_path);\n    let _ = std::fs::remove_file(&staging_path);\n    published\n}\n"
 
 // THE SEED'S COPY, AS A COMMITTED GENERATED ARTIFACT.
 //
