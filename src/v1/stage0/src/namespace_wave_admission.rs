@@ -349,6 +349,15 @@ pub struct TransitionAdmission {
 /// only the all-empty shape in a const: it refused loudly as stale, but no const row could name a
 /// real module.
 ///
+/// EVERY ROW BELOW IS `TargetChanged`, AND THAT IS THE WHOLE CLAIM: a spelling authored on both
+/// sides now resolves to a different module. NONE of them changes WHICH DECLARATION the spelling
+/// denotes -- the wall reports the module-membership half of the same motion as
+/// `SameDeclarationIdentityRebind` and auto-admits it, and a binding whose meaning had actually
+/// moved would refuse on its own row rather than be covered by these. The rows are enumerated by
+/// exact identity, never by a pattern over the renamed modules, because a pattern would admit a
+/// genuine rebind that happened to land in the same module pair.
+const RUNG_DROP_AUTHORITY_LABEL: &str = "rung drop authority consolidation gunbc#10106 2026-09-02";
+
 /// EMPTY IS THE RESTING STATE between transitions.
 ///
 /// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
@@ -744,47 +753,556 @@ pub struct TransitionAdmission {
 /// the change that went looking for it. Removing them here is the trigger being honoured rather
 /// than a sweep of convenience, and it is why no separate follow-up PR is owed.
 ///
-/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
-/// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
+/// THE RESTING STATE WAS RESTORED BY THE EIGHTEENTH DISSOLUTION (2026-09-03): empty, as of that
+/// change and before the seventeenth transition below. That half is a dated observation about a
+/// moment, so it carries its date.
 ///
-/// THE gunbc#10011 ROWS ARE GONE, AND THEIR TRIGGER IS WHAT REMOVED THEM. They arrived here through
-/// a merge conflict: main had re-opened this roster for the supersession-standing transition while
-/// this branch re-opened it for an identity-equality relocation, so the resolution kept both — a
-/// union, because dropping either side would have left a live delta unadjudicated and refused an
-/// unrelated PR. Main's own note recorded that the #10011 transition had NOT merged at the time it
-/// was written, and that was true when written.
+/// EMPTY IS NOT PERMISSIVE — a run with a real delta still refuses it as UNADJUDICATED, closed by
+/// authoring a row and never by a silent admission. That is a claim about the MECHANISM, it holds
+/// whatever the roster contains, and it is stated on its own rather than as a subordinate clause of
+/// a snapshot that can go stale underneath it.
 ///
-/// IT IS NO LONGER TRUE, AND THE RUN SAID SO BEFORE I DID. The merge that brought those rows here
-/// also brought the landed transition: extdeps.publication now DECLARES
-/// HeldSpecificationSupersessionStanding and extdeps.cpu.ampere_altra_platform_hw_design.subject
-/// IMPORTS it from there, so the base itself binds those spellings to their target and the three
-/// deltas are no longer producible. The wave phase reported them as CONSUMED and refused this
-/// change, which is the roster working: a consumed row is charged to whoever next touches the file,
-/// and this merge touched it. Verified against the two modules rather than inferred from the
-/// refusal, because main's note is explicit that assuming consumption is what went wrong twice.
+/// NINETEENTH DISSOLUTION (2026-09-03). The three `gunbc#10011 supersession-standing re-home`
+/// rows are removed by their own trigger, which fired: #10011 merged as 4acf8ac234, so main
+/// carries the re-home and no run after it can produce those deltas. They arrived here through a
+/// merge rather than by being authored here -- this branch composed the roster from both sides
+/// when git cut its hunks through the middle of the records -- and the required run reported them
+/// as `3 consumed admission(s) due for deletion on this roster-touching change`.
 ///
-/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
-/// `physical_asset_identity_eq` was authored privately inside
-/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
-/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
-/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
-/// when product.inventory needed the same comparison: inventory is a generic authority, so
-/// importing a specific product's helper to obtain an equality would invert the layering. The
-/// spelling is unchanged on both sides and only its TARGET moved, which is exactly TargetChanged.
-/// Its consumption is decidable on the identical rule: once gunbc#10218 merges, the base binds the
-/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
-/// deletion by the next roster-touching change.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#10218 identity-equality re-home: PhysicalAssetIdentity comparison moves to \
-            the module that owns the type",
-    subject: AdmissionSubject::Binding {
-        module: "product.printed_chassis.manufacturing_manifest",
-        in_declaration: "scan_printer_assets",
-        spelling: "physical_asset_identity_eq",
-        target: "product.placement_supply",
+/// THE OBLIGATION IS CHARGED TO THE TOUCHER AND THIS COMMIT IS ONE, which is the same rule the
+/// eighteenth dissolution above paid. A row whose subject has landed is not merely useless: it is
+/// stale on every subsequent run, so leaving it refuses unrelated changes. The roster shrinks with
+/// its subject or it becomes a tax on everyone downstream.
+///
+/// SEVENTEENTH TRANSITION (2026-09-03, gunbc#10106), AND IT LANDED ON A ROSTER THIS BRANCH AND
+/// MAIN EMPTIED INDEPENDENTLY, WHICH IS THE TRIGGER MECHANISM WORKING RATHER THAN A COLLISION.
+/// Main deleted the 57 consumed rows on one side while this branch deleted the same 57 on the
+/// other, neither aware of the other, both paying the rule that consumed rows are due for deletion
+/// on the next roster-touching change. A trigger that reaches two unrelated changes and is
+/// honoured by both is doing what a trigger is for.
+///
+/// THE SENTENCE ABOVE WAS SPLIT, NOT RE-TENSED, and the distinction is the point. It was doing two
+/// jobs: a dated claim that the roster was empty, which the rows below falsify, and a claim that an
+/// empty roster is not permissive, which is a property of the mechanism and remains true.
+/// Re-tensing the whole sentence would have weakened a live invariant in order to correct a stale
+/// fact standing beside it -- the same error as taking either side of a conflict whole.
+/// AND THE ROSTER RE-OPENS ONCE MORE, for the same reason and by the same rule. The sweep above is
+/// main's and it is correct: the gunbc#10077 rows were consumed and the change that re-tensed their
+/// trigger owed their deletion. It restored the resting state to empty ON MAIN. This merge then
+/// re-opens it with the five gunbc#10011 rows below, whose transition has NOT merged -- verified
+/// rather than assumed, because assuming is what I got wrong the last two times: main still
+/// declares HeldSpecificationSupersessionStanding in
+/// extdeps.cpu.ampere_altra_platform_hw_design.subject and extdeps.publication does not carry it,
+/// so the deltas these three adjudicate are still producible and none of them is consumed.
+///
+/// TWO OF THE FIVE ARE GONE AND THAT IS THE SAME TRIGGER FIRING, NOT A SEPARATE DECISION. They
+/// adjudicated bindings inside `platform_facts_are_from_the_latest_revision`, and review 59072
+/// established that predicate as the dissolved variant-test shape, so this change DELETES the
+/// declaration rather than widening its match. A row naming a declaration that no longer exists
+/// matches no producible delta -- it is STALE, and a stale row refuses every unrelated PR in the
+/// repository, which is the failure mode this whole roster exists to avoid. Deleting the
+/// declaration and keeping its admission rows would have been the fabricated-debt shape: a
+/// permission over nothing that reads as coverage.
+///
+/// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
+/// deletion -- the specification record's field type, and the standing row's declared type and
+/// constructor. Their transition is still open for the reason stated above.
+/// ONE FURTHER ROW STANDS (gunbc#10218), AND IT IS NOT PART OF THE SWEEP ABOVE. It adjudicates an
+/// occurrence-binding relocation whose transition is open: `physical_asset_identity_eq` was
+/// authored privately inside product.printed_chassis.manufacturing_manifest and now resolves in
+/// product.placement_supply, which OWNS PhysicalAssetIdentity and already carries host_identity_eq
+/// for the sibling branded type. The private copy was tolerable while one module consumed it and
+/// stopped being tolerable when product.inventory needed the same comparison: inventory is a
+/// generic authority, so importing a specific product's helper to obtain an equality would invert
+/// the layering. The spelling is unchanged on both sides and only its TARGET moved, which is
+/// exactly TargetChanged.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THE SAME RULE THE ROWS ABOVE PAY: once gunbc#10218 merges, the
+/// base binds the spelling to product.placement_supply, the delta stops being producible, and this
+/// row is owed deletion by the next roster-touching change.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
     },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "MechanicallyPreventable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.declaration_index_seed_growth",
+            in_declaration: "declaration_index_fixture_exemption_classification_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.hermetic_mock_fidelity",
+            in_declaration: "HermeticMockRow",
+            spelling: "GuaranteeRung",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.hermetic_mock_fidelity",
+            in_declaration: "hermetic_mock_fidelity_rows",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.hermetic_mock_fidelity",
+            in_declaration: "hermetic_mock_fidelity_rows",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_cut_landing_order",
+            in_declaration: "namespace_cut_landing_order_rung",
+            spelling: "GuaranteeRung",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_cut_landing_order",
+            in_declaration: "namespace_cut_landing_order_rung",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "ClimbableButUnbuilt",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "MechanicallyPreventable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_board_grain_stall",
+            spelling: "UncountedNotEnumerable",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "MechanicallyPreventable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.namespace_wave_admission",
+            in_declaration: "namespace_wave_admission_occurrence_grain_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_report",
+            spelling: "stall_report_message",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "OutsideTheLadder",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_reachability_stall",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_report",
+            spelling: "stall_report_message",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "BoundedPopulation",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "ClimbableButUnbuilt",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "GuaranteeStall",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner_service_activation",
+            in_declaration: "runner_activation_safety_stall",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "green_drop_on_dark_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "red_drop_on_live_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.hermetic_mock_fidelity_witness",
+            in_declaration: "honest_row_names_nothing",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.hermetic_mock_fidelity_witness",
+            in_declaration: "undiagnosed_fabricating_row",
+            spelling: "OutsideTheLadder",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.hermetic_mock_fidelity_witness",
+            in_declaration: "undiagnosed_fabricating_row",
+            spelling: "StructurallyGuaranteed",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "AwaitsOneGrounding",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "CannotClimbFurther",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "ClimbableButUnbuilt",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_declared_stall_agrees_with_the_executed_refusal",
+            spelling: "stall_is_below_ceiling",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
+            spelling: "OutsideTheLadder",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.runner_service_activation",
+            in_declaration: "the_safety_row_does_not_claim_the_host_boundary_is_structural",
+            spelling: "stall_is_below_ceiling",
+            target: "gunbc.guarantee_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "tools.ci_gates",
+            in_declaration: "run_spec_gate",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.effect_reach",
+            in_declaration: "EffectReachClassificationCeiling",
+            spelling: "GuaranteeRung",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_AUTHORITY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.effect_reach",
+            in_declaration: "effect_reach_detection_ceiling",
+            spelling: "Mitigatable",
+            target: "gunbc.guarantee_rung",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10218 identity-equality re-home: PhysicalAssetIdentity comparison moves to \
+                the module that owns the type",
+        subject: AdmissionSubject::Binding {
+            module: "product.printed_chassis.manufacturing_manifest",
+            in_declaration: "scan_printer_assets",
+            spelling: "physical_asset_identity_eq",
+            target: "product.placement_supply",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
