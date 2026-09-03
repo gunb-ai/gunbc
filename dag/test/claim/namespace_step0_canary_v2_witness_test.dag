@@ -40,8 +40,27 @@ import gunbc.namespace_step0_canary_v2 {
   Step0V2SubjectNotEntered,
   ApplyTypedImportStrip,
   CollectSubjectPopulation,
-  ContainmentCompileRefused,
-  ContainmentCompileCompleted,
+  Step0BlockingMeasure,
+  Step0CompileObservation,
+  Step0V2CompileStanding,
+  CompileInstrumentUnavailable,
+  CompileAttemptedAndRefused,
+  CompileAttemptedAndCompleted,
+  Step0HistogramDifferential,
+  Step0DifferentialStanding,
+  HistogramsIdentical,
+  HistogramBucketsChanged,
+  OccurrenceJoinUnavailable,
+  Step0PairStanding,
+  PairObservationIncomplete,
+  BothCompileAttemptsRefused,
+  BothCompileAttemptsCompleted,
+  CompileOutcomesDiffer,
+  Step0OrderInvariance,
+  OrderInvarianceHeld,
+  OrderInvarianceNotMeasured,
+  V2PairStandingField,
+  step0_v2_entered_prefix_for,
   Step0ImportDependenceStanding,
   ImportDependenceNotJudged,
   ImportDependenceCensusObserved,
@@ -93,15 +112,46 @@ fn excluded_one() -> List<Step0V2ExcludedSource> {
   }]
 }
 
+// The observations carry the population they compiled, because the classifier checks that the
+// compile consumed the population the frontier says it did.
+fn observation(members: Int, tag: String, rows: Int, occurrences: Int) -> Step0CompileObservation {
+  Step0CompileObservation {
+    source_population: population(members: members, tag: tag),
+    source_digest: "fixture-source-digest" as NonEmptyStr,
+    compiler_digest: "fixture-compiler-digest" as NonEmptyStr,
+    histogram: [],
+    blocking: Step0BlockingMeasure { histogram_rows: rows, occurrences: occurrences }
+  }
+}
+
+fn refused_standing(tag: String) -> Step0V2CompileStanding {
+  CompileAttemptedAndRefused { observation: observation(members: 9, tag: tag, rows: 448, occurrences: 1204) }
+}
+
+fn pre_strip_refused() -> Step0V2CompileStanding {
+  CompileAttemptedAndRefused { observation: observation(members: 9, tag: "admitted", rows: 45, occurrences: 96) }
+}
+
+fn both_refused() -> Step0PairStanding {
+  BothCompileAttemptsRefused {
+    differential_standing: HistogramBucketsChanged {
+      differential: Step0HistogramDifferential {
+        gross_increases: 1108,
+        gross_decreases: 0,
+        unchanged_buckets: 45,
+        pre_only_buckets: 0,
+        post_only_buckets: 403
+      }
+    }
+  }
+}
+
 fn entered_frontier(stripped_tag: String, compile_tag: String, removed: Int) -> Step0V2Frontier {
   Step0V2SubjectEntered {
     stripped_population: population(members: 9, tag: stripped_tag),
     compile_input_population: population(members: 9, tag: compile_tag),
     removed_statement_count: removed,
-    attempt: ContainmentCompileRefused {
-      blocking_diagnostics: 448,
-      cause: "containment resolution of the import-stripped subject refused" as NonEmptyStr
-    }
+    compile_standing: refused_standing(tag: compile_tag)
   }
 }
 
@@ -123,6 +173,10 @@ fn fixture_receipt(
   collected: Step0PopulationIdentity,
   excluded: List<Step0V2ExcludedSource>,
   admitted: Step0PopulationIdentity,
+  compile_entry: NonEmptyStr,
+  pre_strip_standing: Step0V2CompileStanding,
+  pair_standing: Step0PairStanding,
+  order_invariance: Step0OrderInvariance,
   prefix: List<Step0V2CompletedTransition>,
   frontier: Step0V2Frontier,
   import_dependence: Step0ImportDependenceStanding
@@ -137,6 +191,10 @@ fn fixture_receipt(
     collected_population: collected,
     excluded_sources: excluded,
     admitted_population: admitted,
+    compile_entry: compile_entry,
+    pre_strip_standing: pre_strip_standing,
+    pair_standing: pair_standing,
+    order_invariance: order_invariance,
     completed_production_prefix: prefix,
     frontier: frontier,
     import_dependence: import_dependence
@@ -169,6 +227,10 @@ fn score(
   collected: Step0PopulationIdentity,
   excluded: List<Step0V2ExcludedSource>,
   admitted: Step0PopulationIdentity,
+  compile_entry: NonEmptyStr,
+  pre_strip_standing: Step0V2CompileStanding,
+  pair_standing: Step0PairStanding,
+  order_invariance: Step0OrderInvariance,
   prefix: List<Step0V2CompletedTransition>,
   frontier: Step0V2Frontier,
   import_dependence: Step0ImportDependenceStanding
@@ -197,6 +259,10 @@ fn score(
                     collected: collected,
                     excluded: excluded,
                     admitted: admitted,
+                    compile_entry: compile_entry,
+                    pre_strip_standing: pre_strip_standing,
+                    pair_standing: pair_standing,
+                    order_invariance: order_invariance,
                     prefix: prefix,
                     frontier: frontier,
                     import_dependence: import_dependence
@@ -225,6 +291,10 @@ fn coherent_entered() -> NamespaceStep0V2Admission? {
     collected: population(members: 10, tag: "collected"),
     excluded: excluded_one(),
     admitted: population(members: 9, tag: "admitted"),
+    compile_entry: "dag/std/types.dag" as NonEmptyStr,
+    pre_strip_standing: pre_strip_refused(),
+    pair_standing: both_refused(),
+    order_invariance: OrderInvarianceHeld,
     prefix: step0_v2_entered_prefix,
     frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
     import_dependence: step0_import_dependence_not_judged()
@@ -256,6 +326,10 @@ test fn a_coherent_unentered_receipt_is_admitted() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
+      pair_standing: PairObservationIncomplete { cause: "the typed rewrite refused" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no compile ran, so there was no order to vary" as NonEmptyStr },
       prefix: step0_v2_pre_strip_prefix,
       frontier: not_entered_frontier(),
       import_dependence: step0_import_dependence_not_judged()
@@ -279,6 +353,10 @@ test fn a_partition_that_does_not_exhaust_the_collected_population_refuses() -> 
       collected: population(members: 12, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_entered_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
       import_dependence: step0_import_dependence_not_judged()
@@ -299,6 +377,10 @@ test fn a_foreign_contract_identity_refuses_at_the_identity_field() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_entered_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
       import_dependence: step0_import_dependence_not_judged()
@@ -319,6 +401,10 @@ test fn a_foreign_tree_refuses_at_the_tree_field() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_entered_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
       import_dependence: step0_import_dependence_not_judged()
@@ -339,6 +425,10 @@ test fn a_different_compiler_executable_refuses_at_the_executable_field() -> Boo
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_entered_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
       import_dependence: step0_import_dependence_not_judged()
@@ -362,6 +452,10 @@ test fn an_entered_frontier_with_the_pre_strip_prefix_refuses() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_pre_strip_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
       import_dependence: step0_import_dependence_not_judged()
@@ -382,6 +476,10 @@ test fn an_unentered_frontier_with_the_entered_prefix_refuses() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
+      pair_standing: PairObservationIncomplete { cause: "the typed rewrite refused" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no compile ran, so there was no order to vary" as NonEmptyStr },
       prefix: step0_v2_entered_prefix,
       frontier: not_entered_frontier(),
       import_dependence: step0_import_dependence_not_judged()
@@ -404,6 +502,10 @@ test fn an_entered_frontier_that_removed_nothing_refuses() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_entered_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 0),
       import_dependence: step0_import_dependence_not_judged()
@@ -427,6 +529,10 @@ test fn a_compile_over_a_population_the_strip_did_not_produce_refuses() -> Bool 
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_entered_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "some-other-population", removed: 25415),
       import_dependence: step0_import_dependence_not_judged()
@@ -449,6 +555,10 @@ test fn a_census_on_an_unentered_subject_refuses() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
+      pair_standing: PairObservationIncomplete { cause: "the typed rewrite refused" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no compile ran, so there was no order to vary" as NonEmptyStr },
       prefix: step0_v2_pre_strip_prefix,
       frontier: not_entered_frontier(),
       import_dependence: ImportDependenceCensusObserved {
@@ -476,6 +586,10 @@ test fn a_census_naming_a_foreign_population_refuses() -> Bool {
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
       admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
       prefix: step0_v2_entered_prefix,
       frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
       import_dependence: ImportDependenceCensusObserved {
@@ -512,4 +626,160 @@ test fn the_binding_provenance_contract_carries_the_frozen_roster_and_laws() -> 
   count(step0_binding_provenance_receipt_contract.reference_families) == 6
     && count(step0_binding_provenance_receipt_contract.conservation_laws) == 4
     && count(step0_binding_provenance_receipt_contract.receipt_fields) == 10
+}
+
+// ------------------------------------------------------ the pair, the standing, and the instrument
+//
+// THESE ARE THE REDS FOR THE CORRECTION'S OWN LAWS. Each one is a receipt production could not
+// mint but a fixture can, which is exactly the condition DESIGN 4b sets for writing a check at all.
+
+// AN INSTRUMENT THAT COULD NOT RUN DOES NOT RETRACT AN ENTRY. The population was collected,
+// partitioned and completely stripped before the compile was attempted, so the frontier stays
+// Entered and the standing carries the instrument's own refusal. The discriminator is the prefix:
+// an entry whose compile never ran may NOT claim ContainmentCompileAttempted.
+test fn an_entered_subject_whose_compile_instrument_failed_is_still_entered() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: PairObservationIncomplete { cause: "the compile instrument refused on the stripped population" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "the post-strip arm produced no census in the first order" as NonEmptyStr },
+      prefix: step0_v2_entered_prefix_for(standing: instrument_unavailable()),
+      frontier: entered_with_standing(standing: instrument_unavailable()),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { admitted_is(a: a) }
+  )
+}
+
+test fn an_entry_whose_compile_never_ran_may_not_claim_the_compile_transition() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: PairObservationIncomplete { cause: "the compile instrument refused on the stripped population" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no census" as NonEmptyStr },
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_with_standing(standing: instrument_unavailable()),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2ProductionPrefixField) }
+  )
+}
+
+// A PAIR STANDING MAY NOT OUTRUN ITS TWO ARMS. Claiming both compiles refused while one arm's
+// instrument never ran reports an observation that half of it does not have.
+test fn a_pair_standing_that_claims_more_than_its_arms_observed_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: instrument_unavailable(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2PairStandingField) }
+  )
+}
+
+// A SUBJECT THAT WAS NEVER ENTERED HAS NO POST-STRIP COMPILE FOR A PAIR TO BE ABOUT.
+test fn an_unentered_subject_carrying_an_observed_pair_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_pre_strip_prefix,
+      frontier: not_entered_frontier(),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2PairStandingField) }
+  )
+}
+
+// THE COMPILE OBSERVATION MUST NAME THE POPULATION THE FRONTIER SAYS IT CONSUMED. Without this the
+// receipt could carry a census of some other compile beside a frontier that never produced it.
+test fn a_post_strip_observation_of_a_foreign_population_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_with_foreign_observation(),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2FrontierField) }
+  )
+}
+
+fn instrument_unavailable() -> Step0V2CompileStanding {
+  CompileInstrumentUnavailable { cause: "the compile instrument refused on the stripped population" as NonEmptyStr }
+}
+
+fn entered_with_standing(standing: Step0V2CompileStanding) -> Step0V2Frontier {
+  Step0V2SubjectEntered {
+    stripped_population: population(members: 9, tag: "stripped"),
+    compile_input_population: population(members: 9, tag: "stripped"),
+    removed_statement_count: 25415,
+    compile_standing: standing
+  }
+}
+
+fn entered_with_foreign_observation() -> Step0V2Frontier {
+  Step0V2SubjectEntered {
+    stripped_population: population(members: 9, tag: "stripped"),
+    compile_input_population: population(members: 9, tag: "stripped"),
+    removed_statement_count: 25415,
+    compile_standing: refused_standing(tag: "some-other-population")
+  }
 }

@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { Sha256Digest }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 import gunbc.namespace_step0_subject_collector {
   Step0PopulationIdentity,
   step0_population_identity_eq
@@ -91,9 +92,40 @@ type Step0V2BlockingTransition
 // the ambient-pool explanation is excluded. The v1 contract had no spelling for this at all, which
 // forced its producer to report a completed compile as a REFUSAL; refusing beat fabricating a
 // blocker and was still the wrong model.
-type Step0ContainmentAttempt
-  = ContainmentCompileRefused { blocking_diagnostics: Int, cause: NonEmptyStr }
-  | ContainmentCompileCompleted { module_count: Int }
+// BLOCKING IS COUNTED IN TWO UNITS BECAUSE A CENSUS ROW IS A BUCKET, NOT AN OCCURRENCE.
+// CompileDiagnosticCensusRow is keyed by (diagnostic_class, subject_name, blocking) and carries its
+// own `count`, so counting rows measures HOW MANY CLASSES ARE IMPLICATED and summing `count`
+// measures HOW MANY DIAGNOSTICS THERE WERE. Neither replaces the other and a receipt that carried
+// only one would let a reader draw the other's conclusion from it: a delta over row counts and a
+// delta over occurrence multiplicities are different observations of the same compile.
+type Step0BlockingMeasure {
+  histogram_rows: Int
+  occurrences: Int
+}
+
+// ONE COMPILE, OBSERVED IN FULL. The instrument returns the population digest it compiled, the
+// compiler identity it compiled with, and the census; an earlier cut of this model reduced all of
+// that to one integer and discarded the rest, which left the receipt unable to say WHAT was
+// compiled or WITH WHAT -- exactly the provenance the contract exists to pin.
+type Step0CompileObservation {
+  source_population: Step0PopulationIdentity
+  source_digest: NonEmptyStr
+  compiler_digest: NonEmptyStr
+  histogram: List<CompileDiagnosticCensusRow>
+  blocking: Step0BlockingMeasure
+}
+
+// A BROKEN INSTRUMENT MAY PREVENT AN OBSERVATION; IT MAY NOT ERASE AN ENTRY THAT ALREADY HAPPENED.
+// The prior model mapped an instrument refusal to "no attempt" and thence to SubjectNotEntered --
+// AFTER the population had been collected, partitioned and completely stripped. That retracted a
+// completed transition on the strength of a later failure in a different component, which is the
+// same shape as the collector's instrument-anomaly arm: the measuring device's malfunction reported
+// as a fact about the subject. The three arms below keep them apart, and all three live INSIDE the
+// entered frontier, so an entry can never be undone by what the compile did or failed to do.
+type Step0V2CompileStanding
+  = CompileInstrumentUnavailable { cause: NonEmptyStr }
+  | CompileAttemptedAndRefused { observation: Step0CompileObservation }
+  | CompileAttemptedAndCompleted { observation: Step0CompileObservation, module_count: Int }
 
 // SUBJECT ENTRY AND DECISION SUFFICIENCY ARE SEPARATE AXES. Entering the subject means the pinned
 // population was collected and stripped; whether the result decides anything about import
@@ -111,7 +143,7 @@ type Step0V2Frontier
       stripped_population: Step0PopulationIdentity
       compile_input_population: Step0PopulationIdentity
       removed_statement_count: Int
-      attempt: Step0ContainmentAttempt
+      compile_standing: Step0V2CompileStanding
     }
 
 // IMPORT DEPENDENCE IS EXPLICITLY NOT JUDGED, and required_capability is a typed CITATION rather
@@ -148,6 +180,60 @@ fn step0_import_dependence_not_judged() -> Step0ImportDependenceStanding {
   }
 }
 
+// A SCALAR DELTA OVER TWO RED COMPILES IS NOT AN OBSERVATION. If both arms refuse, "+403" is a NET,
+// and a net of +403 is equally consistent with 448 added and 0 removed, with 500 added and 52
+// removed, and with 900 added and 452 removed; a net of ZERO is consistent with every pre-strip
+// diagnostic vanishing and an equally large disjoint population replacing it. So the pair is
+// compared BUCKET BY BUCKET under the census's own key -- (diagnostic_class, subject_name, blocking)
+// -- and the five figures below are reported separately, never summed back into one number.
+//
+// ITS CEILING, STATED HERE RATHER THAN DISCOVERED BY A READER: this is a BUCKET-GRAIN differential
+// and not an occurrence-grain join. Two different occurrences inside one bucket can replace each
+// other invisibly, so "these are the diagnostics the strip introduced" is NOT established by it. An
+// exact new-occurrence claim needs a located per-diagnostic carrier and an identity stable across
+// the rewrite -- and a raw byte span is not that identity, because deleting an import shifts every
+// later offset in the file. That join is Step 0 evidence work with its own owner; it is deliberately
+// not pulled in here to make two red totals sound cleaner than they are.
+type Step0HistogramDifferential {
+  gross_increases: Int
+  gross_decreases: Int
+  unchanged_buckets: Int
+  pre_only_buckets: Int
+  post_only_buckets: Int
+}
+
+type Step0DifferentialStanding
+  = HistogramsIdentical
+  | HistogramBucketsChanged { differential: Step0HistogramDifferential }
+  | OccurrenceJoinUnavailable { cause: NonEmptyStr }
+
+// THE PAIR'S OWN STANDING, and the honest one for this corpus today is BothCompileAttemptsRefused.
+// The unstripped population does not compile clean through this instrument either, so the post-strip
+// figure was never a count of diagnostics CAUSED by the strip and the pre-strip half is not a
+// baseline of zero. Recording that is the finding; it creates no new prerequisite, because the
+// population was collected, partitioned and completely stripped before either compile ran, and the
+// pair CALIBRATES one Step 0 observation rather than reopening the phase that produced it.
+//
+// The observations themselves are NOT copied in here. They live in the two compile standings this
+// receipt already carries, and a standing restating them would be a second authority for one fact.
+type Step0PairStanding
+  = PairObservationIncomplete { cause: NonEmptyStr }
+  | BothCompileAttemptsRefused { differential_standing: Step0DifferentialStanding }
+  | BothCompileAttemptsCompleted { differential_standing: Step0DifferentialStanding }
+  | CompileOutcomesDiffer { pre_strip_completed: Bool, differential_standing: Step0DifferentialStanding }
+
+// ONE DISPATCH CLOSES TREE DRIFT BETWEEN THE TWO ARMS; IT DOES NOT CLOSE PROCESS STATE. Both compiles
+// run in one process against one collected population, so neither arm can be reading a different
+// tree than the other -- but a compiler context that carried semantic state from the first compile
+// into the second would make the pair an artifact of ORDER. This receipt therefore reports what was
+// measured about that, and the run measures it the only way it can without a demonstrable freshness
+// guarantee: it runs the pair in both orders and requires each arm's own histogram to be identical
+// under both. NotMeasured is a standing, never a silent pass.
+type Step0OrderInvariance
+  = OrderInvarianceHeld
+  | OrderInvarianceViolated { detail: NonEmptyStr }
+  | OrderInvarianceNotMeasured { cause: NonEmptyStr }
+
 type NamespaceStep0V2Receipt sole_constructor {
   contract_identity: NonEmptyStr
   source_commit: GitObjectId
@@ -158,6 +244,10 @@ type NamespaceStep0V2Receipt sole_constructor {
   collected_population: Step0PopulationIdentity
   excluded_sources: List<Step0V2ExcludedSource>
   admitted_population: Step0PopulationIdentity
+  compile_entry: NonEmptyStr
+  pre_strip_standing: Step0V2CompileStanding
+  pair_standing: Step0PairStanding
+  order_invariance: Step0OrderInvariance
   completed_production_prefix: List<Step0V2CompletedTransition>
   frontier: Step0V2Frontier
   import_dependence: Step0ImportDependenceStanding
@@ -177,6 +267,10 @@ fn namespace_step0_v2_candidate_receipt(
   collected_population: Step0PopulationIdentity,
   excluded_sources: List<Step0V2ExcludedSource>,
   admitted_population: Step0PopulationIdentity,
+  compile_entry: NonEmptyStr,
+  pre_strip_standing: Step0V2CompileStanding,
+  pair_standing: Step0PairStanding,
+  order_invariance: Step0OrderInvariance,
   completed_production_prefix: List<Step0V2CompletedTransition>,
   frontier: Step0V2Frontier
 ) -> NamespaceStep0V2Receipt
@@ -193,6 +287,10 @@ fn namespace_step0_v2_candidate_receipt(
     collected_population: collected_population,
     excluded_sources: excluded_sources,
     admitted_population: admitted_population,
+    compile_entry: compile_entry,
+    pre_strip_standing: pre_strip_standing,
+    pair_standing: pair_standing,
+    order_invariance: order_invariance,
     completed_production_prefix: completed_production_prefix,
     frontier: frontier,
     import_dependence: step0_import_dependence_not_judged()
@@ -220,6 +318,10 @@ fn namespace_step0_v2_fixture_receipt(
   collected_population: Step0PopulationIdentity,
   excluded_sources: List<Step0V2ExcludedSource>,
   admitted_population: Step0PopulationIdentity,
+  compile_entry: NonEmptyStr,
+  pre_strip_standing: Step0V2CompileStanding,
+  pair_standing: Step0PairStanding,
+  order_invariance: Step0OrderInvariance,
   completed_production_prefix: List<Step0V2CompletedTransition>,
   frontier: Step0V2Frontier,
   import_dependence: Step0ImportDependenceStanding
@@ -237,6 +339,10 @@ fn namespace_step0_v2_fixture_receipt(
     collected_population: collected_population,
     excluded_sources: excluded_sources,
     admitted_population: admitted_population,
+    compile_entry: compile_entry,
+    pre_strip_standing: pre_strip_standing,
+    pair_standing: pair_standing,
+    order_invariance: order_invariance,
     completed_production_prefix: completed_production_prefix,
     frontier: frontier,
     import_dependence: import_dependence
@@ -268,11 +374,102 @@ type Step0V2ReceiptField
   | V2SubjectPartitionField
   | V2ProductionPrefixField
   | V2FrontierField
+  | V2PairStandingField
   | V2ImportDependenceField
 
 type NamespaceStep0V2Admission
   = NamespaceStep0V2ReceiptAdmitted
   | NamespaceStep0V2ReceiptRefused { field: Step0V2ReceiptField, cause: NonEmptyStr }
+
+// THE PREFIX IS DERIVED FROM THE STANDING RATHER THAN ASSERTED BESIDE IT. ContainmentCompileAttempted
+// is a claim that a compile ran, so a receipt whose instrument was unavailable may not carry it --
+// and TypedImportStripApplied is carried by all three arms, because the strip is what entry MEANS
+// and no later failure withdraws it.
+fn step0_v2_entered_prefix_for(standing: Step0V2CompileStanding) -> List<Step0V2CompletedTransition> {
+  match standing {
+    CompileInstrumentUnavailable { cause: _ } => [
+      CanaryContractFrozen,
+      SourceTreePinned,
+      CompilerExecutablePinned,
+      SubjectPopulationCollected,
+      TypedImportStripApplied,
+    ]
+    CompileAttemptedAndRefused { observation: _ } => step0_v2_entered_prefix
+    CompileAttemptedAndCompleted { observation: _, module_count: _ } => step0_v2_entered_prefix
+  }
+}
+
+fn step0_v2_compile_observation(standing: Step0V2CompileStanding) -> Step0CompileObservation? {
+  match standing {
+    CompileInstrumentUnavailable { cause: _ } => Absent
+    CompileAttemptedAndRefused { observation: observation } => Present { value: observation }
+    CompileAttemptedAndCompleted { observation: observation, module_count: _ } => Present { value: observation }
+  }
+}
+
+fn step0_v2_compile_standing_consumed(standing: Step0V2CompileStanding, population: Step0PopulationIdentity) -> Bool {
+  match step0_v2_compile_observation(standing: standing) {
+    Absent => true
+    Present { value: observation } => step0_population_identity_eq(left: observation.source_population, right: population)
+  }
+}
+
+fn step0_v2_pair_standing_is_incomplete(pair: Step0PairStanding) -> Bool {
+  match pair {
+    PairObservationIncomplete { cause: _ } => true
+    BothCompileAttemptsRefused { differential_standing: _ } => false
+    BothCompileAttemptsCompleted { differential_standing: _ } => false
+    CompileOutcomesDiffer { pre_strip_completed: _, differential_standing: _ } => false
+  }
+}
+
+// THE PAIR STANDING IS A JOIN OF TWO STANDINGS AND MAY NOT DISAGREE WITH EITHER. A receipt claiming
+// both arms refused while one arm's instrument never ran is the shape this refuses: a pair reported
+// as observed when half of it was not.
+fn step0_v2_pair_standing_agrees(
+  pre: Step0V2CompileStanding,
+  post: Step0V2CompileStanding,
+  pair: Step0PairStanding
+) -> Bool {
+  match pair {
+    PairObservationIncomplete { cause: _ } =>
+      step0_v2_compile_standing_unobserved(standing: pre) || step0_v2_compile_standing_unobserved(standing: post)
+    BothCompileAttemptsRefused { differential_standing: _ } =>
+      step0_v2_compile_standing_refused(standing: pre) && step0_v2_compile_standing_refused(standing: post)
+    BothCompileAttemptsCompleted { differential_standing: _ } =>
+      step0_v2_compile_standing_completed(standing: pre) && step0_v2_compile_standing_completed(standing: post)
+    CompileOutcomesDiffer { pre_strip_completed: pre_completed, differential_standing: _ } =>
+      if pre_completed {
+        step0_v2_compile_standing_completed(standing: pre) && step0_v2_compile_standing_refused(standing: post)
+      } else {
+        step0_v2_compile_standing_refused(standing: pre) && step0_v2_compile_standing_completed(standing: post)
+      }
+  }
+}
+
+fn step0_v2_compile_standing_unobserved(standing: Step0V2CompileStanding) -> Bool {
+  match standing {
+    CompileInstrumentUnavailable { cause: _ } => true
+    CompileAttemptedAndRefused { observation: _ } => false
+    CompileAttemptedAndCompleted { observation: _, module_count: _ } => false
+  }
+}
+
+fn step0_v2_compile_standing_refused(standing: Step0V2CompileStanding) -> Bool {
+  match standing {
+    CompileInstrumentUnavailable { cause: _ } => false
+    CompileAttemptedAndRefused { observation: _ } => true
+    CompileAttemptedAndCompleted { observation: _, module_count: _ } => false
+  }
+}
+
+fn step0_v2_compile_standing_completed(standing: Step0V2CompileStanding) -> Bool {
+  match standing {
+    CompileInstrumentUnavailable { cause: _ } => false
+    CompileAttemptedAndRefused { observation: _ } => false
+    CompileAttemptedAndCompleted { observation: _, module_count: _ } => true
+  }
+}
 
 // THE CLASSIFIER VERIFIES A PROVENANCE RELATION AND DOES NOT RECREATE THE OBSERVATION. It never
 // walks the tree: a second walk is a second collector, and a second collector that called the first
@@ -317,24 +514,28 @@ fn admit_namespace_step0_v2_receipt(
           match blocked_at {
             CollectSubjectPopulation =>
               NamespaceStep0V2ReceiptRefused { field: V2FrontierField, cause: "collection cannot be the blocker in a receipt whose prefix reports the population collected" as NonEmptyStr }
-            ApplyTypedImportStrip => admit_step0_v2_import_dependence(receipt: receipt, entered: false)
+            ApplyTypedImportStrip =>
+              if !step0_v2_pair_standing_is_incomplete(pair: receipt.pair_standing) {
+                NamespaceStep0V2ReceiptRefused { field: V2PairStandingField, cause: "a subject that was never entered has no post-strip compile for a pair standing to be about" as NonEmptyStr }
+              } else {
+                admit_step0_v2_import_dependence(receipt: receipt, entered: false)
+              }
           }
         }
       Step0V2SubjectEntered {
         stripped_population: stripped,
         compile_input_population: compile_input,
         removed_statement_count: removed,
-        attempt: _
+        compile_standing: compile_standing
       } =>
-        if receipt.completed_production_prefix != [
-            CanaryContractFrozen,
-            SourceTreePinned,
-            CompilerExecutablePinned,
-            SubjectPopulationCollected,
-            TypedImportStripApplied,
-            ContainmentCompileAttempted,
-          ] {
-          NamespaceStep0V2ReceiptRefused { field: V2ProductionPrefixField, cause: "an entered subject carries the strip and compile-attempt transitions" as NonEmptyStr }
+        if receipt.completed_production_prefix != step0_v2_entered_prefix_for(standing: compile_standing) {
+          NamespaceStep0V2ReceiptRefused { field: V2ProductionPrefixField, cause: "an entered subject carries the strip transition, and the compile-attempt transition exactly when a compile was attempted" as NonEmptyStr }
+        } else if !step0_v2_pair_standing_agrees(
+          pre: receipt.pre_strip_standing, post: compile_standing, pair: receipt.pair_standing
+        ) {
+          NamespaceStep0V2ReceiptRefused { field: V2PairStandingField, cause: "the pair standing does not report what the two compile standings observed" as NonEmptyStr }
+        } else if !step0_v2_compile_standing_consumed(standing: compile_standing, population: compile_input) {
+          NamespaceStep0V2ReceiptRefused { field: V2FrontierField, cause: "the post-strip compile observation names a population other than the one the frontier reports it consumed" as NonEmptyStr }
         } else if removed == 0 {
           NamespaceStep0V2ReceiptRefused { field: V2FrontierField, cause: "a subject in which no import statement was removed was not entered" as NonEmptyStr }
         } else if !step0_population_identity_eq(left: compile_input, right: stripped) {
@@ -370,7 +571,7 @@ fn admit_step0_v2_import_dependence(receipt: NamespaceStep0V2Receipt, entered: B
             stripped_population: stripped,
             compile_input_population: _,
             removed_statement_count: _,
-            attempt: _
+            compile_standing: _
           } =>
             if !step0_population_identity_eq(left: census_population, right: stripped) {
               NamespaceStep0V2ReceiptRefused { field: V2ImportDependenceField, cause: "the census names a population other than the stripped one this receipt observed" as NonEmptyStr }
