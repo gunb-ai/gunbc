@@ -215,6 +215,19 @@ type MemoryFitJudgment
   | GuestExceedsCell { detail: String }
   | MemoryFitUnresolved { cause: String }
 
+// THE ADDITION IS ABSENT ON PURPOSE, AND IT MUST NOT BE HELPFULLY RESTORED. `guest + reserve <=
+// envelope` is the law this function decides, but EVALUATING that left side can exceed the
+// representable range on a hostile guest value and then wrap, answering the wrong question
+// silently. So the comparison is performed by SUBTRACTION -- guest <= envelope - reserve -- which
+// stays inside the range for any non-negative input. A reader who sees no overflow handling here
+// is not looking at an oversight: there is no overflow to handle, because the operation that could
+// overflow does not exist. That is DESIGN 4b rung 4 rather than a checked-add guard at rung 1, and
+// restoring the add to give a guard something to point at would step the class back down.
+//
+// THE reserve > envelope SPLIT IS LOAD-BEARING FOR THAT CLAIM, not a redundant early-out: it is
+// what keeps the subtraction from ever running below zero. Its control is
+// test.claim.runner_microvm_witness_test a_reserve_larger_than_the_whole_envelope_admits_no_guest,
+// which is the reason the branch may not be refactored away casually.
 fn guest_memory_fits(
   guest: GuestMemoryRequest,
   reserve: RealizationReserve,
@@ -226,12 +239,6 @@ fn guest_memory_fits(
         cause: concat("the guest's memory cannot be judged against the cell without the realization's own reserve: ", c),
       }
     ReserveDeclared { bytes: r } =>
-      // COMPARED BY SUBTRACTION RATHER THAN BY ADDITION, so the comparison itself cannot overflow.
-      // `guest + reserve <= envelope` is the law, but evaluating the left side can exceed the
-      // representable range on a hostile guest value and then WRAP, which would answer the wrong
-      // question silently. Subtracting the reserve from the envelope stays inside the range for
-      // any non-negative inputs, and the reserve-exceeds-envelope case is split out so the
-      // subtraction is never performed below zero.
       if byte_size_count(b: r) > byte_size_count(b: envelope.bytes) {
         GuestExceedsCell {
           detail: "the realization's own reserve alone exceeds the cell's MemoryMax, so no guest of any size fits beside it",

@@ -478,6 +478,24 @@ test fn a_guest_exactly_filling_the_envelope_with_its_reserve_fits() -> Bool {
   }
 }
 
+// THE SPLIT THAT MAKES THE OVERFLOW IMPOSSIBLE IS ITSELF LOAD-BEARING, SO IT IS ASSERTED HERE.
+// guest_memory_fits compares by subtraction precisely so the comparison cannot overflow, and that
+// is only sound while the reserve-exceeds-envelope case is taken FIRST -- otherwise the subtraction
+// runs below zero and the impossibility claim is false. This witness is the reason that branch may
+// not be refactored away as a redundant guard: delete it and the arm below stops being reachable,
+// and the structural guarantee quietly degrades into a wrapping comparison.
+test fn a_reserve_larger_than_the_whole_envelope_admits_no_guest() -> Bool {
+  match guest_memory_fits(
+    guest: GuestMemoryRequest { bytes: byte_size(count: 1048576) },
+    reserve: ReserveDeclared { bytes: byte_size(count: 34359738368) },
+    envelope: CellMemoryEnvelope { bytes: byte_size(count: 17179869184) },
+  ) {
+    GuestExceedsCell { detail: _ } => true
+    GuestFitsWithinCell => false
+    MemoryFitUnresolved { cause: _ } => false
+  }
+}
+
 // PRODUCTION REFUSES, AND THE REFUSAL NAMES THE MISSING THING. This is the honest form of the
 // witness deleted in the previous revision: that one returned true from its unresolved arm without
 // reaching anything, so it could not fail. This one fails if the cause stops naming the authority
