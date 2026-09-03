@@ -825,10 +825,74 @@ type WetFloorGateDisposition =
   | WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: EpochSecs }
   | WetFloorRefused { standing: WetLaneReceiptStanding }
 
-fn wet_route_gate_disposition(
-  standing: WetLaneReceiptStanding,
-  admission: WetSeedBootstrapAdmission
+// THE DOOR TAKES THE FACTS, NOT A STANDING AND AN ADMISSION. An earlier shape took those as two
+// INDEPENDENTLY CONSTRUCTED arguments and, on the executor-different arm, discarded both standing
+// digests and all four `exact_` admission fields, keeping only `not_after`. So a lease validly
+// admitted for envelope A admitted an executor-different standing derived from envelope B --
+// verified by construction before this repair, not reasoned about.
+//
+// IT SURVIVED A COMPLETE MUTATION MATRIX, WHICH IS THE POINT. Every arm of
+// `wet_seed_bootstrap_admission` discriminates: envelope digest, attempt_seq, semantic subject,
+// roster, the derived window, expiry. All six verify the lease against ITS OWN DECLARED INPUTS, and
+// nothing verified it against THE STANDING IT WAS ADMITTING. That is the neighbouring-proposition
+// failure one level up from the pin: a complete, green set of assertions about an adjacent question.
+//
+// SO THE PAIR IS NO LONGER CONSTRUCTIBLE RATHER THAN CHECKED. Both values are derived here from ONE
+// envelope and one set of computed digests, so there is no argument position in which a caller could
+// supply a standing about a different receipt. A sixth witness would have been validation standing
+// where construction was available (DESIGN section 5); this is the construction.
+fn wet_route_gate_disposition_for_receipt(
+  envelope: Optional<WetReceiptEnvelope>,
+  envelope_digest: String,
+  computed_subject_digest: String,
+  computed_executor_contract_digest: String,
+  roster_identities: List<String>,
+  roster_digest: String,
+  evaluated_tree_commit_unix_secs: EpochSecs,
+  lease: Optional<BootstrapExecutorSnapshotReceipt>
 ) -> WetFloorGateDisposition {
+  let standing = wet_lane_receipt_standing(
+    envelope: envelope,
+    computed_subject_digest: computed_subject_digest,
+    computed_executor_contract_digest: computed_executor_contract_digest,
+    roster_identities: roster_identities,
+    evaluated_tree_commit_unix_secs: evaluated_tree_commit_unix_secs
+  )
+  match envelope {
+    Absent => wet_route_gate_disposition(standing: standing)
+    Present { value: e } =>
+      match standing {
+        ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } =>
+          match wet_seed_bootstrap_admission(
+            lease: lease,
+            envelope_digest: envelope_digest,
+            attempt_seq: e.attempt_seq,
+            semantic_subject_digest: computed_subject_digest,
+            roster_digest: roster_digest,
+            evaluated_tree_commit_unix_secs: evaluated_tree_commit_unix_secs
+          ) {
+            BootstrapExecutorSnapshotLeaseAdmitted {
+              exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _,
+              exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: n
+            } => WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: n }
+            BootstrapLeaseExpired { detail: _ } => WetFloorRefused { standing: standing }
+            BootstrapLeaseNotApplicable => WetFloorRefused { standing: standing }
+          }
+        ReceiptFreshExactSubject { age_secs: a } => WetFloorAdmittedFresh { age_secs: a }
+        ReceiptMissing => WetFloorRefused { standing: standing }
+        ReceiptExpired { age_secs: _ } => WetFloorRefused { standing: standing }
+        ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } =>
+          WetFloorRefused { standing: standing }
+        ReceiptContractMismatch { detail: _ } => WetFloorRefused { standing: standing }
+        ReceiptRosterInexact { detail: _ } => WetFloorRefused { standing: standing }
+      }
+  }
+}
+
+// THE NO-LEASE DOOR, which is every consumer that is not the bootstrap path. It takes NO admission
+// argument at all: an executor-different standing refuses here by construction, so the only way to
+// reach an admission is through the fused entry above, which derives it from the same envelope.
+fn wet_route_gate_disposition(standing: WetLaneReceiptStanding) -> WetFloorGateDisposition {
   match standing {
     ReceiptFreshExactSubject { age_secs: a } => WetFloorAdmittedFresh { age_secs: a }
     ReceiptMissing => WetFloorRefused { standing: standing }
@@ -836,14 +900,7 @@ fn wet_route_gate_disposition(
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } =>
       WetFloorRefused { standing: standing }
     ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } =>
-      match admission {
-        BootstrapExecutorSnapshotLeaseAdmitted {
-          exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _,
-          exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: n
-        } => WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: n }
-        BootstrapLeaseExpired { detail: _ } => WetFloorRefused { standing: standing }
-        BootstrapLeaseNotApplicable => WetFloorRefused { standing: standing }
-      }
+      WetFloorRefused { standing: standing }
     ReceiptContractMismatch { detail: _ } => WetFloorRefused { standing: standing }
     ReceiptRosterInexact { detail: _ } => WetFloorRefused { standing: standing }
   }
@@ -866,12 +923,7 @@ fn wet_route_disposition_blocks_floor(disposition: WetFloorGateDisposition) -> B
 // per-identity polarity is `wet_route_identity_rows_block` above, decided from the same
 // envelope's rows once the disposition admits.
 fn wet_route_standing_blocks_floor(standing: WetLaneReceiptStanding) -> Bool {
-  wet_route_disposition_blocks_floor(
-    disposition: wet_route_gate_disposition(
-      standing: standing,
-      admission: BootstrapLeaseNotApplicable {}
-    )
-  )
+  wet_route_disposition_blocks_floor(disposition: wet_route_gate_disposition(standing: standing))
 }
 
 // THE PUBLICATION TRANSACTION (residual B): the two facts a run must observe about ITSELF to

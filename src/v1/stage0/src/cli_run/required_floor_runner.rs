@@ -8447,6 +8447,21 @@ pub fn run_required_floor(
             } else {
                 WetSeedBootstrapAdmission::NotApplicable
             };
+            // THE PAIRING HERE IS LOAD-BEARING AND IT IS NOT ENFORCED BY THIS EXPRESSION. This
+            // `matches!` pairs two CONSTRUCTORS and discards their contents, so it cannot tell a
+            // lease admitted for THIS envelope from one admitted for another. It is correct today
+            // only because `standing` and `lease_admission` are both derived above from the SAME
+            // envelope, digest and roster in one block -- a property of this code path, never of the
+            // values.
+            //
+            // THE GATE ITSELF NO LONGER ACCEPTS THAT PAIR. `v2.workflow.floor_wet_route`
+            // `wet_route_gate_disposition_for_receipt` derives the standing and the admission
+            // internally from one envelope, so the mismatched pair has no constructor there; the
+            // two-argument door it replaced admitted lease-for-A with standing-from-B, verified by
+            // construction before the repair. That fused entry is the authority this decode must
+            // adopt when the seed next follows the model's shape -- the decoder port is INSIDE the
+            // authority cutover, not downstream of it -- and until then a change that separates
+            // these two derivations reintroduces a hole the model has already closed.
             let admitted_under_lease = matches!(
                 (&standing, &lease_admission),
                 (

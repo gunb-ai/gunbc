@@ -14,7 +14,7 @@ import v2.workflow.floor_wet_route {
   wet_seed_bootstrap_admission, wet_seed_bootstrap_lease_window_secs,
   WetFloorGateDisposition, WetFloorAdmittedFresh, WetFloorAdmittedUnderBootstrapLease,
   WetFloorRefused,
-  wet_route_gate_disposition, wet_route_disposition_blocks_floor,
+  wet_route_gate_disposition, wet_route_gate_disposition_for_receipt, wet_route_disposition_blocks_floor,
   wet_lane_receipt_standing,
   wet_route_standing_blocks_floor,
   wet_receipt_unexpected_red_identities,
@@ -438,9 +438,15 @@ fn executor_different_standing() -> WetLaneReceiptStanding {
 }
 
 test fn wet_lease_admits_exactly_its_envelope_inside_the_window() -> Bool {
-  let disposition = wet_route_gate_disposition(
-    standing: executor_different_standing(),
-    admission: fixture_admission_at(tree_secs: 1000000 + wet_seed_bootstrap_lease_window_secs())
+  let disposition = wet_route_gate_disposition_for_receipt(
+    envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) },
+    envelope_digest: "fixture-envelope-digest",
+    computed_subject_digest: fixture_digest,
+    computed_executor_contract_digest: "a-superseding-executor-digest",
+    roster_identities: fixture_roster_identities(),
+    roster_digest: "fixture-roster-digest",
+    evaluated_tree_commit_unix_secs: 1000000 + wet_seed_bootstrap_lease_window_secs(),
+    lease: Present { value: fixture_lease() }
   )
   match disposition {
     WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: n } =>
@@ -460,7 +466,7 @@ test fn wet_lease_beyond_its_fixed_window_is_expired_and_blocks() -> Bool {
   }
   expired
     && wet_route_disposition_blocks_floor(
-      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+      disposition: wet_route_gate_disposition(standing: executor_different_standing())
     )
 }
 
@@ -480,7 +486,7 @@ test fn wet_lease_naming_a_different_envelope_is_not_applicable_and_blocks() -> 
   }
   not_applicable
     && wet_route_disposition_blocks_floor(
-      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+      disposition: wet_route_gate_disposition(standing: executor_different_standing())
     )
 }
 
@@ -509,7 +515,7 @@ test fn wet_lease_naming_a_different_attempt_seq_is_not_applicable_and_blocks() 
   }
   not_applicable
     && wet_route_disposition_blocks_floor(
-      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+      disposition: wet_route_gate_disposition(standing: executor_different_standing())
     )
 }
 
@@ -532,7 +538,7 @@ test fn wet_lease_naming_a_different_roster_is_not_applicable_and_blocks() -> Bo
   }
   not_applicable
     && wet_route_disposition_blocks_floor(
-      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+      disposition: wet_route_gate_disposition(standing: executor_different_standing())
     )
 }
 
@@ -562,7 +568,7 @@ test fn wet_lease_declared_against_another_semantic_subject_is_not_applicable() 
   }
   not_applicable
     && wet_route_disposition_blocks_floor(
-      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+      disposition: wet_route_gate_disposition(standing: executor_different_standing())
     )
 }
 
@@ -577,10 +583,10 @@ test fn wet_lease_never_admits_a_semantic_subject_mismatch() -> Bool {
     computed_digest: "a-different-subject-digest"
   }
   wet_route_disposition_blocks_floor(
-    disposition: wet_route_gate_disposition(standing: semantic, admission: admission)
+    disposition: wet_route_gate_disposition(standing: semantic)
   )
     && wet_route_disposition_blocks_floor(
-      disposition: wet_route_gate_disposition(standing: ReceiptMissing {}, admission: admission)
+      disposition: wet_route_gate_disposition(standing: ReceiptMissing {})
     )
 }
 
@@ -703,4 +709,44 @@ test fn wet_route_roster_identities_are_distinct() -> Bool {
     }
   )
   distinct && length(xs: identities) == length(xs: rows)
+}
+
+// THE OFF-DIAGONAL, WHICH IS A RELATION AND NOT A SIXTH ARM. Every existing lease witness varies the
+// lease against its own declared inputs; this pair varies the RECEIPT the lease is asked to admit,
+// holding the lease fixed. Before the door was fused, lease-for-A + standing-from-B was ADMITTED --
+// constructed and observed, not inferred -- because the executor-different arm discarded both
+// standing digests and all four exact_ admission fields and kept only not_after.
+//
+// It is now unconstructible rather than checked: both values are derived inside
+// `wet_route_gate_disposition_for_receipt` from ONE envelope, so there is no argument position in
+// which the mismatched pair could be supplied. These two witnesses therefore assert a property of
+// the fused entry -- same envelope admits, different envelope refuses -- and the RED they had before
+// the fusion is preserved in the commit that lands them.
+fn lease_gate_for(envelope: Optional<WetReceiptEnvelope>, envelope_digest: String) -> WetFloorGateDisposition {
+  wet_route_gate_disposition_for_receipt(
+    envelope: envelope,
+    envelope_digest: envelope_digest,
+    computed_subject_digest: fixture_digest,
+    computed_executor_contract_digest: "a-superseding-executor-digest",
+    roster_identities: fixture_roster_identities(),
+    roster_digest: "fixture-roster-digest",
+    evaluated_tree_commit_unix_secs: 1000001,
+    lease: Present { value: fixture_lease() }
+  )
+}
+
+test fn wet_lease_admits_the_receipt_it_names() -> Bool {
+  match lease_gate_for(envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) }, envelope_digest: "fixture-envelope-digest") {
+    WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: _ } => true
+    WetFloorAdmittedFresh { age_secs: _ } => false
+    WetFloorRefused { standing: _ } => false
+  }
+}
+
+test fn wet_lease_refuses_a_receipt_it_does_not_name() -> Bool {
+  match lease_gate_for(envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) }, envelope_digest: "envelope-B-digest") {
+    WetFloorRefused { standing: _ } => true
+    WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: _ } => false
+    WetFloorAdmittedFresh { age_secs: _ } => false
+  }
 }
