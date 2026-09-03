@@ -92,10 +92,12 @@ fn job_has_checkout(j: Job) -> Bool {
 //
 // THE SUBJECT IS `witness_floor_lane_jobs`, NOT THE ASSEMBLED WORKFLOW, AND THAT IS A COST FACT
 // WITH A RECEIPT. Reading the record forced `required_lanes_aggregate_job`, whose serialized gate
-// script measured 1353ms of the assembled workflow's 1569ms -- a subject no row in this file says
-// anything about, and the reason three of them exceeded the floor's per-claim ceiling on check
-// 100530537497. The producer carries the measurement and why splitting the rows was the wrong
-// repair.
+// script was about seven eighths of the assembled workflow's cost -- a subject no row in this file
+// says anything about, and the reason three of them exceeded the floor's per-claim ceiling on check
+// 100530537497. The figures are deliberately not restated here as milliseconds: they were taken on
+// a session container measuring about three times the runner, so the proportion transfers and the
+// absolute numbers do not. `gunbc.witness_floor_workflow` `witness_floor_triggers` carries the
+// measurement, the instrument, and why splitting the rows was the wrong repair.
 test fn every_ordinary_checkout_lane_preflights_before_its_first_witness() -> Bool {
   let lanes = filter(witness_floor_lane_jobs(), j => job_has_checkout(j: j))
   lanes.length() >= 5

@@ -2561,12 +2561,26 @@ fn required_lanes_aggregate_job() -> Job {
 // REASON IS COST, NOT TASTE. A record is materialized whole, so a reader that wants one field pays
 // for every other -- and one of the other fields is `required_lanes_aggregate_job`, whose `run` is
 // the serialized `gunbc.required_lanes_gate` program, the largest bash AST this workflow carries.
-// Measured on this tree with `claim_batch --functions`, one witness per subject: each of the six
-// lane jobs costs about 220ms against a 210ms floor for reaching this module at all, the aggregate
-// alone costs 1353ms, and the assembled workflow costs 1569ms. So a witness asking "is the dispatch
-// input declared" was paying more than a second to serialize a gate script it says nothing about,
-// and three such rows exceeded `v2.workflow.required_floor`
-// `required_floor_claim_cpu_safety_limit_ms` on check 100530537497.
+// Measured with `claim_batch --functions`, one witness per subject. THE ORDERING IS THE FINDING AND
+// THE ABSOLUTE FIGURES ARE NOT PORTABLE: the session container this was measured in priced the
+// aggregate's fill at three times what the runner priced the same fill at on check 100530537497, so
+// a millisecond figure taken here would read as a safety margin to anyone who did not know which
+// machine produced it. What transfers is the shape. The assembled workflow is dominated by one job:
+// `required_lanes_aggregate_job` is about seven eighths of its cost and the six lane jobs together
+// are the remaining eighth. So a witness asking "is the dispatch input declared" was serializing a
+// gate script it says nothing about, and three such rows exceeded `v2.workflow.required_floor`
+// `required_floor_claim_cpu_safety_limit_ms` on that check.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A FIXED "FLOOR FOR REACHING THIS MODULE AT ALL",
+// AND THERE IS NO SUCH FLOOR. It was inferred from a first probe in which all six per-job subjects
+// landed in one narrow band, and a band across six readers is evidence of work SHARED BETWEEN them,
+// never of a cost beneath them -- only a reader that touches almost nothing can tell those two
+// apart. THE 3ms ROW IS THAT READER AND IT IS WHY THE QUESTION IS SETTLED:
+// `test.claim.heal_revalidation_binding_witness`
+// `the_required_workflow_declares_the_healed_sha_dispatch_input` reads `witness_floor_triggers` and
+// nothing else, and costs two orders of magnitude less than the band on the same instrument. A
+// future author pricing a witness against this carrier needs that row and not the phantom, because
+// the phantom says a cheap reader is impossible and the row is one.
 //
 // SPLITTING THE ROWS WOULD NOT HAVE FIXED THAT AND WAS TRIED FIRST. Two rows became four, each half
 // landing nearer the ceiling, and the fold they both paid was untouched -- an improvement in the
