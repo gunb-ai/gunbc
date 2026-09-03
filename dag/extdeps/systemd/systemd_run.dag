@@ -35,6 +35,44 @@ fn systemd_run_transient_unit_argv(unit: NonEmptyStr, command_argv: List<String>
   )
 }
 
+// THE USER-MANAGER TRANSIENT UNIT, modelled beside the system-scope one above because the flags
+// systemd-run actually accepts are upstream's, not ours: --user selects the calling user's manager,
+// -p sets a unit property, and --setenv binds one environment variable in the started unit.
+//
+// NO --collect HERE, DELIBERATELY, and it is the difference that makes this worth a second
+// function. --collect unloads the unit as soon as it exits, which discards Result and
+// ExecMainStatus -- exactly the terminal state a caller starts a transient unit in order to be able
+// to read afterwards. A unit that lingers in `failed` is evidence; one that was garbage collected
+// is an absence indistinguishable from never having run. Callers that want no residue name a unit
+// per attempt and reset it explicitly, which is a decision about evidence rather than a flag.
+fn systemd_run_user_transient_arguments(
+  unit: NonEmptyStr,
+  properties: List<String>,
+  setenv_bindings: List<String>,
+  command_argv: List<String>,
+) -> List<String> {
+  let head = ["--user", concat("--unit=", unit as String)]
+  let with_properties = fold(
+    properties,
+    init: head,
+    f: (acc, p) => list_push(list_push(acc, "-p"), p),
+  )
+  let with_env = fold(
+    setenv_bindings,
+    init: with_properties,
+    f: (acc, b) => list_push(acc, concat("--setenv=", b)),
+  )
+  fold(
+    command_argv,
+    init: list_push(with_env, "--"),
+    f: (acc, arg) => list_push(acc, arg),
+  )
+}
+
+fn systemd_run_property(name: String, value: String) -> String {
+  join([name, "=", value], "")
+}
+
 service systemd.SystemdRun {
   operation RunTransient {
     input { unit: NonEmptyStr, command_argv: List<String> }

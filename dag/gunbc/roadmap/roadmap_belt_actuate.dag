@@ -75,6 +75,7 @@ import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   DispatchLiveSession,
   DispatchSpawnCommands,
+  DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
   DispatchSpawnPlan,
   DispatchSpawnReady,
   DispatchSpawnRefused,
@@ -955,6 +956,50 @@ fn belt_persist_oracle_pin_for_instance(
   }
 }
 
+// THE TWO EXECUTION PHASES A CONTAINER NEEDS, kept as two because the belt already treats them
+// differently: the CREATE step is the one whose failure means no container exists to clean up,
+// while a failure in the START steps leaves a created container that must be torn down. Splitting
+// by phase rather than by step count is what lets a single-step container and a four-step one share
+// that error handling unchanged.
+//
+// The systemd container does all its work in the create step -- a transient unit is started with
+// its command, its properties and its output redirection in one call -- so its start phase is
+// empty. An empty step list is executed as a no-op by belt_exec_steps, which is the honest encoding
+// of "this container has nothing further to do", not a skipped check.
+fn belt_session_container_create_steps(container: DispatchSessionContainer) -> List<BeltExecStep> {
+  match container {
+    TmuxSessionContainer {
+      spawn,
+      default_shell: _,
+      remain_on_exit: _,
+      event_pipe: _,
+      provider_start: _,
+    } =>
+      [BeltExecStep { step: "tmux-session-create", command: spawn }]
+    SystemdUnitContainer { run } =>
+      [BeltExecStep { step: "harness-unit-start", command: run }]
+  }
+}
+
+fn belt_session_container_start_steps(container: DispatchSessionContainer) -> List<BeltExecStep> {
+  match container {
+    TmuxSessionContainer {
+      spawn: _,
+      default_shell,
+      remain_on_exit,
+      event_pipe,
+      provider_start,
+    } =>
+      [
+        BeltExecStep { step: "tmux-default-shell", command: default_shell },
+        BeltExecStep { step: "tmux-remain-on-exit", command: remain_on_exit },
+        BeltExecStep { step: "tmux-event-pipe", command: event_pipe },
+        BeltExecStep { step: "provider-start", command: provider_start },
+      ]
+    SystemdUnitContainer { run: _ } => []
+  }
+}
+
 fn belt_created_session_cleanup_detail(
   instance: HostDashboardInstance,
   session_name: String,
@@ -1656,12 +1701,7 @@ fn belt_actuate_spawn_exec_modeled(
               }
             ExecStepsOk =>
               match belt_exec_steps(
-                steps: [
-                  BeltExecStep {
-                    step: "tmux-session-create",
-                    command: cmds.tmux_spawn,
-                  },
-                ],
+                steps: belt_session_container_create_steps(container: cmds.session_container),
                 workdir: workdir,
               ) {
                 ExecStepFailed { step, detail } =>
@@ -1680,24 +1720,7 @@ fn belt_actuate_spawn_exec_modeled(
                   }
                 ExecStepsOk =>
                   match belt_exec_steps(
-                    steps: [
-                      BeltExecStep {
-                        step: "tmux-default-shell",
-                        command: cmds.tmux_default_shell,
-                      },
-                      BeltExecStep {
-                        step: "tmux-remain-on-exit",
-                        command: cmds.tmux_remain_on_exit,
-                      },
-                      BeltExecStep {
-                        step: "tmux-event-pipe",
-                        command: cmds.tmux_event_pipe,
-                      },
-                      BeltExecStep {
-                        step: "provider-start",
-                        command: cmds.provider_start,
-                      },
-                    ],
+                    steps: belt_session_container_start_steps(container: cmds.session_container),
                     workdir: workdir,
                   ) {
                     ExecStepsOk =>

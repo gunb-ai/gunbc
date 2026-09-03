@@ -46,6 +46,8 @@ import gunbc.session_lease {
   classify_process_port_upsert,
 }
 import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1707,6 +1709,177 @@ fn attempt_current_pointer_argv_for_instance(
 // .../attempts/shell-typed-invocation-<key>". The attempt worktree, the branch, the state directory
 // and the current-pointer were all correct -- only the directory the process stood in was wrong,
 // which is why every receipt looked right while nothing ran.
+// THE ATTEMPT'S UNIT NAME. Per attempt, not per node: the attempt key is a content hash, so two
+// attempts on one node get distinct units and the collision the tmux path reports as
+// `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
+// `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
+// explicit act rather than a side effect of starting the next attempt.
+fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+// THE WORKER'S UNIT PROPERTIES, and every one of them answers something the tmux path either could
+// not express or had to fabricate. MemoryMax is the enforceable cgroup bound `gunbc run` requires
+// before it will size its typed-module cache -- without it the worker refuses, which is exactly the
+// failure this container replaces. WorkingDirectory is the controller checkout for the reason
+// dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
+// own events path, so capture is a unit property rather than a quoted shell payload piped through
+// a terminal multiplexer.
+fn dispatch_worker_unit_properties(
+  instance: HostDashboardInstance,
+  working_directory: String,
+  events_path: String,
+) -> List<String> {
+  [
+    systemd_run_property(
+      name: "MemoryMax",
+      value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)),
+    ),
+    systemd_run_property(name: "WorkingDirectory", value: working_directory),
+    systemd_run_property(name: "StandardOutput", value: join(["append:", events_path], "")),
+    systemd_run_property(name: "StandardError", value: join(["append:", events_path], "")),
+  ]
+}
+
+fn dispatch_worker_unit_argv(
+  systemd_run_program: FilePath,
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  working_directory: String,
+  events_path: String,
+  inner_argv: List<String>,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: systemd_run_program as String,
+    args: systemd_run_user_transient_arguments(
+      unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
+      properties: dispatch_worker_unit_properties(
+        instance: instance,
+        working_directory: working_directory,
+        events_path: events_path,
+      ),
+      setenv_bindings: [],
+      command_argv: inner_argv,
+    ),
+  )
+}
+
+type DispatchSessionContainerPlan
+  = DispatchSessionContainerReady { container: DispatchSessionContainer }
+  | DispatchSessionContainerUnavailable { step: NonEmptyStr, detail: String }
+
+// WHICH CONTAINER HOLDS THE ATTEMPT, decided per provider with no default arm, so a new provider
+// must state which one it needs rather than inheriting whichever was written first.
+//
+// The harness arm REFUSES on a host whose toolchain declares no systemd-run instead of falling back
+// to tmux. That is deliberate and it is the DESIGN section 5 rule rather than a preference: the tmux
+// path is precisely where this worker cannot get an enforceable memory bound, so a fallback would
+// not be a degraded success, it would be a guaranteed HostBudgetUnreadable wearing the shape of a
+// spawn that worked. macbook_local_toolchain answers `none` here because macOS has no systemd at
+// all, which is why the field is optional rather than a path every toolchain must invent.
+fn dispatch_session_container_for_provider(
+  provider: DispatchCliProvider,
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  session_name: String,
+  events_path: String,
+  pane_working_directory: String,
+  tmux_spawn: HostExecArgv,
+  pipe_command: TmuxPipeCommand,
+  provider_inner: List<String>,
+) -> DispatchSessionContainerPlan {
+  match provider {
+    GunbcHarnessProvider =>
+      match instance.toolchain.systemd_run {
+        Absent =>
+          DispatchSessionContainerUnavailable {
+            step: "harness-transient-unit" as NonEmptyStr,
+            detail: join([
+              "the gunbc harness worker requires a transient unit for an enforceable memory bound, ",
+              "and the toolchain for host ", instance.host_identity as String,
+              " declares no systemd-run",
+            ], ""),
+          }
+        Present { value: program } =>
+          DispatchSessionContainerReady {
+            container: SystemdUnitContainer {
+              run: dispatch_worker_unit_argv(
+                systemd_run_program: program,
+                instance: instance,
+                node_id: node_id,
+                attempt_key: attempt_key,
+                working_directory: pane_working_directory,
+                events_path: events_path,
+                inner_argv: provider_inner,
+              ),
+            },
+          }
+      }
+    ClaudeCodeProvider =>
+      DispatchSessionContainerReady {
+        container: dispatch_tmux_container(
+          instance: instance,
+          session_name: session_name,
+          tmux_spawn: tmux_spawn,
+          pipe_command: pipe_command,
+          provider_inner: provider_inner,
+        ),
+      }
+    CodexDispatchProvider =>
+      DispatchSessionContainerReady {
+        container: dispatch_tmux_container(
+          instance: instance,
+          session_name: session_name,
+          tmux_spawn: tmux_spawn,
+          pipe_command: pipe_command,
+          provider_inner: provider_inner,
+        ),
+      }
+    CursorDispatchProvider =>
+      DispatchSessionContainerReady {
+        container: dispatch_tmux_container(
+          instance: instance,
+          session_name: session_name,
+          tmux_spawn: tmux_spawn,
+          pipe_command: pipe_command,
+          provider_inner: provider_inner,
+        ),
+      }
+  }
+}
+
+fn dispatch_tmux_container(
+  instance: HostDashboardInstance,
+  session_name: String,
+  tmux_spawn: HostExecArgv,
+  pipe_command: TmuxPipeCommand,
+  provider_inner: List<String>,
+) -> DispatchSessionContainer {
+  TmuxSessionContainer {
+    spawn: tmux_spawn,
+    default_shell: tmux_attempt_default_shell_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+    ),
+    remain_on_exit: tmux_attempt_remain_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+    ),
+    event_pipe: tmux_attempt_pipe_argv_for_command(
+      instance: instance,
+      session_name: session_name,
+      command: pipe_command,
+    ),
+    provider_start: tmux_attempt_provider_start_argv_for_instance(
+      instance: instance,
+      session_name: session_name,
+      inner_argv: provider_inner,
+    ),
+  }
+}
+
 fn dispatch_pane_working_directory(
   provider: DispatchCliProvider,
   instance: HostDashboardInstance,
@@ -1876,15 +2049,44 @@ type DispatchSpawnPlan
   = DispatchSpawnReady { commands: DispatchSpawnCommands }
   | DispatchSpawnRefused { step: NonEmptyStr, detail: String }
 
+// THE SESSION CONTAINER IS A REALIZATION, NOT A FACT ABOUT DISPATCH, and this coproduct is where
+// that stops being a claim in prose. A dispatched attempt needs four things from whatever holds its
+// process: it must outlive the request that started it, its output must be captured, its liveness
+// must be observable, and it must be killable. tmux supplies all four -- but the REASON it was
+// chosen is that claude and codex are interactive terminal programs and need a pty, which is a fact
+// about those two providers rather than about dispatch.
+//
+// The gunbc harness worker is `gunbc run`, a non-interactive batch process. For it tmux supplies
+// nothing it needs and two things it cannot tolerate: tmux places every pane in its own transient
+// scope (tmux-spawn-<uuid>.scope, memory.max=max), so the worker escapes the serving unit's cgroup
+// and `gunbc run` REFUSES to plan -- HostBudgetUnreadable, measured on srv2-deploy -- and pane
+// capture requires a shell-command payload, which extdeps.tmux's own annotation names as the one
+// foreign-executor seam in attempt capture.
+//
+// A transient systemd unit supplies the same four properties with no pty, and supplies as ordinary
+// unit properties the two things the tmux path had to invent or could not express: MemoryMax, which
+// makes the budget enforceable BY CONSTRUCTION rather than by a check that fails, and Result plus
+// ExecMainStatus, which is the terminal state that distinguishes a finished worker from a crashed
+// or reaped one.
+//
+// The unit is named per ATTEMPT rather than per node, so two attempts on one node cannot collide --
+// the failure the tmux path shows as `duplicate session`, where a dead pane blocks the next
+// dispatch and nothing reaps it.
+type DispatchSessionContainer
+  = TmuxSessionContainer {
+      spawn: HostExecArgv
+      default_shell: HostExecArgv
+      remain_on_exit: HostExecArgv
+      event_pipe: HostExecArgv
+      provider_start: HostExecArgv
+    }
+  | SystemdUnitContainer { run: HostExecArgv }
+
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv
   attempt_state_prepare: HostExecArgv
   attempt_current_pointer: HostExecArgv
-  tmux_spawn: HostExecArgv
-  tmux_default_shell: HostExecArgv
-  tmux_remain_on_exit: HostExecArgv
-  tmux_event_pipe: HostExecArgv
-  provider_start: HostExecArgv
+  session_container: DispatchSessionContainer
 }
 
 fn dispatch_spawn_commands_for_provider(
@@ -2052,35 +2254,37 @@ fn dispatch_spawn_commands_for_resolved_instance(
         detail: detail,
       }
     PipeEmitted { command } =>
-      DispatchSpawnReady {
-        commands: DispatchSpawnCommands {
-          worktree_add: worktree,
-          attempt_state_prepare: state_prepare,
-          attempt_current_pointer: attempt_current_pointer_argv_for_instance(
-            instance: instance,
-            node_id: node.node,
-            attempt_key: attempt_key,
-          ),
-          tmux_spawn: tmux,
-          tmux_default_shell: tmux_attempt_default_shell_argv_for_instance(
-            instance: instance,
-            session_name: session_name,
-          ),
-          tmux_remain_on_exit: tmux_attempt_remain_argv_for_instance(
-            instance: instance,
-            session_name: session_name,
-          ),
-          tmux_event_pipe: tmux_attempt_pipe_argv_for_command(
-            instance: instance,
-            session_name: session_name,
-            command: command,
-          ),
-          provider_start: tmux_attempt_provider_start_argv_for_instance(
-            instance: instance,
-            session_name: session_name,
-            inner_argv: provider_inner,
-          ),
-        },
+      match dispatch_session_container_for_provider(
+        provider: provider,
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+        session_name: session_name,
+        events_path: events_path,
+        pane_working_directory: dispatch_pane_working_directory(
+          provider: provider,
+          instance: instance,
+          worktree_path: worktree_path,
+        ),
+        tmux_spawn: tmux,
+        pipe_command: command,
+        provider_inner: provider_inner,
+      ) {
+        DispatchSessionContainerUnavailable { step: st, detail: d } =>
+          DispatchSpawnRefused { step: st, detail: d }
+        DispatchSessionContainerReady { container: c } =>
+          DispatchSpawnReady {
+            commands: DispatchSpawnCommands {
+              worktree_add: worktree,
+              attempt_state_prepare: state_prepare,
+              attempt_current_pointer: attempt_current_pointer_argv_for_instance(
+                instance: instance,
+                node_id: node.node,
+                attempt_key: attempt_key,
+              ),
+              session_container: c,
+            },
+          }
       }
     }
     }

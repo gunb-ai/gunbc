@@ -800,6 +800,7 @@ fn witness_production_slot(
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
 

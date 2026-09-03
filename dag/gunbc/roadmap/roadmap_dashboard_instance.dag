@@ -2,6 +2,7 @@ module gunbc.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_binary_path }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
+import std.measure { ByteSize, byte_size }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import gunbc.fleet_main_revision { fleet_desired_ref_name }
@@ -203,6 +204,7 @@ type HostDashboardInstance {
   source_seed: DashboardSourceSeed
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
+  dispatch_worker_memory_max: ByteSize
 }
 
 // THE TOOLCHAIN IS CARRIED, NOT ONLY CONSUMED, because provisioning needs it too and provisioning
@@ -447,6 +449,7 @@ type DashboardToolchain {
   install: FilePath
   link: FilePath
   timeout: FilePath
+  systemd_run: FilePath?
   cargo: FilePath
   rustc: FilePath
   rustfmt: FilePath
@@ -460,6 +463,19 @@ type DashboardToolchain {
 // system /bin/ln would fail that probe BEFORE it could fail the flag at spawn time. That is the
 // difference between a typed preflight refusal naming the capability and a dispatch that dies
 // mid-attempt on an illegal option.
+// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY, declared as a policy budget rather than measured
+// off whatever the machine happens to have free. It exists because the worker this bounds is
+// `gunbc run`, which REFUSES to plan without an enforceable cgroup limit (HostBudgetUnreadable):
+// the value is not a guess at what the process needs, it is the bound the executor is obliged to
+// expose so the process can size its typed-module cache against something real.
+//
+// 16 GiB is chosen against measured peaks on this corpus -- a serve graph compile peaked near
+// 5.5 GiB and a harness worker near 4.5 GiB -- so it is roughly 3x headroom over the largest
+// observed resolve. It is deliberately ONE value for every instance today: no host has been shown
+// to need a different one, and inventing per-host rows before a host disagrees would be modelling
+// a distinction nothing has yet made.
+data dispatch_worker_memory_ceiling: ByteSize = byte_size(count: 17179869184)
+
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
   path_test: "/usr/bin/test" as FilePath,
@@ -472,6 +488,7 @@ data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   install: "/usr/bin/install" as FilePath,
   link: "/usr/bin/ln" as FilePath,
   timeout: "/usr/bin/timeout" as FilePath,
+  systemd_run: Present { value: "/usr/bin/systemd-run" as FilePath },
   cargo: "/home/briansrls/.cargo/bin/cargo" as FilePath,
   rustc: "/home/briansrls/.cargo/bin/rustc" as FilePath,
   rustfmt: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,
@@ -496,6 +513,7 @@ data macbook_local_toolchain: DashboardToolchain = DashboardToolchain {
   install: "/opt/homebrew/bin/ginstall" as FilePath,
   link: "/opt/homebrew/bin/gln" as FilePath,
   timeout: "/opt/homebrew/bin/gtimeout" as FilePath,
+  systemd_run: none,
   cargo: "/opt/homebrew/bin/cargo" as FilePath,
   rustc: "/opt/homebrew/bin/rustc" as FilePath,
   rustfmt: "/opt/homebrew/bin/rustfmt" as FilePath,
@@ -739,6 +757,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: macbook_local_admitted_revision_source,
     toolchain: macbook_local_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
 
@@ -820,6 +839,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
 
@@ -912,6 +932,7 @@ fn isolated_dashboard_instance(
     },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
 
@@ -1031,6 +1052,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: srv2_deploy_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
 
