@@ -358,19 +358,55 @@ type CrossingRecurrence {
 // that stops recurring may have been fixed rather than never re-selected. A recurrence census is
 // evidence about cause only over runs whose relevant population did not change, and a caller
 // spanning vintages owes that qualification with the result.
+// SORTED-SCAN GROUPING, NOT A NESTED FILTER. The first version folded the crossing ids and
+// re-filtered the whole list for every unseen one, which is quadratic in the number of crossings,
+// and appended to an accumulator with `concat`, which copies. Both are named in DESIGN section 6's
+// bare-minimum-cost rule, whose whole point is that "n is small here" is not a time-stable fact:
+// the population is per-run crossers today because the floor is healthy, and a bad week is exactly
+// when this function gets called on a large one.
+//
+// So the ids are sorted once and scanned once, runs of equal ids are counted in a single pass, and
+// the accumulator is built by prepending and reversed at the end. The output order becomes
+// identity order rather than first-appearance order, which is a stronger property than the one it
+// replaces -- a census whose order depends on which run happened to be sampled first is not a
+// census anyone can diff.
+type RecurrenceScan {
+  started: Bool
+  current: String
+  seen: Int
+  done: List<CrossingRecurrence>
+}
+
 fn crossing_recurrence(
   runs: List<RunCost>,
   ceiling_ms: Millisecond,
   excluded_modules: List<String>
 ) -> List<CrossingRecurrence> {
-  let crossers = runs |> flat_map(run => run_crossings(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules))
-  crossers
-    |> fold(init: [], f: (acc, id) =>
-         if any(acc, r => r.identity == id) {
-           acc
-         } else {
-           concat(acc, [CrossingRecurrence { identity: id, runs_crossed: count(crossers |> filter(c => c == id)) }])
-         })
+  let crossers = runs
+    |> flat_map(run => run_crossings(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules))
+    |> sort_by(id => id)
+  let scanned = fold(
+    crossers,
+    init: RecurrenceScan { started: false, current: "", seen: 0, done: [] },
+    f: (acc, id) =>
+      if acc.started && acc.current == id {
+        RecurrenceScan { started: true, current: acc.current, seen: acc.seen + 1, done: acc.done }
+      } else if acc.started {
+        RecurrenceScan {
+          started: true,
+          current: id,
+          seen: 1,
+          done: concat([CrossingRecurrence { identity: acc.current, runs_crossed: acc.seen }], acc.done)
+        }
+      } else {
+        RecurrenceScan { started: true, current: id, seen: 1, done: [] }
+      }
+  )
+  if scanned.started {
+    reverse(concat([CrossingRecurrence { identity: scanned.current, runs_crossed: scanned.seen }], scanned.done))
+  } else {
+    []
+  }
 }
 
 // THE POPULATION THAT DECIDES WHETHER A CEILING IS ADJUDICATING THE TREE OR THE RUN: identities
