@@ -1,6 +1,10 @@
 module v2.workflow.floor_purpose_standing_test
 
-import v2.std.logic { Bool, True, False }
+// Bool ONLY. The True/False VARIANTS are deliberately not imported: v2.std.logic Bool is realized
+// as a native machine scalar, so those variants are values the interpreter has no match arm for --
+// the straddle the sibling module's header records. Importing them here would put the wrong
+// spelling within easy reach of the next person editing these controls.
+import v2.std.logic { Bool }
 import std.decl_ref { decl_ref, DeclarationRef }
 import std.witness_purpose {
   WitnessPurpose,
@@ -13,7 +17,6 @@ import std.witness_purpose {
 import v2.workflow.floor_purpose_standing {
   WitnessPurposeStanding,
   PurposeDeclared,
-  PurposeUndeclaredGrandfathered,
   PurposeUndeclared,
   WitnessChangeStanding,
   WitnessChanged,
@@ -78,7 +81,7 @@ test fn a_silenced_wall_names_the_decision_it_stopped_checking() -> Bool {
 // answer false to "silenced a wall" AND true to "is undeclared", which is a state no other standing
 // reaches.
 test fn an_undeclared_row_is_unknown_rather_than_benign() -> Bool {
-  let undeclared = non_execution_consequence(standing: PurposeUndeclaredGrandfathered {})
+  let undeclared = non_execution_consequence(standing: PurposeUndeclared {})
   let open = non_execution_consequence(standing: control_standing())
   !non_execution_silenced_a_wall(consequence: undeclared)
     && non_execution_consequence_is_undeclared(consequence: undeclared)
@@ -97,28 +100,36 @@ test fn a_declared_non_discriminator_purpose_silences_no_wall() -> Bool {
   )
 }
 
-// ADMISSION, THE STRUCTURAL HALF: a NEW row with no declared purpose is refused outright, on either
-// change standing. This is what makes "an enrolled witness with no declared purpose" unwritable
-// going forward rather than merely discouraged.
+// THE MANDATORY-AT-ADMISSION WALL. A NEW row is CHANGED by construction, so it reaches the
+// refusing arm with no special case and no roster lookup: an enrolled witness with no declared
+// purpose stops being writable going forward.
+//
+// THIS TEST USED TO ASSERT MORE AND THE EXTRA HALF WAS DELETED DELIBERATELY, not lost in a rename.
+// It previously required `PurposeUndeclared` to refuse on BOTH change standings, which was the
+// behaviour of the removed always-refuse arm. Under the collapsed model an UNTOUCHED undeclared row
+// is admitted -- that is the implicit debt, asserted by
+// `an_untouched_undeclared_row_is_admitted_which_is_the_implicit_debt` below -- so keeping the old
+// assertion would have contradicted the design rather than guarded it.
 test fn a_new_row_without_a_declared_purpose_is_refused() -> Bool {
   purpose_admission_refuses(standing: PurposeUndeclared {}, change: WitnessChanged {})
-    && purpose_admission_refuses(standing: PurposeUndeclared {}, change: WitnessUnchanged {})
 }
 
-// THE SHRINK MECHANISM, ASSERTED RATHER THAN DESCRIBED, and this is the test that separates a debt
-// contract from a permanent exemption. The SAME grandfathered standing is admitted when the witness
-// is untouched and REFUSED once it changes -- so the roster can only lose members, and it loses them
-// exactly when someone is already editing the row. If the change standing ever stops being read,
-// the roster stops shrinking and this goes red.
-test fn a_grandfathered_row_must_declare_once_it_changes() -> Bool {
-  !purpose_admission_refuses(
-      standing: PurposeUndeclaredGrandfathered {},
-      change: WitnessUnchanged {},
-    )
-    && purpose_admission_refuses(
-      standing: PurposeUndeclaredGrandfathered {},
-      change: WitnessChanged {},
-    )
+// THE IMPLICIT DEBT, which is what replaces the enumerated grandfather roster. An undeclared row
+// nobody edited is ADMITTED, so the existing corpus is carried without a 3500-entry blob and
+// without stopping the line over rows nobody touched. Paired with the test above, these two are the
+// whole contract: refuse on contact, admit while untouched.
+test fn an_untouched_undeclared_row_is_admitted_which_is_the_implicit_debt() -> Bool {
+  !purpose_admission_refuses(standing: PurposeUndeclared {}, change: WitnessUnchanged {})
+}
+
+// THE SHRINK MECHANISM, ASSERTED RATHER THAN DESCRIBED, and the test that separates implicit debt
+// from a permanent exemption. The SAME undeclared standing is admitted untouched and REFUSED once it
+// changes, so the undeclared population can only lose members and loses them exactly when someone is
+// already editing the row. If the change standing ever stops being read -- in EITHER direction, a
+// constant true or a constant false -- one of these two conjuncts goes red.
+test fn an_undeclared_row_must_declare_once_it_changes() -> Bool {
+  !purpose_admission_refuses(standing: PurposeUndeclared {}, change: WitnessUnchanged {})
+    && purpose_admission_refuses(standing: PurposeUndeclared {}, change: WitnessChanged {})
 }
 
 // A DECLARED ROW IS ADMITTED ON BOTH CHANGE STANDINGS, which is the positive control for the

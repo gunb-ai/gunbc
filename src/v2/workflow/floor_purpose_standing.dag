@@ -23,19 +23,28 @@ import std.witness_purpose {
 
 // WHAT ONE DISCOVERED WITNESS IDENTITY HAS DECLARED ABOUT ITS OWN PURPOSE.
 //
-// Three states and not two, because "no purpose declared" splits on a fact that decides admission:
-// whether the identity predates the requirement. Fusing them would either refuse the whole existing
-// corpus at once or exempt every future row silently, and those are the two failures a monotone
-// debt contract exists to avoid.
+// TWO ARMS, AND THERE IS DELIBERATELY NO GRANDFATHERED THIRD. An earlier revision carried
+// `PurposeUndeclaredGrandfathered` beside `PurposeUndeclared`, backed by an enumerated roster of the
+// identities predating the requirement. That roster is DERIVABLE and therefore redundant (DESIGN
+// §2): the subject universe is every discovered witness, so enumerating it means a ~3500-entry
+// authored blob that is a second copy of the discovery output -- and the kind of redundancy that
+// ROTS, since it goes stale against every witness rename.
 //
-// THE GRANDFATHERED ARM IS DEBT, NOT AN EXEMPTION, and `purpose_admission` below is where that is
-// enforced rather than asserted: a grandfathered identity that is CHANGED must declare. So the
-// roster shrinks under exactly the event that puts a row at risk of meaning something new, and an
-// untouched row -- which accrues no new risk -- may stay. That is the shrink mechanism; without one
-// this arm would be a permanent exemption wearing a debt contract's clothes.
+// THE CHANGE STANDING ALREADY CARRIES THE WHOLE DISTINCTION, which is what made the third arm
+// unreachable BY CONSTRUCTION rather than merely unused. Nothing can tell "new" from "predating"
+// without a roster; with the roster gone, no producer can ever reach a grandfathered arm, and 4b
+// calls an arm no producer reaches a decoration -- permanently unconstructed, and worse than absent
+// once it is cited as covering the new-row case.
+//
+// SO THE DEBT IS IMPLICIT AND HAS NOTHING TO MAINTAIN. `purpose_admission_refuses` reads the change
+// standing for the undeclared arm: an untouched row that predates the requirement is admitted with
+// no roster entry, a row someone edits must declare, and a NEW row is changed by construction so it
+// must declare too. That is the mandatory-at-admission wall reached without enumerating anything,
+// and the debt discharges whenever anyone touches a row -- cost landing on whoever is already there,
+// with no quota and no judgement call. There is no roster that could sit unshrinking, because there
+// is no roster.
 type WitnessPurposeStanding
   = PurposeDeclared { purpose: WitnessPurpose }
-  | PurposeUndeclaredGrandfathered
   | PurposeUndeclared
 
 // WHETHER THIS IDENTITY'S SOURCE CHANGED IN THE SUBJECT UNDER JUDGEMENT. Named as its own type
@@ -82,7 +91,6 @@ fn purpose_non_execution_consequence(purpose: WitnessPurpose) -> NonExecutionCon
 fn non_execution_consequence(standing: WitnessPurposeStanding) -> NonExecutionConsequence {
   match standing {
     PurposeDeclared { purpose: p } => purpose_non_execution_consequence(purpose: p)
-    PurposeUndeclaredGrandfathered => ConsequenceUndeclared {}
     PurposeUndeclared => ConsequenceUndeclared {}
   }
 }
@@ -111,21 +119,23 @@ fn non_execution_consequence_is_undeclared(consequence: NonExecutionConsequence)
 //
 // This is the structural half. Once a purpose declaration is mandatory, "an enrolled witness with
 // no declared purpose" stops being writable going forward -- rung 3 on new rows -- while the
-// grandfather roster carries the existing corpus as declared, countable debt rather than silence.
+// untouched existing corpus carries its debt implicitly rather than as silence, and discharges it
+// on contact.
 //
-// THE CHANGED ARM IS THE SHRINK MECHANISM. A grandfathered identity whose source changed must
-// declare a purpose before it is admitted again, so the roster can only lose members, and it loses
-// them exactly when someone is already editing the row. An unchanged grandfathered identity is
-// admitted: it carries the same debt it carried yesterday and no new risk, and refusing it would
-// stop the line over a row nobody touched.
+// THE CHANGED ARM IS THE SHRINK MECHANISM, and with no roster it is the ONLY thing the shrink
+// needs. An undeclared identity whose source changed must declare before it is admitted again, so
+// the undeclared population can only lose members, and it loses them exactly when someone is
+// already editing the row. An undeclared identity nobody touched is admitted: it carries the same
+// debt it carried yesterday and no new risk, and refusing it would stop the line over a row nobody
+// edited. A NEW row reaches the refusing arm without a special case, because a new row is changed
+// by construction -- which is the whole of the mandatory-at-admission wall.
 fn purpose_admission_refuses(
   standing: WitnessPurposeStanding,
   change: WitnessChangeStanding,
 ) -> Bool {
   match standing {
     PurposeDeclared { purpose: _ } => false
-    PurposeUndeclared => true
-    PurposeUndeclaredGrandfathered =>
+    PurposeUndeclared =>
       match change {
         WitnessChanged => true
         WitnessUnchanged => false
