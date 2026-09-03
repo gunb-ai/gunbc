@@ -277,10 +277,39 @@ fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
 // predicted failure rather than as a fact inherited from prior art: if this transport does not
 // require the batching, nothing breaks; if it does, splitting them is the failure that presents as
 // the model losing track of what it asked for.
-fn harness_tool_result_message_json(results: List<JsonValue>) -> JsonValue {
+// THE WORKER IS TOLD WHAT IT IS SPENDING, because until now it was not and it behaved exactly like
+// something with no budget. Transcripts show the failure precisely: on t08 the worker reached a
+// correct and complete plan at round six -- "I need to: 1. Delete roadmap_site_readback_script
+// 2. Delete roadmap_site_digest_readback_script ..." -- and then spent rounds seven through
+// twenty-one re-checking imports it had already read. It never acted, and nothing ever told it that
+// deferring had a cost.
+//
+// THE ROUND COUNT IS A FACT THE HARNESS ALREADY HOLDS, so surfacing it is not a prompt trick: the
+// loop carries steps_remaining and the worker cannot see it. A budget the executor knows and the
+// actor does not is the same asymmetry harness_tool's own annotation objects to -- "the harness knew
+// the limit and the caller could not see it" -- written one layer up.
+//
+// It rides on the tool-result message rather than a new message because the pairing after the
+// opening brief must stay assistant/user: an extra turn between them would break the alternation
+// the compaction logic depends on.
+fn harness_budget_notice_block(steps_remaining: Int) -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "text")),
+    json_kv(key: "text", value: json_string(s: join([
+      "[harness] ", to_string(value: steps_remaining),
+      " tool round(s) remain in this turn. When the remaining rounds will not cover more ",
+      "investigation AND the change, make the change now with run_command and verify it; ",
+      "an unfinished turn delivers nothing.",
+    ], ""))),
+  ])
+}
+
+fn harness_tool_result_message_json(results: List<JsonValue>, steps_remaining: Int) -> JsonValue {
   json_object([
     json_kv(key: "role", value: json_string(s: "user")),
-    json_kv(key: "content", value: json_array(elements: results)),
+    json_kv(key: "content", value: json_array(
+      elements: concat(results, [harness_budget_notice_block(steps_remaining: steps_remaining)]),
+    )),
   ])
 }
 
@@ -541,7 +570,10 @@ fn harness_turn_loop(
                     messages,
                     [
                       harness_assistant_message_json(blocks: blocks),
-                      harness_tool_result_message_json(results: results),
+                      harness_tool_result_message_json(
+                        results: results,
+                        steps_remaining: steps_remaining - 1,
+                      ),
                     ],
                   ),
                   input_tokens: input_tokens,
