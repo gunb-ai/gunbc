@@ -29,3 +29,5 @@ The three ceiling values in gunbc_ci_corpus_envelope (WitnessCount: 2000, Source
 ## Dissolution trigger (DESIGN §6)
 
 Delete when P2 ceiling derivation lands and gunbc_ci_corpus_envelope carries derived values, input_admitted is wired as a runtime gate, and all WorkDemand instances carry either a real BoundedInput or an explicit escalation comment explaining why they are EnvelopeUnknown.
+
+<!-- MAIN-H2 heal probe: hand-drift of a generated projection, to be repaired by CI -->
