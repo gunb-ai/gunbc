@@ -1,0 +1,140 @@
+module v2.workflow.required_lane_claim_agreement
+
+import std.types { Bool, List, String }
+import v2.std.algebra { Cons, Empty, length, list_reverse }
+
+// THE CLAIM A PROJECTED LEDGER MAY NOT MAKE ABOUT A LANE THAT GATES.
+//
+// gunbc#10078 promoted `rust-unit-tests` into `gunbc.witness_floor_workflow`
+// `required_lanes_roster`. Ten sites across five authorities went on asserting the opposite, and
+// three of them were the DESIGN ledgers -- the documents every session loads. One of the ten was a
+// declared rung drop whose restoration trigger the promotion had FIRED, so the repository carried
+// debt that no longer existed; three were rung claims whose premise had gone false while their
+// conclusion survived, which is worse than a plain error because the sentence still reads as two
+// protections when only one remains. The repair that caused it stated its own blast radius as "the
+// two sentences it makes false" and never ran a search.
+//
+// SO THE SUBJECT IS NOT PROSE HYGIENE. It is a claim about which lanes gate a merge, made in a
+// document, contradicted by the roster the workflow emission is derived from -- two authorities for
+// one fact, which is the DESIGN section 3 defect, and a reader planning against the losing one
+// plans against a CI shape that does not exist.
+//
+// WHAT THIS READS, AND IT IS DELIBERATELY THE PROJECTION RATHER THAN THE CORPUS. The subject is the
+// SERIALIZED LEDGER TEXT -- what `gunbc.design_ledgers` and `gunbc.design_document` actually emit --
+// so the check costs one projection fold and no corpus reflection at all. The alternative, a
+// `v2.std.decl_index` `decl_facts` walk over the tree, is the cost this repository has already
+// adjudicated against itself: `test.claim.long.host_identity_single_authoring_witness_test` sits
+// outside the merge path under a declared drop naming exactly "a corpus-scale reflection cost with
+// no lane that both admits it and runs it". Reading the projection is also the STRONGER question:
+// the bytes a reader will read are the bytes checked.
+//
+// WHAT IT DOES NOT REACH, STATED HERE BECAUSE A CHECK CITED FOR MORE THAN ITS RANGE IS
+// `gunbc.recurring_failure_mode` `check_subject_narrower_than_its_declared_claim`, and this lane
+// filed that neighbour deliberately. Of the twelve sites the promotion left behind, this covers the
+// THREE that reach a projected ledger. It does NOT cover:
+//   the SIX carried as `//` source annotations, because DESIGN section 4c hands every semantic pass
+//     the annotation-erased projection and mints no identity for an annotation, so no consumer this
+//     repository has can read one. That is the finding rather than a gap in this module: an
+//     obligation authored into an erased channel has no mechanical consumer at all, so it can
+//     neither fire nor report itself unfired -- which is precisely how those six survived.
+//   the ONE emitted into `compiler_tests.rs` from `v1.compiler.compiler_tests_rust`, because the
+//     required floor invokes `claim_executor` with `--source-root dag --source-root src/v2` and
+//     src/v1 is not in it, so no witness the required run discovers can resolve that module. Same
+//     envelope boundary `v1.tests.claim.checkpoint_identity_keying_witness_test` already names.
+//   the TWO phrased AFFIRMATIVELY as a future reversal condition ("when `rust-unit-tests` is
+//     promoted into the required aggregate"), which a claim keyed on the negated sentence cannot
+//     see and which were the two most consequential of the twelve, being live obligations rather
+//     than stale descriptions.
+// NEXT-RUNG TRIGGER, named as capabilities and not as artifacts that would contribute to one: a
+// corpus-scale annotation read surface served to a witness -- `std.source_annotation` already
+// CAPTURES the rows and nothing serves them -- and a source-root envelope for the required run that
+// admits src/v1. Either alone widens this subject; neither is this module's to build.
+
+// One site: the document it was found in, the lane the false claim was made about, and the
+// surrounding text, so the refusal locates the sentence rather than only counting it.
+type RequiredLaneClaimSite {
+  document: String
+  job_id: String
+  excerpt: String
+}
+
+type RequiredLaneClaimVerdict
+  = RequiredLaneClaimsAgree { checked_document_count: Int, checked_lane_count: Int }
+  | RequiredLaneClaimRefused { sites: List<RequiredLaneClaimSite> }
+
+// One projected document under check, named so a refusal says WHICH ledger lies.
+type ProjectedDocument {
+  document: String
+  text: String
+}
+
+// THE CLAIM SHAPE IS A CONJUNCTION AND NOT A SENTENCE TEMPLATE. A document offends when it carries
+// the standing negation AND names a lane that is in the roster; either half alone is legitimate --
+// a ledger may discuss a non-required job, and it may use the phrase about some other subject. The
+// conjunction is what makes the two authorities disagree.
+//
+// It is keyed on the STOCK SPELLING, which is a real and stated narrowing rather than an oversight:
+// the twelve surviving sites used two spellings between them and both are here, but a paraphrase
+// escapes. Widening this to meaning rather than spelling is not a bigger list -- it is the
+// annotation-and-meaning capability named above, and a longer list of phrases here would look like
+// coverage while buying almost none.
+fn required_lane_negation_phrases() -> List<String> {
+  [
+    "is not a `needs` of the required aggregate",
+    "is not yet a `needs` of the required aggregate"
+  ]
+}
+
+fn text_carries_a_required_lane_negation(text: String) -> Bool {
+  fold(required_lane_negation_phrases(), init: false, f: fn(acc, phrase) {
+    acc || string_contains(s: text, pattern: phrase)
+  })
+}
+
+fn text_names_lane(text: String, job_id: String) -> Bool {
+  string_contains(s: text, pattern: concat("`", job_id, "`"))
+}
+
+fn document_sites_for_lane(doc: ProjectedDocument, job_id: String) -> List<RequiredLaneClaimSite> {
+  if text_carries_a_required_lane_negation(text: doc.text) && text_names_lane(text: doc.text, job_id: job_id) {
+    [RequiredLaneClaimSite {
+      document: doc.document,
+      job_id: job_id,
+      excerpt: concat(
+        "the projection of ", doc.document,
+        " states that `", job_id,
+        "` is not a `needs` of the required aggregate, and `gunbc.witness_floor_workflow` `required_lanes_roster` says it is. ",
+        "The roster is the authority the emitted workflow is derived from, so the DOCUMENT is what is wrong. ",
+        "Correct the sentence at its authority and regenerate; do not widen this check. ",
+        "If the false half is one clause of a claim whose conclusion still holds, DELETE the clause rather than softening it -- ",
+        "a sentence reading as two protections where one remains fails open the moment someone removes the surviving one."
+      )
+    }]
+  } else {
+    []
+  }
+}
+
+// The fold is over documents OUTSIDE and lanes INSIDE so a document offending about two lanes
+// reports two sites: the sentence to repair is per-lane, and collapsing them would hand a
+// maintainer one refusal for two edits.
+fn required_lane_claim_agreement_check(
+  documents: List<ProjectedDocument>,
+  job_ids: List<String>
+) -> RequiredLaneClaimVerdict {
+  let sites = list_reverse(xs: fold(documents, init: Empty, f: fn(outer, doc) {
+    fold(job_ids, init: outer, f: fn(acc, job_id) {
+      fold(document_sites_for_lane(doc: doc, job_id: job_id), init: acc, f: fn(inner, site) {
+        Cons { head: site, tail: inner }
+      })
+    })
+  }))
+  if length(xs: sites) == 0 {
+    RequiredLaneClaimsAgree {
+      checked_document_count: length(xs: documents),
+      checked_lane_count: length(xs: job_ids)
+    }
+  } else {
+    RequiredLaneClaimRefused { sites: sites }
+  }
+}
