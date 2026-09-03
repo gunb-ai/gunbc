@@ -393,6 +393,15 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 // that travels with consumers; the repair takes the series as an argument and other producers
 // serving the same witnesses inherit nothing from it.
 //
+// WHAT IS NOT CLAIMED BY THIS PREDICATE, stated because the same run that motivated it could be
+// misread as clearing the producer it refused. Nothing here says
+// v2.compiler.translate.grammar_relation_row_for_emitted earns its enrolment. The core_edges
+// measurement measures a DIFFERENT producer and says nothing about that key's own serving cost
+// over v2.test.manual.rust_add_emit_translate; what it establishes is only that the overlap is
+// not EVIDENCE of a cost, because the row overlapped measured none. Whether that key beats
+// recompute over its own consumers is the question this roster's ordinary admission discipline
+// already owns, answered present-vs-absent like every other row, and it is open.
+//
 // SO THE NARROWING IS TO A VERDICT, NOT TO AN IDENTITY. Both rows the inheritance actually
 // happened through are `MeasuredServeAboveRecompute` and both stay in the wall's population. The
 // two arms that leave it are still refused by the identity fold above on their own spelling, so
