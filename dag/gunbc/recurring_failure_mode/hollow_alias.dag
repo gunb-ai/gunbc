@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.hollow_alias
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data hollow_alias: RecurringFailureMode = RecurringFailureMode {
+  identity: "hollow_alias" as NonEmptyStr,
+
+  receipts: [
+    "hollow alias (minimality ≠ grounding)",
+  ],
+
+  evidence: [],
+}
