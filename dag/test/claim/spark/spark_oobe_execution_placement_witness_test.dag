@@ -87,10 +87,8 @@ import gunbc.spark.oobe_execution_placement {
   select_renderer,
   select_relay,
   oobe_session_admission,
-  secret_use_is_admitted,
-  observation_use_is_admitted,
-  renderer_admission_is_qualified,
-  relay_admission_is_ready,
+  use_decision_for,
+  AdmittedForwardingUse,
   observed_renderers,
   observed_relays,
   machine_pi1,
@@ -117,16 +115,24 @@ data disposition: LiveTreeDisposition = SubstrateInputsOnly
 // It is pinned to the exact arm so that building the route is what turns it. A witness asserting
 // merely "not ready" would stay green through a regression that refused for some unrelated reason,
 // and would tell nobody what to build next.
-test fn w_session_admission_now_refuses_at_the_route_not_at_the_relay() -> Bool {
+test fn w_session_admission_refuses_at_the_unratified_relay_identity() -> Bool {
   match oobe_session_admission() {
     SessionReady { session: _ } => false
     SessionRefused { cause: c } => match c {
-      RouteNotComposable { renderer: r, relay: rl } => r == operator_host_srv4 && match rl {
-        FleetAllocatedMachine { host: h } => h == "pi1"
-        UnallocatedMachineObservation { observed_label: _ } => false
+      NoReadyRelay { cause: rc } => match rc {
+        NoRelayQualifiedInPopulation { considered: n, causes: cs } =>
+          n == 5 && fold(cs, init: false, f: (acc, rcause) => acc || match rcause {
+            RelayIdentityUnallocated { observed_label: l } => l == "pi1"
+            RelayCarriesNoRadio { machine: _ } => false
+            RelayRadioUnassociated { machine: _ } => false
+            NoRelayQualifiedInPopulation { considered: _, causes: _ } => false
+          })
+        RelayIdentityUnallocated { observed_label: _ } => false
+        RelayCarriesNoRadio { machine: _ } => false
+        RelayRadioUnassociated { machine: _ } => false
       }
-      NoReadyRelay { cause: _ } => false
       NoQualifiedRenderer { cause: _ } => false
+      RouteNotComposable { renderer: _, relay: _ } => false
       ForwardingLeaseNotEstablished { lease: _ } => false
       PayloadUseRefused { decision: _ } => false
     }
@@ -148,13 +154,20 @@ test fn w_the_same_relay_with_an_allocated_identity_is_ready() -> Bool {
   }
 }
 
-// pi1 AS MEASURED NOW QUALIFIES, and it carries the SSID from the screen-observation receipt
-// rather than a second literal that happens to match.
-test fn w_the_measured_pi1_relay_is_ready_and_names_the_observed_ssid() -> Bool {
+// pi1 AS MEASURED IS DECLINED FOR ITS IDENTITY, NOT FOR ITS RADIO, and the distinction is the
+// whole content: the radio is present and associated to the unit's access point. What is missing is
+// operator ratification of adopting a support host into the fleet identity authority. A previous
+// head asserted the opposite here, having promoted pi1 to allocated while its own receipt recorded
+// the ratification as outstanding.
+test fn w_the_measured_pi1_relay_is_declined_for_identity_not_for_radio() -> Bool {
   match relay_admission(obs: relay_pi1) {
-    RelayDeclined { cause: _ } => false
-    RelayReady { relay: r } =>
-      r.host == "pi1" && r.radio_interface == "wlan0" && r.associated_ssid == "spark-0c75"
+    RelayReady { relay: _ } => false
+    RelayDeclined { cause: c } => match c {
+      RelayIdentityUnallocated { observed_label: l } => l == "pi1"
+      RelayCarriesNoRadio { machine: _ } => false
+      RelayRadioUnassociated { machine: _ } => false
+      NoRelayQualifiedInPopulation { considered: _, causes: _ } => false
+    }
   }
 }
 
@@ -264,14 +277,32 @@ test fn w_a_fully_provisioned_but_unallocated_machine_cannot_qualify() -> Bool {
 // the route's real measured standing survived only in prose. Both are now true simultaneously,
 // and this witness fails if either half is dropped.
 test fn w_observation_is_admitted_and_secrets_are_refused_on_the_same_route() -> Bool {
-  observation_use_is_admitted() && !secret_use_is_admitted()
+  match use_decision_for(want: ObservationPayload) {
+    ForwardingUseRefused { payload: _, cause: _ } => false
+    ForwardingUseAdmitted { admitted: _ } => match use_decision_for(want: SecretBearingPayload) {
+      ForwardingUseAdmitted { admitted: _ } => false
+      ForwardingUseRefused { payload: _, cause: c } => match c {
+        ProxyLocusNotAdmittedForCredentials { proxy_locus: _ } => true
+        TransportNotConfidential { unit_endpoint: _ } => false
+      }
+    }
+  }
 }
 
 // THE SELECTORS AGREE WITH THE PER-ROW ADMISSIONS over the measured population: exactly one
 // renderer qualifies, and no relay does.
-test fn w_selection_finds_one_renderer_and_one_relay() -> Bool {
-  renderer_admission_is_qualified(a: select_renderer())
-  && relay_admission_is_ready(a: select_relay())
+// SELECTION TODAY FINDS A RENDERER AND NO RELAY, because pi1 is unratified and therefore
+// unallocated. This witness asserts BOTH halves rather than only the positive one: a version
+// checking only the renderer would stay green if the relay silently started qualifying under a
+// fabricated identity, which is the exact regression the previous head shipped.
+test fn w_selection_finds_the_one_renderer_and_no_relay_while_pi1_is_unratified() -> Bool {
+  match select_renderer() {
+    RendererDeclined { cause: _ } => false
+    RendererQualified { renderer: q } => q.host == operator_host_srv4 && match select_relay() {
+      RelayReady { relay: _ } => false
+      RelayDeclined { cause: _ } => true
+    }
+  }
 }
 
 // THE CLAIM THIS MODULE EXISTS TO MAKE: NO MACHINE IS BOTH. It is why the placement is a
@@ -282,11 +313,26 @@ test fn w_no_single_machine_is_both_a_qualified_renderer_and_a_ready_relay() -> 
   !fold(observed_renderers, init: false, f: (acc, obs) => acc || match renderer_admission(obs: obs) {
     RendererDeclined { cause: _ } => false
     RendererQualified { renderer: q } =>
-      fold(observed_relays, init: false, f: (a2, r) => a2 || match relay_admission(obs: r) {
+      fold(observed_relays, init: false, f: (a2, rly) => a2 || match relay_admission(obs: rly) {
         RelayDeclined { cause: _ } => false
         RelayReady { relay: rr } => rr.host == q.host
       })
   })
+}
+
+// THE FAIL-CLOSED HALF OF THE USE LOOKUP, and it needs its own witness because the admitted path
+// cannot exercise it. A payload class with no recorded decision must come back REFUSED. There is
+// no third payload class to ask about today, so this asks the question the only way it can be
+// asked -- by confirming the lookup's refusal carries the requested class rather than some
+// decision that happened to be in the list.
+test fn w_the_use_lookup_returns_a_decision_about_the_class_that_was_asked() -> Bool {
+  match use_decision_for(want: SecretBearingPayload) {
+    ForwardingUseAdmitted { admitted: _ } => false
+    ForwardingUseRefused { payload: p, cause: _ } => match p {
+      SecretBearingPayload => true
+      ObservationPayload => false
+    }
+  }
 }
 
 // RESTORED. The rewrite of this file dropped the flag witness, which would have left the one place
