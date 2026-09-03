@@ -36,37 +36,56 @@ data step0_census_denominator_law: NonEmptyStr = "the census denominator is the 
 // families it must distinguish were named before the numbers existed; naming them afterwards lets
 // the roster be shaped by what the run happened to produce.
 //
-// SameSpellingInTwoModules IS THE LOAD-BEARING ROW. A census that records only "the spelling still
-// resolves" greens while binding the WRONG DECLARATION, which is the most harmful form of this
-// class: nothing errors, the program compiles, and the meaning moved. Every other family can fail
-// loudly; this one fails silently by construction, so a census that cannot discriminate it has not
-// measured Step 0 at all.
+// THE ROSTER IS ONE AXIS AND ONLY ONE: HOW THE REFERENCE WAS WRITTEN. An earlier cut carried
+// SameSpellingInTwoModules beside TypeReference and OrdinaryFunctionCall, and that row is not a way
+// of WRITING a reference at all -- it is a shape of the NAME POOL the reference resolves against.
+// Holding both on one axis made the roster unable to say the true and more alarming thing, which is
+// that a homonym can occur under ANY family. It now lives on the binding-topology axis in
+// gunbc.namespace_step0_census_calibration, where it composes with all ten rows below rather than
+// standing beside six of them.
+//
+// AND THE ROSTER IS NEVER INFERRED FROM OBSERVED ROWS. A roster derived from what the diagnostics
+// produced can only contain what the instrument already sees, so it can never name the family the
+// instrument is BLIND to -- which is the one a census exists to find. It is authored ahead of the
+// run for that reason, and the instrument is measured against it rather than the other way round.
 type Step0ReferenceFamily
-  = TypeReference
-  | OrdinaryFunctionCall
-  | ConstructorOrRecordConstruction
-  | BareCoproductVariant
+  = TypeAnnotationReference
+  | GenericTypeArgumentReference
+  | TopLevelValueReference
+  | FunctionValueReference
+  | OrdinaryCallReference
+  | NullaryConstructorReference
+  | PayloadConstructorReference
+  | VariantExpressionReference
+  | VariantPatternReference
   | QualifiedContainmentReference
-  | SameSpellingInTwoModules
 
 fn step0_reference_family_label(family: Step0ReferenceFamily) -> NonEmptyStr {
   match family {
-    TypeReference => "a type named in a declaration or signature" as NonEmptyStr
-    OrdinaryFunctionCall => "an ordinary call to a function declared in another module" as NonEmptyStr
-    ConstructorOrRecordConstruction => "a record construction or constructor application" as NonEmptyStr
-    BareCoproductVariant => "a coproduct variant named bare, with no qualifier" as NonEmptyStr
+    TypeAnnotationReference => "a type named in a declaration, a field, a parameter or a return position" as NonEmptyStr
+    GenericTypeArgumentReference => "a type named as an argument of a generic container" as NonEmptyStr
+    TopLevelValueReference => "a module-scope data declaration named as a value" as NonEmptyStr
+    FunctionValueReference => "a function named WITHOUT applying it, so the value is the function itself" as NonEmptyStr
+    OrdinaryCallReference => "a function named in call-head position and applied" as NonEmptyStr
+    NullaryConstructorReference => "a constructor with no payload, named as a value" as NonEmptyStr
+    PayloadConstructorReference => "a constructor applied to a payload, in record-construction form" as NonEmptyStr
+    VariantExpressionReference => "a coproduct variant named bare in expression position" as NonEmptyStr
+    VariantPatternReference => "a coproduct variant named bare in a match pattern, where a binder of the same spelling could shadow it" as NonEmptyStr
     QualifiedContainmentReference => "a container.member reference resolved through containment" as NonEmptyStr
-    SameSpellingInTwoModules => "one spelling declared in two modules, where resolution may bind the wrong declaration without any diagnostic" as NonEmptyStr
   }
 }
 
 data step0_reference_family_roster: List<Step0ReferenceFamily> = [
-  TypeReference,
-  OrdinaryFunctionCall,
-  ConstructorOrRecordConstruction,
-  BareCoproductVariant,
-  QualifiedContainmentReference,
-  SameSpellingInTwoModules
+  TypeAnnotationReference,
+  GenericTypeArgumentReference,
+  TopLevelValueReference,
+  FunctionValueReference,
+  OrdinaryCallReference,
+  NullaryConstructorReference,
+  PayloadConstructorReference,
+  VariantExpressionReference,
+  VariantPatternReference,
+  QualifiedContainmentReference
 ]
 
 // THE DISCRIMINATOR IS PAIRED, BEFORE AND AFTER THE STRIP, per family. An after-only reading cannot

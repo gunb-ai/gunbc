@@ -239,63 +239,113 @@ fn step0_discrimination_capability_statement(capability: Step0DiscriminationCapa
   }
 }
 
-fn step0_capability_for_category(category: OccurrenceCategory) -> Step0DiscriminationCapability {
-  match category {
-    TypeOccurrence => TypeReferenceRolePositionStamped
-    ConstructorOccurrence => ConstructorArityAndPositionStamped
-    LexicalValueOccurrence => CallableVersusValueAcquisitionStamped
-    CallableOccurrence => CallableVersusValueAcquisitionStamped
-    NamespaceSegmentOccurrence => TypeReferenceRolePositionStamped
-    FieldOccurrence => TypeReferenceRolePositionStamped
-    MethodOccurrence => TypeReferenceRolePositionStamped
+// THE CAPABILITY IS KEYED BY FAMILY AND NOT BY CATEGORY, because a category-keyed table has to
+// answer for categories no family converges on -- Field, Method -- and every answer there is
+// invented. An arbitrary arm in a trigger table is worse than a missing one: it reads as a named
+// capability while naming nothing, which is the DESIGN 4b(3) defect of a trigger naming less than
+// the capability it restores. Keyed by family the map is total with no invented rows.
+fn step0_family_discrimination_capability(family: Step0ReferenceFamily) -> Step0DiscriminationCapability {
+  match family {
+    TypeAnnotationReference => TypeReferenceRolePositionStamped
+    GenericTypeArgumentReference => TypeReferenceRolePositionStamped
+    TopLevelValueReference => CallableVersusValueAcquisitionStamped
+    FunctionValueReference => CallableVersusValueAcquisitionStamped
+    OrdinaryCallReference => CallableVersusValueAcquisitionStamped
+    NullaryConstructorReference => ConstructorArityAndPositionStamped
+    PayloadConstructorReference => ConstructorArityAndPositionStamped
+    VariantExpressionReference => ConstructorArityAndPositionStamped
+    VariantPatternReference => ConstructorArityAndPositionStamped
+    QualifiedContainmentReference => TypeReferenceRolePositionStamped
   }
 }
 
-// THE CALIBRATION ROW. Four axes plus the producer branch it claims, so a row can be checked rather
-// than believed: the witness authors a fixture for the row, runs the instrument, and joins the
-// observed category and disposition back to the row's own declarations.
+// THE CALIBRATION ROW'S SUBJECT IS A COPRODUCT, because the three kinds of row genuinely have
+// different fields and forcing them into one record means fabricating the ones that do not apply. A
+// harness refusal has no family, no topology and no binding outcome; a row carrying
+// OrdinaryCallReference beside a ragged-manifest defect would be inventing three axis values to
+// satisfy a shape, which is the fabricated-plausible-value arm DESIGN section 5 forbids, committed
+// against this module's own roster.
+//
+// AND THE THIRD ARM IS THE HONEST ONE. Some producer branches cannot be reached from any authored
+// fixture: the candidate index refuses on a malformed occurrence transport, which the frontend
+// either produces or does not, and a fixture supplies SOURCE rather than a transport. Claiming
+// coverage of such a branch with a row that never executes is the decoration DESIGN 4b names -- a
+// permanently green check that gets cited as evidence. Declaring it unauthorable, and naming the
+// harness that would reach it, keeps the totality fold satisfiable without lying to it.
+type Step0ManifestDefect
+  = RaggedManifest
+  | RepeatedSourcePath
+  | EntryNamesNoSuppliedSource
+  | SourceProducingNoResolvedGraph
+
+fn step0_manifest_defect_label(defect: Step0ManifestDefect) -> NonEmptyStr {
+  match defect {
+    RaggedManifest => "the path and content vectors differ in length" as NonEmptyStr
+    RepeatedSourcePath => "one path is supplied twice" as NonEmptyStr
+    EntryNamesNoSuppliedSource => "the entry names a path no supplied source carries" as NonEmptyStr
+    SourceProducingNoResolvedGraph => "the supplied source cannot be resolved into a graph at all" as NonEmptyStr
+  }
+}
+
+type Step0CalibrationSubject
+  = FamilyOccurrence {
+      family: Step0ReferenceFamily
+      topology: Step0BindingTopology
+      outcome: Step0CalibrationOutcome
+      multiplicity: Step0OccurrenceMultiplicity
+    }
+  | InstrumentManifestDefect { defect: Step0ManifestDefect }
+  | BranchUnauthorableFromSource { missing_harness: NonEmptyStr }
+
 type Step0CalibrationRow {
-  family: Step0ReferenceFamily
-  topology: Step0BindingTopology
-  outcome: Step0CalibrationOutcome
-  multiplicity: Step0OccurrenceMultiplicity
+  subject: Step0CalibrationSubject
   claimed_branch: Step0CensusProducerBranch
 }
 
-// THE MATRIX, FROZEN BEFORE ANY CORPUS RUN. Ten family rows carrying a topology and an outcome each,
-// then the rows whose subject is a topology or a refusal rather than a family. Frozen means the
-// roster was authored before the numbers existed; it does not mean unrevisable -- a row proven wrong
-// by the witness is corrected, and that correction is a finding rather than a maintenance chore.
+// THE MATRIX, FROZEN BEFORE ANY CORPUS RUN. Frozen means the roster was authored before the numbers
+// existed, so the families it must distinguish were not chosen by what a run happened to produce. It
+// does not mean unrevisable: a row the witness proves wrong is corrected, and that correction is the
+// finding rather than a maintenance chore.
 data step0_calibration_matrix: List<Step0CalibrationRow> = [
-  Step0CalibrationRow { family: TypeAnnotationReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: GenericTypeArgumentReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: TopLevelValueReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: FunctionValueReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: NullaryConstructorReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: PayloadConstructorReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: VariantExpressionReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: VariantPatternReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { family: QualifiedContainmentReference, topology: ResolvedThroughContainment, outcome: CalibratedBoundDefinerResolvable, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundDefinerResolvable },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: PoolUniqueOnly, outcome: CalibratedBoundPoolCoincidence, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundPoolCoincidence },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: SameCategoryHomonymInTwoModules, outcome: CalibratedAmbiguous, multiplicity: SpellingRepeatedAcrossFiles, claimed_branch: BranchDispositionAmbiguous },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: DeclaredInSameModule, outcome: CalibratedBoundPoolCoincidence, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionBoundPoolCoincidence },
-  Step0CalibrationRow { family: TopLevelValueReference, topology: ShadowedByParameter, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { family: TopLevelValueReference, topology: ShadowedByLet, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { family: VariantPatternReference, topology: ShadowedByPatternBinder, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { family: TypeAnnotationReference, topology: CrossCategoryHomonym, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedAcrossFiles, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedUnresolved, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionUnresolved },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBindingRefused, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchDispositionRefused },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchCensusRefusedRaggedManifest },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchCensusRefusedNonUniquePath },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchCensusRefusedEntryNamesNoSuppliedSource },
-  Step0CalibrationRow { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling, claimed_branch: BranchCensusRefusedNoResolvedGraph }
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundListedImport },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: GenericTypeArgumentReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: FunctionValueReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDispositionBoundListedImport },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: NullaryConstructorReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: PayloadConstructorReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantExpressionReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantPatternReference, topology: ShadowedByPatternBinder, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: QualifiedContainmentReference, topology: ResolvedThroughContainment, outcome: CalibratedBoundDefinerResolvable, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundDefinerResolvable },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: PoolUniqueOnly, outcome: CalibratedBoundPoolCoincidence, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: SameCategoryHomonymInTwoModules, outcome: CalibratedAmbiguous, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDispositionAmbiguous },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: DeclaredInSameModule, outcome: CalibratedBoundPoolCoincidence, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByParameter, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByLet, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: CrossCategoryHomonym, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedUnresolved, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionUnresolved },
+  Step0CalibrationRow { subject: InstrumentManifestDefect { defect: RaggedManifest }, claimed_branch: BranchCensusRefusedRaggedManifest },
+  Step0CalibrationRow { subject: InstrumentManifestDefect { defect: RepeatedSourcePath }, claimed_branch: BranchCensusRefusedNonUniquePath },
+  Step0CalibrationRow { subject: InstrumentManifestDefect { defect: EntryNamesNoSuppliedSource }, claimed_branch: BranchCensusRefusedEntryNamesNoSuppliedSource },
+  Step0CalibrationRow { subject: InstrumentManifestDefect { defect: SourceProducingNoResolvedGraph }, claimed_branch: BranchCensusRefusedNoResolvedGraph },
+  Step0CalibrationRow {
+    subject: BranchUnauthorableFromSource {
+      missing_harness: "no source text selects this arm: the candidate index refuses on a malformed occurrence transport, which the frontend either produces or does not, and a fixture supplies source rather than a transport. Its red needs a harness that hands the index a transport directly, and that harness is this branch's next-rung trigger rather than a permanent ceiling" as NonEmptyStr
+    },
+    claimed_branch: BranchCensusRefusedCandidateIndex
+  },
+  Step0CalibrationRow {
+    subject: BranchUnauthorableFromSource {
+      missing_harness: "this arm covers a resolution outcome the instrument does not model, and it is unreachable while the resolver's coproduct carries exactly the three arms the instrument reads. Its red arrives with a fourth arm, which a fixture cannot add" as NonEmptyStr
+    },
+    claimed_branch: BranchDispositionRefused
+  }
 ]
 
-// EVERY BRANCH CLAIMED BY AT LEAST ONE ROW, CHECKED RATHER THAN PROMISED. This fold is the reason
-// the branch roster is a closed type: adding an arm to Step0CensusProducerBranch with no row that
-// claims it makes this answer a nonempty list, and the witness asserting it empty goes red. It is a
-// join between two authored rosters and not a count comparison.
+// EVERY BRANCH CLAIMED BY AT LEAST ONE ROW, CHECKED RATHER THAN PROMISED. This is why the branch
+// roster is a closed type: adding an arm with no row that claims it makes this answer nonempty, and
+// the witness asserting it empty goes red. It is an identity join between two authored rosters and
+// not a count comparison -- a count equality would be satisfied by a row claiming the wrong branch.
 fn step0_unclaimed_producer_branches() -> List<Step0CensusProducerBranch> {
   step0_census_producer_branch_roster |> filter(branch =>
     count(step0_calibration_matrix |> filter(row =>
@@ -303,23 +353,6 @@ fn step0_unclaimed_producer_branches() -> List<Step0CensusProducerBranch> {
         == (step0_census_producer_branch_label(branch: branch) as String)
     )) == 0
   )
-}
-
-// AND EVERY FAMILY CLAIMED BY AT LEAST ONE ROW, for the same reason in the other direction: a family
-// added to the contract's roster with no calibration row is a family nobody has ever authored an
-// occurrence of, and the census would report zero for it indistinguishably from absent.
-fn step0_uncalibrated_families() -> List<Step0ReferenceFamily> {
-  step0_reference_family_roster |> filter(family =>
-    count(step0_calibration_matrix |> filter(row =>
-      (step0_occurrence_category_label(category: step0_family_observed_category(family: row.family)) as String)
-        == (step0_occurrence_category_label(category: step0_family_observed_category(family: family)) as String)
-        && step0_reference_family_is(left: row.family, right: family)
-    )) == 0
-  )
-}
-
-fn step0_reference_family_is(left: Step0ReferenceFamily, right: Step0ReferenceFamily) -> Bool {
-  (step0_reference_family_ordinal(family: left)) == (step0_reference_family_ordinal(family: right))
 }
 
 fn step0_reference_family_ordinal(family: Step0ReferenceFamily) -> Int {
@@ -337,22 +370,33 @@ fn step0_reference_family_ordinal(family: Step0ReferenceFamily) -> Int {
   }
 }
 
-// THE CENSUS'S CALIBRATED STANDING, ANSWERED FROM THE WORST FAMILY. A converged set caps the whole
-// claim: the rung of a class is the MINIMUM across its in-scope paths, and a family the instrument
-// cannot separate from another is a path with no discrimination at all. So this fold reports the
-// convergent families and the capability that would separate them, and there is no arm in which a
-// partially converged roster renders as full coverage.
-type Step0CalibrationStanding
-  = CalibrationRosterIncomplete {
-      unclaimed_branches: Int
-      uncalibrated_families: Int
+fn step0_row_claims_family(row: Step0CalibrationRow, family: Step0ReferenceFamily) -> Bool {
+  match row.subject {
+    FamilyOccurrence { family: row_family, topology: _, outcome: _, multiplicity: _ } =>
+      step0_reference_family_ordinal(family: row_family) == step0_reference_family_ordinal(family: family)
+    InstrumentManifestDefect { defect: _ } => false
+    BranchUnauthorableFromSource { missing_harness: _ } => false
+  }
+}
+
+// AND EVERY FAMILY CLAIMED BY AT LEAST ONE ROW, for the same reason in the other direction. A family
+// on the contract's roster with no calibration row is a family nobody has ever authored an
+// occurrence of, and a census would report zero for it indistinguishably from its being absent.
+fn step0_uncalibrated_families() -> List<Step0ReferenceFamily> {
+  step0_reference_family_roster |> filter(family =>
+    count(step0_calibration_matrix |> filter(row => step0_row_claims_family(row: row, family: family))) == 0
+  )
+}
+
+fn step0_unauthorable_branch_count() -> Int {
+  count(step0_calibration_matrix |> filter(row =>
+    match row.subject {
+      BranchUnauthorableFromSource { missing_harness: _ } => true
+      FamilyOccurrence { family: _, topology: _, outcome: _, multiplicity: _ } => false
+      InstrumentManifestDefect { defect: _ } => false
     }
-  | CalibrationCappedByConvergence {
-      converged_family_count: Int
-      discriminated_family_count: Int
-      capability: Step0DiscriminationCapability
-    }
-  | CalibrationDiscriminatesEveryFamily
+  ))
+}
 
 fn step0_converged_families() -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
@@ -363,6 +407,28 @@ fn step0_converged_families() -> List<Step0ReferenceFamily> {
   )
 }
 
+// THE CENSUS'S CALIBRATED STANDING, ANSWERED FROM THE WORST FAMILY AND NEVER FROM A MAJORITY. A
+// class's rung is the MINIMUM across its in-scope paths, and a family the instrument cannot separate
+// from another is a path with no discrimination at all -- so a converged set caps the whole claim
+// until the capability that separates it exists. There is deliberately no arm in which a partially
+// converged roster renders as full coverage, and the unauthorable-branch count rides on every
+// non-refusal arm so a reader is never handed a coverage figure without the branches nothing
+// executed.
+type Step0CalibrationStanding
+  = CalibrationRosterIncomplete {
+      unclaimed_branches: Int
+      uncalibrated_families: Int
+    }
+  | CalibrationCappedByConvergence {
+      converged_family_count: Int
+      discriminated_family_count: Int
+      unauthorable_branch_count: Int
+      capability: Step0DiscriminationCapability
+    }
+  | CalibrationDiscriminatesEveryFamily {
+      unauthorable_branch_count: Int
+    }
+
 fn step0_calibration_standing() -> Step0CalibrationStanding {
   let unclaimed = count(step0_unclaimed_producer_branches())
   let uncalibrated = count(step0_uncalibrated_families())
@@ -371,11 +437,12 @@ fn step0_calibration_standing() -> Step0CalibrationStanding {
     CalibrationRosterIncomplete { unclaimed_branches: unclaimed, uncalibrated_families: uncalibrated }
   } else {
     match first(converged) {
-      Absent => CalibrationDiscriminatesEveryFamily
+      Absent => CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: step0_unauthorable_branch_count() }
       Present { value: worst } => CalibrationCappedByConvergence {
         converged_family_count: count(converged),
         discriminated_family_count: count(step0_reference_family_roster) - count(converged),
-        capability: step0_capability_for_category(category: step0_family_observed_category(family: worst))
+        unauthorable_branch_count: step0_unauthorable_branch_count(),
+        capability: step0_family_discrimination_capability(family: worst)
       }
     }
   }
