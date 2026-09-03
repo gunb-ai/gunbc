@@ -10,11 +10,16 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
-use crate::std_import::ImportStatementParseCause;
+use crate::std_import::ImportStatementParseCause::{
+    ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
+    SourceHasNoModuleDeclaration,
+};
 use crate::std_import::ParsedImportStatements::{
     ImportStatementParseRefused, ImportStatementsParsed,
 };
-pub use crate::std_import::{ParsedImportStatement, ParsedImportStatements};
+pub use crate::std_import::{
+    ImportStatementParseCause, ParsedImportStatement, ParsedImportStatements,
+};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
