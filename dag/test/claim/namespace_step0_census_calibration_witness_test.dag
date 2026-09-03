@@ -26,6 +26,12 @@ import tools.reference_occurrence_binding_census {
   ReferenceOccurrenceBindingRefused,
   reference_occurrence_binding_census
 }
+import gunbc.compile_clean_diagnostic_policy {
+  UnlistedImportBindingSource,
+  ListedImport,
+  PoolCoincidence,
+  DefinerResolvable
+}
 import gunbc.namespace_step0_census_calibration {
   Step0CalibrationStanding,
   CalibrationRosterIncomplete,
@@ -36,7 +42,9 @@ import gunbc.namespace_step0_census_calibration {
   step0_occurrence_category_label,
   step0_unclaimed_producer_branches,
   step0_uncalibrated_families,
-  step0_unit_mapping_disagreements
+  step0_unit_mapping_disagreements,
+  step0_rows_claiming_observed_outcome,
+  step0_rows_with_uncalibrated_outcome
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,9 +58,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // instrument is broken, and the pool is exactly this manifest -- the instrument consults no module
 // index. CalMiddle exists ONLY in pattern position on purpose: CalLeft appears in an expression too,
 // so a control asserting "no row for CalLeft" would be false for the wrong reason.
-data cal_provider: String = "module cal.provider\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalMiddle\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
+data cal_provider: String = "module cal.provider\n\ntype CalOnlyGeneric { z: Int }\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalMiddle\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
 
-data cal_entry: String = "module cal.entry\n\nimport cal.provider { CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+data cal_entry: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
 
 // THE PERTURBED SUBJECT, AND IT IS WHAT TURNS "I FOUND NO ROW" INTO "THERE IS NO ROW". It is the
 // same fixture with CalMiddle removed from the coproduct, from the import list and from the match --
@@ -60,9 +68,39 @@ data cal_entry: String = "module cal.entry\n\nimport cal.provider { CalPayload, 
 // or if a name in an import list did, this subject MUST observe fewer of them than the one above.
 // The two counts are compared by the control below. An absence read off a single run is an
 // observation; an absence that survives a perturbation which had to move it is a control.
-data cal_provider_without_middle: String = "module cal.provider\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
+data cal_provider_without_middle: String = "module cal.provider\n\ntype CalOnlyGeneric { z: Int }\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
 
-data cal_entry_without_middle: String = "module cal.entry\n\nimport cal.provider { CalPayload, CalChoice, CalLeft, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+data cal_entry_without_middle: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+data cal_entry_reordered_imports: String = "module cal.entry\n\nimport cal.provider { cal_called, cal_top_value, CalRight, CalMiddle, CalLeft, CalChoice, CalPayload, CalOnlyGeneric }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+data cal_entry_renamed_binder: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(scrutinee: CalChoice) -> Int {\n  match scrutinee {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+data cal_entry_reordered_declarations: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalHolder { field: CalPayload }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+fn cal_rows_of(entry_source: String) -> List<ReferenceOccurrenceBindingRow> {
+  match reference_occurrence_binding_census(
+    sources: [fixture_source("cal/provider.dag", cal_provider), fixture_source("cal/entry.dag", entry_source)],
+    entry: "cal/entry.dag" as NonEmptyStr
+  ) {
+    ReferenceOccurrenceBindingCensusRefused { cause: _ } => []
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: _, observations: observations } => observations
+  }
+}
+
+fn cal_rows_named_of(entry_source: String, spelling: String) -> Int {
+  count(cal_rows_of(entry_source: entry_source) |> filter(row => row.authored_name == spelling))
+}
+
+fn cal_denominator_size_of(entry_source: String) -> Int {
+  match reference_occurrence_binding_census(
+    sources: [fixture_source("cal/provider.dag", cal_provider), fixture_source("cal/entry.dag", entry_source)],
+    entry: "cal/entry.dag" as NonEmptyStr
+  ) {
+    ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
+  }
+}
 
 fn cal_manifest_without_middle() -> List<FixtureSource> {
   [
@@ -114,10 +152,28 @@ fn cal_rows_named_in_category(spelling: String, category: OccurrenceCategory) ->
   )
 }
 
+fn cal_binding_source_label(source: UnlistedImportBindingSource) -> String {
+  match source {
+    ListedImport => "listed-import"
+    PoolCoincidence => "pool-coincidence"
+    DefinerResolvable => "definer-resolvable"
+  }
+}
+
+fn cal_binding_source_of(disposition: ReferenceOccurrenceBindingDisposition) -> String {
+  match disposition {
+    ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: _, binding_source: source } =>
+      cal_binding_source_label(source: source)
+    ReferenceOccurrenceUnresolved => "none"
+    ReferenceOccurrenceAmbiguous { candidates: _ } => "none"
+    ReferenceOccurrenceBindingRefused { cause: _ } => "none"
+  }
+}
+
 fn cal_disposition_label(disposition: ReferenceOccurrenceBindingDisposition) -> String {
   match disposition {
-    ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: provider, binding_source: _ } =>
-      concat("bound:", provider as String)
+    ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: provider, binding_source: source } =>
+      concat("bound:", concat(provider as String, concat(":", cal_binding_source_label(source: source))))
     ReferenceOccurrenceUnresolved => "unresolved"
     ReferenceOccurrenceAmbiguous { candidates: _ } => "ambiguous"
     ReferenceOccurrenceBindingRefused { cause: _ } => "refused"
@@ -246,7 +302,7 @@ test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Boo
       discriminated_family_count: discriminated,
       unauthorable_branch_count: unauthorable,
       denominator_defect_count: defects
-    } => unobserved == 2 && converged == 6 && discriminated == 2 && unauthorable == 2 && defects == 4
+    } => unobserved == 3 && converged == 4 && discriminated == 3 && unauthorable == 2 && defects == 5
     CalibrationCappedByConvergence { converged_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, capability: _ } => false
     CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _ } => false
     CalibrationRosterIncomplete { unclaimed_branches: _, uncalibrated_families: _ } => false
@@ -269,4 +325,124 @@ test fn removing_a_variant_entirely_does_not_change_the_occurrence_count() -> Bo
 // to at least one. Without this join they are a meaning fork waiting to drift.
 test fn the_observation_table_and_the_unit_mapping_agree() -> Bool {
   count(step0_unit_mapping_disagreements()) == 0
+}
+
+// CONTROL 13, FILED BY REVIEW 59402 AND WIDENED BY MEASURING RATHER THAN READING. The matrix claimed
+// QualifiedContainmentReference calibrates the definer-resolvable branch. It cannot: the instrument
+// selects that branch only for an authored spelling carrying a dot, and control 7 already
+// established that `CalChoice.CalLeft` reaches the census as TWO occurrences, `CalChoice` and
+// `CalLeft`, neither of which carries one. So the branch is unreachable from this subject and the
+// row's outcome column was unfalsifiable. This control checks the disposition the pair ACTUALLY
+// carries, which is the check whose absence let the wrong claim stand.
+test fn the_qualified_pair_carries_no_definer_resolvable_disposition() -> Bool {
+  count(cal_observations() |> filter(row => cal_disposition_label(disposition: row.disposition) == "unresolved"
+    && (row.authored_name == "CalChoice" || row.authored_name == "CalLeft"))) > 0
+    && count(cal_observations() |> filter(row =>
+        cal_binding_source_of(disposition: row.disposition) == "definer-resolvable")) == 0
+}
+
+// CONTROL 14, THE GENERAL FORM OF CONTROL 13, so the next overstated row goes red without a reviewer
+// finding it. Every row whose outcome column claims a disposition must claim a branch the fixture
+// run actually exercises. The fixture exercises the pool-coincidence and unresolved branches and no
+// other, which is why only three of the seventeen family rows carry an observed outcome.
+test fn every_observed_outcome_claims_a_branch_the_run_exercises() -> Bool {
+  count(step0_rows_claiming_observed_outcome()) == 3
+    && count(step0_rows_with_uncalibrated_outcome()) == 14
+    && count(cal_observations() |> filter(row =>
+        cal_binding_source_of(disposition: row.disposition) == "pool-coincidence")) > 0
+    && count(cal_observations() |> filter(row =>
+        cal_disposition_label(disposition: row.disposition) == "unresolved")) > 0
+    && count(cal_observations() |> filter(row =>
+        cal_binding_source_of(disposition: row.disposition) == "listed-import")) == 0
+    && count(cal_observations() |> filter(row =>
+        cal_disposition_label(disposition: row.disposition) == "ambiguous")) == 0
+}
+
+// CONTROL 15, AND THE SPELLING IT USES IS THE WHOLE POINT. A generic ARGUMENT produces no reference
+// occurrence; the generic HEAD produces one. `CalLocalArg` is declared in the CONSUMER module and
+// appears in exactly one authored position, inside `List<CalLocalArg>` -- so it is in no import list,
+// no annotation, and no pattern, and nothing in the subject can stand in for it in either direction.
+//
+// An earlier version of this control used `CalOnlyGeneric`, which is IMPORTED, and it reported the
+// opposite. That row was the import list, not the argument (control 16). The `List` count is the
+// other half: the head is admitted from the same declaration, so the zero is the argument position
+// and not a declaration the walk skipped.
+test fn a_generic_type_argument_produces_no_occurrence() -> Bool {
+  count(cal_rows_named(spelling: "CalLocalArg")) == 0
+    && count(cal_rows_named_in_category(spelling: "List", category: TypeOccurrence)) > 0
+}
+
+// CONTROL 16, A FABRICATED ROW, AND THE SECOND ONE THIS SUBJECT CARRIES. The FIRST name in an import
+// list is emitted as a reference occurrence; every later name in the same list carries no role. An
+// import-list entry is not a use site, so the row refers to nothing. Control 5 records a second row
+// that refers to nothing, the named-argument label. Whether the two share a cause is NOT asserted
+// here: a common-cause story would have to come from the rule the walk actually applies, and until
+// that rule is written and discriminated, collapsing them would hide the possibility that one is
+// positional and the other is about construct kind -- which are different repairs.
+//
+// It is checked by PERTURBATION rather than by reading one listing, because a claim about list
+// POSITION cannot be established from a single arrangement. `CalOnlyGeneric` was authored at the
+// head of the entry's import list, ahead of `CalPayload`, which used to hold that position. The
+// admitted row moved with the position: `CalOnlyGeneric` gained one and `CalPayload` lost the one it
+// had, while neither name's authored USES changed at all. Both counts are nonzero somewhere in the
+// subject, so this is not two silences agreeing.
+test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
+  count(cal_rows_named_in_category(spelling: "CalOnlyGeneric", category: TypeOccurrence)) == 1
+    && count(cal_rows_named(spelling: "CalLocalArg")) == 0
+    && count(cal_rows_named(spelling: "CalMiddle")) == 0
+}
+
+// ---------------------------------------------------------------------------
+// THE METAMORPHIC INVARIANTS. Each changes something that MUST NOT MATTER and asserts the
+// measurement does not move. They need no oracle: nobody has to know the right denominator, only
+// that it cannot depend on this. That makes them stronger than any fixture whose expected numbers
+// were authored by the same person who authored the instrument's reading, and it is how control 16's
+// fabrication was found rather than reasoned about.
+
+// INVARIANT A -- AND IT DOES NOT HOLD, WHICH IS WHY IT IS ASSERTED IN ITS BROKEN FORM. Reordering an
+// import list is meaning-preserving, so nothing the census reports may move. What moves is not the
+// SIZE of the denominator -- that is unchanged, which is exactly why a count-only invariant would
+// have missed this and why the property is stated over IDENTITY. What moves is WHICH name holds the
+// row: the head of the list is emitted as a reference and the rest are not, so putting a different
+// name first hands the row to that name and takes it from the one that had it. No authored use
+// changed in either arrangement.
+//
+// Asserting the invariant here would put a permanent red in CI, which reports nothing the defect
+// roster does not already carry. Asserting the DEFECT keeps the property executing and makes the
+// repair visible: this control goes red the day the fabrication is fixed, and is then INVERTED to
+// the invariant it was always meant to be. That inversion is its dissolution condition, and it is
+// the DESIGN 4b(4) rule that a discriminating RED stays enrolled rather than retiring on the climb.
+test fn reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_defect() -> Bool {
+  cal_rows_named_of(entry_source: cal_entry, spelling: "CalOnlyGeneric") == 1
+    && cal_rows_named_of(entry_source: cal_entry_reordered_imports, spelling: "CalOnlyGeneric") == 0
+    && cal_rows_named_of(entry_source: cal_entry_reordered_imports, spelling: "cal_called")
+         > cal_rows_named_of(entry_source: cal_entry, spelling: "cal_called")
+    && cal_denominator_size_of(entry_source: cal_entry_reordered_imports) == cal_denominator_size()
+}
+
+// INVARIANT B. Renaming a binder consistently -- the parameter and every use of it -- is
+// meaning-preserving, so the denominator must not move.
+test fn renaming_a_binder_consistently_does_not_move_the_denominator() -> Bool {
+  cal_denominator_size_of(entry_source: cal_entry_renamed_binder) == cal_denominator_size()
+    && cal_denominator_size() > 0
+}
+
+// INVARIANT C. Swapping two independent declarations is meaning-preserving, so the denominator must
+// not move. This is the one that would catch an ordinal or a running counter leaking into identity.
+test fn reordering_independent_declarations_does_not_move_the_denominator() -> Bool {
+  cal_denominator_size_of(entry_source: cal_entry_reordered_declarations) == cal_denominator_size()
+    && cal_denominator_size() > 0
+}
+
+// INVARIANT D, STATED WITHOUT AN ORACLE ON PURPOSE. Adding a declaration nothing refers to must not
+// change what is observed about the names already there. Asserting the delta equals "its own
+// occurrences" would need a second count of the added thing, authored by hand -- the same
+// transcribed literal DESIGN section 5 refuses -- so this asserts the part that needs no number:
+// the untouched spellings keep exactly the rows they had. `CalLocalArg` and `CalLocalBox` were added
+// to this fixture partway through and are referred to by nothing outside their own declarations.
+test fn adding_an_unreferenced_declaration_does_not_disturb_the_other_spellings() -> Bool {
+  count(cal_rows_named_in_category(spelling: "CalPayload", category: TypeOccurrence)) == 1
+    && count(cal_rows_named_in_category(spelling: "cal_called", category: CallableOccurrence)) == 1
+    && count(cal_rows_named_in_category(spelling: "cal_called", category: LexicalValueOccurrence)) == 1
+    && count(cal_rows_named(spelling: "CalLocalArg")) == 0
 }

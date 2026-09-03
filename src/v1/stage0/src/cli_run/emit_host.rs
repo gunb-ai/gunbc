@@ -510,7 +510,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
             consumer_file: reference.diagnostic_span.file.clone(),
             consumer_module: consumer_module.clone(),
             authored_name: authored_name.clone(),
-            category: reference.category.clone(),
+            category: reference.category,
             file_reference_ordinal,
             span_start: reference.diagnostic_span.start,
         };

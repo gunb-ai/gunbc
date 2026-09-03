@@ -169,10 +169,37 @@ type Step0FamilyObservation
   = FamilyObservedAsCategory { category: OccurrenceCategory }
   | FamilyEmitsNoOccurrence { detail: NonEmptyStr }
 
+// THE FIXTURE LAW, AND IT COST TWO WRONG CLAIMS OF MINE TO STATE CORRECTLY. A CALIBRATION FIXTURE
+// MUST USE A SPELLING NOTHING ELSE IN THE SUBJECT CAN STAND IN FOR, WHEREVER A ROW SPEAKS ABOUT A
+// FAMILY. Where two families share a spelling, an occurrence of the first stands in for the second
+// and no count can tell them apart -- the contract's law 4, pre and post identity may not be joined
+// by spelling, turned inward on the calibration subject, which is the one place this lane was not
+// watching for it.
+//
+// The episode is recorded because a shorter statement of the law would not have caught it. Reading a
+// listing, I judged that a generic argument produces no occurrence and that this table's row for it
+// had survived by laundering off the field annotation two lines above; I authored the retraction.
+// The control the law demands used `CalOnlyGeneric`, a DISTINCT spelling in exactly one authored
+// argument position -- and it went RED, a census row existed, so I withdrew the retraction. Then the
+// entries probe showed where that row came from: the argument position carries no role, and the
+// admitted occurrence was the IMPORT LIST at the foot of the file. A distinct spelling was necessary
+// and NOT SUFFICIENT, because an import list re-mentions every imported name and its head is
+// fabricated as a reference. `CalLocalArg` -- declared in the consumer module, used in exactly one
+// argument position, absent from every import list -- produces no row, and the retraction stands.
+//
+// So the law is: unique in spelling AND free of every construct that re-mentions a name. Two claims
+// of mine were wrong in opposite directions before that second clause was written down, and each was
+// caught by executing a control rather than by reading more carefully.
+//
+// The residue the law cannot repair in this subject is NullaryConstructorReference against
+// VariantExpressionReference: both are `CalLeft` AND both stamp LexicalValueOccurrence, so nothing
+// here distinguishes them. That is recorded as a convergence, not as two observations.
 fn step0_family_observation(family: Step0ReferenceFamily) -> Step0FamilyObservation {
   match family {
     TypeAnnotationReference => FamilyObservedAsCategory { category: TypeOccurrence }
-    GenericTypeArgumentReference => FamilyObservedAsCategory { category: TypeOccurrence }
+    GenericTypeArgumentReference => FamilyEmitsNoOccurrence {
+      detail: "a type named as a GENERIC ARGUMENT produces no reference occurrence; the generic HEAD produces one, so `List<CalLocalArg>` yields a row for List and none for the argument. Established with a spelling declared in the CONSUMER module and used in exactly one position, because a spelling that is IMPORTED cannot answer this question -- see the import-list defect below" as NonEmptyStr
+    }
     TopLevelValueReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
     FunctionValueReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
     OrdinaryCallReference => FamilyObservedAsCategory { category: CallableOccurrence }
@@ -265,7 +292,7 @@ data step0_census_declared_unit: Step0CensusUnit = ReferenceOccurrenceUnit
 fn step0_occurrences_per_authored_reference(family: Step0ReferenceFamily) -> Int {
   match family {
     TypeAnnotationReference => 1
-    GenericTypeArgumentReference => 1
+    GenericTypeArgumentReference => 0
     TopLevelValueReference => 1
     FunctionValueReference => 1
     OrdinaryCallReference => 1
@@ -321,6 +348,9 @@ data step0_denominator_defects: List<Step0DenominatorDefect> = [
   DenominatorOmitsFamily { family: VariantPatternReference },
   DenominatorAdmitsNonReference {
     detail: "the label of a named argument is emitted as a reference occurrence carrying the label's spelling and stamped CallableOccurrence; it names a parameter of the callee rather than referring to any declaration" as NonEmptyStr
+  },
+  DenominatorAdmitsNonReference {
+    detail: "the FIRST name in an import list is emitted as a reference occurrence while every later name in the same list carries no role at all; an import-list entry names a binding to introduce rather than referring to a declaration from a use site, so the row is fabricated -- and its position-dependence means the same authored name is admitted or dropped according to where the author happened to put it in the list" as NonEmptyStr
   },
   DenominatorSplitsOneAuthoredReference {
     family: QualifiedContainmentReference,
@@ -397,11 +427,26 @@ fn step0_manifest_defect_label(defect: Step0ManifestDefect) -> NonEmptyStr {
   }
 }
 
+// THE OUTCOME AXIS IS A CLAIM, NOT AN ASSERTION, and it was an assertion until review 59402 caught
+// it. A row's outcome column names a semantic disposition; nothing joined that column to a
+// disposition the instrument actually produced, so the matrix asserted bindings on a subject whose
+// run produces two bound observations and twenty-four unresolved ones. An unfalsifiable column is
+// rung inflation (DESIGN section 4b) in the very module whose job is to detect it.
+//
+// So a row may claim OutcomeObservedOnSubject only when its claimed branch IS the disposition
+// branch that outcome names AND the fixture run exercises that branch -- checked by execution in
+// namespace_step0_census_calibration_witness, not promised here. Every other row says so, and the
+// reason it says is the reason that branch is unreachable FROM THIS SUBJECT, never a claim about
+// the compiler.
+type Step0OutcomeClaim
+  = OutcomeObservedOnSubject { outcome: Step0CalibrationOutcome }
+  | OutcomeUnexercisedOnSubject { detail: NonEmptyStr }
+
 type Step0CalibrationSubject
   = FamilyOccurrence {
       family: Step0ReferenceFamily
       topology: Step0BindingTopology
-      outcome: Step0CalibrationOutcome
+      outcome: Step0OutcomeClaim
       multiplicity: Step0OccurrenceMultiplicity
     }
   | InstrumentManifestDefect { defect: Step0ManifestDefect }
@@ -417,23 +462,23 @@ type Step0CalibrationRow {
 // does not mean unrevisable: a row the witness proves wrong is corrected, and that correction is the
 // finding rather than a maintenance chore.
 data step0_calibration_matrix: List<Step0CalibrationRow> = [
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: GenericTypeArgumentReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: FunctionValueReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: NullaryConstructorReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: PayloadConstructorReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantExpressionReference, topology: GloballyUniqueSpelling, outcome: CalibratedBoundListedImport, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantPatternReference, topology: ShadowedByPatternBinder, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: QualifiedContainmentReference, topology: ResolvedThroughContainment, outcome: CalibratedBoundDefinerResolvable, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundDefinerResolvable },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: PoolUniqueOnly, outcome: CalibratedBoundPoolCoincidence, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: SameCategoryHomonymInTwoModules, outcome: CalibratedAmbiguous, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDispositionAmbiguous },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: DeclaredInSameModule, outcome: CalibratedBoundPoolCoincidence, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByParameter, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByLet, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: CrossCategoryHomonym, outcome: CalibratedBoundListedImport, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: CalibratedUnresolved, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionUnresolved },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "every bound observation in this fixture resolves through the pool rather than through the consumer import list, so the listed-import branch is unreachable from this subject" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundListedImport },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: GenericTypeArgumentReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: FunctionValueReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "every bound observation in this fixture resolves through the pool rather than through the consumer import list, so the listed-import branch is unreachable from this subject" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDispositionBoundListedImport },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: NullaryConstructorReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: PayloadConstructorReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantExpressionReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantPatternReference, topology: ShadowedByPatternBinder, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: QualifiedContainmentReference, topology: ResolvedThroughContainment, outcome: OutcomeUnexercisedOnSubject { detail: "the qualified pair CalChoice.CalLeft is split into two occurrences and neither authored spelling carries a dot, so the definer-resolvable branch this row named is unreachable from this subject (review 59402)" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundDefinerResolvable },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: PoolUniqueOnly, outcome: OutcomeObservedOnSubject { outcome: CalibratedBoundPoolCoincidence }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: SameCategoryHomonymInTwoModules, outcome: OutcomeUnexercisedOnSubject { detail: "no two modules in this fixture declare the same spelling in the same category, so the ambiguous branch is unreachable from this subject" as NonEmptyStr }, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDispositionAmbiguous },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: DeclaredInSameModule, outcome: OutcomeObservedOnSubject { outcome: CalibratedBoundPoolCoincidence }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByParameter, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByLet, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: CrossCategoryHomonym, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: OutcomeObservedOnSubject { outcome: CalibratedUnresolved }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionUnresolved },
   Step0CalibrationRow { subject: InstrumentManifestDefect { defect: RaggedManifest }, claimed_branch: BranchCensusRefusedRaggedManifest },
   Step0CalibrationRow { subject: InstrumentManifestDefect { defect: RepeatedSourcePath }, claimed_branch: BranchCensusRefusedNonUniquePath },
   Step0CalibrationRow { subject: InstrumentManifestDefect { defect: EntryNamesNoSuppliedSource }, claimed_branch: BranchCensusRefusedEntryNamesNoSuppliedSource },
@@ -495,6 +540,42 @@ fn step0_row_claims_family(row: Step0CalibrationRow, family: Step0ReferenceFamil
 fn step0_uncalibrated_families() -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
     count(step0_calibration_matrix |> filter(row => step0_row_claims_family(row: row, family: family))) == 0
+  )
+}
+
+// THE ROWS WHOSE OUTCOME COLUMN IS LOAD-BEARING, so the witness can check exactly those against the
+// run and nothing else.  A row in the other arm claims the denominator branch and no disposition, so
+// asserting a disposition for it would be inventing the very claim review 59402 removed.
+fn step0_row_outcome_is_observed(row: Step0CalibrationRow) -> Bool {
+  match row.subject {
+    FamilyOccurrence { family: _, topology: _, outcome: outcome, multiplicity: _ } =>
+      match outcome {
+        OutcomeObservedOnSubject { outcome: _ } => true
+        OutcomeUnexercisedOnSubject { detail: _ } => false
+      }
+    InstrumentManifestDefect { defect: _ } => false
+    BranchUnauthorableFromSource { missing_harness: _ } => false
+  }
+}
+
+fn step0_rows_claiming_observed_outcome() -> List<Step0CalibrationRow> {
+  step0_calibration_matrix |> filter(row => step0_row_outcome_is_observed(row: row))
+}
+
+// AND THE ROWS WHOSE OUTCOME COLUMN IS UNCALIBRATED ON THIS SUBJECT. A nonempty answer is the honest
+// state, not a defect to drive to zero by authoring claims: driving it to zero requires FIXTURES that
+// reach the unreached branches, and the census's rung is the MINIMUM across its families either way.
+fn step0_rows_with_uncalibrated_outcome() -> List<Step0CalibrationRow> {
+  step0_calibration_matrix |> filter(row =>
+    match row.subject {
+      FamilyOccurrence { family: _, topology: _, outcome: outcome, multiplicity: _ } =>
+        match outcome {
+          OutcomeObservedOnSubject { outcome: _ } => false
+          OutcomeUnexercisedOnSubject { detail: _ } => true
+        }
+      InstrumentManifestDefect { defect: _ } => false
+      BranchUnauthorableFromSource { missing_harness: _ } => false
+    }
   )
 }
 
