@@ -24,6 +24,7 @@ import extdeps.vllm.server {
   GroupAwareStartupLog,
   CacheConfigBlockFields,
   VllmCapacitySourceDecision,
+  VllmCapacitySourceAssessment,
   CapacitySourceAuthoritative,
   CapacitySourceInsufficient,
   decide_vllm_capacity_source_kind,
@@ -37,8 +38,9 @@ import extdeps.vllm.server {
 // what the readback is NOT sufficient to claim.
 //
 // THE OBSERVATION IS HISTORICAL, AND THAT IS A PROPERTY OF THE SUBJECT. The front door answered on
-// 2026-09-03 and had stopped answering within the hour. This is a receipt about one acquisition, not
-// a description of a service, and nothing here may be read as "what is running".
+// 2026-09-03 and had stopped answering within the hour. This is a bundle of route-local observations
+// associated with one front-door investigation -- NOT one acquisition and not one identified
+// incarnation -- and nothing here may be read as "what is running".
 
 // FIELDS ARE GROUPED BY THE ROUTE THEY CAME FROM, WHICH IS NOT TIDINESS -- IT IS A CORRECTION.
 //
@@ -96,8 +98,19 @@ fn vllm_self_reported_version(version_string: NonEmptyStr) -> VllmSelfReportedVe
   VllmSelfReportedVersion { version_string: version_string }
 }
 
+// AND IT LIVES UNDER THE ROUTE THAT REPORTED IT, EXACTLY ONCE.
+//
+// A previous shape put the version in two places: the scope derived a `reported_version` from a
+// version route, and the bundle then accepted another independently constructed version route. Those
+// two could disagree -- scope says A, route says B -- with no construction preventing it, which is
+// one concept in two independently authored representations.
+//
+// The deeper reason is the bundle's own ceiling. `/version` is a ROUTE-LOCAL observation, and this
+// bundle expressly does not establish a cross-route join, so promoting what one route said into
+// common scope for the models route, the metrics gauge and the evidence observations would be
+// asserting exactly the join the row refuses to claim.
 type VllmVersionRouteReadback sole_constructor {
-  server_version: NonEmptyStr
+  reported_version: VllmSelfReportedVersion
 }
 
 // UTILIZATION IS A DIMENSIONLESS RATIO IN BASIS POINTS, not "0.86". Percent would have to round a
@@ -135,14 +148,13 @@ type VllmCacheConfigGaugeReadback sole_constructor {
 type VllmHistoricalFrontDoorScope sole_constructor {
   front_door_host: HostIdentity
   observed_on: NonEmptyStr
-  reported_version: VllmSelfReportedVersion
 }
 
 type VllmCrossRouteAcquisitionJoin
   = CrossRouteAcquisitionJoinUnestablished { cause: NonEmptyStr }
 
 // THE REFUSAL IS NOT A VERDICT, AND MODELLING IT AS ONE WOULD BE THE LIE. A verdict type implies a
-// reachable admission arm; this readback has none, so the transaction carries a refusal outright.
+// reachable admission arm; this readback has none, so the bundle carries a refusal outright.
 //
 // THE STAGE MATTERS AND IS WHY THIS IS A COPRODUCT. The population question is downstream of the
 // configuration question: you cannot ask whether every expected rank is present until you know how
@@ -171,13 +183,16 @@ type VllmEvidenceRouteOutcome sole_constructor {
   response: VllmEvidenceRouteResponse
 }
 
-// THE TRANSACTION IS WHY THESE CANNOT DISAGREE.
+// THE REFUSAL HOST IS DERIVED FROM THE SCOPE, WHICH IS THE ONE THING THIS CONSTRUCTOR DOES BIND.
 //
-// Previously the readback and the refusal were separate rows that each named a host, so the host in
-// one could be edited to srv5 while the other still said srv6 and every witness stayed green. The
-// refusal is now DERIVED from the acquisition inside the constructor, so a divergent pair has no
-// constructor at all -- construction over validation, rather than a witness that checks two rows
-// agree.
+// Previously the readback and the refusal were separate rows that each named a host, so one could be
+// edited to srv5 while the other still said srv6 and every witness stayed green. The refusal host is
+// now derived from the scope inside the constructor, so a divergent pair has no constructor at all.
+//
+// THAT IS THE LIMIT OF WHAT IS BOUND, AND THE TYPE SAYS SO. The route-local observations below are
+// independently retained facts handed to this constructor, and it does NOT establish that they came
+// from one read -- it stamps that their cross-route join was not retained. A constructor cannot
+// recover a binding the observation never captured.
 type VllmHistoricalReadbackBundle sole_constructor {
   scope: VllmHistoricalFrontDoorScope
   models_route: VllmModelsRouteReadback
@@ -224,19 +239,18 @@ fn vllm_historical_readback_bundle(
   }
 }
 
-// SMART CONSTRUCTORS, because sole_constructor keeps the record literal inside this module. That is
-// the annotation doing its job: every one of these shapes is reachable from outside only through a
-// named function here, so a caller cannot assemble a readback whose parts came from different reads.
+// SMART CONSTRUCTORS, because sole_constructor keeps the record literal inside this module, so every
+// shape is reachable from outside only through a named function here.
+//
+// It does NOT follow that a caller cannot assemble parts from different reads -- an earlier version of
+// this comment claimed exactly that, and it was the sentence standing where the missing binding was.
+// sole_constructor stops an external record literal; it does not join values supplied separately.
+// That is why the bundle stamps its join as unestablished rather than asserting one.
 fn vllm_historical_front_door_scope(
   front_door_host: HostIdentity,
   observed_on: NonEmptyStr,
-  version_route: VllmVersionRouteReadback,
 ) -> VllmHistoricalFrontDoorScope {
-  VllmHistoricalFrontDoorScope {
-    front_door_host: front_door_host,
-    observed_on: observed_on,
-    reported_version: vllm_self_reported_version(version_string: version_route.server_version),
-  }
+  VllmHistoricalFrontDoorScope { front_door_host: front_door_host, observed_on: observed_on }
 }
 
 fn vllm_models_route_readback(
@@ -252,7 +266,7 @@ fn vllm_models_route_readback(
 }
 
 fn vllm_version_route_readback(server_version: NonEmptyStr) -> VllmVersionRouteReadback {
-  VllmVersionRouteReadback { server_version: server_version }
+  VllmVersionRouteReadback { reported_version: vllm_self_reported_version(version_string: server_version) }
 }
 
 fn vllm_cache_config_gauge_readback(
@@ -300,8 +314,7 @@ data vllm_version_route_2026_09_03: VllmVersionRouteReadback = vllm_version_rout
 
 data vllm_front_door_scope_2026_09_03: VllmHistoricalFrontDoorScope = vllm_historical_front_door_scope(
   front_door_host: operator_host_srv6,
-  observed_on: "2026-09-03" as NonEmptyStr,
-  version_route: vllm_version_route_2026_09_03)
+  observed_on: "2026-09-03" as NonEmptyStr)
 
 data vllm_readback_2026_09_03: VllmHistoricalReadbackBundle = vllm_historical_readback_bundle(
   scope: vllm_front_door_scope_2026_09_03,
@@ -331,7 +344,7 @@ data vllm_readback_2026_09_03: VllmHistoricalReadbackBundle = vllm_historical_re
 //
 // The two numbers are real observations and are omitted anyway: a block count sitting in a
 // serving-capacity carrier will be multiplied again by the next person who finds it.
-fn vllm_capacity_from_cache_config_fields() -> VllmCapacitySourceDecision {
+fn vllm_capacity_from_cache_config_fields() -> VllmCapacitySourceAssessment {
   decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields)
 }
 

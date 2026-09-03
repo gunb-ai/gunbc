@@ -61,6 +61,9 @@ import extdeps.vllm.server {
   GroupAwareStartupLog,
   CacheConfigBlockFields,
   VllmCapacitySourceDecision,
+  VllmCapacitySourceAssessment,
+  VllmSourceRevision,
+  vllm_source_revision_read,
   CapacitySourceAuthoritative,
   CapacitySourceInsufficient,
   decide_vllm_capacity_source_kind,
@@ -75,9 +78,7 @@ data w_fixture_host: HostIdentity = "w-vllm-front-door" as HostIdentity
 
 fn w_scope(host: HostIdentity) -> VllmHistoricalFrontDoorScope {
   vllm_historical_front_door_scope(
-    front_door_host: host,
-    observed_on: "w-fixture-date" as NonEmptyStr,
-    version_route: vllm_version_route_readback(server_version: "w-fixture-build" as NonEmptyStr))
+    front_door_host: host, observed_on: "w-fixture-date" as NonEmptyStr)
 }
 
 fn w_models_route() -> VllmModelsRouteReadback {
@@ -113,10 +114,14 @@ fn w_bundle(host: HostIdentity, response: VllmEvidenceRouteResponse) -> VllmHist
 // ── THE BINDING, WHICH IS THE DEFECT THIS REWORK EXISTS TO CLOSE ────────────────────────────────
 //
 // The refusal used to be a separate row that named its own host, so the readback could say srv5
-// while the refusal said srv6 and every witness stayed green. The constructor now derives it. This
-// drives the constructor with two DIFFERENT hosts and asserts the refusal followed each -- which is
-// a claim about the derivation, not about either row.
-test fn w_the_refusal_host_is_derived_from_the_acquisition_it_belongs_to() -> Bool {
+// while the refusal said srv6 and every witness stayed green. The constructor now derives it from the
+// historical scope. This drives the constructor with two DIFFERENT hosts and asserts the refusal
+// followed each -- a claim about the derivation, not about either row.
+//
+// It is also the LIMIT of what the constructor binds: the route-local observations are independently
+// retained facts, and the bundle stamps that their cross-route join was not captured rather than
+// pretending this derivation established one.
+test fn w_the_refusal_host_is_derived_from_the_historical_scope_it_belongs_to() -> Bool {
   w_bundle(host: w_fixture_host, response: w_not_served()).realization.front_door_host as String
     == w_fixture_host as String
   && w_bundle(host: operator_host_srv5, response: w_not_served()).realization.front_door_host as String
@@ -178,7 +183,7 @@ test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
 // here has a capacity capture, so the law says which KIND of source would be authoritative and stops
 // there. Both directions execute.
 test fn w_cache_config_block_fields_are_insufficient_as_a_capacity_source() -> Bool {
-  match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields) {
+  match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields).decision {
     CapacitySourceInsufficient { cause: c } => contains(c, "not a generally sufficient")
     CapacitySourceAuthoritative => false
   }
@@ -189,7 +194,7 @@ test fn w_cache_config_block_fields_are_insufficient_as_a_capacity_source() -> B
 // GROUPS, while num_blocks is separately reduced across WORKERS. The product joins values from
 // different axes, which is why it is not capacity even when it happens to coincide with it.
 test fn w_the_capacity_refusal_does_not_conflate_groups_with_ranks() -> Bool {
-  match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields) {
+  match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields).decision {
     CapacitySourceInsufficient { cause: c } =>
       contains(c, "MINIMUM ACROSS RESOLVED CACHE GROUPS") && contains(c, "ACROSS WORKERS")
     CapacitySourceAuthoritative => false
@@ -197,7 +202,7 @@ test fn w_the_capacity_refusal_does_not_conflate_groups_with_ranks() -> Bool {
 }
 
 test fn w_the_group_aware_startup_log_is_the_authoritative_source_kind() -> Bool {
-  match decide_vllm_capacity_source_kind(kind: GroupAwareStartupLog) {
+  match decide_vllm_capacity_source_kind(kind: GroupAwareStartupLog).decision {
     CapacitySourceAuthoritative => true
     CapacitySourceInsufficient { cause: _ } => false
   }
@@ -205,10 +210,24 @@ test fn w_the_group_aware_startup_log_is_the_authoritative_source_kind() -> Bool
 
 // AND THE OBSERVATION MODULE ACTUALLY CONSULTS THAT LAW rather than restating it.
 test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool {
-  match vllm_capacity_from_cache_config_fields() {
+  match vllm_capacity_from_cache_config_fields().decision {
     CapacitySourceInsufficient { cause: _ } => true
     CapacitySourceAuthoritative => false
   }
+}
+
+// AND THE RULING CANNOT BE RECEIVED WITHOUT THE REVISION THAT BOUNDS IT.
+//
+// The route population and the health fact each carried `established_against` while the capacity
+// ruling did not, so a consumer could hold "cache-config fields are insufficient" with nothing
+// saying which source that was read from -- and the revision row could drift while these witnesses
+// stayed green. This consumes the exact full revision from the returned assessment, so a drift is a
+// red here rather than a silent re-scoping.
+test fn w_the_capacity_assessment_carries_the_exact_source_revision() -> Bool {
+  decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields).established_against.full_revision as String
+    == "1967a5627bc3710b680bbec24ecb99aaddedf22b"
+    && vllm_capacity_from_cache_config_fields().established_against.full_revision as String
+         == vllm_source_revision_read.full_revision as String
 }
 
 // ── THE UPSTREAM FACTS THAT HAD NO WITNESS AT ALL ───────────────────────────────────────────────
@@ -236,10 +255,15 @@ test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bo
 
 // ── THE PRODUCTION ROW, PINNED ONCE ─────────────────────────────────────────────────────────────
 //
-// The id advertises a quantisation the configured path contradicts. This is the one claim that reads
-// the production row, because the disagreement IS the observation -- and it is asserted as a
-// disagreement so a later edit that tidies the id to match the path cannot quietly erase the
-// evidence that an alias can lie.
+// The served alias carries a quantisation token that is NOT DERIVABLE from the configured path.
+// This is the one claim that reads the production row, because the non-derivability IS the
+// observation -- pinned so a later edit that tidies the id to match the path cannot quietly erase the
+// evidence that the alias is not artifact identity.
+//
+// It deliberately does NOT assert a contradiction. A served-model name is allowed to be arbitrary and
+// a directory name does not establish what its contents are quantised to, so "the path disagrees"
+// would be a stronger claim than anything observed -- the same overreach this module already
+// retracted once about the weights.
 test fn w_the_served_id_is_not_derivable_from_the_configured_path() -> Bool {
   vllm_served_id_is_not_derivable_from_configured_path(
     readback: vllm_readback_2026_09_03.models_route)

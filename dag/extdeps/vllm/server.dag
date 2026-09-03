@@ -257,7 +257,27 @@ type VllmCapacitySourceDecision
   = CapacitySourceAuthoritative
   | CapacitySourceInsufficient { cause: String }
 
-fn decide_vllm_capacity_source_kind(kind: VllmCapacitySourceKind) -> VllmCapacitySourceDecision {
+// THE ASSESSMENT CARRIES THE REVISION THAT BOUNDS IT, like every other law in this module.
+//
+// The route population and the executor-health fact each carry `established_against`, and the
+// capacity ruling did not -- so a consumer could receive "cache-config fields are insufficient"
+// with nothing saying which source that was read from, and the new revision row could drift while
+// the capacity witnesses stayed green. This is the same version-sensitivity argument that put
+// established_against on the other two: a claim about "vLLM" cannot be checked, and a claim about
+// this revision can.
+type VllmCapacitySourceAssessment sole_constructor {
+  established_against: VllmSourceRevision
+  decision: VllmCapacitySourceDecision
+}
+
+fn decide_vllm_capacity_source_kind(kind: VllmCapacitySourceKind) -> VllmCapacitySourceAssessment {
+  VllmCapacitySourceAssessment {
+    established_against: vllm_source_revision_read,
+    decision: vllm_capacity_source_decision(kind: kind),
+  }
+}
+
+fn vllm_capacity_source_decision(kind: VllmCapacitySourceKind) -> VllmCapacitySourceDecision {
   match kind {
     GroupAwareStartupLog => CapacitySourceAuthoritative
     CacheConfigBlockFields =>
