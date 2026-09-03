@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, Bool, Int, String }
 import std.contract_identity { ContractIdentity, ContractNamingSurface, ContractName, ContractEpoch }
 import std.measure {
   nanosecond,
+  nanosecond_count,
   positive_millisecond,
   positive_measure_count,
 }
@@ -155,8 +156,8 @@ test fn witness_entry_is_projected_from_the_contract() -> Bool {
 // scope requesting a LONGER limit currently wins and extends its caller's bound. The second
 // conjunct is what fails against that.
 test fn witness_nested_limit_takes_the_smaller() -> Bool {
-  effective_nested_limit_nanos(outer_remaining_nanos: 3000000, inner_limit_nanos: 9000000) == 3000000
-    && effective_nested_limit_nanos(outer_remaining_nanos: 9000000, inner_limit_nanos: 3000000) == 3000000
+  (nanosecond_count(n: effective_nested_limit_nanos(outer_remaining_nanos: nanosecond(count: 3000000), inner_limit_nanos: nanosecond(count: 9000000))) == 3000000)
+    && (nanosecond_count(n: effective_nested_limit_nanos(outer_remaining_nanos: nanosecond(count: 9000000), inner_limit_nanos: nanosecond(count: 3000000))) == 3000000)
 }
 
 test fn witness_refusal_code_is_stable() -> Bool {

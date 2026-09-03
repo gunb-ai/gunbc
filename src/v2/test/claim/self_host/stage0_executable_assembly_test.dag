@@ -631,12 +631,15 @@ test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
        )
 }
 
-// THE TWO SPECIMENS NAMED, so the witness above cannot pass vacuously on a population that has
-// quietly lost a member. The dispatch module is the one that was in the crate all along with no
-// owner this census could name.
+// EVERY SPECIMEN NAMED, so the witness above cannot pass vacuously on a population that has quietly
+// lost a member. The dispatch module is the one that was in the crate all along with no owner this
+// census could name. The count is asserted beside the members because naming members alone cannot
+// see an ADDED row: a new wet lib module reaching lib.rs with no row here would leave all three
+// conjuncts below true.
 test fn w_live_wet_population_carries_both_declaration_routes() -> Bool {
   let rows = stage0_live_wet_lib_module_registrations()
-  (length(xs: rows) == 2)
-    && any(xs: rows, predicate: fn(r) { (r.basename == "v1_interpreter_dispatch_generated") && probe_route_is(a: r.declaration_route, b: MacroUsePubModSpliced) })
-    && any(xs: rows, predicate: fn(r) { (r.basename == "evaluation_budget_consequence_generated") && probe_route_is(a: r.declaration_route, b: PlainPubMod) })
+  (length(xs: rows) == 3)
+    && any(xs: rows, predicate: fn(r) { (r.basename == "v1_interpreter_dispatch_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: MacroUsePubModSpliced)) })
+    && any(xs: rows, predicate: fn(r) { (r.basename == "evaluation_budget_consequence_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })
+    && any(xs: rows, predicate: fn(r) { (r.basename == "gunbc_file_transport_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })
 }
