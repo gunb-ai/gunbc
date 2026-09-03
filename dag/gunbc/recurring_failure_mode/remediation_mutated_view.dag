@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.remediation_mutated_view
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data remediation_mutated_view: RecurringFailureMode = RecurringFailureMode {
+  identity: "remediation_mutated_view" as NonEmptyStr,
+
+  receipts: [
+    "remediation-mutated view (the standard response to a signal OVERWRITES the surface most readers query it through, so the population becomes unreconstructible AT THAT LEVEL and the reader concludes the evidence is gone. ",
+
+    "It usually is not: the defect is reading a MUTABLE PROJECTION as if it were the record, and a level below it there is generally an immutable one the same query reaches intact. ",
+
+    "Receipt, and the inversion belongs BESIDE it rather than after it: a fleet event terminated eight witnesses runs inside 49 seconds; every lane re-ran; a re-run REPLAYS the original merge ref and OVERWRITES the run-level conclusion, so queried through run conclusions the population was invisible -- zero of twenty-one -- while queried through the run's attempt records it was complete and exact hours later. ",
+
+    "Two independent reconstructions from the mutated view reported five and six of the eight: each correct, each incomplete, same cause -- so the mutated view fails SILENTLY and PARTIALLY, which is worse than failing empty. ",
+
+    "The rule is therefore NOT capture-or-lose-it: capture before remediating, or reconstruct from the immutable record, never from the mutable one. ",
+
+    "Stating only the first half is worse than saying nothing, because a lane that has already remediated reads it as a verdict that its evidence is gone and stops looking -- which is what produced the zero of twenty-one. ",
+
+    "Recognition rule: before concluding a population is unrecoverable, ask WHICH LEVEL you queried and whether the remedy WRITES to it.)",
+  ],
+
+  evidence: [],
+}
