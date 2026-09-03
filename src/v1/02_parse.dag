@@ -1587,6 +1587,76 @@ fn stamp_parsed_node_list_with_head_role(
   }
 }
 
+// THE DECLARATION SIDE OF THE TYPE RELATION, which production did not emit at all until this
+// function existed. Measured before it was written, over dag/std (142 files) with the census
+// instrument's --denominator mode: 9672 TypeOccurrence REFERENCES against
+// type_occurrence_declarations=0. std.occurrence_binding_candidates buckets candidates by authored
+// spelling and std.occurrence_binding_resolve admits a TypeOccurrence reference against a
+// TypeOccurrence declaration only, so an empty declaration side made EVERY type reference in the
+// corpus Unbound -- not mis-bound, unbindable. The containment authority the namespace cut resolves
+// through was therefore correct, executing, and never once fed a production population.
+//
+// WHY THE FIXTURES COULD NOT SHOW THIS. test.claim.type_reference_containment_binding_witness_test
+// hand-builds its declarations with `category: TypeOccurrence` -- exactly the shape production
+// never emitted -- so the suite supplied the missing side itself and stayed green. That is DESIGN
+// section 5's specification-without-execution boundary sitting on the destination authority of a
+// migration. Those fixtures are not wrong and are not weakened here: they test the authority's
+// logic correctly, they were never SUFFICIENT, and nothing in the tree said so.
+//
+// WHAT COUNTS AS A TYPE DECLARATION HERE, and the rule is stated positively rather than as "not a
+// function": a module item declares a type when it has no body, no transport and no type
+// annotation. That admits the three authored forms -- `type X { .. }` (Conj), `type X = A | B`
+// (Disj), and the bare alias/opaque `type X` (NoConnective, carrying its own inferred leaf) -- and
+// excludes by construction the items that are values or effects rather than types: a function has
+// a body, a `data x: T = v` has a body AND an annotation, and a service carries a transport.
+//
+// SCOPE, DECLARED SO THE NEXT INCREMENT IS DRIVEN BY MEASUREMENT AND NOT BY MEMORY. This stamps
+// MODULE-LEVEL type declarations. Two further populations are measured-and-unaddressed: coproduct
+// VARIANTS used in type position, and TYPE PARAMETERS. Both are reachable from this walk and
+// neither is stamped yet, so references to them stay Unbound and the census will say so by name
+// rather than by silence. The same denominator run also shows MethodOccurrence at 382 references
+// against 0 declarations -- an independent gap in the same collector, not addressed here.
+fn parsed_module_item_is_type_declaration(node: Node) -> Bool {
+  node.body == none && node.transport == none && node.type_annotation == none
+}
+
+fn parsed_module_item_role(node: Node) -> ParsedOccurrenceRole {
+  if parsed_module_item_is_type_declaration(node: node) {
+    ParsedOccurrenceDeclaration { category: TypeOccurrence }
+  } else {
+    ParsedOccurrenceUnclassified
+  }
+}
+
+// Per-item roles, because one role for the whole list cannot distinguish a type declaration from
+// the function beside it. Items that are not type declarations are handed Unclassified and reach
+// parsed_occurrence_role_for_node's existing refinement unchanged, so nothing that already
+// classified stops classifying.
+fn stamp_parsed_module_items(
+  nodes: List<Node>,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedNodeListStampResult {
+  fold(
+    nodes,
+    init: ParsedNodeListStampResult { nodes: [], ctx: ctx, err: none },
+    f: (acc, node) =>
+      if has_err(err: acc.err) { acc } else {
+        let stamped = stamp_parsed_node(
+          node: node,
+          ancestors: ancestors,
+          ctx: acc.ctx,
+          role: parsed_module_item_role(node: node)
+        )
+        ParsedNodeListStampResult {
+          nodes: list_push(acc.nodes, stamped.node),
+          ctx: stamped.ctx,
+          err: stamped.err,
+        }
+      }
+  )
+}
+
 fn stamp_parsed_node_children(
   node: Node,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -1626,6 +1696,12 @@ fn stamp_parsed_node_children(
             ctx: ctx,
             head_role: ParsedOccurrenceReference { category: TypeOccurrence },
             tail_role: ParsedOccurrenceUnclassified
+          )
+        ParsedOccurrenceDeclaration { category: NamespaceSegmentOccurrence } =>
+          stamp_parsed_module_items(
+            nodes: node.children,
+            ancestors: ancestors,
+            ctx: ctx
           )
         _ =>
           stamp_parsed_node_list(

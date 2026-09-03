@@ -312,6 +312,10 @@ fn run_denominator(workspace: &std::path::Path, roots: &[String]) -> ExitCode {
     let mut type_decls = 0usize;
     let mut qualified_type_refs = 0usize;
     let mut by_category: HashMap<&'static str, usize> = HashMap::new();
+    // THE DECLARATION SIDE OF THE JOIN, reported per category rather than only as a
+    // TypeOccurrence count. A binding needs BOTH sides; reporting only the reference side is how
+    // a population that is empty on the other half reads as merely "unresolved".
+    let mut decl_by_category: HashMap<&'static str, usize> = HashMap::new();
     let mut per_root: Vec<(String, usize, usize)> = Vec::new();
 
     for root in roots {
@@ -380,6 +384,9 @@ fn run_denominator(workspace: &std::path::Path, roots: &[String]) -> ExitCode {
                 }
             }
             for d in transport.declarations.iter() {
+                *decl_by_category
+                    .entry(category_label(&d.category))
+                    .or_default() += 1;
                 if matches!(d.category, OccurrenceCategory::TypeOccurrence) {
                     type_decls += 1;
                 }
@@ -396,6 +403,9 @@ fn run_denominator(workspace: &std::path::Path, roots: &[String]) -> ExitCode {
     cats.sort();
     println!("  files={files} parse_refused={parse_refused}");
     println!("  reference_occurrences_by_category={cats:?}");
+    let mut dcats: Vec<_> = decl_by_category.into_iter().collect();
+    dcats.sort();
+    println!("  declaration_occurrences_by_category={dcats:?}");
     println!("  type_occurrence_declarations={type_decls}");
     println!(
         "DENOMINATOR type_occurrence_references={type_refs} (of which qualified spelling: {qualified_type_refs})"

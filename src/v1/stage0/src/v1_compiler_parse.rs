@@ -3110,6 +3110,55 @@ pub fn stamp_parsed_node_list_with_head_role(
     }
 }
 
+pub fn parsed_module_item_is_type_declaration(node: Rc<Node>) -> bool {
+    (((node.body.clone() == std::option::Option::None)
+        && (node.transport.clone() == std::option::Option::None))
+        && (node.type_annotation.clone() == std::option::Option::None))
+}
+
+pub fn parsed_module_item_role(node: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
+    if parsed_module_item_is_type_declaration(node.clone()) {
+        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+            category: OccurrenceCategory::TypeOccurrence,
+        })
+    } else {
+        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+    }
+}
+
+pub fn stamp_parsed_module_items(
+    nodes: Rc<Vec<Rc<Node>>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedNodeListStampResult> {
+    nodes.iter().cloned().fold(
+        Rc::new(ParsedNodeListStampResult {
+            nodes: Rc::new(vec![]),
+            ctx: ctx.clone(),
+            err: std::option::Option::None,
+        }),
+        |acc: _, node: Rc<Node>| {
+            if has_err(acc.err.clone()) {
+                acc.clone()
+            } else {
+                {
+                    let stamped = stamp_parsed_node(
+                        node.clone(),
+                        ancestors.clone(),
+                        acc.ctx.clone(),
+                        parsed_module_item_role(node.clone()),
+                    );
+                    Rc::new(ParsedNodeListStampResult {
+                        nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
+                        ctx: stamped.ctx.clone(),
+                        err: stamped.err.clone(),
+                    })
+                }
+            }
+        },
+    )
+}
+
 pub fn stamp_parsed_node_children(
     node: Rc<Node>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -3154,6 +3203,10 @@ pub fn stamp_parsed_node_children(
                 }),
                 Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
             ),
+            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::NamespaceSegmentOccurrence,
+                ..
+            } => stamp_parsed_module_items(node.children.clone(), ancestors.clone(), ctx.clone()),
             _ => stamp_parsed_node_list(
                 node.children.clone(),
                 ancestors.clone(),
