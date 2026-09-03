@@ -4513,7 +4513,7 @@ pub fn resolve_wire_serde_policy_for_coproduct(
         wire_contract_item.clone(),
         source_indices.clone(),
         data_items.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
+        v1_rt::rc_empty_map::<_, _>(),
         32,
     )
 }
@@ -7146,7 +7146,7 @@ pub fn emit_module(
             registry.clone(),
             emit_info.clone(),
             shared_types.clone(),
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<_, _>(),
             build_data_item_index(Rc::new(vec![typed_module.clone()])),
             export_sets.clone(),
             Rc::new(vec![typed_module.clone()]),
@@ -15958,7 +15958,7 @@ pub fn render_rust_type_with_applied_binding_in_scope(
                                     generic_param_names.clone(),
                                     shared_types.clone(),
                                     source_indices.clone(),
-                                    v1_rt::rc_empty_map::<String, String>(),
+                                    v1_rt::rc_empty_map::<_, _>(),
                                     env.clone(),
                                 )
                             }
@@ -15968,7 +15968,7 @@ pub fn render_rust_type_with_applied_binding_in_scope(
                                 generic_param_names.clone(),
                                 shared_types.clone(),
                                 source_indices.clone(),
-                                v1_rt::rc_empty_map::<String, String>(),
+                                v1_rt::rc_empty_map::<_, _>(),
                                 env.clone(),
                             )
                         }
@@ -21907,7 +21907,7 @@ pub fn type_needs_rc(
 ) -> bool {
     type_needs_rc_seen(
         type_node.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
+        v1_rt::rc_empty_map::<_, _>(),
         source_indices.clone(),
     )
 }
@@ -32908,7 +32908,7 @@ pub fn emit_operation_method(
                         Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
-                        v1_rt::rc_empty_map::<String, String>(),
+                        v1_rt::rc_empty_map::<_, _>(),
                         env.clone(),
                         false,
                     ),
@@ -35537,7 +35537,7 @@ pub fn emit_capability_method(
                         Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
-                        v1_rt::rc_empty_map::<String, String>(),
+                        v1_rt::rc_empty_map::<_, _>(),
                         env.clone(),
                         false,
                     ),
@@ -36249,9 +36249,9 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
                     emit_rust_param_type(
                         crate::v1_std_core::param_node_type_expr(p.clone()),
                         Rc::new(vec![]),
-                        v1_rt::rc_empty_set::<String>(),
+                        v1_rt::rc_empty_set::<_>(),
                         projection.source_indices.clone(),
-                        v1_rt::rc_empty_map::<String, String>(),
+                        v1_rt::rc_empty_map::<_, _>(),
                         projection.type_env.clone(),
                         false,
                     ),

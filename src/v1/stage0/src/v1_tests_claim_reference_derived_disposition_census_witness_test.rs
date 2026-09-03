@@ -24,7 +24,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::ErrorNode;
 pub use crate::v1_std_core::{diagnostic_to_message, is_error_diagnostic, no_span};
-pub use crate::v1_std_core::{FieldSummary, NewlineIndex, Node};
+pub use crate::v1_std_core::{FieldSummary, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -82,33 +82,31 @@ pub fn fixture_disposition(
             registry.clone(),
             export_sets.clone(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
-            v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<_, _>(),
             false,
         ),
     )
 }
 
 pub fn candidate_the_registry_does_not_know_is_registry_absent() -> bool {
-    (fixture_disposition(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-    ) == "registry-absent".to_string())
+    (fixture_disposition(v1_rt::rc_empty_map::<_, _>(), v1_rt::rc_empty_map::<_, _>())
+        == "registry-absent".to_string())
 }
 
 pub fn candidate_provided_by_this_module_is_own_module() -> bool {
     (fixture_disposition(
         fixture_registry("PeerName".to_string(), "fixture.consumer".to_string()),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
     ) == "own-module".to_string())
 }
 
 pub fn cross_module_candidate_without_export_proof_is_export_proof_failed() -> bool {
     (fixture_disposition(
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
     ) == "export-proof-failed".to_string())
 }
 
@@ -119,10 +117,10 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
         fixture_export_sets("fixture.provider".to_string(), "PeerName".to_string()),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        v1_rt::rc_empty_map::<String, String>(),
+        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<_, _>(),
         false,
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
         provider_module: "fixture.provider".to_string(),
@@ -225,10 +223,10 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<_, _>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         fixture_variant_type_summaries(),
         v1_rt::rc_map_insert(
@@ -278,10 +276,10 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<_, _>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         fixture_colliding_variant_type_summaries(),
         v1_rt::rc_map_insert(
@@ -298,10 +296,10 @@ pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> b
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "V".to_string(),
             "fixture.consumer".to_string(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<_, _>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
             fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(
@@ -325,10 +323,10 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "NotAVariant".to_string(),
             "fixture.consumer".to_string(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<_, _>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
             fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(

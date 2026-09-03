@@ -859,7 +859,7 @@ pub fn resolve_func_sigs(
         );
         topo_resolve_loop(
             local_func_names.clone(),
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),

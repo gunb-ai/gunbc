@@ -1009,7 +1009,7 @@ pub fn close_fn_fields(
                         summaries.clone(),
                         structural_alias_fn_surface_names.clone(),
                         structural_alias_direct_fn_names.clone(),
-                        v1_rt::rc_empty_set::<String>(),
+                        v1_rt::rc_empty_set::<_>(),
                     ))
                 {
                     v1_rt::rc_map_insert(

@@ -1550,7 +1550,7 @@ pub fn emit_node_type(
     render_node_type(
         n.clone(),
         target.clone(),
-        v1_rt::rc_empty_set::<String>(),
+        v1_rt::rc_empty_set::<_>(),
         source_indices.clone(),
     )
 }
@@ -1612,7 +1612,7 @@ pub fn render_named_type_base(
                 __result.push(render_node_type(
                     crate::v1_std_core::param_node_type_expr(p.clone()),
                     target.clone(),
-                    v1_rt::rc_empty_set::<String>(),
+                    v1_rt::rc_empty_set::<_>(),
                     source_indices.clone(),
                 ));
             }

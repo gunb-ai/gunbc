@@ -716,23 +716,7 @@ pub fn census_declaration_bound_formals(
         };
         let declaration_generic_names = v1_rt::concat(
             tp_names.clone(),
-            v1_rt::concat(
-                declaration_unbound_leaf_names(return_type.clone(), declaration_env.clone()),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for p in node.params.clone().iter().cloned() {
-                        __result.extend(
-                            (*declaration_unbound_leaf_names(
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                                declaration_env.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-            ),
+            declaration_unbound_leaf_names(return_type.clone(), declaration_env.clone()),
         );
         Rc::new({
             let mut __result = Vec::new();
@@ -1109,11 +1093,7 @@ pub fn lookup_coproduct_common_field_node(
 }
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(
-        env.clone(),
-        n.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
-    )
+    resolve_scrutinee_type_node_seen(env.clone(), n.clone(), v1_rt::rc_empty_map::<_, _>())
 }
 
 pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {

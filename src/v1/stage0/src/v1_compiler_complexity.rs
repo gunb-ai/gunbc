@@ -1435,7 +1435,7 @@ pub fn parser_member_is_always_advancing(
                 parser_name_set.clone(),
                 empty_parser_progress_env(),
                 proven.clone(),
-                v1_rt::rc_empty_map::<String, bool>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 si.clone(),
             );
             ({
@@ -1455,7 +1455,7 @@ pub fn parser_member_is_always_advancing(
                 state_param.clone(),
                 empty_parser_progress_env(),
                 proven.clone(),
-                v1_rt::rc_empty_map::<String, bool>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 si.clone(),
             ) == DescentEvidence::Strict))
         }
@@ -1566,7 +1566,7 @@ pub fn infer_parser_always_advancing_members(
             func_index.clone(),
             parser_name_set.clone(),
             reverse_graph.clone(),
-            v1_rt::rc_empty_map::<String, bool>(),
+            v1_rt::rc_empty_map::<_, _>(),
             si.clone(),
         )
     }
@@ -1755,7 +1755,7 @@ pub fn collect_parser_edges_for_scc(
                                             scc_name_set.clone(),
                                             empty_parser_progress_env(),
                                             parser_always_advancing.clone(),
-                                            v1_rt::rc_empty_map::<String, bool>(),
+                                            v1_rt::rc_empty_map::<_, _>(),
                                             si.clone(),
                                         ),
                                         std::option::Option::None => Rc::new(vec![]),
@@ -3810,7 +3810,7 @@ pub fn all_self_calls_descend(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
+        v1_rt::rc_empty_map::<_, _>(),
         check_child.clone(),
         check_list.clone(),
         si.clone(),
@@ -4570,7 +4570,7 @@ pub fn try_dimension_for_param(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
+        v1_rt::rc_empty_map::<_, _>(),
         check_child.clone(),
         check_list.clone(),
         false,
@@ -4590,7 +4590,7 @@ pub fn try_branching_dimension_for_param(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
+        v1_rt::rc_empty_map::<_, _>(),
         check_child.clone(),
         check_list.clone(),
         true,
@@ -5337,7 +5337,7 @@ pub fn construct_termination_proof(
                         self_set.clone(),
                         empty_parser_progress_env(),
                         parser_always_advancing.clone(),
-                        v1_rt::rc_empty_map::<String, bool>(),
+                        v1_rt::rc_empty_map::<_, _>(),
                         si.clone(),
                     );
                     if (((edges.clone().len() as i64) > 0) && {
@@ -6810,7 +6810,7 @@ pub fn is_scc_container_child_descent(
                                     let descent_vars = collect_descent_vars(
                                         entry.body.clone(),
                                         pname.clone(),
-                                        v1_rt::rc_empty_map::<String, bool>(),
+                                        v1_rt::rc_empty_map::<_, _>(),
                                         true,
                                         true,
                                         si.clone(),
@@ -6909,7 +6909,7 @@ pub fn collect_scc_proof_edges_for_dim(
     Some(entry) => {
             let best_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
-let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
+let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<_, _>(), check_child.clone(), check_list.clone(), si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
 let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best, param_map.clone())
@@ -6988,14 +6988,14 @@ pub fn collect_scc_independent_dim_edges(
     Some(entry) => {
             let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
-let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<_, _>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
 let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
-let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
+let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<_, _>(), false, true, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
 let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
@@ -7075,7 +7075,7 @@ pub fn collect_scc_tree_parser_dim_edges(
     Some(entry) => {
                     let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                         let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
-let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<_, _>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
@@ -10532,7 +10532,7 @@ pub fn build_complexity_report(
                     );
                     let space_bytes_opt = cost_account_space_from_summary(
                         sr.summary.clone(),
-                        v1_rt::rc_empty_map::<String, i64>(),
+                        v1_rt::rc_empty_map::<_, _>(),
                     );
                     let new_function_space_bytes = match space_bytes_opt.clone() {
                         Some(bs) => v1_rt::rc_map_insert(
