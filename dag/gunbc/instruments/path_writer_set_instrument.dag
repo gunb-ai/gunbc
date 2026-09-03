@@ -1,0 +1,341 @@
+module tools.path_writer_set_instrument
+
+import std.types { Bool, GitRef, Int, List, NonEmptyStr, String }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.github.pulls
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_string_value_or_empty
+}
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import gunbc.cli_wire { CliWireResponse }
+import gunbc.cross_pr_contradiction {
+  PrDiffUnobservedCause,
+  HeadRefUnresolved,
+  HeadRefStale,
+  MergeBaseUnavailable,
+  DiffRefused,
+  DiffEmptyUnderived
+}
+import gunbc.path_writer_set {
+  PullIdentity,
+  PrPathObservation,
+  PrPathsRead,
+  PrPathsEmptyDerived,
+  PrPathsEmptyCorroborated,
+  PrPathsUnobserved,
+  WriterSetReport,
+  writer_set_report,
+  writer_set_response,
+  writer_set_refusal
+}
+
+// THE WRITER-SET INSTRUMENT: the observation half.
+//
+// The model, the match rule, the completeness contract and every reason this exists are in
+// `gunbc.path_writer_set`. This module only supplies the live population -- the open pull requests
+// and the paths each one changes -- and hands the model's answer to the host to print.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/path_writer_set_instrument.dag --function writers \
+//     --arg repo=gunb-ai/gunbc --arg path=dag/gunbc/pr_digests.dag
+//
+// A subject ending in `/` asks about a subtree: `--arg path=dag/gunbc/instruments/`.
+//
+// THE ANSWER IS PRINTED, NOT WRITTEN TO A FILE, and that is a difference from its scanning
+// neighbours rather than an oversight. `cross_pr_contradiction_instrument` requires a report path
+// because it produces a corpus-wide scan someone reads later; this produces a handful of rows in
+// answer to a question asked a moment ago, and routing that through a temporary file would put a
+// filesystem write between an operator and their own answer. `gunbc.cli_wire` is the modeled route
+// for exactly this, and `gunbc.scm.cli` is its existing consumer.
+//
+// THE DIFF IS READ FROM THE LOCAL CLONE, NOT FROM THE FORGE, and the staleness that invites is
+// closed by construction rather than by hoping the clone is fresh -- the mechanism is the one
+// `cross_pr_contradiction_instrument` established and its reasoning is not repeated here. GitHub is
+// the authority for WHICH pull requests are open and what each head commit IS; the local object
+// store is the authority for what that commit CONTAINS, so a local ref disagreeing with the head
+// oid GitHub reports REFUSES that pull request by name. A prune-fetch runs first so the ordinary
+// case converges rather than refusing.
+//
+// IT READS. The only GitHub operation invoked below is `github.CliPulls.ListOpenJson`, which is
+// `readonly`; the only git operations are fetch-prune, ref resolution, merge-base and a name-only
+// diff. A reviewer checking that claim should grep this module for a `github.` call and find one.
+
+type PullRequestRow {
+  pull: PullIdentity
+  head_oid: String
+  changed_files: Int
+}
+
+type PullRequestRowsRead
+  = PullRequestRowsParsed { rows: List<PullRequestRow> }
+  | PullRequestRowsUnreadable { detail: String }
+
+fn json_member_string(value: JsonValue, key: String) -> String {
+  match json_object_unique_member(v: value, key: key) {
+    JsonMemberFound { value: found } => json_string_value_or_empty(v: found)
+    JsonMemberAbsent => ""
+    JsonMemberDuplicated { count: _ } => ""
+    JsonMemberNotAnObject => ""
+  }
+}
+
+// THE AUTHOR IS A NESTED OBJECT IN THE FORGE'S LISTING (`author.login`), so it is read through two
+// member lookups rather than one. An unreadable author is spelled `(author unread)` rather than
+// left blank: a blank column reads as a real empty name, and this instrument's whole output is a
+// list of people to talk to.
+fn json_member_author_login(value: JsonValue) -> String {
+  match json_object_unique_member(v: value, key: "author") {
+    JsonMemberFound { value: author } => {
+      let login = json_member_string(value: author, key: "login")
+      if login == "" { "(author unread)" } else { login }
+    }
+    JsonMemberAbsent => "(author unread)"
+    JsonMemberDuplicated { count: _ } => "(author unread)"
+    JsonMemberNotAnObject => "(author unread)"
+  }
+}
+
+// A JSON NUMBER THAT COULD NOT BE READ IS NOT ZERO. `changedFiles` is legitimately 0 for a
+// contentless pull request and that value is what decides whether an empty diff is CORROBORATED or
+// a refusal, so folding "absent" into 0 would let a listing-shape change silently promote every
+// unreadable row to "the forge agrees this branch is empty".
+type JsonIntField
+  = JsonIntPresent { value: Int }
+  | JsonIntUnreadable
+
+fn json_member_int(value: JsonValue, key: String) -> JsonIntField {
+  match json_object_unique_member(v: value, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: lex } => JsonIntPresent { value: parse_int(s: lex as String) }
+        JsonNull => JsonIntUnreadable
+        JsonBool { value: _ } => JsonIntUnreadable
+        JsonString { value: _ } => JsonIntUnreadable
+        JsonArray { elements: _ } => JsonIntUnreadable
+        JsonObject { members: _ } => JsonIntUnreadable
+      }
+    JsonMemberAbsent => JsonIntUnreadable
+    JsonMemberDuplicated { count: _ } => JsonIntUnreadable
+    JsonMemberNotAnObject => JsonIntUnreadable
+  }
+}
+
+type PullRequestRowRead
+  = PullRequestRowOk { row: PullRequestRow }
+  | PullRequestRowUnreadable
+
+fn pull_request_row(value: JsonValue) -> PullRequestRowRead {
+  match json_member_int(value: value, key: "number") {
+    JsonIntUnreadable => PullRequestRowUnreadable
+    JsonIntPresent { value: number } =>
+      match json_member_int(value: value, key: "changedFiles") {
+        JsonIntUnreadable => PullRequestRowUnreadable
+        JsonIntPresent { value: changed_files } => {
+          let head_ref_name = json_member_string(value: value, key: "headRefName")
+          let head_oid = json_member_string(value: value, key: "headRefOid")
+          if number <= 0 || head_ref_name == "" || head_oid == "" || changed_files < 0 {
+            PullRequestRowUnreadable
+          } else {
+            PullRequestRowOk {
+              row: PullRequestRow {
+                pull: PullIdentity {
+                  number: number,
+                  author: json_member_author_login(value: value),
+                  head_ref_name: head_ref_name,
+                  title: json_member_string(value: value, key: "title")
+                },
+                head_oid: head_oid,
+                changed_files: changed_files
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn pull_request_row_read_is_ok(read: PullRequestRowRead) -> Bool {
+  match read {
+    PullRequestRowOk { row: _ } => true
+    PullRequestRowUnreadable => false
+  }
+}
+
+fn pull_request_rows(listing: String) -> PullRequestRowsRead {
+  match parse_json_document(s: listing) {
+    JsonDocumentUnreadable { gap: gap } =>
+      PullRequestRowsUnreadable {
+        detail: concat("gh pr list --json output is ", json_document_gap_text(gap: gap))
+      }
+    JsonDocumentParsed { value: value } =>
+      match value {
+        JsonArray { elements: elements } => {
+          let reads = map(elements, element => pull_request_row(value: element))
+          let broken = filter(reads, read => !pull_request_row_read_is_ok(read: read))
+          if broken.length() > 0 {
+            PullRequestRowsUnreadable {
+              detail: concat(
+                to_string(broken.length()),
+                " listed pull request(s) carried no readable number, head ref name, head oid, or changed-file count — the listing shape changed and no writer set may be reported over it"
+              )
+            }
+          } else {
+            PullRequestRowsParsed {
+              rows: flat_map(
+                reads,
+                read => match read {
+                  PullRequestRowOk { row: row } => [row]
+                  PullRequestRowUnreadable => []
+                }
+              )
+            }
+          }
+        }
+        JsonNull => PullRequestRowsUnreadable { detail: "gh pr list returned a JSON null, not an array" }
+        JsonBool { value: _ } => PullRequestRowsUnreadable { detail: "gh pr list returned a JSON boolean, not an array" }
+        JsonNumber { lexeme: _ } => PullRequestRowsUnreadable { detail: "gh pr list returned a JSON number, not an array" }
+        JsonString { value: _ } => PullRequestRowsUnreadable { detail: "gh pr list returned a JSON string, not an array" }
+        JsonObject { members: _ } => PullRequestRowsUnreadable { detail: "gh pr list returned a JSON object, not an array" }
+      }
+  }
+}
+
+// ONE PULL REQUEST. Every arm that cannot answer produces a NAMED refusal carrying the pull request,
+// and none of them produces an empty path list.
+//
+// THE DIFF IS TAKEN AGAINST THE MERGE BASE, computed here and passed to the two-dot operation. That
+// is the same revision pair `base...head` names, resolved by this module rather than by git's range
+// syntax -- and the merge base is needed here anyway, because whether the head is an ancestor of the
+// base is what separates a DERIVED empty branch from an unread one.
+//
+// RENAME DETECTION IS OFF: `DiffNameOnlyNoRenames`, for the reason `gunbc.path_writer_set`
+// `diff_path_scope_text` states -- a branch that renames or deletes the subject is a writer of it,
+// and git's default would print only the destination path.
+fn observe_pull_request(base: String, repository_path: String, row: PullRequestRow) -> PrPathObservation {
+  let local_ref = concat("origin/", row.pull.head_ref_name)
+  let resolved = git.Inspect.ResolveRefCommit(ref: local_ref as GitRef)
+  if !resolved.success || (resolved.sha as String) == "" {
+    PrPathsUnobserved {
+      pull: row.pull,
+      cause: HeadRefUnresolved { ref_name: local_ref, detail: resolved.stderr }
+    }
+  } else {
+    let local_oid = resolved.sha as String
+    if local_oid != row.head_oid {
+      PrPathsUnobserved {
+        pull: row.pull,
+        cause: HeadRefStale { ref_name: local_ref, expected_oid: row.head_oid, local_oid: local_oid }
+      }
+    } else {
+      let baseline = git.Inspect.MergeBase(
+        repository_path: repository_path,
+        left: base as GitRef,
+        right: local_oid as GitRef
+      )
+      if !baseline.success || (baseline.sha as String) == "" {
+        PrPathsUnobserved {
+          pull: row.pull,
+          cause: MergeBaseUnavailable { head_oid: local_oid, detail: baseline.stderr }
+        }
+      } else {
+        if (baseline.sha as String) == local_oid {
+          PrPathsEmptyDerived { pull: row.pull, head_oid: local_oid }
+        } else {
+          let observed = git.Core.DiffNameOnlyNoRenames(
+            base: (baseline.sha as String) as GitRef,
+            head: local_oid as GitRef
+          )
+          if !observed.success {
+            PrPathsUnobserved {
+              pull: row.pull,
+              cause: DiffRefused { head_oid: local_oid, detail: observed.stderr }
+            }
+          } else {
+            let touched = map(observed.paths, p => p as String)
+            if touched.length() == 0 {
+              if row.changed_files == 0 {
+                PrPathsEmptyCorroborated { pull: row.pull, head_oid: local_oid }
+              } else {
+                PrPathsUnobserved {
+                  pull: row.pull,
+                  cause: DiffEmptyUnderived { head_oid: local_oid, forge_changed_files: row.changed_files }
+                }
+              }
+            } else {
+              PrPathsRead { pull: row.pull, head_oid: local_oid, touched: touched }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// A LOOKUP THAT NEVER GOT ITS POPULATION IS A REFUSAL, NOT AN EMPTY WRITER SET. A failed fetch, a
+// refused listing or a listing whose shape changed all end here rather than producing a report with
+// zero observations in it, because `writer_set_report` over an empty observation list would render
+// a complete, believable "nobody is writing this".
+type WriterSetScan
+  = WriterSetScanned { report: WriterSetReport }
+  | WriterSetScanRefused { stage: String, detail: String }
+
+fn scan_writer_set(repo: String, subject: String, base: String, repository_path: String) -> WriterSetScan {
+  let fetched = git.Core.FetchPrune(remote: "origin")
+  if !fetched.success {
+    WriterSetScanRefused { stage: "fetch", detail: concat("git fetch --prune origin refused: ", fetched.stderr) }
+  } else {
+    let listing = github.CliPulls.ListOpenJson(repo: repo as NonEmptyStr)
+    if !listing.success {
+      WriterSetScanRefused { stage: "listing", detail: concat("gh pr list refused: ", listing.stderr) }
+    } else {
+      match pull_request_rows(listing: listing.stdout) {
+        PullRequestRowsUnreadable { detail: detail } =>
+          WriterSetScanRefused { stage: "listing_shape", detail: detail }
+        PullRequestRowsParsed { rows: rows } =>
+          WriterSetScanned {
+            report: writer_set_report(
+              subject: subject,
+              observations: map(
+                rows,
+                row => observe_pull_request(base: base, repository_path: repository_path, row: row)
+              )
+            )
+          }
+      }
+    }
+  }
+}
+
+fn writer_set_scan_response(scan: WriterSetScan) -> CliWireResponse {
+  match scan {
+    WriterSetScanned { report: report } => writer_set_response(report: report)
+    WriterSetScanRefused { stage: stage, detail: detail } =>
+      writer_set_refusal(reason: concat(concat(stage, "\t"), detail))
+  }
+}
+
+fn writers(repo: String, path: String) -> CliWireResponse {
+  if repo == "" {
+    writer_set_refusal(reason: "writers: --arg repo=<owner/name> is required")
+  } else {
+    if path == "" {
+      writer_set_refusal(
+        reason: "writers: --arg path=<path> is required — the writer set is a query about one subject, and a missing subject is not an empty one"
+      )
+    } else {
+      writer_set_scan_response(
+        scan: scan_writer_set(repo: repo, subject: path, base: "origin/main", repository_path: ".")
+      )
+    }
+  }
+}
