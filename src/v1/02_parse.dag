@@ -1603,12 +1603,14 @@ fn stamp_parsed_node_list_with_head_role(
 // migration. Those fixtures are not wrong and are not weakened here: they test the authority's
 // logic correctly, they were never SUFFICIENT, and nothing in the tree said so.
 //
-// WHAT COUNTS AS A TYPE DECLARATION HERE, and the rule is stated positively rather than as "not a
-// function": a module item declares a type when it has no body, no transport and no type
-// annotation. That admits the three authored forms -- `type X { .. }` (Conj), `type X = A | B`
-// (Disj), and the bare alias/opaque `type X` (NoConnective, carrying its own inferred leaf) -- and
-// excludes by construction the items that are values or effects rather than types: a function has
-// a body, a `data x: T = v` has a body AND an annotation, and a service carries a transport.
+// WHAT COUNTS AS A TYPE DECLARATION HERE. A module item declares a type when it carries no
+// transport, no body and no type annotation. That admits the three authored forms -- `type X { .. }`
+// (Conj), `type X = A | B` (Disj), and the bare alias/opaque `type X` (NoConnective, carrying its
+// own inferred leaf) -- and excludes the items that are values or effects rather than types: a
+// function has a body, a `data x: T = v` has a body AND an annotation, and a service carries a
+// transport. That is a discriminator over ABSENT fields, which is why parsed_module_item_kind
+// below is an exhaustive match with a refusing residual rather than a bare predicate; see its
+// note for what the shape can and cannot decide, and for the terminal fix.
 //
 // SCOPE, DECLARED SO THE NEXT INCREMENT IS DRIVEN BY MEASUREMENT AND NOT BY MEMORY. This stamps
 // MODULE-LEVEL type declarations. Two further populations are measured-and-unaddressed: coproduct
@@ -1616,15 +1618,58 @@ fn stamp_parsed_node_list_with_head_role(
 // neither is stamped yet, so references to them stay Unbound and the census will say so by name
 // rather than by silence. The same denominator run also shows MethodOccurrence at 382 references
 // against 0 declarations -- an independent gap in the same collector, not addressed here.
-fn parsed_module_item_is_type_declaration(node: Node) -> Bool {
-  node.body == none && node.transport == none && node.type_annotation == none
+// THE PARSE TREE CARRIES NO POSITIVE TYPE-DECLARATION MARKER, AND THAT ABSENCE IS THE FINDING
+// RATHER THAN AN EXCUSE. This function dispatches on the `type` / `fn` / `data` / `service`
+// keyword at parse time and then DISCARDS which one it saw: `Node` has no item-kind field, so by
+// the time the occurrence walk runs, the kind survives only as a combination of which optional
+// fields happen to be present. Every downstream reader -- v1.compiler.emit_core_support
+// is_type_def_item, is_function_item, is_data_def_item, is_service_def_item -- re-derives it from
+// shape for the same reason.
+//
+// SO THE RULE BELOW IS PROVISIONAL, and it is written as an EXHAUSTIVE match with a refusing
+// residual rather than as a bare predicate, because a bare predicate over three absent fields
+// FAILS OPEN BY CONSTRUCTION: any future item kind carrying none of those fields would be
+// silently stamped a type declaration, at the parser, where the wrong answer propagates into
+// every consumer of the occurrence transport and nothing fails when it starts being wrong.
+// ModuleItemUnrecognized refuses instead of defaulting into the type bucket, so the residual that
+// is representable TODAY -- an item with no body and no transport but carrying a type annotation --
+// stops the line rather than becoming a type (DESIGN section 5: a failure arm refuses, never
+// widens).
+//
+// WHAT THIS DOES NOT FIX, stated so it is not read as closed: refusal covers the residual that can
+// be EXPRESSED today. It cannot cover an item kind nobody has invented yet, because the
+// discriminator is absence and a new kind's absence looks identical to a type's. TERMINAL FIX, and
+// it is a construction rather than a check: the parse constructors carry the kind they already
+// know onto the item, at which point this match reads that field, the emit-side shape predicates
+// dissolve into it, and the type bucket stops being a default anyone can fall into.
+type ParsedModuleItemKind
+  = ModuleItemTypeDeclaration
+  | ModuleItemFunction
+  | ModuleItemDataValue
+  | ModuleItemService
+  | ModuleItemUnrecognized
+
+fn parsed_module_item_kind(node: Node) -> ParsedModuleItemKind {
+  if node.transport != none {
+    ModuleItemService
+  } else if node.body != none && node.type_annotation != none {
+    ModuleItemDataValue
+  } else if node.body != none {
+    ModuleItemFunction
+  } else if node.type_annotation == none {
+    ModuleItemTypeDeclaration
+  } else {
+    ModuleItemUnrecognized
+  }
 }
 
 fn parsed_module_item_role(node: Node) -> ParsedOccurrenceRole {
-  if parsed_module_item_is_type_declaration(node: node) {
-    ParsedOccurrenceDeclaration { category: TypeOccurrence }
-  } else {
-    ParsedOccurrenceUnclassified
+  match parsed_module_item_kind(node: node) {
+    ModuleItemTypeDeclaration => ParsedOccurrenceDeclaration { category: TypeOccurrence }
+    ModuleItemFunction => ParsedOccurrenceUnclassified
+    ModuleItemDataValue => ParsedOccurrenceUnclassified
+    ModuleItemService => ParsedOccurrenceUnclassified
+    ModuleItemUnrecognized => ParsedOccurrenceUnclassified
   }
 }
 
@@ -1642,16 +1687,28 @@ fn stamp_parsed_module_items(
     init: ParsedNodeListStampResult { nodes: [], ctx: ctx, err: none },
     f: (acc, node) =>
       if has_err(err: acc.err) { acc } else {
-        let stamped = stamp_parsed_node(
-          node: node,
-          ancestors: ancestors,
-          ctx: acc.ctx,
-          role: parsed_module_item_role(node: node)
-        )
-        ParsedNodeListStampResult {
-          nodes: list_push(acc.nodes, stamped.node),
-          ctx: stamped.ctx,
-          err: stamped.err,
+        match parsed_module_item_kind(node: node) {
+          ModuleItemUnrecognized =>
+            ParsedNodeListStampResult {
+              nodes: acc.nodes,
+              ctx: acc.ctx,
+              err: Present { value: parse_error(
+                msg: "module item shape is not a recognised declaration kind, so its occurrence category cannot be decided; the type bucket is not a default",
+                span: node.span
+              ) },
+            }
+          _ =>
+            let stamped = stamp_parsed_node(
+              node: node,
+              ancestors: ancestors,
+              ctx: acc.ctx,
+              role: parsed_module_item_role(node: node)
+            )
+            ParsedNodeListStampResult {
+              nodes: list_push(acc.nodes, stamped.node),
+              ctx: stamped.ctx,
+              err: stamped.err,
+            }
         }
       }
   )

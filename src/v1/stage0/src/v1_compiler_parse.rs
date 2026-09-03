@@ -4,6 +4,7 @@
 use self::AdvanceResult::*;
 use self::EatResult::*;
 use self::ExpectedToken::*;
+use self::ParsedModuleItemKind::*;
 use self::ParsedOccurrenceRole::*;
 use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
@@ -3110,19 +3111,59 @@ pub fn stamp_parsed_node_list_with_head_role(
     }
 }
 
-pub fn parsed_module_item_is_type_declaration(node: Rc<Node>) -> bool {
-    (((node.body.clone() == std::option::Option::None)
-        && (node.transport.clone() == std::option::Option::None))
-        && (node.type_annotation.clone() == std::option::Option::None))
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ParsedModuleItemKind {
+    ModuleItemTypeDeclaration,
+    ModuleItemFunction,
+    ModuleItemDataValue,
+    ModuleItemService,
+    ModuleItemUnrecognized,
+}
+
+pub fn parsed_module_item_kind(node: Rc<Node>) -> ParsedModuleItemKind {
+    if (node.transport.clone() != std::option::Option::None) {
+        ParsedModuleItemKind::ModuleItemService
+    } else {
+        if ((node.body.clone() != std::option::Option::None)
+            && (node.type_annotation.clone() != std::option::Option::None))
+        {
+            ParsedModuleItemKind::ModuleItemDataValue
+        } else {
+            if (node.body.clone() != std::option::Option::None) {
+                ParsedModuleItemKind::ModuleItemFunction
+            } else {
+                if (node.type_annotation.clone() == std::option::Option::None) {
+                    ParsedModuleItemKind::ModuleItemTypeDeclaration
+                } else {
+                    ParsedModuleItemKind::ModuleItemUnrecognized
+                }
+            }
+        }
+    }
 }
 
 pub fn parsed_module_item_role(node: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
-    if parsed_module_item_is_type_declaration(node.clone()) {
-        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-            category: OccurrenceCategory::TypeOccurrence,
-        })
-    } else {
-        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+    match parsed_module_item_kind(node.clone()) {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::TypeOccurrence,
+            })
+        }
+        ParsedModuleItemKind::ModuleItemFunction => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemDataValue => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemService => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemUnrecognized => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
     }
 }
 
@@ -3131,32 +3172,29 @@ pub fn stamp_parsed_module_items(
     ancestors: Rc<Vec<OccurrenceId>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ParsedNodeListStampResult> {
-    nodes.iter().cloned().fold(
-        Rc::new(ParsedNodeListStampResult {
-            nodes: Rc::new(vec![]),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-        |acc: _, node: Rc<Node>| {
-            if has_err(acc.err.clone()) {
-                acc.clone()
-            } else {
-                {
-                    let stamped = stamp_parsed_node(
-                        node.clone(),
-                        ancestors.clone(),
-                        acc.ctx.clone(),
-                        parsed_module_item_role(node.clone()),
-                    );
-                    Rc::new(ParsedNodeListStampResult {
-                        nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
-                        ctx: stamped.ctx.clone(),
-                        err: stamped.err.clone(),
-                    })
-                }
-            }
-        },
-    )
+    nodes.iter().cloned().fold(Rc::new(ParsedNodeListStampResult {
+    nodes: Rc::new(vec![]),
+    ctx: ctx.clone(),
+    err: std::option::Option::None,
+}), |acc: _, node: Rc<Node>| if has_err(acc.err.clone()) {
+        acc.clone()
+    } else {
+        match parsed_module_item_kind(node.clone()) {
+    ParsedModuleItemKind::ModuleItemUnrecognized => Rc::new(ParsedNodeListStampResult {
+    nodes: acc.nodes.clone(),
+    ctx: acc.ctx.clone(),
+    err: Some(parse_error("module item shape is not a recognised declaration kind, so its occurrence category cannot be decided; the type bucket is not a default".to_string(), node.span.clone())),
+}),
+    _ => {
+            let stamped = stamp_parsed_node(node.clone(), ancestors.clone(), acc.ctx.clone(), parsed_module_item_role(node.clone()));
+Rc::new(ParsedNodeListStampResult {
+    nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
+    ctx: stamped.ctx.clone(),
+    err: stamped.err.clone(),
+})
+},
+}
+    })
 }
 
 pub fn stamp_parsed_node_children(
@@ -16748,3 +16786,13 @@ pub struct ParserHelperSkipNewlines;
 pub struct ParserHelperSkipContinuationNewlines;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParserHelperWith;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemTypeDeclaration;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemFunction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemDataValue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemService;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemUnrecognized;

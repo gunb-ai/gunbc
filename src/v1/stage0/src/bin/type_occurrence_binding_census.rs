@@ -271,6 +271,33 @@ fraction of its population reports a denominator it does not have)."
     println!();
 }
 
+/// THE COMPLETE CLASS ROSTER, DECLARED RATHER THAN DISCOVERED. Every one of these is printed with
+/// its count even when that count is ZERO, because a zero here is an answer and not an absence:
+/// "OldBinds_NewAmbiguous = 0" says Y INTRODUCES NO NEW AMBIGUITY ANYWHERE IN THE POPULATION, which
+/// is a load-bearing positive finding about the cut. A zero-count row is also the row most likely to
+/// be dropped from a table, and once dropped it is indistinguishable from "not measured" — so a
+/// reader has to go to the source to learn whether ambiguity was even looked for. It was.
+///
+/// Thirteen arms: four XAnswer values against three YAnswer outcomes, plus the agree/disagree
+/// split on the Declaration x Declaration cell. The Y refusal arms are NOT in
+/// this roster because they are keyed by their own typed cause and are printed separately; they are
+/// still part of the denominator.
+const CLASS_ROSTER: [&str; 13] = [
+    "OldAndNewAgree",
+    "OldAndNewDisagree",
+    "OldBinds_NewUnresolved",
+    "OldBinds_NewAmbiguous",
+    "OldUnresolved_NewBinds",
+    "OldUnresolved_NewUnresolved",
+    "OldUnresolved_NewAmbiguous",
+    "OldKernel_NewBinds",
+    "OldKernel_NewUnresolved",
+    "OldKernel_NewAmbiguous",
+    "OldSynthetic_NewBinds",
+    "OldSynthetic_NewUnresolved",
+    "OldSynthetic_NewAmbiguous",
+];
+
 fn classify(x: &XAnswer, y: &YAnswer) -> ClassKey {
     let key = match (x, y) {
         (XAnswer::Declaration(a), YAnswer::Declaration(b)) if a == b => "OldAndNewAgree",
@@ -664,7 +691,22 @@ fn main() -> ExitCode {
         }
 
         println!("\n=== grounding {label} ===");
-        let mut rows: Vec<(ClassKey, usize)> = counts.clone().into_iter().collect();
+        // EVERY ROSTERED CLASS IS PRINTED, ZERO OR NOT. Classes observed but not rostered would be
+        // a roster defect, so they are appended rather than dropped — a class that exists in the
+        // data and not in the table is the failure this roster exists to prevent.
+        let mut rows: Vec<(ClassKey, usize)> = CLASS_ROSTER
+            .iter()
+            .map(|k| {
+                let key = ClassKey(k.to_string());
+                let n = counts.get(&key).copied().unwrap_or(0);
+                (key, n)
+            })
+            .collect();
+        for (key, n) in counts.iter() {
+            if !CLASS_ROSTER.contains(&key.0.as_str()) {
+                rows.push((key.clone(), *n));
+            }
+        }
         rows.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         let mut classified = 0usize;
         for (class, n) in rows.iter() {

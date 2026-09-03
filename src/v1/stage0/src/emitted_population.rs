@@ -147,6 +147,7 @@
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
+// src/v1_tests_claim_type_declaration_occurrence_control_test.rs
 // src/wt_a.rs
 // src/wt_b.rs
 // src/wt_common.rs
