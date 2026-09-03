@@ -6,7 +6,9 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 import std.types { Bool, Int, String, NonEmptyStr }
 import gunbc.floor_cost_distribution {
   FloorCostRow,
+  IdentityEnvelope,
   RunCost,
+  RunExtremeCount,
   CostBand,
   LadderStep,
   parse_claim_cost_tsv,
@@ -18,7 +20,14 @@ import gunbc.floor_cost_distribution {
   repair_ladder,
   identity_inflation_permille,
   permille_percentile,
-  implied_clean_run_budget
+  implied_clean_run_budget,
+  identity_envelopes,
+  complete_envelopes,
+  work_invariant_envelopes,
+  envelope_permille,
+  envelope_permilles,
+  worst_envelope_permille,
+  run_extreme_census
 }
 
 // THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
@@ -271,6 +280,161 @@ fn floor_cost_distribution_check() -> ProcessExit {
   let refusals = refused_load_lines(loads: loads)
   if count(refusals) > 0 {
     exit_failure(reason: join(concat(["floor cost distribution: refusing an incomplete sample"], refusals), "\n"))
+  } else {
+    ExitSuccess
+  }
+}
+
+// THE BETWEEN-RUN ENVELOPE REPORT, a SECOND entry point rather than more lines on the first,
+// because it answers a different question over a different sample. The report above measures ONE
+// run's band histogram and ONE pair's inflation; this one measures how far a single identity's cost
+// travels across runs, which is the only quantity a budget may be set from.
+//
+// Recipe -- again no floor run, the artifacts are uploaded by every required-floor run:
+//
+//   for r in <the run ids in `floor_cost_envelope_sampled_runs`>; do
+//     gh run download $r -n required-floor-claim-cost -D /tmp/floor-cost/$r
+//   done
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/floor_cost_distribution_instrument.dag \
+//     --function floor_cost_envelope_report
+//
+// THE RUNNER IS CARRIED BESIDE THE RUN AND IS NOT IN THE ARTIFACT. `required_floor_claim_cost.tsv`
+// records no host, so the run-to-runner binding is provenance acquired from
+// `repos/gunb-ai/gunbc/actions/runs/<id>/jobs` (`required-witnesses-floor`, field `runner_name`) and
+// declared here. It is data rather than prose because the whole question this report exists to
+// settle -- whether a verdict is a property of which runner picked up the job -- cannot be asked
+// without it, and a host read off a job page into a sentence is unreachable from the census that
+// would contradict it.
+//
+// THE RUNNER NAME IS A HOST PLUS AN EPHEMERAL SUFFIX. `srv1-19-1788450638-2019208` names host
+// `srv1-19` and a per-job registration; the suffix differs on every job, so the twelve runs sampled
+// here ran on twelve DISTINCT runner registrations across three distinct hosts. Run and runner are
+// therefore one-to-one in this sample and cannot be separated by it; HOST can be, and is.
+type FloorRunProvenance {
+  run: NonEmptyStr
+  runner: NonEmptyStr
+}
+
+// TWELVE GREEN `main` RUNS OF `witnesses.yml`, 2026-09-03. Green rather than mixed, and `main`
+// rather than pull-request, so the population is one the required floor actually admitted: a
+// refused run's crossing rows are censored and `v2.workflow.floor_cost_debt` measured that a
+// censored figure and the true cost are essentially uncorrelated.
+//
+// TWELVE RATHER THAN TWO IS THE WHOLE POINT OF THIS ROSTER. The finding that commissioned it rested
+// on a single pair of runs, whose percentiles were computed across ROWS inside that one pair and
+// therefore described row-to-row heterogeneity rather than run-to-run spread. N runs on N distinct
+// runners is the sample that indexes over the right thing.
+data floor_cost_envelope_sampled_runs: List<FloorRunProvenance> = [
+  FloorRunProvenance { run: "33778067165" as NonEmptyStr, runner: "srv4-06-1788452232-1908277" as NonEmptyStr },
+  FloorRunProvenance { run: "33776747244" as NonEmptyStr, runner: "srv4-14-1788451568-1822397" as NonEmptyStr },
+  FloorRunProvenance { run: "33775106554" as NonEmptyStr, runner: "srv1-19-1788450638-2019208" as NonEmptyStr },
+  FloorRunProvenance { run: "33774684988" as NonEmptyStr, runner: "srv3-11-1788449654-3251019" as NonEmptyStr },
+  FloorRunProvenance { run: "33772569940" as NonEmptyStr, runner: "srv1-13-1788448111-660445" as NonEmptyStr },
+  FloorRunProvenance { run: "33772503574" as NonEmptyStr, runner: "srv4-01-1788448102-1586464" as NonEmptyStr },
+  FloorRunProvenance { run: "33772224705" as NonEmptyStr, runner: "srv3-13-1788442800-3072494" as NonEmptyStr },
+  FloorRunProvenance { run: "33772122416" as NonEmptyStr, runner: "srv3-21-1788448106-3180404" as NonEmptyStr },
+  FloorRunProvenance { run: "33766436293" as NonEmptyStr, runner: "srv4-09-1788443674-1514295" as NonEmptyStr },
+  FloorRunProvenance { run: "33754393519" as NonEmptyStr, runner: "srv3-04-1788436534-2520344" as NonEmptyStr },
+  FloorRunProvenance { run: "33749762586" as NonEmptyStr, runner: "srv3-14-1788435102-2419101" as NonEmptyStr },
+  FloorRunProvenance { run: "33747598822" as NonEmptyStr, runner: "srv1-03-1788434224-1059575" as NonEmptyStr }
+]
+
+// The subject the measurement was commissioned over, named so the report prints its envelope beside
+// the corpus percentiles rather than leaving a reader to grep for it.
+data floor_cost_envelope_subject: String = "v2.test.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates"
+
+fn envelope_runner_line(prov: FloorRunProvenance, census: List<RunExtremeCount>) -> String {
+  concat(
+    concat(prov.run as String, concat("\t", prov.runner as String)),
+    match census |> filter(c => (c.run as String) == (prov.run as String)) |> first {
+      Absent => "\tno-population"
+      Present { value: c } => concat(
+        concat("\thottest_for=", to_string(c.hottest_for)),
+        concat("\tcoolest_for=", to_string(c.coolest_for))
+      )
+    }
+  )
+}
+
+fn envelope_subject_line(envelopes: List<IdentityEnvelope>, subject: String) -> String {
+  match envelopes |> filter(e => e.identity == subject) |> first {
+    Absent => concat("subject absent from the complete population\t", subject)
+    Present { value: e } => concat(
+      concat(subject, concat("\truns=", to_string(e.runs_observed))),
+      concat(
+        concat(concat("\tmin=", to_string(millisecond_count(m: e.min_ms))), concat("ms\tmax=", concat(to_string(millisecond_count(m: e.max_ms)), "ms"))),
+        concat(
+          concat("\tenvelope=", match envelope_permille(e: e) {
+            Absent => "unmeasurable-at-a-zero-baseline"
+            Present { value: v } => concat(to_string(v), " permille")
+          }),
+          concat(concat("\thottest=", e.hottest_run as String), concat("\tcoolest=", e.coolest_run as String))
+        )
+      )
+    )
+  }
+}
+
+fn floor_cost_envelope_lines(
+  loads: List<RunLoad>,
+  provenance: List<FloorRunProvenance>,
+  min_ms: Millisecond,
+  subject: String
+) -> List<String> {
+  let runs = loaded_runs(loads: loads)
+  let refusals = refused_load_lines(loads: loads)
+  let all = identity_envelopes(runs: runs)
+  let complete = complete_envelopes(envelopes: all, runs_expected: count(provenance), min_ms: min_ms)
+  let controlled = work_invariant_envelopes(envelopes: complete)
+  let census = run_extreme_census(runs: runs, envelopes: controlled)
+  concat(
+    concat(
+      concat(
+        [
+          concat("runs loaded\t", to_string(count(runs))),
+          concat("identities observed\t", to_string(count(all))),
+          concat("identities present in every run and at or above the floor\t", to_string(count(complete))),
+          concat("of those, work-invariant across every run\t", to_string(count(controlled)))
+        ],
+        refusals
+      ),
+      concat(
+        [
+          concat("worst between-run inflation observed\t", concat(to_string(worst_envelope_permille(envelopes: controlled)), " permille")),
+          envelope_subject_line(envelopes: controlled, subject: subject)
+        ],
+        [50, 90, 95, 99] |> map(p => percentile_line(values: envelope_permilles(envelopes: controlled), percent: p))
+      )
+    ),
+    concat(
+      ["run\trunner\textreme census over the work-invariant population"],
+      provenance |> map(prov => envelope_runner_line(prov: prov, census: census))
+    )
+  )
+}
+
+fn floor_cost_envelope_report() -> String {
+  join(
+    floor_cost_envelope_lines(
+      loads: floor_cost_envelope_sampled_runs |> map(p => load_run_cost(root: floor_cost_artifact_root, run: p.run)),
+      provenance: floor_cost_envelope_sampled_runs,
+      min_ms: millisecond(count: 50),
+      subject: floor_cost_envelope_subject
+    ),
+    "\n"
+  )
+}
+
+// THE ACTUATOR, refusing an incomplete sample for the reason `floor_cost_distribution_check` states:
+// a run that reads as zero rows is indistinguishable from a run in which nothing crossed, and here
+// it is worse -- a missing run silently narrows every identity's envelope, which is the direction
+// that makes a budget look safer than it is.
+fn floor_cost_envelope_check() -> ProcessExit {
+  let loads = floor_cost_envelope_sampled_runs |> map(p => load_run_cost(root: floor_cost_artifact_root, run: p.run))
+  let refusals = refused_load_lines(loads: loads)
+  if count(refusals) > 0 {
+    exit_failure(reason: join(concat(["floor cost envelope: refusing an incomplete sample"], refusals), "\n"))
   } else {
     ExitSuccess
   }

@@ -12,6 +12,7 @@ import gunbc.guarantee_stall {
   stall_is_below_ceiling, stall_report_message,
   next_rung_trigger_enforcement_stall,
   all_guarantee_stalls, every_stall_is_below_its_ceiling, every_stall_names_a_trigger,
+  every_restored_stall_is_rostered_once, restored_stalls,
   heterogeneous_child_list_stall, stall_roster_size,
 }
 
@@ -134,4 +135,26 @@ test fn the_stall_roster_is_not_empty() -> Bool {
   stall_roster_size(ss: all_guarantee_stalls) > 0
     && stall_roster_size(ss: []) == 0
     && every_stall_is_below_its_ceiling(ss: [])
+}
+
+// THE FOUR RESTORED SUBJECTS STAY ROSTERED, AND THIS DOES NOT RETIRE WHEN THIS PR LANDS.
+//
+// Four stalls were declared in gunbc.guarantee_stall and left out of all_guarantee_stalls, so the
+// three walls above ranged over 21 of the 25 rows that module declares. Nothing was red: a wall
+// whose input is short is green for the same reason a wall over a clean corpus is green. Widening
+// the roster is the repair; this arm is what stops the repair from being undone silently, since a
+// row dropped from the roster again would restore the green and change no assertion in this file.
+//
+// WHAT IT COVERS, stated so the coverage is falsifiable rather than assumed: exactly the four named
+// subjects, each required to appear EXACTLY ONCE. It does NOT detect a new stall declared and left
+// unrostered -- that needs a corpus-wide census of GuaranteeStall declarations, which is a separate
+// obligation gated on whether its RED is authorable at all, since a stall declared in a module the
+// roster cannot import may not be expressible in any fixture.
+//
+// THE NEGATIVE ARM IS THE WHOLE POINT: over an empty roster the fold must REFUSE, which is what
+// distinguishes this from the universally-quantified walls above that are vacuously true on [].
+test fn every_restored_stall_is_still_rostered() -> Bool {
+  every_restored_stall_is_rostered_once(ss: all_guarantee_stalls)
+    && !every_restored_stall_is_rostered_once(ss: [])
+    && every_restored_stall_is_rostered_once(ss: restored_stalls)
 }
