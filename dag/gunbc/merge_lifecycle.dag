@@ -1,6 +1,6 @@
 module gunbc.merge_lifecycle
 
-import std.types { CommitSha, String, List, Bool, Int, list_length }
+import std.types { CommitSha, String, List, Bool, Int }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import extdeps.github.checks { Success }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id, GitSha1ObjectId }
@@ -9,7 +9,6 @@ import gunbc.merge_admission {
   MergeAdmissionReceipt,
   AdmissionPolicy,
   policy_admits,
-  policy_admits_absent_receipt,
   mint_merge_admission_receipt,
   GateRosterHash,
   merge_admission_fixture_git_tree_from_tagged,
@@ -96,8 +95,9 @@ import gunbc.merge_admission {
 // class is `lifecycle_admits_unverified_tip` again, reached by a shorter path: a bare `MergePr`
 // with no preceding `RunPrCi` at that head. It was UNREACHABLE in this model until now, because
 // `merge_enabled` seeded its fold with `false` and thereby answered the absent-receipt question for
-// every policy with a caller-local constant. `policy_admits_absent_receipt` moves that verdict onto
-// the policy, and `test.claim.merge_lifecycle_interleaving_witness` now carries the discriminating
+// every policy with a caller-local constant. `policy_admits` now takes an OPTIONAL receipt, so that
+// verdict is an arm of the admission decision itself, and
+// `test.claim.merge_lifecycle_interleaving_witness` now carries the discriminating
 // pair: the one-event sequence latches an unverified tip under `ReportedContextsAtMergeInstant` and
 // does not latch under `PerPrGateOnly`.
 //
@@ -207,9 +207,12 @@ fn receipt_is_for_pr_head(r: MergeAdmissionReceipt, pr: PrIdentity) -> Bool {
   }
 }
 
-fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr: PrIdentity) -> List<MergeAdmissionReceipt> {
-  fold(receipts, init: [], f: fn(acc, r) {
-    if receipt_is_for_pr_head(r: r, pr: pr) { [r] } else { acc }
+fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr: PrIdentity) -> MergeAdmissionReceipt? {
+  fold(receipts, init: Absent, f: fn(acc, r) {
+    match receipt_is_for_pr_head(r: r, pr: pr) {
+      true => Present { value: r }
+      false => acc
+    }
   })
 }
 
@@ -219,14 +222,19 @@ fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr: PrIdentity) -> 
 // until CI re-runs. Joining on number alone admitted RunPrCi(old head) then MergePr(healed head),
 // the exact stale-evidence class the heal transition creates.
 
-// THE EMPTY CASE IS ROUTED TO THE POLICY RATHER THAN SEEDED HERE, and that is the whole of what
-// this function's shape now says. `fold(..., init: false, ...)` answered "no receipt for this head"
-// for every policy with one caller-local constant, which read as fail-closed and was in fact the
-// reason the live policy could not be written down: `ReportedContextsAtMergeInstant` differs from
-// `PerPrGateOnly` on EXACTLY this input and on no other, so a seeded refusal collapsed the two into
-// one arm and no sequence in the enumerator could discriminate them. `policy_admits_absent_receipt`
-// is where that verdict lives; the three receipt-derived policies still answer false there, so no
-// existing arm's behavior moves.
+// THE EMPTY CASE IS THE POLICY'S TO ANSWER AND IT IS NOW AN ARM OF THE ONE ADMISSION DECISION.
+// This function used to fold `policy_admits` over a singleton-or-empty LIST from `init: false`, and
+// the seed was the entire absent-receipt verdict -- one caller-local constant answering for all
+// four policies, not because any policy said so. `ReportedContextsAtMergeInstant` differs from
+// `PerPrGateOnly` on EXACTLY that input and on no other, so the seed collapsed the two into one arm
+// and no sequence in the enumerator could discriminate them.
+//
+// THE REPAIR IS A TYPE, NOT A SECOND PREDICATE (codex review 59477). `latest_receipt_for` KEEPS AT
+// MOST ONE receipt -- it always did, folding to `[r]` or `[]` -- so the list was carrying an
+// optional's job and the caller paid for it with an emptiness test. Returning
+// `MergeAdmissionReceipt?` makes the singularity structural, and `policy_admits` taking an optional
+// receipt makes the empty case an arm of the admission decision itself. No fold, no seed, no
+// emptiness branch, and no `AdmissionPolicy -> Bool` accessor standing beside the coproduct.
 fn merge_enabled(
   policy: AdmissionPolicy,
   receipts: List<MergeAdmissionReceipt>,
@@ -234,19 +242,12 @@ fn merge_enabled(
   tip: GitObjectId,
   roster: GateRosterHash,
 ) -> Bool {
-  let found = latest_receipt_for(receipts: receipts, pr: pr)
-  if list_length(items: found) == 0 {
-    policy_admits_absent_receipt(policy: policy)
-  } else {
-    fold(found, init: false, f: fn(acc, r) {
-      acc || policy_admits(
-        policy: policy,
-        receipt: r,
-        merge_target_tree_hash: tip,
-        current_roster_hash: roster,
-      )
-    })
-  }
+  policy_admits(
+    policy: policy,
+    receipt: latest_receipt_for(receipts: receipts, pr: pr),
+    merge_target_tree_hash: tip,
+    current_roster_hash: roster,
+  )
 }
 
 fn verified_contains(xs: List<VerifiedRun>, probe: VerifiedRun) -> Bool {
