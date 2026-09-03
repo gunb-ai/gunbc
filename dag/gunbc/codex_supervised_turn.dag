@@ -40,6 +40,7 @@ import gunbc.codex_app_server_press {
   AccountStandingQuotaReached,
   AccountStandingInitializeMissing,
   AccountStandingIncomplete,
+  AccountStandingInitializeUnusable,
 }
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
@@ -408,6 +409,7 @@ fn codex_supervised_turn_session_standing_admits(
     AccountStandingLoginRequired => false
     AccountStandingQuotaReached => false
     AccountStandingInitializeMissing => false
+    AccountStandingInitializeUnusable => false
     AccountStandingIncomplete => false
   }
 }
