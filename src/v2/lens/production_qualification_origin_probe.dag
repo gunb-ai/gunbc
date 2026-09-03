@@ -22,7 +22,11 @@ import v2.std.collection {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index {
+  FnArrowDecl,
+  atom_identities_in_node,
+  fn_arrow_decl_facts_live
+}
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node_query {
   call_callee_target,
@@ -36,7 +40,6 @@ import v2.std.node {
   Node,
   NodeFold,
   Positional,
-  Symbol,
   TypeNode,
   fold_node,
 }
@@ -111,7 +114,6 @@ type DerivedProductionQualificationMintSiteRow {
 }
 
 data empty_string_list: List<String> = []
-data empty_symbol_list: List<Symbol> = []
 data empty_site_list: List<DerivedProductionQualificationMintSiteRow> = []
 
 data mint_written_callee: String = "mint_written_provenanced_rust_artifact"
@@ -128,10 +130,6 @@ data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tr
 data ingest_mint_entry_name_suffix: String = "generate_provenanced_rust_candidate_from_ingest"
 
 fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
 
@@ -195,34 +193,6 @@ fn maybe_snoc_site_row(
         evidence_origin: origin
       }
     )
-  }
-}
-
-// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
-// children — the fold_node it once ran recursed the whole subtree while its step discarded
-// every child's collected atoms, so the descent computed results nothing consumed
-// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
-// below is extensionally the same function at the cost of one probe per child.
-fn atom_identities_in_node(node: Node) -> List<Symbol> {
-  let from_children = fold(node.children, init: empty_symbol_list, f: fn(acc, e) {
-    match node_atom_identity_optional(node: e.target) {
-      Present { value: sym } =>
-        if contains(xs: acc, item: sym, eq: symbol_eq) {
-          acc
-        } else {
-          list_snoc_item(xs: acc, item: sym)
-        }
-      Absent => acc
-    }
-  })
-  match node_atom_identity_optional(node: node) {
-    Present { value: sym } =>
-      if contains(xs: from_children, item: sym, eq: symbol_eq) {
-        from_children
-      } else {
-        list_snoc_item(xs: from_children, item: sym)
-      }
-    Absent => from_children
   }
 }
 
@@ -304,7 +274,7 @@ fn callees_from_atom_scan(node: Node) -> List<String> {
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
+fn origin_probe_callees_from_node(node: Node) -> List<String> {
   let from_call_walk = callee_collect_merge(
     left: fold_node(n: node, algebra: callee_collect_algebra()).callees,
     right: callee_text_from_call_node(node: node)
@@ -313,7 +283,7 @@ fn callees_from_node(node: Node) -> List<String> {
 }
 
 fn decl_contains_callee(decl: FnArrowDecl, callee: String) -> Bool {
-  contains(xs: callees_from_node(node: decl.output), item: callee, eq: string_eq)
+  contains(xs: origin_probe_callees_from_node(node: decl.output), item: callee, eq: string_eq)
 }
 
 fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {

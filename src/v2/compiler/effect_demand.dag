@@ -428,7 +428,7 @@ fn effect_demand_operations_are_grounded(
 
 // THE OBSERVED-POPULATION PRODUCER DOES NOT LIVE HERE, and the reason is a measured one rather than a
 // layering preference. A first revision of this module carried the producer, deriving the population
-// from v2.lens.effect_reach call_reachable_decls over witness_import_closure. Two facts retired it.
+// from v2.std.fn_index call_reachable_decls over witness_import_closure. Two facts retired it.
 // (a) IT CANNOT BE DRIVEN LIVE: the closure input is v2.lens.witness_cost_locality ModuleImportFact,
 // which v2.lens.live_read_classification g2_live_production_boundary_law declares FIXTURE-FACING with
 // no live producer in the corpus, on the ground that a shape nothing derives cannot be kept honest
