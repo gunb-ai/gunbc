@@ -9,6 +9,7 @@ import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierReceipt,
   CompilePhaseFrontierStanding,
   CompilePhaseFrontierValidated,
+  compile_phase_frontier_standing,
   current_compile_phase_frontier_standing,
   self_host_compile_phase_frontier_receipts,
   ParseReached,
@@ -24,7 +25,7 @@ import gunbc.self_host_compile_phase_live_gate {
   LiveObservationTaken,
   LiveObservationNotTaken,
   live_observation_from_measurement,
-  current_live_tree_verdict_for_measurement,
+  live_tree_verdict_for_measurement,
   LiveCompilePhaseObservation,
   LiveFrontierHeld,
   LiveFrontierRefused,
@@ -32,8 +33,7 @@ import gunbc.self_host_compile_phase_live_gate {
   LiveComparable,
   LiveIncomparable,
   live_comparability,
-  live_tree_frontier_verdict,
-  current_live_tree_frontier_verdict
+  live_tree_frontier_verdict
 }
 
 // THE SUBJECT OF EVERY PROBE BELOW IS THE JOIN, NOT A SECOND CENSUS. Each one builds the live
@@ -81,7 +81,8 @@ test fn a_live_census_equal_to_the_latest_receipt_holds() -> Bool {
   match latest_receipt() {
     Absent => false
     Present { value: latest } =>
-      match current_live_tree_frontier_verdict(
+      match live_tree_frontier_verdict(
+        standing: current_compile_phase_frontier_standing(),
         observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
       ) {
         LiveFrontierHeld { live_identity_count: n } => n == count(latest.raw_error_diagnostic_identities)
@@ -100,7 +101,8 @@ test fn a_live_tree_that_gained_an_identity_refuses_and_names_it() -> Bool {
   match latest_receipt() {
     Absent => false
     Present { value: latest } =>
-      match current_live_tree_frontier_verdict(
+      match live_tree_frontier_verdict(
+        standing: current_compile_phase_frontier_standing(),
         observation: observation_of(
           receipt: latest,
           identities: concat(latest.raw_error_diagnostic_identities, [planted_live_regression_identity])
@@ -120,7 +122,8 @@ test fn a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses() -> B
   match latest_receipt() {
     Absent => false
     Present { value: latest } =>
-      match current_live_tree_frontier_verdict(
+      match live_tree_frontier_verdict(
+        standing: current_compile_phase_frontier_standing(),
         observation: observation_of(
           receipt: latest,
           identities: concat(
@@ -143,7 +146,8 @@ test fn a_live_tree_that_removed_an_identity_holds() -> Bool {
   match latest_receipt() {
     Absent => false
     Present { value: latest } =>
-      match current_live_tree_frontier_verdict(
+      match live_tree_frontier_verdict(
+        standing: current_compile_phase_frontier_standing(),
         observation: observation_of(
           receipt: latest,
           identities: latest.raw_error_diagnostic_identities |> skip(n: 1)
@@ -178,7 +182,7 @@ test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> 
           classification_policy_digest: latest.subject.classification_policy_digest
         }
       }
-      match current_live_tree_frontier_verdict(observation: foreign) {
+      match live_tree_frontier_verdict(standing: current_compile_phase_frontier_standing(), observation: foreign) {
         LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "host target")
         verdict => false
       }
@@ -242,7 +246,7 @@ test fn an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held
     Absent => false
     Present { value: latest } =>
       match live_tree_frontier_verdict(
-        series: [],
+        standing: compile_phase_frontier_standing(series: []),
         observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
       ) {
         LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "empty")
@@ -260,7 +264,7 @@ test fn a_non_validating_receipt_series_refuses_the_live_tree() -> Bool {
     Absent => false
     Present { value: latest } =>
       match live_tree_frontier_verdict(
-        series: self_host_compile_phase_frontier_receipts |> skip(n: 1),
+        standing: compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts |> skip(n: 1)),
         observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
       ) {
         LiveFrontierRefused { identities: _, reason: why } =>
@@ -319,7 +323,8 @@ test fn a_measurement_that_never_reached_cargo_is_unmeasured_and_never_held() ->
   match latest_receipt() {
     Absent => false
     Present { value: latest } =>
-      match current_live_tree_verdict_for_measurement(
+      match live_tree_verdict_for_measurement(
+        standing: current_compile_phase_frontier_standing(),
         m: unreached_measurement,
         toolchain: toolchain_of(receipt: latest)
       ) {
@@ -356,7 +361,8 @@ test fn an_empty_census_from_a_completed_measurement_still_holds() -> Bool {
   match latest_receipt() {
     Absent => false
     Present { value: latest } =>
-      match current_live_tree_frontier_verdict(
+      match live_tree_frontier_verdict(
+        standing: current_compile_phase_frontier_standing(),
         observation: observation_of(receipt: latest, identities: [])
       ) {
         LiveFrontierHeld { live_identity_count: n } => n == 0

@@ -1,6 +1,6 @@
 module std.reference_realization
 
-import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, Refused }
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, RealizationRefused, RealizationRefusalCause, realization_refusal_label }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.types { Bool, List, NonEmptyStr, String }
 
@@ -11,7 +11,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 // could only ever answer one of them. TypeRealizationDecision then joins a checkpoint to a
 // declaration identity, so the corpus can say WHICH declaration a spelling governs.
 //
-// Realized { checkpoint } still says WHAT the representation is and never says WHERE the reference
+// Realized { checkpoint, ground } still says WHAT the representation is and never says WHERE the reference
 // writes it. Reading it as "render checkpoint.target_type at every reference" is a THIRD policy
 // smuggled in as the absence of one, and it is unconditional: the consumer writes the provider's
 // implementation spelling in its own scope, where that spelling re-resolves to whatever the
@@ -123,7 +123,7 @@ fn provider_reference_realization_standing(
 // lane's -- the provider was examined and needs a shape neither ground fits. Collapsing them would
 // be one reason symbol over three repairs.
 type ReferenceRenderingRefusal
-  = ProviderIdentityUnknown { cause: String }
+  = ProviderIdentityUnknown { cause: RealizationRefusalCause }
   | ReferenceRealizationPolicyUndeclared { provider_key: String }
   | ReferenceGroundDecidesNoMode { ground: ReferenceRealizationGround }
 
@@ -147,7 +147,7 @@ fn reference_position_rendering(
   standing: ReferenceRealizationStanding
 ) -> ReferencePositionRendering {
   match decision {
-    Realized { checkpoint: cp } =>
+    Realized { checkpoint: cp, ground: _ } =>
       match standing {
         ReferenceRealizationDeclared { ground: g } =>
           match reference_realization_from_ground(ground: g) {
@@ -163,7 +163,7 @@ fn reference_position_rendering(
           ReferenceRenderingRefused { refusal: ReferenceRealizationPolicyUndeclared { provider_key: k } }
       }
     Unrealized => RenderProviderDeclarationNoRealization
-    Refused { cause: c } => ReferenceRenderingRefused { refusal: ProviderIdentityUnknown { cause: c } }
+    RealizationRefused { cause: c } => ReferenceRenderingRefused { refusal: ProviderIdentityUnknown { cause: c } }
   }
 }
 

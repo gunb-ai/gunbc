@@ -1,0 +1,448 @@
+module test.claim.payroll_contribution_band_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { money_amount_micro, money_amount_micro_count, basis_point }
+import extdeps.currency.currency { Usd, Eur }
+import extdeps.payroll.contribution {
+  ContributionSpec, AssessedPosition, ContributionOutcome, ContributionRefusal,
+  ContributionOriginated, ContributionRefused,
+  ContributionBandBoundsInvalid, AssessmentWindowMismatch, AssessmentWindowUnmodeled,
+  AggregationScopeMismatch, ContributionBaseMismatch, EffectiveYearMismatch,
+  ContributionCurrencyMismatch,
+  CalendarYearAssessed, EarningsPeriodAssessed,
+  EmployerWorkerRelationship, WorkerAcrossEmployers,
+  CappedAtAnnualLimit, BetweenAnnualBounds, Worker,
+  contribution_for_period,
+}
+import extdeps.tax.us_irs_fica {
+  fica_specs_2025, fica_specs_2026,
+  us_social_security_employee_2025,
+  us_social_security_employee_2026,
+  us_additional_medicare_employer_withholding_2025,
+}
+import gunbc.payroll.period_accrual {
+  PeriodAccrual, PeriodAccrualOutcome, AccrualDerived, AccrualRefusedWhole,
+  AccrualRefusal, ContributionCause, PositionUnavailableForBase, AccrualCurrencyMismatch,
+  accrue_period,
+}
+
+// THE DISCRIMINATING CLAIMS.
+//
+// (1) The band clamps the CUMULATIVE position, not the period. Proven discriminating rather than
+// assumed: mutating the kernel to clamp per period turns this witness false while the ordinary
+// control stays true.
+// (2) A period entirely above the cap owes nothing further - the saturating case.
+// (3) The above-threshold band is the mirror image, on the row that has one.
+// (4) An earnings-period window REFUSES rather than being computed as annual. UK Class 1 assesses
+// per pay interval and the same annual earnings give different contributions by how periods fall.
+// (5) Aggregation scope must agree.
+// (6) Malformed band bounds refuse and the well-formed twin computes - a wall that never admits
+// is indistinguishable from one that always refuses.
+// (7) CONTRIBUTION BASE, held to the reviewer's bar: every other represented coordinate is
+// identical and ONLY the base differs. Social Security wages and Medicare wages coincide for an
+// ordinary worker below the cap, which is what made this easy to miss.
+// (8) A spec whose base has no position refuses BY NAME instead of borrowing whichever position
+// was passed - the fail-open a single-position fold had implicitly.
+// (9) Stale year and foreign currency refuse the WHOLE accrual, year checked in both directions.
+// (10) The hand-computed control, and the SSA external oracle.
+
+data ss_base: NonEmptyStr = "us-irs-social-security-wages"
+data hi_base: NonEmptyStr = "us-irs-medicare-wages"
+
+data probe_crossing_the_cap: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 170000000000),
+  this_period: money_amount_micro(count: 10000000000),
+}
+
+data probe_above_the_cap: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 180000000000),
+  this_period: money_amount_micro(count: 5000000000),
+}
+
+data probe_crossing_the_threshold: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Usd,
+  contribution_base: hi_base,
+  position_before: money_amount_micro(count: 190000000000),
+  this_period: money_amount_micro(count: 20000000000),
+}
+
+data probe_ordinary_ss: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+// Byte-for-byte the Social Security probe except for the base. That is the reviewer's bar: a
+// discriminating witness must hold every other represented coordinate constant.
+data probe_ordinary_hi: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Usd,
+  contribution_base: hi_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+data probe_next_year_ss: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2026,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+data probe_next_year_hi: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2026,
+  currency: Usd,
+  contribution_base: hi_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+data probe_foreign_ss: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Eur,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+data probe_foreign_hi: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Eur,
+  contribution_base: hi_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+data probe_2026_full_cap: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2026,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 200000000000),
+}
+
+data probe_earnings_period: AssessedPosition = AssessedPosition {
+  assessment_window: EarningsPeriodAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2026,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+data probe_cross_employer: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: WorkerAcrossEmployers,
+  effective_year: 2025,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 0),
+  this_period: money_amount_micro(count: 4000000000),
+}
+
+data probe_between_band_position: AssessedPosition = AssessedPosition {
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  effective_year: 2025,
+  currency: Usd,
+  contribution_base: ss_base,
+  position_before: money_amount_micro(count: 50000000),
+  this_period: money_amount_micro(count: 200000000),
+}
+
+data probe_earnings_period_spec: ContributionSpec = ContributionSpec {
+  name: "probe-earnings-period-assessed",
+  effective_year: 2026,
+  currency: Usd,
+  rate: basis_point(count: 800),
+  band: CappedAtAnnualLimit { annual_limit: money_amount_micro(count: 50000000000) },
+  borne_by: Worker,
+  assessment_window: EarningsPeriodAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: ss_base,
+}
+
+data probe_reversed_bounds_spec: ContributionSpec = ContributionSpec {
+  name: "probe-reversed-bounds",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 1000),
+  band: BetweenAnnualBounds {
+    annual_threshold: money_amount_micro(count: 200000000),
+    annual_limit: money_amount_micro(count: 100000000)
+  },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: ss_base,
+}
+
+data probe_equal_bounds_spec: ContributionSpec = ContributionSpec {
+  name: "probe-equal-bounds",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 1000),
+  band: BetweenAnnualBounds {
+    annual_threshold: money_amount_micro(count: 100000000),
+    annual_limit: money_amount_micro(count: 100000000)
+  },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: ss_base,
+}
+
+data probe_well_formed_bounds_spec: ContributionSpec = ContributionSpec {
+  name: "probe-well-formed-bounds",
+  effective_year: 2025,
+  currency: Usd,
+  rate: basis_point(count: 1000),
+  band: BetweenAnnualBounds {
+    annual_threshold: money_amount_micro(count: 100000000),
+    annual_limit: money_amount_micro(count: 200000000)
+  },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: ss_base,
+}
+
+// ONE exhaustive match instead of five near-identical readers. The tag names the cause, so an arm
+// that refuses for the WRONG reason fails the assertion rather than passing it, and adding a
+// refusal variant breaks this single function rather than silently widening every reader.
+fn refusal_tag(c: ContributionRefusal) -> String {
+  match c {
+    ContributionBandBoundsInvalid { spec } => "band-bounds"
+    AssessmentWindowMismatch { spec } => "window-mismatch"
+    AssessmentWindowUnmodeled { spec } => "window-unmodeled"
+    AggregationScopeMismatch { spec } => "scope-mismatch"
+    ContributionBaseMismatch { spec, spec_base, presented_base } => "base-mismatch"
+    EffectiveYearMismatch { spec, spec_year, position_year } => "year-mismatch"
+    ContributionCurrencyMismatch { spec, spec_currency, presented_currency } => "currency-mismatch"
+  }
+}
+
+fn refuses_with(o: ContributionOutcome, tag: String) -> Bool {
+  match o {
+    ContributionRefused { cause } => refusal_tag(c: cause) == tag
+    ContributionOriginated { spec, borne_by, subject_wages, amount } => false
+  }
+}
+
+// Optional-returning readers rather than a bare zero on the refusal arm: a refusal that read as
+// zero would make every amount assertion pass vacuously the moment the computation broke.
+fn originated_subject(o: ContributionOutcome) -> Nat? {
+  match o {
+    ContributionOriginated { spec, borne_by, subject_wages, amount } =>
+      Present { value: money_amount_micro_count(m: subject_wages) }
+    ContributionRefused { cause } => none
+  }
+}
+
+fn originated_amount(o: ContributionOutcome) -> Nat? {
+  match o {
+    ContributionOriginated { spec, borne_by, subject_wages, amount } =>
+      Present { value: money_amount_micro_count(m: amount) }
+    ContributionRefused { cause } => none
+  }
+}
+
+fn subject_is(o: ContributionOutcome, micros: Nat) -> Bool {
+  match originated_subject(o: o) {
+    Absent => false
+    Present { value: v } => v == micros
+  }
+}
+
+fn amount_is(o: ContributionOutcome, micros: Nat) -> Bool {
+  match originated_amount(o: o) {
+    Absent => false
+    Present { value: v } => v == micros
+  }
+}
+
+test fn witness_wage_base_clamps_the_cumulative_position() -> Bool {
+  let o = contribution_for_period(spec: us_social_security_employee_2025, position: probe_crossing_the_cap)
+  return subject_is(o: o, micros: 6100000000) && amount_is(o: o, micros: 378200000)
+}
+
+test fn witness_period_entirely_above_the_cap_owes_nothing() -> Bool {
+  let o = contribution_for_period(spec: us_social_security_employee_2025, position: probe_above_the_cap)
+  return subject_is(o: o, micros: 0) && amount_is(o: o, micros: 0)
+}
+
+test fn witness_above_threshold_band_charges_only_the_excess() -> Bool {
+  let crossing = contribution_for_period(spec: us_additional_medicare_employer_withholding_2025, position: probe_crossing_the_threshold)
+  let ordinary = contribution_for_period(spec: us_additional_medicare_employer_withholding_2025, position: probe_ordinary_hi)
+  return subject_is(o: crossing, micros: 10000000000)
+    && amount_is(o: crossing, micros: 90000000)
+    && amount_is(o: ordinary, micros: 0)
+}
+
+test fn witness_earnings_period_window_refuses_rather_than_assuming_annual() -> Bool {
+  refuses_with(o: contribution_for_period(spec: probe_earnings_period_spec, position: probe_earnings_period), tag: "window-unmodeled")
+    && refuses_with(o: contribution_for_period(spec: us_social_security_employee_2026, position: probe_earnings_period), tag: "window-mismatch")
+    && refuses_with(o: contribution_for_period(spec: probe_earnings_period_spec, position: probe_next_year_ss), tag: "window-mismatch")
+}
+
+test fn witness_aggregation_scope_must_agree() -> Bool {
+  refuses_with(o: contribution_for_period(spec: us_social_security_employee_2025, position: probe_cross_employer), tag: "scope-mismatch")
+}
+
+test fn witness_malformed_band_bounds_refuse_and_the_well_formed_twin_computes() -> Bool {
+  refuses_with(o: contribution_for_period(spec: probe_reversed_bounds_spec, position: probe_between_band_position), tag: "band-bounds")
+    && refuses_with(o: contribution_for_period(spec: probe_equal_bounds_spec, position: probe_between_band_position), tag: "band-bounds")
+    && subject_is(o: contribution_for_period(spec: probe_well_formed_bounds_spec, position: probe_between_band_position), micros: 100000000)
+    && amount_is(o: contribution_for_period(spec: probe_well_formed_bounds_spec, position: probe_between_band_position), micros: 10000000)
+}
+
+// The two positions differ ONLY in contribution_base. The Social Security row computes against its
+// own base and refuses the Medicare one by name - and the amounts would have been identical, which
+// is exactly why nothing else could have caught it.
+test fn witness_contribution_base_must_agree_all_else_held_constant() -> Bool {
+  amount_is(o: contribution_for_period(spec: us_social_security_employee_2025, position: probe_ordinary_ss), micros: 248000000)
+    && refuses_with(o: contribution_for_period(spec: us_social_security_employee_2025, position: probe_ordinary_hi), tag: "base-mismatch")
+}
+
+fn accrual_refusal_tag(r: AccrualRefusal) -> String {
+  match r {
+    ContributionCause { cause } => refusal_tag(c: cause)
+    PositionUnavailableForBase { spec, required_base } => "position-unavailable"
+    AccrualCurrencyMismatch { spec, accrual_currency, spec_currency } => "accrual-currency-mismatch"
+  }
+}
+
+// AN INVENTED LEVY, NOT A CITED AUTHORITY. It exists to be a spec that agrees with a Eur position
+// in every represented coordinate, so the ONLY thing that can refuse it inside a Usd period is the
+// period's own currency wall. A real euro-denominated row would carry a citation and belong in
+// extdeps; this is a fixture and is named as one.
+data fixture_eur_levy_2025: ContributionSpec = ContributionSpec {
+  name: "fixture-eur-levy-2025",
+  effective_year: 2025,
+  currency: Eur,
+  rate: basis_point(count: 620),
+  band: CappedAtAnnualLimit { annual_limit: money_amount_micro(count: 176100000000) },
+  borne_by: Worker,
+  assessment_window: CalendarYearAssessed,
+  aggregation_scope: EmployerWorkerRelationship,
+  contribution_base: ss_base,
+}
+
+fn accrual_refuses_all_with(o: PeriodAccrualOutcome, tag: String, n: Nat) -> Bool {
+  match o {
+    AccrualRefusedWhole { causes } =>
+      count(causes) == n && count(filter(causes, c => accrual_refusal_tag(r: c) == tag)) == n
+    AccrualDerived { accrual } => false
+  }
+}
+
+// Only the Social Security position is offered, so the Medicare rows have no position under their
+// own base and refuse BY NAME rather than borrowing this one.
+test fn witness_spec_without_a_position_for_its_base_refuses_by_name() -> Bool {
+  match accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_ordinary_ss]) {
+    AccrualDerived { accrual } => false
+    AccrualRefusedWhole { causes } =>
+      count(causes) == 3
+        && count(filter(causes, c => accrual_refusal_tag(r: c) == "position-unavailable")) == 3
+  }
+}
+
+test fn witness_stale_effective_year_refuses_the_whole_accrual() -> Bool {
+  accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_next_year_ss, probe_next_year_hi]), tag: "year-mismatch", n: 5)
+    && accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2026, positions: [probe_ordinary_ss, probe_ordinary_hi]), tag: "year-mismatch", n: 5)
+}
+
+test fn witness_foreign_currency_refuses_the_whole_accrual() -> Bool {
+  accrual_refuses_all_with(o: accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_foreign_ss, probe_foreign_hi]), tag: "currency-mismatch", n: 5)
+}
+
+// On 4,000 dollars of first-of-year wages the published rates give, to the cent: OASDI 6.2 percent
+// = 248.00 each side, Hospital Insurance 1.45 percent = 58.00 each side, Additional Medicare nil.
+// Worker bears 306.00, employer bears 306.00 - asserted as two figures because their equality is a
+// fact about the 2025 rates below the threshold, not an invariant.
+//
+// There is no gross, net or employer-cost assertion, because this module no longer claims to
+// settle money: a micro-floored accrual is not the cent-rounded amount withheld.
+// THE PAIR THAT DISCRIMINATES THE PERIOD'S CURRENCY WALL, which is a DIFFERENT wall from
+// witness_foreign_currency_refuses_the_whole_accrual above. That one is spec-against-its-own-
+// position, which contribution_for_period already refused. This one is spec-against-spec: every
+// pairwise check passes - the Usd spec has its Usd position, the Eur spec has its Eur position -
+// so before the wall both originated and their amounts were summed into one total with no currency
+// on it. MoneyAmountMicro cannot object, because Currency there is the dimension and not the code.
+//
+// The second arm is the positive control: the SAME Eur spec and position accrue normally in a
+// period declared in Eur, so the first arm refuses for the currency and not because the fixture is
+// malformed.
+test fn witness_period_currency_holds_every_spec_not_just_its_own_position() -> Bool {
+  let crossed = accrue_period(
+    currency: Usd,
+    specs: [us_social_security_employee_2025, fixture_eur_levy_2025],
+    positions: [probe_ordinary_ss, probe_foreign_ss]
+  )
+  let control = accrue_period(
+    currency: Eur,
+    specs: [fixture_eur_levy_2025],
+    positions: [probe_foreign_ss]
+  )
+  return match crossed {
+    AccrualDerived { accrual } => false
+    AccrualRefusedWhole { causes } =>
+      count(causes) == 1
+        && count(filter(causes, c => accrual_refusal_tag(r: c) == "accrual-currency-mismatch")) == 1
+  } && match control {
+    AccrualRefusedWhole { causes } => false
+    AccrualDerived { accrual } =>
+      accrual.currency == Eur && money_amount_micro_count(m: accrual.worker_borne) == 248000000
+  }
+}
+
+test fn witness_ordinary_period_accrues_against_published_rates() -> Bool {
+  match accrue_period(currency: Usd, specs: fica_specs_2025, positions: [probe_ordinary_ss, probe_ordinary_hi]) {
+    AccrualRefusedWhole { causes } => false
+    AccrualDerived { accrual } =>
+      money_amount_micro_count(m: accrual.worker_borne) == 306000000
+        && money_amount_micro_count(m: accrual.employer_borne) == 306000000
+        && count(accrual.lines) == 5
+  }
+}
+
+// THE EXTERNAL ORACLE. The subject is the whole 2026 wage base, 184,500 dollars, and 6.2 percent of
+// it is 11,439 dollars - the maximum OASDI contribution the Social Security Administration
+// publishes per side. This asserts a figure produced elsewhere, so it catches a wrong wage base and
+// a wrong rate together; a value this repository derived for itself could not.
+test fn witness_2026_maximum_matches_the_published_contribution() -> Bool {
+  let o = contribution_for_period(spec: us_social_security_employee_2026, position: probe_2026_full_cap)
+  return subject_is(o: o, micros: 184500000000) && amount_is(o: o, micros: 11439000000)
+}

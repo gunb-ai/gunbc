@@ -21,11 +21,17 @@ import v2.std.dependency {
 
 import gunbc.scm.object_store {
   ObjectId,
+  SemanticNodeTarget,
+  node_target_locator,
   ObjectStore,
   StoreOutcome,
   Stored,
   LocatorCollision,
   ObjectRecord,
+  NodeRecordFound,
+  NodeRecordAbsent,
+  NodeRecordIsAuthoredSource,
+  find_node_record,
   StoredEdge,
   object_id_eq,
   store_node,
@@ -37,7 +43,9 @@ import gunbc.scm.checkout {
   CheckoutOutcome,
   CheckedOut,
   CheckoutRefused,
-  checkout_object,
+  MissingObject,
+  ObjectIsAuthoredSource,
+  checkout_node_target,
 }
 
 // A REQUIREMENT IS AUTHORED, AND ABSENCE IS ONE OF THE THINGS THAT CAN BE AUTHORED. This is the
@@ -201,7 +209,9 @@ type ResolvedRole {
 // placement violation at the shared resource, neither of which is an endpoint.
 type MergeRefusal
   = TargetRootMissing { identity: ObjectId }
+  | TargetRootIsAuthoredSource { identity: ObjectId }
   | TargetChildMissing { role: Symbol, identity: ObjectId }
+  | TargetChildIsAuthoredSource { role: Symbol, identity: ObjectId }
   | BindingLocatorCollision { role: Symbol, identity: ObjectId }
   | RequiredDependencyRemoved { dependency: MergeDependency, removed_role: Symbol }
   | DependencyKindUnsupportedForMerge { dependent: Symbol, required: Symbol, kind: Symbol }
@@ -296,9 +306,11 @@ fn edge_label_role(label: EdgeLabel) -> Symbol? {
 // preservation law mean object reuse: nothing is recomputed for a role no proposal implicates, so
 // "unchanged" is the same object and not a fresh derivation that hashes equal.
 fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
-  match find_object(store: store, identity: target.root) {
-    Absent => TargetUnreadable { cause: TargetRootMissing { identity: target.root } }
-    Present { value: record } =>
+  match find_node_record(store: store, identity: node_target_locator(target: target.root)) {
+    NodeRecordAbsent { identity: i } => TargetUnreadable { cause: TargetRootMissing { identity: i } }
+    NodeRecordIsAuthoredSource { identity: i } =>
+      TargetUnreadable { cause: TargetRootIsAuthoredSource { identity: i } }
+    NodeRecordFound(record) =>
       TargetRead {
         roles: reverse(fold(record.children, init: [], f: fn(acc, stored) {
           match edge_label_role(label: stored.label) {
@@ -306,7 +318,7 @@ fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
             Present { value: role } =>
               concat([ResolvedRole {
                 role: role,
-                value: PreservedFromTarget { object: stored.target },
+                value: PreservedFromTarget { object: node_target_locator(target: stored.target) },
               }], acc)
           }
         })),
@@ -452,10 +464,10 @@ fn normalize_requirement(store: ObjectStore, req: Requirement) -> NormalizeOutco
           NormalizeRefused {
             cause: BindingLocatorCollision { role: role, identity: identity },
           }
-        Stored { store: store, identity: identity } =>
+        Stored { store: store, node: node } =>
           Normalized {
             store: store,
-            desired: DesiredBindingPresent { object: identity },
+            desired: DesiredBindingPresent { object: node.locator },
           }
       }
   }
@@ -609,12 +621,30 @@ fn root_edge_step(store: ObjectStore, acc: MergeRootAcc, r: ResolvedRole) -> Mer
   }
 }
 
+// EVERY CHECKOUT REFUSAL WAS COLLAPSED TO "MISSING", AND ONE OF THEM IS NOT MISSING.
+//
+// This mapped `CheckoutRefused { cause: _ }` to TargetChildMissing, which was total and correct while
+// checkout had exactly one refusal. It stopped being correct the moment the store grew a second kind
+// of object: a role whose value names an AUTHORED SOURCE is present, readable, and simply not a
+// program, and reporting it as missing sends an operator looking for bytes that are right there.
+// That is the same not-applicable-rendered-as-malformed failure the two kinds were introduced to
+// avoid, reintroduced one layer up by a wildcard that used to be exhaustive.
+//
+// The wildcard is now a match on the cause, so a third checkout refusal cannot be absorbed either:
+// it will fail to compile here instead of arriving as a fourth spelling of "missing". Found by
+// external review of gunbc#9891, which is also the review that added the arm this consumer ignored.
 fn root_edge_for(store: ObjectStore, acc: MergeRootAcc, role: Symbol, object: ObjectId) -> MergeRootAcc {
-  match checkout_object(store: store, identity: object) {
-    CheckoutRefused { cause: _ } =>
+  match checkout_node_target(store: store, target: SemanticNodeTarget { locator: object }) {
+    CheckoutRefused { cause: cause } =>
       MergeRootAcc {
         edges: acc.edges,
-        refusal: Present { value: TargetChildMissing { role: role, identity: object } },
+        refusal: Present {
+          value: match cause {
+            MissingObject { identity: _ } => TargetChildMissing { role: role, identity: object }
+            ObjectIsAuthoredSource { identity: _ } =>
+              TargetChildIsAuthoredSource { role: role, identity: object }
+          },
+        },
       }
     CheckedOut { program: program } =>
       MergeRootAcc {
@@ -731,10 +761,10 @@ fn finish_merge(
               MergeRefused {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
-            Stored { store: store, identity: identity } =>
+            Stored { store: store, node: node } =>
               Merged {
                 store: store,
-                commit: Commit { root: identity },
+                commit: Commit { root: node_target_of(reference: node) },
                 roles: applied.roles,
               }
           }

@@ -14,22 +14,8 @@ use v1_compiler::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
 };
 
-#[derive(Parser)]
-#[command(
-    name = "gunbc",
-    about = "A causal compiler: write .dag, get Rust/Python/Go.",
-    version = env!("GUNBC_BUILD_IDENTITY")
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-    /// Run in dry-run mode (mock all service calls)
-    #[arg(long, global = true)]
-    dry_run: bool,
-}
-
 #[derive(Subcommand)]
-enum Commands {
+enum RetainedCommands {
     /// Compile .dag source files to a target language
     Compile {
         /// Source root directories (searched recursively for .dag files).
@@ -371,10 +357,94 @@ fn write_output_files(
 }
 
 fn main() {
-    let cli = Cli::parse();
-    let dry_run = cli.dry_run;
-    let _result = match cli.command {
-        Commands::Compile {
+    let cli = v1_compiler::gunbc_cli_dispatch_generated::Cli::parse();
+    let host = RetainedCliHost {
+        dry_run: cli.dry_run,
+    };
+    v1_compiler::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)
+}
+
+struct RetainedCliHost {
+    dry_run: bool,
+}
+
+impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliHost {
+    fn retained_host_kernel(
+        &self,
+        source_roots: Vec<String>,
+        source_dir: Option<String>,
+        output_dir: String,
+        target: String,
+        dependency_pool_index: String,
+        entry: Option<String>,
+    ) -> ! {
+        retained_dispatch(
+            RetainedCommands::Compile {
+                source_roots,
+                source_dir,
+                output_dir,
+                target,
+                dependency_pool_index,
+                entry,
+            },
+            self.dry_run,
+        )
+    }
+
+    fn run_verb(
+        &self,
+        source_roots: Vec<String>,
+        function: String,
+        entry: Option<String>,
+        claim_run: bool,
+        args: Vec<String>,
+    ) -> ! {
+        retained_dispatch(
+            RetainedCommands::Run {
+                source_roots,
+                function,
+                entry,
+                claim_run,
+                args,
+            },
+            self.dry_run,
+        )
+    }
+
+    fn handle_serve(
+        &self,
+        source_roots: Vec<String>,
+        entry: String,
+        function: String,
+        host: String,
+        port: u16,
+        release_revision: String,
+        eval_budget_cpu_ms: Option<u64>,
+        eval_budget_wall_ms: Option<u64>,
+    ) -> ! {
+        retained_dispatch(
+            RetainedCommands::Serve {
+                source_roots,
+                entry,
+                function,
+                host,
+                port,
+                release_revision,
+                eval_budget_cpu_ms,
+                eval_budget_wall_ms,
+            },
+            self.dry_run,
+        )
+    }
+
+    fn invoke_bound_target_producer(&self, target: String) -> ! {
+        retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
+    }
+}
+
+fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
+    match command {
+        RetainedCommands::Compile {
             source_roots,
             source_dir,
             output_dir,
@@ -688,7 +758,7 @@ fn main() {
         //
         // NOT a scaffold with a trigger standing in for a decision: the terminal construction
         // is named, its two halves exist, and the missing piece is the wiring between them.
-        Commands::Run {
+        RetainedCommands::Run {
             source_roots,
             function,
             entry,
@@ -716,7 +786,7 @@ fn main() {
         // `test_standing_verdict` and the Blaze status export are deliberately NOT consulted --
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
-        Commands::Test { target } => {
+        RetainedCommands::Test { target } => {
             let outcome = cli_run::target_invocation_host::test_verb(&target);
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
@@ -739,7 +809,7 @@ fn main() {
         // engine stands, and exactly why it is wrong -- it would make the interpreter
         // LOAD-BEARING FOR A NEW capability while two lanes are deleting it, converting
         // removable debt into an architectural dependency.
-        Commands::Converge { .. } => Verdict {
+        RetainedCommands::Converge { .. } => Verdict {
             status: 2,
             message: Some(
                 "error: `converge` is not wired to the retained engine.\n  \
@@ -772,7 +842,7 @@ fn main() {
         // load-bearing for a capability two lanes are deleting. Not a NEW dependency (it existed
         // until #8286), but if this route attracts completion work the freeze has been repealed
         // by drift.
-        Commands::Serve {
+        RetainedCommands::Serve {
             source_roots,
             entry,
             function,
@@ -801,6 +871,7 @@ fn main() {
             .apply()
         }
     };
+    std::process::exit(0)
 }
 
 /// Severity of one diagnostic, as a TOTAL partition.
@@ -940,14 +1011,19 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
-    use clap::CommandFactory;
+    use clap::{CommandFactory, Parser};
+    use v1_compiler::gunbc_cli_dispatch_generated::Cli;
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY. Written
     // against this file's private `extract_module_path`, deleted by the fork closure, they pin
     // `cli_run`'s behaviour and now assert it there. Deleting them with the function would
     // retire the evidence with one of two implementations -- what DESIGN §4b(4) forbids: the
     // redundant machinery goes, the discriminating cases stay enrolled.
     use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
+
+    #[test]
+    fn shipped_cli_parses_the_generated_build_surface() {
+        assert!(Cli::try_parse_from(["gunbc", "build", "gunbc"]).is_ok());
+    }
 
     #[test]
     fn version_surface_reports_the_exact_source_commit() {
@@ -1153,8 +1229,53 @@ fn run_verb(
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
         Ok(value) => {
-            let (status, message) = exit_status_for(cli_run::classify_exit(&value, &ctx), function);
-            Verdict { status, message }
+            // A `CliWireResponse` is an ANSWER PLUS A VERDICT, and it is the only return shape
+            // that carries bytes for the operator. Binding it HERE rather than under a new
+            // `scm` subcommand keeps dispatch peripheral (§3): one binding serves every
+            // wire-returning entry -- `scm_log_cli_response`, `scm_status_cli_response`, and
+            // whatever else renders next -- instead of the host growing an arm per verb.
+            //
+            // Before this, such a function hit `classify_exit`'s `NotProcessExit` arm and the
+            // run refused with "wrap the result in ExitSuccess / ExitFailure", which is why
+            // gunbc.scm.render's two wire functions had no consumer outside their witness
+            // test: the answer was computed and discarded.
+            //
+            // A non-wire value falls through unchanged, so every existing `ProcessExit` entry
+            // behaves exactly as it did.
+            match cli_run::cli_wire_outcome(cli_run::classify_cli_wire(&value, &ctx), function) {
+                Some(outcome) => {
+                    if let Some(bytes) = outcome.stdout {
+                        use std::io::Write;
+                        let mut out = std::io::stdout();
+                        // Written verbatim: the .dag renderer already decided every byte,
+                        // including trailing newlines. `print!` plus an implicit flush-at-exit
+                        // is not enough when the process exits nonzero, so flush explicitly
+                        // and refuse rather than silently dropping the answer.
+                        if let Err(err) = out.write_all(bytes.as_bytes()).and_then(|()| out.flush())
+                        {
+                            return Verdict {
+                                status: 1,
+                                message: Some(format!(
+                                    "error: `{function}` rendered {} bytes that could not be \
+                                     written to stdout.\n  cause: {err}\n  status: refused — \
+                                     exiting nonzero rather than reporting success for an \
+                                     answer the operator never received.",
+                                    bytes.len()
+                                )),
+                            };
+                        }
+                    }
+                    Verdict {
+                        status: outcome.status,
+                        message: outcome.message,
+                    }
+                }
+                None => {
+                    let (status, message) =
+                        exit_status_for(cli_run::classify_exit(&value, &ctx), function);
+                    Verdict { status, message }
+                }
+            }
         }
         Err(err) => Verdict {
             status: 1,
@@ -1183,34 +1304,13 @@ fn run_verb(
 /// `mechanically preventable` ONLY where the suite is run by hand; in CI it rests on the
 /// totality above. The planted-drift control is a manual procedure recorded in the PR.
 fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<String>) {
-    match class {
-        cli_run::ExitClass::Success => (0, None),
-        // A `Failure` carrying code 0 would say "failed" and report success. Refuse: the .dag
-        // authority cannot express it, so reaching here means the classifier changed, and the
-        // safe reading of an impossible verdict is not 0.
-        cli_run::ExitClass::Failure { code: 0, reason } => (
-            1,
-            Some(format!(
-                "error: `{function}` returned ExitFailure with code 0, which claims failure \
-                 and reports success.\n  status: refused — exiting 1 rather than honoring a \
-                 status that contradicts its own variant.{}",
-                reason
-                    .map(|r| format!("\n  reason: {r}"))
-                    .unwrap_or_default()
-            )),
-        ),
-        cli_run::ExitClass::Failure { code, reason } => (code, reason),
-        cli_run::ExitClass::NotProcessExit { type_name } => (
-            2,
-            Some(format!(
-                "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
-                 cause: the host maps a run's verdict to an exit code, and only ProcessExit \
-                 carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
-                 status: refused — printing the value and exiting 0 would report success for \
-                 a run whose outcome is unknown."
-            )),
-        ),
-    }
+    // ONE AUTHORITY, in the lib. This function used to carry the match itself, and when the
+    // wire path needed the same decision the copy became a §3 fork -- two places deciding what
+    // a verdict means, free to drift. The body moved to `cli_run::exit_status_for_class`, where
+    // it is also REACHABLE BY AN EXECUTING TEST: `rust-unit-tests` runs
+    // `cargo test -p v1-compiler --lib`, and this file is a BIN target whose tests are compiled
+    // by clippy and run by nobody.
+    cli_run::exit_status_for_class(class, function)
 }
 
 #[cfg(test)]

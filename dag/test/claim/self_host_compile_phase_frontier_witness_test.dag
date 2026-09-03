@@ -37,8 +37,6 @@ import gunbc.self_host_compile_phase_frontier {
   PhaseBoardSeriesRefused,
   ExposedByPhaseAdvance,
   PhaseBoardSeriesHeld,
-  phase_board_series_ratchet,
-  current_compile_phase_frontier_series_verdict,
   self_host_compile_phase_frontier_receipts,
   PersistedPhaseBoardFold,
   phase_board_from_census_identities,
@@ -53,6 +51,7 @@ import gunbc.self_host_compile_phase_frontier {
   rustc_phase_classification_policy_digest,
   board_row,
   CompilePhaseFrontierValidated,
+  compile_phase_frontier_standing,
   current_compile_phase_frontier_standing,
   CompilePhaseFrontierCoverage,
   FrontierCoversSubjectTree,
@@ -181,29 +180,41 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
 // The required witness executes over the persisted series, not a fixture or a copied count. The
 // genesis is the only row today; once a successor is appended this same call validates the link and
 // applies the phase/identity ratchet to the latest validated pair.
-// THE SHARED IDENTITY ANSWERS WHAT THE UNSHARED FOLD ANSWERS, AND THIS IS THE ARM THAT KEEPS IT
-// HONEST. Every consumer of the persisted series now names
-// `current_compile_phase_frontier_series_verdict` instead of respelling
-// `phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts)` at its own site, so
-// this arm is where the two are still compared. It is not a tautology even though one calls the
-// other: they differ in WHERE the fold happens, and if the identity is ever enrolled as a warm row on
-// `v2.workflow.floor_pure_producer_share` the left side is SERVED from one preparation-time
-// evaluation while the right side recomputes in this frame -- the same-frame discriminator a
-// cross-frame value needs, since a served value carrying a different identity than a locally
-// constructed one fails here rather than silently answering fourteen call sites.
+// ASKED THROUGH THE STANDING RATHER THAN THROUGH THE RATCHET, and the two are not the same
+// question by a hair: `CompilePhaseFrontierValidated` is `PhaseBoardSeriesHeld` AND a latest
+// receipt existing, so this asserts strictly MORE than it did. The extra conjunct cannot go green
+// where the old one went red -- a held series with no latest would now refuse here, which is the
+// fail-closed direction.
 //
-// It compares the VERDICT rather than the standing because the standing is a pure function of the
-// verdict and the series, so verdict equality implies standing equality at the cost of one small
-// coproduct instead of a whole receipt.
-test fn the_shared_frontier_verdict_is_the_verdict_the_series_fold_answers() -> Bool {
-  current_compile_phase_frontier_series_verdict()
-    == phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts)
-}
-
+// IT ALSO STOPS BEING THE MOST EXPENSIVE ROW IN THE CORPUS. Asking the ratchet directly re-derived
+// the whole fold in this claim's own frame; asking the standing reads the value
+// `v2.workflow.floor_pure_producer_share` already holds. Measured on this branch: 427ms on the
+// absent arm and 461ms with the share enrolled but this row still folding for itself -- the single
+// highest row in a 3499-row corpus at 92% of the 500ms ceiling.
+//
+// WHAT THIS ROW NOW TRUSTS, STATED PRECISELY, BECAUSE AN EARLIER REVISION OF THIS COMMENT OVERCLAIMED
+// IT. It said this row's safety rested on
+// `the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series` acting as the
+// corpus's cache cross-check, which would make the share tier's correctness depend on one test in
+// one module. That is the wrong home for that fact and it is not where it lives.
+//
+// THE SERVE IS THE TIER'S OWN GUARANTEE. `v2.workflow.floor_pure_producer_share` keys every entry on
+// FN-NODE IDENTITY plus a content hash of the full argument row and serves only after the stored
+// argument row verifies structurally equal in portable form, a hash collision degrading to
+// recompute rather than to a wrong value. For a NULLARY producer the argument row is empty, so a
+// wrong serve would mean one declaration's value returned under another declaration's node
+// identity. That invariant is the tier's, it carries the tier's own evidence, and re-asserting it
+// here would be a second authority for it.
+//
+// SO THE WITNESS BELOW GUARDS A DIFFERENT HAZARD, AND THE TWO WERE CONFLATED. Its subject is
+// AUTHORING: whether `current_compile_phase_frontier_standing` names the series its name claims.
+// That is decidable without the cache and is not a statement about serving at all. Its removal is
+// an ordinary loss of a discriminating red -- which is a real loss -- and not a silent conversion of
+// a verified share into an unverified one.
 test fn current_persisted_compile_phase_frontier_holds() -> Bool {
-  match current_compile_phase_frontier_series_verdict() {
-    PhaseBoardSeriesHeld => true
-    verdict => false
+  match current_compile_phase_frontier_standing() {
+    CompilePhaseFrontierValidated { latest: _ } => true
+    standing => false
   }
 }
 
@@ -806,4 +817,24 @@ test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> 
     FrontierCoverageRefused { reason: _ } => true
     _ => false
   }
+}
+
+// THE CONSOLIDATED ACCESSOR NAMES THE SAME SUBJECT AS THE SPELLING IT REPLACED.
+//
+// gunbc.self_host_compile_phase_frontier current_compile_phase_frontier_standing exists so that
+// "the standing of THE persisted series" has one home instead of being re-spelled at five call
+// sites. That consolidation has exactly one way to go wrong and it goes wrong SILENTLY: the
+// accessor binds a DIFFERENT series -- a truncated one, a fixture one, a second data declaration
+// added later -- and every consumer keeps compiling and keeps answering, about the wrong subject.
+// No existing claim in either consuming closure would notice, because they all read the accessor
+// and would agree with each other about the wrong thing.
+//
+// So this asserts the identity the rewire assumed, against the general function it delegates to,
+// applied to the series by name. It is not a restatement of the delegation: it is authored one
+// layer above it and it is the only executing place the two spellings are compared. Rebind the
+// accessor to `self_host_compile_phase_frontier_receipts |> skip(n: 1)` -- the perturbation this
+// module's sibling live-gate witnesses already use -- and this reds while nothing else does.
+test fn the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series() -> Bool {
+  current_compile_phase_frontier_standing()
+    == compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)
 }

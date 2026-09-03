@@ -1,6 +1,6 @@
 module test.claim.reference_realization_witness
 
-import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, Refused }
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, RealizationRefused, RealizationRefusalCause, DeclarationIdentityUnavailable, ExactSourceIdentityAbsent, BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow, ExactBindingAmbiguousForOneDeclaration, RealizationGround, GroundedByCheckpointRow, GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow, realization_refusal_label }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.reference_realization {
   InlineTargetRepresentation,
@@ -79,7 +79,7 @@ fn fixture_checkpoint(dag_name: String, target_type: String) -> TypeCheckpoint {
 }
 
 fn fixture_realized(dag_name: String, target_type: String) -> TypeRealizationDecision {
-  Realized { checkpoint: fixture_checkpoint(dag_name: dag_name, target_type: target_type) }
+  Realized { checkpoint: fixture_checkpoint(dag_name: dag_name, target_type: target_type), ground: GroundedByCheckpointRow }
 }
 
 // One tag per rendering arm, so a row asserts WHICH arm was taken rather than that some non-refusal
@@ -92,7 +92,7 @@ fn rendering_tag(rendering: ReferencePositionRendering) -> String {
     RenderTargetRepresentation { spelling: s } => concat("inline:", s)
     ReferenceRenderingRefused { refusal: r } =>
       match r {
-        ProviderIdentityUnknown { cause: c } => concat("refused-identity:", c)
+        ProviderIdentityUnknown { cause: c } => concat("refused-identity:", realization_refusal_label(cause: c))
         ReferenceRealizationPolicyUndeclared { provider_key: k } => concat("refused-undeclared:", k)
         ReferenceGroundDecidesNoMode { ground: _ } => "refused-no-mode"
       }
@@ -178,10 +178,10 @@ test fn w_unrealized_decision_names_the_provider_without_claiming_a_policy() -> 
 test fn w_unknown_provider_identity_refuses_with_the_decisions_own_cause() -> Bool {
   rendering_tag(
     rendering: reference_position_rendering(
-      decision: Refused { cause: "declaration identity unknown: empty decl_file" },
+      decision: RealizationRefused { cause: DeclarationIdentityUnavailable },
       standing: ReferenceRealizationUndeclared { provider_key: "" }
     )
-  ) == "refused-identity:declaration identity unknown: empty decl_file"
+  ) == "refused-identity:no declaration identity was supplied"
 }
 
 fn ground_derives_preserve(ground: ReferenceRealizationGround) -> Bool {

@@ -3,6 +3,7 @@ module v2.test.claim.self_host.peano_nat_structural_realization_test
 import std.types { Bool, Int, String, List }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.decl_ref { decl_ref }
+import std.coercion { CorpusDeclared, DeclarationIdentityAbsent }
 import std.literal_elaboration {
   KernelIntLiteral, KernelStringLiteral, KernelBoolLiteral,
   LiteralHomomorphismFound, LiteralHomomorphismAbsent, LiteralHomomorphismAmbiguous,
@@ -272,7 +273,7 @@ test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
 // operand as the host `<` with no signature, and the lane's own emitted-path rows went red on a
 // token rustc refuses later. This row pins that the unknown arm is a refusal, not a widen.
 test fn operand_without_a_readable_declaration_refuses() -> Bool {
-  let facts = OperandShapeFacts { authored_name: "Nat", connective: "NoConnective", child_count: 0, resolved: false, decl_file: "probe.dag" }
+  let facts = OperandShapeFacts { authored_name: "Nat", connective: "NoConnective", child_count: 0, resolved: false, provenance: CorpusDeclared { decl_file: "probe.dag" } }
   let ordering_refuses = match operator_realization_for(op: Lt, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: f } } =>
       match o { Lt => f.authored_name == "Nat"  _ => false }
@@ -303,7 +304,7 @@ test fn an_unnamed_synthesized_operand_is_host_under_arithmetic() -> Bool {
 // one token on the target, so the decision does not need the declaration. This is a decided arm,
 // not the widen above -- ordering on the same operand refuses (the row before this one).
 test fn equality_without_a_readable_declaration_is_host_by_construction() -> Bool {
-  let facts = OperandShapeFacts { authored_name: "", connective: "NoConnective", child_count: 0, resolved: true, decl_file: "" }
+  let facts = OperandShapeFacts { authored_name: "", connective: "NoConnective", child_count: 0, resolved: true, provenance: DeclarationIdentityAbsent }
   match operator_realization_for(op: Eq, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     HostOperator => true
     _ => false
