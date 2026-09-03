@@ -20,7 +20,6 @@ import extdeps.tools.jq {
   JqRawOutput,
   JqBindingNameDuplicate,
   JqTextBindingUnwired,
-  JqFileInputLoweringUnwired,
   JqLowered,
   JqLoweringRefused,
   JqOutcome,
@@ -174,7 +173,6 @@ test fn duplicate_binding_names_refuse() -> Bool {
       match cause {
         JqBindingNameDuplicate => true
         JqTextBindingUnwired => false
-        JqFileInputLoweringUnwired => false
       }
   }
 }
@@ -193,21 +191,41 @@ test fn text_binding_refuses() -> Bool {
       match cause {
         JqBindingNameDuplicate => false
         JqTextBindingUnwired => true
-        JqFileInputLoweringUnwired => false
       }
   }
 }
 
-test fn unlowered_file_input_refuses() -> Bool {
-  match jq_invocation_cli_arguments(invocation: JqInvocation {
+// WAVE 2: a file input now LOWERS instead of refusing. The caller names a path -- a NonEmptyStr
+// operand, not an option -- and it lands as the file operand AFTER the program operand. The path
+// never enters a flag position, and the file's bytes are not a process channel: the plan carries
+// JqProcessNoStdin, not the file's content (jq reads the file itself).
+test fn file_input_lowers_to_exact_argv() -> Bool {
+  argv_equals(
+    invocation: JqInvocation {
+      program: JqProgram { source: sensor_program },
+      bindings: Empty,
+      input: JqInputFile { path: "/tmp/x.json" },
+      output_encoding: JqRawOutput,
+      exit_policy: JqProgramExit,
+    },
+    expected: ["--raw-output", sensor_program, "/tmp/x.json"],
+  )
+}
+
+test fn file_input_reaches_the_plan_as_no_stdin() -> Bool {
+  match jq_invocation_process_plan(invocation: JqInvocation {
     program: JqProgram { source: sensor_program },
     bindings: Empty,
     input: JqInputFile { path: "/tmp/x.json" },
     output_encoding: JqRawOutput,
     exit_policy: JqProgramExit,
   }) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+    Accepted { value: plan, diagnostics: _ } =>
+      match jq_admitted_plan_input(plan: plan) {
+        JqProcessNoStdin => true
+        JqProcessStdin { content: _ } => false
+      }
   }
 }
 
@@ -242,34 +260,14 @@ test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> Bool {
   }
 }
 
-// THE THREE REFUSAL CAUSES ARE DISTINGUISHABLE. The refusal witnesses above assert only a generic
+// THE TWO REFUSAL CAUSES ARE DISTINGUISHABLE. The refusal witnesses above assert only a generic
 // Rejected, which one shared diagnostic identity would satisfy -- and did, while the cause was
-// prose the diagnostic never read. Each pair of causes must carry a distinct identity.
+// prose the diagnostic never read. Each pair of causes must carry a distinct identity. (A third
+// cause, JqFileInputLoweringUnwired, dissolved with the Wave 2 file-input lowering -- dissolution
+// on climb, per DESIGN 4b.)
 test fn the_refusal_causes_carry_distinct_identities() -> Bool {
   jq_lowering_refusal_identity(cause: JqBindingNameDuplicate)
     != jq_lowering_refusal_identity(cause: JqTextBindingUnwired)
-  && jq_lowering_refusal_identity(cause: JqTextBindingUnwired)
-    != jq_lowering_refusal_identity(cause: JqFileInputLoweringUnwired)
-  && jq_lowering_refusal_identity(cause: JqFileInputLoweringUnwired)
-    != jq_lowering_refusal_identity(cause: JqBindingNameDuplicate)
-}
-
-test fn unlowered_file_input_refuses_with_the_file_cause() -> Bool {
-  match jq_invocation_lower(invocation: JqInvocation {
-    program: JqProgram { source: sensor_program },
-    bindings: Empty,
-    input: JqInputFile { path: "/tmp/x.json" },
-    output_encoding: JqRawOutput,
-    exit_policy: JqProgramExit,
-  }) {
-    JqLowered { plan: _ } => false
-    JqLoweringRefused { cause: cause } =>
-      match cause {
-        JqBindingNameDuplicate => false
-        JqTextBindingUnwired => false
-        JqFileInputLoweringUnwired => true
-      }
-  }
 }
 
 

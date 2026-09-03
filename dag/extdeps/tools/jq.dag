@@ -259,7 +259,6 @@ type JqProcessPlan {
 type JqLoweringRefusal
   = JqBindingNameDuplicate
   | JqTextBindingUnwired
-  | JqFileInputLoweringUnwired
 
 type JqLowering
   = JqLowered { plan: JqProcessPlan }
@@ -337,17 +336,31 @@ fn jq_bindings_lower(
   }
 }
 
-// The lowering REFUSES the one axis this wave has no live consumer for (file input with the
-// remote population), rather than emitting a plausible guess. A JSON binding now lowers; a text
-// binding refuses. DESIGN section 5: a failure arm must refuse, never widen -- and never fabricate.
+// The lowering REFUSES the one axis this wave has no live consumer for (a text binding), rather
+// than emitting a plausible guess. A JSON binding and a file input now lower. DESIGN section 5: a
+// failure arm must refuse, never widen -- and never fabricate.
 fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
   match jq_bindings_lower(bindings: invocation.bindings, seen: empty_map(), arguments: Empty, spellings: empty_map()) {
     JqBindingsRefused { cause: cause } =>
       JqLoweringRefused { cause: cause }
     JqBindingsLowered { arguments: binding_arguments, spellings: binding_spellings } =>
       match invocation.input {
-        JqInputFile { path: _ } =>
-          JqLoweringRefused { cause: JqFileInputLoweringUnwired }
+        JqInputFile { path } =>
+          JqLowered {
+            plan: JqProcessPlan {
+              arguments: jq_file_input_arguments(
+                invocation: invocation,
+                binding_arguments: binding_arguments,
+                path: path
+              ),
+              binding_spellings: map_insert(
+                m: map_insert(m: binding_spellings, key: ^jq_program_text, value: invocation.program.source as String),
+                key: ^jq_file_input_text,
+                value: path as String
+              ),
+              process_input: JqProcessNoStdin
+            }
+          }
         JqInputStdin { content: content } =>
           JqLowered {
             plan: JqProcessPlan {
@@ -365,6 +378,19 @@ fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
           }
       }
   }
+}
+
+// THE FILE OPERAND. A file input is an ARGV OPERAND, not a process channel -- jq reads the named
+// file itself, so the bytes travel on the filesystem, and the path lands AFTER the program
+// operand (POSIX guideline 9: options precede operands; jq's program precedes its input file).
+// The path is a bound word like the program, never an option and never caller-authored spelling.
+fn jq_file_input_arguments(invocation: JqInvocation, binding_arguments: List<CliArgumentSyntax>, path: NonEmptyStr) -> List<CliArgumentSyntax> {
+  list_snoc_item(
+    xs: jq_option_arguments(invocation: invocation, binding_arguments: binding_arguments),
+    item: CliArgumentSyntax {
+      fragments: [BoundToken { token_class: ^jq_file_input_operand, binding: ^jq_file_input_text }]
+    }
+  )
 }
 
 // Options first, then the program operand. Order is jq's, not the caller's: POSIX guideline 9
@@ -528,7 +554,6 @@ fn jq_lowering_refusal_identity(cause: JqLoweringRefusal) -> Symbol {
   match cause {
     JqBindingNameDuplicate => ^jq_binding_name_duplicate
     JqTextBindingUnwired => ^jq_text_binding_unwired
-    JqFileInputLoweringUnwired => ^jq_file_input_lowering_unwired
   }
 }
 
