@@ -25,14 +25,14 @@ import gunbc.repo_ruleset {
 }
 import v2.std.collection { Absent, Present }
 import extdeps.github.rulesets {
-  RulesetBypassStanding,
+  ReaderBypassStanding,
   RulesetActive,
   RulesetEvaluate,
   BranchTarget,
-  BypassNever,
-  BypassAlways,
-  BypassPullRequestsOnly,
-  UnrecognizedBypassStanding,
+  ThisReaderCannotBypass,
+  ThisReaderCanBypassAlways,
+  ThisReaderCanBypassPullRequestsOnly,
+  UnrecognizedReaderBypassStanding,
   DeletionRule,
   NonFastForwardRule,
   RequiredStatusChecksRule,
@@ -128,7 +128,7 @@ fn divergences_of_desired_shaped_observation() -> List<String> {
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
-    bypass: BypassNever,
+    bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
@@ -151,7 +151,7 @@ test fn w_RED_enforcement_below_active_is_a_divergence() -> Bool {
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetEvaluate,
     target: BranchTarget,
-    bypass: BypassNever,
+    bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
@@ -160,7 +160,7 @@ test fn w_RED_enforcement_below_active_is_a_divergence() -> Bool {
   )) == 1
 }
 
-fn divergences_for_bypass(bypass: RulesetBypassStanding) -> List<String> {
+fn divergences_for_bypass(bypass: ReaderBypassStanding) -> List<String> {
   observed_ruleset_divergences(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
@@ -175,8 +175,8 @@ fn divergences_for_bypass(bypass: RulesetBypassStanding) -> List<String> {
 }
 
 test fn w_RED_a_reader_that_may_bypass_is_a_divergence() -> Bool {
-  length(divergences_for_bypass(bypass: BypassAlways)) == 1
-    && length(divergences_for_bypass(bypass: BypassPullRequestsOnly)) == 1
+  length(divergences_for_bypass(bypass: ThisReaderCanBypassAlways)) == 1
+    && length(divergences_for_bypass(bypass: ThisReaderCanBypassPullRequestsOnly)) == 1
 }
 
 // THE THREE NON-`never` STANDINGS DO NOT RENDER ALIKE, the assertion review 56496's finding
@@ -186,10 +186,10 @@ test fn w_RED_a_reader_that_may_bypass_is_a_divergence() -> Bool {
 // carry the raw string GitHub sent -- the only thing that says what to extend the parser with, and
 // a static sentence discards it.
 test fn w_RED_the_three_non_never_bypass_standings_render_differently() -> Bool {
-  let always = render_divergences(ds: divergences_for_bypass(bypass: BypassAlways))
-  let prs = render_divergences(ds: divergences_for_bypass(bypass: BypassPullRequestsOnly))
+  let always = render_divergences(ds: divergences_for_bypass(bypass: ThisReaderCanBypassAlways))
+  let prs = render_divergences(ds: divergences_for_bypass(bypass: ThisReaderCanBypassPullRequestsOnly))
   let unknown = render_divergences(ds: divergences_for_bypass(
-    bypass: UnrecognizedBypassStanding { raw: "some_new_standing" },
+    bypass: UnrecognizedReaderBypassStanding { raw: "some_new_standing" },
   ))
   string_contains(s: always, pattern: "always")
     && string_contains(s: prs, pattern: "pull_requests_only")
@@ -197,7 +197,7 @@ test fn w_RED_the_three_non_never_bypass_standings_render_differently() -> Bool 
     && string_contains(s: unknown, pattern: "some_new_standing")
     && string_contains(s: unknown, pattern: "unrecognized")
     && !string_contains(s: unknown, pattern: "may bypass")
-    && length(divergences_for_bypass(bypass: UnrecognizedBypassStanding { raw: "x" })) == 1
+    && length(divergences_for_bypass(bypass: UnrecognizedReaderBypassStanding { raw: "x" })) == 1
 }
 
 // AN EXTRA REQUIRED CONTEXT IS DRIFT IN THE ADDITIVE DIRECTION, which is the half an Ensured
@@ -224,7 +224,7 @@ test fn w_RED_an_extra_required_context_is_a_divergence() -> Bool {
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
-    bypass: BypassNever,
+    bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
@@ -242,7 +242,7 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
-    bypass: BypassNever,
+    bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule],
@@ -253,7 +253,7 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
-    bypass: BypassNever,
+    bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
@@ -279,7 +279,7 @@ test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
-    bypass: BypassNever,
+    bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule],
@@ -343,7 +343,7 @@ fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<String> {
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
-    bypass: BypassNever,
+    bypass: ThisReaderCannotBypass,
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule, MergeQueueRule],

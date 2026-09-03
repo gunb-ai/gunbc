@@ -13,9 +13,10 @@ import extdeps.github.rulesets {
   HeadGreenGrouping,
   UnrecognizedGroupingStrategy,
   QueueSquash,
-  BypassNever,
-  BypassAlways,
-  BypassPullRequestsOnly,
+  BypassActorRosterObservation,
+  BypassRosterObserved,
+  BypassRosterUnavailable,
+  RulesetBypassActor,
 }
 import gunbc.merge_queue_admission {
   MergeQueueEntry,
@@ -32,6 +33,9 @@ import gunbc.merge_queue_admission {
   MergeQueueUnconfigured,
   MergeQueueOperational,
   MergeQueueExclusive,
+  AlwaysBypassActorObserved,
+  PullRequestBypassActorObserved,
+  BypassRosterNotObserved,
   merge_group_exact_subject_verdict,
   queue_ordering_break,
   grouping_admission,
@@ -244,8 +248,9 @@ test fn w_the_required_workflow_can_schedule_for_a_composition() -> Bool {
   floor_workflow_admits_merge_group()
 }
 
-// THE TWO TERMINALS. The gap between them is the bypass standing and nothing else, so the two
-// assertions below differ in ONE argument.
+// THE TWO TERMINALS. The gap between them is the BYPASS ACTOR ROSTER -- a fact about the ruleset --
+// and not the reader's own current_user_can_bypass, which is a fact about the reader. The four
+// assertions below differ in ONE argument, the roster observation.
 fn configured_standing() -> MergeQueueStanding {
   MergeQueueConfigured {
     grouping_strategy: AllGreenGrouping,
@@ -258,36 +263,87 @@ fn configured_standing() -> MergeQueueStanding {
   }
 }
 
-test fn w_a_configured_queue_with_no_bypass_is_exclusive() -> Bool {
-  match merge_queue_terminal(standing: configured_standing(), bypass: BypassNever) {
+fn observed_empty_roster() -> BypassActorRosterObservation {
+  BypassRosterObserved { actors: [] }
+}
+
+fn unavailable_roster() -> BypassActorRosterObservation {
+  BypassRosterUnavailable {
+    reader: "an unprivileged ruleset GET credential",
+    cause: "GitHub omits bypass_actors when the roster is empty and when the reader may not see it",
+  }
+}
+
+fn roster_with(mode: String) -> BypassActorRosterObservation {
+  BypassRosterObserved {
+    actors: [RulesetBypassActor { actor_type: "RepositoryRole", actor_id: 2, bypass_mode: mode }],
+  }
+}
+
+// EXCLUSIVE REQUIRES AN OBSERVED EMPTY ROSTER AND NOTHING WEAKER.
+test fn w_a_configured_queue_with_an_observed_empty_roster_is_exclusive() -> Bool {
+  match merge_queue_terminal(standing: configured_standing(), bypass_roster: observed_empty_roster()) {
     MergeQueueExclusive { grouping_strategy: g } => g == "ALLGREEN"
     _ => false
   }
 }
 
-// THE RUNG-INFLATION GUARD. A bypass standing leaves a route around admission, so the same queue
-// is Operational and NOT Exclusive. Both documented grants are checked, because either one is a
-// route and collapsing them would let one of them read as no route at all.
-test fn w_RED_a_bypass_standing_holds_the_terminal_at_operational() -> Bool {
-  let always = match merge_queue_terminal(standing: configured_standing(), bypass: BypassAlways) {
-    MergeQueueOperational { grouping_strategy: _ } => true
+// THE WRONG-QUANTIFIER RED, AND IT IS THE ONE THIS SPLIT EXISTS FOR. An absent bypass_actors key
+// read by a credential of unknown visibility is UNAVAILABLE, not EMPTY. If this ever goes green as
+// Exclusive, a reader-relative "I cannot bypass" has been read as "nobody can" -- the strongest
+// claim minted from the weakest observation. The cause must survive to the terminal, because
+// "nobody has established the roster" and "a role may bypass" have different remedies.
+test fn w_RED_an_unavailable_bypass_roster_cannot_mint_exclusive() -> Bool {
+  match merge_queue_terminal(standing: configured_standing(), bypass_roster: unavailable_roster()) {
+    MergeQueueOperational { grouping_strategy: _, nonexclusive: cause } =>
+      match cause {
+        BypassRosterNotObserved { reader: rd, cause: _ } =>
+          string_contains(s: rd, pattern: "unprivileged")
+        _ => false
+      }
     _ => false
   }
-  let prs_only = match merge_queue_terminal(standing: configured_standing(), bypass: BypassPullRequestsOnly) {
-    MergeQueueOperational { grouping_strategy: _ } => true
+}
+
+// THE LIVE SUBJECT, AS OBSERVED. A privileged read of gunb-ai/gunbc ruleset 16178731 on 2026-09-03
+// reported an always-bypass actor: actor_type RepositoryRole, actor_id 2. Exclusive is therefore
+// not merely unproven for this repository -- it is FALSE while that grant stands.
+test fn w_RED_an_always_bypass_actor_holds_the_terminal_at_operational() -> Bool {
+  match merge_queue_terminal(standing: configured_standing(), bypass_roster: roster_with(mode: "always")) {
+    MergeQueueOperational { grouping_strategy: _, nonexclusive: cause } =>
+      match cause {
+        AlwaysBypassActorObserved { actor_type: t, actor_id: i } => t == "RepositoryRole" && i == 2
+        _ => false
+      }
     _ => false
   }
-  always && prs_only
+}
+
+// THE NARROWER GRANT IS ITS OWN CAUSE, because its remedy is a different revocation. And an
+// UNRECOGNIZED mode reads as the WIDER grant, fail-closed: an unestablished grant is treated as
+// granting everything rather than being skipped.
+test fn w_RED_the_two_grants_and_an_unreadable_mode_do_not_collapse() -> Bool {
+  let pr = match merge_queue_terminal(standing: configured_standing(), bypass_roster: roster_with(mode: "pull_request")) {
+    MergeQueueOperational { grouping_strategy: _, nonexclusive: c } =>
+      match c { PullRequestBypassActorObserved { actor_type: _, actor_id: _ } => true _ => false }
+    _ => false
+  }
+  let unknown = match merge_queue_terminal(standing: configured_standing(), bypass_roster: roster_with(mode: "some_future_mode")) {
+    MergeQueueOperational { grouping_strategy: _, nonexclusive: c } =>
+      match c { AlwaysBypassActorObserved { actor_type: _, actor_id: _ } => true _ => false }
+    _ => false
+  }
+  pr && unknown
 }
 
 test fn w_RED_an_absent_or_ambiguous_queue_rule_is_unconfigured() -> Bool {
-  let absent = match merge_queue_terminal(standing: NoMergeQueueRule, bypass: BypassNever) {
+  let absent = match merge_queue_terminal(standing: NoMergeQueueRule, bypass_roster: observed_empty_roster()) {
     MergeQueueUnconfigured { reason: _ } => true
     _ => false
   }
   let ambiguous = match merge_queue_terminal(
     standing: MultipleMergeQueueRules { count: 2 },
-    bypass: BypassNever,
+    bypass_roster: observed_empty_roster(),
   ) {
     MergeQueueUnconfigured { reason: _ } => true
     _ => false

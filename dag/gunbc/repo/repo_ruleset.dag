@@ -30,12 +30,14 @@ import extdeps.github.rulesets {
   RulesetActive,
   RulesetTarget,
   BranchTarget,
-  RulesetBypassStanding,
-  BypassNever,
-  BypassPullRequestsOnly,
-  BypassAlways,
-  UnrecognizedBypassStanding,
-  ruleset_bypass_standing_wire_label,
+  ReaderBypassStanding,
+  ThisReaderCannotBypass,
+  ThisReaderCanBypassPullRequestsOnly,
+  ThisReaderCanBypassAlways,
+  UnrecognizedReaderBypassStanding,
+  reader_bypass_standing_wire_label,
+  BypassActorRosterObservation,
+  bypass_roster_unavailable_from_get,
   RequiredStatusCheckStanding,
   NoRequiredStatusChecksRule,
   RequiredStatusChecks,
@@ -58,7 +60,7 @@ import extdeps.github.rulesets {
   ruleset_target_wire_label,
   parse_ruleset_enforcement,
   parse_ruleset_target,
-  parse_ruleset_bypass_standing,
+  parse_reader_bypass_standing,
   required_status_check_row,
   required_status_checks_rule,
   parameterless_rule,
@@ -135,7 +137,7 @@ data desired_ruleset_target: RulesetTarget = BranchTarget
 data desired_strict_required_status_checks_policy: Bool = false
 data desired_do_not_enforce_on_create: Bool = false
 
-data desired_ruleset_bypass_standing: RulesetBypassStanding = BypassNever
+data desired_ruleset_bypass_standing: ReaderBypassStanding = ThisReaderCannotBypass
 
 // THE THREE RULES, IN THE ORDER GITHUB REPORTS THEM. deletion and non_fast_forward protect the
 // branch's history; required_status_checks is the one that gates. They are declared together
@@ -303,12 +305,13 @@ type RulesetObservation
       name: String
       enforcement: RulesetEnforcement
       target: RulesetTarget
-      bypass: RulesetBypassStanding
+      bypass: ReaderBypassStanding
       include: List<String>
       exclude: List<String>
       rule_types: List<RulesetRuleType>
       standing: RequiredStatusCheckStanding
       merge_queue: MergeQueueStanding
+      bypass_roster: BypassActorRosterObservation
     }
   | RulesetUnreadable { cause: RulesetReadRefusal }
 
@@ -348,12 +351,15 @@ fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> Ruleset
       name: r.name,
       enforcement: parse_ruleset_enforcement(raw: r.enforcement),
       target: parse_ruleset_target(raw: r.target),
-      bypass: parse_ruleset_bypass_standing(raw: r.current_user_can_bypass),
+      bypass: parse_reader_bypass_standing(raw: r.current_user_can_bypass),
       include: r.conditions.ref_name.include,
       exclude: r.conditions.ref_name.exclude,
       rule_types: ruleset_rule_types(rules: r.rules),
       standing: required_status_check_standing(rules: r.rules),
       merge_queue: merge_queue_standing(rules: r.rules),
+      bypass_roster: bypass_roster_unavailable_from_get(
+        reader: "the credential this module's github.Rulesets.Get runs as"
+      ),
     }
   }
 }
@@ -403,7 +409,7 @@ type RulesetDivergence
   | RulesetEnforcementDrift { observed: String }
   | RulesetTargetDrift { observed: String }
   | RulesetBypassGranted { observed: String }
-  | RulesetBypassStandingUnrecognized { raw: String }
+  | ReaderBypassStandingUnrecognized { raw: String }
   | RefNameIncludeDrift { observed: List<String> }
   | RefNameExcludeNonEmpty { observed: List<String> }
   | RulesetRuleAbsent { rule: String }
@@ -456,14 +462,14 @@ fn target_divergences(observed: RulesetTarget) -> List<RulesetDivergence> {
 // established, whose remedy is to extend the parser and re-establish the read. Collapsing the
 // third into the first two would report a granted bypass for an unread one, and the `raw` GitHub
 // actually sent -- the only thing that says what to extend the parser WITH -- was discarded.
-fn bypass_divergences(observed: RulesetBypassStanding) -> List<RulesetDivergence> {
+fn bypass_divergences(observed: ReaderBypassStanding) -> List<RulesetDivergence> {
   match observed {
-    BypassNever => []
-    BypassPullRequestsOnly =>
-      [RulesetBypassGranted { observed: ruleset_bypass_standing_wire_label(b: observed) }]
-    BypassAlways =>
-      [RulesetBypassGranted { observed: ruleset_bypass_standing_wire_label(b: observed) }]
-    UnrecognizedBypassStanding { raw: r } => [RulesetBypassStandingUnrecognized { raw: r }]
+    ThisReaderCannotBypass => []
+    ThisReaderCanBypassPullRequestsOnly =>
+      [RulesetBypassGranted { observed: reader_bypass_standing_wire_label(b: observed) }]
+    ThisReaderCanBypassAlways =>
+      [RulesetBypassGranted { observed: reader_bypass_standing_wire_label(b: observed) }]
+    UnrecognizedReaderBypassStanding { raw: r } => [ReaderBypassStandingUnrecognized { raw: r }]
   }
 }
 
@@ -682,7 +688,7 @@ fn observed_ruleset_divergences(
   name: String,
   enforcement: RulesetEnforcement,
   target: RulesetTarget,
-  bypass: RulesetBypassStanding,
+  bypass: ReaderBypassStanding,
   include: List<String>,
   exclude: List<String>,
   rule_types: List<RulesetRuleType>,
@@ -711,7 +717,7 @@ fn render_divergence(d: RulesetDivergence) -> String {
     RulesetEnforcementDrift { observed: o } => concat("enforcement is ", o)
     RulesetTargetDrift { observed: o } => concat("target is ", o)
     RulesetBypassGranted { observed: o } => concat("reader may bypass this ruleset: ", o)
-    RulesetBypassStandingUnrecognized { raw: r } =>
+    ReaderBypassStandingUnrecognized { raw: r } =>
       concat("current_user_can_bypass is unrecognized: ", r)
     RefNameIncludeDrift { observed: o } => concat("ref_name include is ", join(o, "|"))
     RefNameExcludeNonEmpty { observed: o } => concat("ref_name exclude is non-empty: ", join(o, "|"))
@@ -755,6 +761,7 @@ fn observation_divergences(observation: RulesetObservation) -> List<RulesetDiver
       rule_types: rt,
       standing: st,
       merge_queue: mq,
+      bypass_roster: _,
     } => observed_ruleset_divergences(
       name: n,
       enforcement: e,
@@ -791,7 +798,7 @@ type RepoRulesetConvergedEvidence {
   removals_applied: Int
   required_contexts: List<String>
   enforcement: String
-  bypass_is_never: Bool
+  reader_cannot_bypass: Bool
 }
 
 fn apply_desired_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetReadRefusal? {
@@ -820,7 +827,7 @@ fn converged_evidence_of(
       removals_applied: removals,
       required_contexts: [],
       enforcement: "",
-      bypass_is_never: false,
+      reader_cannot_bypass: false,
     }
     RulesetObserved {
       name: _,
@@ -832,12 +839,13 @@ fn converged_evidence_of(
       rule_types: _,
       standing: st,
       merge_queue: _,
+      bypass_roster: _,
     } => RepoRulesetConvergedEvidence {
       writes_applied: writes,
       removals_applied: removals,
       required_contexts: map(observed_required_checks(standing: st), c => c.context),
       enforcement: ruleset_enforcement_wire_label(e: e),
-      bypass_is_never: match b { BypassNever => true _ => false },
+      reader_cannot_bypass: match b { ThisReaderCannotBypass => true _ => false },
     }
   }
 }
@@ -866,6 +874,7 @@ fn repo_ruleset_converge_actuate_at(
       rule_types: rt,
       standing: st,
       merge_queue: _,
+      bypass_roster: _,
     } => {
       let plan = required_context_reconcile(observed: observed_required_checks(standing: st))
       let refusals = membership_refusal_count(plan: plan)

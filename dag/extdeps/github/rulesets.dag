@@ -55,14 +55,44 @@ type RulesetRuleType
   | MergeQueueRule
   | UnrecognizedRuleType { raw: String }
 
-// current_user_can_bypass is documented as one of never / pull_requests_only / always. It is the
-// only response field answering "can the rule be walked past" — the question a required context
-// exists to make unanswerable — so it is decoded rather than skipped.
-type RulesetBypassStanding
-  = BypassNever
-  | BypassPullRequestsOnly
-  | BypassAlways
-  | UnrecognizedBypassStanding { raw: String }
+// current_user_can_bypass is documented as one of never / pull_requests_only / always, and IT IS A
+// FACT ABOUT THE READER, NOT ABOUT THE RULESET. GitHub answers it for the identity that made the
+// request. The type is named for that: `ThisReaderCannotBypass` is what the response supports, and
+// "nobody can bypass" is a DIFFERENT claim about a DIFFERENT subject -- the bypass_actors roster --
+// which this field does not answer at any authorization level.
+//
+// The former spelling (`RulesetBypassStanding`, `BypassNever`) named the ruleset, and that is
+// precisely the confusion that let a reader-relative "I cannot bypass" be read as "no bypass
+// exists". The three inhabitants stay separate rather than collapsing the two grants into one arm
+// with a mode: review 56496 established that `pull_requests_only` and `always` are different grants
+// with different remedies, and an unrecognized standing is a third thing again -- GitHub's
+// vocabulary moved and this reading is no longer established.
+type ReaderBypassStanding
+  = ThisReaderCannotBypass
+  | ThisReaderCanBypassPullRequestsOnly
+  | ThisReaderCanBypassAlways
+  | UnrecognizedReaderBypassStanding { raw: String }
+
+// THE ROSTER IS THE OTHER SUBJECT AND IT HAS AN UNAVAILABLE STATE, WHICH IS THE WHOLE POINT.
+//
+// bypass_actors answers "who may walk past this ruleset". GitHub OMITS the key when the roster is
+// empty AND when the reading credential is not authorized to see it, and the response carries
+// nothing that separates those. So an absent key is UNAVAILABLE, never EMPTY -- and only a
+// complete, sufficiently authorized observation of an EMPTY roster establishes that no route
+// around the ruleset exists.
+//
+// Collapsing unavailable into empty is the empty-observation narrow: it would let a credential of
+// unknown visibility mint the strongest possible claim about a subject it never saw. The reader
+// field records WHOSE observation this is, because the answer is relative to it.
+type RulesetBypassActor {
+  actor_type: String
+  actor_id: Int
+  bypass_mode: String
+}
+
+type BypassActorRosterObservation
+  = BypassRosterObserved { actors: List<RulesetBypassActor> }
+  | BypassRosterUnavailable { reader: NonEmptyStr, cause: NonEmptyStr }
 
 type RequiredStatusCheckWire {
   context: String
@@ -199,19 +229,33 @@ fn ruleset_rule_type_wire_label(t: RulesetRuleType) -> String {
   }
 }
 
-fn parse_ruleset_bypass_standing(raw: String) -> RulesetBypassStanding {
-  if raw == "never" { BypassNever }
-  else { if raw == "pull_requests_only" { BypassPullRequestsOnly }
-  else { if raw == "always" { BypassAlways }
-  else { UnrecognizedBypassStanding { raw: raw } } } }
+fn parse_reader_bypass_standing(raw: String) -> ReaderBypassStanding {
+  if raw == "never" { ThisReaderCannotBypass }
+  else { if raw == "pull_requests_only" { ThisReaderCanBypassPullRequestsOnly }
+  else { if raw == "always" { ThisReaderCanBypassAlways }
+  else { UnrecognizedReaderBypassStanding { raw: raw } } } }
 }
 
-fn ruleset_bypass_standing_wire_label(b: RulesetBypassStanding) -> String {
+fn reader_bypass_standing_wire_label(b: ReaderBypassStanding) -> String {
   match b {
-    BypassNever => "never"
-    BypassPullRequestsOnly => "pull_requests_only"
-    BypassAlways => "always"
-    UnrecognizedBypassStanding { raw: r } => r
+    ThisReaderCannotBypass => "never"
+    ThisReaderCanBypassPullRequestsOnly => "pull_requests_only"
+    ThisReaderCanBypassAlways => "always"
+    UnrecognizedReaderBypassStanding { raw: r } => r
+  }
+}
+
+// THE ROSTER IS NOT DECODED FROM THIS RESPONSE, AND THAT IS A REFUSAL RATHER THAN AN OMISSION.
+// Adding a `bypass_actors` field to RulesetWire would decode an absent key to an empty list, which
+// is exactly the conflation the type above exists to prevent -- and no field in the response says
+// whether the reader was authorized to see the roster. So every observation built from this
+// endpoint is Unavailable, carrying who asked and why the answer is not established. An
+// authorized read is a different observation with its own producer, and it is what may mint
+// BypassRosterObserved.
+fn bypass_roster_unavailable_from_get(reader: NonEmptyStr) -> BypassActorRosterObservation {
+  BypassRosterUnavailable {
+    reader: reader,
+    cause: "GitHub omits bypass_actors from GET /repos/{owner}/{repo}/rulesets/{id} when the roster is empty AND when the reading credential is not authorized to see it, and the response carries nothing that separates those two",
   }
 }
 

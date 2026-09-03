@@ -13,11 +13,10 @@ import extdeps.github.rulesets {
   AllGreenGrouping,
   HeadGreenGrouping,
   UnrecognizedGroupingStrategy,
-  RulesetBypassStanding,
-  BypassNever,
-  BypassPullRequestsOnly,
-  BypassAlways,
-  UnrecognizedBypassStanding,
+  BypassActorRosterObservation,
+  BypassRosterObserved,
+  BypassRosterUnavailable,
+  RulesetBypassActor,
   merge_queue_grouping_strategy_wire_label,
 }
 import gunbc.witness_floor_workflow { witness_floor_workflow }
@@ -75,14 +74,26 @@ data merge_queue_admission_rebind: DissolutionCondition = unbound_dissolution(de
 // NoMergeQueueRule.
 data merge_queue_world_half_gap: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the merge queue is enabled on gunb-ai/gunbc after operator sign-off (gunbc.repo_ruleset desired_merge_queue moves to MergeQueueSignedOff), and one merge_group run of the required aggregate is observed on a queue-built composition -- the run's subject commit equal to the composition GitHub fast-forwards. Until that observation exists, the exact-subject and ordering laws below are established over authored inputs only, and the terminal for this repository is MergeQueueUnconfigured. This gap is why merge_queue_terminal reports a terminal rather than this module asserting one.")
 
-// THE BYPASS FACT IS UNDETERMINED FROM INSIDE THIS SESSION AND IS RECORDED AS SUCH.
-// Three reads of ruleset 16178731 on 2026-09-03 returned two answers: two identities saw no
-// bypass_actors key and current_user_can_bypass "never"; a third capture reported an `always`
-// repository-role bypass. Both can be true, because the field is READER-RELATIVE -- an identity that
-// CAN bypass sees the actor, one that cannot does not. So the honest state is neither "no bypass
-// exists" nor "an always-bypass exists": it is that the answer depends on who asks, and no reader
-// available here can settle it. That is exactly the shape MergeQueueExclusive exists to hold, and it
-// is why Exclusive is a separate constructor rather than a field on Operational.
+// THE BYPASS QUESTION IS SETTLED, IN THE POSITIVE DIRECTION, AND THE ROUTE TO SETTLING IT IS THE
+// PART WORTH KEEPING.
+//
+// Three reads of ruleset 16178731 on 2026-09-03 by unprivileged credentials returned no
+// bypass_actors key and current_user_can_bypass "never". That is an UNAVAILABLE observation of the
+// roster, not an empty one: GitHub omits the key both when the roster is empty and when the reader
+// may not see it. Reading those as "no bypass exists" would have answered a question about the
+// RULESET with evidence about the READER -- minting the strongest available claim from the weakest
+// available observation.
+//
+// A PRIVILEGED OBSERVATION THEN REPORTED AN ALWAYS-BYPASS ACTOR: actor_type RepositoryRole,
+// actor_id 2. So the terminal for gunb-ai/gunbc is not open pending evidence -- were the queue
+// configured today it would be MergeQueueOperational carrying AlwaysBypassActorObserved, because a
+// role holding an always-bypass grant can publish past the ruleset while the queue runs correctly
+// beside it. Exclusive is not merely unproven here; it is FALSE until that grant is removed.
+//
+// The types below are what make that unmistakable, and they are why the reader standing and the
+// actor roster are separate carriers: nothing built from an Unavailable observation can reach
+// Exclusive, so the three unprivileged reads could never have produced the wrong terminal even
+// before the privileged one arrived.
 
 // THE QUEUE ENTRY. Four commit identities are involved and collapsing any two of them is how a
 // queue silently stops providing its guarantee, so each is its own field.
@@ -336,9 +347,19 @@ fn queue_admission_admits(v: QueueAdmissionVerdict) -> Bool {
 //
 // So they are two constructors, Exclusive carries what Operational carries plus the bypass fact,
 // and the type makes it impossible to report the second while holding only the first's evidence.
+// WHY A QUEUE IS NOT EXCLUSIVE IS ITSELF A COPRODUCT. "A role may always bypass", "a role may
+// bypass pull requests" and "nobody has established the roster" have three different remedies --
+// revoke the grant, revoke the narrower grant, obtain an authorized read -- and only the third is
+// about evidence rather than about the world. Rendering all three as "not exclusive" would report
+// a missing observation as a known route and a known route as a missing observation.
+type QueueNonexclusiveCause
+  = AlwaysBypassActorObserved { actor_type: String, actor_id: Int }
+  | PullRequestBypassActorObserved { actor_type: String, actor_id: Int }
+  | BypassRosterNotObserved { reader: NonEmptyStr, cause: NonEmptyStr }
+
 type MergeQueueTerminal
   = MergeQueueUnconfigured { reason: NonEmptyStr }
-  | MergeQueueOperational { grouping_strategy: String }
+  | MergeQueueOperational { grouping_strategy: String, nonexclusive: QueueNonexclusiveCause }
   | MergeQueueExclusive { grouping_strategy: String }
 
 // THE merge_group ENROLMENT IS READ OFF THE WORKFLOW AUTHORITY, NOT RESTATED. The workflow's `on`
@@ -348,18 +369,38 @@ fn floor_workflow_admits_merge_group() -> Bool {
   any(witness_floor_workflow.on, t => match t { MergeGroup => true _ => false })
 }
 
-fn bypass_leaves_a_route(bypass: RulesetBypassStanding) -> Bool {
-  match bypass {
-    BypassNever => false
-    BypassPullRequestsOnly => true
-    BypassAlways => true
-    UnrecognizedBypassStanding { raw: _ } => true
+// AN UNAVAILABLE ROSTER PRODUCES A CAUSE, NEVER AN ABSENCE OF ONE. This is the arm that makes
+// Exclusive unreachable from an unauthorized read: there is no path from BypassRosterUnavailable to
+// `none`, so a credential of unknown visibility cannot mint the claim that no route exists.
+//
+// An UNRECOGNIZED bypass_mode on an observed actor is read as the WIDER grant rather than skipped:
+// an actor carrying a mode this repository cannot read is an actor whose grant is not established,
+// and the fail-closed reading of an unestablished grant is that it grants everything.
+fn bypass_actor_cause(actor: RulesetBypassActor) -> QueueNonexclusiveCause {
+  if actor.bypass_mode == "pull_request" {
+    PullRequestBypassActorObserved { actor_type: actor.actor_type, actor_id: actor.actor_id }
+  } else {
+    AlwaysBypassActorObserved { actor_type: actor.actor_type, actor_id: actor.actor_id }
+  }
+}
+
+fn first_bypass_route(roster: BypassActorRosterObservation) -> QueueNonexclusiveCause? {
+  match roster {
+    BypassRosterUnavailable { reader: rd, cause: c } =>
+      Present { value: BypassRosterNotObserved { reader: rd, cause: c } }
+    BypassRosterObserved { actors: xs } =>
+      fold(xs, init: none, f: fn(acc, actor) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => Present { value: bypass_actor_cause(actor: actor) }
+        }
+      })
   }
 }
 
 fn merge_queue_terminal(
   standing: MergeQueueStanding,
-  bypass: RulesetBypassStanding,
+  bypass_roster: BypassActorRosterObservation,
 ) -> MergeQueueTerminal {
   match standing {
     NoMergeQueueRule =>
@@ -378,20 +419,34 @@ fn merge_queue_terminal(
       if !floor_workflow_admits_merge_group() {
         MergeQueueUnconfigured { reason: "the required workflow does not list the merge_group trigger, so its check can never schedule for a queue composition" }
       } else {
-        if bypass_leaves_a_route(bypass: bypass) {
-          MergeQueueOperational { grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g) }
-        } else {
-          MergeQueueExclusive { grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g) }
+        match first_bypass_route(roster: bypass_roster) {
+          Present { value: cause } => MergeQueueOperational {
+            grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g),
+            nonexclusive: cause,
+          }
+          Absent =>
+            MergeQueueExclusive { grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g) }
         }
       }
+  }
+}
+
+fn nonexclusive_cause_label(c: QueueNonexclusiveCause) -> String {
+  match c {
+    AlwaysBypassActorObserved { actor_type: t, actor_id: i } =>
+      join([t, " ", to_string(i), " may always bypass the ruleset"], "")
+    PullRequestBypassActorObserved { actor_type: t, actor_id: i } =>
+      join([t, " ", to_string(i), " may bypass the ruleset for pull requests"], "")
+    BypassRosterNotObserved { reader: rd, cause: c2 } =>
+      join(["the bypass roster is not established for ", rd, ": ", c2], "")
   }
 }
 
 fn merge_queue_terminal_label(t: MergeQueueTerminal) -> String {
   match t {
     MergeQueueUnconfigured { reason: r } => concat("unconfigured: ", r)
-    MergeQueueOperational { grouping_strategy: g } =>
-      concat("operational (a bypass standing still leaves a route around admission), grouping ", g)
+    MergeQueueOperational { grouping_strategy: g, nonexclusive: cause } =>
+      join(["operational, grouping ", g, "; not exclusive: ", nonexclusive_cause_label(c: cause)], "")
     MergeQueueExclusive { grouping_strategy: g } =>
       concat("exclusive, grouping ", g)
   }
