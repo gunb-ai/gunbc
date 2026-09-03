@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.censored_estimator_drops_its_own_tail
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data censored_estimator_drops_its_own_tail: RecurringFailureMode = RecurringFailureMode {
+  identity: "censored_estimator_drops_its_own_tail" as NonEmptyStr,
+
+  receipts: [
+    "**censored estimator drops its own tail** (an estimate of a variable is computed over the observations that SURVIVED a threshold on that same variable, so the sample structurally excludes its own extreme and the estimate is biased low with no bound. ",
+
+    "It is the neighbour of `instrument_output_read_as_subject_content` moved one step earlier: there a REPORT is complete for the reporter and read as complete for the consumer; here the truncation is in the ESTIMATOR'S OWN DOMAIN, and no amount of reading the instrument's output correctly recovers what the filter removed. ",
+
+    "SPECIMEN, both directions, 2026-09-01: the required floor's per-run cost inflation was estimated by pairing every claim that reported a cost in BOTH attempts of one tree -- median 1.053, p90 1.107. ",
+
+    "A claim that exceeds the cpu ceiling goes INTERRUPTED-BEFORE-VERDICT AND REPORTS NO COST, so the pairing dropped exactly the two most inflated observations; recovered from the ceiling itself, their inflation was at least 500/418 = 1.196, censored from above. ",
+
+    "THE SECOND HALF IS WHY THE ROW EXISTS: a peer lane, correcting a DIFFERENT defect in the same measurement, took the biased p90 by relay and derived an at-risk population of ONE -- an understatement arriving with the credibility of a retraction, which is the artifact nobody re-audits. ",
+
+    "Both counts were lower bounds and neither was labelled as one. ",
+
+    "RECOGNITION RULE: whenever an estimate is computed over rows that COMPLETED, RETURNED, PASSED, or were OBSERVED, ask what the incomplete rows would have contributed -- and if the incompleteness is caused by the very variable being estimated, the statistic is a floor and must be reported as one. ",
+
+    "The tell is a filter and an estimand naming the same quantity: cost estimated over rows that finished, latency over requests that did not time out, size over responses that were not truncated. ",
+
+    "REMEDY: report the censored bound rather than the sample statistic, and recover the excluded observations from the THRESHOLD they crossed, which is a real datum -- a row killed at 500ms is not missing, it is known to be above 500.)",
+  ],
+
+  evidence: [],
+}

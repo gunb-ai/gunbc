@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.meaning_fork
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data meaning_fork: RecurringFailureMode = RecurringFailureMode {
+  identity: "meaning_fork" as NonEmptyStr,
+
+  receipts: [
+    "**meaning fork** (one scoped name carries more than one material semantic referent under hidden state; accuracy of meaning applies to terms in every layer, and for a contract-bearing name, differences in obligations, quality floor, refusal behavior, billing consequence, or remedy establish different referents. ",
+
+    "The subject is scoped: the key is the naming surface, the visible name, and the declared effective version or epoch — the same spelling in two explicitly distinct scopes or across a declared version transition is legitimate reuse, not a fork. ",
+
+    "Recognition rule: hold that key constant and vary the hidden state; if the material semantic referent changes without a distinct variant name, the name has forked — for a contract-bearing name, a change in obligations, quality floor, refusal behavior, billing consequence, or remedy is sufficient evidence of that change. ",
+
+    "This is the one-name/two-meanings dual of nicknaming.)",
+  ],
+
+  evidence: [],
+}
