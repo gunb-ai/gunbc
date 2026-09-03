@@ -8,9 +8,13 @@ import gunbc.spark.vllm_observed {
   VllmModelsRouteReadback,
   VllmVersionRouteReadback,
   VllmCacheConfigGaugeReadback,
-  VllmReadbackAcquisition,
-  VllmReadbackTransaction,
-  vllm_readback_acquisition,
+  VllmSelfReportedVersion,
+  vllm_self_reported_version,
+  VllmHistoricalFrontDoorScope,
+  VllmHistoricalReadbackBundle,
+  VllmCrossRouteAcquisitionJoin,
+  CrossRouteAcquisitionJoinUnestablished,
+  vllm_historical_front_door_scope,
   vllm_models_route_readback,
   vllm_version_route_readback,
   vllm_cache_config_gauge_readback,
@@ -20,8 +24,7 @@ import gunbc.spark.vllm_observed {
   ResolvedParallelConfigurationNotObserved,
   JoinedRankPopulationNotObserved,
   VllmTpRealizationRefusal,
-  vllm_readback_transaction,
-  vllm_missing_evidence_for,
+  vllm_historical_readback_bundle,
   vllm_tp_realization_missing_wire,
   vllm_tp_realization_refusal_cause,
   vllm_capacity_from_cache_config_fields,
@@ -34,19 +37,16 @@ import extdeps.vllm.server {
   VllmRoutePopulation,
   OrdinarilyRegistered,
   RegisteredOnlyUnderDevelopmentMode,
-  VllmSelfReportedVersion,
-  vllm_self_reported_version,
-  vllm_parallel_evidence_routes,
-  vllm_evidence_route_server_info,
-  vllm_evidence_route_get_world_size,
-  vllm_evidence_route_collective_rpc,
-  VllmEvidenceRoute,
+  vllm_http_parallel_evidence_routes,
+  VllmParallelEvidenceRoute,
+  ServerInfoRoute,
+  GetWorldSizeRoute,
+  CollectiveRpcRoute,
+  vllm_parallel_evidence_kind,
+  vllm_parallel_evidence_route_path,
   VllmEvidenceRouteResponse,
   EvidenceRouteNotServed,
   EvidenceRouteAnsweredWithoutParse,
-  EvidenceRouteResolvedConfiguration,
-  vllm_resolved_parallel_configuration_capture,
-  vllm_group_aware_capacity_capture,
   VllmEvidenceKind,
   ResolvedParallelConfiguration,
   DerivedWorldSizeProduct,
@@ -57,13 +57,13 @@ import extdeps.vllm.server {
   VllmHealthWorkerCoverage,
   HealthDoesNotProbeDistributedWorkers,
   HealthProbesEveryDistributedWorker,
-  VllmCapacityEvidenceProposal,
-  GroupAwareStartupLogCapture,
+  VllmCapacitySourceKind,
+  GroupAwareStartupLog,
   CacheConfigBlockFields,
-  VllmCapacityEvidenceVerdict,
-  CapacityEvidenceAdmitted,
-  CapacityEvidenceRefused,
-  decide_vllm_capacity_evidence,
+  VllmCapacitySourceDecision,
+  CapacitySourceAuthoritative,
+  CapacitySourceInsufficient,
+  decide_vllm_capacity_source_kind,
 }
 
 // ── FIXTURES, HERMETIC AND NOT REPRESENTABLE AS ACQUIRED EVIDENCE ───────────────────────────────
@@ -73,8 +73,8 @@ import extdeps.vllm.server {
 // function that builds that data is broken. Every claim below calls something.
 data w_fixture_host: HostIdentity = "w-vllm-front-door" as HostIdentity
 
-fn w_acquisition(host: HostIdentity) -> VllmReadbackAcquisition {
-  vllm_readback_acquisition(
+fn w_scope(host: HostIdentity) -> VllmHistoricalFrontDoorScope {
+  vllm_historical_front_door_scope(
     front_door_host: host,
     observed_on: "w-fixture-date" as NonEmptyStr,
     version_route: vllm_version_route_readback(server_version: "w-fixture-build" as NonEmptyStr))
@@ -91,29 +91,22 @@ fn w_not_served() -> VllmEvidenceRouteResponse {
   EvidenceRouteNotServed { http_status: "404" as NonEmptyStr }
 }
 
-fn w_parsed_config() -> VllmEvidenceRouteResponse {
-  EvidenceRouteResolvedConfiguration {
-    capture: vllm_resolved_parallel_configuration_capture(
-      tensor_parallel_degree: "2" as NonEmptyStr,
-      pipeline_parallel_degree: "1" as NonEmptyStr,
-      data_parallel_degree: "1" as NonEmptyStr),
-  }
-}
+fn w_answered_unparsed() -> VllmEvidenceRouteResponse { EvidenceRouteAnsweredWithoutParse }
 
 fn w_outcomes(response: VllmEvidenceRouteResponse) -> List<VllmEvidenceRouteOutcome> {
-  map(vllm_parallel_evidence_routes, r => vllm_evidence_route_outcome(route: r, response: response))
+  map(vllm_http_parallel_evidence_routes, r => vllm_evidence_route_outcome(route: r, response: response))
 }
 
-fn w_transaction(host: HostIdentity, response: VllmEvidenceRouteResponse) -> VllmReadbackTransaction {
-  vllm_readback_transaction(
-    acquisition: w_acquisition(host: host),
+fn w_bundle(host: HostIdentity, response: VllmEvidenceRouteResponse) -> VllmHistoricalReadbackBundle {
+  vllm_historical_readback_bundle(
+    scope: w_scope(host: host),
     models_route: w_models_route(),
     version_route: vllm_version_route_readback(server_version: "w-fixture-build" as NonEmptyStr),
     cache_config_gauge: vllm_cache_config_gauge_readback(
       kv_cache_dtype: "w-dtype" as NonEmptyStr,
       gpu_memory_utilization: basis_point(count: 5000),
       prefix_caching_enabled: true),
-    parallel_evidence_outcomes: w_outcomes(response: response),
+    parallel_evidence_observations: w_outcomes(response: response),
   )
 }
 
@@ -124,33 +117,39 @@ fn w_transaction(host: HostIdentity, response: VllmEvidenceRouteResponse) -> Vll
 // drives the constructor with two DIFFERENT hosts and asserts the refusal followed each -- which is
 // a claim about the derivation, not about either row.
 test fn w_the_refusal_host_is_derived_from_the_acquisition_it_belongs_to() -> Bool {
-  w_transaction(host: w_fixture_host, response: w_not_served()).realization.front_door_host as String
+  w_bundle(host: w_fixture_host, response: w_not_served()).realization.front_door_host as String
     == w_fixture_host as String
-  && w_transaction(host: operator_host_srv5, response: w_not_served()).realization.front_door_host as String
+  && w_bundle(host: operator_host_srv5, response: w_not_served()).realization.front_door_host as String
        == operator_host_srv5 as String
 }
 
-// ── THE STAGE IS DERIVED FROM THE OUTCOMES, BOTH DIRECTIONS ─────────────────────────────────────
+// ── BOTH LIMITATIONS ARE STAMPED, AND THEY ARE NOT THE SAME LIMITATION ─────────────────────────
 //
-// Nothing answered means the configuration stage was never reached, so the refusal is the earlier
-// arm. Something answering moves the open question to the population. Both are driven through the
-// real function, so an implementation that hardcoded either arm fails here.
-test fn w_the_missing_stage_follows_whether_any_evidence_route_answered() -> Bool {
-  match vllm_missing_evidence_for(outcomes: w_outcomes(response: w_not_served())) {
+// The bundle answers two different questions and must keep answering both. `acquisition_join` says
+// the route observations could not be joined as one acquisition; `realization.missing` says no
+// retained observation established resolved parallel configuration. Collapsing them would lose the
+// first, which is the one that makes clear a LATER rank receipt cannot rehabilitate this row.
+//
+// Neither is caller-supplied: the constructor takes no argument for either, so this drives the real
+// constructor and a version that accepted them from outside would not compile against this call.
+test fn w_the_bundle_stamps_both_limitations_not_one() -> Bool {
+  match w_bundle(host: w_fixture_host, response: w_not_served()).acquisition_join {
+    CrossRouteAcquisitionJoinUnestablished { cause: c } => contains(c as String, "capture identity")
+  }
+  && match w_bundle(host: w_fixture_host, response: w_not_served()).realization.missing {
     ResolvedParallelConfigurationNotObserved => true
     JoinedRankPopulationNotObserved => false
   }
-  && match vllm_missing_evidence_for(outcomes: w_outcomes(response: w_parsed_config())) {
-    JoinedRankPopulationNotObserved => true
-    ResolvedParallelConfigurationNotObserved => false
-  }
 }
 
-// AND THE TRANSACTION CARRIES THAT SAME DERIVATION rather than a separately supplied stage.
-test fn w_the_transaction_carries_the_derived_stage_and_not_a_supplied_one() -> Bool {
-  match w_transaction(host: w_fixture_host, response: w_parsed_config()).realization.missing {
-    JoinedRankPopulationNotObserved => true
-    ResolvedParallelConfigurationNotObserved => false
+// AND AN ANSWER NOBODY PARSED DOES NOT MOVE EITHER OF THEM. This is the state a Bool recorded
+// identically to a parsed answer: a 200 whose body was never read. There is no parsed-configuration
+// arm to write here at all now -- the caller-authored capture was removed -- so the strongest input a
+// fixture can supply still leaves the refusal at its earliest stage.
+test fn w_an_unparsed_answer_leaves_the_refusal_at_its_earliest_stage() -> Bool {
+  match w_bundle(host: w_fixture_host, response: w_answered_unparsed()).realization.missing {
+    ResolvedParallelConfigurationNotObserved => true
+    JoinedRankPopulationNotObserved => false
   }
 }
 
@@ -167,38 +166,48 @@ test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
            && !contains(vllm_tp_realization_missing_wire(missing: m), "did not answer"))
     && contains(
          vllm_tp_realization_refusal_cause(
-           refusal: w_transaction(host: w_fixture_host, response: w_not_served()).realization),
+           refusal: w_bundle(host: w_fixture_host, response: w_not_served()).realization),
          "missing positive fact")
 }
 
-// ── THE CAPACITY LAW, AS A DECISION WITH BOTH DIRECTIONS REACHABLE ──────────────────────────────
+// ── THE CAPACITY LAW CLASSIFIES SOURCE KINDS; IT ADMITS NO EVIDENCE ────────────────────────────
 //
-// The previous shape was a coproduct whose two arms were simultaneous facts, so the rejection of the
-// multiplication was carried by prose and by an uninhabited alternative. As a decision both
-// directions execute, and the refusal is checked to state the GENERAL law rather than an arithmetic
-// complaint -- for a uniform layout the product may coincide with the right answer.
-test fn w_cache_config_block_fields_are_refused_as_a_capacity_authority() -> Bool {
-  match decide_vllm_capacity_evidence(proposal: CacheConfigBlockFields) {
-    CapacityEvidenceRefused { cause: c } => contains(c, "not a generally sufficient")
-    CapacityEvidenceAdmitted { capture: _ } => false
+// The previous version took a proposal carrying a "capture" of two arbitrary strings and echoed it
+// back as `CapacityEvidenceAdmitted`, so a caller writing ("w-pool", "w-req") received an admission
+// and the witness proved only that a caller-authored payload reaches its matching branch. Nothing
+// here has a capacity capture, so the law says which KIND of source would be authoritative and stops
+// there. Both directions execute.
+test fn w_cache_config_block_fields_are_insufficient_as_a_capacity_source() -> Bool {
+  match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields) {
+    CapacitySourceInsufficient { cause: c } => contains(c, "not a generally sufficient")
+    CapacitySourceAuthoritative => false
   }
 }
 
-test fn w_the_group_aware_startup_capture_is_the_admitted_capacity_evidence() -> Bool {
-  match decide_vllm_capacity_evidence(proposal: GroupAwareStartupLogCapture {
-    capture: vllm_group_aware_capacity_capture(
-      pool_tokens: "w-pool" as NonEmptyStr, per_request_tokens: "w-req" as NonEmptyStr),
-  }) {
-    CapacityEvidenceAdmitted { capture: c } => c.pool_tokens as String == "w-pool"
-    CapacityEvidenceRefused { cause: _ } => false
+// AND THE REFUSAL NAMES THE TWO AXES SEPARATELY, because the earlier wording called block_size a
+// minimum "across ranks" and conflated them: the scheduler selects block_size across resolved cache
+// GROUPS, while num_blocks is separately reduced across WORKERS. The product joins values from
+// different axes, which is why it is not capacity even when it happens to coincide with it.
+test fn w_the_capacity_refusal_does_not_conflate_groups_with_ranks() -> Bool {
+  match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields) {
+    CapacitySourceInsufficient { cause: c } =>
+      contains(c, "MINIMUM ACROSS RESOLVED CACHE GROUPS") && contains(c, "ACROSS WORKERS")
+    CapacitySourceAuthoritative => false
+  }
+}
+
+test fn w_the_group_aware_startup_log_is_the_authoritative_source_kind() -> Bool {
+  match decide_vllm_capacity_source_kind(kind: GroupAwareStartupLog) {
+    CapacitySourceAuthoritative => true
+    CapacitySourceInsufficient { cause: _ } => false
   }
 }
 
 // AND THE OBSERVATION MODULE ACTUALLY CONSULTS THAT LAW rather than restating it.
 test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool {
   match vllm_capacity_from_cache_config_fields() {
-    CapacityEvidenceRefused { cause: _ } => true
-    CapacityEvidenceAdmitted { capture: _ } => false
+    CapacitySourceInsufficient { cause: _ } => true
+    CapacitySourceAuthoritative => false
   }
 }
 
@@ -219,7 +228,7 @@ test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bo
     OrdinarilyRegistered => true
     RegisteredOnlyUnderDevelopmentMode => false
   }
-  && all(vllm_parallel_evidence_routes, r => match r.route.population {
+  && all(vllm_http_parallel_evidence_routes, r => match vllm_parallel_evidence_route_path(route: r).population {
        RegisteredOnlyUnderDevelopmentMode => true
        OrdinarilyRegistered => false
      })
@@ -240,57 +249,31 @@ test fn w_the_served_id_is_not_derivable_from_the_configured_path() -> Bool {
        }
 }
 
-// ── THE DISCRIMINATING CASE THE PREVIOUS DERIVATION GOT WRONG ───────────────────────────────────
+// ── THE ROUTE IDENTITY DECIDES ITS KIND, AND THE THREE ARE NOT INTERCHANGEABLE ─────────────────
 //
-// A world-size answer with no configuration answer must NOT advance the stage. The earlier version
-// advanced on any answer, so this exact input made it claim resolved parallel configuration was in
-// hand when nothing had reported it -- an overstatement of knowledge, which is the direction that
-// matters. A world size of 2 is consistent with TP=2, PP=2 and DP=2 alike.
-test fn w_a_world_size_answer_alone_does_not_advance_the_refusal_stage() -> Bool {
-  match vllm_missing_evidence_for(outcomes: [
-    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, response: w_not_served()),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, response: w_parsed_config()),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, response: w_parsed_config()),
-  ]) {
-    ResolvedParallelConfigurationNotObserved => true
-    JoinedRankPopulationNotObserved => false
-  }
-}
-
-// AND THE CONFIGURATION-BEARING ROUTE ALONE DOES ADVANCE IT, so the rule is not simply "never
-// advance", which would pass the claim above while making the later arm unreachable.
-test fn w_the_configuration_bearing_answer_alone_advances_the_stage() -> Bool {
-  match vllm_missing_evidence_for(outcomes: [
-    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, response: w_parsed_config()),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, response: w_not_served()),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, response: w_not_served()),
-  ]) {
-    JoinedRankPopulationNotObserved => true
-    ResolvedParallelConfigurationNotObserved => false
-  }
-}
-
-// AND THE KINDS ARE DISTINGUISHED AT ALL. Without this, both claims above would still pass if every
-// route reported the same kind and that kind happened to be the configuration-bearing one.
+// This is the fact the earlier stage law depended on and could not enforce: the kind used to be
+// PAIRED with the route by a public constructor, so `(get_world_size, ResolvedParallelConfiguration)`
+// was writable and would have been read as configuration-bearing. It is now a projection of a closed
+// route identity, so the claim below is about the upstream population rather than about whichever
+// pairing a caller last wrote.
+//
+// A world size of 2 is consistent with TP=2, PP=2 and DP=2 alike, and a per-worker fan-out reports
+// population without saying how the parallelism decomposes. Only /server_info returns the resolved
+// configuration.
 test fn w_only_the_server_info_route_bears_resolved_parallel_configuration() -> Bool {
-  vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_server_info.kind)
-    && !vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_get_world_size.kind)
-    && !vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_collective_rpc.kind)
+  vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: ServerInfoRoute))
+    && !vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: GetWorldSizeRoute))
+    && !vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: CollectiveRpcRoute))
 }
 
-// AN UNPARSED 200 IS NOT KNOWLEDGE, AND MUST LEAVE THE REFUSAL WHERE A 404 DOES.
-//
-// This is the case a Bool could not express. A route that answered but whose body nobody read tells
-// you the route exists and nothing about the topology, so treating it as an answer is how "we did
-// not look" becomes "we know". The configuration-bearing route is the one answering here, so only
-// the unparsed-ness is doing the work.
-test fn w_an_unparsed_answer_does_not_advance_the_refusal_stage() -> Bool {
-  match vllm_missing_evidence_for(outcomes: [
-    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, response: EvidenceRouteAnsweredWithoutParse),
-  ]) {
-    ResolvedParallelConfigurationNotObserved => true
-    JoinedRankPopulationNotObserved => false
-  }
+// AND EVERY ROUTE IN THE HTTP EVIDENCE POPULATION IS ONE OF THOSE THREE IDENTITIES, so the projection
+// above covers the population rather than three rows that happen to be listed.
+test fn w_the_http_evidence_population_is_exactly_the_closed_route_identity() -> Bool {
+  length(vllm_http_parallel_evidence_routes) == 3
+    && any(vllm_http_parallel_evidence_routes, r =>
+         vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: r)))
+    && length(filter(vllm_http_parallel_evidence_routes, r =>
+         vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: r)))) == 1
 }
 
 // THE NUMERIC READBACKS ARE COMPARABLE, WHICH IS THE WHOLE POINT OF TYPING THEM.

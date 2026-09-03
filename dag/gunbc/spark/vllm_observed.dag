@@ -5,28 +5,28 @@ import product.placement_supply { HostIdentity }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
 import gunbc.fleet_intent_network { operator_host_srv6 }
 import extdeps.vllm.server {
-  vllm_self_reported_version,
   VllmRoute,
   VllmRoutePopulation,
   OrdinarilyRegistered,
   RegisteredOnlyUnderDevelopmentMode,
-  VllmSelfReportedVersion,
-  vllm_parallel_evidence_routes,
+  VllmParallelEvidenceRoute,
+  ServerInfoRoute,
+  GetWorldSizeRoute,
+  CollectiveRpcRoute,
+  vllm_http_parallel_evidence_routes,
   VllmEvidenceKind,
-  VllmEvidenceRoute,
+  vllm_parallel_evidence_kind,
+  vllm_evidence_kind_establishes_configuration,
   VllmEvidenceRouteResponse,
   EvidenceRouteNotServed,
   EvidenceRouteAnsweredWithoutParse,
-  EvidenceRouteResolvedConfiguration,
-  vllm_response_establishes_configuration,
-  vllm_evidence_kind_establishes_configuration,
-  VllmCapacityEvidenceProposal,
+  VllmCapacitySourceKind,
+  GroupAwareStartupLog,
   CacheConfigBlockFields,
-  GroupAwareStartupLogCapture,
-  VllmCapacityEvidenceVerdict,
-  CapacityEvidenceAdmitted,
-  CapacityEvidenceRefused,
-  decide_vllm_capacity_evidence,
+  VllmCapacitySourceDecision,
+  CapacitySourceAuthoritative,
+  CapacitySourceInsufficient,
+  decide_vllm_capacity_source_kind,
 }
 
 // A DATED READBACK OF ONE vLLM FRONT DOOR, AND A REFUSAL TO CALL IT A TENSOR-PARALLEL REALIZATION.
@@ -75,9 +75,27 @@ type VllmModelsRouteReadback sole_constructor {
 // with. That is strong evidence about intent and no evidence about bytes: nothing here digests the
 // weights, and a path can name a directory whose contents were replaced.
 //
-// What the field DOES settle is narrower and still worth having: the served id advertises a
-// quantisation the configured path contradicts, which is enough to refuse the id as an artifact
-// claim without asserting anything about what is actually on disk.
+// What the field DOES settle is narrower and still worth having: the served alias carries a token
+// that is NOT DERIVABLE from the configured path, so the alias and the path are two separate facts
+// and the alias is not artifact identity. It does not settle that the alias is FALSE -- a
+// served-model name is allowed to be arbitrary, and a directory name does not establish what its
+// contents are quantised to. Both readings refuse the id as an artifact claim; only one of them is
+// supported by what was observed.
+// THE SELF-REPORTED VERSION LIVES HERE, NOT IN extdeps, BECAUSE THIS REPOSITORY OBSERVED IT.
+//
+// extdeps.vllm.server scopes its laws against the upstream SOURCE REVISION its source was read at.
+// What /version answered is a receipt about one response body, so it belongs beside the readback that
+// produced it. There is no edge from one to the other: the self-report embeds a short revision, and
+// reading that as proof the process executed those bytes would be inventing runtime provenance out of
+// a string the process chose to print.
+type VllmSelfReportedVersion sole_constructor {
+  version_string: NonEmptyStr
+}
+
+fn vllm_self_reported_version(version_string: NonEmptyStr) -> VllmSelfReportedVersion {
+  VllmSelfReportedVersion { version_string: version_string }
+}
+
 type VllmVersionRouteReadback sole_constructor {
   server_version: NonEmptyStr
 }
@@ -92,24 +110,36 @@ type VllmCacheConfigGaugeReadback sole_constructor {
   prefix_caching_enabled: Bool
 }
 
-// AN ACQUISITION IS ONE READ OF ONE INCARNATION, and every fact below belongs to it.
+// THIS IS A HISTORICAL BUNDLE, NOT A TRANSACTION, AND THE DIFFERENCE IS THE WHOLE CEILING.
 //
-// The reviewer's rule that killed the previous shape: a historical readback must be bound to an
-// incarnation and to one acquisition, or a later observation of a DIFFERENT launch can be joined to
-// it and inherit its standing. That is not hypothetical here -- the 1,048,576-context launch that
-// was measured earlier is a different incarnation of the same pair, and treating its numbers as
-// current is the precise error this module exists downstream of.
-// THE ACQUISITION'S VERSION IS DERIVED FROM THE VERSION ROUTE, NOT SUPPLIED BESIDE IT.
+// The previous shape called itself an acquisition -- "one read of one incarnation" -- and derived the
+// refusal host and the reported version from it, which fixed two narrower defects and left the
+// central one standing: the models response, the metrics response and the evidence-route outcomes
+// were still independently assembled constructor arguments. `sole_constructor` stops an external
+// record literal; it does not join values a caller supplied separately. Nothing required them to come
+// from one request batch, one endpoint, one attempt, or one running process, and a field spelling
+// `observed_on: "2026-09-03"` cannot separate launches -- several came and went on this pair that
+// day, including one that refused during engine initialization.
 //
-// Previously the acquisition carried a version AND the version route carried one, so a transaction
-// could be built whose two halves named different builds -- a mixed-incarnation record that looks
-// like one read. The constructor now takes the version route and derives the acquisition's version
-// from it, so disagreement has no constructor rather than a witness watching for it.
-type VllmReadbackAcquisition sole_constructor {
+// The strong repair would bind every route parse to a retained per-request capture identity. That
+// evidence does not exist for this readback: no attempt id, no per-route timestamps, no captured
+// bodies survived. Minting one now would convert a remembered procedure into fabricated provenance,
+// so this is the honest form instead -- a bundle of route-local observations associated with one
+// front-door investigation, whose cross-route join was never retained.
+//
+// THE LIMITATION IS A TYPE, NOT A FLAG. `CrossRouteAcquisitionJoinUnestablished` has no established
+// counterpart that this constructor can select, so no later commit can flip this row into a joined
+// one. A properly captured observation is a DIFFERENT type through a different constructor that
+// demands real capture identities; this bundle never climbs into it, and no future rank receipt or
+// capacity observation can complete it.
+type VllmHistoricalFrontDoorScope sole_constructor {
   front_door_host: HostIdentity
   observed_on: NonEmptyStr
   reported_version: VllmSelfReportedVersion
 }
+
+type VllmCrossRouteAcquisitionJoin
+  = CrossRouteAcquisitionJoinUnestablished { cause: NonEmptyStr }
 
 // THE REFUSAL IS NOT A VERDICT, AND MODELLING IT AS ONE WOULD BE THE LIE. A verdict type implies a
 // reachable admission arm; this readback has none, so the transaction carries a refusal outright.
@@ -137,7 +167,7 @@ type VllmTpRealizationRefusal sole_constructor {
 // What the 404 DOES establish is the only thing this module needs: the evidence was unreachable.
 // The refusal rests on that and not on the inferred cause, so it survives the inference being wrong.
 type VllmEvidenceRouteOutcome sole_constructor {
-  route: VllmEvidenceRoute
+  route: VllmParallelEvidenceRoute
   response: VllmEvidenceRouteResponse
 }
 
@@ -148,31 +178,48 @@ type VllmEvidenceRouteOutcome sole_constructor {
 // refusal is now DERIVED from the acquisition inside the constructor, so a divergent pair has no
 // constructor at all -- construction over validation, rather than a witness that checks two rows
 // agree.
-type VllmReadbackTransaction sole_constructor {
-  acquisition: VllmReadbackAcquisition
+type VllmHistoricalReadbackBundle sole_constructor {
+  scope: VllmHistoricalFrontDoorScope
   models_route: VllmModelsRouteReadback
   version_route: VllmVersionRouteReadback
   cache_config_gauge: VllmCacheConfigGaugeReadback
-  parallel_evidence_outcomes: List<VllmEvidenceRouteOutcome>
+  parallel_evidence_observations: List<VllmEvidenceRouteOutcome>
+  acquisition_join: VllmCrossRouteAcquisitionJoin
   realization: VllmTpRealizationRefusal
 }
 
-fn vllm_readback_transaction(
-  acquisition: VllmReadbackAcquisition,
+// BOTH LIMITATIONS ARE STAMPED BY THIS CONSTRUCTOR, AND THEY ANSWER DIFFERENT QUESTIONS.
+//
+// `acquisition_join` says the route observations could not be joined as one acquisition.
+// `realization.missing` says no retained observation established resolved parallel configuration.
+// Collapsing them would lose the first: the second explains why the TP refusal sits at its earlier
+// stage, while the first is what makes clear that discovering a rank receipt LATER cannot rehabilitate
+// this bundle.
+//
+// Neither is computed. There is no configuration-bearing response arm in this module -- the parsed
+// capture was removed as caller-authored -- so a function deriving the stage from the observations
+// would return one arm for every input a fixture could write. That is a permanently-green check, and
+// this repository treats one as worse than no check, because it gets cited as coverage. The fact is
+// stated where it is known instead.
+fn vllm_historical_readback_bundle(
+  scope: VllmHistoricalFrontDoorScope,
   models_route: VllmModelsRouteReadback,
   version_route: VllmVersionRouteReadback,
   cache_config_gauge: VllmCacheConfigGaugeReadback,
-  parallel_evidence_outcomes: List<VllmEvidenceRouteOutcome>,
-) -> VllmReadbackTransaction {
-  VllmReadbackTransaction {
-    acquisition: acquisition,
+  parallel_evidence_observations: List<VllmEvidenceRouteOutcome>,
+) -> VllmHistoricalReadbackBundle {
+  VllmHistoricalReadbackBundle {
+    scope: scope,
     models_route: models_route,
     version_route: version_route,
     cache_config_gauge: cache_config_gauge,
-    parallel_evidence_outcomes: parallel_evidence_outcomes,
+    parallel_evidence_observations: parallel_evidence_observations,
+    acquisition_join: CrossRouteAcquisitionJoinUnestablished {
+      cause: "per-route capture identity was not retained" as NonEmptyStr,
+    },
     realization: VllmTpRealizationRefusal {
-      front_door_host: acquisition.front_door_host,
-      missing: vllm_missing_evidence_for(outcomes: parallel_evidence_outcomes),
+      front_door_host: scope.front_door_host,
+      missing: ResolvedParallelConfigurationNotObserved,
     },
   }
 }
@@ -180,12 +227,12 @@ fn vllm_readback_transaction(
 // SMART CONSTRUCTORS, because sole_constructor keeps the record literal inside this module. That is
 // the annotation doing its job: every one of these shapes is reachable from outside only through a
 // named function here, so a caller cannot assemble a readback whose parts came from different reads.
-fn vllm_readback_acquisition(
+fn vllm_historical_front_door_scope(
   front_door_host: HostIdentity,
   observed_on: NonEmptyStr,
   version_route: VllmVersionRouteReadback,
-) -> VllmReadbackAcquisition {
-  VllmReadbackAcquisition {
+) -> VllmHistoricalFrontDoorScope {
+  VllmHistoricalFrontDoorScope {
     front_door_host: front_door_host,
     observed_on: observed_on,
     reported_version: vllm_self_reported_version(version_string: version_route.server_version),
@@ -221,36 +268,10 @@ fn vllm_cache_config_gauge_readback(
 }
 
 fn vllm_evidence_route_outcome(
-  route: VllmEvidenceRoute,
+  route: VllmParallelEvidenceRoute,
   response: VllmEvidenceRouteResponse,
 ) -> VllmEvidenceRouteOutcome {
   VllmEvidenceRouteOutcome { route: route, response: response }
-}
-
-// THE STAGE IS DERIVED FROM THE OUTCOMES RATHER THAN ASSERTED, which is what makes the earlier arm a
-// consequence instead of a claim: if no evidence route answered, the configuration stage was never
-// reached, so the refusal is the earlier one. If some answered, the configuration may be in hand and
-// the open question becomes the population.
-// THE STAGE FOLLOWS THE CONFIGURATION-BEARING ROUTE, NOT ANY ANSWER AT ALL.
-//
-// An earlier version advanced to the population question whenever ANY evidence route answered. That
-// is wrong, and wrong in the direction that overstates what is known: /get_world_size returns a
-// product consistent with TP=2, PP=2 and DP=2 alike, and /collective_rpc reports population without
-// saying how the parallelism decomposes. Either could answer while the resolved configuration stayed
-// entirely unobserved, and the refusal would then claim the configuration was in hand.
-//
-// Only the configuration-bearing kind moves the stage, which is why the kind lives with the route in
-// extdeps rather than being decided here by path matching.
-fn vllm_missing_evidence_for(
-  outcomes: List<VllmEvidenceRouteOutcome>,
-) -> VllmTpRealizationMissingEvidence {
-  if any(outcomes, o =>
-       vllm_response_establishes_configuration(response: o.response)
-         && vllm_evidence_kind_establishes_configuration(kind: o.route.kind)) {
-    JoinedRankPopulationNotObserved
-  } else {
-    ResolvedParallelConfigurationNotObserved
-  }
 }
 
 fn vllm_tp_realization_missing_wire(missing: VllmTpRealizationMissingEvidence) -> String {
@@ -277,13 +298,13 @@ fn vllm_tp_realization_refusal_cause(refusal: VllmTpRealizationRefusal) -> Strin
 data vllm_version_route_2026_09_03: VllmVersionRouteReadback = vllm_version_route_readback(
   server_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr)
 
-data vllm_readback_acquisition_2026_09_03: VllmReadbackAcquisition = vllm_readback_acquisition(
+data vllm_front_door_scope_2026_09_03: VllmHistoricalFrontDoorScope = vllm_historical_front_door_scope(
   front_door_host: operator_host_srv6,
   observed_on: "2026-09-03" as NonEmptyStr,
   version_route: vllm_version_route_2026_09_03)
 
-data vllm_readback_2026_09_03: VllmReadbackTransaction = vllm_readback_transaction(
-  acquisition: vllm_readback_acquisition_2026_09_03,
+data vllm_readback_2026_09_03: VllmHistoricalReadbackBundle = vllm_historical_readback_bundle(
+  scope: vllm_front_door_scope_2026_09_03,
   models_route: vllm_models_route_readback(
     served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
     configured_model_path: "models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
@@ -293,24 +314,25 @@ data vllm_readback_2026_09_03: VllmReadbackTransaction = vllm_readback_transacti
     kv_cache_dtype: "fp8_ds_mla" as NonEmptyStr,
     gpu_memory_utilization: basis_point(count: 8600),
     prefix_caching_enabled: true),
-  parallel_evidence_outcomes: map(
-    vllm_parallel_evidence_routes,
+  parallel_evidence_observations: map(
+    vllm_http_parallel_evidence_routes,
     r => vllm_evidence_route_outcome(
            route: r, response: EvidenceRouteNotServed { http_status: "404" as NonEmptyStr })),
 )
 
-// CAPACITY IS ABSENT FROM THIS TRANSACTION, AND THE LAW SAYING WHY IS EXECUTABLE.
+// CAPACITY IS ABSENT FROM THIS BUNDLE, AND THE LAW SAYING WHY CLASSIFIES SOURCES RATHER THAN
+// ADMITTING EVIDENCE.
 //
 // The gauge also carried a block count and a resolved minimum block size. Their product was computed,
-// called the live token pool, and published upward before the error was caught. The transaction
-// carries no capacity field, and extdeps.vllm.server decide_vllm_capacity_evidence carries the rule
-// as a decision with both directions reachable -- rather than as a coproduct arm that could only ever
-// be asserted.
+// called the live token pool, and published upward before the error was caught. The bundle carries no
+// capacity field, and extdeps.vllm.server decide_vllm_capacity_source_kind says which KIND of source
+// would be authoritative -- not that any capacity evidence was acquired, which this readback has none
+// of and could not honestly claim.
 //
 // The two numbers are real observations and are omitted anyway: a block count sitting in a
 // serving-capacity carrier will be multiplied again by the next person who finds it.
-fn vllm_capacity_from_cache_config_fields() -> VllmCapacityEvidenceVerdict {
-  decide_vllm_capacity_evidence(proposal: CacheConfigBlockFields)
+fn vllm_capacity_from_cache_config_fields() -> VllmCapacitySourceDecision {
+  decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields)
 }
 
 // WHAT THE ALIAS DISAGREEMENT ACTUALLY ESTABLISHES, NARROWED.
