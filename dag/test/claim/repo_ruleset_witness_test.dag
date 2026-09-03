@@ -3,7 +3,7 @@ module test.claim.repo_ruleset_witness_test
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout_minutes }
-import std.measure { minute, minute_count }
+import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
 import gunbc.repo_ruleset {
   desired_required_contexts,
@@ -56,8 +56,6 @@ import extdeps.github.rulesets {
   MergeQueueGroupingStrategy,
   merge_queue_grouping_strategy_wire_label,
   merge_queue_merge_method_wire_label,
-  merge_queue_entry_count,
-  merge_queue_entry_count_value,
   ruleset_rule_type_wire_label,
 }
 

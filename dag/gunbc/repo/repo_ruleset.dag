@@ -15,7 +15,7 @@ import gunbc.membership_reconcile {
 import gunbc.ownership { Ownership, Owned }
 import gunbc.repository { gunbc_repository }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout_minutes }
-import std.measure { Minute, minute, minute_count }
+import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
 import extdeps.github.rulesets
 import extdeps.github.rulesets {
@@ -52,9 +52,6 @@ import extdeps.github.rulesets {
   merge_queue_standing,
   merge_queue_grouping_strategy_wire_label,
   merge_queue_merge_method_wire_label,
-  MergeQueueEntryCount,
-  merge_queue_entry_count,
-  merge_queue_entry_count_value,
   ruleset_rule_types,
   ruleset_rule_type_wire_label,
   ruleset_enforcement_wire_label,

@@ -6,8 +6,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
-import std.nat { Nat }
-import std.measure { Measure, Count, One, Minute, minute, measure_count }
+import std.measure { Minute, minute, MergeQueueEntryCount, merge_queue_entry_count }
 import v2.std.collection { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -309,17 +308,9 @@ fn rule_is_merge_queue(rule: RulesetRuleWire) -> Bool {
 // authority for minutes and for cardinality (DESIGN section 2: net concepts must not grow by
 // re-invention). The distinction is load-bearing rather than decorative: the two timeouts and the
 // four entry counts are all bare integers on the wire, and only the carrier stops a wait in
-// minutes being compared against a count of entries.
-type MergeQueueEntryCount = Measure<Count, One, Nat>
-
-fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
-  Measure { count: count }
-}
-
-fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
-  measure_count(c)
-}
-
+// minutes being compared against a count of entries. Both carriers are imported from
+// std.measure -- MergeQueueEntryCount sits with its Count siblings there rather than being minted
+// here, so the count-at-unit-scale axis is not forked once per upstream that counts something.
 // THREE STATES FOR THE SAME REASON RequiredStatusCheckStanding HAS THREE. "No queue is configured"
 // and "a queue is configured with these settings" are different facts with different remedies, and
 // both would render as a default-valued record under a projection returning bare settings. The
