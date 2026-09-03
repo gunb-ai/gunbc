@@ -66,7 +66,7 @@ type Step0SubjectCollection
 // root literals would give the scan's scope a second authority, and a scan whose scope disagrees
 // with the contract it reports under describes a subject nobody declared.
 fn step0_subject_source_roots() -> List<String> {
-  fold(namespace_step0_canary_contract.source_roots, init: [], f: fn(acc, root) { concat(acc, [root as String]) })
+  namespace_step0_canary_contract.source_roots |> map(root => root as String)
 }
 
 fn step0_path_has_root(path: String) -> Bool {
@@ -88,7 +88,7 @@ fn step0_path_in_subject(path: String) -> Bool {
 
 fn step0_subject_paths_at(paths_nul: String) -> List<String> {
   fold(split(s: paths_nul, delimiter: from_code_point(0)), init: [], f: fn(acc, path) {
-    if step0_path_in_subject(path: path) { concat(acc, [path]) } else { acc }
+    if step0_path_in_subject(path: path) { acc |> list_push(path) } else { acc }
   })
 }
 
@@ -109,7 +109,7 @@ fn step0_read_source_at(revision: String, path: String, read: Step0SourceRead) -
         }
       } else {
         Step0SourcesRead {
-          sources: concat(sources, [FixtureSource { path: path as NonEmptyStr, content: shown.content }])
+          sources: sources |> list_push(FixtureSource { path: path as NonEmptyStr, content: shown.content })
         }
       }
     }

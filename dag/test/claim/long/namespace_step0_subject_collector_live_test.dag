@@ -1,0 +1,70 @@
+module test.claim.long.namespace_step0_subject_collector_live
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.namespace_step0_canary {
+  namespace_step0_canary_contract,
+  namespace_step0_manifest_identity
+}
+import gunbc.namespace_step0_subject_collector {
+  Step0SubjectCollected,
+  Step0SubjectCollection,
+  Step0SubjectCollectionRefused,
+  collect_current_step0_subject_vector,
+  step0_subject_paths_at,
+  step0_subject_vector_paths,
+  step0_subject_vector_size
+}
+
+// THE COLLECTOR AGAINST THE REAL TREE. It reads every .dag source under the frozen contract's roots
+// out of the git object store at HEAD -- thousands of object reads -- so it is a LONG entry: the
+// required floor declines this population by cost, and enrolling a member of this size in the
+// local-repo-wet lane would schedule a budget refusal rather than a verdict. It executes by hand
+// and in the canary's own runs, which is the same route the canary itself is confined to.
+//
+// ITS ORACLE IS THIS FILE, not a count. A collector can be wrong in a way no synthetic fixture
+// reaches -- enumerate the wrong revision, drop a root, return a stale population -- and still hand
+// back a well-formed non-empty vector; and a count copied from the same tree is not an oracle
+// (DESIGN section 5). So the probe asserts that the vector carries THIS file, with THIS file's own
+// module line as its content. Both referents are independent of the measurement and cannot rot
+// silently: renaming the file or its module reds the probe, and deleting either deletes the test.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data self_path: String = "dag/test/claim/long/namespace_step0_subject_collector_live_test.dag"
+
+data self_module_line: String = "module test.claim.long.namespace_step0_subject_collector_live"
+
+data collector_path: String = "dag/gunbc/namespace/namespace_step0_subject_collector.dag"
+
+fn paths_contain(xs: List<String>, want: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || x == want })
+}
+
+fn source_content_at(sources: List<FixtureSource>, want: String) -> String {
+  fold(sources, init: "", f: fn(acc, s) { if (s.path as String) == want { s.content } else { acc } })
+}
+
+fn text_contains(haystack: String, needle: String) -> Bool {
+  contains(s: haystack, substring: needle)
+}
+
+fn every_path_is_a_subject_path(xs: List<String>) -> Bool {
+  count(step0_subject_paths_at(paths_nul: fold(xs, init: "", f: fn(acc, x) { concat(acc, concat(x, from_code_point(0))) }))) == count(xs)
+}
+
+// THE PRODUCER JOIN, EXECUTED AGAINST THE REAL TREE.
+test fn the_live_collector_carries_this_file_out_of_the_tree_it_pinned() -> Bool {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: _ } => false
+    Step0SubjectCollected { vector: vector } =>
+      step0_subject_vector_size(vector: vector) > 0
+        && (vector.contract_identity as String) == (namespace_step0_canary_contract.identity as String)
+        && (vector.input_subject_manifest as String) == (namespace_step0_manifest_identity() as String)
+        && paths_contain(xs: step0_subject_vector_paths(vector: vector), want: self_path)
+        && paths_contain(xs: step0_subject_vector_paths(vector: vector), want: collector_path)
+        && text_contains(haystack: source_content_at(sources: vector.sources, want: self_path), needle: self_module_line)
+        && every_path_is_a_subject_path(xs: step0_subject_vector_paths(vector: vector))
+  }
+}
