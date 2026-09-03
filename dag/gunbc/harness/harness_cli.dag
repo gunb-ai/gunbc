@@ -111,7 +111,7 @@ fn harness_probe_cli() -> ProcessExit {
 // point of taking it as an argument: an attempt edits its own checkout, and a harness that ran its
 // commands in the shared repo root would write outside the attempt's boundary while every receipt
 // said otherwise.
-fn harness_worker_config(worktree: FilePath) -> HarnessTurnConfig {
+fn harness_worker_config(worktree: FilePath, timeout_program: FilePath) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: harness_router_backend_url(),
     model: harness_default_model(),
@@ -120,7 +120,7 @@ fn harness_worker_config(worktree: FilePath) -> HarnessTurnConfig {
     request_scratch_path: harness_request_scratch_path,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
-      timeout_program: harness_macbook_timeout_program,
+      timeout_program: timeout_program,
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
   }
@@ -134,9 +134,12 @@ data harness_worker_step_budget: Int = 24
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
 // is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
-fn harness_worker_cli(worktree: String, brief: String) -> ProcessExit {
+fn harness_worker_cli(worktree: String, brief: String, timeout_program: String) -> ProcessExit {
   let outcome = harness_run_turn(
-    config: harness_worker_config(worktree: worktree as FilePath),
+    config: harness_worker_config(
+      worktree: worktree as FilePath,
+      timeout_program: timeout_program as FilePath,
+    ),
     prompt: brief,
     step_budget: harness_worker_step_budget,
   )

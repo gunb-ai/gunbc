@@ -1447,6 +1447,7 @@ fn gunbc_harness_spawn_argv(
   repo_root: String,
   worktree_path: String,
   brief: String,
+  timeout_program: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -1457,6 +1458,7 @@ fn gunbc_harness_spawn_argv(
     "--function", gunbc_harness_worker_function,
     "--arg", join(["worktree=", worktree_path], ""),
     "--arg", join(["brief=", brief], ""),
+    "--arg", join(["timeout_program=", timeout_program], ""),
   ]
 }
 
@@ -1559,6 +1561,7 @@ fn dispatch_provider_inner_argv_for_instance(
           repo_root: instance.repo_root as String,
           worktree_path: worktree_path,
           brief: brief,
+          timeout_program: instance.toolchain.timeout as String,
         ),
       }
   }

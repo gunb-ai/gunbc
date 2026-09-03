@@ -94,6 +94,7 @@ import gunbc.roadmap_dashboard_instance {
   macbook_local_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_lab_dashboard_instance,
+  srv2_deploy_dashboard_instance,
   dashboard_actuation_posture_label,
   dashboard_provision_transport_label,
   dashboard_instance_provision_plan_rows,
@@ -899,6 +900,24 @@ fn roadmap_serve_handle_srv2_preview(
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
+    method_label: method,
+    path: path,
+    body: body,
+    release_revision: release_revision,
+  ))
+}
+
+// THE srv2 DEPLOYMENT'S ENTRY. Same selection-by-entry-function shape the rest of this family
+// follows, so which instance a process serves is fixed by its launch argument for the process's
+// whole life rather than re-derived per request from an ambient fact.
+fn roadmap_serve_handle_srv2_deploy(
+  method: String,
+  path: String,
+  body: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: srv2_deploy_dashboard_instance(),
     method_label: method,
     path: path,
     body: body,
