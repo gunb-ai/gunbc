@@ -272,7 +272,7 @@ fn reader_bypass_standing_wire_label(b: ReaderBypassStanding) -> String {
 fn bypass_roster_unavailable_from_get(reader: NonEmptyStr) -> BypassActorRosterObservation {
   BypassRosterUnavailable {
     reader: reader,
-    cause: "GitHub omits bypass_actors from GET /repos/{owner}/{repo}/rulesets/{id} when the roster is empty AND when the reading credential is not authorized to see it, and the response carries nothing that separates those two",
+    cause: "GitHub omits bypass_actors from the single-ruleset GET when the roster is empty AND when the reading credential is not authorized to see it, and the response carries nothing that separates those two",
   }
 }
 
