@@ -14,8 +14,8 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.repository { gunbc_repository }
-import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout_minutes }
-import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
+import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
+import std.measure { Minute, minute, minute_count, measure_add, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
 import extdeps.github.rulesets
 import extdeps.github.rulesets {
@@ -224,7 +224,7 @@ type MergeQueueDesire
 // already documents.
 //
 // check_response_timeout IS DERIVED FROM THE FLOOR'S OWN ENVELOPE AND IS NOT A CONSTANT HERE. It
-// reads gunbc.witness_floor_workflow witness_floor_lane_timeout_minutes and adds a declared margin.
+// reads gunbc.witness_floor_workflow witness_floor_lane_timeout and adds a declared margin, both as Minute.
 // A queue whose response timeout is BELOW the repository's execution envelope manufactures queue
 // failures out of runs that were going to pass: it dequeues green work for being slow, and the
 // author of the next timeout bump would have no way to know a second number tracked the first.
@@ -250,10 +250,10 @@ type MergeQueueDesire
 data merge_queue_build_concurrency_increase: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: receipts from the commissioned queue show the ONE-ENTRY protocol converging -- entries composed, the required aggregate executing on each composition, and successful candidates advancing -- across enough landings to characterise a failure. max_entries_to_build then rises from 1 (5 is the intended value: it builds candidates ahead of the head so one is already validated when the head merges). Until those receipts exist, raising it puts several compositions in flight at once and a failure stops naming which protocol step produced it. This is a legibility bound on commissioning, not a claim that 1 is the right steady-state value.")
 // The margin covers queue-side scheduling either side of the check itself -- the composition being
 // built and the result being reported -- which is time the floor's own job timeout does not bound.
-data merge_queue_response_margin_minutes: Int = 30
+data merge_queue_response_margin: Minute = minute(count: 30)
 
 fn merge_queue_check_response_timeout() -> Minute {
-  minute(count: witness_floor_lane_timeout_minutes + merge_queue_response_margin_minutes)
+  measure_add(a: witness_floor_lane_timeout, b: merge_queue_response_margin)
 }
 
 data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
