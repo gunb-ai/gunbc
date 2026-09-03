@@ -88,18 +88,50 @@ fn cal_rows_of(entry_source: String) -> List<ReferenceOccurrenceBindingRow> {
   }
 }
 
-fn cal_rows_named_of(entry_source: String, spelling: String) -> Int {
-  count(cal_rows_of(entry_source: entry_source) |> filter(row => row.authored_name == spelling))
+data cal_entry_without_local_declarations: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+// THE IDENTITY OF AN OBSERVATION, FOR THE PURPOSE OF COMPARING TWO SUBJECTS. Occurrence ids are
+// graph-scoped, so they cannot be joined across two compilations, and spans move under exactly the
+// transformations these invariants apply. What survives both is the authored spelling paired with
+// the category the instrument stamped it -- which is also what a reader of the census consumes.
+// Comparison is over the MULTISET of those keys, so a substitution fails even when the totals agree.
+fn cal_row_key(row: ReferenceOccurrenceBindingRow) -> String {
+  concat(row.authored_name, concat(":", step0_occurrence_category_label(category: row.category) as String))
 }
 
-fn cal_denominator_size_of(entry_source: String) -> Int {
-  match reference_occurrence_binding_census(
-    sources: [fixture_source("cal/provider.dag", cal_provider), fixture_source("cal/entry.dag", entry_source)],
-    entry: "cal/entry.dag" as NonEmptyStr
-  ) {
-    ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
-  }
+// EACH CLAIM COMPILES EACH SUBJECT ONCE. These take the rows a claim already has rather than an
+// entry source, so a control that compares two subjects performs two compiles and not six -- the
+// repeated demand had one shared-state ancestor and was authored duplication (DESIGN section 2).
+fn cal_keys_from(rows: List<ReferenceOccurrenceBindingRow>) -> List<String> {
+  rows |> map(row => cal_row_key(row: row))
+}
+
+fn cal_key_mentions(key: String, a: String, b: String) -> Bool {
+  string_contains(key, a) || string_contains(key, b)
+}
+
+fn cal_key_multiplicity(keys: List<String>, key: String) -> Int {
+  count(keys |> filter(candidate => candidate == key))
+}
+
+fn cal_key_sets_agree(left: List<String>, right: List<String>) -> Bool {
+  count(left) == count(right)
+    && count(left |> filter(key =>
+         cal_key_multiplicity(keys: left, key: key) != cal_key_multiplicity(keys: right, key: key)
+       )) == 0
+    && count(right |> filter(key =>
+         cal_key_multiplicity(keys: left, key: key) != cal_key_multiplicity(keys: right, key: key)
+       )) == 0
+}
+
+// ADDITION IS ADDITIVE, WHICH IS THE ONLY FORM OF INVARIANT D THAT IS SOUND HERE. Every key present
+// before must still be present after, at least as often. Growth is permitted -- an added declaration
+// legitimately contributes occurrences, and some of them are spelled with names the subject already
+// used, `List` and `Int` among them -- but LOSS and SUBSTITUTION are not.
+fn cal_key_set_covers(before: List<String>, after: List<String>) -> Bool {
+  count(before |> filter(key =>
+    cal_key_multiplicity(keys: after, key: key) < cal_key_multiplicity(keys: before, key: key)
+  )) == 0
 }
 
 fn cal_manifest_without_middle() -> List<FixtureSource> {
@@ -399,50 +431,76 @@ test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
 // were authored by the same person who authored the instrument's reading, and it is how control 16's
 // fabrication was found rather than reasoned about.
 
+// A CARDINALITY ASSERTION IS BLIND TO SUBSTITUTION, WHEREVER IT APPEARS. It fails on a safe addition
+// and passes on an unsafe swap, so it is the wrong shape for every completeness question in this
+// lane -- the contract's roster check and the invariants below are the same defect at two layers,
+// and so is every figure this census eventually publishes. These four are therefore stated over
+// IDENTITY SETS. Each changes something that MUST NOT MATTER and asserts the identities do not move;
+// none needs an oracle, because a semantics-preserving transformation supplies its own.
+
 // INVARIANT A -- AND IT DOES NOT HOLD, WHICH IS WHY IT IS ASSERTED IN ITS BROKEN FORM. Reordering an
-// import list is meaning-preserving, so nothing the census reports may move. What moves is not the
-// SIZE of the denominator -- that is unchanged, which is exactly why a count-only invariant would
-// have missed this and why the property is stated over IDENTITY. What moves is WHICH name holds the
-// row: the head of the list is emitted as a reference and the rest are not, so putting a different
-// name first hands the row to that name and takes it from the one that had it. No authored use
-// changed in either arrangement.
+// import list is meaning-preserving, so the identity set must not move. It moves -- and the SIZE
+// does not, which is exactly why the cardinality version of this invariant would have passed clean
+// over the fabrication it exists to catch. What changes is WHICH NAME HOLDS THE ROW: the head of the
+// list is emitted as a reference and the rest are not, so putting a different name first hands the
+// row to that name and takes it from the one that had it, with no authored use changed.
 //
-// Asserting the invariant here would put a permanent red in CI, which reports nothing the defect
-// roster does not already carry. Asserting the DEFECT keeps the property executing and makes the
-// repair visible: this control goes red the day the fabrication is fixed, and is then INVERTED to
-// the invariant it was always meant to be. That inversion is its dissolution condition, and it is
-// the DESIGN 4b(4) rule that a discriminating RED stays enrolled rather than retiring on the climb.
+// Asserting the invariant here would put a permanent red in CI, reporting nothing the defect roster
+// does not carry. Asserting the DEFECT keeps the property executing and makes the repair visible:
+// this control reds the day the fabrication is fixed and is then INVERTED to the invariant it was
+// always meant to be. That inversion is its dissolution condition, and it is the DESIGN 4b(4) rule
+// that a discriminating RED stays enrolled rather than retiring on the climb.
 test fn reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_defect() -> Bool {
-  cal_rows_named_of(entry_source: cal_entry, spelling: "CalOnlyGeneric") == 1
-    && cal_rows_named_of(entry_source: cal_entry_reordered_imports, spelling: "CalOnlyGeneric") == 0
-    && cal_rows_named_of(entry_source: cal_entry_reordered_imports, spelling: "cal_called")
-         > cal_rows_named_of(entry_source: cal_entry, spelling: "cal_called")
-    && cal_denominator_size_of(entry_source: cal_entry_reordered_imports) == cal_denominator_size()
+  let base = cal_rows_of(entry_source: cal_entry)
+  let moved = cal_rows_of(entry_source: cal_entry_reordered_imports)
+  (cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: moved)) == false)
+    && count(moved) == count(base)
+    && count(base |> filter(row => row.authored_name == "CalOnlyGeneric")) == 1
+    && count(moved |> filter(row => row.authored_name == "CalOnlyGeneric")) == 0
 }
 
-// INVARIANT B. Renaming a binder consistently -- the parameter and every use of it -- is
-// meaning-preserving, so the denominator must not move.
-test fn renaming_a_binder_consistently_does_not_move_the_denominator() -> Bool {
-  cal_denominator_size_of(entry_source: cal_entry_renamed_binder) == cal_denominator_size()
-    && cal_denominator_size() > 0
+// INVARIANT B, OVER IDENTITIES. Renaming a binder consistently -- the parameter and every use of it
+// -- is meaning-preserving, so the key multiset must map bijectively with only the renamed keys
+// differing: the two runs agree on every key mentioning neither name, and the total is unchanged.
+test fn renaming_a_binder_consistently_disturbs_only_the_renamed_identities() -> Bool {
+  let base = cal_rows_of(entry_source: cal_entry)
+  let renamed = cal_rows_of(entry_source: cal_entry_renamed_binder)
+  cal_key_sets_agree(
+    left: cal_keys_from(rows: base) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false),
+    right: cal_keys_from(rows: renamed) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false)
+  )
+    && count(renamed) == count(base)
+    && count(base) > 0
 }
 
-// INVARIANT C. Swapping two independent declarations is meaning-preserving, so the denominator must
-// not move. This is the one that would catch an ordinal or a running counter leaking into identity.
-test fn reordering_independent_declarations_does_not_move_the_denominator() -> Bool {
-  cal_denominator_size_of(entry_source: cal_entry_reordered_declarations) == cal_denominator_size()
-    && cal_denominator_size() > 0
+// INVARIANT C, OVER IDENTITIES. Swapping two independent declarations is meaning-preserving, so the
+// key multiset must be unchanged -- not merely the same size. This is the one that catches an
+// ordinal or a running counter leaking into what gets admitted, which is invariant A's defect shape.
+test fn reordering_independent_declarations_does_not_change_the_identity_set() -> Bool {
+  let base = cal_rows_of(entry_source: cal_entry)
+  let swapped = cal_rows_of(entry_source: cal_entry_reordered_declarations)
+  cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: swapped))
+    && count(base) > 0
 }
 
-// INVARIANT D, STATED WITHOUT AN ORACLE ON PURPOSE. Adding a declaration nothing refers to must not
-// change what is observed about the names already there. Asserting the delta equals "its own
-// occurrences" would need a second count of the added thing, authored by hand -- the same
-// transcribed literal DESIGN section 5 refuses -- so this asserts the part that needs no number:
-// the untouched spellings keep exactly the rows they had. `CalLocalArg` and `CalLocalBox` were added
-// to this fixture partway through and are referred to by nothing outside their own declarations.
-test fn adding_an_unreferenced_declaration_does_not_disturb_the_other_spellings() -> Bool {
-  count(cal_rows_named_in_category(spelling: "CalPayload", category: TypeOccurrence)) == 1
-    && count(cal_rows_named_in_category(spelling: "cal_called", category: CallableOccurrence)) == 1
-    && count(cal_rows_named_in_category(spelling: "cal_called", category: LexicalValueOccurrence)) == 1
-    && count(cal_rows_named(spelling: "CalLocalArg")) == 0
+// INVARIANT D, AND THE FIRST VERSION OF IT WAS WRONG -- THE CONTROL, NOT THE CENSUS. I stated it as
+// "the keys mentioning neither added spelling agree exactly", ran it, and it went RED. The cause was
+// mine: `type CalLocalBox { cells: List<CalLocalArg> }` legitimately contributes `List` and `Int`
+// occurrences, and those spellings are shared with occurrences the subject already had, so an exact
+// agreement on "other spellings" demanded that a real addition add nothing. That is the homonym trap
+// of this file's own fixture law, committed a third time and in a property statement rather than an
+// observation -- which is its own evidence that the law needs to govern how invariants are phrased,
+// not only which spellings a fixture uses.
+//
+// The sound form needs no oracle and no count of what was added: addition is ADDITIVE. Every key
+// present before is present after at least as often, so growth passes while LOSS and SUBSTITUTION
+// fail. The strict size increase keeps it from being vacuous, and `CalLocalArg` contributing nothing
+// is control 15 restated from the other side -- the added generic argument is admitted by nobody.
+test fn adding_an_unreferenced_declaration_only_adds() -> Bool {
+  let before = cal_rows_of(entry_source: cal_entry_without_local_declarations)
+  let after = cal_rows_of(entry_source: cal_entry)
+  cal_key_set_covers(before: cal_keys_from(rows: before), after: cal_keys_from(rows: after))
+    && count(after) > count(before)
+    && count(before) > 0
+    && count(after |> filter(row => row.authored_name == "CalLocalArg")) == 0
 }
