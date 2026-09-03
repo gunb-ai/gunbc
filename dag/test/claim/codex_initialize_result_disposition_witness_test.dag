@@ -38,8 +38,16 @@ fn initialize_result_with(value: JsonValue) -> JsonValue {
   )
 }
 
-fn disposition_is_missing(result: JsonValue) -> Bool {
-  match disposition_from_initialize_result(result: result) {
+// EACH WITNESS NAMES THE VARIANT IT EXPECTS AND ANSWERS false FOR EVERY OTHER ONE. An earlier
+// shape asked `is it missing?` through one shared Boolean predicate, which cost the positive
+// control its whole point: `not missing` is satisfied by any of six dispositions, so a reader
+// that answered LoginRequiredSignal for a perfectly good user agent would have passed. The
+// expected variant is the claim, so it is what each arm pins.
+
+test fn a_non_string_user_agent_is_missing_not_ok() -> Bool {
+  match disposition_from_initialize_result(
+    result: initialize_result_with(value: json_int(n: 7)),
+  ) {
     AccountTripMissing => true
     AccountTripResultOk => false
     AccountTripLoginRequiredSignal => false
@@ -50,12 +58,16 @@ fn disposition_is_missing(result: JsonValue) -> Bool {
   }
 }
 
-test fn a_non_string_user_agent_is_missing_not_ok() -> Bool {
-  disposition_is_missing(result: initialize_result_with(value: json_int(n: 7)))
-}
-
 test fn a_real_user_agent_string_is_still_ok() -> Bool {
-  !disposition_is_missing(
+  match disposition_from_initialize_result(
     result: initialize_result_with(value: json_string(s: "codex-cli/1.2.3")),
-  )
+  ) {
+    AccountTripResultOk => true
+    AccountTripMissing => false
+    AccountTripLoginRequiredSignal => false
+    AccountTripQuotaSignal => false
+    AccountTripNativeCauseUnknown { message: _ } => false
+    AccountTripNativeCauseNumericCode { code: _ } => false
+    AccountTripNativeCauseMessageUnreadable => false
+  }
 }
