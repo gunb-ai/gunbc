@@ -52,8 +52,9 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 //
 // SO THE ARMS ARE THE SCHEMA NOW. The producing artifact emits disjoint columns per reading kind
 // (`observed_cpu_ms` against `cpu_at_least_ms`), so an old-vintage artifact whose header carries
-// the shared `cpu_ms` column no longer parses at all -- which is the correct fail-closed answer:
-// its rows cannot be separated into the two populations, and reading them as costs is the defect.
+// the shared `cpu_ms` column REFUSES with a positively recognised cause -- the correct fail-closed
+// answer, because reading those rows as costs is the defect. The vintage is UNSUPPORTED rather than
+// unreadable: it is identified exactly, and this reader declines to reconstruct the split.
 //
 // THE ARM NAMES CARRY `CpuReading` BECAUSE THIS IS A DIFFERENT CONTRACT FROM THE MODELLED FACT,
 // AND AN EARLIER DRAFT OF THIS FILE PROVED WHY THAT MATTERS. The authority for the modelled
@@ -159,9 +160,11 @@ type RunCost {
 // completed row fills `observed_cpu_ms` and a preempted one fills `cpu_at_least_ms` beside its
 // `censoring_cpu_limit_ms`. Resolving all three by name means an OLD-VINTAGE artifact -- one whose
 // header still carries the shared `cpu_ms` -- refuses wholesale rather than being read as if every
-// row were a completion. That refusal is the point and not a regression: those rows genuinely
-// cannot be separated, and the previous behaviour of reading them all as costs is the defect this
-// module was the live specimen of.
+// row were a completion. That refusal is the point and not a regression, because the previous
+// behaviour of reading them all as costs is the defect this module was the live specimen of -- and
+// the honest reason is that this reader DECLINES the legacy encoding, not that the bytes are
+// silent. They carry `outcome` and `verdict_reached`, so a separating signal exists; reconstructing
+// it is simply not work this version does.
 type ClaimCostColumns {
   identity: Int
   module: Int

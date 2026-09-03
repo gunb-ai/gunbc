@@ -8,8 +8,10 @@ import tools.floor_cost_distribution_instrument {
   RunLoaded,
   RunEmpty,
   RunUnreadable,
+  RunRefused,
   loaded_runs,
-  refused_load_lines
+  refused_load_lines,
+  floor_cost_distribution_lines
 }
 import gunbc.floor_cost_distribution {
   ClaimCostColumns,
@@ -135,24 +137,6 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
   eval_steps: 12
 }
 
-// A TEST-LOCAL PROJECTION, DELIBERATELY NOT A MODULE FUNCTION. `accepted_rows` used to live in
-// `gunbc.floor_cost_distribution` and answered `[]` for a REFUSED artifact -- which rebuilt, one
-// function below the coproduct, exactly the collapse this change exists to remove: a refused
-// artifact and a clean empty run became the same value again. Its precondition ("callers have
-// already handled the refusal") was carried by no parameter, and the argument that killed it is
-// that the precondition is UNNECESSARY IF TRUE: a caller who has already matched `ArtifactRows`
-// holds the rows and needs no accessor, so the helper's only additional capability was the unsafe
-// one. A function whose every safe use is redundant has only unsafe uses.
-//
-// It lives HERE instead because these fixtures are artifacts the test itself authored and has
-// already asserted the admission of; the empty list is a test failing loudly on its own fixture,
-// not a population silently thinning in production. It is not exported, so no consumer can reach it.
-fn admitted_rows_of(text: String) -> List<FloorCostRow> {
-  match parse_claim_cost_tsv(text: text) {
-    ArtifactRows { rows: r } => r
-    ArtifactRefused { cause: _ } => []
-  }
-}
 
 // THE OLD VINTAGE, VERBATIM. Run 33661252708's artifact has no `eval_steps` column at all -- the
 // header is one field shorter and index 6 holds `cost_line_ms`, the constant 100. A positional
@@ -161,7 +145,7 @@ fn admitted_rows_of(text: String) -> List<FloorCostRow> {
 //
 // THE NAME OF THIS ARM SAID `yields_no_rows` UNTIL THE ARTIFACT PARSE BECAME TOTAL, and by then it
 // described the opposite of what the arm asserts: an old-vintage header now REFUSES with a located
-// `UnsupportedArtifactSchema` rather than producing an empty list. A stale name on a repaired assertion is
+// `UnsupportedSharedCpuMsVintage` rather than producing an empty list. A stale name on a repaired assertion is
 // how the next reader is told the vanish was intended.
 data old_vintage_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t100"
 
@@ -213,8 +197,12 @@ test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cos
 // everything: the same interrupted row under the DISJOINT header parses, and it parses as a
 // BOUND -- `observed_cpu_ms` answers Absent for it while `cpu_at_least_ms` answers 509.
 test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool {
-  match parse_claim_cost_tsv(text: censored_tsv) { ArtifactRefused { cause: _ } => false ArtifactRows { rows: rr } => count(rr) == 2 }
-    && match admitted_rows_of(text: censored_tsv) |> filter(r => r.identity == "m.hot.k") |> first {
+  let admitted = match parse_claim_cost_tsv(text: censored_tsv) {
+    ArtifactRefused { cause: _ } => []
+    ArtifactRows { rows: rr } => rr
+  }
+  count(admitted) == 2
+    && match admitted |> filter(r => r.identity == "m.hot.k") |> first {
          Absent => false
          Present { value: r } =>
            match observed_cpu_ms(reading: r.cost) {
@@ -249,7 +237,11 @@ test fn the_same_shape_with_a_steps_column_parses() -> Bool {
 // error.
 test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
   let reordered = "identity\tmodule\teval_steps\tverdict_reached\tcost_reading\tcpu_at_least_ms\tcensoring_cpu_limit_ms\tobserved_cpu_ms\nm.hot.x\tm.hot\t1000\ttrue\tobserved\t\t\t400"
-  match admitted_rows_of(text: reordered) |> first {
+  let rows = match parse_claim_cost_tsv(text: reordered) {
+    ArtifactRefused { cause: _ } => []
+    ArtifactRows { rows: rr } => rr
+  }
+  match rows |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -264,7 +256,11 @@ test fn the_summary_and_header_lines_are_not_rows() -> Bool {
 }
 
 test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool {
-  match admitted_rows_of(text: sample_tsv) |> first {
+  let rows = match parse_claim_cost_tsv(text: sample_tsv) {
+    ArtifactRefused { cause: _ } => []
+    ArtifactRows { rows: rr } => rr
+  }
+  match rows |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -402,7 +398,11 @@ test fn a_complete_sample_produces_no_refusal_lines() -> Bool {
 // rather than an error. 1000 is the steps field of the fixture's first row; 400 is its cpu and 402
 // its wall.
 test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
-  match admitted_rows_of(text: sample_tsv) |> first {
+  let rows = match parse_claim_cost_tsv(text: sample_tsv) {
+    ArtifactRefused { cause: _ } => []
+    ArtifactRows { rows: rr } => rr
+  }
+  match rows |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -764,4 +764,49 @@ test fn a_new_vintage_header_missing_a_column_names_the_column_it_lacks() -> Boo
       MalformedDataRow { line: _ } => false
     }
   }
+}
+
+// THE DISCRIMINATING RED FOR THE REPORT'S SECOND DOOR. `floor_cost_distribution_check` was already
+// fail-closed -- that refutation stands -- but the entry point the module header and the plan tell
+// a reader to RUN is the REPORT, and it used to render refusal lines and then compute figures over
+// whatever loaded. This is the mixed case that discriminates: two runs load, one refuses.
+//
+// IF THIS GOES GREEN BY THE REPORT EMITTING A BAND, WORST, LADDER OR PERCENTILE LINE BESIDE THE
+// REFUSAL, THE PARTIAL SAMPLE IS BACK -- a ten-run measurement's name over the runs that happened
+// to load. The arm asserts the ABSENCE of every figure family, not merely the presence of the
+// refusal, because a report that refuses AND calculates is exactly the defect.
+test fn a_refused_run_beside_loaded_ones_produces_no_figures() -> Bool {
+  let lines = floor_cost_distribution_lines(
+    loads: [
+      RunLoaded { run: run_a },
+      RunLoaded { run: run_b },
+      RunRefused { run: "33661252708" as NonEmptyStr, path: "p", cause: UnsupportedSharedCpuMsVintage { header_line: "identity\tcpu_ms" } }
+    ],
+    baseline: "a" as NonEmptyStr,
+    contended: "b" as NonEmptyStr,
+    repaired: [],
+    order: [],
+    band_edges: [0, 100, 300, 1000] |> map(e => millisecond(count: e)),
+    min_base_ms: millisecond(count: 1)
+  )
+  count(lines |> filter(l => starts_with(s: l, prefix: "band "))) == 0
+    && count(lines |> filter(l => starts_with(s: l, prefix: "worst row"))) == 0
+    && count(lines |> filter(l => starts_with(s: l, prefix: "p50"))) == 0
+    && count(lines |> filter(l => starts_with(s: l, prefix: "runs loaded"))) == 0
+    && count(lines) > 0
+}
+
+// AND ITS POSITIVE CONTROL, so the emptiness above cannot come from a report that produces nothing:
+// the SAME two runs with the refused member removed DO produce figures.
+test fn the_same_runs_without_the_refused_member_do_produce_figures() -> Bool {
+  let lines = floor_cost_distribution_lines(
+    loads: [RunLoaded { run: run_a }, RunLoaded { run: run_b }],
+    baseline: "a" as NonEmptyStr,
+    contended: "b" as NonEmptyStr,
+    repaired: [],
+    order: [],
+    band_edges: [0, 100, 300, 1000] |> map(e => millisecond(count: e)),
+    min_base_ms: millisecond(count: 1)
+  )
+  count(lines |> filter(l => starts_with(s: l, prefix: "runs loaded"))) == 1
 }
