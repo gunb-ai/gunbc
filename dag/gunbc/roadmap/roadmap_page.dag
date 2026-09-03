@@ -188,10 +188,24 @@ fn roadmap_header(page: String) -> Fragment {
     el_class("div", "header-inner", [
       el_class("span", "wordmark", [ txt("gunbc") ]),
       el("h1", [ txt(page) ]),
+      header_surface_link(label: "workspace", href: "/"),
+      header_surface_link(label: "fleet", href: "/fleet"),
       sound_toggle_control(),
       theme_toggle_control(),
     ]),
   ])
+}
+
+// The header carries one link per SERVED page a human navigates between, so splitting the fleet
+// panels off the workspace does not make them unreachable. The link set is authored here rather
+// than derived from gunbc.roadmap_serve's route table on purpose and the reason is a layering one:
+// that table is the transport's routing authority and includes assets, JSON reads and POST verbs
+// that are not navigation destinations, so deriving from it would need a second predicate saying
+// which rows a person navigates to -- a fact this page owns. If the pair ever disagrees the tell is
+// a 404 from a header link, which is why the link text and the route literal are the only two
+// spellings and both live one grep apart.
+fn header_surface_link(label: String, href: String) -> Fragment {
+  el_attrs("a", [ attr(name: "href", value: href ), attr(name: "class", value: "surface-link" ) ], [ txt(label) ])
 }
 
 // The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is
@@ -1018,10 +1032,44 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
       ]),
       el("body", [
         roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat([fleet_hardware_standing_panel(), fleet_capacity_panel()], concat(program_strip, concat(
+        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
           workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws)]))))),
+          [ workspace_markup(ws: ws)])))),
         dispatch_client_script(),
+      ]),
+    ],
+  }
+}
+
+// THE MACHINE-STANDING SURFACE IS ITS OWN PAGE, NOT A PREFIX ON THE WORK SURFACE.
+//
+// The two fleet panels answer a different question from every row below them: what the hardware is
+// doing, versus what work is dispatchable. Composed into the daily workspace they occupied the
+// first screen, so the surface the operator opens to decide WHAT TO LAUNCH led with facts that
+// change no launch decision. Splitting them costs nothing structurally -- both panels are pure
+// Fragment producers over their own authorities, so this page composes the SAME two calls the
+// workspace used to make, and the panels keep their single authority.
+//
+// The witness that proves a panel reaches a rendered page follows the panel to this page rather
+// than being deleted: the claim was never "the panel is on the daily workspace", it was "the panel
+// reaches the surface the operator actually sees", and that surface is now /fleet.
+fn roadmap_fleet_page() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en" ) ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
+        el("title", [ txt("gunbc — fleet") ]),
+      ]),
+      el("body", [
+        roadmap_header(page: "fleet"),
+        el_class("main", "daily-workspace", [
+          fleet_hardware_standing_panel(),
+          fleet_capacity_panel(),
+        ]),
       ]),
     ],
   }

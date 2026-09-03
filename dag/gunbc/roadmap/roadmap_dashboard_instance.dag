@@ -366,63 +366,135 @@ fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
   NamedTmuxServer { socket_name: instance_id }
 }
 
-fn dashboard_execution_environment(
+// ONE CAPABILITY SET, N BOUND TOOLCHAINS -- the DESIGN 3 split between the interface shape and its
+// realization, applied to the executables a dispatch host runs.
+//
+// The capability LIST, each capability's identity probe, and each ensure policy are facts about
+// what a dispatch host must be able to do; WHERE those programs live is a fact about the machine.
+// Fusing them, as the single srv1-shaped producer did, made every path a Linux path by
+// construction: a second host could only be served by copying twelve rows and editing the paths,
+// which is the redundancy DESIGN 2 prices and the fork DESIGN 3 forbids -- the two copies drift
+// apart at exactly the moment a capability is added, because nobody edits the copy they are not
+// looking at.
+//
+// So the toolchain is the parameter and the capability set is the invariant. Adding a platform is
+// one DashboardToolchain value; adding a CAPABILITY is one row here that every platform must then
+// answer for, which is the direction the failure should point.
+type DashboardToolchain {
+  git: FilePath
+  tmux: FilePath
+  pipe_shell: FilePath
+  tee: FilePath
+  jq: FilePath
+  environment_binding: FilePath
+  install: FilePath
+  link: FilePath
+  cargo: FilePath
+  rustc: FilePath
+  rustfmt: FilePath
+}
+
+// The GNU identity strings below are not cosmetic and the macOS toolchain is why they are worth
+// stating. The attempt-pointer argv passes `ln -sfnT`, and `-T` does not exist in BSD ln; the
+// attempt-state argv passes `install -d -m`, which BSD install does happen to support. So the
+// identity probe asserting "coreutils" is load-bearing on both hosts: it is the executed check that
+// the program bound here answers the GNU contract the argv is written against, and on a Mac the
+// system /bin/ln would fail that probe BEFORE it could fail the flag at spawn time. That is the
+// difference between a typed preflight refusal naming the capability and a dispatch that dies
+// mid-attempt on an illegal option.
+data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
+  git: "/usr/bin/git" as FilePath,
+  tmux: "/usr/bin/tmux" as FilePath,
+  pipe_shell: "/usr/bin/sh" as FilePath,
+  tee: "/usr/bin/tee" as FilePath,
+  jq: "/usr/bin/jq" as FilePath,
+  environment_binding: dashboard_environment_binding_executable,
+  install: "/usr/bin/install" as FilePath,
+  link: "/usr/bin/ln" as FilePath,
+  cargo: "/home/briansrls/.cargo/bin/cargo" as FilePath,
+  rustc: "/home/briansrls/.cargo/bin/rustc" as FilePath,
+  rustfmt: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,
+}
+
+// THE OPERATOR MACBOOK, OBSERVED RATHER THAN ASSUMED. Every path here was read off the machine on
+// 2026-09-02 with `which` and each identity probe was executed, because a toolchain row is a claim
+// about a specific host and an unrun claim is the fabricated-plausible-output failure in its
+// cheapest form. What the probes established, and why the rows do not simply mirror srv1:
+// tmux, cargo, rustc and rustfmt are Homebrew rather than system or rustup; sh is /bin/sh, since
+// macOS has no /usr/bin/sh at all; and tee, install, ln and env are the g-prefixed GNU builds,
+// because the system BSD ones answer no --version and, for ln, implement no -T.
+data macbook_local_toolchain: DashboardToolchain = DashboardToolchain {
+  git: "/usr/bin/git" as FilePath,
+  tmux: "/opt/homebrew/bin/tmux" as FilePath,
+  pipe_shell: "/bin/sh" as FilePath,
+  tee: "/opt/homebrew/bin/gtee" as FilePath,
+  jq: "/usr/bin/jq" as FilePath,
+  environment_binding: "/opt/homebrew/bin/genv" as FilePath,
+  install: "/opt/homebrew/bin/ginstall" as FilePath,
+  link: "/opt/homebrew/bin/gln" as FilePath,
+  cargo: "/opt/homebrew/bin/cargo" as FilePath,
+  rustc: "/opt/homebrew/bin/rustc" as FilePath,
+  rustfmt: "/opt/homebrew/bin/rustfmt" as FilePath,
+}
+
+fn dashboard_execution_environment_for_toolchain(
+  toolchain: DashboardToolchain,
   serve_binary: FilePath,
 ) -> DispatchHostEnvironment {
   DispatchHostEnvironment {
     realizations: [
       CapabilityRealization {
         capability: GitWorkspaceCapability,
-        executable: "/usr/bin/git" as FilePath,
+        executable: toolchain.git,
         identity_args: ["--version"],
         identity_contains: "git version" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: TmuxSessionCapability,
-        executable: "/usr/bin/tmux" as FilePath,
+        executable: toolchain.tmux,
         identity_args: ["-V"],
         identity_contains: "tmux" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: TmuxPipeShellCapability,
-        executable: "/usr/bin/sh" as FilePath,
+        executable: toolchain.pipe_shell,
         identity_args: ["-c", "printf gunbc-tmux-pipe-shell"],
         identity_contains: "gunbc-tmux-pipe-shell" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: TeeEventCaptureCapability,
-        executable: "/usr/bin/tee" as FilePath,
+        executable: toolchain.tee,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: ProviderEventProjectionCapability,
-        executable: "/usr/bin/jq" as FilePath,
+        executable: toolchain.jq,
         identity_args: ["--version"],
         identity_contains: "jq-" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: EnvironmentBindingCapability,
-        executable: dashboard_environment_binding_executable,
+        executable: toolchain.environment_binding,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: AttemptStateDirectoryCapability,
-        executable: "/usr/bin/install" as FilePath,
+        executable: toolchain.install,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: AttemptCurrentPointerCapability,
-        executable: "/usr/bin/ln" as FilePath,
+        executable: toolchain.link,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
@@ -436,27 +508,36 @@ fn dashboard_execution_environment(
       },
       CapabilityRealization {
         capability: CargoCapability,
-        executable: "/home/briansrls/.cargo/bin/cargo" as FilePath,
+        executable: toolchain.cargo,
         identity_args: ["--version"],
         identity_contains: "cargo" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: RustcCapability,
-        executable: "/home/briansrls/.cargo/bin/rustc" as FilePath,
+        executable: toolchain.rustc,
         identity_args: ["--version"],
         identity_contains: "rustc" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: RustfmtCapability,
-        executable: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,
+        executable: toolchain.rustfmt,
         identity_args: ["--version"],
         identity_contains: "rustfmt" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
     ],
   }
+}
+
+fn dashboard_execution_environment(
+  serve_binary: FilePath,
+) -> DispatchHostEnvironment {
+  dashboard_execution_environment_for_toolchain(
+    toolchain: srv1_linux_toolchain,
+    serve_binary: serve_binary,
+  )
 }
 
 // THE repo_root -> INSTANCE RESOLUTION LIVES WITH THE INSTANCES, NOT WITH ONE CONSUMER. It was
