@@ -3555,6 +3555,38 @@ fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
             if !carriers_transfer {
                 continue;
             }
+            // THE TRIGGER IS COMPUTATION IDENTITY, NOT CO-LOCATION. An earlier revision of this
+            // wall refused on module-set intersection alone, and that fabricates causal
+            // equivalence from shared neighbourhood: two producers using one consuming module
+            // establishes neither one computation identity nor any transfer of a measured cost,
+            // so ANY unrelated admitted producer reaching that module could stop the required
+            // floor. DESIGN §2 requires that one COMPUTATION IDENTITY join the demands to a
+            // provider, and §4 refuses a heuristic where the richer source exists — it does
+            // here, because the interpreter bills this ledger under the producing function's own
+            // key. So the refusal fires when the ledger observes a fill under the BARE NAME OF A
+            // REFUSED PRODUCER: that is the withdrawn computation recurring under a spelling the
+            // static fold cannot see, since a transitively reached producer is in the tier and
+            // not in the roster. Carrier overlap is retained as a REQUIRED CORROBORATION and
+            // reported as evidence, never as the trigger on its own.
+            //
+            // WHAT THIS NARROWING GIVES UP, DECLARED RATHER THAN DISCOVERED LATER. The case that
+            // motivated this wall is TWO IDENTITIES SHARING ONE EFFECT: `rust_target_model_staging`
+            // was refused for the same measured effect as `rust_target_model`, and its consumer set
+            // grew from 17 to 44 modules on the run where the first row was withdrawn and staging
+            // inherited its consumers. That is a DIFFERENT computation identity, so this wall is
+            // now green on it — deliberately, because module overlap cannot establish the transfer
+            // and refusing on it charges a producer with a harm nothing measured. NEXT TRIGGER,
+            // NAMED AS THE CAPABILITY: a modeled produces-the-same-value relation between two
+            // producer identities, so inheritance is read off a declared equivalence rather than
+            // inferred from co-location. A wider module heuristic is not that capability and must
+            // not retire this gap.
+            let refused_bare = row
+                .producer
+                .rsplit_once('.')
+                .map_or(row.producer.as_str(), |(_, b)| b);
+            if key.as_str() != refused_bare {
+                continue;
+            }
             let shared: Vec<&str> = modules
                 .intersection(&row.carrier_modules)
                 .map(|m| m.as_str())
@@ -3585,8 +3617,10 @@ fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
             return Err(format!(
                 "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusedCarrierOverlap \
                  admitted_key={key} admitted_producer={subject} refused_row={} \
-                 refused_verdict={} shared_carrier_modules={} — WHAT CHANGED IS THE ROSTER, NOT \
-                 THIS KEY'S OWN COST. The named refused row was measured over those modules and \
+                 refused_verdict={} shared_carrier_modules={} — THIS LEDGER KEY IS THE REFUSED \
+                 PRODUCER'S OWN COMPUTATION IDENTITY, recurring under a spelling the roster \
+                 does not name, and the shared modules corroborate that its measured carriers \
+                 came with it. WHAT CHANGED IS THE ROSTER, NOT THIS KEY'S OWN COST. The named refused row was measured over those modules and \
                  withdrawn; this admitted key is now serving into the same measured \
                  neighbourhood, which is how a narrower identity inherits a withdrawn row's \
                  regression without any measurement of its own moving. Either re-measure this \
@@ -8621,12 +8655,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
                 &["v2.test.emit.produced_decl_two_target"],
             )],
         );
-        fill_from(
-            "v2.test.emit.produced_decl_two_target",
-            "rust_target_model_staging",
-        );
+        // THE LEDGER OBSERVES A FILL UNDER THE REFUSED PRODUCER'S OWN KEY. That is the
+        // withdrawn computation recurring, not a neighbour sharing a module, and it is the only
+        // thing this wall is entitled to charge. The admitted spelling is reached from the
+        // roster rather than named by it, which is why the static fold cannot see it.
+        fill_from("v2.test.emit.produced_decl_two_target", "rust_target_model");
         let why = refuse_pure_producer_share_refused_carrier_overlap()
-            .expect_err("an overlap with a refused row's carriers must refuse");
+            .expect_err("a refused producer's own key recurring over its carriers must refuse");
         // The three things the diagnostic owes: the admitted subject, the row it inherited the
         // carriers from, and that the trigger was the roster rather than this key's own cost.
         assert!(
@@ -8634,7 +8669,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             "{why}"
         );
         assert!(
-            why.contains("admitted_producer=v2.extdeps.languages.rust.rust_target_model_staging"),
+            why.contains("admitted_producer=<reached-from-roster>:rust_target_model"),
             "{why}"
         );
         assert!(
@@ -8733,13 +8768,43 @@ mod pure_producer_share_refused_carrier_overlap_tests {
         );
         fill_from(
             "v2.test.manual.rust_add_emit_translate",
-            "grammar_relation_row_for_emitted",
+            "rust_target_model_core_edges",
         );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("a measured-cost row's carriers still transfer");
         assert!(
             why.contains("cause=PureProducerShareRefusedCarrierOverlap"),
             "{why}"
+        );
+    }
+
+    /// CO-LOCATION IS NOT CAUSAL TRANSFER, AND THIS IS THE CONTROL THAT SAYS SO BY EXECUTION.
+    /// An earlier revision of this wall refused here, on module-set intersection alone: a
+    /// DIFFERENT admitted producer whose fills reach a module the refused row was measured over.
+    /// Sharing a consuming module establishes neither one computation identity nor any transfer
+    /// of a measured cost, so refusing on it charges an unrelated producer with a harm nothing
+    /// measured — and would let any admitted producer reaching that module stop the required
+    /// floor. Raised as review 59213 finding 2 against gunbc#10141 and enrolled here rather than
+    /// fixed silently, because this exact fixture was GREEN under the old trigger.
+    #[test]
+    fn a_different_producer_merely_sharing_a_carrier_module_does_not_refuse() {
+        install(
+            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            vec![RefusedShareRow {
+                producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
+                verdict: "MeasuredServeAboveRecompute".to_string(),
+                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                    .into_iter()
+                    .collect(),
+            }],
+        );
+        fill_from(
+            "v2.test.manual.rust_add_emit_translate",
+            "grammar_relation_row_for_emitted",
+        );
+        assert!(
+            refuse_pure_producer_share_refused_carrier_overlap().is_ok(),
+            "co-location must not be read as inheritance"
         );
     }
 
@@ -8752,10 +8817,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
         install(
             &["a.module.shared_spelling", "b.module.shared_spelling"],
             vec![refused_row(
-                "v2.extdeps.languages.rust.rust_target_model",
+                "v2.extdeps.languages.rust.shared_spelling",
                 &["v2.test.emit.produced_decl_two_target"],
             )],
         );
+        // The refused producer's own key recurs over its own carriers, so the identity trigger
+        // fires — and then the bare key is claimed by two admitted spellings, so naming either
+        // one would be a fabricated subject.
         fill_from("v2.test.emit.produced_decl_two_target", "shared_spelling");
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("an unattributable overlap must refuse");
