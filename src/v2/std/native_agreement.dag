@@ -11,7 +11,7 @@ import v2.std.optional {
   Absent
 }
 import v2.std.logic { Bool }
-import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.integer { integer_int_to_decimal_string, integer_u8_from_byte }
 import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
 import v2.std.text { String }
 
@@ -34,12 +34,23 @@ fn octet_display(octet: Int) -> String {
   integer_int_to_decimal_string(value: octet)
 }
 
+// THE OCTET IS AN Int AND THE LIST HOLDS Byte. `list_at_optional` over a `List<Byte>` yields
+// `Optional<Byte>`, which this function previously returned under a declared `Optional<Int>`:
+// the record then reached `octet_display`'s Int parameter and every label of a primitive with a
+// second byte aborted with `cannot apply Lt to Record and Int`. It stayed invisible because the
+// only reachable arm in practice was the empty-list one, whose `Absent` answers "?" -- so the
+// formatter that exists to stop a divergence being reported as values-unknown could instead
+// abort exactly when a divergence was being reported. The conversion is named here rather than
+// the declaration widened, because the carrier's octet IS an integer.
 fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {
   match value {
     RuntimePrimitive {
       value: RuntimePrimitiveValue { bytes: bytes, primitive_type: _ }
     } =>
-      list_at_optional(xs: bytes, index: 1)
+      match list_at_optional(xs: bytes, index: 1) {
+        Present { value: octet_byte } => Present { value: integer_u8_from_byte(b: octet_byte) }
+        Absent => Absent
+      }
     _ => Absent
   }
 }

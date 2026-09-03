@@ -95,6 +95,10 @@ type SystemdPropertyWritability
 // have under-reported, with a clean compile and a green floor. That is the mitigatable rung stated
 // as measured rather than as expected, and it is the strongest available argument for the
 // next-rung trigger the row below names.
+// The live-read additions do not form one writability class. ExecStart, User,
+// WorkingDirectory and Unit are accepted unit-file directives with the same spelling carried by
+// the show surface. The other additions are manager-derived state, including AccuracyUSec: its
+// writable timer directive is AccuracySec=, not the reported microsecond property.
 fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropertyWritability {
   match property {
     MemoryMax => SettableDirective
@@ -109,6 +113,18 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     ActiveEnterTimestampMonotonic => ObservationOnly
     ActiveState => ObservationOnly
     MainPID => ObservationOnly
+    LoadState => ObservationOnly
+    UnitFileState => ObservationOnly
+    SubState => ObservationOnly
+    Result => ObservationOnly
+    ExecMainStatus => ObservationOnly
+    ExecStartProperty => SettableDirective
+    User => SettableDirective
+    WorkingDirectoryProperty => SettableDirective
+    Unit => SettableDirective
+    NextElapseUSecMonotonic => ObservationOnly
+    AccuracyUSec => ObservationOnly
+    TimersMonotonic => ObservationOnly
   }
 }
 
@@ -142,6 +158,8 @@ fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
 data systemd_unit_property_members: List<SystemdUnitProperty> = [
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, TasksMax,
   MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState, MainPID,
+  LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty,
+  User, WorkingDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic,
 ]
 
 fn settable_property_wires() -> List<String> {
