@@ -689,8 +689,10 @@ fn floor_expected_red_chunk_22() -> List<String> {
   Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
 }
 
-// chunk_23 CARRIES ONE ROW THAT ENTERS BY A ROUTE THE HEADER DOES NOT DESCRIBE, so the route is
-// written here rather than left for the next reader to infer from the identity.
+// RETIRED chunk_23 EXPECTED-RED ADMISSION history. PositionGenericTypeArgument now constructs the
+// missing element obligation at the direct-call seam; the witness remains enrolled as an ordinary
+// permanent regression control, tightened to require DeclaredTypeNotInhabited at the generic type
+// argument position, while only its temporary expected-red admission is deleted here.
 //
 // THE MEASUREMENT IS CARRIED HERE RATHER THAN CITED: a row that has told an assertion not to
 // assert is where a reader most needs the reason, and a pointer to a pull request is worthless if
@@ -711,8 +713,14 @@ fn floor_expected_red_chunk_22() -> List<String> {
 //      carries NO type-mismatch diagnostic. `v2.std.node` referenced those two types fully
 //      qualified WITHOUT importing that module, so every closure importing `v2.std.node` inherited
 //      them. This branch adds the import, they resolve, and the accidental refusal goes with them.
-//   4. NEXT-RUNG TRIGGER. `container_element_nominal_brand_mismatch` reaching the
-//      direct-call-argument position.
+//   4. DISCHARGED NEXT-RUNG TRIGGER. A child obligation constructed at
+//      PositionGenericTypeArgument and decided by declared_type_inhabitance. This trigger is
+//      discharged by direct_call_generic_type_argument_inhabitance_diags constructing that exact
+//      obligation and handing it to declared_type_obligation_diags. The earlier trigger,
+//      `container_element_nominal_brand_mismatch` reaching the direct-call-argument position, was
+//      already satisfied while this mismatch remained accepted: direct_call_arg_type_mismatch
+//      already called it here. It named a route rather than the missing capability and could have
+//      retired this row while the wall was still dead.
 //
 // Measured with the witness's own oracle (`compile_dag_rust_emit_check`) alongside
 // `compile_dag_diagnostic_census`, over both corpora, 2026-08-27.
@@ -757,14 +765,9 @@ fn floor_expected_red_chunk_22() -> List<String> {
 // that passes reds the build -- so enrolling it on main would red main's own required floor. It
 // fails here, the only tree where it is honestly enrollable.
 //
-// REMOVAL TRIGGER: `container_element_nominal_brand_mismatch` reaching the direct-call-argument
-// position -- i.e. `nominal_call_arg_brand_mismatch` admitting two distinct nominal element types
-// under a shared container template. The witness is the ready-made RED for that work and needs no
-// new fixture.
-fn floor_expected_red_chunk_23() -> List<String> {
-  Cons { head: "test.claim.record_literal_call_arg_handoff_witness.record_literal_container_element_mismatch_at_call_arg_still_refuses", tail: Empty {} }
-}
-
+// REMOVAL TRIGGER, CORRECTED AND NOW FIRED: a child obligation constructed at
+// PositionGenericTypeArgument and decided by declared_type_inhabitance. The witness is the
+// permanent regression control for that capability.
 // The interpreter realizes terminal `first` as a raw element or Null while emitted Rust realizes
 // the same modeled operation as Optional<T>. This exact specimen executes and returns false. It
 // stays enrolled after repair: when it becomes true this roster row is deleted and the claim
@@ -1115,7 +1118,7 @@ fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
