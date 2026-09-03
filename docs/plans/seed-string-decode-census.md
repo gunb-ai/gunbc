@@ -453,14 +453,32 @@ So the correct lesson from P4 is narrower than it looked: **a line-keyed instrum
 sign.** It misses what formatting separates and over-claims what proximity suggests, and which one
 dominates depends on the syntax at hand, not on the instrument.
 
-**The assembled-argv blind spot is closed by MECHANISM, not by a zero.** The previous entry said argv
-built as a `Vec<String>` elsewhere would be invisible "in principle". That is true of the scanner, so
-the question was re-shaped the way the 68 were: *for `--function` to reach a subprocess, the string
-must exist somewhere.* Either it is a literal — all 35 occurrences are scanned above — or it is
-synthesized. There is no synthesis: the only `format!("--…` in the hand `.rs` set builds an error
-message, not an argv. And the flags reach a subprocess through exactly **two** spawn sites
-(`pre_push.rs`, `bin/interp_recorded_fixture_witness.rs`), both of whose argv constructions are in the
-scanned population. A zero from a grep would have established nothing; this establishes it.
+**The assembled-argv blind spot is closed by MECHANISM, not by a zero — and the closure is stated as
+ENTRY, not as origin.** The previous entry said argv built as a `Vec<String>` elsewhere would be
+invisible "in principle". That is true of the scanner, so the question was re-shaped the way the 68
+were.
+
+*A first attempt at that re-shaping was incomplete and is recorded rather than quietly replaced.* It
+argued that the flag string must be either a LITERAL (all 35 occurrences scanned above) or
+SYNTHESIZED (and there is no synthesis — the only `format!("--…` in the hand `.rs` set builds an error
+message). **That disjunction has a third arm: a string can be READ rather than written or built** —
+from an environment variable, a config file, a JSON or TOML payload, a recorded fixture, or argv
+forwarded into the process. Reading is neither a literal nor a synthesis and it leaves no `format!` to
+find, so the two-armed version was a closure with a hole in it.
+
+**The correct form is the one this document already uses one section earlier: ENTRY, NOT ORIGIN.**
+Every argv that reaches a subprocess is CONSTRUCTED at one of exactly two sites, and both are wholly
+inside the scanned population:
+
+| spawn site | argv construction | forwarded input |
+|---|---|---|
+| `pre_push.rs` `run_claim_batch` | `.arg()` chain: `--entry <entry> --function <function>`, then `for arg in suffix_args` | ONE caller, passing the literal array `&["--claim-run"]`; `entry` and `function` come from `ActiveGate::DocWitness` read out of the `.dag` plan |
+| `bin/interp_recorded_fixture_witness.rs` `run_claim_batch(args: &[&str])` | the caller's array, verbatim | 30 call sites, every one a literal `&[…]` array |
+
+So a value's ORIGIN — literal, synthesized, or read — does not matter. To become an argument it must be
+interpolated at one of those two constructions, where it appears as a non-literal and is classified as
+*computed* above. A zero from a grep would have established nothing; this establishes it, and it
+establishes it without needing to enumerate the ways a string can come into existence.
 
 **The computed sites are not hidden spellings, and their origins are named rather than assumed.** The
 33 computed `--entry` values and 3 of the 5 computed `--function` values are the P6 scratch-copy paths
