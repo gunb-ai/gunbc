@@ -42,30 +42,85 @@ type RunCost {
   rows: List<FloorCostRow>
 }
 
+// COLUMNS ARE LOCATED BY NAME, NOT BY POSITION, AND THIS IS NOT STYLE.
+//
+// DESIGN section 3's standing rule -- cite the symbol, never the position -- applies to a TSV
+// exactly as it applies to a source file, and for the same reason: any insertion ABOVE the cited
+// index silently invalidates it. That is not hypothetical here. The `eval_steps` column was
+// INSERTED into this artifact between vintages: run 33661252708's header is
+// `identity module outcome verdict_reached wall_ms cpu_ms cost_line_ms` and run 33699540412's is
+// the same with `eval_steps` before `cost_line_ms`. A parser keyed on index 6 reads the older
+// artifact's `cost_line_ms` -- the constant 100 -- as a step count, which is not an error, it is a
+// PLAUSIBLE NUMBER: the resulting microseconds-per-step figures came out near 2500 instead of near
+// 2, off by three orders of magnitude and still perfectly well-formed. Measured, not imagined:
+// three of eleven sampled runs produced exactly that before the header was consulted.
+//
+// So the header IS the schema and a missing column REFUSES. `Absent` here means "this artifact
+// does not carry the column this analysis needs", which is a fact about the artifact and must
+// reach the caller as one, rather than being defaulted into a zero or a constant that flows into
+// every downstream percentile.
+type ClaimCostColumns {
+  identity: Int
+  module: Int
+  cpu_ms: Int
+  eval_steps: Int
+}
+
+fn claim_cost_column_index(header_fields: List<String>, name: String) -> Int? {
+  header_fields
+    |> enumerate
+    |> filter(e => e.second == name)
+    |> map(e => e.first)
+    |> first
+}
+
+// THE HEADER LINE IS THE ONE THAT NAMES `identity` FIRST. The artifact's `#`-prefixed summary
+// precedes it, and a data row can never be mistaken for it because no claim identity is the
+// literal string "identity".
+fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
+  let fields = split(s: header_line, delimiter: "\t")
+  match claim_cost_column_index(header_fields: fields, name: "identity") {
+    Absent => none
+    Present { value: id } => match claim_cost_column_index(header_fields: fields, name: "module") {
+      Absent => none
+      Present { value: md } => match claim_cost_column_index(header_fields: fields, name: "cpu_ms") {
+        Absent => none
+        Present { value: cpu } => match claim_cost_column_index(header_fields: fields, name: "eval_steps") {
+          Absent => none
+          Present { value: steps } => Present {
+            value: ClaimCostColumns { identity: id, module: md, cpu_ms: cpu, eval_steps: steps }
+          }
+        }
+      }
+    }
+  }
+}
+
 // A TSV LINE IS EITHER A ROW OR IT IS NOT, AND "NOT" IS NEVER A FABRICATED ROW. The artifact
 // carries a `#`-prefixed summary line and a header line before the data, and a short or
 // unparseable line is refused rather than defaulted to zero -- a zero would sit silently at the
 // bottom of every band and inflate the safe population.
-fn parse_claim_cost_line(line: String) -> FloorCostRow? {
+fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRow? {
   if starts_with(s: line, prefix: "#") {
     none
   } else {
     let fields = split(s: line, delimiter: "\t")
-    if count(fields) < 7 {
+    let widest = max_int(a: max_int(a: columns.identity, b: columns.module), b: max_int(a: columns.cpu_ms, b: columns.eval_steps))
+    if count(fields) <= widest {
       none
-    } else if fields[0] == "identity" {
+    } else if fields[columns.identity] == "identity" {
       none
     } else {
-      match parse_int(s: fields[5]) {
+      match parse_int(s: fields[columns.cpu_ms]) {
         Absent => none
-        Present { value: cpu } => Present {
-          value: FloorCostRow {
-            identity: fields[0],
-            module: fields[1],
-            cpu_ms: millisecond(count: cpu),
-            eval_steps: match parse_int(s: fields[6]) {
-              Absent => 0
-              Present { value: steps } => steps
+        Present { value: cpu } => match parse_int(s: fields[columns.eval_steps]) {
+          Absent => none
+          Present { value: steps } => Present {
+            value: FloorCostRow {
+              identity: fields[columns.identity],
+              module: fields[columns.module],
+              cpu_ms: millisecond(count: cpu),
+              eval_steps: steps
             }
           }
         }
@@ -74,12 +129,27 @@ fn parse_claim_cost_line(line: String) -> FloorCostRow? {
   }
 }
 
+fn max_int(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+// AN ARTIFACT WHOSE HEADER LACKS A NEEDED COLUMN YIELDS NO ROWS, WHICH IS THE WHOLE POPULATION
+// REFUSING RATHER THAN A SILENTLY THINNER ONE. A caller that wants to distinguish "old vintage"
+// from "empty run" reads `claim_cost_columns` itself; this function answers only the question it
+// is asked, and answers it with nothing rather than with rows built on a guessed layout.
 fn parse_claim_cost_tsv(text: String) -> List<FloorCostRow> {
-  split(s: text, delimiter: "\n")
-    |> flat_map(line => match parse_claim_cost_line(line: line) {
-         Absent => []
-         Present { value: row } => [row]
-       })
+  let lines = split(s: text, delimiter: "\n")
+  match lines |> filter(l => starts_with(s: l, prefix: "identity\t")) |> first {
+    Absent => []
+    Present { value: header } => match claim_cost_columns(header_line: header) {
+      Absent => []
+      Present { value: columns } =>
+        lines |> flat_map(line => match parse_claim_cost_line(line: line, columns: columns) {
+          Absent => []
+          Present { value: row } => [row]
+        })
+    }
+  }
 }
 
 // THE BAND HISTOGRAM (question 1: is the population near the ceiling dense).

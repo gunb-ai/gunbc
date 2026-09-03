@@ -12,6 +12,8 @@ import tools.floor_cost_distribution_instrument {
   refused_load_lines
 }
 import gunbc.floor_cost_distribution {
+  ClaimCostColumns,
+  claim_cost_columns,
   CrossingRecurrence,
   identity_inflation_permille_at_equal_work,
   crossing_recurrence,
@@ -62,6 +64,41 @@ data both_runs: List<RunCost> = [run_a, run_b]
 // PARSING: the artifact's own preamble must not become rows.
 data sample_tsv: String = "# summary\texecuted=3\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t1000\t100\nm.mid.y\tm.mid\tpass\ttrue\t201\t200\t900\t100"
 
+// The layout the current artifact ships, resolved from its own header rather than assumed.
+data sample_columns: ClaimCostColumns = ClaimCostColumns { identity: 0, module: 1, cpu_ms: 5, eval_steps: 6 }
+
+// THE OLD VINTAGE, VERBATIM. Run 33661252708's artifact has no `eval_steps` column at all -- the
+// header is one field shorter and index 6 holds `cost_line_ms`, the constant 100. A positional
+// parser reads that as a step count and produces microseconds-per-step near 2500 instead of near
+// 2: not an error, a PLAUSIBLE NUMBER, which is why this is a refusal and not a warning.
+data old_vintage_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t100"
+
+test fn an_artifact_without_the_steps_column_yields_no_rows_rather_than_reading_the_next_one() -> Bool {
+  count(parse_claim_cost_tsv(text: old_vintage_tsv)) == 0
+    && match claim_cost_columns(header_line: "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms") {
+         Present { value: _ } => false
+         Absent => true
+       }
+}
+
+// AND THE POSITIVE CONTROL FOR THAT REFUSAL, so an empty population cannot be read as "the parser
+// is broken": the same rows under a header that DOES carry the column parse normally.
+test fn the_same_shape_with_a_steps_column_parses() -> Bool {
+  count(parse_claim_cost_tsv(text: sample_tsv)) == 2
+}
+
+// COLUMNS ARE FOUND BY NAME, WHICH MEANS A REORDERED HEADER STILL READS CORRECTLY. This is the
+// discriminating red for the whole change: under a positional parser this fixture returns a row
+// whose cpu and steps are swapped, and swapped values are two plausible numbers rather than an
+// error.
+test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
+  let reordered = "identity\tmodule\teval_steps\tcpu_ms\nm.hot.x\tm.hot\t1000\t400"
+  match parse_claim_cost_tsv(text: reordered) |> first {
+    Absent => false
+    Present { value: r } => millisecond_count(m: r.cpu_ms) == 400 && r.eval_steps == 1000
+  }
+}
+
 test fn the_summary_and_header_lines_are_not_rows() -> Bool {
   count(parse_claim_cost_tsv(text: sample_tsv)) == 2
 }
@@ -77,9 +114,9 @@ test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool
 // line must produce NO row rather than a zero-cost one. A fabricated zero would sit silently in
 // the bottom band and make the population look safer than it is.
 test fn an_unparseable_line_yields_no_row_rather_than_a_zero_cost_row() -> Bool {
-  match parse_claim_cost_line(line: "m.broken\tm\tpass") {
+  match parse_claim_cost_line(line: "m.broken\tm\tpass", columns: sample_columns) {
     Present { value: _ } => false
-    Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\t10\tNOT-A-NUMBER\t1\t100") {
+    Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\t10\tNOT-A-NUMBER\t1\t100", columns: sample_columns) {
       Present { value: _ } => false
       Absent => true
     }
