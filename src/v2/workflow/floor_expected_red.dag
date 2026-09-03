@@ -329,6 +329,24 @@ import v2.std.collection { List }
 // Rows are carried in fixed-size chunks and flattened because one Cons chain 820 deep is a
 // parse-depth hazard, not because chunk boundaries mean anything: a chunk is a slice of an
 // alphabetical list and nothing reads it.
+// THE SHELL-TO-DAG MIGRATION STUBS. Each row asserts the ABSENCE of the shell-rendering its task
+// exists to remove, over the API that exists TODAY -- which is forced rather than chosen: a witness
+// naming a symbol the migration has not written yet is an unresolved import, and a module that
+// cannot compile cannot be enrolled, cannot execute, and cannot answer.
+//
+// EACH ROW REACHES ITS SUBJECT, which is the rule this roster's own header states after 101 rows
+// were held while never executing. These are pure projections over .dag values under
+// SubstrateInputsOnly -- no host effect, no tool resolution, no budget -- so every one returns a
+// verdict on every run. They are red because the property is false, which is the only red this
+// roster may carry.
+//
+// A row retires by becoming TRUE. Per DESIGN section 4b(4) it is NOT deleted then: the
+// discriminating RED stays enrolled as the executing evidence that the property still holds,
+// flipping to a permanent regression control. The row that gates acceptance keeps guarding after it.
+fn floor_expected_red_chunk_shell_to_dag_stubs() -> List<String> {
+  Cons { head: "test.claim.shell_to_dag_stub_witness.usb_gadget_setup_emits_no_shell_control_word", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.usb_gadget_teardown_emits_no_swallowed_failure_text", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.uefi_shell_script_emits_no_joined_command_text", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.sol_capture_emits_no_bash_interpreter_line", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.sol_send_emits_no_shell_option_word", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.sccache_install_emits_no_shell_control_word", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.runner_docker_provision_emits_no_shell_control_word", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.runner_sccache_provision_emits_no_shell_control_word", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.uefi_boot_config_emits_no_joined_command_text", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.roadmap_readback_builds_no_localhost_url_by_concat", tail: Cons { head: "test.claim.shell_to_dag_stub_witness.roadmap_digest_readback_builds_no_localhost_url_by_concat", tail: Empty {} } } } } } } } } } } }
+}
+
 fn floor_expected_red_chunk_00() -> List<String> {
   Cons { head: "test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel", tail:     Empty {} }
 }
@@ -1115,7 +1133,7 @@ fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_shell_to_dag_stubs(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in

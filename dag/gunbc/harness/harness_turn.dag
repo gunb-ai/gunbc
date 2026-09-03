@@ -367,6 +367,57 @@ fn harness_post_round(
 // THE LOOP. Each round either reaches a provider terminal, or executes the tool calls and recurses
 // with a strictly smaller budget. There is no arm that continues without either consuming a step or
 // terminating, which is what makes the descent argument readable rather than asserted.
+// COMPACTION, AT ITS MOST BASIC: A SLIDING WINDOW WITH A PINNED HEAD.
+//
+// The loop grows `messages` monotonically -- concat(messages, [assistant, tool_results]) -- so every
+// turn re-sends the whole history and nothing is ever dropped. That is why one 162KB tool result
+// poisoned an entire turn: the cap added to harness_tool bounds what ENTERS history and can do
+// nothing about what is already in it.
+//
+// WHOLE PAIRS ARE DROPPED, NEVER SINGLE MESSAGES, and that is a correctness constraint rather than
+// tidiness. After the opening brief the list alternates assistant(tool_use) / user(tool_result), and
+// a tool_result whose matching tool_use has been dropped is a malformed request the backend rejects
+// outright. Dropping an even count starting at index 1 preserves the pairing by construction.
+//
+// THE BRIEF IS PINNED because it is the only message that says what the task IS. A window that
+// dropped it would leave a worker executing tool calls with no statement of purpose -- which is the
+// failure this is supposed to prevent, arrived at from the other side.
+//
+// WHAT THIS IS NOT: summarization. Nothing is read, condensed or re-stated; the dropped rounds are
+// simply gone, and the model is told so. That is deliberate for a first cut -- a summarizer is a
+// second model call whose output is unverified text entering the context that the real work depends
+// on, and it should not land before there is a measurement saying the window is the binding
+// constraint. Today's measurement says it is not: peak context is roughly 78KB against a 1M budget.
+//
+// SO THIS WILL NOT FIRE IN NORMAL OPERATION, and that is the honest state rather than a defect. It
+// is a bound on pathological growth, not the compaction strategy -- the trigger worth building is
+// task-oriented (a repeated command, a round that changed nothing), and this is the mechanism such
+// a trigger would eventually drive.
+data harness_retained_tool_rounds: Int = 6
+
+fn harness_compaction_notice(dropped_rounds: Int) -> JsonValue {
+  harness_user_text_message_json(text: join([
+    "[harness] ", to_string(value: dropped_rounds),
+    " earlier tool round(s) were dropped from this conversation to bound its length. ",
+    "The task statement above is unchanged. Earlier command output is no longer available; ",
+    "re-run a command if you need its result again.",
+  ], ""))
+}
+
+fn harness_compact_messages(messages: List<JsonValue>) -> List<JsonValue> {
+  let total = list_length(items: messages)
+  let retained = harness_retained_tool_rounds * 2
+  if total <= retained + 1 {
+    messages
+  } else {
+    let dropped = total - retained - 1
+    concat(
+      concat(messages.take(n: 1), [harness_compaction_notice(dropped_rounds: dropped / 2)]),
+      messages.skip(n: total - retained),
+    )
+  }
+}
+
 fn harness_event_write_refusal(config: HarnessTurnConfig, detail: String) -> HarnessTurnOutcome {
   TurnRequestUnwritable {
     path: config.events_path as String,
@@ -453,13 +504,13 @@ fn harness_turn_loop(
             HarnessEventsWritten =>
               harness_turn_loop(
                 config: config,
-                messages: concat(
+                messages: harness_compact_messages(messages: concat(
                   messages,
                   [
                     harness_assistant_message_json(blocks: blocks),
                     harness_tool_result_message_json(results: results),
                   ],
-                ),
+                )),
                 steps_remaining: steps_remaining - 1,
                 steps_taken: steps_taken + 1,
                 events: stepped,
