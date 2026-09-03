@@ -151,24 +151,40 @@ data step0_census_producer_branch_roster: List<Step0CensusProducerBranch> = [
   BranchCensusRefusedCandidateIndex
 ]
 
-// THE INSTRUMENT'S GRAIN, DECLARED PER FAMILY, and this projection is the whole finding. It says
-// which OccurrenceCategory the producer stamps on an occurrence of each family. It is a DECLARATION
-// and not evidence: the witness joins it against what the instrument actually emitted for an
-// authored occurrence of that family, so a wrong row here goes red rather than quietly standing.
-// That direction matters -- the alternative, deriving the projection from whatever the run produced,
-// would make it unfalsifiable and would let a silent producer define its own grain.
-fn step0_family_observed_category(family: Step0ReferenceFamily) -> OccurrenceCategory {
+// THE INSTRUMENT'S GRAIN, DECLARED PER FAMILY, AND THIS TABLE IS THE WHOLE FINDING. It says what
+// the producer emits for an occurrence of each family. It is a DECLARATION and the witness joins it
+// against what the instrument actually emitted for an authored occurrence of that family, so a wrong
+// row goes red rather than quietly standing. The direction matters: deriving the table from whatever
+// a run produced would make it unfalsifiable and would let a silent producer define its own grain.
+//
+// THE SECOND ARM IS NOT A CATEGORY AND THAT IS THE POINT. Two families produce NO denominator row at
+// all -- a payload constructor in expression position and a variant named in a match pattern. That
+// is not a coarse observation of those families, it is the absence of one, and it is strictly worse:
+// a converged family is counted in the wrong bucket, an unobserved family is not counted anywhere.
+// It is also invisible to every conservation law we could write, because the denominator and the
+// observations are walked from the same source -- so the rows balance perfectly over a population
+// that is missing members. An anti-join cannot reach it either: an anti-join needs a population to
+// join against, and these occurrences are not in one.
+type Step0FamilyObservation
+  = FamilyObservedAsCategory { category: OccurrenceCategory }
+  | FamilyEmitsNoOccurrence { detail: NonEmptyStr }
+
+fn step0_family_observation(family: Step0ReferenceFamily) -> Step0FamilyObservation {
   match family {
-    TypeAnnotationReference => TypeOccurrence
-    GenericTypeArgumentReference => TypeOccurrence
-    TopLevelValueReference => LexicalValueOccurrence
-    FunctionValueReference => LexicalValueOccurrence
-    OrdinaryCallReference => CallableOccurrence
-    NullaryConstructorReference => ConstructorOccurrence
-    PayloadConstructorReference => ConstructorOccurrence
-    VariantExpressionReference => ConstructorOccurrence
-    VariantPatternReference => ConstructorOccurrence
-    QualifiedContainmentReference => NamespaceSegmentOccurrence
+    TypeAnnotationReference => FamilyObservedAsCategory { category: TypeOccurrence }
+    GenericTypeArgumentReference => FamilyObservedAsCategory { category: TypeOccurrence }
+    TopLevelValueReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
+    FunctionValueReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
+    OrdinaryCallReference => FamilyObservedAsCategory { category: CallableOccurrence }
+    NullaryConstructorReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
+    PayloadConstructorReference => FamilyEmitsNoOccurrence {
+      detail: "a constructor applied in record-construction form produces no reference occurrence; the type in the surrounding signature produces one, so the row nearby is not evidence that the construction was seen" as NonEmptyStr
+    }
+    VariantExpressionReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
+    VariantPatternReference => FamilyEmitsNoOccurrence {
+      detail: "a variant named in a match pattern produces no reference occurrence; the scrutinee and the payload binder each produce one, so the arm is represented in the denominator by everything except the name that selects it" as NonEmptyStr
+    }
+    QualifiedContainmentReference => FamilyObservedAsCategory { category: FieldOccurrence }
   }
 }
 
@@ -184,60 +200,71 @@ fn step0_occurrence_category_label(category: OccurrenceCategory) -> NonEmptyStr 
   }
 }
 
-fn step0_occurrence_category_eq(left: OccurrenceCategory, right: OccurrenceCategory) -> Bool {
-  (step0_occurrence_category_label(category: left) as String) == (step0_occurrence_category_label(category: right) as String)
+// THE OBSERVATION KEY, so the fold below can compare observations without a second identity scheme.
+// An unobserved family is its own key rather than a category, because collapsing it onto one would
+// make the blind families look like a convergence set -- which is the exact misreading this module
+// exists to prevent.
+fn step0_family_observation_key(observation: Step0FamilyObservation) -> String {
+  match observation {
+    FamilyObservedAsCategory { category: category } => step0_occurrence_category_label(category: category) as String
+    FamilyEmitsNoOccurrence { detail: _ } => "(no occurrence emitted)"
+  }
 }
 
 // CONVERGENCE IS DERIVED BY A FOLD OVER THE ROSTER, NEVER ASSERTED. Two families converge exactly
-// when the instrument stamps them with one category, so the verdict is computed from the projection
-// above and cannot drift from it. A prose sentence saying "these three probably share a family"
-// would be the thing this replaces.
+// when the instrument stamps them with one category, so the verdict is computed from the table above
+// and cannot drift from it. A prose sentence saying "these three probably share a family" is what
+// this replaces.
 type Step0FamilyDiscrimination
   = FamilyDiscriminatedAtInstrumentGrain
   | FamilyConvergedWith {
       category: OccurrenceCategory
       convergent_family_count: Int
     }
+  | FamilyNotObserved { detail: NonEmptyStr }
 
-fn step0_families_sharing_category(category: OccurrenceCategory) -> List<Step0ReferenceFamily> {
+fn step0_families_sharing_observation(observation: Step0FamilyObservation) -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
-    step0_occurrence_category_eq(
-      left: step0_family_observed_category(family: family),
-      right: category
-    )
+    step0_family_observation_key(observation: step0_family_observation(family: family))
+      == step0_family_observation_key(observation: observation)
   )
 }
 
 fn step0_family_discrimination(family: Step0ReferenceFamily) -> Step0FamilyDiscrimination {
-  let category = step0_family_observed_category(family: family)
-  let sharing = count(step0_families_sharing_category(category: category))
-  if sharing > 1 {
-    FamilyConvergedWith { category: category, convergent_family_count: sharing }
-  } else {
-    FamilyDiscriminatedAtInstrumentGrain
+  match step0_family_observation(family: family) {
+    FamilyEmitsNoOccurrence { detail: detail } => FamilyNotObserved { detail: detail }
+    FamilyObservedAsCategory { category: category } => {
+      let sharing = count(step0_families_sharing_observation(observation: FamilyObservedAsCategory { category: category }))
+      if sharing > 1 {
+        FamilyConvergedWith { category: category, convergent_family_count: sharing }
+      } else {
+        FamilyDiscriminatedAtInstrumentGrain
+      }
+    }
   }
 }
 
-// THE CAPABILITY THAT WOULD SEPARATE A CONVERGED SET, NAMED AS A CAPABILITY AND NOT AS A ROSTER.
-// "a finer family roster" is not a trigger: a roster with no instrument behind it is the prose-law
-// problem again, and it would be satisfied by an edit that changes nothing about what can be
-// observed. Each arm below names something the OCCURRENCE WALK or the CATEGORY AXIS would have to
-// start doing.
-type Step0DiscriminationCapability
-  = TypeReferenceRolePositionStamped
-  | ConstructorArityAndPositionStamped
-  | CallableVersusValueAcquisitionStamped
+// A DEFECT THE FAMILY AXIS CANNOT EXPRESS, KEPT BESIDE IT RATHER THAN FOLDED IN. The denominator is
+// wrong in BOTH directions at once, and the second direction has no family: the label of a named
+// argument is emitted as a reference occurrence and stamped CallableOccurrence, though it references
+// nothing. So a corpus figure over this denominator would be short some real occurrences and long
+// some invented ones, and the two errors do not cancel because they are different populations.
+type Step0DenominatorDefect
+  = DenominatorOmitsFamily { family: Step0ReferenceFamily }
+  | DenominatorAdmitsNonReference { detail: NonEmptyStr }
+  | DenominatorSplitsOneAuthoredReference { family: Step0ReferenceFamily, detail: NonEmptyStr }
 
-fn step0_discrimination_capability_statement(capability: Step0DiscriminationCapability) -> NonEmptyStr {
-  match capability {
-    TypeReferenceRolePositionStamped =>
-      "std.occurrence_identity OccurrenceCategory, or a role beside it, must distinguish a type named in an annotation position from a type named as a generic argument; today the parser stamps TypeOccurrence for both and no downstream reader can recover which" as NonEmptyStr
-    ConstructorArityAndPositionStamped =>
-      "the occurrence walk must stamp a constructor occurrence with its arity and its position -- nullary versus payload, expression versus pattern -- because ConstructorOccurrence today covers four authored forms whose binding risks differ" as NonEmptyStr
-    CallableVersusValueAcquisitionStamped =>
-      "the occurrence walk must keep call-head acquisition distinct from bare-value acquisition for the same spelling; whether it already does is a MEASUREMENT and not an assumption, and the calibration witness is what answers it" as NonEmptyStr
+data step0_denominator_defects: List<Step0DenominatorDefect> = [
+  DenominatorOmitsFamily { family: PayloadConstructorReference },
+  DenominatorOmitsFamily { family: VariantPatternReference },
+  DenominatorAdmitsNonReference {
+    detail: "the label of a named argument is emitted as a reference occurrence carrying the label's spelling and stamped CallableOccurrence; it names a parameter of the callee rather than referring to any declaration" as NonEmptyStr
+  },
+  DenominatorSplitsOneAuthoredReference {
+    family: QualifiedContainmentReference,
+    detail: "one authored container.member reference produces TWO occurrences under two different categories -- the container head as a lexical value and the member as a field -- so a per-occurrence count over this family is not a count of authored references, and neither row is a namespace segment" as NonEmptyStr
   }
-}
+]
 
 // THE CAPABILITY IS KEYED BY FAMILY AND NOT BY CATEGORY, because a category-keyed table has to
 // answer for categories no family converges on -- Field, Method -- and every answer there is
@@ -398,26 +425,57 @@ fn step0_unauthorable_branch_count() -> Int {
   ))
 }
 
+fn step0_unobserved_families() -> List<Step0ReferenceFamily> {
+  step0_reference_family_roster |> filter(family =>
+    match step0_family_discrimination(family: family) {
+      FamilyNotObserved { detail: _ } => true
+      FamilyConvergedWith { category: _, convergent_family_count: _ } => false
+      FamilyDiscriminatedAtInstrumentGrain => false
+    }
+  )
+}
+
 fn step0_converged_families() -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
     match step0_family_discrimination(family: family) {
-      FamilyDiscriminatedAtInstrumentGrain => false
       FamilyConvergedWith { category: _, convergent_family_count: _ } => true
+      FamilyNotObserved { detail: _ } => false
+      FamilyDiscriminatedAtInstrumentGrain => false
+    }
+  )
+}
+
+fn step0_discriminated_families() -> List<Step0ReferenceFamily> {
+  step0_reference_family_roster |> filter(family =>
+    match step0_family_discrimination(family: family) {
+      FamilyDiscriminatedAtInstrumentGrain => true
+      FamilyConvergedWith { category: _, convergent_family_count: _ } => false
+      FamilyNotObserved { detail: _ } => false
     }
   )
 }
 
 // THE CENSUS'S CALIBRATED STANDING, ANSWERED FROM THE WORST FAMILY AND NEVER FROM A MAJORITY. A
-// class's rung is the MINIMUM across its in-scope paths, and a family the instrument cannot separate
-// from another is a path with no discrimination at all -- so a converged set caps the whole claim
-// until the capability that separates it exists. There is deliberately no arm in which a partially
-// converged roster renders as full coverage, and the unauthorable-branch count rides on every
-// non-refusal arm so a reader is never handed a coverage figure without the branches nothing
-// executed.
+// class's rung is the MINIMUM across its in-scope paths, so a family the instrument cannot separate
+// from another caps the whole claim -- and a family the instrument does not emit at all caps it
+// harder. THOSE TWO ARE DIFFERENT CLAIMS AND ONLY ONE OF THEM CAN BE REPORTED AS COVERAGE AT ALL: a
+// converged family is counted in the wrong bucket, an unobserved family is not counted anywhere, so
+// CalibrationBlindToFamilies dominates CalibrationCappedByConvergence and never merges with it.
+//
+// There is deliberately no arm in which a partially converged or partially blind roster renders as
+// full coverage, and the unauthorable-branch count rides on every non-refusal arm so a reader is
+// never handed a coverage figure without the branches nothing executed.
 type Step0CalibrationStanding
   = CalibrationRosterIncomplete {
       unclaimed_branches: Int
       uncalibrated_families: Int
+    }
+  | CalibrationBlindToFamilies {
+      unobserved_family_count: Int
+      converged_family_count: Int
+      discriminated_family_count: Int
+      unauthorable_branch_count: Int
+      denominator_defect_count: Int
     }
   | CalibrationCappedByConvergence {
       converged_family_count: Int
@@ -432,15 +490,24 @@ type Step0CalibrationStanding
 fn step0_calibration_standing() -> Step0CalibrationStanding {
   let unclaimed = count(step0_unclaimed_producer_branches())
   let uncalibrated = count(step0_uncalibrated_families())
+  let unobserved = step0_unobserved_families()
   let converged = step0_converged_families()
   if unclaimed > 0 || uncalibrated > 0 {
     CalibrationRosterIncomplete { unclaimed_branches: unclaimed, uncalibrated_families: uncalibrated }
+  } else if count(unobserved) > 0 {
+    CalibrationBlindToFamilies {
+      unobserved_family_count: count(unobserved),
+      converged_family_count: count(converged),
+      discriminated_family_count: count(step0_discriminated_families()),
+      unauthorable_branch_count: step0_unauthorable_branch_count(),
+      denominator_defect_count: count(step0_denominator_defects)
+    }
   } else {
     match first(converged) {
       Absent => CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: step0_unauthorable_branch_count() }
       Present { value: worst } => CalibrationCappedByConvergence {
         converged_family_count: count(converged),
-        discriminated_family_count: count(step0_reference_family_roster) - count(converged),
+        discriminated_family_count: count(step0_discriminated_families()),
         unauthorable_branch_count: step0_unauthorable_branch_count(),
         capability: step0_family_discrimination_capability(family: worst)
       }

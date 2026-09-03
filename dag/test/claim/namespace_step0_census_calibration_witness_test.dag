@@ -1,0 +1,229 @@
+module test.claim.namespace_step0_census_calibration_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, exit_failure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity {
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  TypeOccurrence,
+  CallableOccurrence,
+  ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
+  FieldOccurrence,
+  MethodOccurrence
+}
+import tools.multi_module_compile_fixture { FixtureSource, fixture_source }
+import tools.reference_occurrence_binding_census {
+  ReferenceOccurrenceBindingCensus,
+  ReferenceOccurrenceBindingCensusObserved,
+  ReferenceOccurrenceBindingCensusRefused,
+  ReferenceOccurrenceBindingRow,
+  ReferenceOccurrenceBindingDisposition,
+  ReferenceOccurrenceBound,
+  ReferenceOccurrenceUnresolved,
+  ReferenceOccurrenceAmbiguous,
+  ReferenceOccurrenceBindingRefused,
+  reference_occurrence_binding_census
+}
+import gunbc.namespace_step0_census_calibration {
+  Step0CalibrationStanding,
+  CalibrationRosterIncomplete,
+  CalibrationBlindToFamilies,
+  CalibrationCappedByConvergence,
+  CalibrationDiscriminatesEveryFamily,
+  step0_calibration_standing,
+  step0_occurrence_category_label,
+  step0_unclaimed_producer_branches,
+  step0_uncalibrated_families
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE ESTABLISHES, AND IT IS A NEGATIVE RESULT. The candidate reference-occurrence
+// producer's coverage of the family roster was recorded as UNESTABLISHED. It is now REFUTED, by
+// execution, on a hand-authored subject: two families produce no denominator row at all, and a thing
+// that is not a reference produces one. Both directions of error are here, and they do not cancel.
+//
+// EVERY BYTE OF THE SUBJECT IS FIXTURE-OWNED, so no corpus rename can turn a control green while the
+// instrument is broken, and the pool is exactly this manifest -- the instrument consults no module
+// index. CalMiddle exists ONLY in pattern position on purpose: CalLeft appears in an expression too,
+// so a control asserting "no row for CalLeft" would be false for the wrong reason.
+data cal_provider: String = "module cal.provider\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalMiddle\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
+
+data cal_entry: String = "module cal.entry\n\nimport cal.provider { CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+fn cal_manifest() -> List<FixtureSource> {
+  [
+    fixture_source("cal/provider.dag", cal_provider),
+    fixture_source("cal/entry.dag", cal_entry)
+  ]
+}
+
+fn cal_census() -> ReferenceOccurrenceBindingCensus {
+  reference_occurrence_binding_census(sources: cal_manifest(), entry: "cal/entry.dag" as NonEmptyStr)
+}
+
+fn cal_observations() -> List<ReferenceOccurrenceBindingRow> {
+  match cal_census() {
+    ReferenceOccurrenceBindingCensusRefused { cause: _ } => []
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: _, observations: observations } => observations
+  }
+}
+
+fn cal_denominator_size() -> Int {
+  match cal_census() {
+    ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
+  }
+}
+
+fn cal_rows_named(spelling: String) -> List<ReferenceOccurrenceBindingRow> {
+  cal_observations() |> filter(row => row.authored_name == spelling)
+}
+
+fn cal_rows_named_in_category(spelling: String, category: OccurrenceCategory) -> List<ReferenceOccurrenceBindingRow> {
+  cal_rows_named(spelling: spelling) |> filter(row =>
+    (step0_occurrence_category_label(category: row.category) as String)
+      == (step0_occurrence_category_label(category: category) as String)
+  )
+}
+
+fn cal_disposition_label(disposition: ReferenceOccurrenceBindingDisposition) -> String {
+  match disposition {
+    ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: provider, binding_source: _ } =>
+      concat("bound:", provider as String)
+    ReferenceOccurrenceUnresolved => "unresolved"
+    ReferenceOccurrenceAmbiguous { candidates: _ } => "ambiguous"
+    ReferenceOccurrenceBindingRefused { cause: _ } => "refused"
+  }
+}
+
+fn cal_row_line(row: ReferenceOccurrenceBindingRow) -> String {
+  concat(
+    concat(row.consumer_file as String, concat(" ", row.authored_name)),
+    concat(
+      concat(" ", step0_occurrence_category_label(category: row.category) as String),
+      concat(" ", cal_disposition_label(disposition: row.disposition))
+    )
+  )
+}
+
+// THE INSTRUMENT THAT RE-DERIVES THE TABLE, an entry point rather than a transcribed list, because a
+// number copied into prose is unreachable from the thing that owns it and rots without anyone
+// touching either end (DESIGN section 6). Run it with
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/namespace_step0_census_calibration_witness_test.dag \
+//     --function step0_calibration_probe
+// It renders one line per observed reference occurrence and exits NONZERO, because a probe that
+// exited 0 would be reporting a verdict it never reached.
+fn step0_calibration_probe() -> ProcessExit {
+  match cal_census() {
+    ReferenceOccurrenceBindingCensusRefused { cause: cause } =>
+      exit_failure(reason: concat("census refused: ", cause as String))
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: observations } =>
+      exit_failure(reason: concat(
+        concat("denominator=", concat(to_string(count(denominator)), concat(" observations=", to_string(count(observations))))),
+        concat("\n", join(observations |> map(row => cal_row_line(row: row)), "\n"))
+      ))
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CONTROL 0, FIRST, BECAUSE EVERY ABSENCE CONTROL BELOW IS VACUOUS WITHOUT IT. An instrument that
+// refused, or that saw nothing, answers "no row for CalRight" exactly as a blind one does. So the
+// subject is established as OBSERVED and nonempty before any absence is read as a finding, and the
+// positive control is a spelling the instrument demonstrably does emit.
+test fn the_instrument_observed_this_subject_and_is_not_silent() -> Bool {
+  cal_denominator_size() > 0
+    && count(cal_observations()) == cal_denominator_size()
+    && count(cal_rows_named(spelling: "CalChoice")) > 0
+}
+
+// CONTROL 1. A PAYLOAD CONSTRUCTOR IN EXPRESSION POSITION PRODUCES NO OCCURRENCE. `CalRight { n: 2 }`
+// is authored in the fixture and the instrument emits nothing for it -- while the type in the
+// surrounding signature DOES get a row, which is why a reader glancing at nearby rows would conclude
+// the construction was seen. This is a family the census is blind to, not one it measures coarsely.
+test fn a_payload_constructor_in_expression_position_produces_no_occurrence() -> Bool {
+  count(cal_rows_named(spelling: "CalRight")) == 0
+}
+
+// CONTROL 2. A VARIANT IN PATTERN POSITION PRODUCES NO OCCURRENCE. CalMiddle is authored ONLY inside
+// a match arm, so its absence cannot be explained by anything else in the subject. The scrutinee and
+// the payload binder each produce a row, so the arm is represented in the denominator by everything
+// except the name that selects it.
+test fn a_variant_in_pattern_position_produces_no_occurrence() -> Bool {
+  count(cal_rows_named(spelling: "CalMiddle")) == 0
+}
+
+// CONTROL 3, THE POSITIVE ONE THAT MAKES CONTROLS 1 AND 2 MEAN SOMETHING, and it answers the
+// acquisition-path question by measurement rather than by reading the walk. ONE spelling, cal_called,
+// appears twice in the same file: once in call-head position and once as a bare value. The instrument
+// stamps the first CallableOccurrence and the second LexicalValueOccurrence. So the walk does
+// separate acquisition path -- and an instrument that separates that while emitting nothing for a
+// payload constructor is discriminating, not uniformly coarse.
+test fn a_call_head_and_a_bare_function_value_are_stamped_differently() -> Bool {
+  count(cal_rows_named_in_category(spelling: "cal_called", category: CallableOccurrence)) == 1
+    && count(cal_rows_named_in_category(spelling: "cal_called", category: LexicalValueOccurrence)) == 1
+}
+
+// CONTROL 4. THE DENOMINATOR IS WRONG IN THE OTHER DIRECTION TOO. The label of a named argument --
+// the `n` in `cal_called(n: 1)` -- is emitted as a reference occurrence and stamped
+// CallableOccurrence, though it names a parameter of the callee and refers to no declaration. So the
+// population is short some real occurrences and long some invented ones at the same time, and the
+// two errors are over different populations and cannot cancel.
+test fn a_named_argument_label_is_emitted_as_a_reference_occurrence() -> Bool {
+  count(cal_rows_named_in_category(spelling: "n", category: CallableOccurrence)) > 0
+}
+
+// CONTROL 5. A NULLARY CONSTRUCTOR IS NOT STAMPED ConstructorOccurrence. `CalLeft` in expression
+// position comes back LexicalValueOccurrence, in the same bucket as a top-level data reference and a
+// bare function value -- so four authored families share one observation key and ConstructorOccurrence
+// is stamped for nothing in this subject.
+test fn a_nullary_constructor_is_stamped_as_a_lexical_value() -> Bool {
+  count(cal_rows_named_in_category(spelling: "CalLeft", category: LexicalValueOccurrence)) > 0
+    && count(cal_rows_named_in_category(spelling: "CalLeft", category: ConstructorOccurrence)) == 0
+}
+
+// CONTROL 6. ONE AUTHORED QUALIFIED REFERENCE BECOMES TWO OCCURRENCES UNDER TWO CATEGORIES, and
+// neither is a namespace segment: `CalChoice.CalLeft` emits the container head as a lexical value and
+// the member as a FIELD. A per-occurrence figure over this family is therefore not a count of
+// authored references, which is a multiplicity fact the outcome axis alone would never surface.
+test fn a_qualified_containment_reference_is_split_into_two_occurrences() -> Bool {
+  count(cal_rows_named_in_category(spelling: "CalLeft", category: FieldOccurrence)) == 1
+    && count(cal_rows_named_in_category(spelling: "CalChoice", category: NamespaceSegmentOccurrence)) == 0
+}
+
+// ---------------------------------------------------------------------------
+// THE ROSTER-TOTALITY CONTROLS, which need no compile: they join the branch roster to the matrix and
+// the family roster to the matrix, by identity rather than by count. A branch added with no row
+// claiming it, or a family added with no row authoring an occurrence of it, goes red here.
+test fn every_producer_branch_is_claimed_by_a_calibration_row() -> Bool {
+  count(step0_unclaimed_producer_branches()) == 0
+}
+
+test fn every_reference_family_is_claimed_by_a_calibration_row() -> Bool {
+  count(step0_uncalibrated_families()) == 0
+}
+
+// AND THE STANDING REPORTS BLINDNESS BEFORE CONVERGENCE. Two families are not observed at all, six
+// converge onto a shared observation key, and two are discriminated. The arm matters more than the
+// counts: CalibrationBlindToFamilies and CalibrationCappedByConvergence are different claims, and
+// only the second can be reported as coverage at any grain -- a converged family is counted in the
+// wrong bucket, an unobserved family is not counted anywhere. If this file's controls above ever
+// flip because the producer was repaired, THIS is the assertion that goes red and names the table
+// row to correct; it is a join to the instrument, not a snapshot of it.
+test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Bool {
+  match step0_calibration_standing() {
+    CalibrationBlindToFamilies {
+      unobserved_family_count: unobserved,
+      converged_family_count: converged,
+      discriminated_family_count: discriminated,
+      unauthorable_branch_count: unauthorable,
+      denominator_defect_count: defects
+    } => unobserved == 2 && converged == 6 && discriminated == 2 && unauthorable == 2 && defects == 4
+    CalibrationCappedByConvergence { converged_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, capability: _ } => false
+    CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _ } => false
+    CalibrationRosterIncomplete { unclaimed_branches: _, uncalibrated_families: _ } => false
+  }
+}
