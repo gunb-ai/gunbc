@@ -222,6 +222,17 @@ instruments built for different purposes agreeing on one phenomenon.
 `v2.test.execution.emit_host_fold_closure_equals_eval` is the worked example: interrupted at
 `cpu_at_least=522ms` on one job, it completes under budget on every green run in the join.
 
+**The host-independent form of this, which is stronger and needs no factor at all.** `eval_steps` is
+carried in the same artifact and does not depend on the machine. Across the three runs, **every row
+of this family that completed has a byte-identical step count** — identical work — while its
+`cpu_ms` swings by up to the full green-to-failed ratio. Milliseconds move; the work does not. That
+settles the question without any local→CI conversion, and it is the axis to use.
+
+The single row whose step count differs is the one that was **interrupted** on the failed run: its
+count is truncated where the deadline stopped it. So the one apparent exception is a second
+demonstration of the first misreading above — an interrupted row is not measured, in steps or in
+milliseconds. *(The `eval_steps`-as-control technique is `gunbc#10158`'s; see the caveat below.)*
+
 ### Why reducing the cost is the only lever, and what the cost is
 
 Both §5 remedies are refused for this family:
@@ -257,6 +268,16 @@ already refused: a `data`-row promotion cannot reach the floor at all (`required
 a fresh evaluation frame per claim, so `data_cache` never spans claims), and `rust_target_model` was
 enrolled in `v2.workflow.floor_pure_producer_share` and withdrawn after measuring this exact cluster
 *worse* — read that roster's header before re-proposing either.
+
+**One caveat on that withdrawal, added because `gunbc#10158` landed while this section was being
+written.** The roster's rust-row measurements were normalised against *rows in no consumer module of
+any enrolled key*, and #10158 shows that control is **biased by composition** — it demonstrated the
+point by splitting a subject's own rows on `eval_steps` into those the serve reached and those doing
+byte-identical work, and finding the supposedly untouched group moved almost as much. Rows elsewhere
+are an assumption about the corpus; rows doing byte-identical work are an observation about the row.
+That does not overturn the withdrawal, and the roster's own next trigger still governs — but the
+strength of "measured worse" now rests on a control known to be biased, so a re-proposal should
+re-measure against the step-split control rather than treat the question as closed.
 
 A value check was run before treating any of this as a caching opportunity: the projections of
 `x + y` and `y + x` are compared and **differ**, carrying both a positive control that the equality

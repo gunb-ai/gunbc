@@ -42,10 +42,15 @@ type ProcessPortObservation
   | PortInaccessible
   | PortObservationRefused { reason: NonEmptyStr }
 
+// A PLAN IS WHAT `Apply` EXECUTES, SO A REFUSAL IS NOT ONE. Refusing because a foreign
+// process owns the port is a DECISION, and decision_for_process_port_verdict already
+// answers it on the `Refuse` arm with the reason attached. Carrying a refusal here as
+// well gave one fact two representations, and made `Apply { plan: RefuseForeignOwner }`
+// -- execute the refusal -- a state every consumer had to answer for and no producer
+// could reach.
 type ProcessLeasePlan
   = Start
   | DrainMatchingStaleThenStart
-  | RefuseForeignOwner
 
 fn classify_process_port(
   scope: ProcessPortScope,

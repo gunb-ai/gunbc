@@ -41,7 +41,7 @@ pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
 };
-pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding;
+pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated;
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::{
     OccurrenceReferenceBindingDecided, OccurrenceReferenceBindingTransportRefused,
@@ -783,7 +783,7 @@ pub fn declaration_exposed_on_reference_chain(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceCandidateIndex {
-    pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    pub validated: Rc<ValidatedOccurrenceTransport>,
     pub declarations_by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
     pub module_by_occurrence: Rc<HashMap<i64, NonEmptyStr>>,
     pub exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
@@ -961,7 +961,7 @@ pub fn occurrence_candidate_index_build(
 }),
     DeclarationsByNameBuild::DeclarationsByNameReady { by_name: by_name, .. } => Rc::new(OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady {
     index: Rc::new(OccurrenceCandidateIndex {
-    entries_by_id: validated.entries_by_id.clone(),
+    validated: validated.clone(),
     declarations_by_name: by_name.clone(),
     module_by_occurrence: module_path_build.module_by_occurrence.clone(),
     exposure_by_occurrence: exposure_build.exposure_by_occurrence.clone(),
@@ -984,7 +984,7 @@ pub fn candidate_occurrence_ids_for_reference(
     reference: Rc<ReferenceOccurrence>,
 ) -> Rc<Vec<OccurrenceId>> {
     match v1_rt::map_get(
-        &index.entries_by_id.clone(),
+        &index.validated.clone().entries_by_id.clone(),
         reference.occurrence.clone().value.clone(),
     ) {
         std::option::Option::None => Rc::new(vec![]),
@@ -2023,7 +2023,6 @@ pub fn structural_binding_walk_selected_references(
             Rc::new(StructuralBindingWalk::StructuralBindingWalkReady {
                 population: bound_reference_population_from_projections(
                     resolve_all_references_via_structural_candidates(
-                        transport.clone(),
                         index.clone(),
                         references.clone(),
                     ),
@@ -2917,52 +2916,25 @@ pub fn resolve_type_reference_containment_binding(
 }
 
 pub fn resolve_reference_via_structural_candidates(
-    transport: Rc<OccurrenceTransport>,
     index: Rc<OccurrenceCandidateIndex>,
     reference: Rc<ReferenceOccurrence>,
 ) -> Rc<ReferenceBindingProjection> {
     {
         let candidates = candidate_occurrence_ids_for_reference(index.clone(), reference.clone());
-        match (*crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding(
-            transport.clone(),
-            reference.occurrence.clone(),
-            candidates.clone(),
-        ))
-        .clone()
-        {
-            OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                refusal: refusal,
-                ..
-            } => Rc::new(
-                ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
-                    refusal: refusal.clone(),
-                },
-            ),
-            OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-                result: result,
-                ..
-            } => match (*result.clone()).clone() {
-                OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => Rc::new(
-                    ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
-                        occurrence: reference.occurrence.clone(),
-                    },
-                ),
-                OccurrenceBindingResult::OccurrenceAmbiguous { .. } => Rc::new(
-                    ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
-                        occurrence: reference.occurrence.clone(),
-                    },
-                ),
-                OccurrenceBindingResult::OccurrenceBound {
-                    binding: binding, ..
-                } => {
-                    let declaration_occurrence = binding
-                        .candidate
-                        .clone()
-                        .containment
-                        .clone()
-                        .terminal
-                        .clone();
-                    match module_of_occurrence(index.module_by_occurrence.clone(), reference.occurrence.clone()) {
+        match (*crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated(index.validated.clone(), reference.occurrence.clone(), candidates.clone())).clone() {
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused { refusal: refusal, .. } => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
+    refusal: refusal.clone(),
+}),
+    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { result: result, .. } => match (*result.clone()).clone() {
+    OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
+    occurrence: reference.occurrence.clone(),
+}),
+    OccurrenceBindingResult::OccurrenceAmbiguous { .. } => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
+    occurrence: reference.occurrence.clone(),
+}),
+    OccurrenceBindingResult::OccurrenceBound { binding: binding, .. } => {
+            let declaration_occurrence = binding.candidate.clone().containment.clone().terminal.clone();
+match module_of_occurrence(index.module_by_occurrence.clone(), reference.occurrence.clone()) {
     std::option::Option::None => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
     occurrence: reference.occurrence.clone(),
 }),
@@ -2980,9 +2952,9 @@ pub fn resolve_reference_via_structural_candidates(
 }),
 },
 }
-                }
-            },
-        }
+},
+},
+}
     }
 }
 
@@ -3033,17 +3005,12 @@ pub fn resolve_reference_binding_via_structural_candidates(
             },
         ),
         OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
-            resolve_reference_via_structural_candidates(
-                transport.clone(),
-                index.clone(),
-                reference.clone(),
-            )
+            resolve_reference_via_structural_candidates(index.clone(), reference.clone())
         }
     }
 }
 
 pub fn resolve_all_references_via_structural_candidates(
-    transport: Rc<OccurrenceTransport>,
     index: Rc<OccurrenceCandidateIndex>,
     references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<Vec<Rc<ReferenceBindingProjection>>> {
@@ -3051,7 +3018,6 @@ pub fn resolve_all_references_via_structural_candidates(
         let mut __result = Vec::new();
         for reference in references.iter().cloned() {
             __result.push(resolve_reference_via_structural_candidates(
-                transport.clone(),
                 index.clone(),
                 reference.clone(),
             ));
