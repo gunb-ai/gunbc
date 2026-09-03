@@ -8430,6 +8430,23 @@ pub fn infer_call_arguments_generic_pass(
                     type_variable_node("callable_param".to_string())
                 }
             };
+            let formal_expected_raw = match (*formal_selection.clone()).clone() {
+                CallArgumentFormalSelection::CallArgumentFormalSelected {
+                    formal_index, ..
+                } => match formals
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(formal_index.clone() as usize)
+                    .next()
+                {
+                    Some(carried) => carried.declaration_bound_conformance.clone(),
+                    std::option::Option::None => error_type(),
+                },
+                CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
+                    type_variable_node("callable_param".to_string())
+                }
+            };
             let has_formal = match (*formal_selection.clone()).clone() {
                 CallArgumentFormalSelection::CallArgumentFormalSelected { .. } => true,
                 CallArgumentFormalSelection::CallArgumentFormalUnavailable => false,
@@ -8439,11 +8456,16 @@ pub fn infer_call_arguments_generic_pass(
                 st.subst.clone(),
                 scope.type_env.clone().source_indices.clone(),
             );
+            let formal_expected_type = substitute_generics(
+                formal_expected_raw.clone(),
+                st.subst.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
             let expected = if (has_formal.clone()
                 && (type_node_is_callable(formal_param_type.clone())
                     || !direct_call_formal_has_unbound_type_variable(formal_param_type.clone())))
             {
-                Some(formal_param_type.clone())
+                Some(formal_expected_type.clone())
             } else {
                 std::option::Option::None
             };
