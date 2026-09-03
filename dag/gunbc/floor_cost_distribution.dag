@@ -27,6 +27,13 @@ type FloorCostRow {
   identity: String
   module: String
   cpu_ms: Millisecond
+  // THE THIRD COLUMN THIS ANALYSIS NEEDS, and it is the only one that is not a clock. Evaluator
+  // steps are counted by the interpreter and netted by the same shared-fill rule the CPU figure
+  // is, so a row's step count is a property of what it evaluated and carries no term for the
+  // machine it evaluated on. It is what lets `identity_inflation_permille_at_equal_work` below
+  // separate "this row got more expensive" from "this row got inflated" without choosing a
+  // control population at all.
+  eval_steps: Int
 }
 
 // One run's population, named by its run id so a finding can cite which runs it rests on.
@@ -44,7 +51,7 @@ fn parse_claim_cost_line(line: String) -> FloorCostRow? {
     none
   } else {
     let fields = split(s: line, delimiter: "\t")
-    if count(fields) < 6 {
+    if count(fields) < 7 {
       none
     } else if fields[0] == "identity" {
       none
@@ -55,7 +62,11 @@ fn parse_claim_cost_line(line: String) -> FloorCostRow? {
           value: FloorCostRow {
             identity: fields[0],
             module: fields[1],
-            cpu_ms: millisecond(count: cpu)
+            cpu_ms: millisecond(count: cpu),
+            eval_steps: match parse_int(s: fields[6]) {
+              Absent => 0
+              Present { value: steps } => steps
+            }
           }
         }
       }
@@ -223,4 +234,78 @@ fn implied_clean_run_budget(ceiling_ms: Millisecond, inflation_permille: Int) ->
   } else {
     millisecond(count: (millisecond_count(m: ceiling_ms) * 1000) / inflation_permille)
   }
+}
+
+// INFLATION WITH THE WORK CONFOUND REMOVED BY CONSTRUCTION, WHICH IS WHY IT NEEDS NO CONTROL.
+//
+// `identity_inflation_permille` above pairs a row against itself across two runs, which is already
+// the right pairing -- but a row whose cost moved because the TREE changed is inflation and cost
+// change mixed, and separating them normally means choosing a control population and defending
+// the choice. Every such choice made in gunbc#10094 had to be defended and two were withdrawn.
+//
+// Restricting the pairing to rows whose `eval_steps` are EQUAL removes the confound instead of
+// modelling it: the evaluator executed the same number of steps in both runs, so the only thing
+// that could have changed did not, and any remaining cpu movement is inflation. Reach is not
+// assumed -- `count` the result against `identity_inflation_permille`'s to see what fraction of
+// the population the discriminator covers, because a clean instrument over three rows is not a
+// measurement of a corpus.
+//
+// TWO ROWS CAN SHARE A STEP COUNT WITHOUT SHARING WORK, and the honest statement of what this
+// establishes accounts for it: equal steps means equal EVALUATOR work, not equal host work. A row
+// that spends its time inside one opaque host call reports few steps in both runs and is admitted
+// here while its real variation lives outside the evaluator. `v2.workflow.required_floor` already
+// carries a declared rung drop for exactly that region, so the population this instrument is
+// cleanest over is the one that is CPU-bound in the evaluator.
+fn identity_inflation_permille_at_equal_work(
+  base: RunCost,
+  other: RunCost,
+  min_base_ms: Millisecond
+) -> List<Int> {
+  base.rows
+    |> filter(b => millisecond_count(m: b.cpu_ms) >= millisecond_count(m: min_base_ms))
+    |> flat_map(b => match other.rows |> filter(o => o.identity == b.identity && o.eval_steps == b.eval_steps) |> first {
+         Absent => []
+         Present { value: o } => [(millisecond_count(m: o.cpu_ms) * 1000) / millisecond_count(m: b.cpu_ms)]
+       })
+}
+
+// HOW MANY RUNS ONE IDENTITY CROSSED IN, which is the question that separates a property of the
+// ROW from a property of the RUN.
+type CrossingRecurrence {
+  identity: String
+  runs_crossed: Int
+}
+
+// THE RECURRENCE JOIN. A ceiling that refuses the whole run makes "which rows crossed" a per-run
+// set, and reading one such set says nothing about cause: a row crosses because it is expensive,
+// because the run was slow, or both. Joining the sets across runs decides it. An identity that
+// crosses in many runs is expensive and tightening the line reaches it; identities that each cross
+// once and never again are being selected by the run, and the line is adjudicating something the
+// tree does not control.
+//
+// IT DOES NOT DECIDE THE QUESTION ON ITS OWN, and the confound is not hypothetical. Runs sampled
+// across different tree vintages have had crossing families REPAIRED between them, so an identity
+// that stops recurring may have been fixed rather than never re-selected. A recurrence census is
+// evidence about cause only over runs whose relevant population did not change, and a caller
+// spanning vintages owes that qualification with the result.
+fn crossing_recurrence(
+  runs: List<RunCost>,
+  ceiling_ms: Millisecond,
+  excluded_modules: List<String>
+) -> List<CrossingRecurrence> {
+  let crossers = runs |> flat_map(run => run_crossings(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules))
+  crossers
+    |> fold(init: [], f: (acc, id) =>
+         if any(acc, r => r.identity == id) {
+           acc
+         } else {
+           concat(acc, [CrossingRecurrence { identity: id, runs_crossed: count(crossers |> filter(c => c == id)) }])
+         })
+}
+
+// THE POPULATION THAT DECIDES WHETHER A CEILING IS ADJUDICATING THE TREE OR THE RUN: identities
+// observed crossing in more than one of the sampled runs. Empty means every crossing was
+// single-run, which is the shape a run-level cause produces.
+fn recurring_crossers(recurrence: List<CrossingRecurrence>) -> List<CrossingRecurrence> {
+  recurrence |> filter(r => r.runs_crossed > 1)
 }
