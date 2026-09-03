@@ -493,38 +493,6 @@ data floor_cut_behavioural_regression_differential: RungDrop = RungDrop { identi
 
 data floor_cut_receipt_discriminating_arms: RungDrop = RungDrop { identity: "floor_cut_receipt_discriminating_arms" as NonEmptyStr, subject: "The receipt machinery's own discriminating arms", declared: "2026-09-03", standing: Standing, declaration: AuthoredProse { legacy: FloorCutReceiptDiscriminatingArms, authored: "**THE RECEIPT MACHINERY'S OWN DISCRIMINATING ARMS HAVE NO EXECUTING CONSUMER, AND THIS ROW DECLARES THAT RUNG (2026-09-03).** Split out of `floor_cut`, third of the three losses its own prose names and its five siblings omit. PREVIOUS RUNG: 2 (mechanically preventable). TEMPORARY RUNG: 1 (mitigatable) -- the selftest and census targets exist (`behavioral-receipt-selftest`, `behavioral-receipt-census`) and `floor_cut` records that no workflow invokes them. WHY THIS IS ITS OWN SUBJECT AND NOT A DETAIL OF THE TWO ABOVE, which is the whole reason it must not be folded into them: a differential's value is entirely in whether it still GOES RED on a real divergence, and that property is established by its discriminating arms and by nothing else. Restoring an equivalence comparison whose own falsification controls never execute yields an instrument that reports EQUIVALENT and cannot be shown to be capable of reporting anything else -- DESIGN section 4b(4) keeps the discriminating RED enrolled precisely so a climb does not dissolve the evidence that the higher rung is real. BOUNDED POPULATION: one capability -- executing evidence that the receipt machinery can still distinguish an equivalent emission from a divergent one. RESTORATION TRIGGER, A CAPABILITY: the receipt machinery's falsification controls executing on the required path, SUFFICIENT FOR a deliberately divergent fixture producing a RED from that machinery in a required lane. **`floor_cut` CANNOT RETIRE WHILE THIS ROW STANDS.**" } }
 
-// WET-LANE SEED ADMISSION PAIRING — **RUNG DROP, DECLARED (2026-09-03).** PREVIOUS RUNG: none
-// claimed; this row declares the class at its true rung rather than lowering one, because the rung
-// was INFLATED before it was declared. WHAT HAPPENED: `v2.workflow.floor_wet_route`
-// `wet_route_gate_disposition_for_receipt` was fused so that the gate derives the bootstrap
-// admission from the same envelope it derives the standing from -- making the off-diagonal state
-// (a lease admitting receipt A composed with a standing derived from receipt B) unconstructible,
-// rung 4 on the MODEL path. That fix is real and it is not the path that runs. THE EXECUTING PATH:
-// the seed does not invoke the model's gate, it REIMPLEMENTS it. `src/v1/stage0` contains no
-// invocation of `wet_route_gate_disposition` -- only two comments citing it -- and the admission
-// that gates a real dispatch is the seed's own `matches!` over its own `WetLaneReceiptStanding`
-// and `WetSeedBootstrapAdmission`. WHAT HOLDS THE PAIRING TODAY, stated in these words because a
-// reader who has only `mitigatable` learns nothing and will not rank it: LEXICAL PROXIMITY AND A
-// COMMENT. Two crate-visible producers -- `wet_lane_receipt_standing` and
-// `wet_seed_bootstrap_admission` -- are called at ONE production site each, in one straight-line
-// block, both derived from one envelope, and the pairing is then read off two locals. NOTHING
-// DERIVES OR CHECKS THE RELATION. There is no parameter position for a caller to supply a foreign
-// standing, because there is no other caller; the invalid state is WRITABLE and is not currently
-// written. TEMPORARY RUNG: mitigatable. Per DESIGN section 4b(1) the class rung is the MINIMUM
-// across in-scope paths, so it is the executing path's and not the model's; citing the structural
-// half while the executing half stays silent is the inflation this row exists to refuse.
-// POPULATION, bounded and small: ONE decision at ONE call site in `required_floor_runner`. A small
-// drop honestly declared. REASON THE FUSION WAS NOT ALSO APPLIED TO THE SEED: it is a seed
-// signature change inside a diff that already carries the wet-route authority cutover, and it
-// belongs to the decoder port rather than beside it. RESTORATION TRIGGER, naming the CAPABILITY
-// and not an artifact that would contribute to one -- the fused entry ALREADY EXISTS and retires
-// nothing: THE SEED'S ADMISSION DECISION IS TAKEN BY THE FUSED ENTRY RATHER THAN REIMPLEMENTED.
-// The vehicle is the seed decoder port inside the wet-route authority cutover, and that port is
-// sufficient only when the seed's floor run reaches its wet-lane verdict THROUGH
-// `wet_route_gate_disposition_for_receipt` -- not when it merely decodes the same types, and not
-// when a second implementation is shown to agree. Agreement between two implementations retires
-// nothing here, because the class is that there are two.
-data wet_lane_seed_admission_pairing_unfused: RungDrop = RungDrop { identity: "wet_lane_seed_admission_pairing_unfused" as NonEmptyStr, subject: "The seed-side pairing of wet-lane receipt standing with bootstrap-lease admission, in `v1_compiler.cli_run.required_floor_runner` -- one decision at one call site.", declared: "2026-09-03", standing: Standing, declaration: TypedDeclaration { previous: StructurallyImpossible, temporary: Mitigatable, reason: ReplacementStaged { replacement: "v2.workflow.floor_wet_route wet_route_gate_disposition_for_receipt -- the fused gate that derives the bootstrap admission from the envelope it judges, making the mismatched pair unconstructible. It exists and has no executing consumer for this decision: the seed reimplements the gate rather than invoking it." }, population: ["v1_compiler.cli_run.required_floor_runner -- the single production site pairing wet_lane_receipt_standing with wet_seed_bootstrap_admission, one decision, held by lexical proximity and a comment"], restoration_trigger: "THE SEED'S ADMISSION DECISION IS TAKEN BY THE FUSED ENTRY RATHER THAN REIMPLEMENTED. Vehicle: the seed decoder port inside the wet-route authority cutover, sufficient only when the seed floor run reaches its wet-lane verdict THROUGH wet_route_gate_disposition_for_receipt -- not when it merely decodes the same types, and not when a second implementation is shown to agree. Agreement between two implementations retires nothing here, because the class is that there are two." } }
 
 // THE ONE-SHOT EXECUTOR-SNAPSHOT ADMISSION, GRANTED BY OPERATOR RULING 2026-09-03 IN RESPONSE TO
 // AN ESCALATION ON gunbc#9725. Recorded as an OPERATOR grant and not a manager ruling, because
@@ -555,7 +523,6 @@ data wet_executor_bootstrap_lease: RungDrop = RungDrop { identity: "wet_executor
 
 data rung_drop_roster: List<RungDrop> = [
   wet_executor_bootstrap_lease,
-  wet_lane_seed_admission_pairing_unfused,
   floor_cut_heal,
   floor_cut_effect_gates,
   floor_cut_fmt_gate,

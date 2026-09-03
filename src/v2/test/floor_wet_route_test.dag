@@ -717,11 +717,28 @@ test fn wet_route_roster_identities_are_distinct() -> Bool {
 // constructed and observed, not inferred -- because the executor-different arm discarded both
 // standing digests and all four exact_ admission fields and kept only not_after.
 //
-// It is now unconstructible rather than checked: both values are derived inside
-// `wet_route_gate_disposition_for_receipt` from ONE envelope, so there is no argument position in
-// which the mismatched pair could be supplied. These two witnesses therefore assert a property of
-// the fused entry -- same envelope admits, different envelope refuses -- and the RED they had before
-// the fusion is preserved in the commit that lands them.
+// It is now unconstructible rather than checked FOR THAT RELATION: the standing and the admission
+// are both derived inside `wet_route_gate_disposition_for_receipt` from ONE envelope, so there is no
+// argument position in which a standing-from-B could be paired with a lease-for-A.
+//
+// THE GUARANTEE COVERS THE STANDING RELATION ONLY, AND A RESIDUAL SEAM SITS ONE LEVEL DOWN. Do not
+// read the sentence above as closing the whole question. `wet_route_gate_disposition_for_receipt`
+// still takes `envelope` and `envelope_digest` as TWO INDEPENDENT PARAMETERS, and nothing in the
+// signature ties the digest to the envelope it is supposedly the digest OF -- so envelope A paired
+// with digest B remains constructible at that boundary. `wet_lease_admits_an_envelope_whose_content_the_digest_does_not_name`
+// below CONSTRUCTS exactly that state and records what the gate does with it, so this seam is
+// measured rather than asserted away.
+//
+// WHY IT IS NOT LIVE TODAY, stated as the narrow claim it is: on the executing path the digest is
+// computed FROM the envelope bytes at one site in `v1_compiler.cli_run.required_floor_runner`
+// (sha256 of the committed receipt file), so the pair cannot diverge for want of a caller who would
+// diverge it. That is correctness by straight-line construction at one call site, which is the same
+// rung -- and the same shape -- as the seed-side pairing rostered at `gunbc.rung_drop`
+// `wet_lane_seed_admission_pairing_unfused`. Writable, not written.
+//
+// dissolve-on: the digest ceases to be a parameter -- the entry derives it from the envelope it is
+// judging, the way it now derives the admission -- at which point this seam has no constructor and
+// the witness below flips from a recorded observation to a permanent regression control.
 fn lease_gate_for(envelope: Optional<WetReceiptEnvelope>, envelope_digest: String) -> WetFloorGateDisposition {
   wet_route_gate_disposition_for_receipt(
     envelope: envelope,
@@ -743,10 +760,26 @@ test fn wet_lease_admits_the_receipt_it_names() -> Bool {
   }
 }
 
-test fn wet_lease_refuses_a_receipt_it_does_not_name() -> Bool {
+test fn wet_lease_refuses_a_mismatched_envelope_digest() -> Bool {
   match lease_gate_for(envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) }, envelope_digest: "envelope-B-digest") {
     WetFloorRefused { standing: _ } => true
     WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: _ } => false
+    WetFloorAdmittedFresh { age_secs: _ } => false
+  }
+}
+
+// THE RESIDUAL SEAM, CONSTRUCTED. This holds the digest FIXED at the value the lease names and
+// varies the ENVELOPE CONTENT instead -- beta reports WetAssertionFalse rather than WetPass, so the
+// bytes a real digest would cover are different while the digest handed in is unchanged. The gate
+// has no way to detect that: it is told the digest rather than deriving it. This witness therefore
+// records the seam's actual behaviour rather than a hoped-for refusal, and it is named for what it
+// observes. It is the discriminating input for the dissolve-on above: when the entry derives the
+// digest from the envelope, this state stops being constructible and this witness must be rewritten
+// as the refusal control it cannot be today.
+test fn wet_lease_admits_an_envelope_whose_content_the_digest_does_not_name() -> Bool {
+  match lease_gate_for(envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetAssertionFalse {})) }, envelope_digest: "fixture-envelope-digest") {
+    WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: _ } => true
+    WetFloorRefused { standing: _ } => false
     WetFloorAdmittedFresh { age_secs: _ } => false
   }
 }

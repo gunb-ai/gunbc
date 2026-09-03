@@ -650,7 +650,41 @@ data authority_target_same_expression_equivalence_stall: GuaranteeStall = Guaran
   next_rung_trigger: "a lane that runs ONE expression through BOTH realizations and refuses a divergence, sufficient for an emission differing from its authority in value OR in what it evaluates being caught, demonstrated by a red on a fixture where the two agree on the returned value and differ on which subexpressions ran; the fixture is already executed and dated on gunbc#10139, so what is owed is enrolment and not a harness, and enrolling behavioral_differential discharges the seed-Rust versus emitted-Rust axis ONLY and does not touch this row"
 }
 
+// THE SEED REIMPLEMENTS THE WET GATE RATHER THAN INVOKING IT (gunbc#9725). Filed as a STALL and
+// deliberately NOT as a `gunbc.rung_drop` row, because nothing regressed: the executing path never
+// held the fused guarantee, so there is no previous rung to record and no runway to expire. A drop
+// row asserts THIS WAS BETTER AND WILL BE AGAIN; this asserts THIS HAS NEVER BEEN BETTER AND HERE IS
+// WHAT WOULD MAKE IT SO. Filing it as a drop would fabricate a previous rung that never executed --
+// rung inflation arriving through the ledger rather than through a diagnostic, and the worse kind,
+// because a drop row reads as evidence of past rigour.
+//
+// THE MODEL PATH IS AT THE CEILING AND THE EXECUTING PATH IS NOT. `v2.workflow.floor_wet_route`
+// `wet_route_gate_disposition_for_receipt` derives the bootstrap admission from the same envelope it
+// derives the standing from, so the mismatched pair has no constructor there. The seed does not call
+// it: `src/v1/stage0` contains no invocation of `wet_route_gate_disposition`, only two comments
+// citing it, and the admission that gates a real dispatch is the seed's own `matches!` over its own
+// standing and admission types. DESIGN 4b(1) takes the MINIMUM across in-scope paths, so the class
+// sits at the executing path's rung and not the model's.
+//
+// WHAT HOLDS THE PAIRING TODAY, in these words because a reader who has only "mitigatable" will not
+// rank it: LEXICAL PROXIMITY AND A COMMENT. Two crate-visible producers are called at one production
+// site each, in one straight-line block, both derived from one envelope, and the pairing is read off
+// two locals. Nothing derives or checks the relation. There is no parameter position for a caller to
+// supply a foreign standing because there is no other caller: the invalid state is WRITABLE and is
+// not currently written.
+data wet_lane_seed_admission_pairing_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the seed's wet-lane admission decision is REIMPLEMENTED in v1_compiler.cli_run.required_floor_runner rather than taken from the fused entry v2.workflow.floor_wet_route wet_route_gate_disposition_for_receipt, so the pairing of receipt standing with bootstrap-lease admission is held by lexical proximity and a comment on the path that actually gates a dispatch",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: ["v1_compiler.cli_run.required_floor_runner -- the single production site pairing wet_lane_receipt_standing with wet_seed_bootstrap_admission, one decision, both producers crate-visible and callable independently"]
+  },
+  next_rung_trigger: "THE SEED'S ADMISSION DECISION IS TAKEN BY THE FUSED ENTRY RATHER THAN REIMPLEMENTED. Vehicle: the seed decoder port inside the wet-route authority cutover, sufficient only when the seed's floor run reaches its wet-lane verdict THROUGH wet_route_gate_disposition_for_receipt and no hand-written pairing of standing and admission survives in the seed -- not when it merely decodes the same types, and not when a second implementation is shown to agree. Agreement between two implementations retires nothing here, because the class is that there are two."
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  wet_lane_seed_admission_pairing_stall,
   authority_target_same_expression_equivalence_stall,
   runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
