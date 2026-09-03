@@ -1,0 +1,127 @@
+module test.claim.printed_chassis_manufacturing_manifest_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { PhysicalAsset, PhysicalAssetIdentity }
+import product.printed_chassis.manufacturing_manifest {
+  AdmittedPrinterAsset,
+  PrinterAssetAdmission,
+  PrinterAssetAdmitted,
+  PrinterAssetAbsent,
+  PrinterAssetDuplicate,
+  PrinterCatalogMismatch,
+  admit_printer_asset,
+  admitted_printer_identity,
+  a1_mini_catalog_module,
+  owned_printer_inventory,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn a1_mini_catalog() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "extdeps.printing.bambu_lab_a1_mini",
+    decl_name: "a1_mini_build_envelope",
+    field: WholeDeclaration
+  }
+}
+
+fn foreign_catalog() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "extdeps.printing.some_other_printer",
+    decl_name: "other_build_envelope",
+    field: WholeDeclaration
+  }
+}
+
+fn printer_row(id: NonEmptyStr, catalog: DeclarationRef) -> PhysicalAsset {
+  PhysicalAsset {
+    identity: id as PhysicalAssetIdentity,
+    catalog: catalog,
+    physical_serial: Absent,
+    procurement: Absent
+  }
+}
+
+// AN EMPTY INVENTORY REFUSES, AND THIS IS THE LIVE STATE OF THE REPOSITORY TODAY, not a fixture
+// convenience. owned_printer_inventory is empty because the machines have not been read yet, so
+// nothing can be attributed to a printer -- which is the behaviour that makes the manifest worth
+// having. A version that admitted an unregistered identity so a print could proceed would fail open
+// exactly when the operator most needs the binding to be real.
+test fn w_the_live_inventory_admits_nothing_today() -> Bool {
+  match admit_printer_asset(inventory: owned_printer_inventory, requested: "printer-a" as PhysicalAssetIdentity) {
+    PrinterAssetAbsent { requested: r } => r as String == "printer-a"
+    PrinterAssetAdmitted { binding: _ } => false
+    PrinterAssetDuplicate { requested: _, matches: _ } => false
+    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL. Without it the refusals above prove only that this function refuses
+// everything, which a `false` in every arm would also satisfy.
+test fn w_a_registered_a1_mini_is_admitted_under_its_own_identity() -> Bool {
+  let inv = [printer_row(id: "printer-a", catalog: a1_mini_catalog())]
+  match admit_printer_asset(inventory: inv, requested: "printer-a" as PhysicalAssetIdentity) {
+    PrinterAssetAdmitted { binding: b } => admitted_printer_identity(a: b) as String == "printer-a"
+    PrinterAssetAbsent { requested: _ } => false
+    PrinterAssetDuplicate { requested: _, matches: _ } => false
+    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+  }
+}
+
+// TWO MACHINES, AND THE ONE NOT ASKED FOR IS NOT ADMITTED. This is the discriminating case for the
+// join actually filtering: an implementation that returned the first inventory row regardless of the
+// requested identity passes every witness above and fails here.
+test fn w_the_admitted_asset_is_the_one_requested_not_the_first_row() -> Bool {
+  let inv = [
+    printer_row(id: "printer-a", catalog: a1_mini_catalog()),
+    printer_row(id: "printer-b", catalog: a1_mini_catalog()),
+  ]
+  match admit_printer_asset(inventory: inv, requested: "printer-b" as PhysicalAssetIdentity) {
+    PrinterAssetAdmitted { binding: b } => admitted_printer_identity(a: b) as String == "printer-b"
+    PrinterAssetAbsent { requested: _ } => false
+    PrinterAssetDuplicate { requested: _, matches: _ } => false
+    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+  }
+}
+
+// A DUPLICATE IDENTITY REFUSES AND SAYS HOW MANY. PhysicalAssetIdentity is a branded NonEmptyStr, so
+// two rows may carry the same string -- the brand does not make that unwritable. This is the arm
+// that stops a consumer silently taking whichever row the fold reached first.
+test fn w_a_duplicated_identity_refuses_and_counts_the_matches() -> Bool {
+  let inv = [
+    printer_row(id: "printer-a", catalog: a1_mini_catalog()),
+    printer_row(id: "printer-a", catalog: a1_mini_catalog()),
+  ]
+  match admit_printer_asset(inventory: inv, requested: "printer-a" as PhysicalAssetIdentity) {
+    PrinterAssetDuplicate { requested: r, matches: n } => r as String == "printer-a" && n == 2
+    PrinterAssetAdmitted { binding: _ } => false
+    PrinterAssetAbsent { requested: _ } => false
+    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+  }
+}
+
+// A ROW THAT IS NOT AN A1 MINI REFUSES, NAMING BOTH MODULES. A registered asset is not automatically
+// a printer this program can qualify: the catalog is what says which product it is, and admitting a
+// row whose catalog names another machine would bind a coupon to a process this program has no
+// envelope, nozzle or material grading for.
+test fn w_a_registered_asset_with_a_foreign_catalog_refuses() -> Bool {
+  let inv = [printer_row(id: "printer-a", catalog: foreign_catalog())]
+  match admit_printer_asset(inventory: inv, requested: "printer-a" as PhysicalAssetIdentity) {
+    PrinterCatalogMismatch { requested: r, expected_module: e, found_module: f } =>
+      r as String == "printer-a"
+        && e as String == "extdeps.printing.bambu_lab_a1_mini"
+        && f as String == "extdeps.printing.some_other_printer"
+    PrinterAssetAdmitted { binding: _ } => false
+    PrinterAssetAbsent { requested: _ } => false
+    PrinterAssetDuplicate { requested: _, matches: _ } => false
+  }
+}
+
+// THE EXPECTED MODULE IS READ FROM THE MANIFEST, NOT RESTATED HERE. If this witness spelled the
+// module path as its own literal it would be testing a string it wrote itself -- the same defect
+// PRINT-1 was reopened for, where the coupon fit witness authored the build envelope it checked
+// against. Changing a1_mini_catalog_module must move this.
+test fn w_the_expected_catalog_module_comes_from_the_manifest() -> Bool {
+  a1_mini_catalog_module as String == "extdeps.printing.bambu_lab_a1_mini"
+}
