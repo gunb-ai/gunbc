@@ -26,13 +26,13 @@ import gunbc.floor_cost_distribution {
   LadderStep,
   parse_claim_cost_line,
   parse_claim_cost_tsv,
-  accepted_rows,
   ClaimCostArtifact,
   ArtifactRows,
   ArtifactRefused,
   ArtifactRefusalCause,
   NoHeaderLine,
-  HeaderNotReadable,
+  UnsupportedSharedCpuMsVintage,
+  UnsupportedArtifactSchema,
   MalformedDataRow,
   rows_in_band,
   rows_at_or_above,
@@ -135,6 +135,25 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
   eval_steps: 12
 }
 
+// A TEST-LOCAL PROJECTION, DELIBERATELY NOT A MODULE FUNCTION. `accepted_rows` used to live in
+// `gunbc.floor_cost_distribution` and answered `[]` for a REFUSED artifact -- which rebuilt, one
+// function below the coproduct, exactly the collapse this change exists to remove: a refused
+// artifact and a clean empty run became the same value again. Its precondition ("callers have
+// already handled the refusal") was carried by no parameter, and the argument that killed it is
+// that the precondition is UNNECESSARY IF TRUE: a caller who has already matched `ArtifactRows`
+// holds the rows and needs no accessor, so the helper's only additional capability was the unsafe
+// one. A function whose every safe use is redundant has only unsafe uses.
+//
+// It lives HERE instead because these fixtures are artifacts the test itself authored and has
+// already asserted the admission of; the empty list is a test failing loudly on its own fixture,
+// not a population silently thinning in production. It is not exported, so no consumer can reach it.
+fn admitted_rows_of(text: String) -> List<FloorCostRow> {
+  match parse_claim_cost_tsv(text: text) {
+    ArtifactRows { rows: r } => r
+    ArtifactRefused { cause: _ } => []
+  }
+}
+
 // THE OLD VINTAGE, VERBATIM. Run 33661252708's artifact has no `eval_steps` column at all -- the
 // header is one field shorter and index 6 holds `cost_line_ms`, the constant 100. A positional
 // parser reads that as a step count and produces microseconds-per-step near 2500 instead of near
@@ -142,7 +161,7 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
 //
 // THE NAME OF THIS ARM SAID `yields_no_rows` UNTIL THE ARTIFACT PARSE BECAME TOTAL, and by then it
 // described the opposite of what the arm asserts: an old-vintage header now REFUSES with a located
-// `HeaderNotReadable` rather than producing an empty list. A stale name on a repaired assertion is
+// `UnsupportedArtifactSchema` rather than producing an empty list. A stale name on a repaired assertion is
 // how the next reader is told the vanish was intended.
 data old_vintage_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t100"
 
@@ -150,7 +169,8 @@ test fn an_artifact_without_the_steps_column_refuses_rather_than_reading_the_nex
   match parse_claim_cost_tsv(text: old_vintage_tsv) {
          ArtifactRows { rows: _ } => false
          ArtifactRefused { cause: c } => match c {
-           HeaderNotReadable { header_line: _ } => true
+           UnsupportedSharedCpuMsVintage { header_line: _ } => true
+           UnsupportedArtifactSchema { header_line: _, missing_columns: _ } => false
            NoHeaderLine => false
            MalformedDataRow { line: _ } => false
          }
@@ -177,7 +197,8 @@ test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cos
   match parse_claim_cost_tsv(text: shared_tsv) {
          ArtifactRows { rows: _ } => false
          ArtifactRefused { cause: c } => match c {
-           HeaderNotReadable { header_line: _ } => true
+           UnsupportedSharedCpuMsVintage { header_line: _ } => true
+           UnsupportedArtifactSchema { header_line: _, missing_columns: _ } => false
            NoHeaderLine => false
            MalformedDataRow { line: _ } => false
          }
@@ -192,8 +213,8 @@ test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cos
 // everything: the same interrupted row under the DISJOINT header parses, and it parses as a
 // BOUND -- `observed_cpu_ms` answers Absent for it while `cpu_at_least_ms` answers 509.
 test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool {
-  count(accepted_rows(artifact: parse_claim_cost_tsv(text: censored_tsv))) == 2
-    && match accepted_rows(artifact: parse_claim_cost_tsv(text: censored_tsv)) |> filter(r => r.identity == "m.hot.k") |> first {
+  match parse_claim_cost_tsv(text: censored_tsv) { ArtifactRefused { cause: _ } => false ArtifactRows { rows: rr } => count(rr) == 2 }
+    && match admitted_rows_of(text: censored_tsv) |> filter(r => r.identity == "m.hot.k") |> first {
          Absent => false
          Present { value: r } =>
            match observed_cpu_ms(reading: r.cost) {
@@ -219,7 +240,7 @@ test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row_so_the_artif
 // AND THE POSITIVE CONTROL FOR THAT REFUSAL, so an empty population cannot be read as "the parser
 // is broken": the same rows under a header that DOES carry the column parse normally.
 test fn the_same_shape_with_a_steps_column_parses() -> Bool {
-  count(accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv))) == 2
+  match parse_claim_cost_tsv(text: sample_tsv) { ArtifactRefused { cause: _ } => false ArtifactRows { rows: rr } => count(rr) == 2 }
 }
 
 // COLUMNS ARE FOUND BY NAME, WHICH MEANS A REORDERED HEADER STILL READS CORRECTLY. This is the
@@ -228,7 +249,7 @@ test fn the_same_shape_with_a_steps_column_parses() -> Bool {
 // error.
 test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
   let reordered = "identity\tmodule\teval_steps\tverdict_reached\tcost_reading\tcpu_at_least_ms\tcensoring_cpu_limit_ms\tobserved_cpu_ms\nm.hot.x\tm.hot\t1000\ttrue\tobserved\t\t\t400"
-  match accepted_rows(artifact: parse_claim_cost_tsv(text: reordered)) |> first {
+  match admitted_rows_of(text: reordered) |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -239,11 +260,11 @@ test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
 }
 
 test fn the_summary_and_header_lines_are_not_rows() -> Bool {
-  count(accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv))) == 2
+  match parse_claim_cost_tsv(text: sample_tsv) { ArtifactRefused { cause: _ } => false ArtifactRows { rows: rr } => count(rr) == 2 }
 }
 
 test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool {
-  match accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv)) |> first {
+  match admitted_rows_of(text: sample_tsv) |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -381,7 +402,7 @@ test fn a_complete_sample_produces_no_refusal_lines() -> Bool {
 // rather than an error. 1000 is the steps field of the fixture's first row; 400 is its cpu and 402
 // its wall.
 test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
-  match accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv)) |> first {
+  match admitted_rows_of(text: sample_tsv) |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -684,7 +705,8 @@ test fn a_malformed_data_row_refuses_the_whole_artifact_rather_than_vanishing() 
     ArtifactRefused { cause: c } => match c {
       MalformedDataRow { line: l } => l == torn
       NoHeaderLine => false
-      HeaderNotReadable { header_line: _ } => false
+      UnsupportedSharedCpuMsVintage { header_line: _ } => false
+      UnsupportedArtifactSchema { header_line: _, missing_columns: _ } => false
     }
   }
 }
@@ -719,7 +741,26 @@ test fn an_artifact_with_no_header_is_refused_rather_than_empty() -> Bool {
     ArtifactRows { rows: _ } => false
     ArtifactRefused { cause: c } => match c {
       NoHeaderLine => true
-      HeaderNotReadable { header_line: _ } => false
+      UnsupportedSharedCpuMsVintage { header_line: _ } => false
+      UnsupportedArtifactSchema { header_line: _, missing_columns: _ } => false
+      MalformedDataRow { line: _ } => false
+    }
+  }
+}
+
+// THE GENERIC SCHEMA ARM NEEDS ITS OWN SUBJECT, or the two-arm split is asserted by nothing: both
+// vintage fixtures above are the pre-split shape, so without this the `UnsupportedArtifactSchema`
+// constructor would never be reached by any witness and its `missing_columns` would be a field no
+// execution ever reads. This header is NEW vintage -- it carries `cost_reading`, so it is not the
+// shared-`cpu_ms` artifact -- and simply lacks `eval_steps`.
+test fn a_new_vintage_header_missing_a_column_names_the_column_it_lacks() -> Bool {
+  let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_cpu_ms\tcpu_at_least_ms\tcensoring_cpu_limit_ms"
+  match parse_claim_cost_tsv(text: concat(header, "\nm.x\tm\tpass\ttrue\tobserved\t400\t\t")) {
+    ArtifactRows { rows: _ } => false
+    ArtifactRefused { cause: c } => match c {
+      UnsupportedArtifactSchema { header_line: _, missing_columns: m } => m == ["eval_steps"]
+      UnsupportedSharedCpuMsVintage { header_line: _ } => false
+      NoHeaderLine => false
       MalformedDataRow { line: _ } => false
     }
   }

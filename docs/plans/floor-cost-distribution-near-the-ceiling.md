@@ -43,11 +43,19 @@ every worst-cost fold and every inflation ratio on this page consumed bounds as 
 magnitude is approximately the ceiling that stopped the row, so the "population dense near the
 ceiling" that a histogram over those rows shows is partly manufactured by the ceiling itself.
 
-`claim_cost_columns` no longer resolves the old header, so those runs load as `RunEmpty` and
-`floor_cost_distribution_check` refuses the whole sample. That is the correct fail-closed answer
-rather than a regression — the two populations are not separable in those bytes at all, and
-salvaging "just the completed rows" is unavailable because identifying them is exactly what the old
-artifact cannot do. **The figures this page describes as illustrative should be read as carrying
+`claim_cost_columns` no longer resolves the old header, so those runs load as `RunRefused` — **not
+`RunEmpty`**, which is a distinction the reader must not lose: an artifact whose measurements cannot
+be read is not a run that measured nothing. The cause is typed and named
+`UnsupportedSharedCpuMsVintage`, and `floor_cost_distribution_check` refuses the whole sample.
+
+That is the correct fail-closed answer rather than a regression, but the honest reason is narrower
+than the one this page used to give. It said the two populations "are not separable in those bytes
+at all". **That is overstated.** The old artifact carries `outcome` and `verdict_reached`, and this
+very instrument treats `outcome=budget_interrupted` as an interruption signal — so an identifying
+signal exists. The accurate statement is that the vintage is *known and unsupported*: one `cpu_ms`
+column held both populations, and this version declines to reconstruct the split rather than being
+unable to detect that one is needed. Nothing here obligates a legacy migration; it only forbids
+claiming the bytes are silent when they are not. **The figures this page describes as illustrative should be read as carrying
 that defect, not merely as stale.** Re-pointing `floor_cost_sampled_runs` at runs from the new
 artifact vintage restores the instrument; the derivations are unchanged and their witness runs on a
 hand-built fixture, so nothing but the live figures is waiting on the re-sample.

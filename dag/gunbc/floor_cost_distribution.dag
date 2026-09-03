@@ -330,10 +330,12 @@ fn max_int(a: Int, b: Int) -> Int {
   if a > b { a } else { b }
 }
 
-// AN ARTIFACT WHOSE HEADER LACKS A NEEDED COLUMN YIELDS NO ROWS, WHICH IS THE WHOLE POPULATION
-// REFUSING RATHER THAN A SILENTLY THINNER ONE. A caller that wants to distinguish "old vintage"
-// from "empty run" reads `claim_cost_columns` itself; this function answers only the question it
-// is asked, and answers it with nothing rather than with rows built on a guessed layout.
+// AN ARTIFACT WHOSE HEADER LACKS A NEEDED COLUMN REFUSES, NAMING THE COLUMNS IT LACKED. The
+// sentence that stood here said it YIELDS NO ROWS and told the caller to re-read
+// `claim_cost_columns` if they wanted to tell an old vintage from an empty run -- both true of the
+// partial-population version and both false now. A stale comment on a repaired implementation
+// tells the next reader the old behaviour was intended, which is this change's own finding applied
+// one turn later.
 // A DATA LINE IS DECIDED BEFORE IT IS PARSED, SO THAT FAILING TO PARSE ONE IS A REFUSAL RATHER
 // THAN AN ABSENCE. The artifact carries a `#`-prefixed summary line, a header, and possibly blank
 // lines; none of those is a row and none of them is malformed. Everything else IS a declared row,
@@ -354,10 +356,52 @@ fn claim_cost_line_refuses(line: String, columns: ClaimCostColumns) -> Bool {
 // WHY THE CAUSE IS CARRIED AND LOCATED RATHER THAN COUNTED. A reader who is told only that N rows
 // were dropped cannot act; a reader handed the offending line can. Each arm names a DIFFERENT
 // artifact defect, and none of them is "the artifact was empty".
+// THE CAUSE MUST NAME THE STATE ACCURATELY, NOT MERELY BE TYPED. An earlier revision called this
+// arm `HeaderNotReadable`, which is a false diagnosis: the historical header is perfectly READABLE
+// and is a KNOWN schema this version declines to support. A cause that misnames the state is the
+// same defect as a name that misnames a behaviour -- the thing this change found in its own
+// witness names -- and it is worse in a diagnostic, because the reader acts on it.
+//
+// `UnsupportedSharedCpuMsVintage` is separated from the generic arm because that vintage is
+// RECOGNISED rather than merely unparsed: a header carrying `cpu_ms` and no `cost_reading` is the
+// pre-split artifact, whose defining property is that one column held both populations. Naming it
+// tells the operator to re-point the sample at a newer run; the generic arm cannot say that.
 type ArtifactRefusalCause
   = NoHeaderLine
-  | HeaderNotReadable { header_line: String }
+  | UnsupportedSharedCpuMsVintage { header_line: String }
+  | UnsupportedArtifactSchema { header_line: String, missing_columns: List<String> }
   | MalformedDataRow { line: String }
+
+// THE COLUMNS THIS READER REQUIRES, DECLARED ONCE so the refusal can name what was absent rather
+// than reporting that something was.
+data claim_cost_required_columns: List<String> = [
+  "identity", "module", "verdict_reached", "cost_reading",
+  "observed_cpu_ms", "cpu_at_least_ms", "censoring_cpu_limit_ms", "eval_steps"
+]
+
+fn missing_claim_cost_columns(header_line: String) -> List<String> {
+  let fields = split(s: header_line, delimiter: "\t")
+  claim_cost_required_columns |> filter(n =>
+    match claim_cost_column_index(header_fields: fields, name: n) {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+// THE PRE-SPLIT VINTAGE IS IDENTIFIED POSITIVELY, not inferred from failure: it carries `cpu_ms`
+// and no `cost_reading`, which is exactly the shape in which a bound and a completion shared one
+// column. This is also why the claim that the old bytes carry NO identifying signal is wrong --
+// they carry this one, and they carry `outcome` and `verdict_reached` besides.
+fn is_shared_cpu_ms_vintage(header_line: String) -> Bool {
+  let fields = split(s: header_line, delimiter: "\t")
+  match claim_cost_column_index(header_fields: fields, name: "cpu_ms") {
+    Absent => false
+    Present { value: _ } => match claim_cost_column_index(header_fields: fields, name: "cost_reading") {
+      Absent => true
+      Present { value: _ } => false
+    }
+  }
+}
 
 // THE PARSE IS TOTAL: ROWS, OR A LOCATED REFUSAL. NEVER A SHORTER LIST.
 //
@@ -390,7 +434,17 @@ fn parse_claim_cost_tsv(text: String) -> ClaimCostArtifact {
   match lines |> filter(l => starts_with(s: l, prefix: "identity\t")) |> first {
     Absent => ArtifactRefused { cause: NoHeaderLine }
     Present { value: header } => match claim_cost_columns(header_line: header) {
-      Absent => ArtifactRefused { cause: HeaderNotReadable { header_line: header } }
+      Absent =>
+        if is_shared_cpu_ms_vintage(header_line: header) {
+          ArtifactRefused { cause: UnsupportedSharedCpuMsVintage { header_line: header } }
+        } else {
+          ArtifactRefused {
+            cause: UnsupportedArtifactSchema {
+              header_line: header,
+              missing_columns: missing_claim_cost_columns(header_line: header)
+            }
+          }
+        }
       Present { value: columns } => {
         let data_lines = lines |> filter(l => is_claim_cost_data_line(line: l))
         match data_lines |> filter(l => claim_cost_line_refuses(line: l, columns: columns)) |> first {
@@ -407,15 +461,6 @@ fn parse_claim_cost_tsv(text: String) -> ClaimCostArtifact {
   }
 }
 
-// THE ROWS OF AN ARTIFACT THAT WAS ACCEPTED, AND AN EMPTY LIST ONLY FOR A REFUSED ONE. Callers
-// that genuinely need the rows and have already handled the refusal use this; callers deciding
-// WHETHER to proceed must match the coproduct, because this projection cannot tell them apart.
-fn accepted_rows(artifact: ClaimCostArtifact) -> List<FloorCostRow> {
-  match artifact {
-    ArtifactRows { rows: r } => r
-    ArtifactRefused { cause: _ } => []
-  }
-}
 
 // THE BAND HISTOGRAM (question 1: is the population near the ceiling dense).
 // `censored_rows` IS NOT DECORATION AND IT IS NOT A BAND. A right-censored row has no cost to

@@ -29,7 +29,8 @@ import gunbc.floor_cost_distribution {
   ArtifactRefused,
   ArtifactRefusalCause,
   NoHeaderLine,
-  HeaderNotReadable,
+  UnsupportedSharedCpuMsVintage,
+  UnsupportedArtifactSchema,
   MalformedDataRow
 }
 
@@ -123,7 +124,10 @@ fn refused_load_lines(loads: List<RunLoad>) -> List<String> {
 fn artifact_refusal_phrase(cause: ArtifactRefusalCause) -> String {
   match cause {
     NoHeaderLine => "no header line"
-    HeaderNotReadable { header_line: h } => concat("header not readable: ", h)
+    UnsupportedSharedCpuMsVintage { header_line: _ } =>
+      "pre-split artifact vintage: one `cpu_ms` column held both completions and bounds, so the two populations cannot be separated -- re-point the sample at a newer run"
+    UnsupportedArtifactSchema { header_line: _, missing_columns: m } =>
+      concat("unsupported artifact schema, missing columns: ", join(m, ", "))
     MalformedDataRow { line: l } => concat("malformed data row: ", l)
   }
 }
@@ -228,7 +232,7 @@ fn floor_cost_distribution_lines(
         concat("runs refused as observed\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: []))),
         concat("rows undecidable for crossing\t", to_string(count(runs_crossing_undecidable(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: [])))),
         concat("runs refused with the repaired modules excluded\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: repaired))),
-        concat("worst row over all runs, repaired excluded\t", to_string(millisecond_count(m: worst_over_runs(runs: runs, excluded_modules: repaired))))
+        concat("worst row over all runs, repaired excluded\t", worst_phrase(w: worst_over_runs(runs: runs, excluded_modules: repaired)))
       ],
       concat(
         repair_ladder(runs: runs, ceiling_ms: floor_cost_ceiling, already_excluded: repaired, order: order)
