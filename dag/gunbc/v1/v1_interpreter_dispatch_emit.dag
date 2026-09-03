@@ -1,5 +1,7 @@
 module gunbc.v1_interpreter_dispatch_emit
 
+import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
+
 import gunbc.v1_interpreter_primitive_surface {
   AuthoredInRoster,
   EvalBuiltinInnerSite,
@@ -14,10 +16,6 @@ import v2.std.collection { List }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
-
-fn escape_rust_string_literal_body(s: String) -> String {
-  replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
-}
 
 fn to_upper_char(ch: Int) -> String {
   let cp = ch
@@ -251,7 +249,7 @@ fn site_lookup_name(site: InterpreterDispatchEmitSite) -> String {
 
 fn render_lookup_match_rows(rows: List<InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
   fold_list(rows, empty: "", cons: fn(acc, row) {
-    let escaped = escape_rust_string_literal_body(s: concat(row.authored_spelling, ""))
+    let escaped = escape_rust_cooked_string_literal_body(s: concat(row.authored_spelling, ""))
     let variant = rust_variant_for_row(row: row)
     let line = concat(
       "        \"",
@@ -285,7 +283,7 @@ fn render_identity_arm_rows(rows: List<InterpreterPrimitiveDispatchArm>, enum_na
     let variant = arm_identity_to_rust_variant(identity: identity)
     let line = concat(
       "    (\"",
-      escape_rust_string_literal_body(s: identity),
+      escape_rust_cooked_string_literal_body(s: identity),
       "\") => { ",
       qualified_enum_variant(enum_name: enum_name, variant: variant),
       " };"
