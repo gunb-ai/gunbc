@@ -847,12 +847,20 @@ data row_c3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid",
 data row_a4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 100 }
 data row_b4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 1000) }, eval_steps: 100 }
 
-// PRESENT IN ALL THREE RUNS AND CENSORED IN ONE. `verdict_reached: false` means the deadline fired
-// and the 1ms figure describes when, not what the row cost. Admitting it would report a 120x
-// envelope for a row nobody measured.
-data row_a5: FloorCostRow = FloorCostRow { identity: "m.cens.c", module: "m.cens", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100) }, eval_steps: 2000 }
-data row_b5: FloorCostRow = FloorCostRow { identity: "m.cens.c", module: "m.cens", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 120) }, eval_steps: 2000 }
-data row_c5: FloorCostRow = FloorCostRow { identity: "m.cens.c", module: "m.cens", verdict_reached: false, cost: ObservedCpuReading { cpu_ms: millisecond(count: 1) }, eval_steps: 5 }
+// PRESENT IN ALL THREE RUNS AND WITHOUT A VERDICT IN ONE. `verdict_reached: false` says only that
+// the row reached no verdict; it says NOTHING about whether the cost beside it is exact, and this
+// fixture is the case where it IS exact -- run C carries an `ObservedCpuReading`, a completed
+// measurement of a run that was cut short for some other reason. An earlier version of this comment
+// called the row CENSORED and read the verdict as implying a lower bound. That is the meaning fork
+// this module exists to remove: verdict-absence and censoring are INDEPENDENT INPUTS, and neither
+// derives the other. `Unwound` reaches no verdict with exact clocks, which is exactly this row; a
+// deadline-preempted claim reaches no verdict AND carries a bound, which is a different row. The
+// cost-axis case is `m.bound.b` below, which reaches its verdict and still carries a bound.
+//
+// Admitting this row would report a 120x envelope for a row nobody completed.
+data row_a5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100) }, eval_steps: 2000 }
+data row_b5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 120) }, eval_steps: 2000 }
+data row_c5: FloorCostRow = FloorCostRow { identity: "m.noverdict.c", module: "m.noverdict", verdict_reached: false, cost: ObservedCpuReading { cpu_ms: millisecond(count: 1) }, eval_steps: 5 }
 
 // A ROW THE ARTIFACT RECORDS AS COSTING NOTHING, present in every run. It is a real shape -- the
 // per-claim cost artifact records whole milliseconds and 1388 rows measured zero on one sampled run
@@ -861,13 +869,14 @@ data row_a6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero
 data row_b6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0) }, eval_steps: 12 }
 data row_c6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 0) }, eval_steps: 12 }
 
-// CENSORED ON THE COST AXIS ALONE, AND THAT IS THE ENTIRE POINT OF THE ROW. `m.cens.c` above is
-// censored by way of `verdict_reached: false`, so the envelope's verdict filter excludes it whether
-// or not the fold ever asks what kind of reading it holds -- which means that witness cannot tell a
-// cost-kind exclusion from a verdict exclusion, and would stay green under a fold that read the
-// lower bound as a cost. This row reaches its verdict (a deadline is not the only thing that stops
-// an instrument) and carries a right-censored reading, so the verdict filter admits it and only the
-// reading's own constructor can keep it out. Its bound is deliberately far below the observed pair:
+// CENSORED ON THE COST AXIS ALONE, AND THAT IS THE ENTIRE POINT OF THE ROW. `m.noverdict.c` above is
+// excluded by `verdict_reached: false` while its reading is EXACT, so the envelope's verdict filter
+// removes it whether or not the fold ever asks what kind of reading it holds -- which means that
+// witness cannot tell a cost-kind exclusion from a verdict exclusion, and would stay green under a
+// fold that read a lower bound as a cost. This row is its complement on both inputs: it REACHES its
+// verdict and carries a right-censored reading, so the verdict filter admits it and only the
+// reading's own constructor can keep it out. The two rows together are why the axes are independent
+// inputs rather than one fact spelled two ways -- each holds one input fixed and varies the other. Its bound is deliberately far below the observed pair:
 // admitting it would report a 120x envelope for a row nobody measured, and 1ms describes the
 // ceiling that stopped the instrument rather than what the row cost.
 data row_a7: FloorCostRow = FloorCostRow { identity: "m.bound.b", module: "m.bound", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 100) }, eval_steps: 2000 }
@@ -928,16 +937,21 @@ test fn a_row_absent_from_one_run_is_excluded_at_identity_grain() -> Bool {
   }
 }
 
-// Run C's `m.cens.c` row exists and reports 1ms. It is dropped because no verdict was reached,
-// which lowers `runs_observed` to 2 and removes the identity through the completeness predicate
-// rather than through a silent filter.
-test fn a_censored_figure_is_never_admitted_as_a_cost() -> Bool {
-  match envelope_named(identity: "m.cens.c") {
+// THE NO-VERDICT CONTROL, AND ITS CLOCKS ARE EXACT. Run C's `m.noverdict.c` row exists and reports a
+// genuine 1ms `ObservedCpuReading`. It is dropped because no verdict was reached -- not because the
+// reading is a bound, which it is not -- lowering `runs_observed` to 2 and removing the identity
+// through the completeness predicate rather than through a silent filter.
+//
+// SO THIS ARM PROVES THE VERDICT AXIS AND CANNOT REPORT ON THE COST AXIS. It was previously named
+// for censoring, which made it look like the cost-axis wall while it was exercising a different
+// input entirely; the cost-axis refusal is `a_bound_is_excluded_on_its_own_axis_and_not_by_its_verdict`.
+test fn a_row_with_no_verdict_is_excluded_though_its_clocks_are_exact() -> Bool {
+  match envelope_named(identity: "m.noverdict.c") {
     Absent => false
     Present { value: e } =>
       e.runs_observed == 2
         && millisecond_count(m: e.min_ms) == 100
-        && count(complete_env(min_ms: millisecond(count: 50)) |> filter(c => c.identity == "m.cens.c")) == 0
+        && count(complete_env(min_ms: millisecond(count: 50)) |> filter(c => c.identity == "m.noverdict.c")) == 0
   }
 }
 
@@ -1014,8 +1028,8 @@ test fn a_zero_baseline_has_no_ratio_and_says_so() -> Bool {
 // row that was measured twice at around a tenth of a second. Measured, not reasoned: swapping the
 // projection in `identity_envelopes` to `cpu_at_least_ms` reddens this witness and
 // `a_row_absent_from_one_run_is_excluded_at_identity_grain`, and leaves
-// `a_censored_figure_is_never_admitted_as_a_cost` GREEN -- that row is already excluded by its
-// verdict, so it cannot report on the cost axis at all.
+// `a_row_with_no_verdict_is_excluded_though_its_clocks_are_exact` GREEN -- that row is already
+// excluded by its verdict, and its reading is exact, so it cannot report on the cost axis at all.
 test fn a_bound_is_excluded_on_its_own_axis_and_not_by_its_verdict() -> Bool {
   match envelope_named(identity: "m.bound.b") {
     Absent => false
