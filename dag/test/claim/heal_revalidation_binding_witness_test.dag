@@ -12,7 +12,7 @@ import extdeps.languages.yaml.types {
 }
 import gunbc.witness_floor_workflow {
   witness_floor_workflow,
-  expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused,
+  heal_revalidation_preflight_step,
   heal_revalidation_preflight_step_name,
   ci_heal_expected_healed_sha_input_name,
   ci_heal_checkout_ref_expression,
@@ -242,25 +242,55 @@ test fn the_heal_job_grant_admits_the_dispatch_and_widens_nothing_else() -> Bool
     && match ci_heal_job_permissions.id_token { Absent => true  Present { value: _ } => false }
 }
 
-fn emitted_witness_floor_yml() -> String {
-  match expected_witness_floor_yml() {
-    WitnessFloorGenerated { content } => content
-    WitnessFloorGenerationRefused { reason: _ } => ""
+fn preflight_step_script() -> String {
+  match heal_revalidation_preflight_step() {
+    RunStep {
+      name: _, id: _, run, shell: _, env: _, working_directory: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } => run
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } => ""
   }
 }
 
-// THE TWO RACES ARE SEPARATELY ASSERTED IN THE EMITTED TEXT, because they have different causes
-// and only one of them is visible from a comparison against github.sha. `expected != github.sha`
-// is the branch advancing BEFORE GitHub resolved the dispatch ref into a run subject: the check
-// would be attached to a commit the operator never named. `expected == github.sha` while
-// `git rev-parse HEAD` differs is the checkout diverging AFTERWARDS: the right subject, the wrong
-// tree. A preflight carrying only the first passes the second while the job builds the wrong tree,
-// which is why both `[ "$RUN_SUBJECT_HEAD" = ... ]` and `[ "$ACTUAL_HEAD" = ... ]` are named here.
+// THE TWO RACES ARE SEPARATELY ASSERTED, because they have different causes and only one of them
+// is visible from a comparison against github.sha. `expected != github.sha` is the branch advancing
+// BEFORE GitHub resolved the dispatch ref into a run subject: the check would be attached to a
+// commit the operator never named. `expected == github.sha` while `git rev-parse HEAD` differs is
+// the checkout diverging AFTERWARDS: the right subject, the wrong tree. A preflight carrying only
+// the first passes the second while the job builds the wrong tree, which is why both
+// `[ "$RUN_SUBJECT_HEAD" = ... ]` and `[ "$ACTUAL_HEAD" = ... ]` are named here.
+//
+// THE SUBJECT IS THE STEP THE WORKFLOW CARRIES, AND THE JOIN TO THE WORKFLOW IS THE ADJACENCY ROW
+// ABOVE, NOT A SECOND WHOLE-FILE FOLD. The first cut of these two rows read
+// expected_witness_floor_yml(), which generates and serializes every job; both BUDGET-REFUSED on
+// the required floor at 503ms and 506ms against its 500ms CPU ceiling and went UNDECIDED -- and an
+// undecided row is not a weaker green, it is no verdict at all. Composing two cheap rows reaches
+// the same conclusion: this exact Step value is in every ordinary lane's job list (adjacency), and
+// this Step's own `run` carries both arms (here). The serializer copies that string verbatim into
+// the block scalar, so what is one step removed is the INDENTATION, not the content.
+//
+// WHAT THE COMPOSED PAIR CANNOT CATCH, NAMED RATHER THAN LEFT FOR A READER TO DISCOVER, because
+// replacing a whole-file fold with two cheaper rows is from the outside indistinguishable from
+// collapsing a check to fit its transport. BOTH rows read the MODEL -- the job list and the Step
+// value -- so a serializer that DROPPED this step, emitted its `run` under the wrong key, or
+// produced a block scalar whose indentation makes the shell parse differently would leave both
+// green. That blind spot is not hypothetical: extdeps.languages.yaml.gha_workflow
+// workflow_dispatch_yaml discarded the ENTIRE inputs list while the model carried it, which is the
+// same class one field over. It is bounded here by the_required_workflow_declares_the_healed_sha_
+// dispatch_input, which reads the PROJECTED YamlValue rather than the DispatchInput row -- but
+// that covers the trigger, NOT the steps, and this file does not claim otherwise.
+//
+// THE NARROWING WAS BOUNDED BY MEASUREMENT, NOT BY TRIMMING UNTIL GREEN: the two rows cost 192ms
+// and 200ms against a 500ms ceiling, four-fold under rather than shaved to fit, so a later reader
+// can tell a deliberate decomposition from a check whittled down to pass.
 //
 // THE CHECKOUT-MISMATCH ARM IS UNREACHABLE FROM THE PRODUCTION SURFACE, NOT UNTESTED, AND THE
 // DISTINCTION IS WRITTEN HERE SO THE NEXT READER DOES NOT HAVE TO REDERIVE IT. Both mismatch arms
-// are emitted and both are asserted above, but only the RUN-SUBJECT one has a live receipt, and
-// the reason is the fix itself rather than a gap in diligence: the checkout is bound to the input
+// are emitted and both are asserted, but only the RUN-SUBJECT one has a live receipt, and the
+// reason is the fix itself rather than a gap in diligence: the checkout is bound to the input
 // (ci_heal_checkout_ref_expression). If expected != github.sha the run-subject arm trips first; if
 // expected == github.sha then the checkout ref IS expected, so HEAD cannot differ. Inducing the
 // checkout arm live means winning a force-push race against the runner's checkout, and making it
@@ -273,38 +303,22 @@ fn emitted_witness_floor_yml() -> String {
 // witness expected_sha_preflight_binds_run_subject_and_checkout_exactly feeds
 // classify_workflow_dispatch_preflight a checkout head that differs from a matching run subject
 // and requires HealWorkflowDispatchCheckoutMismatch. This file's contribution is the other half --
-// that the comparison reached the emitted workflow rather than stopping at the model. Neither is
-// a live receipt and neither is described as one.
+// that the comparison reached the step the workflow carries rather than stopping at the model.
+// Neither is a live receipt and neither is described as one.
 //
 // LIVE RECEIPTS THAT DO EXIST, named by their producer rather than transcribed: a workflow_dispatch
 // of gunbc.witness_floor_workflow carrying a stale sha refuses at this step in every ordinary
 // checkout lane with every adjudicating step skipped, and one carrying the correct head passes the
 // same step in the same lanes and proceeds into the machinery. The second is not decoration: a
 // preflight that refused everything would satisfy the first arm permanently.
-
-// THIS ROW IS NOT A PER-LANE CHECK AND MUST NOT BE READ AS ONE -- MEASURED, NOT ASSUMED. Deleting
-// the preflight from `prepared_bound_steps` (four lanes lose it, rust-unit-tests keeps its own
-// copy) was executed against this battery: every_ordinary_checkout_lane_preflights_before_its_
-// first_witness went RED and THIS ROW STAYED GREEN, because one surviving lane keeps every one of
-// these strings somewhere in the file. Text membership answers "does the emission carry both
-// arms at all"; the adjacency row above answers "does every lane run them". Neither subsumes the
-// other, and the same run kept the_heal_job_carries_no_revalidation_preflight and
-// the_dispatcher_names_the_emission_that_carries_the_heal_job green, so the red is attributable
-// to the planted defect rather than to a battery that refuses everything.
-//
-// THE SUBJECT IS THE EMITTED WORKFLOW, NOT THE EMITTER. gunbc.heal_revalidation
-// classify_workflow_dispatch_preflight already discriminates all three arms and
-// v2.workflow.ci_heal_revalidation_preflight_emit already produced the script -- and neither
-// reached witnesses.yml, which is the whole defect this cut closes. A witness over either alone
-// would have been green across exactly that gap.
-test fn the_emitted_workflow_carries_both_mismatch_arms_and_the_pass_arm() -> Bool {
-  let yml = emitted_witness_floor_yml()
-  string_contains(s: yml, pattern: "[ \"$RUN_SUBJECT_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
-    && string_contains(s: yml, pattern: "heal revalidation refused: workflow run subject")
-    && string_contains(s: yml, pattern: "[ \"$ACTUAL_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
-    && string_contains(s: yml, pattern: "heal revalidation refused: checkout head")
+test fn the_preflight_step_carries_both_mismatch_arms_and_the_pass_arm() -> Bool {
+  let script = preflight_step_script()
+  string_contains(s: script, pattern: "[ \"$RUN_SUBJECT_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
+    && string_contains(s: script, pattern: "heal revalidation refused: workflow run subject")
+    && string_contains(s: script, pattern: "[ \"$ACTUAL_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
+    && string_contains(s: script, pattern: "heal revalidation refused: checkout head")
     && string_contains(
-      s: yml,
+      s: script,
       pattern: "heal revalidation preflight: checkout names expected healed head"
     )
 }
@@ -316,9 +330,9 @@ test fn the_emitted_workflow_carries_both_mismatch_arms_and_the_pass_arm() -> Bo
 // The model half is witnessed separately, at the arm that returns OrdinaryWorkflowDispatch
 // (test.claim.heal_revalidation_witness
 // manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidation).
-test fn an_absent_input_is_an_ordinary_manual_dispatch_in_the_emitted_workflow() -> Bool {
+test fn an_absent_input_is_an_ordinary_manual_dispatch_in_the_preflight_step() -> Bool {
   string_contains(
-    s: emitted_witness_floor_yml(),
+    s: preflight_step_script(),
     pattern: "if [ -n \"$EXPECTED_HEALED_SHA\" ]; then"
   )
 }
