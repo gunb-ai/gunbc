@@ -1,0 +1,37 @@
+module v2.test.claim.self_host.native_agreement_label_probe_test
+
+import v2.std.native_agreement { runtime_value_octet_label }
+import v2.std.node { Node, TypeNode, Atom, OccurrenceSynthetic }
+import v2.std.runtime { RuntimeValue, RuntimePrimitive, RuntimePrimitiveValue }
+import v2.std.machine { Byte }
+
+fn probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^label_probe_type } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn probe_two_bytes() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: probe_node(),
+      bytes: [Byte { bits: [true] }, Byte { bits: [false] }]
+    }
+  }
+}
+
+fn probe_zero_bytes() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue { primitive_type: probe_node(), bytes: [] }
+  }
+}
+
+test fn label_of_a_two_byte_primitive() -> Bool {
+  runtime_value_octet_label(value: probe_two_bytes()) != "?"
+}
+
+test fn label_of_an_empty_primitive_is_unknown() -> Bool {
+  runtime_value_octet_label(value: probe_zero_bytes()) == "?"
+}
