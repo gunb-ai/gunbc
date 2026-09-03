@@ -38,8 +38,11 @@ func bmc_read_telemetry() -> ProcessExit
                 chassis_id: chassis,
                 netrc_file: netrc_file
               )
-              if sensors_resp.success == false {
-                return exit_failure(reason: sensors_resp.body)
+              match sensors_resp.outcome {
+                RestOk => Unit
+                RestStatusRefused { status: _, body: b } => return exit_failure(reason: b)
+                RestTransportRefused { cause: c } => return exit_failure(reason: c)
+                RestBodyUndecodable { status: _, cause: c } => return exit_failure(reason: c)
               }
 
               return ExitSuccess

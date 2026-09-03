@@ -69,16 +69,26 @@ service redfish.Http {
     endpoint: ""
   }
 
+  // LANE A MIGRATION (transport_argv_anemia_dissolution): GetServiceRoot is a declarative
+  // transport rest row, same shape as GetSystem — modeled success, insecure-TLS for the
+  // fleet's self-signed BMC certs, outcome-based graceful failure. No auth (the service root
+  // is unauthenticated), so it also demonstrates the posture without auth_netrc.
   operation GetServiceRoot {
     input { bmc_host: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String, outcome: RestOutcome }
     readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "https://{bmc_host}/redfish/v1"]
+    transport rest {
+      method: GET,
+      path: "https://{bmc_host}/redfish/v1",
+      tls: InsecureAcceptAnyCert,
+      response_format: Text
     }
-    exit {
-      0 => Unit
-      nonzero => String "redfish service root GET failed"
+    response {
+      200 => String
+      401 => String
+      403 => String
+      404 => String
+      5xx => String
     }
   }
 
@@ -110,42 +120,66 @@ service redfish.Http {
     }
   }
 
+  // LANE A MIGRATION (transport_argv_anemia_dissolution): GetChassisSensors is a declarative
+  // transport rest row, same shape as GetSystem — auth_netrc + insecure-TLS + modeled success.
   operation GetChassisSensors {
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String, outcome: RestOutcome }
     readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors"]
+    transport rest {
+      method: GET,
+      path: "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors",
+      tls: InsecureAcceptAnyCert,
+      auth_netrc: { file: netrc_file },
+      response_format: Text
     }
-    exit {
-      0 => Unit
-      nonzero => String "redfish chassis sensors GET failed"
+    response {
+      200 => String
+      401 => String
+      403 => String
+      404 => String
+      5xx => String
     }
   }
 
+  // LANE A MIGRATION (transport_argv_anemia_dissolution): plain GET Redfish operations.
   operation GetPower {
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String, outcome: RestOutcome }
     readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Power"]
+    transport rest {
+      method: GET,
+      path: "https://{bmc_host}/redfish/v1/Chassis/Self/Power",
+      tls: InsecureAcceptAnyCert,
+      auth_netrc: { file: netrc_file },
+      response_format: Text
     }
-    exit {
-      0 => Unit
-      nonzero => String "redfish power GET failed"
+    response {
+      200 => String
+      401 => String
+      403 => String
+      404 => String
+      5xx => String
     }
   }
 
   operation GetThermal {
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String, outcome: RestOutcome }
     readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal"]
+    transport rest {
+      method: GET,
+      path: "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal",
+      tls: InsecureAcceptAnyCert,
+      auth_netrc: { file: netrc_file },
+      response_format: Text
     }
-    exit {
-      0 => Unit
-      nonzero => String "redfish thermal GET failed"
+    response {
+      200 => String
+      401 => String
+      403 => String
+      404 => String
+      5xx => String
     }
   }
 

@@ -1,5 +1,6 @@
 module test.claim.diagnostic_redfish_witness
 
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 data closed_loopback_bmc_host: NonEmptyStr = "127.0.0.1"
 data closed_loopback_chassis_id: NonEmptyStr = "Self"
@@ -11,7 +12,14 @@ func witness_redfish_get_chassis_sensors_closed_host() -> Bool {
     chassis_id: closed_loopback_chassis_id,
     netrc_file: closed_loopback_netrc_file
   )
-  return r.success == false
+  // The closed loopback cannot serve Redfish, so the op must NOT report RestOk — a
+  // transport refusal or status refusal is the honest answer for an unreachable host.
+  return match r.outcome {
+    RestOk => false
+    RestStatusRefused { status: _, body: _ } => true
+    RestTransportRefused { cause: _ } => true
+    RestBodyUndecodable { status: _, cause: _ } => true
+  }
 }
 
 fn diagnostic_redfish_keystone_holds() -> Bool {
