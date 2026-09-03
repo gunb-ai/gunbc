@@ -596,13 +596,22 @@ fn scan_admitted_ledgers(ledgers: List<AdmittedInventoryLedger>, asset: Physical
 // repeated same-lot occurrences is an asset-grained stock lifecycle.
 type AssetSourceLotStanding
   = AssetSourceLotUnobserved { asset: PhysicalAssetIdentity }
-  | AssetSourceLotResolved { asset: PhysicalAssetIdentity, lot: InventoryLotIdentity, event_ordinal: Nat }
+  | AssetSourceLotResolved { asset: PhysicalAssetIdentity, lot: ProcurementLot, event_ordinal: Nat }
   | AssetSourceLotEvidenceDuplicate { asset: PhysicalAssetIdentity, occurrences: Nat }
   | AssetSourceLotConflict { asset: PhysicalAssetIdentity, first_lot: InventoryLotIdentity, further_lots: List<InventoryLotIdentity> }
 
-// One hit: the asset was named by an installation event, and where.
+// ONE HIT: THE ASSET WAS NAMED BY AN INSTALLATION EVENT, WHERE, AND UNDER WHICH EXACT LOT RECORD.
+// It carries the whole ProcurementLot rather than the identity because two admitted ledgers may
+// share an InventoryLotIdentity while holding different lot VALUES -- ProcurementLot is an ordinary
+// record, so nothing stops a second ledger naming identity L with a different quantity_acquired,
+// catalog or label. A consumer that resolved the identity here and then looked the record up
+// afterwards would have to pick among those, and last-match-wins would hand back the record whose
+// event history never named this asset. Review 5105127492 found exactly that shape downstream.
+// Carrying the record with the hit removes the lookup, and therefore the choice: only an
+// AdmittedInventoryLedger can produce a hit, so the record stays attached to the admitted history
+// that produced it.
 type AssetLotHit sole_constructor {
-  lot: InventoryLotIdentity
+  lot: ProcurementLot
   ordinal: Nat
 }
 
@@ -637,10 +646,10 @@ type AssetLotScan sole_constructor {
 fn scan_one_admitted_ledger(ledger: AdmittedInventoryLedger, asset: PhysicalAssetIdentity) -> AssetLotScan {
   fold(ledger.events, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, e) {
     let found = match e {
-      QuantityInstalled { lot: l, quantity: _, origin: _, assets: a } =>
+      QuantityInstalled { lot: _, quantity: _, origin: _, assets: a } =>
         fold(a, init: [], f: fn(inner, x) {
           if physical_asset_identity_eq(a: x, b: asset) {
-            concat(inner, [AssetLotHit { lot: l, ordinal: acc.next_ordinal }])
+            concat(inner, [AssetLotHit { lot: ledger.lot, ordinal: acc.next_ordinal }])
           } else {
             inner
           }
@@ -660,10 +669,12 @@ fn scan_one_admitted_ledger(ledger: AdmittedInventoryLedger, asset: PhysicalAsse
   })
 }
 
+// Distinctness is at IDENTITY grain even though the hits carry records: two hits under one lot are
+// one lot, whatever incidental record fields travelled with them.
 fn distinct_hit_lots(hits: List<AssetLotHit>) -> List<InventoryLotIdentity> {
   fold(hits, init: [], f: fn(acc, h) {
-    let already = fold(acc, init: false, f: fn(seen, l) { seen || minted_id_eq(left: l, right: h.lot) })
-    if already { acc } else { concat(acc, [h.lot]) }
+    let already = fold(acc, init: false, f: fn(seen, l) { seen || minted_id_eq(left: l, right: h.lot.identity) })
+    if already { acc } else { concat(acc, [h.lot.identity]) }
   })
 }
 

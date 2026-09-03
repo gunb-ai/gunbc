@@ -129,10 +129,13 @@ fn admitted(id: InventoryLotIdentity, label: NonEmptyStr, tail: List<InventoryEv
   }
 }
 
+// THE RESOLVED LOT IS THE WHOLE RECORD, so this asserts a field that only travels on the record --
+// quantity_acquired, which is what supplied the stock the fold spent. Comparing identities alone
+// would pass under a carrier that had lost the record, which is the shape review 5105127492 named.
 fn resolves_to_lot(ledgers: List<AdmittedInventoryLedger>, lot: InventoryLotIdentity) -> Bool {
   match asset_source_lot_standing(ledgers: ledgers, asset: requested()) {
     AssetSourceLotResolved { asset: a, lot: l, event_ordinal: _ } =>
-      a as String == "spool-a" && minted_id_eq(left: l, right: lot)
+      a as String == "spool-a" && minted_id_eq(left: l.identity, right: lot) && l.quantity_acquired == 10
     AssetSourceLotUnobserved { asset: _ } => false
     AssetSourceLotEvidenceDuplicate { asset: _, occurrences: _ } => false
     AssetSourceLotConflict { asset: _, first_lot: _, further_lots: _ } => false

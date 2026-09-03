@@ -2,7 +2,6 @@ module product.printed_chassis.filament_supply
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.minted_identity { minted_id_eq }
 import product.placement_supply {
   PhysicalAsset,
   PhysicalAssetIdentity,
@@ -17,17 +16,14 @@ import product.inventory {
   LedgerAdmissionRefused,
   LedgerRefusalCause,
   ProcurementLot,
-  LotCatalogIdentity,
   CatalogRowExact,
   CatalogRowUnread,
-  AssetSourceLotStanding,
   AssetSourceLotUnobserved,
   AssetSourceLotResolved,
   AssetSourceLotEvidenceDuplicate,
   AssetSourceLotConflict,
   admit_inventory_ledger,
   asset_source_lot_standing,
-  ledger_refusal_cause_label,
 }
 
 // WHICH PHYSICAL SPOOL THIS IS, AND WHICH PROCUREMENT LOT IT CAME FROM, decided at the boundary that
@@ -48,7 +44,7 @@ import product.inventory {
 // so a caller could write AssetSourceLotResolved { asset: spool_a, lot: invented_lot, ordinal: 0 }
 // and hand it in having possessed no admitted ledger at all. Taking it as a parameter would be the
 // detached-verdict pairing this program has already had to close once at the realization boundary.
-// admit_filament_supply therefore takes RAW lot-and-event evidence, admits every ledger itself, and
+// assess_filament_supply therefore takes RAW lot-and-event evidence, admits every ledger itself, and
 // derives the standing inside the same call that mints the capability.
 //
 // THE UNADMITTED PAIR THE CALLER SUPPLIES. It is deliberately NOT AdmittedInventoryLedger: if the
@@ -60,35 +56,78 @@ type InventoryLotEvidence {
   events: List<InventoryEvent>
 }
 
-// TWO EVIDENCE ROUTES TO ONE PHYSICAL IDENTITY, AND NEITHER ONE DERIVES IT. The spool's identity is
-// its PhysicalAssetIdentity; an RFID read and an operator's label are OBSERVATIONS that the physical
-// object in hand is that asset. Both may be present, and for day one the operator label is applied
-// even when RFID succeeds: RFID serves machine-side observation, while the visible label preserves
-// the human handling chain from spool to printer to coupon-on-bed to removed coupon to measurement.
-// A break anywhere in that chain is what makes a printed part unattributable, and RFID is not
-// readable at four of those five steps.
+// TWO EVIDENCE ROUTES TO ONE PHYSICAL IDENTITY, EACH NAMING ITS SUBJECT, AND NEITHER ONE DERIVING
+// IT. The spool's identity is its PhysicalAssetIdentity; an RFID read and an operator's label are
+// OBSERVATIONS that the physical object in hand is that asset. Both may be present, and for day one
+// the operator label is applied even when RFID succeeds: RFID serves machine-side observation, while
+// the visible label preserves the human handling chain from spool to printer to coupon-on-bed to
+// removed coupon to measurement. A break anywhere in that chain is what makes a printed part
+// unattributable, and RFID is not readable at four of those five steps.
+//
+// EACH OBSERVATION CARRIES THE ASSET IT IDENTIFIES. An earlier cut did not, and review 5105127492
+// named the consequence: a bundle of observations about spool-b would satisfy the identifier
+// requirement for spool-a, because nothing in the value said which spool had been read. Evidence
+// that does not name its subject is not evidence about that subject.
+//
+// THE TWO ROUTES ARE SEPARATE NAMESPACES AND ARE NEVER COMPARED ACROSS. That same earlier cut
+// flattened tag and label into one list of strings, so an RFID tag reading "SPOOL-A" and a hand
+// label reading "SPOOL-A" were treated as agreement -- a coincidence of spelling between a
+// manufacturer's tag space and an operator's label space, which are unrelated. Consistency is
+// therefore asked WITHIN each route and never between them.
 type FilamentSupplyIdentifierObservation
-  = ManufacturerRfidObserved { tag: NonEmptyStr }
-  | OperatorLabelObserved { label: NonEmptyStr }
+  = ManufacturerRfidObserved { asset: PhysicalAssetIdentity, tag: NonEmptyStr }
+  | OperatorLabelObserved { asset: PhysicalAssetIdentity, label: NonEmptyStr }
 
-// THE ONLY VALUE A MANUFACTURING ATTEMPT MAY SPEND AS "this physical feedstock supply". It is sealed
-// for the same reason AdmittedPrinterAsset is: PhysicalAssetIdentity is a branded NonEmptyStr, so a
-// consumer handed a bare one holds a string that looks authoritative and may name nothing. Here the
-// stakes are higher than for the printer, because the source_lot field carries a PROVENANCE claim --
-// which procurement lot this plastic came from -- and that claim is exactly what a later measurement
-// divergence gets attributed to.
-type AdmittedFilamentSupply sole_constructor {
+// A CANDIDATE, AND DELIBERATELY NOT A CAPABILITY. This module classifies whether an EXPLICITLY
+// SUPPLIED evidence population supports one attributed physical spool. That is a real and useful
+// question, and it is strictly weaker than the one a manufacturing attempt needs to spend: the
+// caller chooses the populations, so it may construct a plausible asset roster, omit a duplicate
+// row, or omit the ledger carrying a conflicting source-lot claim, and the answer would still be a
+// truthful answer about the population it was given.
+//
+// SO THERE IS NO SEALED CARRIER HERE AT ALL, AND THAT IS THE POINT. An earlier cut minted a
+// sole_constructor AdmittedFilamentSupply from exactly this parametric judgment, and review
+// 5105127492 named why an honest NAME would not have repaired it: a function called
+// assess_supply_relative_to_supplied_evidence is still a bypass if its positive arm contains the
+// spendable carrier. The invariant that matters is not "the parametric judge is not the only door",
+// it is "no caller-selected population can ever produce the value ManufacturingAttempt trusts" --
+// and the only way to hold that while this module exists is for the positive arm to carry a value
+// nothing actuates.
+//
+// FilamentSupplyCandidate is therefore an ORDINARY RECORD. A caller may author one freely; it buys
+// nothing, because no production actuator or manifest accepts it. The sealed carrier, its
+// authority-bound producer closing over the live rosters, and its constructor-seal battery land
+// together in the cut that carries the first real inventory rows and ManufacturingAttempt -- the cut
+// where the capability first has a consumer. Creating it now so that its name exists before its
+// first consumer is the mistake the realization contract was written to avoid.
+type FilamentSupplyCandidate {
   asset: PhysicalAsset
   source_lot: ProcurementLot
   identifier_evidence: List<FilamentSupplyIdentifierObservation>
+  product_standing: FilamentProductStanding
 }
 
-fn admitted_supply_identity(s: AdmittedFilamentSupply) -> PhysicalAssetIdentity {
-  s.asset.identity
-}
+// WHICH COMMERCIAL PRODUCT THE SPOOL IS, REPORTED RATHER THAN REQUIRED. Admission asks which
+// physical spool this is and where it came from; it does not ask which exact formulation it is, and
+// review 5105127492 was right that folding the second question into the first would report a known,
+// labelled, provenance-resolved spool as inadmissible because its package SKU was never read. That
+// is the same separation already applied to the manufacturer's serial and to condition.
+//
+// SO THE STANDING IS A PROJECTION OFF THE RETAINED LOT, and it reuses LotCatalogIdentity rather than
+// minting a second vocabulary: product.inventory already splits an exactly-cited catalog row from a
+// family-or-package-prose observation, and CatalogRowUnread IS the "only the material family was
+// observed" case. What a consumer may NOT do is inherit formulation-specific facts -- a shrinkage
+// number, a temperature window -- through an unread row, and this coproduct is what makes that
+// distinction visible at the type rather than remembered.
+type FilamentProductStanding
+  = FilamentProductRowUnread { observed_family: NonEmptyStr }
+  | FilamentProductRowCited { module_path: NonEmptyStr, decl_name: NonEmptyStr }
 
-fn admitted_supply_lot(s: AdmittedFilamentSupply) -> InventoryLotIdentity {
-  s.source_lot.identity
+fn filament_product_standing(lot: ProcurementLot) -> FilamentProductStanding {
+  match lot.catalog {
+    CatalogRowExact { row: r } => FilamentProductRowCited { module_path: r.module_path, decl_name: r.decl_name }
+    CatalogRowUnread { observed_family: f, read_obligation: _ } => FilamentProductRowUnread { observed_family: f }
+  }
 }
 
 // EVERY REFUSAL NAMES WHICH QUESTION FAILED. A single FilamentSupplyRefused carrying a reason string
@@ -101,15 +140,22 @@ fn admitted_supply_lot(s: AdmittedFilamentSupply) -> InventoryLotIdentity {
 // ledger and carry on with the others -- which is the absorbing fallback: a narrower answer computed
 // by discarding the evidence that disagreed. A ledger this program cannot admit is a stopped line,
 // not a row to route around.
-type FilamentSupplyAdmission
-  = FilamentSupplyAdmitted { supply: AdmittedFilamentSupply }
+//
+// IT CARRIES THE TYPED LedgerRefusalCause AND NOT ONLY ITS LABEL. An earlier cut converted the cause
+// to a NonEmptyStr at this boundary, discarding the fields the typed arms already hold -- which
+// position, how much was requested, how much was held, which reservation holder. A label is a
+// PRESENTATION projection of a cause; substituting it at an authority boundary makes a downstream
+// consumer re-parse prose to recover facts the program had in hand.
+type FilamentSupplyAssessment
+  = FilamentSupplyCandidateEstablished { candidate: FilamentSupplyCandidate }
   | FilamentSupplyAssetAbsent { requested: PhysicalAssetIdentity }
   | FilamentSupplyAssetDuplicate { requested: PhysicalAssetIdentity, matches: Nat }
   | FilamentSupplyLedgerEvidenceUnavailable {
       requested: PhysicalAssetIdentity,
       lot: InventoryLotIdentity,
-      cause_label: NonEmptyStr,
+      cause: LedgerRefusalCause,
       event_ordinal: Nat,
+      event_label: NonEmptyStr,
     }
   | FilamentSupplySourceLotUnobserved { requested: PhysicalAssetIdentity }
   | FilamentSupplySourceLotRepeated { requested: PhysicalAssetIdentity, occurrences: Nat }
@@ -118,22 +164,19 @@ type FilamentSupplyAdmission
       first_lot: InventoryLotIdentity,
       further_lots: List<InventoryLotIdentity>,
     }
-  | FilamentSupplyLotRecordAbsent { requested: PhysicalAssetIdentity, lot: InventoryLotIdentity }
-  | FilamentSupplyProductUnresolved {
+  | FilamentSupplyCatalogModuleMismatch {
       requested: PhysicalAssetIdentity,
-      lot: InventoryLotIdentity,
-      observed_family: NonEmptyStr,
-    }
-  | FilamentSupplyProductMismatch {
-      requested: PhysicalAssetIdentity,
-      expected_module: NonEmptyStr,
-      found_module: NonEmptyStr,
+      lot_module: NonEmptyStr,
+      asset_module: NonEmptyStr,
     }
   | FilamentSupplyIdentifierUnestablished { requested: PhysicalAssetIdentity }
+  | FilamentSupplyIdentifierForeignSubject {
+      requested: PhysicalAssetIdentity,
+      observed_subject: PhysicalAssetIdentity,
+    }
   | FilamentSupplyIdentifierConflict { requested: PhysicalAssetIdentity, distinct_values: Nat }
 
 // --- ledger admission over the whole evidence population ------------------------------------------
-//
 // THE FIRST REFUSAL WINS AND THE REST ARE NOT CONSULTED, which is the fail-closed reading rather
 // than a shortcut: once one ledger is inadmissible the caller's evidence set is not history, and
 // reporting a second refusal beside it would suggest the first was survivable.
@@ -143,17 +186,18 @@ type LedgerEvidenceAdmission
       lot: InventoryLotIdentity,
       cause: LedgerRefusalCause,
       event_ordinal: Nat,
+      event_label: NonEmptyStr,
     }
 
 fn admit_one_more_ledger(acc: LedgerEvidenceAdmission, row: InventoryLotEvidence) -> LedgerEvidenceAdmission {
   match acc {
-    LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o } =>
-      LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o }
+    LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
+      LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
     AllLedgersAdmitted { ledgers: so_far } =>
       match admit_inventory_ledger(lot: row.lot, events: row.events) {
         LedgerAdmitted { admitted: a } => AllLedgersAdmitted { ledgers: concat(so_far, [a]) }
-        LedgerAdmissionRefused { lot: l, cause: c, event_ordinal: o, event_label: _ } =>
-          LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o }
+        LedgerAdmissionRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
+          LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
       }
   }
 }
@@ -164,66 +208,95 @@ fn admit_ledger_evidence(evidence: List<InventoryLotEvidence>) -> LedgerEvidence
   })
 }
 
-// --- identifier evidence ---------------------------------------------------------------------------
+// --- assessments: ordinary verdicts, never actuator-capable ------------------------------------------
+// NONE OF THE FUNCTIONS BELOW RETURNS A CAPABILITY, AND THAT IS THE WHOLE SHAPE OF THIS MODULE. An
+// earlier cut decomposed the admission into helpers that each returned FilamentSupplyAdmission, so
+// five public functions could return a positive arm carrying a SEALED supply -- and the most direct
+// of them, admit_identified_supply, would mint it from an arbitrary asset and an arbitrary lot with
+// no provenance derivation whatsoever. Another accepted an AssetSourceLotStanding, whose arms any
+// module may author, so a foreign caller could write AssetSourceLotResolved by hand and reach the
+// carrier through it. Review 5105127492 named both, and the deeper repair was to remove the sealed
+// carrier from this module entirely rather than to guard the doors to it.
 //
-// THE OBSERVED VALUES, FLATTENED ACROSS BOTH ROUTES ON PURPOSE. An RFID tag and an operator label
-// are two observations of ONE physical identity, so two routes reporting different values is a
-// conflict even though neither route repeated itself: the spool in hand cannot be two spools.
-fn identifier_values(evidence: List<FilamentSupplyIdentifierObservation>) -> List<String> {
-  fold(evidence, init: [], f: fn(acc, e) {
-    match e {
-      ManufacturerRfidObserved { tag: t } => concat(acc, [t as String])
-      OperatorLabelObserved { label: l } => concat(acc, [l as String])
-    }
-  })
-}
+// The rule this module now holds is the one its sibling authorities hold: sole_constructor stops a
+// foreign record LITERAL, and only a discipline about SIGNATURES stops a foreign CALL. This language
+// has no module-private functions, so "used only internally today" cannot be a wall. Every helper
+// here returns an assessment, and the module's single positive result is an ordinary record.
+type IdentifierAssessment
+  = IdentifierUnestablished
+  | IdentifierForeignSubject { observed_subject: PhysicalAssetIdentity }
+  | IdentifierConflicting { distinct_values: Nat }
+  | IdentifierEstablished
 
-fn distinct_values(values: List<String>) -> List<String> {
+fn distinct_strings(values: List<String>) -> List<String> {
   fold(values, init: [], f: fn(acc, v) {
     let seen = count(filter(acc, x => x == v))
     if seen == 0 { concat(acc, [v]) } else { acc }
   })
 }
 
-// --- lot record lookup ------------------------------------------------------------------------------
-//
-// THE STANDING NAMES A LOT IDENTITY; THE CARRIER MUST HOLD THE LOT RECORD, AND IT IS TAKEN FROM THE
-// ADMITTED LEDGERS RATHER THAN FROM THE CALLER'S RAW LIST. An earlier cut looked the record up in
-// the InventoryLotEvidence the caller supplied, which reads the right value on every honest call and
-// leaves the wrong one writable: the raw list is unjudged input, so a caller could pass one lot
-// record to the admission and read a different record bearing the same identity back out. Review
-// 5103871417 named the constraint -- the exact ProcurementLot must be derived from the authoritative
-// admitted-ledger population inside the mint -- and AdmittedInventoryLedger already retains the lot
-// value it settled against, which is precisely why it retains the whole record and not the identity.
-fn lot_record_for(ledgers: List<AdmittedInventoryLedger>, lot: InventoryLotIdentity) -> List<ProcurementLot> {
-  fold(ledgers, init: [], f: fn(acc, l) {
-    if minted_id_eq(left: l.lot.identity, right: lot) { concat(acc, [l.lot]) } else { acc }
+fn rfid_tags(evidence: List<FilamentSupplyIdentifierObservation>) -> List<String> {
+  fold(evidence, init: [], f: fn(acc, e) {
+    match e {
+      ManufacturerRfidObserved { asset: _, tag: t } => concat(acc, [t as String])
+      OperatorLabelObserved { asset: _, label: _ } => acc
+    }
   })
 }
-// --- product identity --------------------------------------------------------------------------------
-//
-// PRODUCT RESOLUTION REUSES LotCatalogIdentity RATHER THAN MINTING A SECOND VOCABULARY FOR IT.
-// product.inventory already splits an exactly-cited catalog row from a family-or-package-prose
-// observation, and CatalogRowUnread IS the "only the material family was observed" case. A filament
-// supply must not be cataloged merely as the generic material class -- the FDM authority treats PLA
-// and PETG as MATERIAL CLASSES, not commercial products or formulations -- so an unread catalog
-// refuses here rather than being allowed to stand in for a product row.
-//
-// THE REFUSAL IS AT SUPPLY-IDENTITY GRAIN AND THAT IS A JUDGMENT WORTH STATING. A spool whose family
-// is known but whose exact product is not IS a real physical object with real provenance, and a
-// later consumer doing bounded end-to-end observation may legitimately want it. That consumer does
-// not exist yet, and building its carrier before it does would be a model with no final consumer.
-// When it arrives it takes its own admission with its own name, and it does not soften this one:
-// what must never happen is a formulation-specific inheritance -- a shrinkage number, a temperature
-// window -- flowing from a product row this spool was never shown to be.
-type FilamentProductBinding
-  = FilamentProductBound { module_path: NonEmptyStr }
-  | FilamentProductNotRead { observed_family: NonEmptyStr }
 
-fn filament_product_binding(catalog: LotCatalogIdentity) -> FilamentProductBinding {
-  match catalog {
-    CatalogRowExact { row: r } => FilamentProductBound { module_path: r.module_path }
-    CatalogRowUnread { observed_family: f, read_obligation: _ } => FilamentProductNotRead { observed_family: f }
+fn operator_labels(evidence: List<FilamentSupplyIdentifierObservation>) -> List<String> {
+  fold(evidence, init: [], f: fn(acc, e) {
+    match e {
+      ManufacturerRfidObserved { asset: _, tag: _ } => acc
+      OperatorLabelObserved { asset: _, label: l } => concat(acc, [l as String])
+    }
+  })
+}
+
+fn observation_subject(e: FilamentSupplyIdentifierObservation) -> PhysicalAssetIdentity {
+  match e {
+    ManufacturerRfidObserved { asset: a, tag: _ } => a
+    OperatorLabelObserved { asset: a, label: _ } => a
+  }
+}
+
+// A bundle carrying an observation about ANOTHER spool is malformed rather than merely irrelevant,
+// so it refuses instead of being filtered away. Filtering would be the absorbing fallback: the
+// narrower answer computed by discarding the evidence that did not fit.
+fn foreign_subjects(
+  evidence: List<FilamentSupplyIdentifierObservation>,
+  requested: PhysicalAssetIdentity,
+) -> List<PhysicalAssetIdentity> {
+  fold(evidence, init: [], f: fn(acc, e) {
+    let subject = observation_subject(e: e)
+    if physical_asset_identity_eq(a: subject, b: requested) { acc } else { concat(acc, [subject]) }
+  })
+}
+
+fn conflicting_route_count(tags: List<String>, labels: List<String>) -> Nat {
+  let t = count(distinct_strings(values: tags))
+  let l = count(distinct_strings(values: labels))
+  if t > 1 { t } else { if l > 1 { l } else { 0 } }
+}
+
+fn assess_identifier_evidence(
+  evidence: List<FilamentSupplyIdentifierObservation>,
+  requested: PhysicalAssetIdentity,
+) -> IdentifierAssessment {
+  let foreign = foreign_subjects(evidence: evidence, requested: requested)
+  fold(foreign, init: assess_own_subject_evidence(evidence: evidence), f: fn(_, subject) {
+    IdentifierForeignSubject { observed_subject: subject }
+  })
+}
+
+fn assess_own_subject_evidence(evidence: List<FilamentSupplyIdentifierObservation>) -> IdentifierAssessment {
+  let tags = rfid_tags(evidence: evidence)
+  let labels = operator_labels(evidence: evidence)
+  let conflicting = conflicting_route_count(tags: tags, labels: labels)
+  if conflicting > 0 {
+    IdentifierConflicting { distinct_values: conflicting }
+  } else {
+    if count(tags) + count(labels) == 0 { IdentifierUnestablished } else { IdentifierEstablished }
   }
 }
 
@@ -232,112 +305,46 @@ fn scan_supply_assets(inventory: List<PhysicalAsset>, requested: PhysicalAssetId
   filter(inventory, a => physical_asset_identity_eq(a: a.identity, b: requested))
 }
 
-fn admit_identified_supply(
-  asset: PhysicalAsset,
-  lot: ProcurementLot,
-  identifier_evidence: List<FilamentSupplyIdentifierObservation>,
-) -> FilamentSupplyAdmission {
-  let distinct = distinct_values(values: identifier_values(evidence: identifier_evidence))
-  let n = count(distinct)
-  if n == 0 {
-    FilamentSupplyIdentifierUnestablished { requested: asset.identity }
-  } else {
-    if n > 1 {
-      FilamentSupplyIdentifierConflict { requested: asset.identity, distinct_values: n }
-    } else {
-      FilamentSupplyAdmitted {
-        supply: AdmittedFilamentSupply {
-          asset: asset,
-          source_lot: lot,
-          identifier_evidence: identifier_evidence,
-        },
-      }
-    }
+// WHETHER THE ASSET ROW AND THE LOT IT WAS DRAWN FROM NAME THE SAME CATALOG MODULE. This is a
+// RELATIVE check and its name now says so: an earlier cut called the same comparison a PRODUCT
+// binding, which claimed more than it measured -- module agreement cannot establish that either side
+// names a filament product at all, and the honest fixtures for it cite extdeps.printing.fdm, whose
+// FilamentMaterial is a material CLASS. What the comparison does establish is a contradiction: if
+// the two disagree, one of the two rows is wrong, and the module names both rather than guessing.
+fn modules_equal(left: NonEmptyStr, right: NonEmptyStr) -> Bool {
+  let l = left as String
+  let r = right as String
+  l == r
+}
+
+fn catalog_modules_agree(asset: PhysicalAsset, lot: ProcurementLot) -> Bool {
+  match lot.catalog {
+    CatalogRowExact { row: r } => modules_equal(left: asset.catalog.module_path, right: r.module_path)
+    CatalogRowUnread { observed_family: _, read_obligation: _ } => true
   }
 }
 
-fn admit_supply_under_product(
-  asset: PhysicalAsset,
-  lot: ProcurementLot,
-  expected_module: NonEmptyStr,
-  identifier_evidence: List<FilamentSupplyIdentifierObservation>,
-) -> FilamentSupplyAdmission {
-  let asset_module = asset.catalog.module_path as String
-  let expected = expected_module as String
-  if asset_module == expected {
-    admit_identified_supply(asset: asset, lot: lot, identifier_evidence: identifier_evidence)
-  } else {
-    FilamentSupplyProductMismatch {
-      requested: asset.identity,
-      expected_module: expected_module,
-      found_module: asset.catalog.module_path,
-    }
+fn lot_catalog_module_or_asset(asset: PhysicalAsset, lot: ProcurementLot) -> NonEmptyStr {
+  match lot.catalog {
+    CatalogRowExact { row: r } => r.module_path
+    CatalogRowUnread { observed_family: _, read_obligation: _ } => asset.catalog.module_path
   }
 }
 
-fn admit_supply_against_lot(
-  asset: PhysicalAsset,
-  lot: ProcurementLot,
-  identifier_evidence: List<FilamentSupplyIdentifierObservation>,
-) -> FilamentSupplyAdmission {
-  match filament_product_binding(catalog: lot.catalog) {
-    FilamentProductNotRead { observed_family: f } =>
-      FilamentSupplyProductUnresolved { requested: asset.identity, lot: lot.identity, observed_family: f }
-    FilamentProductBound { module_path: m } =>
-      admit_supply_under_product(
-        asset: asset,
-        lot: lot,
-        expected_module: m,
-        identifier_evidence: identifier_evidence
-      )
-  }
-}
-
-fn admit_supply_for_lot_identity(
-  ledgers: List<AdmittedInventoryLedger>,
-  asset: PhysicalAsset,
-  lot: InventoryLotIdentity,
-  identifier_evidence: List<FilamentSupplyIdentifierObservation>,
-) -> FilamentSupplyAdmission {
-  fold(
-    lot_record_for(ledgers: ledgers, lot: lot),
-    init: FilamentSupplyLotRecordAbsent { requested: asset.identity, lot: lot },
-    f: fn(_, l) { admit_supply_against_lot(asset: asset, lot: l, identifier_evidence: identifier_evidence) }
-  )
-}
-
-fn admit_supply_for_standing(
-  ledgers: List<AdmittedInventoryLedger>,
-  asset: PhysicalAsset,
-  standing: AssetSourceLotStanding,
-  identifier_evidence: List<FilamentSupplyIdentifierObservation>,
-) -> FilamentSupplyAdmission {
-  match standing {
-    AssetSourceLotUnobserved { asset: a } => FilamentSupplySourceLotUnobserved { requested: a }
-    AssetSourceLotEvidenceDuplicate { asset: a, occurrences: n } =>
-      FilamentSupplySourceLotRepeated { requested: a, occurrences: n }
-    AssetSourceLotConflict { asset: a, first_lot: f, further_lots: r } =>
-      FilamentSupplySourceLotConflict { requested: a, first_lot: f, further_lots: r }
-    AssetSourceLotResolved { asset: _, lot: l, event_ordinal: _ } =>
-      admit_supply_for_lot_identity(
-        ledgers: ledgers,
-        asset: asset,
-        lot: l,
-        identifier_evidence: identifier_evidence
-      )
-  }
-}
-
-// THE ENTRY POINT, AND THE ONLY ONE. Its argument list is raw evidence on purpose: raw lot records,
-// raw event lists, the raw asset roster, raw identifier observations. Every judgment between those
-// and the sealed carrier happens inside this call, so there is no intermediate value a caller can
-// hold, re-pair, or author.
-fn admit_filament_supply(
+// THE ENTRY POINT. Its arguments are raw on purpose -- raw lot records, raw event lists, the raw
+// asset roster, raw identifier observations -- and every judgment happens inside this call, so there
+// is no intermediate verdict a caller can hold, re-pair, or author. What it returns is a
+// classification of the population it was handed and nothing more.
+//
+// THE EXACT ProcurementLot COMES OFF THE HIT, not from a lookup. AssetSourceLotResolved carries the
+// record that the admitted ledger's own installation event produced, so there is no second step in
+// which a record bearing the same identity could be substituted for it.
+fn assess_filament_supply(
   evidence: List<InventoryLotEvidence>,
   asset_inventory: List<PhysicalAsset>,
   requested: PhysicalAssetIdentity,
   identifier_evidence: List<FilamentSupplyIdentifierObservation>,
-) -> FilamentSupplyAdmission {
+) -> FilamentSupplyAssessment {
   let matches = scan_supply_assets(inventory: asset_inventory, requested: requested)
   let matched = count(matches)
   if matched == 0 {
@@ -347,42 +354,53 @@ fn admit_filament_supply(
       FilamentSupplyAssetDuplicate { requested: requested, matches: matched }
     } else {
       match admit_ledger_evidence(evidence: evidence) {
-        LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o } =>
+        LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
           FilamentSupplyLedgerEvidenceUnavailable {
             requested: requested,
             lot: l,
-            cause_label: ledger_refusal_cause_label(cause: c),
+            cause: c,
             event_ordinal: o,
+            event_label: lb,
           }
         AllLedgersAdmitted { ledgers: ledgers } =>
           fold(matches, init: FilamentSupplyAssetAbsent { requested: requested }, f: fn(_, a) {
-            admit_supply_for_standing(
-              ledgers: ledgers,
-              asset: a,
-              standing: asset_source_lot_standing(ledgers: ledgers, asset: requested),
-              identifier_evidence: identifier_evidence
-            )
+            match asset_source_lot_standing(ledgers: ledgers, asset: requested) {
+              AssetSourceLotUnobserved { asset: u } => FilamentSupplySourceLotUnobserved { requested: u }
+              AssetSourceLotEvidenceDuplicate { asset: u, occurrences: n } =>
+                FilamentSupplySourceLotRepeated { requested: u, occurrences: n }
+              AssetSourceLotConflict { asset: u, first_lot: f, further_lots: r } =>
+                FilamentSupplySourceLotConflict { requested: u, first_lot: f, further_lots: r }
+              AssetSourceLotResolved { asset: _, lot: sourced, event_ordinal: _ } =>
+                if catalog_modules_agree(asset: a, lot: sourced) {
+                  match assess_identifier_evidence(evidence: identifier_evidence, requested: requested) {
+                    IdentifierUnestablished => FilamentSupplyIdentifierUnestablished { requested: requested }
+                    IdentifierForeignSubject { observed_subject: sub } =>
+                      FilamentSupplyIdentifierForeignSubject { requested: requested, observed_subject: sub }
+                    IdentifierConflicting { distinct_values: n } =>
+                      FilamentSupplyIdentifierConflict { requested: requested, distinct_values: n }
+                    IdentifierEstablished =>
+                      FilamentSupplyCandidateEstablished {
+                        candidate: FilamentSupplyCandidate {
+                          asset: a,
+                          source_lot: sourced,
+                          identifier_evidence: identifier_evidence,
+                          product_standing: filament_product_standing(lot: sourced),
+                        },
+                      }
+                  }
+                } else {
+                  FilamentSupplyCatalogModuleMismatch {
+                    requested: requested,
+                    lot_module: lot_catalog_module_or_asset(asset: a, lot: sourced),
+                    asset_module: a.catalog.module_path,
+                  }
+                }
+            }
           })
       }
     }
   }
 }
-
-// --- condition, deliberately outside identity ---------------------------------------------------------
-//
-// WHAT CONDITION THE SPOOL WAS IN IS A DIFFERENT QUESTION FROM WHICH SPOOL IT IS, and folding the
-// first into the second would report a known, labelled, provenance-resolved spool as unidentifiable
-// because nobody measured its humidity. That is the same conflation as reading an unread serial as
-// an absent machine: an unobserved property is unknown, not false.
-//
-// So the manufacturing attempt carries BOTH, and policy chooses: physical-output attribution may
-// proceed with ConditionUnobserved, while an absolute or transferable process qualification may
-// require ConditionObserved. Putting the requirement here would apply the strictest consumer's rule
-// to every consumer.
-type FilamentConditionStanding
-  = FilamentConditionUnobserved
-  | FilamentConditionObserved { note: NonEmptyStr }
-  | FilamentConditionObservationRefused { cause: NonEmptyStr }
 
 // THE OWNED FILAMENT SUPPLY, EMPTY UNTIL SPOOLS ARE PHYSICALLY RECEIVED AND LABELLED. Same rule as
 // the printer roster next door: authoring rows for feedstock nobody has unboxed would be a

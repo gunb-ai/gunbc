@@ -1,25 +1,27 @@
-module test.claim.filament_supply_admission_witness_test
+module test.claim.filament_supply_assessment_witness_test
 
 import product.printed_chassis.filament_supply {
   InventoryLotEvidence,
   FilamentSupplyIdentifierObservation,
   ManufacturerRfidObserved,
   OperatorLabelObserved,
-  AdmittedFilamentSupply,
-  FilamentSupplyAdmission,
-  FilamentSupplyAdmitted,
+  FilamentSupplyCandidate,
+  FilamentSupplyAssessment,
+  FilamentSupplyCandidateEstablished,
   FilamentSupplyAssetAbsent,
   FilamentSupplyAssetDuplicate,
   FilamentSupplyLedgerEvidenceUnavailable,
   FilamentSupplySourceLotUnobserved,
   FilamentSupplySourceLotRepeated,
   FilamentSupplySourceLotConflict,
-  FilamentSupplyLotRecordAbsent,
-  FilamentSupplyProductUnresolved,
-  FilamentSupplyProductMismatch,
+  FilamentSupplyCatalogModuleMismatch,
   FilamentSupplyIdentifierUnestablished,
+  FilamentSupplyIdentifierForeignSubject,
   FilamentSupplyIdentifierConflict,
-  admit_filament_supply,
+  FilamentProductStanding,
+  FilamentProductRowUnread,
+  FilamentProductRowCited,
+  assess_filament_supply,
 }
 import product.inventory {
   ProcurementLot,
@@ -28,6 +30,15 @@ import product.inventory {
   ReceiptRecorded,
   CatalogRowExact,
   CatalogRowUnread,
+  LedgerRefusalCause,
+  InsufficientStock,
+  EventLotMismatch,
+  EventBeforeAcquisition,
+  LotAlreadyAcquired,
+  ZeroQuantityEvent,
+  ReservationHolderUnknown,
+  ReservationOverRelease,
+  MoreAssetsThanUnits,
   LandedCostRecorded,
   LotAcquired,
   LotReceived,
@@ -141,11 +152,40 @@ fn fs_evidence(lot: ProcurementLot, tail: List<InventoryEvent>) -> InventoryLotE
 }
 
 fn fs_label() -> List<FilamentSupplyIdentifierObservation> {
-  [OperatorLabelObserved { label: "SPOOL-A" as NonEmptyStr }]
+  [OperatorLabelObserved { asset: fs_spool(), label: "SPOOL-A" as NonEmptyStr }]
 }
 
-fn fs_admit(evidence: List<InventoryLotEvidence>, identifiers: List<FilamentSupplyIdentifierObservation>) -> FilamentSupplyAdmission {
-  admit_filament_supply(
+// THE TYPED CAUSE IS READ AS A CAUSE, NOT AS A LABEL. The refusal now carries LedgerRefusalCause
+// itself, so the assertion can reach the fields the arm holds -- how much was requested against how
+// much was held -- which a string label had discarded.
+fn insufficient_stock_of(cause: LedgerRefusalCause, requested: Nat, held: Nat) -> Bool {
+  match cause {
+    InsufficientStock { position: _, requested: r, held: h } => r == requested && h == held
+    EventLotMismatch => false
+    EventBeforeAcquisition => false
+    LotAlreadyAcquired => false
+    ZeroQuantityEvent => false
+    ReservationHolderUnknown { holder: _ } => false
+    ReservationOverRelease { holder: _, requested: _, held: _ } => false
+    MoreAssetsThanUnits { assets: _, quantity: _ } => false
+  }
+}
+
+fn is_event_lot_mismatch(cause: LedgerRefusalCause) -> Bool {
+  match cause {
+    EventLotMismatch => true
+    InsufficientStock { position: _, requested: _, held: _ } => false
+    EventBeforeAcquisition => false
+    LotAlreadyAcquired => false
+    ZeroQuantityEvent => false
+    ReservationHolderUnknown { holder: _ } => false
+    ReservationOverRelease { holder: _, requested: _, held: _ } => false
+    MoreAssetsThanUnits { assets: _, quantity: _ } => false
+  }
+}
+
+fn fs_assess(evidence: List<InventoryLotEvidence>, identifiers: List<FilamentSupplyIdentifierObservation>) -> FilamentSupplyAssessment {
+  assess_filament_supply(
     evidence: evidence,
     asset_inventory: fs_roster(),
     requested: fs_spool(),
@@ -155,22 +195,21 @@ fn fs_admit(evidence: List<InventoryLotEvidence>, identifiers: List<FilamentSupp
 
 // The admitted spool, or false. Written once because eleven rows below need the same question and a
 // re-spelled match at each site is a second place the acceptance rule lives.
-fn fs_admits_from_lot(admission: FilamentSupplyAdmission, lot: InventoryLotIdentity) -> Bool {
-  match admission {
-    FilamentSupplyAdmitted { supply: s } =>
-      minted_id_eq(left: s.source_lot.identity, right: lot)
-        && s.asset.identity as String == "spool-fs-a"
-        && s.source_lot.quantity_acquired == 10
+fn fs_establishes_from_lot(assessment: FilamentSupplyAssessment, lot: InventoryLotIdentity) -> Bool {
+  match assessment {
+    FilamentSupplyCandidateEstablished { candidate: c } =>
+      minted_id_eq(left: c.source_lot.identity, right: lot)
+        && c.source_lot.quantity_acquired == 10
+        && c.asset.identity as String == "spool-fs-a"
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
@@ -180,8 +219,8 @@ fn fs_admits_from_lot(admission: FilamentSupplyAdmission, lot: InventoryLotIdent
 // `named count == quantity` before binding anything would refuse this, and it is the exact shape
 // day-two inventory takes once a second spool is installed unlabelled.
 test fn w_the_requested_spool_binds_although_its_sibling_is_anonymous() -> Bool {
-  fs_admits_from_lot(
-    admission: fs_admit(
+  fs_establishes_from_lot(
+    assessment: fs_assess(
       evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 2, assets: [fs_spool()])])],
       identifiers: fs_label()
     ),
@@ -192,8 +231,8 @@ test fn w_the_requested_spool_binds_although_its_sibling_is_anonymous() -> Bool 
 // CONTROL 2. The same install with the population fully individuated. Paired with control 1 this
 // states that individuation is not a PREREQUISITE, rather than that it is irrelevant.
 test fn w_the_requested_spool_binds_when_the_population_is_individuated() -> Bool {
-  fs_admits_from_lot(
-    admission: fs_admit(
+  fs_establishes_from_lot(
+    assessment: fs_assess(
       evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 2, assets: [fs_spool(), fs_other()])])],
       identifiers: fs_label()
     ),
@@ -204,9 +243,9 @@ test fn w_the_requested_spool_binds_when_the_population_is_individuated() -> Boo
 // CONTROL 6. The day-one singleton: one unit, one named spool. This is the shape the first two real
 // spools will be recorded in, and it is a POSITIVE control -- without it every refusal below could
 // be satisfied by a mint that refuses everything.
-test fn w_the_day_one_singleton_install_admits_the_supply() -> Bool {
-  fs_admits_from_lot(
-    admission: fs_admit(
+test fn w_the_day_one_singleton_install_establishes_the_candidate() -> Bool {
+  fs_establishes_from_lot(
+    assessment: fs_assess(
       evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
       identifiers: fs_label()
     ),
@@ -217,21 +256,20 @@ test fn w_the_day_one_singleton_install_admits_the_supply() -> Bool {
 // CONTROL 3. The asset named twice inside one event is malformed evidence, not one sighting seen
 // clearly. It refuses as repeated rather than binding to the lot both occurrences agree on.
 test fn w_an_asset_named_twice_refuses_as_repeated() -> Bool {
-  match fs_admit(
+  match fs_assess(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 2, assets: [fs_spool(), fs_spool()])])],
     identifiers: fs_label()
   ) {
     FilamentSupplySourceLotRepeated { requested: r, occurrences: n } => r as String == "spool-fs-a" && n == 2
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
@@ -242,7 +280,7 @@ test fn w_an_asset_named_twice_refuses_as_repeated() -> Bool {
 // the first match. First-match or last-match resolution would silently pick a lot here, and the
 // binding would look exactly as authoritative as a correct one.
 test fn w_the_same_spool_in_two_valid_ledgers_conflicts_rather_than_picking_one() -> Bool {
-  match fs_admit(
+  match fs_assess(
     evidence: [
       fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])]),
       fs_evidence(lot: fs_lot(id: fs_lot_b(), label: "lot-fs-b" as NonEmptyStr), tail: [fs_install(lot: fs_lot_b(), quantity: 1, assets: [fs_spool()])]),
@@ -251,16 +289,15 @@ test fn w_the_same_spool_in_two_valid_ledgers_conflicts_rather_than_picking_one(
   ) {
     FilamentSupplySourceLotConflict { requested: r, first_lot: f, further_lots: rest } =>
       r as String == "spool-fs-a" && minted_id_eq(left: f, right: fs_lot_a()) && count(rest) == 1
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
@@ -268,21 +305,20 @@ test fn w_the_same_spool_in_two_valid_ledgers_conflicts_rather_than_picking_one(
 // CONTROL 5. The install names only the sibling. The requested spool is UNOBSERVED -- not absent
 // from the world, and not refused as malformed: nothing in admitted history binds it to a lot.
 test fn w_a_spool_no_admitted_event_names_is_unobserved() -> Bool {
-  match fs_admit(
+  match fs_assess(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 2, assets: [fs_other()])])],
     identifiers: fs_label()
   ) {
     FilamentSupplySourceLotUnobserved { requested: r } => r as String == "spool-fs-a"
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
@@ -294,22 +330,21 @@ test fn w_a_spool_no_admitted_event_names_is_unobserved() -> Bool {
 // state is that the inventory authority rejected the history that event belongs to. This is the row
 // that proves the projection reads accepted history and not plausible-looking authored events.
 test fn w_a_refused_ledger_cannot_establish_a_source_lot() -> Bool {
-  match fs_admit(
+  match fs_assess(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 11, assets: [fs_spool()])])],
     identifiers: fs_label()
   ) {
-    FilamentSupplyLedgerEvidenceUnavailable { requested: r, lot: l, cause_label: c, event_ordinal: _ } =>
-      r as String == "spool-fs-a" && minted_id_eq(left: l, right: fs_lot_a()) && c as String == "insufficient_stock"
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: r, lot: l, cause: c, event_ordinal: _, event_label: _ } =>
+      r as String == "spool-fs-a" && minted_id_eq(left: l, right: fs_lot_a()) && insufficient_stock_of(cause: c, requested: 11, held: 10)
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
@@ -318,45 +353,43 @@ test fn w_a_refused_ledger_cannot_establish_a_source_lot() -> Bool {
 // failure naming event_lot_mismatch, never as a resolved binding to the lot the event mentions --
 // which is what a scanner keyed on the asset name alone would produce, because the asset matches.
 test fn w_an_event_naming_a_foreign_lot_cannot_establish_a_source_lot() -> Bool {
-  match fs_admit(
+  match fs_assess(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_b(), quantity: 1, assets: [fs_spool()])])],
     identifiers: fs_label()
   ) {
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: c, event_ordinal: _ } =>
-      c as String == "event_lot_mismatch"
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: c, event_ordinal: _, event_label: _ } =>
+      is_event_lot_mismatch(cause: c)
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
 
 // THIS MODULE'S OWN REFUSALS BEGIN HERE. The roster does not carry the requested spool at all.
 test fn w_a_spool_absent_from_the_roster_refuses() -> Bool {
-  match admit_filament_supply(
+  match assess_filament_supply(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
     asset_inventory: [],
     requested: fs_spool(),
     identifier_evidence: fs_label()
   ) {
     FilamentSupplyAssetAbsent { requested: r } => r as String == "spool-fs-a"
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
@@ -364,76 +397,109 @@ test fn w_a_spool_absent_from_the_roster_refuses() -> Bool {
 // The roster carries it twice. A duplicate is not a stronger sighting: the two rows may disagree on
 // catalog or serial, so which one the supply would be minted from is undecidable.
 test fn w_a_spool_listed_twice_in_the_roster_refuses() -> Bool {
-  match admit_filament_supply(
+  match assess_filament_supply(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
     asset_inventory: [fs_asset(id: fs_spool(), catalog: fs_catalog_ref()), fs_asset(id: fs_spool(), catalog: fs_catalog_ref())],
     requested: fs_spool(),
     identifier_evidence: fs_label()
   ) {
     FilamentSupplyAssetDuplicate { requested: r, matches: n } => r as String == "spool-fs-a" && n == 2
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
 
-// THE LOT'S CATALOG WAS NEVER READ. The material family is known -- PLA -- and that is precisely what
-// a supply may not be cataloged as: PLA is a material class, not a product, and admitting on family
-// alone would let formulation-specific facts be inherited from a row this spool was never shown to
-// be. The refusal carries the observed family so the operator knows what to go read.
-test fn w_a_lot_whose_catalog_was_never_read_refuses_as_product_unresolved() -> Bool {
-  match fs_admit(
+// THE LOT'S CATALOG WAS NEVER READ, AND THE SPOOL IS STILL ADMITTED. This is the boundary review
+// 5105127492 moved: admission asks which physical spool this is and where it came from, and an
+// unread package SKU makes neither of those unknown. Refusing here would report a labelled,
+// provenance-resolved spool as inadmissible because nobody read its box -- the same conflation as
+// reading an unread serial as an absent machine. What the unread row DOES forbid is inheriting a
+// formulation-specific fact through it, and FilamentProductStanding is where that shows: the
+// admitted supply reports FilamentProductRowUnread carrying the observed family, so a consumer that
+// needs an exact formulation can see it does not have one.
+test fn w_a_lot_whose_catalog_was_never_read_still_establishes_the_candidate() -> Bool {
+  match fs_assess(
     evidence: [InventoryLotEvidence {
       lot: fs_unread_lot(id: fs_lot_a()),
       events: concat(fs_prologue(id: fs_lot_a()), [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])]),
     }],
     identifiers: fs_label()
   ) {
-    FilamentSupplyProductUnresolved { requested: r, lot: _, observed_family: f } =>
-      r as String == "spool-fs-a" && f as String == "PLA"
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: c } =>
+      match c.product_standing {
+        FilamentProductRowUnread { observed_family: f } => f as String == "PLA"
+        FilamentProductRowCited { module_path: _, decl_name: _ } => false
+      }
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
 
-// The asset's catalog names a different product module than the lot it was drawn from. One of the
-// two rows is wrong and the module does not guess which: it names both.
+// And the paired positive: a lot whose catalog row WAS cited reports the citation rather than the
+// family. Without it the arm above would be satisfied by a standing that always answered unread.
+test fn w_a_lot_with_a_cited_catalog_row_reports_the_citation() -> Bool {
+  match fs_assess(
+    evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
+    identifiers: fs_label()
+  ) {
+    FilamentSupplyCandidateEstablished { candidate: c } =>
+      match c.product_standing {
+        FilamentProductRowCited { module_path: m, decl_name: d } =>
+          m as String == "extdeps.printing.fdm" && d as String == "FilamentMaterial"
+        FilamentProductRowUnread { observed_family: _ } => false
+      }
+    FilamentSupplyAssetAbsent { requested: _ } => false
+    FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+    FilamentSupplySourceLotUnobserved { requested: _ } => false
+    FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
+    FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
+    FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
+    FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
+  }
+}
+
+// THE ASSET'S CATALOG NAMES A DIFFERENT MODULE THAN THE LOT IT WAS DRAWN FROM, and that is a
+// CONTRADICTION rather than an unknown: one of the two rows is wrong, and the module names both
+// instead of guessing. It is deliberately not called a product mismatch -- module agreement cannot
+// establish that either side names a filament product at all -- and the refusal arm's field names
+// say exactly what was compared.
 test fn w_an_asset_whose_catalog_disagrees_with_its_lot_refuses() -> Bool {
-  match admit_filament_supply(
+  match assess_filament_supply(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
     asset_inventory: [fs_asset(id: fs_spool(), catalog: fs_foreign_catalog_ref())],
     requested: fs_spool(),
     identifier_evidence: fs_label()
   ) {
-    FilamentSupplyProductMismatch { requested: _, expected_module: e, found_module: f } =>
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: e, asset_module: f } =>
       e as String == "extdeps.printing.fdm" && f as String == "extdeps.printing.bambu_studio"
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
@@ -442,65 +508,88 @@ test fn w_an_asset_whose_catalog_disagrees_with_its_lot_refuses() -> Bool {
 // supply still refuses -- because the handling chain from spool to printer to coupon to measurement
 // runs through a human reading a label, and an unlabelled spool breaks it at the first step.
 test fn w_a_spool_with_no_identifier_evidence_refuses() -> Bool {
-  match fs_admit(
+  match fs_assess(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
     identifiers: []
   ) {
     FilamentSupplyIdentifierUnestablished { requested: r } => r as String == "spool-fs-a"
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
   }
 }
 
-// TWO ROUTES REPORTING DIFFERENT VALUES IS A CONFLICT EVEN THOUGH NEITHER REPEATED ITSELF. The RFID
-// read and the operator label are two observations of ONE physical object; if they disagree, the
-// object in hand has not been identified, and choosing the machine-read value because it feels more
-// authoritative would be the heuristic standing where a fact was owed.
-test fn w_an_rfid_read_disagreeing_with_the_operator_label_refuses() -> Bool {
-  match fs_admit(
+// TWO READS OF THE SAME ROUTE DISAGREEING IS A CONFLICT. Two RFID tags cannot both be this spool's
+// tag, so the object in hand has not been identified, and picking one because it came first would be
+// the heuristic standing where a fact was owed.
+test fn w_two_disagreeing_rfid_reads_refuse() -> Bool {
+  match fs_assess(
     evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
     identifiers: [
-      ManufacturerRfidObserved { tag: "RFID-9001" as NonEmptyStr },
-      OperatorLabelObserved { label: "SPOOL-A" as NonEmptyStr },
+      ManufacturerRfidObserved { asset: fs_spool(), tag: "RFID-9001" as NonEmptyStr },
+      ManufacturerRfidObserved { asset: fs_spool(), tag: "RFID-9002" as NonEmptyStr },
     ]
   ) {
     FilamentSupplyIdentifierConflict { requested: r, distinct_values: n } => r as String == "spool-fs-a" && n == 2
-    FilamentSupplyAdmitted { supply: _ } => false
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
     FilamentSupplyAssetAbsent { requested: _ } => false
     FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
-    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause_label: _, event_ordinal: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     FilamentSupplySourceLotUnobserved { requested: _ } => false
     FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
     FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
-    FilamentSupplyLotRecordAbsent { requested: _, lot: _ } => false
-    FilamentSupplyProductUnresolved { requested: _, lot: _, observed_family: _ } => false
-    FilamentSupplyProductMismatch { requested: _, expected_module: _, found_module: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
     FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierForeignSubject { requested: _, observed_subject: _ } => false
   }
 }
 
-// AND TWO ROUTES AGREEING IS ONE IDENTIFICATION, NOT TWO. Without this control the conflict arm
-// above would be satisfied by an implementation that refused any spool carrying more than one
-// observation -- which would refuse exactly the day-one practice of labelling every spool by hand
-// even when its RFID reads.
-test fn w_an_rfid_read_agreeing_with_the_operator_label_admits() -> Bool {
-  fs_admits_from_lot(
-    admission: fs_admit(
+// AN RFID TAG AND AN OPERATOR LABEL ARE DIFFERENT NAMESPACES AND ARE NEVER COMPARED. An earlier cut
+// flattened both into one list of strings, so a tag and a label that happened to spell the same
+// thing read as corroboration and two that did not read as a conflict -- a coincidence of spelling
+// between a manufacturer's tag space and an operator's label space, which are unrelated. This
+// witness is the discriminator: the two values here DIFFER, and the supply is admitted, because each
+// route is internally consistent. Under the old flattening this row refused.
+test fn w_an_rfid_tag_and_an_unrelated_operator_label_both_stand() -> Bool {
+  fs_establishes_from_lot(
+    assessment: fs_assess(
       evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
       identifiers: [
-        ManufacturerRfidObserved { tag: "SPOOL-A" as NonEmptyStr },
-        OperatorLabelObserved { label: "SPOOL-A" as NonEmptyStr },
+        ManufacturerRfidObserved { asset: fs_spool(), tag: "RFID-9001" as NonEmptyStr },
+        OperatorLabelObserved { asset: fs_spool(), label: "SPOOL-A" as NonEmptyStr },
       ]
     ),
     lot: fs_lot_a()
   )
+}
+
+// EVIDENCE THAT NAMES ANOTHER SPOOL REFUSES RATHER THAN BEING FILTERED AWAY. Filtering would be the
+// absorbing fallback -- the narrower answer computed by discarding what did not fit -- and it would
+// silently admit spool-a on a bundle that only ever identified spool-b. Under the earlier carrier,
+// which did not record the subject at all, this whole class was unwritable and therefore invisible.
+test fn w_identifier_evidence_naming_another_spool_refuses() -> Bool {
+  match fs_assess(
+    evidence: [fs_evidence(lot: fs_lot(id: fs_lot_a(), label: "lot-fs-a" as NonEmptyStr), tail: [fs_install(lot: fs_lot_a(), quantity: 1, assets: [fs_spool()])])],
+    identifiers: [OperatorLabelObserved { asset: fs_other(), label: "SPOOL-B" as NonEmptyStr }]
+  ) {
+    FilamentSupplyIdentifierForeignSubject { requested: r, observed_subject: o } =>
+      r as String == "spool-fs-a" && o as String == "spool-fs-b"
+    FilamentSupplyCandidateEstablished { candidate: _ } => false
+    FilamentSupplyAssetAbsent { requested: _ } => false
+    FilamentSupplyAssetDuplicate { requested: _, matches: _ } => false
+    FilamentSupplyLedgerEvidenceUnavailable { requested: _, lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+    FilamentSupplySourceLotUnobserved { requested: _ } => false
+    FilamentSupplySourceLotRepeated { requested: _, occurrences: _ } => false
+    FilamentSupplySourceLotConflict { requested: _, first_lot: _, further_lots: _ } => false
+    FilamentSupplyCatalogModuleMismatch { requested: _, lot_module: _, asset_module: _ } => false
+    FilamentSupplyIdentifierUnestablished { requested: _ } => false
+    FilamentSupplyIdentifierConflict { requested: _, distinct_values: _ } => false
+  }
 }
