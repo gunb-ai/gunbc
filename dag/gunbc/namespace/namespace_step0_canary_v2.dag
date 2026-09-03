@@ -68,9 +68,20 @@ fn namespace_step0_v2_manifest_identity() -> NonEmptyStr {
 }
 
 // ONE EXCLUDED MEMBER, carrying the parse's own refusal rather than a category this contract invents.
+// AN EXCLUDED ENTRY CARRIES NO CAUSE BECAUSE THERE IS EXACTLY ONE ADMISSIBLE CAUSE. Exclusion means
+// one thing and only one: the file is not a module, which std.import answers as
+// SourceHasNoModuleDeclaration and nothing else does. Carrying a cause field would be a place to
+// write any other answer down -- and the failure this closes is precisely that: with a stringly
+// cause, a module whose declaration was malformed and even the parser's own instrument anomalies
+// were dropped into this bucket, and the receipt's partition law still balanced afterwards. That is
+// the absorbing fallback one layer below the one this contract already refuses, so the repair is not
+// a check on the field, it is the field's removal: the only way into this bucket is the one match
+// arm in the partition fold, and every other answer refuses the run.
+//
+// THE ENTRIES ARE EXACT AND NOT A COUNT, and they participate in the subject projection, so turning
+// a module into a non-module CHANGES the receipt rather than quietly shrinking the included vector.
 type Step0V2ExcludedSource {
   path: NonEmptyStr
-  parse_cause: NonEmptyStr
 }
 
 type Step0V2CompletedTransition
@@ -243,6 +254,7 @@ type NamespaceStep0V2Receipt sole_constructor {
   input_subject_manifest: NonEmptyStr
   collected_population: Step0PopulationIdentity
   excluded_sources: List<Step0V2ExcludedSource>
+  excluded_population: Step0PopulationIdentity
   admitted_population: Step0PopulationIdentity
   compile_entry: NonEmptyStr
   pre_strip_standing: Step0V2CompileStanding
@@ -266,6 +278,7 @@ fn namespace_step0_v2_candidate_receipt(
   compiler_executable_sha256: Sha256Digest,
   collected_population: Step0PopulationIdentity,
   excluded_sources: List<Step0V2ExcludedSource>,
+  excluded_population: Step0PopulationIdentity,
   admitted_population: Step0PopulationIdentity,
   compile_entry: NonEmptyStr,
   pre_strip_standing: Step0V2CompileStanding,
@@ -286,6 +299,7 @@ fn namespace_step0_v2_candidate_receipt(
     input_subject_manifest: namespace_step0_v2_manifest_identity(),
     collected_population: collected_population,
     excluded_sources: excluded_sources,
+    excluded_population: excluded_population,
     admitted_population: admitted_population,
     compile_entry: compile_entry,
     pre_strip_standing: pre_strip_standing,
@@ -317,6 +331,7 @@ fn namespace_step0_v2_fixture_receipt(
   input_subject_manifest: NonEmptyStr,
   collected_population: Step0PopulationIdentity,
   excluded_sources: List<Step0V2ExcludedSource>,
+  excluded_population: Step0PopulationIdentity,
   admitted_population: Step0PopulationIdentity,
   compile_entry: NonEmptyStr,
   pre_strip_standing: Step0V2CompileStanding,
@@ -338,6 +353,7 @@ fn namespace_step0_v2_fixture_receipt(
     input_subject_manifest: input_subject_manifest,
     collected_population: collected_population,
     excluded_sources: excluded_sources,
+    excluded_population: excluded_population,
     admitted_population: admitted_population,
     compile_entry: compile_entry,
     pre_strip_standing: pre_strip_standing,
@@ -500,6 +516,8 @@ fn admit_namespace_step0_v2_receipt(
     NamespaceStep0V2ReceiptRefused { field: V2InputSubjectManifestField, cause: "receipt input/subject manifest does not match this contract" as NonEmptyStr }
   } else if receipt.admitted_population.member_count + count(receipt.excluded_sources) != receipt.collected_population.member_count {
     NamespaceStep0V2ReceiptRefused { field: V2SubjectPartitionField, cause: "the admitted population and the named exclusions do not exhaust the collected population" as NonEmptyStr }
+  } else if receipt.excluded_population.member_count != count(receipt.excluded_sources) {
+    NamespaceStep0V2ReceiptRefused { field: V2SubjectPartitionField, cause: "the excluded projection does not have one member per named excluded entry, so an exclusion is unclassified" as NonEmptyStr }
   } else {
     match receipt.frontier {
       Step0V2SubjectNotEntered { blocked_at: blocked_at, cause: _ } =>

@@ -2,7 +2,16 @@ module gunbc.namespace_step0_candidate_run
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import std.import { ImportStatementsParsed, ImportStatementParseRefused }
+import std.import {
+  ImportStatementsParsed,
+  ImportStatementParseRefused,
+  ImportStatementParseCause,
+  SourceHasNoModuleDeclaration,
+  ModuleDeclarationPathMalformed,
+  ImportStatementMalformed,
+  ImportParseInstrumentAnomaly,
+  import_statement_parse_cause_label
+}
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import tools.multi_module_compile_fixture {
@@ -32,6 +41,7 @@ import gunbc.namespace_step0_subject_collector {
   Step0SubjectVector,
   collect_current_step0_subject_vector,
   step0_collected_population_identity,
+  step0_population_identity_of_rows,
   step0_source_population_identity,
   step0_subject_vector_size
 }
@@ -92,6 +102,7 @@ type Step0CandidateRun
   = Step0CandidateSubjectUnavailable { cause: Step0SubjectPinRefusal }
   | Step0CandidateCompilerUnavailable { program: NonEmptyStr, reason: String }
   | Step0CandidateCompilerDigestUnreadable { hex: String }
+  | Step0CandidatePartitionRefused { path: NonEmptyStr, cause: ImportStatementParseCause }
   | Step0CandidateObserved {
       receipt: NamespaceStep0V2Receipt
       admission: NamespaceStep0V2Admission
@@ -99,33 +110,62 @@ type Step0CandidateRun
       excluded_members: Int
     }
 
-// THE SUBJECT PARTITION, DECIDED BY THE PARSE ITSELF. A member the ordinary parse gives a module is
-// admitted; a member it declines is EXCLUDED AND NAMED, carrying the parse's own cause rather than a
-// category invented here. There is deliberately no third outcome: a member is in the subject or it is
-// in the receipt's excluded population, and the classifier's partition law refuses a receipt where
-// the two do not exhaust what was collected.
+// THE SUBJECT PARTITION, AND ONLY ONE ANSWER MAY EXCLUDE. A member the parse gives a module is
+// admitted. A member it declines because the file IS NOT A MODULE -- SourceHasNoModuleDeclaration,
+// and no other arm -- is excluded and named. EVERY OTHER ANSWER REFUSES THE RUN, and that is the
+// repair: a malformed module path is a defect in the declaration the subject is DEFINED by, a
+// malformed import statement is a defect in the thing being STRIPPED, and the two instrument
+// anomalies are the parser reporting on ITSELF. Before std.import typed its cause, all three landed
+// in the excluded bucket, so a broken production module left the subject silently and the receipt's
+// partition law still balanced -- the absorbing filter rebuilt one layer down, and in the anomaly
+// case the measuring device deleting evidence when the device malfunctioned.
+//
+// THE FOLD IS TOTAL AND ITS BUCKETS ARE DISJOINT BY CONSTRUCTION: it visits each collected member
+// exactly once and pushes into exactly one bucket, so an unclassified member and a member with two
+// dispositions have no representation rather than being counted and refused afterwards.
 type Step0SubjectPartition {
   admitted: List<FixtureSource>
   excluded: List<Step0V2ExcludedSource>
 }
 
-fn step0_partition_step(partition: Step0SubjectPartition, member: Step0SubjectMember) -> Step0SubjectPartition {
-  match parsed_import_statements_live(file: member.path as String, source: member.content) {
-    ImportStatementParseRefused { cause: cause } => Step0SubjectPartition {
-      admitted: partition.admitted,
-      excluded: partition.excluded |> list_push(Step0V2ExcludedSource { path: member.path, parse_cause: cause })
-    }
-    ImportStatementsParsed { statements: _ } => Step0SubjectPartition {
-      admitted: partition.admitted |> list_push(FixtureSource { path: member.path, content: member.content }),
-      excluded: partition.excluded
-    }
+type Step0SubjectPartitionOutcome
+  = Step0SubjectPartitionRefused { path: NonEmptyStr, cause: ImportStatementParseCause }
+  | Step0SubjectPartitioned { partition: Step0SubjectPartition }
+
+fn step0_partition_step(outcome: Step0SubjectPartitionOutcome, member: Step0SubjectMember) -> Step0SubjectPartitionOutcome {
+  match outcome {
+    Step0SubjectPartitionRefused { path: path, cause: cause } => Step0SubjectPartitionRefused { path: path, cause: cause }
+    Step0SubjectPartitioned { partition: partition } =>
+      match parsed_import_statements_live(file: member.path as String, source: member.content) {
+        ImportStatementsParsed { statements: _ } => Step0SubjectPartitioned { partition: Step0SubjectPartition {
+          admitted: partition.admitted |> list_push(FixtureSource { path: member.path, content: member.content }),
+          excluded: partition.excluded
+        } }
+        ImportStatementParseRefused { cause: cause } => match cause {
+          SourceHasNoModuleDeclaration => Step0SubjectPartitioned { partition: Step0SubjectPartition {
+            admitted: partition.admitted,
+            excluded: partition.excluded |> list_push(Step0V2ExcludedSource { path: member.path })
+          } }
+          ModuleDeclarationPathMalformed => Step0SubjectPartitionRefused { path: member.path, cause: cause }
+          ImportStatementMalformed => Step0SubjectPartitionRefused { path: member.path, cause: cause }
+          ImportParseInstrumentAnomaly { detail: _ } => Step0SubjectPartitionRefused { path: member.path, cause: cause }
+        }
+      }
   }
 }
 
-fn step0_partition_subject(vector: Step0SubjectVector) -> Step0SubjectPartition {
-  fold(vector.members, init: Step0SubjectPartition { admitted: [], excluded: [] }, f: fn(acc, member) {
-    step0_partition_step(partition: acc, member: member)
+fn step0_partition_subject(vector: Step0SubjectVector) -> Step0SubjectPartitionOutcome {
+  fold(vector.members, init: Step0SubjectPartitioned { partition: Step0SubjectPartition { admitted: [], excluded: [] } }, f: fn(acc, member) {
+    step0_partition_step(outcome: acc, member: member)
   })
+}
+
+// THE EXCLUDED POPULATION IS PROJECTED BY THE SAME IDENTITY FOLD AS EVERY OTHER POPULATION HERE, so
+// a receipt names WHICH files left the subject rather than how many.
+fn step0_excluded_population_identity(excluded: List<Step0V2ExcludedSource>) -> Step0PopulationIdentity {
+  step0_population_identity_of_rows(
+    rows: excluded |> map(entry => concat(entry.path as String, " not-a-module") as NonEmptyStr)
+  )
 }
 
 // THE STRIP FOLD REUSES THE OWNED PER-SOURCE REWRITE rather than restating it: one authority for
@@ -525,6 +565,7 @@ fn step0_candidate_receipt_of_run(
     compiler_executable_sha256: compiler,
     collected_population: step0_collected_population_identity(vector: vector),
     excluded_sources: partition.excluded,
+    excluded_population: step0_excluded_population_identity(excluded: partition.excluded),
     admitted_population: step0_source_population_identity(sources: partition.admitted),
     compile_entry: step0_pair_entry(derivation: derivation, partition: partition),
     pre_strip_standing: step0_pair_pre_strip(derivation: derivation),
@@ -592,8 +633,10 @@ fn run_current_step0_candidate() -> Step0CandidateRun {
         Sha256FileDigest { digest: observed } =>
           match sha256_hex_digest(hex: observed.hex as String) {
             Absent => Step0CandidateCompilerDigestUnreadable { hex: observed.hex as String }
-            Present { value: compiler } => {
-              let partition = step0_partition_subject(vector: vector)
+            Present { value: compiler } => match step0_partition_subject(vector: vector) {
+              Step0SubjectPartitionRefused { path: path, cause: cause } =>
+                Step0CandidatePartitionRefused { path: path, cause: cause }
+              Step0SubjectPartitioned { partition: partition } => {
               let derivation = step0_derive_pair(admitted: partition.admitted)
               let frontier = step0_pair_frontier(derivation: derivation)
               let receipt = step0_candidate_receipt_of_run(
@@ -614,7 +657,7 @@ fn run_current_step0_candidate() -> Step0CandidateRun {
                 collected_members: step0_subject_vector_size(vector: vector),
                 excluded_members: count(partition.excluded)
               }
-            }
+            } }
           }
       }
   }
@@ -725,6 +768,11 @@ fn current_step0_candidate_receipt_line() -> String {
       concat("step0-candidate: compiler unavailable: ", reason)
     Step0CandidateCompilerDigestUnreadable { hex: hex } =>
       concat("step0-candidate: compiler digest unreadable: ", hex)
+    Step0CandidatePartitionRefused { path: path, cause: cause } =>
+      concat(
+        concat("step0-candidate: partition refused at ", path as String),
+        concat(": ", import_statement_parse_cause_label(cause: cause) as String)
+      )
     Step0CandidateObserved { receipt: receipt, admission: admission, collected_members: collected, excluded_members: excluded } =>
       concat(
         concat(
@@ -751,5 +799,37 @@ fn current_step0_candidate_receipt_line() -> String {
           )
         )
       )
+  }
+}
+
+// THE PARTITION ALONE, so the disposition of every collected member can be read without paying for
+// four corpus compiles. It reports the same fold the one-dispatch command runs, and it names the
+// excluded entries rather than counting them.
+fn current_step0_partition_line() -> String {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: _ } => "step0-partition: subject unavailable"
+    Step0SubjectCollected { vector: vector } => match step0_partition_subject(vector: vector) {
+      Step0SubjectPartitionRefused { path: path, cause: cause } =>
+        concat(
+          concat("step0-partition: REFUSED at ", path as String),
+          concat(": ", import_statement_parse_cause_label(cause: cause) as String)
+        )
+      Step0SubjectPartitioned { partition: partition } =>
+        concat(
+          concat(
+            concat("step0-partition: revision=", git_object_id_wire_hex(oid: vector.source_commit) as String),
+            concat(" collected=", to_string(step0_subject_vector_size(vector: vector)))
+          ),
+          concat(
+            concat(" admitted=", to_string(count(partition.admitted))),
+            concat(
+              concat(" excluded=", to_string(count(partition.excluded))),
+              concat(" excluded_entries=", fold(partition.excluded, init: "", f: fn(acc, entry) {
+                concat(acc, concat(" ", entry.path as String))
+              }))
+            )
+          )
+        )
+    }
   }
 }

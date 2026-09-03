@@ -10,7 +10,14 @@ import std.content_hash {
 import std.decl_ref { DeclarationRef }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.namespace_step0_subject_collector { Step0PopulationIdentity }
+import gunbc.namespace_step0_subject_collector { Step0PopulationIdentity, Step0SubjectMember }
+import gunbc.namespace_step0_candidate_run {
+  Step0SubjectPartition,
+  Step0SubjectPartitionOutcome,
+  Step0SubjectPartitioned,
+  Step0SubjectPartitionRefused,
+  step0_partition_step
+}
 import gunbc.namespace_step0_binding_provenance_contract {
   BindingProvenanceObservable,
   BindingProvenanceUnobservable,
@@ -107,8 +114,7 @@ fn population(members: Int, tag: String) -> Step0PopulationIdentity {
 
 fn excluded_one() -> List<Step0V2ExcludedSource> {
   [Step0V2ExcludedSource {
-    path: "src/v1/stage0/tests/fixtures/fact_cardinality_split_brace.dag" as NonEmptyStr,
-    parse_cause: "source does not open with a module declaration" as NonEmptyStr
+    path: "src/v1/stage0/tests/fixtures/fact_cardinality_split_brace.dag" as NonEmptyStr
   }]
 }
 
@@ -172,6 +178,7 @@ fn fixture_receipt(
   manifest: NonEmptyStr,
   collected: Step0PopulationIdentity,
   excluded: List<Step0V2ExcludedSource>,
+  excluded_projection: Step0PopulationIdentity,
   admitted: Step0PopulationIdentity,
   compile_entry: NonEmptyStr,
   pre_strip_standing: Step0V2CompileStanding,
@@ -190,6 +197,7 @@ fn fixture_receipt(
     input_subject_manifest: manifest,
     collected_population: collected,
     excluded_sources: excluded,
+    excluded_population: excluded_projection,
     admitted_population: admitted,
     compile_entry: compile_entry,
     pre_strip_standing: pre_strip_standing,
@@ -226,6 +234,7 @@ fn score(
   manifest: NonEmptyStr,
   collected: Step0PopulationIdentity,
   excluded: List<Step0V2ExcludedSource>,
+  excluded_projection: Step0PopulationIdentity,
   admitted: Step0PopulationIdentity,
   compile_entry: NonEmptyStr,
   pre_strip_standing: Step0V2CompileStanding,
@@ -258,6 +267,7 @@ fn score(
                     manifest: manifest,
                     collected: collected,
                     excluded: excluded,
+                    excluded_projection: excluded_projection,
                     admitted: admitted,
                     compile_entry: compile_entry,
                     pre_strip_standing: pre_strip_standing,
@@ -290,6 +300,7 @@ fn coherent_entered() -> NamespaceStep0V2Admission? {
     manifest: namespace_step0_v2_manifest_identity(),
     collected: population(members: 10, tag: "collected"),
     excluded: excluded_one(),
+    excluded_projection: population(members: 1, tag: "excluded"),
     admitted: population(members: 9, tag: "admitted"),
     compile_entry: "dag/std/types.dag" as NonEmptyStr,
     pre_strip_standing: pre_strip_refused(),
@@ -325,6 +336,7 @@ test fn a_coherent_unentered_receipt_is_admitted() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
@@ -352,6 +364,7 @@ test fn a_partition_that_does_not_exhaust_the_collected_population_refuses() -> 
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 12, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -376,6 +389,7 @@ test fn a_foreign_contract_identity_refuses_at_the_identity_field() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -400,6 +414,7 @@ test fn a_foreign_tree_refuses_at_the_tree_field() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -424,6 +439,7 @@ test fn a_different_compiler_executable_refuses_at_the_executable_field() -> Boo
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -451,6 +467,7 @@ test fn an_entered_frontier_with_the_pre_strip_prefix_refuses() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -475,6 +492,7 @@ test fn an_unentered_frontier_with_the_entered_prefix_refuses() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
@@ -501,6 +519,7 @@ test fn an_entered_frontier_that_removed_nothing_refuses() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -528,6 +547,7 @@ test fn a_compile_over_a_population_the_strip_did_not_produce_refuses() -> Bool 
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -554,6 +574,7 @@ test fn a_census_on_an_unentered_subject_refuses() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
@@ -585,6 +606,7 @@ test fn a_census_naming_a_foreign_population_refuses() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -648,6 +670,7 @@ test fn an_entered_subject_whose_compile_instrument_failed_is_still_entered() ->
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -672,6 +695,7 @@ test fn an_entry_whose_compile_never_ran_may_not_claim_the_compile_transition() 
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -698,6 +722,7 @@ test fn a_pair_standing_that_claims_more_than_its_arms_observed_refuses() -> Boo
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: instrument_unavailable(),
@@ -723,6 +748,7 @@ test fn an_unentered_subject_carrying_an_observed_pair_refuses() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -749,6 +775,7 @@ test fn a_post_strip_observation_of_a_foreign_population_refuses() -> Bool {
       manifest: namespace_step0_v2_manifest_identity(),
       collected: population(members: 10, tag: "collected"),
       excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
       admitted: population(members: 9, tag: "admitted"),
       compile_entry: "dag/std/types.dag" as NonEmptyStr,
       pre_strip_standing: pre_strip_refused(),
@@ -781,5 +808,123 @@ fn entered_with_foreign_observation() -> Step0V2Frontier {
     compile_input_population: population(members: 9, tag: "stripped"),
     removed_statement_count: 25415,
     compile_standing: refused_standing(tag: "some-other-population")
+  }
+}
+
+// ---------------------------------------------------------------- the partition repair, executed
+//
+// THE EXCLUDED POPULATION PARTICIPATES IN THE SUBJECT PROJECTION. A receipt whose excluded
+// projection does not have one member per named entry has an exclusion nothing accounts for, and
+// before this law the count could be made to balance while the projection said otherwise.
+test fn an_excluded_projection_that_does_not_cover_its_entries_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 0, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2SubjectPartitionField) }
+  )
+}
+
+// ONE WITNESS PER PARSE ANSWER, ON THE PARTITION FOLD ITSELF. The receipt laws above check that a
+// partition BALANCES; these check that the right member went to the right side, which is the half a
+// balanced partition cannot tell you. Only "this file is not a module" may exclude; a broken module
+// and a misbehaving instrument refuse the run.
+fn member(path: String, source: String) -> Step0SubjectMember? {
+  match git_sha1_object_id(hex: foreign_hex()) {
+    Absent => none
+    Present { value: blob } => Present { value: Step0SubjectMember {
+      path: path as NonEmptyStr,
+      blob: blob,
+      content: source
+    } }
+  }
+}
+
+fn partition_of(path: String, source: String) -> Step0SubjectPartitionOutcome? {
+  match member(path: path, source: source) {
+    Absent => none
+    Present { value: one } => Present { value: step0_partition_step(
+      outcome: Step0SubjectPartitioned { partition: Step0SubjectPartition { admitted: [], excluded: [] } },
+      member: one
+    ) }
+  }
+}
+
+fn partition_excluded_count(outcome: Step0SubjectPartitionOutcome) -> Int {
+  match outcome {
+    Step0SubjectPartitionRefused { path: _, cause: _ } => 0 - 1
+    Step0SubjectPartitioned { partition: partition } => count(partition.excluded)
+  }
+}
+
+fn partition_admitted_count(outcome: Step0SubjectPartitionOutcome) -> Int {
+  match outcome {
+    Step0SubjectPartitionRefused { path: _, cause: _ } => 0 - 1
+    Step0SubjectPartitioned { partition: partition } => count(partition.admitted)
+  }
+}
+
+fn partition_refused(outcome: Step0SubjectPartitionOutcome) -> Bool {
+  match outcome {
+    Step0SubjectPartitionRefused { path: _, cause: _ } => true
+    Step0SubjectPartitioned { partition: _ } => false
+  }
+}
+
+test fn a_module_is_admitted_to_the_subject() -> Bool {
+  match partition_of(path: "dag/w/ok.dag", source: "module w.ok\n\nimport std.types { Bool }\n") {
+    Absent => false
+    Present { value: outcome } => partition_admitted_count(outcome: outcome) == 1 && partition_excluded_count(outcome: outcome) == 0
+  }
+}
+
+test fn a_file_that_is_not_a_module_is_excluded_and_named() -> Bool {
+  match partition_of(path: "dag/w/none.dag", source: "fn w_loose() -> Bool { true }\n") {
+    Absent => false
+    Present { value: outcome } => partition_excluded_count(outcome: outcome) == 1 && partition_admitted_count(outcome: outcome) == 0
+  }
+}
+
+// THE REPAIR'S OWN RED. Before the parse cause was typed, this file landed in the excluded bucket
+// and the receipt still balanced -- a malformed production module leaving the subject in silence.
+test fn a_module_with_a_malformed_path_refuses_the_run_rather_than_leaving_the_subject() -> Bool {
+  match partition_of(path: "dag/w/badpath.dag", source: "module 9\n") {
+    Absent => false
+    Present { value: outcome } => partition_refused(outcome: outcome)
+  }
+}
+
+test fn a_module_with_a_malformed_import_statement_refuses_the_run() -> Bool {
+  match partition_of(path: "dag/w/badimport.dag", source: "module w.badimport\n\nimport {\n") {
+    Absent => false
+    Present { value: outcome } => partition_refused(outcome: outcome)
+  }
+}
+
+// A REFUSAL IS ABSORBING: a later member cannot repair an earlier refusal, so a partition that
+// refused once never reports a population afterwards.
+test fn a_partition_refusal_is_not_repaired_by_a_later_member() -> Bool {
+  match member(path: "dag/w/ok.dag", source: "module w.ok\n\nimport std.types { Bool }\n") {
+    Absent => false
+    Present { value: good } => match partition_of(path: "dag/w/badpath.dag", source: "module 9\n") {
+      Absent => false
+      Present { value: refused } => partition_refused(outcome: step0_partition_step(outcome: refused, member: good))
+    }
   }
 }
