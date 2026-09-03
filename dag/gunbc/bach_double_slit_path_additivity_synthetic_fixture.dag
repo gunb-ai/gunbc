@@ -287,6 +287,9 @@ fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
       exposure: ambiguous_exposure,
       matching_rows: ambiguous_matching_rows,
     } => false
+    AdditivityInputsIncomplete { missing_arrangement: BothSlitsOpen, band: _, exposure: _ } => false
+    AdditivityInputsIncomplete { missing_arrangement: SlitOneOpen, band: _, exposure: _ } => false
+    AdditivityInputsIncomplete { missing_arrangement: BothSlitsBlocked, band: _, exposure: _ } => false
   }
 }
 

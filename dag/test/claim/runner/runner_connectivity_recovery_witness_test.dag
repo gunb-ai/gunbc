@@ -181,6 +181,9 @@ test fn wedged_slot_requests_incarnation_replace() -> Bool {
     RunnerIncarnationReplace { slot: _, from: _, cause: RemoteRegistrationOfflineWhileLocalAlive } => true
     RunnerConnectedNoop { local: _, remote: _ } => false
     RunnerRepairRefused { slot: _, cause: _ } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: RemoteRegistrationAbsentWhileLocalAlive } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: AcquireJobWedgeSessionDead } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: BrokerProgressWedged { silence_seconds: _ } } => false
   }
 }
 
@@ -226,6 +229,22 @@ test fn remotely_busy_slot_refuses_restart() -> Bool {
     RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => true
     RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
+    RunnerRepairRefused { slot: _, cause: RunnerStillConnected } => false
+    RunnerRepairRefused { slot: _, cause: RepairBlockedByRunnerWorker } => false
+    RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RegistrationGraceNotElapsed } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceUnobserved { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: LocalProcessNotActive } => false
+    RunnerRepairRefused { slot: _, cause: ObservationStale { observed_at: _, act_at: _ } } => false
+    RunnerRepairRefused { slot: _, cause: IncarnationChangedSinceObservation { expected: _, found: _ } } => false
+    RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RestartCooldownActive { seconds_remaining: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ConditionNotPersistentAcrossReobservation } => false
+    RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
+    RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
   }
 }
 
@@ -241,6 +260,22 @@ test fn stale_observation_refuses_restart() -> Bool {
     RunnerRepairRefused { slot: _, cause: ObservationStale { observed_at: _, act_at: _ } } => true
     RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
+    RunnerRepairRefused { slot: _, cause: RunnerStillConnected } => false
+    RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => false
+    RunnerRepairRefused { slot: _, cause: RepairBlockedByRunnerWorker } => false
+    RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RegistrationGraceNotElapsed } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceUnobserved { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: LocalProcessNotActive } => false
+    RunnerRepairRefused { slot: _, cause: IncarnationChangedSinceObservation { expected: _, found: _ } } => false
+    RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RestartCooldownActive { seconds_remaining: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ConditionNotPersistentAcrossReobservation } => false
+    RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
+    RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
   }
 }
 
@@ -285,6 +320,22 @@ test fn degraded_fleet_allows_only_canary_replace() -> Bool {
          RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => true
          RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
          RunnerConnectedNoop { local: _, remote: _ } => false
+         RunnerRepairRefused { slot: _, cause: RunnerStillConnected } => false
+         RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => false
+         RunnerRepairRefused { slot: _, cause: RepairBlockedByRunnerWorker } => false
+         RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => false
+         RunnerRepairRefused { slot: _, cause: RegistrationGraceNotElapsed } => false
+         RunnerRepairRefused { slot: _, cause: RemoteEvidenceRefused { reason: _ } } => false
+         RunnerRepairRefused { slot: _, cause: RemoteEvidenceUnobserved { reason: _ } } => false
+         RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => false
+         RunnerRepairRefused { slot: _, cause: LocalProcessNotActive } => false
+         RunnerRepairRefused { slot: _, cause: ObservationStale { observed_at: _, act_at: _ } } => false
+         RunnerRepairRefused { slot: _, cause: IncarnationChangedSinceObservation { expected: _, found: _ } } => false
+         RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => false
+         RunnerRepairRefused { slot: _, cause: RestartCooldownActive { seconds_remaining: _ } } => false
+         RunnerRepairRefused { slot: _, cause: ConditionNotPersistentAcrossReobservation } => false
+         RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
+         RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
        }
 }
 
@@ -320,6 +371,22 @@ test fn srv3_reach_refused_while_srv1_continues() -> Bool {
     RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => true
     RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
+    RunnerRepairRefused { slot: _, cause: RunnerStillConnected } => false
+    RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => false
+    RunnerRepairRefused { slot: _, cause: RepairBlockedByRunnerWorker } => false
+    RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RegistrationGraceNotElapsed } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceUnobserved { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: LocalProcessNotActive } => false
+    RunnerRepairRefused { slot: _, cause: ObservationStale { observed_at: _, act_at: _ } } => false
+    RunnerRepairRefused { slot: _, cause: IncarnationChangedSinceObservation { expected: _, found: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RestartCooldownActive { seconds_remaining: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ConditionNotPersistentAcrossReobservation } => false
+    RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
+    RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
   }
     && action_is_replace(
          action: decide_runner_connectivity_action_for_snapshot(
@@ -460,6 +527,22 @@ test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
                true
              RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
              RunnerConnectedNoop { local: _, remote: _ } => false
+             RunnerRepairRefused { slot: _, cause: RunnerStillConnected } => false
+             RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => false
+             RunnerRepairRefused { slot: _, cause: RepairBlockedByRunnerWorker } => false
+             RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => false
+             RunnerRepairRefused { slot: _, cause: RegistrationGraceNotElapsed } => false
+             RunnerRepairRefused { slot: _, cause: RemoteEvidenceRefused { reason: _ } } => false
+             RunnerRepairRefused { slot: _, cause: RemoteEvidenceUnobserved { reason: _ } } => false
+             RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => false
+             RunnerRepairRefused { slot: _, cause: LocalProcessNotActive } => false
+             RunnerRepairRefused { slot: _, cause: ObservationStale { observed_at: _, act_at: _ } } => false
+             RunnerRepairRefused { slot: _, cause: IncarnationChangedSinceObservation { expected: _, found: _ } } => false
+             RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => false
+             RunnerRepairRefused { slot: _, cause: RestartCooldownActive { seconds_remaining: _ } } => false
+             RunnerRepairRefused { slot: _, cause: ConditionNotPersistentAcrossReobservation } => false
+             RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
+             RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
            }
          Absent => false
        }
@@ -497,6 +580,22 @@ test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
     RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => true
     RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
+    RunnerRepairRefused { slot: _, cause: RunnerStillConnected } => false
+    RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => false
+    RunnerRepairRefused { slot: _, cause: RepairBlockedByRunnerWorker } => false
+    RunnerRepairRefused { slot: _, cause: RegistrationGraceNotElapsed } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceUnobserved { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: LocalProcessNotActive } => false
+    RunnerRepairRefused { slot: _, cause: ObservationStale { observed_at: _, act_at: _ } } => false
+    RunnerRepairRefused { slot: _, cause: IncarnationChangedSinceObservation { expected: _, found: _ } } => false
+    RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RestartCooldownActive { seconds_remaining: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ConditionNotPersistentAcrossReobservation } => false
+    RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
+    RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
   }
 }
 
@@ -514,5 +613,21 @@ test fn reobservation_refuses_when_act_at_advances_after_decision_receipt() -> B
     RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => true
     RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
+    RunnerRepairRefused { slot: _, cause: RunnerStillConnected } => false
+    RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => false
+    RunnerRepairRefused { slot: _, cause: RepairBlockedByRunnerWorker } => false
+    RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RegistrationGraceNotElapsed } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RemoteEvidenceUnobserved { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: LocalProcessNotActive } => false
+    RunnerRepairRefused { slot: _, cause: ObservationStale { observed_at: _, act_at: _ } } => false
+    RunnerRepairRefused { slot: _, cause: IncarnationChangedSinceObservation { expected: _, found: _ } } => false
+    RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: RestartCooldownActive { seconds_remaining: _ } } => false
+    RunnerRepairRefused { slot: _, cause: ConditionNotPersistentAcrossReobservation } => false
+    RunnerRepairRefused { slot: _, cause: ControlPlaneDegraded { reason: _ } } => false
+    RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => false
+    RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } => false
   }
 }
