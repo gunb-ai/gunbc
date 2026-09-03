@@ -266,6 +266,35 @@ test fn an_unread_pull_request_is_named_with_its_cause() -> Bool {
     && lines_contain(lines: lines, needle: "the local ref is stale")
 }
 
+// THE NAIVE COUNT IS THE CORRECT COUNT, AND THIS IS THE WITNESS THAT KEEPS IT SO.
+//
+// The obvious way to count this report's answer is `grep -c '^writer'`. Under the first cut of the
+// renderer -- summary `writers<TAB>8` above rows `writer<TAB>#10263...` -- that command returned
+// nine for eight writers, counting the header as a datum, and it is how this instrument's own
+// author first misreported its output. The repair was to rename the summary keys so the naive
+// command is CORRECT rather than warned about, and this witness is the thing that fails if any
+// future summary key reintroduces the prefix. It asserts the property directly -- lines beginning
+// `writer` number exactly the writers, lines beginning `unobserved` number exactly the unobserved --
+// over a report that has BOTH kinds of row, which is the only shape where the collision is visible.
+test fn writer_set_row_keys_do_not_collide_with_summary_keys() -> Bool {
+  let report = writer_set_report(
+    subject: subject_file,
+    observations: [
+      read_of(number: 701, author: "olivia", touched: [subject_file]),
+      read_of(number: 702, author: "peggy", touched: [subject_file]),
+      PrPathsUnobserved {
+        pull: pull(number: 703, author: "quentin"),
+        cause: DiffRefused { head_oid: "oid-703", detail: "fatal: bad object" }
+      }
+    ]
+  )
+  let lines = writer_set_lines(report: report)
+  filter(lines, l => starts_with(s: l, prefix: "writer")).length() == 2
+    && filter(lines, l => starts_with(s: l, prefix: "unobserved")).length() == 1
+    && report.writers.length() == 2
+    && report_unobserved(report: report).length() == 1
+}
+
 // THE REPORT STATES ITS OWN SCOPE. A writer set taken with rename detection ON is a different
 // observation, and a report that did not say which it was would be quoted as the other.
 test fn the_report_states_its_rule_and_its_diff_scope() -> Bool {

@@ -297,6 +297,24 @@ fn writer_summary_lines(report: WriterSetReport) -> List<String> {
   }
 }
 
+// NO SUMMARY KEY IS A PREFIX OF A ROW KEY, AND THAT IS THE POINT OF THE `total_` PREFIXES.
+//
+// The first cut of this renderer wrote the count as `writers<TAB>8` above rows spelled
+// `writer<TAB>#10263<TAB>...`. Both match `^writer`, so the obvious way to count the answer --
+// `grep -c '^writer'` -- returns EIGHT PLUS ONE, silently, by counting the header as a datum. That
+// is not hypothetical: it is how this instrument's own author first misreported its output, while
+// the tool printed the correct number the whole time. `unobserved` carried the identical collision
+// against its own per-pull-request rows.
+//
+// A note in the header telling readers to mind the summary row would be a rule, and a rule is not a
+// firing mechanism. The shape is. So the summary keys are renamed until the naive command is
+// CORRECT rather than merely warned about: with `total_writers` and `total_unobserved`,
+// `grep -c '^writer'` and `grep -c '^unobserved'` both yield exactly the row count they look like
+// they yield. The miscount is not detected, it is unwritable -- the section 4b move from validation
+// to construction, applied to an output format.
+//
+// `writer_set_row_keys_do_not_collide_with_summary_keys` is the executing evidence, and it goes red
+// on any future summary key that reintroduces the prefix.
 fn writer_set_lines(report: WriterSetReport) -> List<String> {
   append(
     append(
@@ -304,9 +322,9 @@ fn writer_set_lines(report: WriterSetReport) -> List<String> {
         concat("subject\t", report.subject),
         concat("match_rule\t", path_match_rule_text(rule: report.rule)),
         concat("diff_scope\t", diff_path_scope_text(scope: report.scope)),
-        concat("pull_requests\t", to_string(report.observations.length())),
-        concat("unobserved\t", to_string(report_unobserved(report: report).length())),
-        concat("writers\t", to_string(report.writers.length()))
+        concat("total_pull_requests\t", to_string(report.observations.length())),
+        concat("total_unobserved\t", to_string(report_unobserved(report: report).length())),
+        concat("total_writers\t", to_string(report.writers.length()))
       ],
       items: writer_summary_lines(report: report)
     ),
