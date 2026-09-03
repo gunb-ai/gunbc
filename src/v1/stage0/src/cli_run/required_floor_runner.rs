@@ -8896,14 +8896,25 @@ pub fn run_required_floor(
             // NOW-PASSING — blocks until the roster row is removed, the wet mirror of the
             // dry stale-quarantine.
             //
-            // THE PUBLICATION WALL (residual B) waives exactly the two per-identity red
-            // classes, and only when THIS run's own diff is a valid publication
-            // transaction: every changed path inside the receipt namespace (nothing
-            // departed elsewhere) and the attempt sequence advancing over the base tree's
-            // envelope. Both classes carry remedies outside the receipt namespace, so a
-            // receipt-confined refresh PR could not resolve them by construction.
-            // Envelope-level standings are never waived. An unobservable diff or base
-            // leaves the transaction invalid — the wall fails closed toward blocking.
+            // THE PUBLICATION WALL (residual B) waives exactly TWO of the four
+            // per-identity classes -- `unexpected_red` and `now_passing` -- and only when
+            // THIS run's own diff is a valid publication transaction: every changed path
+            // inside the receipt namespace (nothing departed elsewhere) and the attempt
+            // sequence advancing over the base tree's envelope. Those two are OBSERVED
+            // VERDICTS that disagree with the roster, so publishing them is exactly the
+            // honest act, and their remedies live outside the receipt namespace.
+            //
+            // `no_verdict` AND `cost_debt` ARE NEVER WAIVED, and the asymmetry is the whole
+            // wall (review 59383). `no_verdict` is the ABSENCE of a verdict -- publishing it
+            // would merge an attempt in which a routed identity produced nothing, which is
+            // the fabricated-plausible-output arm of DESIGN.md §5 wearing a receipt's
+            // costume: the transaction would convert a hole into a green merge path.
+            // `cost_debt` DID reach a verdict and then exceeded the line, so the figure is
+            // exact and republishing it waives a cost the lane measured. A failure arm must
+            // refuse, never widen.
+            //
+            // Envelope-level standings are never waived either. An unobservable diff or base
+            // leaves the transaction invalid -- the wall fails closed toward blocking.
             if !standing.blocks() || admitted_under_lease {
                 let envelope = wet_route_envelope
                     .as_ref()
@@ -8930,11 +8941,7 @@ pub fn run_required_floor(
                 for id in &held {
                     eprintln!("[floor-wet-route] known-red-held identity={id}");
                 }
-                if !unexpected_red.is_empty()
-                    || !now_passing.is_empty()
-                    || !no_verdict.is_empty()
-                    || !cost_debt.is_empty()
-                {
+                if !unexpected_red.is_empty() || !now_passing.is_empty() {
                     let transaction_valid = wet_receipt_publication_transaction_valid_for_this_run(
                         &wet_route_receipt_json_rel_path,
                         &wet_route_receipt_tsv_rel_path,
@@ -8943,11 +8950,13 @@ pub fn run_required_floor(
                     let waived = match transaction_valid {
                         Ok(true) => {
                             eprintln!(
-                                "[floor-wet-route] per-identity reds ADMITTED as a \
-                                 publication transaction: the diff is confined to the \
-                                 receipt namespace and attempt_seq advances — main will \
-                                 carry the honest verdicts, and every other run reds on \
-                                 them until repaired or enrolled"
+                                "[floor-wet-route] unexpected_red and now_passing \
+                                 ADMITTED as a publication transaction: the diff is \
+                                 confined to the receipt namespace and attempt_seq \
+                                 advances — main will carry the honest verdicts, and every \
+                                 other run reds on them until repaired or enrolled. \
+                                 no_verdict and cost_debt are NOT waivable and are \
+                                 evaluated below regardless"
                             );
                             true
                         }
@@ -8977,26 +8986,26 @@ pub fn run_required_floor(
                                 now_passing.join(", ")
                             ));
                         }
-                        if !no_verdict.is_empty() {
-                            outcome.wet_route_standing_blocking.push(format!(
-                                "wet no-subject-verdict for [{}] — the lane produced no \
-                                 verdict for these rows, which no assertion-false \
-                                 enrollment can hold; repair the lane or the witness route",
-                                no_verdict.join(", ")
-                            ));
-                        }
-                        if !cost_debt.is_empty() {
-                            outcome.wet_route_standing_blocking.push(format!(
-                                "wet completed-over-budget for [{}] — these rows REACHED \
-                                 their verdict and then exceeded the lane's line, so the \
-                                 figure is exact and the debt is a COST, not a defect: \
-                                 reduce the cost, or move the row to a lane declaring its \
-                                 own ceiling. Do not enroll it as expected-red, which \
-                                 asserts a failure it does not exhibit",
-                                cost_debt.join(", ")
-                            ));
-                        }
                     }
+                }
+                if !no_verdict.is_empty() {
+                    outcome.wet_route_standing_blocking.push(format!(
+                        "wet no-subject-verdict for [{}] — the lane produced no \
+                             verdict for these rows, which no assertion-false \
+                             enrollment can hold; repair the lane or the witness route",
+                        no_verdict.join(", ")
+                    ));
+                }
+                if !cost_debt.is_empty() {
+                    outcome.wet_route_standing_blocking.push(format!(
+                        "wet completed-over-budget for [{}] — these rows REACHED \
+                             their verdict and then exceeded the lane's line, so the \
+                             figure is exact and the debt is a COST, not a defect: \
+                             reduce the cost, or move the row to a lane declaring its \
+                             own ceiling. Do not enroll it as expected-red, which \
+                             asserts a failure it does not exhibit",
+                        cost_debt.join(", ")
+                    ));
                 }
             }
             eprintln!(

@@ -700,7 +700,7 @@ data wet_lane_seed_admission_pairing_stall: GuaranteeStall = GuaranteeStall {
 // from it inherits the weaker rule. It is filed as a countable debt rather than left inside the
 // admission stall's prose, because it will be invisible the moment that PR merges.
 data wet_route_model_lags_seed_stall: GuaranteeStall = GuaranteeStall {
-  subject: "v2.workflow.floor_wet_route authors three rules its own seed realization has already superseded: the executor arm returns fifth of nine rather than last (so ExecutorSnapshotDifferent means only that executor disagreement was the FIRST blocking arm reached, with roster join, identity conformance, outcome vocabulary, age sanity and staleness unevaluated); wet_route_gate_disposition_for_receipt accepts `envelope` and `envelope_digest` as independent parameters rather than deriving the digest from the envelope it judges; and the negative-age arm, while present here, is the one the seed had to be taught separately",
+  subject: "v2.workflow.floor_wet_route authors five rules its own seed realization has already superseded: the executor arm returns fifth of nine rather than last (so ExecutorSnapshotDifferent means only that executor disagreement was the FIRST blocking arm reached, with roster join, identity conformance, outcome vocabulary, age sanity and staleness unevaluated); wet_route_gate_disposition_for_receipt accepts `envelope` and `envelope_digest` as independent parameters rather than deriving the digest from the envelope it judges; the same function takes `roster_identities` and `roster_digest` as a second independent subject/digest pair; wet_route_identity_rows_block_with_publication waives ALL FOUR per-identity classes under a valid publication transaction where only unexpected_red and now_passing are waivable; and the negative-age arm, while present here, is the one the seed had to be taught separately",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
@@ -708,10 +708,12 @@ data wet_route_model_lags_seed_stall: GuaranteeStall = GuaranteeStall {
     members: [
       "v2.workflow.floor_wet_route wet_lane_receipt_standing -- executor arm ordered fifth of nine",
       "v2.workflow.floor_wet_route wet_route_gate_disposition_for_receipt -- envelope and envelope_digest are independent parameters, demonstrated constructible by v2.test.floor_wet_route.wet_lease_admits_an_envelope_whose_content_the_digest_does_not_name",
+      "v2.workflow.floor_wet_route wet_route_gate_disposition_for_receipt -- roster_identities and roster_digest are a SECOND independent subject/digest pair in the same signature, the recurrence that makes the shape a class rather than an instance",
+      "v2.workflow.floor_wet_route wet_route_identity_rows_block_with_publication -- returns false unconditionally under a valid publication transaction, waiving no_verdict and cost_debt alongside the two waivable classes; the seed refuses both regardless (review 59383)",
       "v2.workflow.floor_wet_route -- the module is a term of its own semantic subject, so repairing it requires a re-dispatch and a fresh lease grant"
     ]
   },
-  next_rung_trigger: "the three rules are authored in v2.workflow.floor_wet_route itself, landed on a head whose wet receipt was dispatched AFTER them so the subject digest covers them -- which means the repair rides a re-dispatch rather than waiting for one, and the admitting witness above flips from a recorded observation to a refusal control in the same change. NOT satisfied by the seed continuing to be stricter, which is the state this row exists to count."
+  next_rung_trigger: "the five rules are authored in v2.workflow.floor_wet_route itself, landed on a head whose wet receipt was dispatched AFTER them so the subject digest covers them -- which means the repair rides a re-dispatch rather than waiting for one, and the admitting witness above flips from a recorded observation to a refusal control in the same change. NOT satisfied by the seed continuing to be stricter, which is the state this row exists to count."
 }
 
 data all_guarantee_stalls: List<GuaranteeStall> = [

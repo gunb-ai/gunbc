@@ -31,9 +31,12 @@ import gunbc.discovery_census {
 // `DeclinedDiscoveryExcluded`: both are decided before a module reaches the prepared subject,
 // from facts a module NAME cannot carry. So their arms here are a claim about that
 // unreachability, not an omission padded out to satisfy exhaustiveness.
+// `PlannedAsChangedWitness` is also unreachable here: selection wraps the ordinary disposition
+// later, after this function has answered. Its arms therefore answer false at every direct call.
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedRoutedToWetLane,
   required_floor_site_disposition,
 }
@@ -217,6 +220,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
     DeclinedRoutedToWetLane => false
   }
 }
@@ -234,6 +238,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
     DeclinedRoutedToWetLane => false
   }
 }
@@ -254,6 +259,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
     DeclinedRoutedToWetLane => false
   }
 }
@@ -271,6 +277,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
     DeclinedRoutedToWetLane => false
   }
 }
@@ -291,6 +298,7 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
     DeclinedRoutedToWetLane => false
   }
 }
@@ -356,21 +364,16 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     PlannedAsChangedWitness => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
+    DeclinedOutsideRequiredGate => false
   }
 }
 
-// THE POSITIVE CONTROL BESIDE IT: the same module, an identity the roster does not hold, keeps
-// its HOME disposition. That home is `DeclinedOutsideRequiredGate` — the module's real spelling
-// is `dag.test.claim.…`, which no `required_gate_prefixes` row admits — and the discriminating
-// fact is only that it is NOT `DeclinedCostDebt`: a module-grain reading of the fourth arm
-// would decline the sibling for cost too, and this row would go red. An earlier revision of
-// this witness expected `Planned`, a claim about the GATE the fixture never satisfied; the
-// witness had never executed: on main this module sits outside the gate closure, so its rows
-// read disposition=declined_outside_gate_closure outcome=not_executed in the disposition
-// receipt — no population hole, just a lawful decline. This branch pulled the module into the
-// closure, it compiled (then refused on the non-exhaustive match) for the first time, and the
-// first real execution surfaced the wrong expectation, not a disposition regression.
-test fn w_unrostered_sibling_keeps_its_home_disposition_not_cost_debt() -> Bool {
+// THE MODULE IS OUTSIDE THE REQUIRED GATE, independently of its one cost-rostered identity.
+// The rostered row above declines for cost because cost precedes the gate. An unrostered sibling
+// in the same module reaches the next decision and declines outside the gate; calling it planned
+// was a stale assertion that ordinary floor selection never executed, until this file changed.
+test fn w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline() -> Bool {
   match required_floor_site_disposition(
     module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.a_sibling_the_roster_does_not_hold"
@@ -384,6 +387,7 @@ test fn w_unrostered_sibling_keeps_its_home_disposition_not_cost_debt() -> Bool 
     DeclinedRoutedToWetLane => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -406,6 +410,7 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     Planned => false
     PlannedAsChangedWitness => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
   }
 }
 
@@ -453,6 +458,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      PlannedAsChangedWitness => false
       DeclinedRoutedToWetLane => false
     })
     && all(split.declined, r => match r.disposition {
@@ -464,6 +470,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      PlannedAsChangedWitness => false
       DeclinedRoutedToWetLane => false
     })
 }
