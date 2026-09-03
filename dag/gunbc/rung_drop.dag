@@ -25,11 +25,20 @@ module gunbc.rung_drop
 // multi-kilobyte line, so a lane flipping `standing` and a lane extending `authored` on the SAME row
 // collided with certainty -- three lanes in one night. That row carries the corrected rule and the
 // reason both shapes fail; it is not restated here. What is carrier-specific is the answer: a row is
-// a FILE under `dag/gunbc/rung_drop/`, so two lanes amending two rows share no line, two lanes
-// amending DIFFERENT FIELDS of one row share no line because the fields are lines, and a lane
-// declaring a NEW drop adds a file git resolves with no merge. The only text left shared is
-// `gunbc.rung_drop.roster`, one bare identifier per row: no tail to factor out, nothing an additive
-// resolution can drop.
+// a FILE under `dag/gunbc/rung_drop/`, so two lanes amending two rows share no line and a lane
+// declaring a NEW drop adds a file git resolves with no merge at all. The only text left shared is
+// `gunbc.rung_drop.roster`, one bare identifier per row: two lanes appending there still conflict --
+// measured, two regions -- but each region is a whole line on both sides with no shared suffix, so
+// the additive resolution is correct and total, which is the one property the one-line row bought
+// and this shape keeps.
+//
+// THE BLANK LINE BETWEEN FIELDS IS LOAD-BEARING AND IS NOT FORMATTING. One field per line does NOT
+// make two field edits independent: a three-way merge needs an UNCHANGED line BETWEEN two changed
+// regions to keep them apart, so a `standing` flip and an `authored` extension conflict when those
+// fields are adjacent, exactly as they did on one line. Measured with `git merge-file` on
+// `floor_cut_heal`: one-line row, 1 conflict; one field per line, adjacent, 1 conflict; separated by
+// a blank line, 0 conflicts with both edits present. Removing the blank lines here restores the
+// defect this carrier was reshaped to remove.
 //
 // THE RUNG IS UNCHANGED AND IS STATED RATHER THAN CLAIMED BY THE SPLIT. Nothing refuses a second
 // `data` row added to one of those files or to the roster module, which reintroduces the geometry.
