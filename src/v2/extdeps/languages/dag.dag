@@ -1,5 +1,10 @@
 module v2.extdeps.languages.dag
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import v2.extdeps.languages.dag_add_fixture {
+  dag_add_arrow_signature_fixture,
+  dag_add_arrow_with_body_fixture,
+  dag_add_binary_body_fixture
+}
 import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
@@ -4397,10 +4402,6 @@ fn dag_arrow_with_body_node(
   }
 }
 
-fn dag_add_operator_node() -> Node {
-  dag_type_atom_node(identity: ^dag_token_plus)
-}
-
 fn dag_arrow_domain_conj_node() -> Node {
   let children = fold_list(
     xs: dag_add_param_binding_ids(),
@@ -4441,63 +4442,16 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
 }
 
 fn dag_add_arrow_signature_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge {
-        label: Positional,
-        target: dag_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
-      }
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  dag_add_arrow_signature_fixture
 }
 
 fn dag_add_binary_body_node() -> Node {
-  dag_binary_body_node(
-    operator: dag_add_operator_node(),
-    left_binding: ^dag_binding_param_x,
-    right_binding: ^dag_binding_param_y
-  )
-}
-
-fn dag_add_binary_body_swapped_operands_node() -> Node {
-  dag_binary_body_node(
-    operator: dag_add_operator_node(),
-    left_binding: ^dag_binding_param_y,
-    right_binding: ^dag_binding_param_x
-  )
+  dag_add_binary_body_fixture
 }
 
 fn dag_add_arrow_with_body_node() -> Node {
-  dag_arrow_with_body_node(
-    domain: dag_arrow_domain_conj_node(),
-    return_type_binding: ^dag_binding_type_int,
-    body: dag_add_binary_body_node()
-  )
+  dag_add_arrow_with_body_fixture
 }
-
-fn dag_add_arrow_with_body_swapped_operands_node() -> Node {
-  dag_arrow_with_body_node(
-    domain: dag_arrow_domain_conj_node(),
-    return_type_binding: ^dag_binding_type_int,
-    body: dag_add_binary_body_swapped_operands_node()
-  )
-}
-
-data dag_add_arrow_signature_fixture: Node = dag_add_arrow_signature_node()
-data dag_add_binary_body_fixture: Node = dag_add_binary_body_node()
-data dag_add_binary_body_swapped_operands_fixture: Node = dag_add_binary_body_swapped_operands_node()
-data dag_add_arrow_with_body_fixture: Node = dag_add_arrow_with_body_node()
-data dag_add_arrow_with_body_swapped_operands_fixture: Node = dag_add_arrow_with_body_swapped_operands_node()
 
 fn dag_pick_arrow_domain_conj_node() -> Node {
   Node {
