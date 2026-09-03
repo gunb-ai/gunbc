@@ -1,0 +1,984 @@
+module test.claim.namespace_step0_canary_v2_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash {
+  Fnv1a64Structural,
+  Sha256Digest,
+  content_hash_atom,
+  sha256_hex_digest
+}
+import std.decl_ref { DeclarationRef }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.namespace_step0_subject_collector { Step0PopulationIdentity, Step0SubjectMember }
+import gunbc.namespace_step0_candidate_run {
+  Step0SubjectPartition,
+  Step0SubjectPartitionOutcome,
+  Step0SubjectPartitioned,
+  Step0SubjectPartitionRefused,
+  Step0DifferentialOutcome,
+  Step0DifferentialUndefined,
+  Step0DifferentialComputed,
+  step0_histogram_differential,
+  step0_partition_step
+}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import gunbc.namespace_step0_binding_provenance_contract {
+  BindingProvenanceObservable,
+  BindingProvenanceUnobservable,
+  step0_binding_provenance_consequence,
+  step0_binding_provenance_receipt_contract
+}
+import gunbc.namespace_step0_canary_v2 {
+  NamespaceStep0V2Receipt,
+  NamespaceStep0V2Admission,
+  NamespaceStep0V2ReceiptAdmitted,
+  NamespaceStep0V2ReceiptRefused,
+  Step0V2ReceiptField,
+  V2ContractIdentityField,
+  V2SourceCommitField,
+  V2SourceTreeField,
+  V2CompilerProgramField,
+  V2CompilerExecutableField,
+  V2InputSubjectManifestField,
+  V2SubjectPartitionField,
+  V2ProductionPrefixField,
+  V2FrontierField,
+  V2ImportDependenceField,
+  Step0V2CompletedTransition,
+  Step0V2ExcludedSource,
+  Step0V2Frontier,
+  Step0V2SubjectEntered,
+  Step0V2SubjectNotEntered,
+  ApplyTypedImportStrip,
+  CollectSubjectPopulation,
+  Step0BlockingMeasure,
+  Step0CompileObservation,
+  Step0V2CompileStanding,
+  CompileInstrumentUnavailable,
+  CompileAttemptedAndRefused,
+  CompileAttemptedAndCompleted,
+  Step0HistogramDifferential,
+  Step0DifferentialStanding,
+  HistogramsIdentical,
+  HistogramBucketsChanged,
+  OccurrenceJoinUnavailable,
+  Step0PairStanding,
+  PairObservationIncomplete,
+  BothCompileAttemptsRefused,
+  BothCompileAttemptsCompleted,
+  CompileOutcomesDiffer,
+  Step0OrderInvariance,
+  OrderInvarianceHeld,
+  OrderInvarianceNotMeasured,
+  V2PairStandingField,
+  step0_v2_entered_prefix_for,
+  Step0ImportDependenceStanding,
+  ImportDependenceNotJudged,
+  ImportDependenceCensusObserved,
+  admit_namespace_step0_v2_receipt,
+  namespace_step0_canary_v2_contract,
+  namespace_step0_v2_fixture_receipt,
+  namespace_step0_v2_manifest_identity,
+  step0_import_dependence_not_judged,
+  step0_v2_entered_prefix,
+  step0_v2_pre_strip_prefix
+}
+
+// THE EXECUTED EVIDENCE FOR THE SECOND CANARY CONTRACT'S CLASSIFIER. Every witness here is a
+// FIXTURE receipt authored through the fixture door and scored by the production classifier; none
+// of them runs the one-dispatch command, and none of them can, because the production mint admits
+// only that fold. What this entry establishes is that the classifier's refusals DISCRIMINATE --
+// that the shapes production must never produce are refused, at the field that owns them, rather
+// than being unrepresentable-in-principle and unchecked-in-fact.
+//
+// WHY A FIXTURE DOOR EXISTS AT ALL, since the first contract's freeze note warns about exactly
+// this: a classifier whose red is unauthorable is a permanently green decoration, and DESIGN 4b
+// says to ask whether the RED is authorable BEFORE writing the check. Here it is authorable as a
+// fixture and nowhere else, so the fixture is where it belongs -- and the two doors are sealed to
+// disjoint callers, so authoring a receipt here can never advance the canary.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn commit_hex() -> String { "20caf4eb0477c5a46d5b0d1302e337db14fcbd59" }
+
+fn tree_hex() -> String { "a6a6e0a531e23cc88fbbe01a2fa582b84867c625" }
+
+fn foreign_hex() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+
+fn compiler_hex() -> String { "a89dfc88a9ef07b6648f5a7e1f1fa5bafd8272defb74300910b18406786f6fa2" }
+
+fn other_compiler_hex() -> String { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+
+fn population(members: Int, tag: String) -> Step0PopulationIdentity {
+  Step0PopulationIdentity {
+    member_count: members,
+    digest: content_hash_atom(value: tag as NonEmptyStr)
+  }
+}
+
+fn excluded_one() -> List<Step0V2ExcludedSource> {
+  [Step0V2ExcludedSource {
+    path: "src/v1/stage0/tests/fixtures/fact_cardinality_split_brace.dag" as NonEmptyStr
+  }]
+}
+
+// The observations carry the population they compiled, because the classifier checks that the
+// compile consumed the population the frontier says it did.
+fn observation(members: Int, tag: String, rows: Int, occurrences: Int) -> Step0CompileObservation {
+  Step0CompileObservation {
+    source_population: population(members: members, tag: tag),
+    source_digest: "fixture-source-digest" as NonEmptyStr,
+    compiler_digest: "fixture-compiler-digest" as NonEmptyStr,
+    histogram: [],
+    blocking: Step0BlockingMeasure { histogram_rows: rows, occurrences: occurrences }
+  }
+}
+
+fn refused_standing(tag: String) -> Step0V2CompileStanding {
+  CompileAttemptedAndRefused { observation: observation(members: 9, tag: tag, rows: 448, occurrences: 1204) }
+}
+
+fn pre_strip_refused() -> Step0V2CompileStanding {
+  CompileAttemptedAndRefused { observation: observation(members: 9, tag: "admitted", rows: 45, occurrences: 96) }
+}
+
+fn both_refused() -> Step0PairStanding {
+  BothCompileAttemptsRefused {
+    differential_standing: HistogramBucketsChanged {
+      differential: Step0HistogramDifferential {
+        gross_increases: 1108,
+        gross_decreases: 0,
+        unchanged_buckets: 45,
+        pre_only_buckets: 0,
+        post_only_buckets: 403
+      }
+    }
+  }
+}
+
+fn entered_frontier(stripped_tag: String, compile_tag: String, removed: Int) -> Step0V2Frontier {
+  Step0V2SubjectEntered {
+    stripped_population: population(members: 9, tag: stripped_tag),
+    compile_input_population: population(members: 9, tag: compile_tag),
+    removed_statement_count: removed,
+    compile_standing: refused_standing(tag: compile_tag)
+  }
+}
+
+fn not_entered_frontier() -> Step0V2Frontier {
+  Step0V2SubjectNotEntered {
+    blocked_at: ApplyTypedImportStrip,
+    cause: "the typed rewrite refused" as NonEmptyStr
+  }
+}
+
+// THE ONE ADMITTED CALLER OF THE FIXTURE MINT.
+fn fixture_receipt(
+  contract_identity: NonEmptyStr,
+  commit: GitObjectId,
+  tree: GitObjectId,
+  compiler_program: NonEmptyStr,
+  compiler: Sha256Digest,
+  manifest: NonEmptyStr,
+  collected: Step0PopulationIdentity,
+  excluded: List<Step0V2ExcludedSource>,
+  excluded_projection: Step0PopulationIdentity,
+  admitted: Step0PopulationIdentity,
+  compile_entry: NonEmptyStr,
+  pre_strip_standing: Step0V2CompileStanding,
+  pair_standing: Step0PairStanding,
+  order_invariance: Step0OrderInvariance,
+  prefix: List<Step0V2CompletedTransition>,
+  frontier: Step0V2Frontier,
+  import_dependence: Step0ImportDependenceStanding
+) -> NamespaceStep0V2Receipt {
+  namespace_step0_v2_fixture_receipt(
+    contract_identity: contract_identity,
+    source_commit: commit,
+    source_tree: tree,
+    compiler_program: compiler_program,
+    compiler_executable_sha256: compiler,
+    input_subject_manifest: manifest,
+    collected_population: collected,
+    excluded_sources: excluded,
+    excluded_population: excluded_projection,
+    admitted_population: admitted,
+    compile_entry: compile_entry,
+    pre_strip_standing: pre_strip_standing,
+    pair_standing: pair_standing,
+    order_invariance: order_invariance,
+    completed_production_prefix: prefix,
+    frontier: frontier,
+    import_dependence: import_dependence
+  )
+}
+
+fn admitted_is(a: NamespaceStep0V2Admission) -> Bool {
+  match a {
+    NamespaceStep0V2ReceiptAdmitted => true
+    NamespaceStep0V2ReceiptRefused { field: _, cause: _ } => false
+  }
+}
+
+fn refused_at(a: NamespaceStep0V2Admission, want: Step0V2ReceiptField) -> Bool {
+  match a {
+    NamespaceStep0V2ReceiptAdmitted => false
+    NamespaceStep0V2ReceiptRefused { field: got, cause: _ } => got == want
+  }
+}
+
+// One shaped receipt plus one scoring call, so every arm below differs from the admitted control by
+// exactly the field it is about.
+fn score(
+  contract_identity: NonEmptyStr,
+  commit_hex_in: String,
+  tree_hex_in: String,
+  compiler_program: NonEmptyStr,
+  compiler_hex_in: String,
+  manifest: NonEmptyStr,
+  collected: Step0PopulationIdentity,
+  excluded: List<Step0V2ExcludedSource>,
+  excluded_projection: Step0PopulationIdentity,
+  admitted: Step0PopulationIdentity,
+  compile_entry: NonEmptyStr,
+  pre_strip_standing: Step0V2CompileStanding,
+  pair_standing: Step0PairStanding,
+  order_invariance: Step0OrderInvariance,
+  prefix: List<Step0V2CompletedTransition>,
+  frontier: Step0V2Frontier,
+  import_dependence: Step0ImportDependenceStanding
+) -> NamespaceStep0V2Admission? {
+  match git_sha1_object_id(hex: commit_hex_in) {
+    Absent => none
+    Present { value: receipt_commit } => match git_sha1_object_id(hex: tree_hex_in) {
+      Absent => none
+      Present { value: receipt_tree } => match sha256_hex_digest(hex: compiler_hex_in) {
+        Absent => none
+        Present { value: receipt_compiler } => match git_sha1_object_id(hex: commit_hex()) {
+          Absent => none
+          Present { value: expected_commit } => match git_sha1_object_id(hex: tree_hex()) {
+            Absent => none
+            Present { value: expected_tree } => match sha256_hex_digest(hex: compiler_hex()) {
+              Absent => none
+              Present { value: expected_compiler } => Present {
+                value: admit_namespace_step0_v2_receipt(
+                  receipt: fixture_receipt(
+                    contract_identity: contract_identity,
+                    commit: receipt_commit,
+                    tree: receipt_tree,
+                    compiler_program: compiler_program,
+                    compiler: receipt_compiler,
+                    manifest: manifest,
+                    collected: collected,
+                    excluded: excluded,
+                    excluded_projection: excluded_projection,
+                    admitted: admitted,
+                    compile_entry: compile_entry,
+                    pre_strip_standing: pre_strip_standing,
+                    pair_standing: pair_standing,
+                    order_invariance: order_invariance,
+                    prefix: prefix,
+                    frontier: frontier,
+                    import_dependence: import_dependence
+                  ),
+                  expected_commit: expected_commit,
+                  expected_tree: expected_tree,
+                  expected_compiler_sha256: expected_compiler
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn coherent_entered() -> NamespaceStep0V2Admission? {
+  score(
+    contract_identity: namespace_step0_canary_v2_contract.identity,
+    commit_hex_in: commit_hex(),
+    tree_hex_in: tree_hex(),
+    compiler_program: "target/release/gunbc" as NonEmptyStr,
+    compiler_hex_in: compiler_hex(),
+    manifest: namespace_step0_v2_manifest_identity(),
+    collected: population(members: 10, tag: "collected"),
+    excluded: excluded_one(),
+    excluded_projection: population(members: 1, tag: "excluded"),
+    admitted: population(members: 9, tag: "admitted"),
+    compile_entry: "dag/std/types.dag" as NonEmptyStr,
+    pre_strip_standing: pre_strip_refused(),
+    pair_standing: both_refused(),
+    order_invariance: OrderInvarianceHeld,
+    prefix: step0_v2_entered_prefix,
+    frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+    import_dependence: step0_import_dependence_not_judged()
+  )
+}
+
+fn holds(a: NamespaceStep0V2Admission?, f: fn(NamespaceStep0V2Admission) -> Bool) -> Bool {
+  match a {
+    Absent => false
+    Present { value: admission } => f(admission)
+  }
+}
+
+// THE POSITIVE CONTROLS. Without these every refusal below would be satisfied by a classifier that
+// refuses everything.
+test fn a_coherent_entered_receipt_is_admitted() -> Bool {
+  holds(a: coherent_entered(), f: fn(a) { admitted_is(a: a) })
+}
+
+test fn a_coherent_unentered_receipt_is_admitted() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
+      pair_standing: PairObservationIncomplete { cause: "the typed rewrite refused" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no compile ran, so there was no order to vary" as NonEmptyStr },
+      prefix: step0_v2_pre_strip_prefix,
+      frontier: not_entered_frontier(),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { admitted_is(a: a) }
+  )
+}
+
+// THE PARTITION LAW IS THE STRUCTURAL PREDICATE'S TEETH. A member that was neither stripped nor
+// named as excluded has no representation in an admitted receipt, so a subject that quietly shrank
+// cannot be reported as a whole one.
+test fn a_partition_that_does_not_exhaust_the_collected_population_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 12, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2SubjectPartitionField) }
+  )
+}
+
+test fn a_foreign_contract_identity_refuses_at_the_identity_field() -> Bool {
+  holds(
+    a: score(
+      contract_identity: "namespace-step0-strip-entry-canary-v1" as NonEmptyStr,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2ContractIdentityField) }
+  )
+}
+
+test fn a_foreign_tree_refuses_at_the_tree_field() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: foreign_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2SourceTreeField) }
+  )
+}
+
+test fn a_different_compiler_executable_refuses_at_the_executable_field() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: other_compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2CompilerExecutableField) }
+  )
+}
+
+// A PREFIX THAT DISAGREES WITH THE FRONTIER IS THE V1 DEFECT'S SHAPE, and it is checked in both
+// directions: an entered subject that reports the pre-strip prefix, and an unentered one that
+// reports the strip as completed.
+test fn an_entered_frontier_with_the_pre_strip_prefix_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_pre_strip_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2ProductionPrefixField) }
+  )
+}
+
+test fn an_unentered_frontier_with_the_entered_prefix_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
+      pair_standing: PairObservationIncomplete { cause: "the typed rewrite refused" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no compile ran, so there was no order to vary" as NonEmptyStr },
+      prefix: step0_v2_entered_prefix,
+      frontier: not_entered_frontier(),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2ProductionPrefixField) }
+  )
+}
+
+// AN ENTERED SUBJECT IN WHICH NOTHING WAS REMOVED WAS NOT ENTERED. This is the arm that stops a run
+// whose strip was a no-op from reporting subject entry.
+test fn an_entered_frontier_that_removed_nothing_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 0),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2FrontierField) }
+  )
+}
+
+// THE COMPILE MUST HAVE CONSUMED THE POPULATION THE STRIP PRODUCED. Without this arm a receipt
+// could report a strip of one population and a compile of another, which is the two-producer defect
+// this whole contract exists to close, one stage further down.
+test fn a_compile_over_a_population_the_strip_did_not_produce_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "some-other-population", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2FrontierField) }
+  )
+}
+
+// AN UNENTERED SUBJECT CANNOT CARRY A CENSUS, because there is nothing stripped for a census to be
+// about.
+test fn a_census_on_an_unentered_subject_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: CompileInstrumentUnavailable { cause: "the typed rewrite refused" as NonEmptyStr },
+      pair_standing: PairObservationIncomplete { cause: "the typed rewrite refused" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no compile ran, so there was no order to vary" as NonEmptyStr },
+      prefix: step0_v2_pre_strip_prefix,
+      frontier: not_entered_frontier(),
+      import_dependence: ImportDependenceCensusObserved {
+        receipt_identity: "planted-census" as NonEmptyStr,
+        subject_population_identity: population(members: 9, tag: "stripped"),
+        completeness: "planted" as NonEmptyStr
+      }
+    ),
+    f: fn(a) { refused_at(a: a, want: V2ImportDependenceField) }
+  )
+}
+
+// A CENSUS MUST NAME THE POPULATION THIS RECEIPT OBSERVED. A census bound to a foreign subject is
+// the row the binding-provenance contract's fourth conservation law forbids, refused here at the
+// receipt grain before any census exists to write one.
+test fn a_census_naming_a_foreign_population_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: ImportDependenceCensusObserved {
+        receipt_identity: "planted-census" as NonEmptyStr,
+        subject_population_identity: population(members: 9, tag: "a-different-population"),
+        completeness: "planted" as NonEmptyStr
+      }
+    ),
+    f: fn(a) { refused_at(a: a, want: V2ImportDependenceField) }
+  )
+}
+
+// THE STANDING IS DERIVED FROM ONE AUTHORITY, NOT RESTATED IN TWO. The canary's non-judgment reads
+// the binding-provenance contract's producer_standing field; if a producer ever inhabits that
+// contract, this consequence changes THERE and the canary follows, with no second row to update and
+// no way for the two to disagree.
+test fn import_dependence_is_unjudged_because_the_contract_says_no_producer_inhabits_it() -> Bool {
+  match step0_binding_provenance_consequence() {
+    BindingProvenanceObservable { producer: _ } => false
+    BindingProvenanceUnobservable { detail: detail } => match step0_import_dependence_not_judged() {
+      ImportDependenceCensusObserved { receipt_identity: _, subject_population_identity: _, completeness: _ } => false
+      ImportDependenceNotJudged { cause: cause, required_capability: required_capability } =>
+        (cause as String) == (detail as String)
+          && required_capability.module_path == "gunbc.namespace_step0_binding_provenance_contract"
+          && required_capability.decl_name == "step0_binding_provenance_receipt_contract"
+    }
+  }
+}
+
+// THE CONTRACT'S OWN STANDING, executed rather than read: the roster is the frozen six families and
+// the four conservation laws are present, so a later census cannot quietly drop the family that
+// fails silently.
+test fn the_binding_provenance_contract_carries_the_frozen_roster_and_laws() -> Bool {
+  count(step0_binding_provenance_receipt_contract.reference_families) == 6
+    && count(step0_binding_provenance_receipt_contract.conservation_laws) == 4
+    && count(step0_binding_provenance_receipt_contract.receipt_fields) == 10
+}
+
+// ------------------------------------------------------ the pair, the standing, and the instrument
+//
+// THESE ARE THE REDS FOR THE CORRECTION'S OWN LAWS. Each one is a receipt production could not
+// mint but a fixture can, which is exactly the condition DESIGN 4b sets for writing a check at all.
+
+// AN INSTRUMENT THAT COULD NOT RUN DOES NOT RETRACT AN ENTRY. The population was collected,
+// partitioned and completely stripped before the compile was attempted, so the frontier stays
+// Entered and the standing carries the instrument's own refusal. The discriminator is the prefix:
+// an entry whose compile never ran may NOT claim ContainmentCompileAttempted.
+test fn an_entered_subject_whose_compile_instrument_failed_is_still_entered() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: PairObservationIncomplete { cause: "the compile instrument refused on the stripped population" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "the post-strip arm produced no census in the first order" as NonEmptyStr },
+      prefix: step0_v2_entered_prefix_for(standing: instrument_unavailable()),
+      frontier: entered_with_standing(standing: instrument_unavailable()),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { admitted_is(a: a) }
+  )
+}
+
+test fn an_entry_whose_compile_never_ran_may_not_claim_the_compile_transition() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: PairObservationIncomplete { cause: "the compile instrument refused on the stripped population" as NonEmptyStr },
+      order_invariance: OrderInvarianceNotMeasured { cause: "no census" as NonEmptyStr },
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_with_standing(standing: instrument_unavailable()),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2ProductionPrefixField) }
+  )
+}
+
+// A PAIR STANDING MAY NOT OUTRUN ITS TWO ARMS. Claiming both compiles refused while one arm's
+// instrument never ran reports an observation that half of it does not have.
+test fn a_pair_standing_that_claims_more_than_its_arms_observed_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: instrument_unavailable(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2PairStandingField) }
+  )
+}
+
+// A SUBJECT THAT WAS NEVER ENTERED HAS NO POST-STRIP COMPILE FOR A PAIR TO BE ABOUT.
+test fn an_unentered_subject_carrying_an_observed_pair_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_pre_strip_prefix,
+      frontier: not_entered_frontier(),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2PairStandingField) }
+  )
+}
+
+// THE COMPILE OBSERVATION MUST NAME THE POPULATION THE FRONTIER SAYS IT CONSUMED. Without this the
+// receipt could carry a census of some other compile beside a frontier that never produced it.
+test fn a_post_strip_observation_of_a_foreign_population_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_with_foreign_observation(),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2FrontierField) }
+  )
+}
+
+fn instrument_unavailable() -> Step0V2CompileStanding {
+  CompileInstrumentUnavailable { cause: "the compile instrument refused on the stripped population" as NonEmptyStr }
+}
+
+fn entered_with_standing(standing: Step0V2CompileStanding) -> Step0V2Frontier {
+  Step0V2SubjectEntered {
+    stripped_population: population(members: 9, tag: "stripped"),
+    compile_input_population: population(members: 9, tag: "stripped"),
+    removed_statement_count: 25415,
+    compile_standing: standing
+  }
+}
+
+fn entered_with_foreign_observation() -> Step0V2Frontier {
+  Step0V2SubjectEntered {
+    stripped_population: population(members: 9, tag: "stripped"),
+    compile_input_population: population(members: 9, tag: "stripped"),
+    removed_statement_count: 25415,
+    compile_standing: refused_standing(tag: "some-other-population")
+  }
+}
+
+// ---------------------------------------------------------------- the partition repair, executed
+//
+// THE EXCLUDED POPULATION PARTICIPATES IN THE SUBJECT PROJECTION. A receipt whose excluded
+// projection does not have one member per named entry has an exclusion nothing accounts for, and
+// before this law the count could be made to balance while the projection said otherwise.
+test fn an_excluded_projection_that_does_not_cover_its_entries_refuses() -> Bool {
+  holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 0, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: both_refused(),
+      order_invariance: OrderInvarianceHeld,
+      prefix: step0_v2_entered_prefix,
+      frontier: entered_frontier(stripped_tag: "stripped", compile_tag: "stripped", removed: 25415),
+      import_dependence: step0_import_dependence_not_judged()
+    ),
+    f: fn(a) { refused_at(a: a, want: V2SubjectPartitionField) }
+  )
+}
+
+// ONE WITNESS PER PARSE ANSWER, ON THE PARTITION FOLD ITSELF. The receipt laws above check that a
+// partition BALANCES; these check that the right member went to the right side, which is the half a
+// balanced partition cannot tell you. Only "this file is not a module" may exclude; a broken module
+// and a misbehaving instrument refuse the run.
+fn member(path: String, source: String) -> Step0SubjectMember? {
+  match git_sha1_object_id(hex: foreign_hex()) {
+    Absent => none
+    Present { value: blob } => Present { value: Step0SubjectMember {
+      path: path as NonEmptyStr,
+      blob: blob,
+      content: source
+    } }
+  }
+}
+
+fn partition_of(path: String, source: String) -> Step0SubjectPartitionOutcome? {
+  match member(path: path, source: source) {
+    Absent => none
+    Present { value: one } => Present { value: step0_partition_step(
+      outcome: Step0SubjectPartitioned { partition: Step0SubjectPartition { admitted: [], excluded: [] } },
+      member: one
+    ) }
+  }
+}
+
+fn partition_excluded_count(outcome: Step0SubjectPartitionOutcome) -> Int {
+  match outcome {
+    Step0SubjectPartitionRefused { path: _, cause: _ } => 0 - 1
+    Step0SubjectPartitioned { partition: partition } => count(partition.excluded)
+  }
+}
+
+fn partition_admitted_count(outcome: Step0SubjectPartitionOutcome) -> Int {
+  match outcome {
+    Step0SubjectPartitionRefused { path: _, cause: _ } => 0 - 1
+    Step0SubjectPartitioned { partition: partition } => count(partition.admitted)
+  }
+}
+
+fn partition_refused(outcome: Step0SubjectPartitionOutcome) -> Bool {
+  match outcome {
+    Step0SubjectPartitionRefused { path: _, cause: _ } => true
+    Step0SubjectPartitioned { partition: _ } => false
+  }
+}
+
+test fn a_module_is_admitted_to_the_subject() -> Bool {
+  match partition_of(path: "dag/w/ok.dag", source: "module w.ok\n\nimport std.types { Bool }\n") {
+    Absent => false
+    Present { value: outcome } => partition_admitted_count(outcome: outcome) == 1 && partition_excluded_count(outcome: outcome) == 0
+  }
+}
+
+test fn a_file_that_is_not_a_module_is_excluded_and_named() -> Bool {
+  match partition_of(path: "dag/w/none.dag", source: "fn w_loose() -> Bool { true }\n") {
+    Absent => false
+    Present { value: outcome } => partition_excluded_count(outcome: outcome) == 1 && partition_admitted_count(outcome: outcome) == 0
+  }
+}
+
+// THE REPAIR'S OWN RED. Before the parse cause was typed, this file landed in the excluded bucket
+// and the receipt still balanced -- a malformed production module leaving the subject in silence.
+test fn a_module_with_a_malformed_path_refuses_the_run_rather_than_leaving_the_subject() -> Bool {
+  match partition_of(path: "dag/w/badpath.dag", source: "module 9\n") {
+    Absent => false
+    Present { value: outcome } => partition_refused(outcome: outcome)
+  }
+}
+
+test fn a_module_with_a_malformed_import_statement_refuses_the_run() -> Bool {
+  match partition_of(path: "dag/w/badimport.dag", source: "module w.badimport\n\nimport {\n") {
+    Absent => false
+    Present { value: outcome } => partition_refused(outcome: outcome)
+  }
+}
+
+// A REFUSAL IS ABSORBING: a later member cannot repair an earlier refusal, so a partition that
+// refused once never reports a population afterwards.
+test fn a_partition_refusal_is_not_repaired_by_a_later_member() -> Bool {
+  match member(path: "dag/w/ok.dag", source: "module w.ok\n\nimport std.types { Bool }\n") {
+    Absent => false
+    Present { value: good } => match partition_of(path: "dag/w/badpath.dag", source: "module 9\n") {
+      Absent => false
+      Present { value: refused } => partition_refused(outcome: step0_partition_step(outcome: refused, member: good))
+    }
+  }
+}
+
+// -------------------------------------------------------- the join refuses a non-uniquely-keyed census
+//
+// THIS RED IS HOW THE DEFECT WAS FOUND, not a hypothetical. Replacing the nested scan with an index
+// changed gross_increases by 5 and nothing else, at the same revision on the same corpus: a
+// first-match scan and a last-write index disagree exactly when two rows share a key. Picking either
+// row would make the differential an answer chosen by an implementation detail, so it refuses.
+fn duplicated_census() -> List<CompileDiagnosticCensusRow> {
+  [
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 7 }
+  ]
+}
+
+fn distinct_census() -> List<CompileDiagnosticCensusRow> {
+  [
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/b.dag", blocking: true, count: 7 }
+  ]
+}
+
+fn differential_is_undefined(outcome: Step0DifferentialOutcome) -> Bool {
+  match outcome {
+    Step0DifferentialUndefined { cause: _ } => true
+    Step0DifferentialComputed { differential: _ } => false
+  }
+}
+
+test fn a_census_with_two_rows_for_one_bucket_makes_the_differential_undefined() -> Bool {
+  differential_is_undefined(outcome: step0_histogram_differential(pre: distinct_census(), post: duplicated_census()))
+    && differential_is_undefined(outcome: step0_histogram_differential(pre: duplicated_census(), post: distinct_census()))
+}
+
+// The positive control, so the refusal above discriminates rather than refusing every census.
+test fn a_uniquely_keyed_census_pair_computes_its_differential() -> Bool {
+  !differential_is_undefined(outcome: step0_histogram_differential(pre: distinct_census(), post: distinct_census()))
+}
+
+// blocking is part of the key, so the same class and subject at two severities are two buckets and
+// not a duplicate.
+test fn the_same_class_and_subject_at_two_severities_are_two_buckets() -> Bool {
+  !differential_is_undefined(outcome: step0_histogram_differential(
+    pre: distinct_census(),
+    post: [
+      CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
+      CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: false, count: 7 }
+    ]
+  ))
+}

@@ -5,6 +5,10 @@ import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.import {
   ImportStatementsParsed,
   ImportStatementParseRefused,
+  ImportStatementParseCause,
+  SourceHasNoModuleDeclaration,
+  ModuleDeclarationPathMalformed,
+  ImportStatementMalformed,
   ImportStatementsStripped,
   ImportStripRefused,
   ImportSpanNamesAnotherFile,
@@ -401,3 +405,76 @@ test fn a_subject_whose_imports_did_not_parse_refuses_at_the_parse() -> Bool {
   }
 }
 
+// ------------------------------------------------------------------ the typed parse-refusal cause
+//
+// ONE WITNESS PER STATE A SOURCE CAN PUT THE PARSE IN, because the consumers of this refusal
+// partition on the cause and the partition is only as sound as the arm each state actually takes.
+// Three of the four arms are reachable from a source and are pinned here. The fourth,
+// ImportParseInstrumentAnomaly, is NOT reachable from any source: it reports a broken invariant
+// inside the extents walk -- a statement that parsed from no token, or without consuming one -- so
+// no fixture can author it, and its enrolled evidence is the exhaustive match in every consumer
+// rather than a red here. That is why it is a separate arm and not folded into
+// ImportStatementMalformed: a consumer must be able to tell "this file is broken" from "the
+// instrument is broken" without matching prose, and the second is never a fact about the file.
+
+fn parse_cause_of(file: String, source: String) -> ImportStatementParseCause? {
+  match parsed_import_statements_live(file: file, source: source) {
+    ImportStatementsParsed { statements: _ } => Absent
+    ImportStatementParseRefused { cause: cause } => Present { value: cause }
+  }
+}
+
+test fn a_source_with_no_module_declaration_refuses_at_the_no_module_arm() -> Bool {
+  match parse_cause_of(file: "w/none.dag", source: "fn w_loose() -> Bool { true }\n") {
+    Absent => false
+    Present { value: cause } => match cause {
+      SourceHasNoModuleDeclaration => true
+      _ => false
+    }
+  }
+}
+
+// A malformed module PATH is a defect in the declaration the subject is defined by, and it is not
+// the same fact as a file that is not a module at all. A consumer that excluded this file from a
+// subject would have dropped a real module because its header was broken.
+test fn a_malformed_module_path_refuses_at_its_own_arm_and_not_at_the_no_module_arm() -> Bool {
+  match parse_cause_of(file: "w/badpath.dag", source: "module 9\n") {
+    Absent => false
+    Present { value: cause } => match cause {
+      ModuleDeclarationPathMalformed => true
+      _ => false
+    }
+  }
+}
+
+// A broken IMPORT statement is a defect in the thing being stripped, under a module declaration
+// that parsed. Distinct arm, distinct repair.
+test fn a_malformed_import_statement_refuses_at_the_import_arm() -> Bool {
+  match parse_cause_of(file: "w/badimport.dag", source: "module w.badimport\n\nimport {\n") {
+    Absent => false
+    Present { value: cause } => match cause {
+      ImportStatementMalformed => true
+      _ => false
+    }
+  }
+}
+
+// The positive control for the three reds above: a well-formed module still parses, so the arms are
+// discriminating rather than a parse that refuses everything.
+test fn a_well_formed_module_still_parses_its_import_statements() -> Bool {
+  match parse_cause_of(file: entry_path() as String, source: entry_source()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A module whose BODY is broken is NOT a parse refusal here: the extents walk stops at the first
+// non-import token, so the source is reported as parsed and its breakage surfaces where it belongs,
+// at the compile. This is the arm most easily got wrong in the direction of quietly dropping a real
+// module from a subject.
+test fn a_module_with_a_broken_body_is_reported_as_parsed_not_refused() -> Bool {
+  match parse_cause_of(file: "w/badbody.dag", source: "module w.badbody\n\nimport std.types { Bool }\n\nfn broken( -> Bool {\n") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

@@ -284,6 +284,28 @@ fn shared_fill_disposition_tag(paid_inside_fold: bool, consumer_modules: usize) 
     }
 }
 
+/// The observed consumer-module set of every fill recorded under one cache, keyed by the
+/// ledger key, with the sets of fills sharing a key UNIONED.
+///
+/// Same construction as `report()`'s `modules=` field and deliberately so: the overlap wall
+/// downstream must adjudicate the set an operator can read on the line, not a second set
+/// derived some other way. The union across repeated keys is the fail-closed direction — a
+/// producer filled twice under two roots carried both neighbourhoods, and taking either one
+/// alone would let a carrier disappear from the join by being in the other fill.
+pub(crate) fn consumer_modules_by_key(cache: &'static str) -> Vec<(String, BTreeSet<String>)> {
+    LEDGER.with(|l| {
+        let ledger = l.borrow();
+        let mut merged: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for fill in ledger.caches.get(cache).into_iter().flatten() {
+            let entry = merged.entry(fill.key.clone()).or_default();
+            for claim in fill.filler.iter().chain(fill.consumers.iter()) {
+                entry.insert(module_of(claim).to_string());
+            }
+        }
+        merged.into_iter().collect()
+    })
+}
+
 /// Render the ledger as `[floor-shared-fill]` lines.
 ///
 /// One line per fill, then one total. The per-fill line is what a paring decision reads:

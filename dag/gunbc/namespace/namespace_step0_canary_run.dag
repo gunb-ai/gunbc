@@ -1,0 +1,142 @@
+module gunbc.namespace_step0_canary_run
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import gunbc.namespace_step0_canary {
+  NamespaceStep0CanaryReceipt,
+  NamespaceStep0CanaryAdmission,
+  admit_namespace_step0_canary_receipt
+}
+import gunbc.namespace_step0_strip_producer {
+  Step0StripProduction,
+  Step0SourceImportsNotParsed,
+  Step0SourceRewriteRefused,
+  Step0SubjectHadNoImportStatements,
+  Step0ContainmentCompileInstrumentRefused,
+  Step0ContainmentCompileCompleted,
+  Step0ReceiptProduced,
+  Step0StripProductionRefused,
+  Step0StripProductionRefusalCause,
+  namespace_step0_strip_receipt
+}
+import gunbc.namespace_step0_subject_collector {
+  Step0SubjectCollected,
+  Step0SubjectCollection,
+  Step0SubjectCollectionRefused,
+  Step0SubjectPinRefusal,
+  Step0SubjectVector,
+  collect_current_step0_subject_vector,
+  step0_subject_fixture_sources,
+  step0_subject_vector_size
+}
+
+// THE CANARY RUN OVER THE REPOSITORY'S OWN TREE: collect, strip, compile, admit -- one call, and
+// the vector the producer strips is the tree the receipt pins because gunbc.namespace_step0_subject_collector
+// produced both. This is the join the strip producer's own next-rung trigger asked for; before it,
+// the only receipt anyone could write over the frozen manifest was one whose vector was hand-supplied.
+//
+// THE COMPILER IS ONE FACT FROM ONE OBSERVATION. The digest is taken from the program named beside
+// it, here, at the moment of the run -- not carried in as a literal that a caller could pair with a
+// different binary.
+//
+// WHAT THIS DOES NOT DO. It does not rebind receipt zero, and it cannot: the baseline literals in
+// test.claim.namespace_step0_canary_witness name tree a6a6e0a531 and an aarch64 digest, and a run
+// over a different tree is a NEW baseline, which the freeze note requires to land alone. So this
+// entry admits its receipt against the pins that same run observed and reports what the classifier
+// said; reading that as a rebind would be the second-producer defect wearing a different hat.
+type Step0CanaryRunOutcome
+  = Step0CanaryRunSubjectUnavailable { cause: Step0SubjectPinRefusal }
+  | Step0CanaryRunCompilerUnavailable { program: NonEmptyStr, reason: String }
+  | Step0CanaryRunCompilerDigestUnreadable { hex: String }
+  | Step0CanaryRunProductionRefused { cause: Step0StripProductionRefusalCause, subject_size: Int }
+  | Step0CanaryRunReceipt {
+      receipt: NamespaceStep0CanaryReceipt
+      admission: NamespaceStep0CanaryAdmission
+      subject_size: Int
+    }
+
+fn step0_canary_compiler_program() -> NonEmptyStr {
+  "target/release/gunbc" as NonEmptyStr
+}
+
+fn step0_run_over_vector(
+  vector: Step0SubjectVector,
+  compiler: Sha256Digest,
+  entry: NonEmptyStr
+) -> Step0CanaryRunOutcome {
+  match namespace_step0_strip_receipt(
+    source_commit: vector.source_commit,
+    source_tree: vector.source_tree,
+    compiler_program: step0_canary_compiler_program(),
+    compiler_executable_sha256: compiler,
+    sources: step0_subject_fixture_sources(vector: vector),
+    entry: entry
+  ) {
+    Step0StripProductionRefused { cause: cause } =>
+      Step0CanaryRunProductionRefused { cause: cause, subject_size: step0_subject_vector_size(vector: vector) }
+    Step0ReceiptProduced { receipt: receipt } =>
+      Step0CanaryRunReceipt {
+        receipt: receipt,
+        admission: admit_namespace_step0_canary_receipt(
+          receipt: receipt,
+          expected_commit: vector.source_commit,
+          expected_tree: vector.source_tree,
+          expected_compiler_sha256: compiler
+        ),
+        subject_size: step0_subject_vector_size(vector: vector)
+      }
+  }
+}
+
+// The shell tool reports an algorithm-tagged digest and the canary's receipt carries the
+// content-hash carrier; a digest that is not 64 lower-hex refuses rather than being reshaped into
+// one that looks like it.
+fn run_current_step0_canary(entry: NonEmptyStr) -> Step0CanaryRunOutcome {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: cause } => Step0CanaryRunSubjectUnavailable { cause: cause }
+    Step0SubjectCollected { vector: vector } =>
+      match sha256sum_file_digest_via_shell(path: step0_canary_compiler_program()) {
+        Sha256FileDigestUnavailable { path: path, reason: reason } =>
+          Step0CanaryRunCompilerUnavailable { program: path, reason: reason }
+        Sha256FileDigest { digest: compiler } =>
+          match sha256_hex_digest(hex: compiler.hex as String) {
+            Absent => Step0CanaryRunCompilerDigestUnreadable { hex: compiler.hex as String }
+            Present { value: digest } => step0_run_over_vector(vector: vector, compiler: digest, entry: entry)
+          }
+      }
+  }
+}
+
+// THE LABEL NAMES THE CAUSE, because a run that reports only "refused" sends its reader nowhere --
+// a parse that never ran, a rewrite the source contradicted, a subject with no imports, a broken
+// harness and a subject that COMPILED are five different findings with five different owners.
+fn step0_production_refusal_label(cause: Step0StripProductionRefusalCause) -> String {
+  match cause {
+    Step0SourceImportsNotParsed { file: file, cause: parse_cause } =>
+      concat("source imports not parsed at ", concat(file as String, concat(": ", import_statement_parse_cause_label(cause: parse_cause) as String)))
+    Step0SourceRewriteRefused { file: file, refusal: _ } =>
+      concat("source rewrite refused at ", file as String)
+    Step0SubjectHadNoImportStatements => "subject had no import statements"
+    Step0ContainmentCompileInstrumentRefused { cause: instrument_cause } =>
+      concat("containment compile instrument refused: ", instrument_cause as String)
+    Step0ContainmentCompileCompleted { module_count: modules } =>
+      concat("the stripped subject COMPILED over ", concat(to_string(modules), " module(s)"))
+  }
+}
+
+fn step0_canary_run_label(outcome: Step0CanaryRunOutcome) -> String {
+  match outcome {
+    Step0CanaryRunSubjectUnavailable { cause: _ } => "subject-unavailable"
+    Step0CanaryRunCompilerUnavailable { program: _, reason: reason } => concat("compiler-unavailable: ", reason)
+    Step0CanaryRunCompilerDigestUnreadable { hex: hex } => concat("compiler-digest-unreadable: ", hex)
+    Step0CanaryRunProductionRefused { cause: cause, subject_size: size } =>
+      concat("production-refused over ", concat(to_string(size), concat(" source(s): ", step0_production_refusal_label(cause: cause))))
+    Step0CanaryRunReceipt { receipt: _, admission: _, subject_size: size } =>
+      concat("receipt produced over ", concat(to_string(size), " source(s)"))
+  }
+}
+
+fn run_current_step0_canary_label() -> String {
+  step0_canary_run_label(outcome: run_current_step0_canary(entry: "dag/gunbc/namespace/namespace_step0_canary.dag" as NonEmptyStr))
+}
