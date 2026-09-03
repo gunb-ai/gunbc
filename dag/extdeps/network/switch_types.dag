@@ -1,6 +1,6 @@
 module extdeps.network.switch_types
 
-import std.types { NonEmptyStr, Int, Bool }
+import std.types { NonEmptyStr, Int, Bool, List }
 import std.measure { Milliwatt, milliwatt, Bandwidth, bandwidth }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -27,12 +27,29 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
+// A PORT GROUP IS ONE CONNECTOR FAMILY AT ONE COUNT, RATED AT THE FULL SET OF DATA RATES THE
+// VENDOR CALLS OUT FOR IT. A modern managed switch carries several connector families at several
+// rates (10G RJ45, 50G SFP56, 200G QSFP56, 400G QSFP56-DD), and the old `port_count` +
+// single-`port_speed` pair could not state one honestly: the fastest rate would have been a
+// fabricated summary of the rest, and a switch whose rates a vendor does not publish would have
+// forced an invented number. The port inventory below is a list of these groups, and a product
+// module carries exactly the groups its vendor's port table names -- no summary field is derived
+// from it here.
+type SwitchPortGroup {
+  connector: NonEmptyStr
+  port_count: Int
+  data_rates: List<Bandwidth>
+}
+
+// switching_capacity is OPTIONAL because not every vendor publishes one. MikroTik, for example,
+// does not state a switching capacity for the CRS812 on its product page or datasheet; carrying a
+// derived figure there would be a fabricated fact, and carrying `Absent` is the honest row. A
+// vendor that does publish it (Arista's 1.04 Tbps for the 7050S-52) carries `Present { value }`.
 type NetworkSwitchCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>
-  port_count: Int
-  port_speed: Bandwidth
+  port_inventory: List<SwitchPortGroup>
   fanless: Bool
-  switching_capacity: Bandwidth
+  switching_capacity: Bandwidth?
   max_power_draw: Milliwatt
 }

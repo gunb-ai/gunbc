@@ -1,0 +1,259 @@
+module test.claim.network_switch_catalog_witness
+
+import std.types { Bool, Int, List }
+import std.measure {
+  bandwidth, bandwidth_count,
+  milliwatt_count, watt_count, hertz_count,
+  gigabyte_count, mebibyte_count, volt_count,
+  millimeter_count, celsius_count, nanosecond_count,
+}
+import extdeps.network.switch_types { SwitchPortGroup }
+import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
+import extdeps.network.mikrotik_crs812 {
+  crs812_catalog,
+  crs812_platform,
+  crs812_power,
+  crs812_cooling,
+  crs812_dimensions_manual,
+  crs812_dimensions_datasheet,
+  crs812_console,
+  crs812_qsfp_breakout_rates,
+  crs812_suggested_price,
+  crs812_included_parts,
+  crs812_gap_count,
+}
+import extdeps.network.arista_7050s_52 {
+  arista_7050s_52_catalog,
+  arista_7050s_52_throughput,
+  arista_7050s_52_platform,
+  arista_7050s_52_power,
+  arista_7050s_52_cooling,
+  arista_7050s_52_chassis,
+  arista_7050s_52_management,
+  arista_7050s_52_scale,
+  arista_7050s_52_gap_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Green-by-execution proof for the two modelled switches and the shared switch catalog shape
+// they populate: the MikroTik CRS812-8DS-2DQ-2DDQ-RM and the Arista DCS-7050S-52, plus the
+// pre-existing TP-Link row that now shares the same NetworkSwitchCatalogRow shape. Every test
+// asserts a fact that a vendor document carries, so a mistyped figure reds the witness that
+// reads it. The two modules disagree about nothing except the CRS812 chassis depth, and that
+// disagreement is itself asserted -- the two first-party MikroTik documents state different
+// depths, and the model carries both rather than picking one.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rates_contain(rates: List<Bandwidth>, wanted: Bandwidth) -> Bool {
+  fold(rates, init: false, f: fn(acc, r) { acc || bandwidth_count(r) == bandwidth_count(wanted) })
+}
+
+fn group_port_count(group: SwitchPortGroup) -> Int {
+  group.port_count
+}
+
+// The max rate is asserted by presence of the top rate and absence of the next rate up, rather
+// than by a fold that would have to unify the Nat counts with an Int accumulator.
+fn group_scales_to(group: SwitchPortGroup, top: Bandwidth, next_up: Bandwidth) -> Bool {
+  rates_contain(rates: group.data_rates, wanted: top)
+    && !rates_contain(rates: group.data_rates, wanted: next_up)
+}
+
+// ---------------- MikroTik CRS812-8DS-2DQ-2DDQ-RM ----------------
+
+fn crs812_group(index: Int) -> SwitchPortGroup {
+  crs812_catalog.port_inventory.skip(n: index).first()
+}
+
+test fn crs812_port_groups_match_the_vendor_callouts() -> Bool {
+  count(crs812_catalog.port_inventory) == 4
+    && group_port_count(crs812_group(0)) == 2
+    && group_port_count(crs812_group(1)) == 8
+    && group_port_count(crs812_group(2)) == 2
+    && group_port_count(crs812_group(3)) == 2
+}
+
+test fn crs812_total_port_count_is_fourteen() -> Bool {
+  fold(crs812_catalog.port_inventory, init: 0, f: fn(acc, g) { acc + g.port_count }) == 14
+}
+
+test fn crs812_rj45_ports_carry_the_supported_rates_not_the_heading() -> Bool {
+  let g = crs812_group(0)
+  g.connector == "RJ45"
+    && rates_contain(rates: g.data_rates, wanted: bandwidth(10000000))
+    && rates_contain(rates: g.data_rates, wanted: bandwidth(100000000))
+    && rates_contain(rates: g.data_rates, wanted: bandwidth(1000000000))
+    && rates_contain(rates: g.data_rates, wanted: bandwidth(10000000000))
+    && !rates_contain(rates: g.data_rates, wanted: bandwidth(2500000000))
+}
+
+test fn crs812_sfp56_ports_scale_to_50g() -> Bool {
+  let g = crs812_group(1)
+  g.connector == "SFP56" && group_scales_to(group: g, top: bandwidth(50000000000), next_up: bandwidth(100000000000))
+}
+
+test fn crs812_qsfp56_ports_scale_to_200g() -> Bool {
+  let g = crs812_group(2)
+  g.connector == "QSFP56" && group_scales_to(group: g, top: bandwidth(200000000000), next_up: bandwidth(400000000000))
+}
+
+test fn crs812_qsfp56_dd_ports_scale_to_400g() -> Bool {
+  let g = crs812_group(3)
+  g.connector == "QSFP56-DD" && group_scales_to(group: g, top: bandwidth(400000000000), next_up: bandwidth(800000000000))
+}
+
+test fn crs812_switching_capacity_is_honestly_absent() -> Bool {
+  match crs812_catalog.switching_capacity {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn crs812_max_power_draw_is_134_watts() -> Bool {
+  milliwatt_count(crs812_catalog.max_power_draw) == 134000
+}
+
+test fn crs812_platform_facts_match_the_datasheet() -> Bool {
+  crs812_platform.cpu_model == "AL52400"
+    && crs812_platform.cpu_core_count == 4
+    && hertz_count(crs812_platform.cpu_nominal_frequency) == 2000000000
+    && crs812_platform.switch_chip_model == "98DX7335"
+    && gigabyte_count(crs812_platform.ram) == 4
+    && mebibyte_count(crs812_platform.storage) == 512
+    && crs812_platform.operating_system == "RouterOS v7"
+    && crs812_platform.routeros_license_level == 6
+}
+
+test fn crs812_power_facts_match_the_datasheet() -> Bool {
+  crs812_power.psu_slot_count == 2
+    && crs812_power.psu_hot_swap
+    && volt_count(crs812_power.ac_input_range_min) == 100
+    && volt_count(crs812_power.ac_input_range_max) == 240
+    && watt_count(crs812_power.psu_rating) == 250
+    && watt_count(crs812_power.max_power_draw) == 134
+    && watt_count(crs812_power.max_power_draw_without_attachments) == 81
+}
+
+test fn crs812_cooling_is_four_hot_swap_fans() -> Bool {
+  crs812_cooling.fan_count == 4 && crs812_cooling.fan_hot_swap
+}
+
+test fn crs812_dimensions_agree_on_length_and_height_but_disagree_on_depth() -> Bool {
+  millimeter_count(crs812_dimensions_manual.length_mm) == 443
+    && millimeter_count(crs812_dimensions_datasheet.length_mm) == 443
+    && millimeter_count(crs812_dimensions_manual.height_mm) == 44
+    && millimeter_count(crs812_dimensions_datasheet.height_mm) == 44
+    && millimeter_count(crs812_dimensions_manual.depth_mm) == 156
+    && millimeter_count(crs812_dimensions_datasheet.depth_mm) == 268
+    && millimeter_count(crs812_dimensions_manual.depth_mm) != millimeter_count(crs812_dimensions_datasheet.depth_mm)
+}
+
+test fn crs812_console_and_breakout_facts_are_carried() -> Bool {
+  crs812_console.connector == "RJ45"
+    && crs812_console.data_rate_bps == 115200
+    && rates_contain(rates: crs812_qsfp_breakout_rates, wanted: bandwidth(1000000000))
+    && rates_contain(rates: crs812_qsfp_breakout_rates, wanted: bandwidth(50000000000))
+    && count(crs812_qsfp_breakout_rates) == 6
+}
+
+test fn crs812_suggested_price_and_included_parts_are_carried() -> Bool {
+  crs812_suggested_price == 1295
+    && crs812_included_parts.power_cords == 2
+    && crs812_included_parts.rackmount_ears
+    && crs812_included_parts.rackmount_rear_support_ears
+    && crs812_included_parts.fastening_set
+}
+
+test fn crs812_open_gaps_are_declared_and_counted() -> Bool {
+  crs812_gap_count() == 3
+}
+
+// ---------------- Arista DCS-7050S-52 ----------------
+
+test fn arista_port_group_is_fifty_two_1_10g_sfp_plus() -> Bool {
+  count(arista_7050s_52_catalog.port_inventory) == 1
+    && arista_7050s_52_catalog.port_inventory.first().connector == "SFP+"
+    && arista_7050s_52_catalog.port_inventory.first().port_count == 52
+    && rates_contain(rates: arista_7050s_52_catalog.port_inventory.first().data_rates, wanted: bandwidth(10000000000))
+}
+
+test fn arista_switching_capacity_is_1_04_tbps() -> Bool {
+  match arista_7050s_52_catalog.switching_capacity {
+    Present { value: bw } => bandwidth_count(bw) == 1040000000000
+    Absent => false
+  }
+}
+
+test fn arista_max_power_draw_is_185_watts() -> Bool {
+  milliwatt_count(arista_7050s_52_catalog.max_power_draw) == 185000
+}
+
+test fn arista_throughput_facts_match_the_datasheet() -> Bool {
+  bandwidth_count(arista_7050s_52_throughput.switching_capacity) == 1040000000000
+    && arista_7050s_52_throughput.packets_per_second == 780000000
+    && nanosecond_count(arista_7050s_52_throughput.latency_min_ns) == 800
+    && nanosecond_count(arista_7050s_52_throughput.latency_max_ns) == 1150
+}
+
+test fn arista_platform_facts_match_the_datasheet() -> Bool {
+  arista_7050s_52_platform.cpu == "Dual-Core x86"
+    && gigabyte_count(arista_7050s_52_platform.system_memory) == 4
+    && gigabyte_count(arista_7050s_52_platform.flash_storage) == 2
+    && mebibyte_count(arista_7050s_52_platform.packet_buffer) == 9
+    && arista_7050s_52_platform.operating_system == "Arista EOS"
+}
+
+test fn arista_power_and_cooling_facts_match_the_datasheet() -> Bool {
+  arista_7050s_52_power.psu_count == 2
+    && arista_7050s_52_power.psu_hot_swap
+    && arista_7050s_52_power.psu_redundancy == "1+1 redundant"
+    && volt_count(arista_7050s_52_power.ac_input_range_max) == 240
+    && watt_count(arista_7050s_52_power.typical_power_draw) == 103
+    && watt_count(arista_7050s_52_power.max_power_draw) == 185
+    && arista_7050s_52_cooling.fan_count == 4
+    && arista_7050s_52_cooling.fan_hot_swap
+    && arista_7050s_52_cooling.reversible_airflow
+}
+
+test fn arista_chassis_facts_match_the_datasheet() -> Bool {
+  millimeter_count(arista_7050s_52_chassis.length_mm) == 445
+    && millimeter_count(arista_7050s_52_chassis.height_mm) == 44
+    && millimeter_count(arista_7050s_52_chassis.depth_mm) == 406
+    && celsius_count(arista_7050s_52_chassis.operating_temp_min) == 0
+    && celsius_count(arista_7050s_52_chassis.operating_temp_max) == 40
+    && celsius_count(arista_7050s_52_chassis.storage_temp_min) == -40
+    && celsius_count(arista_7050s_52_chassis.storage_temp_max) == 70
+    && arista_7050s_52_chassis.relative_humidity_percent_max == 95
+}
+
+test fn arista_scale_facts_match_the_datasheet() -> Bool {
+  arista_7050s_52_scale.mac_addresses == 128000
+    && arista_7050s_52_scale.ipv4_routes_unicast == 16000
+    && arista_7050s_52_scale.ipv4_host_routes == 32000
+    && arista_7050s_52_scale.ipv6_routes_unicast == 8000
+    && arista_7050s_52_scale.ecmp_ways == 32
+    && arista_7050s_52_scale.vlans == 4096
+}
+
+test fn arista_management_facts_are_carried() -> Bool {
+  arista_7050s_52_management.management_port == "100/1000"
+    && arista_7050s_52_management.console_port == "RS-232 RJ-45"
+    && arista_7050s_52_management.usb_ports == 1
+}
+
+test fn arista_open_gaps_are_declared_and_counted() -> Bool {
+  arista_7050s_52_gap_count() == 3
+}
+
+// ---------------- the shared shape, populated by three rows ----------------
+
+test fn all_three_catalog_rows_populate_one_shared_shape() -> Bool {
+  tp_link_tl_sg1024s_catalog.model == "TL-SG1024S"
+    && tp_link_tl_sg1024s_catalog.fanless
+    && count(tp_link_tl_sg1024s_catalog.port_inventory) == 1
+    && tp_link_tl_sg1024s_catalog.port_inventory.first().port_count == 24
+    && !crs812_catalog.fanless
+    && !arista_7050s_52_catalog.fanless
+    && count(crs812_catalog.port_inventory) == 4
+    && count(arista_7050s_52_catalog.port_inventory) == 1
+}
