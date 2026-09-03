@@ -750,8 +750,11 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("floor");
         }
 
+        // COUNTER-KEY CENSUS (dashboard node adhoc-af8a3fe8-13d): this is the
+        // phase population. The required-floor aggregate below counts claim outcomes, so the
+        // formerly shared `failed` key gave one spelling two meanings in one process's output.
         eprintln!(
-            "required-ci: lane={} phases_run={} failed={}",
+            "required-ci: lane={} phases_run={} phases_failed={}",
             required_ci_lane
                 .map(|l| l.name())
                 .unwrap_or("all (no --required-lane given)"),
@@ -1501,7 +1504,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         v1_compiler::cli_run::interrupted_cause_census(&outcome.interrupted_before_verdict);
     eprintln!(
         "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
-         known_red_held={} failed={} stale_quarantine={} \
+         known_red_held={} claims_failed={} stale_quarantine={} \
          interrupted_before_verdict={} interrupted_cpu_deadline={} \
          interrupted_wall_deadline={} completed_over_cost_requirement={} \
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
