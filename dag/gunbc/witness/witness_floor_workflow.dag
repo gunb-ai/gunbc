@@ -1406,10 +1406,33 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
 //
 // Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
 // shell out to cargo. Listing it would trade one false declaration for another.
+fn required_ci_measurement_bound_steps() -> List<WitnessFloorBoundStep> {
+  [
+    WitnessFloorBoundStep {
+      step: required_ci_measurement_finalize_step(), role: capability_neutral,
+      step_name: "D0-MEASURE: seal an unreached receipt when the instrument did not return",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_tsv_upload_step(
+        step_name: "D0-PUBLISH: upload the required CI measurement receipt",
+        artifact_name: required_ci_measurement_receipt_artifact_name,
+        path: required_ci_measurement_receipt_path,
+        condition: required_ci_measurement_publish_condition()
+      ),
+      role: capability_neutral,
+      step_name: "D0-PUBLISH: upload the required CI measurement receipt",
+    },
+    WitnessFloorBoundStep {
+      step: required_ci_measurement_adjudicate_step(), role: capability_neutral,
+      step_name: "D0-ADJUDICATE: consume the published measurement receipt",
+    },
+  ]
+}
+
 fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(build_script: witness_floor_build_script()),
-    items: [
+    items: concat([
       WitnessFloorBoundStep {
         step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
@@ -1420,24 +1443,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
       },
-      WitnessFloorBoundStep {
-        step: required_ci_measurement_finalize_step(), role: capability_neutral,
-        step_name: "D0-MEASURE: seal an unreached receipt when the instrument did not return",
-      },
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "D0-PUBLISH: upload the required CI measurement receipt",
-          artifact_name: required_ci_measurement_receipt_artifact_name,
-          path: required_ci_measurement_receipt_path,
-          condition: required_ci_measurement_publish_condition()
-        ),
-        role: capability_neutral,
-        step_name: "D0-PUBLISH: upload the required CI measurement receipt",
-      },
-      WitnessFloorBoundStep {
-        step: required_ci_measurement_adjudicate_step(), role: capability_neutral,
-        step_name: "D0-ADJUDICATE: consume the published measurement receipt",
-      },
+    ], concat(required_ci_measurement_bound_steps(), [
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's admission roster",
@@ -1493,7 +1499,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
       },
-    ],
+    ])),
   )
 }
 

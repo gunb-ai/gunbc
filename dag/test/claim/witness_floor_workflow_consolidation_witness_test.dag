@@ -2,7 +2,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -10,6 +10,7 @@ import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
 import extdeps.languages.yaml.gha_workflow { pr_activity_string }
 import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed }
+import extdeps.github.actions { RunStep, UsesStep }
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc
@@ -191,30 +192,44 @@ test fn w_the_required_workflow_carries_both_lanes() -> Bool {
 // Removing publication, conditioning it on the build outcome, restoring the old fused step, or
 // moving adjudication ahead of upload makes a distinct conjunct fail.
 test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool {
-  match expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
-      let measure = "name: \"D0-MEASURE: witnesses lane\""
-      let publish = "name: \"D0-PUBLISH: upload the required CI measurement receipt\""
-      let adjudicate = "name: \"D0-ADJUDICATE: consume the published measurement receipt\""
-      string_contains(s: yml, pattern: measure)
-        && string_contains(s: yml, pattern: "--measurement-receipt")
-        && string_contains(s: yml, pattern: "required-ci-measurement-receipt")
-        && string_contains(s: yml, pattern: "--adjudicate-measurement-receipt")
-        && yml.split(delimiter: measure).length() == 2
-        && yml.split(delimiter: publish).length() == 2
-        && yml.split(delimiter: adjudicate).length() == 2
-        && !string_contains(
-          s: required_ci_measurement_publish_condition(),
-          pattern: "steps.build_witness_fold"
-        )
-        && string_contains(s: yml, pattern: "REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}")
-        && !string_contains(s: yml, pattern: "if '[' '-x' 'target/release/claim_executor'")
-        && string_contains(s: yml, pattern: "instrument could not be built")
-        && string_contains(
-          s: yml,
-          pattern: concat("retention-days: 14\n        if: ", concat(required_ci_measurement_publish_condition(), "\n      - name: \"D0-ADJUDICATE: consume the published measurement receipt\""))
-        )
-    WitnessFloorGenerationRefused { reason: _ } => false
+  let measure_holds = match witness_floor_run_step() {
+    RunStep {
+      name: _, id: _, run: run, shell: _, env: _, working_directory: _,
+      if_condition: _, continue_on_error: Present { value: true }, timeout_minutes: _
+    } => string_contains(s: run, pattern: "--measurement-receipt")
+    _ => false
+  }
+  match required_ci_measurement_bound_steps() {
+    Cons { head: finalize, tail: Cons { head: publish, tail: Cons { head: adjudicate, tail: Empty {} } } } =>
+      measure_holds
+        && finalize.step_name == "D0-MEASURE: seal an unreached receipt when the instrument did not return"
+        && publish.step_name == "D0-PUBLISH: upload the required CI measurement receipt"
+        && adjudicate.step_name == "D0-ADJUDICATE: consume the published measurement receipt"
+        && !string_contains(s: required_ci_measurement_publish_condition(), pattern: "steps.build_witness_fold")
+        && match finalize.step {
+          RunStep {
+            name: _, id: _, run: run, shell: _, env: _, working_directory: _,
+            if_condition: _, continue_on_error: _, timeout_minutes: _
+          } => string_contains(s: run, pattern: "REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME")
+            && !string_contains(s: run, pattern: "'-x'")
+            && string_contains(s: run, pattern: "instrument could not be built")
+          _ => false
+        }
+        && match publish.step {
+          UsesStep {
+            name: _, id: _, uses: _, with: _, env: _,
+            if_condition: Present { value: condition }, continue_on_error: _, timeout_minutes: _
+          } => condition == required_ci_measurement_publish_condition()
+          _ => false
+        }
+        && match adjudicate.step {
+          RunStep {
+            name: _, id: _, run: run, shell: _, env: _, working_directory: _,
+            if_condition: _, continue_on_error: _, timeout_minutes: _
+          } => string_contains(s: run, pattern: "--adjudicate-measurement-receipt")
+          _ => false
+        }
+    _ => false
   }
 }
 
