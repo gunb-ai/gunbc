@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.alias_resolution_collides_with_kernel_spelling
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data alias_resolution_collides_with_kernel_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "alias_resolution_collides_with_kernel_spelling" as NonEmptyStr,
+
+  receipts: [
+    "**an instrument resolves an alias, lands on a name that COLLIDES with a kernel spelling, and attributes the result to the kernel** (the reference under measurement is authored QUALIFIED and points at a type alias; the reader resolves the alias, arrives at the alias declaration's own name, and that name is also a kernel name -- so the row is attributed to the kernel identity, naming THE EXACT CARRIER THE QUALIFICATION WAS WRITTEN TO MOVE AWAY FROM. ",
+
+    "**IT DOES NOT FAIL TO ANSWER; IT ANSWERS CONFIDENTLY AND WRONGLY**, and that is the whole severity: a missing answer is visible to its consumer and an inverted one is not, so the two rank completely differently and only the second can be cited as evidence for the opposite of what holds. ",
+
+    "**Distinct from `instrument_output_read_as_subject_content`, and the boundary is worth stating because they were found in the same instrument in the same hour**: there a report is COMPLETE for the reporter and read as complete for the consumer, so the defect is in the READING; here the report is wrong on a specific row it does examine, so the defect is in the INSTRUMENT and no amount of careful reading recovers it. ",
+
+    "Also distinct from `hollow_alias`, which is about a second name minted for one concept: the alias here is legitimate modelling, and what fails is a reader of it. ",
+
+    "**SPECIMEN, with a discriminating probe executed on covered ground (2026-09-01, gunbc#9907 follow-up).** `v1.tests.claim.carrier_realization_census` reports, for two functions appended to `v2.compiler.tokenize` on adjacent lines with identical position kind, differing only in alias-versus-concrete: a param authored `std.determinism.Determinism` keeps its dotted name, while a param authored `v2.std.text.String` comes back as bare `String` attributed to `<kernel:String>`. ",
+
+    "`v2.std.text` declares `type String = FreeMonoid<Char>`, so the alias name collides with the kernel spelling. ",
+
+    "Both probes produced rows (17661 -> 17663), which is what makes the negative half evidence rather than absence -- the positive control is the whole discriminator, and the same census had already produced a null result on an uncovered fixture whose emptiness was indistinguishable from confirmation. ",
+
+    "**CONSEQUENCE MEASURED, NOT IMAGINED**: read naively, the census contradicted the namespace wall about nine function declarations and would have been read as nine admission rows asserting a binding the carrier lacks, on a merged PR. ",
+
+    "The wall was right; the contradiction was this bug. ",
+
+    "**RUNG: MECHANICALLY PREVENTABLE AT BEST TODAY AND CURRENTLY UNENROLLED** -- the wrong answer is produced silently and nothing executes over it. ",
+
+    "The next-rung trigger is that two-line probe being ENROLLED as a discriminating RED in any covered module, which is cheap; a class whose RED is two lines and still does not execute has no excuse, and naming the cheapness is what makes it rank rather than sit. ",
+
+    "**Recognition rule**: wherever a reader resolves through an alias, ask whether the resolved name could collide with a name in a DIFFERENT namespace the reader also knows -- kernel, prelude, or ambient -- because at that point the reader cannot tell them apart and will pick one silently.)",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.self_authorized_dissolution
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data self_authorized_dissolution: RecurringFailureMode = RecurringFailureMode {
+  identity: "self_authorized_dissolution" as NonEmptyStr,
+
+  receipts: [
+    "**self-authorized dissolution** (temporary work treated as admissible because the author named its future deletion — a trigger is a lifecycle fact, not permission; without an operator verdict, marked debt is rejected exactly like unmarked debt)",
+  ],
+
+  evidence: [],
+}

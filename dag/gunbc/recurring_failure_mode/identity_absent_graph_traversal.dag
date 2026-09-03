@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.identity_absent_graph_traversal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data identity_absent_graph_traversal: RecurringFailureMode = RecurringFailureMode {
+  identity: "identity_absent_graph_traversal" as NonEmptyStr,
+
+  receipts: [
+    "identity-absent graph traversal (a walk over a graph the COMPILER built re-enters shared nodes because it cannot carry a `visited` or memo key — the nodes have no identity the model is allowed to name — so the only two arms available locally are to PAY the re-entry, or to key on a substitute the substrate forbids. ",
+
+    "THE TRAP IS THAT THE ARMS DIFFER IN KIND AND THE CHEAP-LOOKING ONE IS THE UNSAFE ONE: paying is a cost, visible and bounded; keying on a substitute silently skips a DISTINCT node believed already visited, drops whatever that node contributed, and reports nothing. ",
+
+    "THE MECHANISM, structural and checkable by reading rather than by measurement: `v1.compiler.infer_emit_info` `collect_type_node_import_surface_names` recurses on BOTH `children` AND the `inferred` resolved node, so a shared type DAG is traversed as a tree and a node reachable by k paths is walked k times. ",
+
+    "The key does not exist. ",
+
+    "`std.occurrence_identity` `occurrence_identity_scope_law` names filename, SourceSpan, authored name, structural Node equality and content hash as FORBIDDEN identity inputs, and `NodeOccurrenceIdentity` `OccurrenceSynthetic` — which is what the compiler mints for a node no author wrote — carries no id at all, so every synthesised node compares equal to every other and a visited set built on it would skip the wrong one. ",
+
+    "The remaining candidate is host allocation identity, which exists only in the realization and not in the model. ",
+
+    "RUNG: OUTSIDE THE LADDER, and the earlier revision of this row said `mitigatable`, which was inflation of exactly the kind section 4b(1) names. ",
+
+    "The invalid state is writable, nothing refuses it, and its failure is a silent skip — section 4b puts silent wrongness outside the ladder rather than low on it. ",
+
+    "What that revision offered as the mitigation was that no author has yet needed such a traversal and that review might catch one; neither is containment by a total operation, a typed outcome, a bound, a rollback or an isolation, and no discriminating RED exists on any acceptance path, so no rung above the floor is claimable by executed evidence. ",
+
+    "ONE PARTIAL CONTAINMENT IS REAL AND DOES NOT LIFT THE CLASS: at the measured seam a dropped name reaches an emitted Rust crate, where rustc refuses it as E0422/E0425/E0433 far from the cause, and the regen byte-identity gate would show the drift. ",
+
+    "That is a property of THAT seam's consumer being a compiled artifact, not of the class — a traversal whose consumer is a verdict rather than a compilation has no such backstop — and section 4b sets a class's rung at the MINIMUM across its in-scope paths. ",
+
+    "CEILING: structural impossibility, and per section 4b(3) the trigger names the CAPABILITY rather than an artifact — an identity for synthesised occurrences, sufficient for a `visited` set over inferred type nodes to be authorable in `.dag` at all. ",
+
+    "Nothing less retires it: a faster traversal, a memo at one seam, or a counter measuring the amplification all leave the key absent and the unsafe arm equally reachable. ",
+
+    "An intermediate rung is available and is NOT claimed here because nothing implements it: a typed refusal at the traversal seam would make the class mechanically preventable while leaving the invalid state writable. ",
+
+    "THE ESCAPES THAT LOOK AVAILABLE AND ARE NOT, listed because this class is mostly discovered by trying them, and each was closed by EXECUTION rather than by argument — deleting the producer, replacing it with the cheaper sub-producers beside it, reading `TypeSummary.field_import_surface_names` instead (which is CIRCULAR, being produced BY this walk in `build_field_type_map`, and answers a different relation), and hoisting the work earlier (there is nothing to hoist: each item belongs to one module and each module is emitted once). ",
+
+    "Two further hypotheses about the COST were falsified the same way and are worth not repeating: the list-copy lowering, and the match-scrutinee deep clone. ",
+
+    "The measured populations, the amplification, the per-escape figures and the two falsifications are recorded once, dated, with their method and their non-enrollment stated, in the plan document `emit-type-surface-traversal-cost`, which is bound to this traversal and its two consumers in `gunbc.doc_graph_roots` and retires when they move; they are deliberately not transcribed here, because a number copied into a roster row is the positional-citation failure one entry up wearing different clothes. ",
+
+    "RECOGNITION RULE: when you reach for a visited or memo key over a graph the compiler built rather than the author wrote, enumerate the keys available to you; if every candidate is one the identity authority forbids, the deficit is upstream in the identity algebra and NEITHER local arm is a repair — the amplification is the symptom and the missing identity is the class.)",
+  ],
+
+  evidence: [],
+}

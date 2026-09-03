@@ -1,0 +1,50 @@
+module gunbc.recurring_failure_mode.proxy_observation_mistaken_for_action_semantics
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data proxy_observation_mistaken_for_action_semantics: RecurringFailureMode = RecurringFailureMode {
+  identity: "proxy_observation_mistaken_for_action_semantics" as NonEmptyStr,
+
+  receipts: [
+    "**a destructive action is judged by a PROXY observation, never by the action's own semantics** (INVALID STATE: an actor destroys something -- deletes an edge, a file, a roster row, an authority -- and reads the verdict off an observation that stands in a PROXY relation to what the destruction MEANS. ",
+
+    "'Strip the imports and see whether the compile exits 0' is the canonical shape. ",
+
+    "The proxy is only ever as strong as the checking path that produces it, and the semantic question -- does every occurrence that crossed the destroyed edge still bind to exactly one accepted declaration identity, and does that identity project a provider the closure reaches -- is never asked. ",
+
+    "**HARM: DESIGN section 5 silent wrongness, and directionally the worst member of its family, because the proxy and the semantics agree EXACTLY WHERE THE CHECKER IS SOUND AND DIVERGE EXACTLY WHERE IT FAILS OPEN.** The green is therefore densest on the population the destruction actually damages, and a count of green subjects reads as coverage while being a census of the checker's absorbing arm. ",
+
+    "**RECOGNITION RULE, and it is mechanical rather than a matter of judgement: name the acceptance path that produced the observation, and ask what that path does when the property under test is ABSENT -- refuse, or substitute.** If any arm on it fabricates, widens, defaults or falls back, the observation is a proxy and its green is a statement about that arm. ",
+
+    "**DISTINCT FROM ITS THREE NEIGHBOURS, and the repairs differ.** `absorbing_fallback` is the fail-open arm itself; here the arm may be long known, correctly filed and owned by somebody else -- the defect is the READING of a destruction's green taken across it. ",
+
+    "`instrument_output_read_as_subject_content` is a report complete for its own promise and read past it; here the observation is not incomplete at all, it answers a DIFFERENT QUESTION than the actor's. ",
+
+    "`executed_conjunct_discriminates_nothing` cannot discriminate anywhere; a proxy discriminates perfectly on the sound half of its population, which is what makes it credible. ",
+
+    "**SPECIMEN, ALREADY MEASURED AND ON THE RECORD IN THIS REPOSITORY, which is why the class is filed rather than the instance re-investigated: the import strip, `docs/plans/import-strip-witness-discovery-cascade-diagnosis.md` section 15.4.** 1,773 of the 2,574 stripped files produced no diagnostic, and that 69% was available to be read as 'these files' references are independently resolvable'. ",
+
+    "Section 14 of the same document had ALREADY established by execution that a type present in the pool but not structurally bound is FABRICATED AS AN ANONYMOUS PRODUCT rather than refused, and that the production type-reference discriminator is measurement-only -- normal compile, resolve, run and emit stay on the legacy fail-open path unless measurement mode is armed. ",
+
+    "So the 69% is a joint statement about which providers happened to be in the pool and which failures the fabrication arm absorbed, and the document says so in its own words: a clean file may be clean because its provider happened to be loaded. ",
+
+    "**THE SUBSTITUTE, STATED SO THIS ROW NAMES A TEST AND NOT ONLY A DEFECT, and it is section 15.4's own terminal test: not 'delete imports, compile exits 0', but every cross-module occurrence has exactly one accepted declaration identity; every accepted identity projects its provider file; the loader closure equals that provider projection; adding or removing an unrelated loaded module changes neither binding nor closure; type, value, callee and emitter consumers all consume the accepted edge; no fallback or fabrication arm is reachable; and compile AND execution are green.** **THE STANDING OBLIGATION THIS CLASS CREATES, AND IT LANDS ON THIS PROJECT'S OWN CENSUS METHOD: THE DESTRUCTION-WITNESS PRECONDITION.** DESIGN section 3 grounds delete-first on 'the deletion is the census -- every real dependent refuses loudly'. ",
+
+    "That sentence is CONDITIONAL on the substrate being fail-closed ON THE AXIS DESTROYED, and it is the conditional, not the sentence, that a destruction witness must discharge: before a deletion's green may be read as 'nothing depended on it', exhibit BY EXECUTION, on the SAME acceptance path the green will be read from, one case where the destroyed edge is genuinely required and the path goes RED. ",
+
+    "Absent that red the green is a property of the path's failure arm rather than of the corpus, and no number of green subjects repairs it -- a vacuous check does not become discriminating by being run more times. ",
+
+    "The precondition is carried by `docs/plans/replacement-migration-doctrine.md`, filed beside the sibling already recorded there in which the census is empty because the referent is NAMED rather than imported: same conclusion by a different mechanism, and the pair is the point -- there nothing refuses because nothing was ever an edge, here the edge exists and the checker declines to judge it. ",
+
+    "**RUNG FOUND AT: 1, mitigatable.** The divergence was caught by a reader holding the observation up against the checker that produced it, after a wave had already been sized on the proxy. ",
+
+    "**CEILING: 3, structurally guaranteed, and reachable rather than aspirational, because the disqualifying fact is decidable from the substrate:** whether the acceptance path a witness reads has a reachable fabrication or fallback arm on the axis under test is a property of that path's own graph, not of the world. ",
+
+    "**NEXT TRIGGER, NAMED AS THE CAPABILITY AND NOT AS AN ARTIFACT: a destruction witness declares the axis it destroys and the acceptance path it reads, and the executor REFUSES the witness when that path carries a reachable fail-open arm on that axis** -- so the precondition is discharged by the runner rather than remembered by an author. ",
+
+    "Until that capability exists this row and the doctrine section are the mitigation, and citing either as coverage is the rung inflation DESIGN section 4b(1) names.",
+  ],
+
+  evidence: [],
+}
