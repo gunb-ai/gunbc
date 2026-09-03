@@ -512,6 +512,7 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
     typed_row_count: 0,
     apply_effect_count: 0,
     apply_command_count: 0,
+    reactivation: "reactivation-refused fixture: no fence authority",
     verdict: spark_serving_slice_verdict_noop_converged,
   )
   let failed = spark_serving_converge_slice_host_line(
@@ -521,6 +522,7 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
     typed_row_count: 0,
     apply_effect_count: 0,
     apply_command_count: 0,
+    reactivation: "reactivation-refused fixture: no fence authority",
     verdict: "wet-apply-exec-failed exit=1 stderr=denied",
   )
   converged.converged && !failed.converged
