@@ -1360,7 +1360,10 @@ extdeps.bmc.openbmc_fan_control      openbmc_fan_config_stepwise_count (semantic
   stdin-fed remote jq                 TYPED refusal (OpenBmcRemoteJqStdinUnwired): sshpass -d 0 holds fd 0
   command string                      grammar-owned single-quote encoding (remote_exec_command_string),
                                       never append(ssh_prefix, inner.argv)
-  interpretation                      openbmc_dropbear_interpretation, load-bearing (Unknown refuses)
+  interpretation                      PRODUCTION PATH PASSES Unknown AND REFUSES until a live target
+                                      confirms a POSIX shell (review 38602; openbmc_dropbear_interpretation
+                                      stays the pure emitter's witness-time understanding, not a
+                                      fabricated production assumption)
   decode                              openbmc_fan_config_stepwise_count_result reads JqOutcome,
                                       never success/stdout/stderr
 
@@ -1368,8 +1371,9 @@ test/claim/jq_invocation_lowering_witness   16 / 16 pass  (file-input lowering +
   of which flipped from refusal to positive   2 (unlowered_file_input_refuses ->
                                                 file_input_lowers_to_exact_argv; and the file-cause
                                                 test became file_input_reaches_the_plan_as_no_stdin)
-test/claim/remote_jq_ssh_migration_witness   10 / 10 pass  (decode + words + command string +
-                                                stdin refusal + interpretation + review pin)
+test/claim/remote_jq_ssh_migration_witness   12 / 12 pass  (decode + words + command string +
+                                                stdin refusal + interpretation + review pin +
+                                                production-gate refusals)
 test/claim/bmc_typed_operations_witness      object_mapper/threshold/sensor tests still pass
 whole-corpus regen                           first_generation_equal=true
 ```
@@ -1385,6 +1389,13 @@ whole-corpus regen                           first_generation_equal=true
   encoding exactly; they never prove the far side agrees. That is the declared, unexecuted
   `remote_exec_command_live_confirmation` receipt in `gunbc.remote_shell_command` — run it against
   a live OpenBMC/Dropbear target before the remaining remote population is cut over.
+- **The first migration's production cutover is GATED on that live confirmation** (review 38602,
+  REQUEST_CHANGES): `openbmc_remote_jq_execute` passes `Unknown` and REFUSES until a live target
+  confirms a POSIX-shell interpretation — DESIGN §4b/§5, the unobserved assumption is never
+  fabricated into the accepted path. The migration is structurally complete and hermetic-witnessed,
+  but a live OpenBMC/Dropbear target must confirm the interpretation (and record it in
+  `remote_exec_command_live_confirmation`) before `openbmc_fan_config_stepwise_count` can produce
+  an observation instead of the gate refusal.
 - `ProjectFanConfig` still carries a raw argv (its sole consumer `openbmc_fan_config_project_local`
   is dead code). It needs file-input lowering (now landed) plus its own consumer migration; it is
   not part of this wave's first SSH migration.

@@ -47,7 +47,9 @@ import gunbc.remote_shell_command {
   RemoteExecCommandBuilt,
   RemoteExecCommandRefused,
   RemoteExecCommandRefusalCause,
-  openbmc_dropbear_interpretation,
+  RemoteExecInterpretationUnknown,
+  SimpleCommandArgvRefused,
+  Unknown,
   remote_exec_command_string,
 }
 import v2.std.compilers.cli_surface {
@@ -1372,6 +1374,17 @@ type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs
 // openbmc_remote_jq_execute runs the transport (no mock_response, so the hermetic floor refuses
 // it), which is why the witnesses below assert the pure halves and the refusal arm, and never
 // claim the transport executed.
+//
+// THE PRODUCTION CUTOVER IS GATED ON THE REMOTE-SHELL INTERPRETATION, AND NO LIVE TARGET HAS
+// CONFIRMED ONE (review 38602, REQUEST_CHANGES). Whether the far side hands the RFC 4254 command
+// string to a POSIX shell is an OBSERVED deployment fact (gunbc.remote_shell_command
+// remote_exec_command_interpretation_note). openbmc_dropbear_interpretation is the repo's
+// documented best understanding of OpenBMC, but it is UNVERIFIED until remote_exec_command_live_confirmation
+// runs against a live target -- and that receipt is declared Unexecuted. DESIGN 4b: external
+// reality is observed, refused, or mitigated at a declared boundary, never fabricated. DESIGN 5:
+// a failure arm must refuse, never widen -- and never emit a plausible guess. So the production
+// path passes Unknown and REFUSES until the live confirmation lands and supplies the observed
+// interpretation; the pure emitter remains witnessable by passing an interpretation explicitly.
 type OpenBmcRemoteJqRefusal
   = OpenBmcRemoteJqStdinUnwired
   | OpenBmcRemoteJqCommandStringRefused { cause: RemoteExecCommandRefusalCause }
@@ -1418,7 +1431,9 @@ fn openbmc_remote_jq_execute(
   session: PasswordSshSession,
   plan: JqAdmittedProcessPlan,
 ) -> OpenBmcRemoteJqOutcome {
-  match openbmc_remote_jq_command(plan: plan, interpretation: openbmc_dropbear_interpretation) {
+  // Unknown until a live target confirms a POSIX shell interpretation
+  // (remote_exec_command_live_confirmation); the path REFUSES rather than fabricating one.
+  match openbmc_remote_jq_command(plan: plan, interpretation: Unknown) {
     OpenBmcRemoteJqCommandRefused { cause: cause } =>
       OpenBmcRemoteJqRefused { cause: cause }
     OpenBmcRemoteJqCommandBuilt { command: command } => {
@@ -1440,8 +1455,13 @@ fn openbmc_remote_jq_refusal_text(cause: OpenBmcRemoteJqRefusal) -> String {
   match cause {
     OpenBmcRemoteJqStdinUnwired =>
       "remote jq over the password-SSH transport cannot carry stdin: sshpass -d 0 occupies fd 0 with the password"
-    OpenBmcRemoteJqCommandStringRefused { cause: _ } =>
-      "remote jq command string could not be emitted by the grammar-owned shell encoder"
+    OpenBmcRemoteJqCommandStringRefused { cause: cause } =>
+      match cause {
+        RemoteExecInterpretationUnknown =>
+          "remote jq cutover is gated on the remote-shell interpretation: the RFC 4254 command string must be single-quote encoded for a POSIX shell, but no live target has confirmed one -- run remote_exec_command_live_confirmation against a live OpenBMC/Dropbear target and supply the observed interpretation (DESIGN 4b/5: refuse rather than fabricate)"
+        SimpleCommandArgvRefused { cause: _ } =>
+          "remote jq command string could not be emitted by the grammar-owned shell encoder"
+      }
   }
 }
 

@@ -22,6 +22,7 @@ import extdeps.tools.jq {
 }
 import gunbc.remote_shell_command {
   openbmc_dropbear_interpretation,
+  RemoteExecInterpretationUnknown,
   Unknown,
 }
 import extdeps.bmc.openbmc_fan_control {
@@ -33,6 +34,7 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcRemoteJqCommandStringRefused,
   OpenBmcRemoteJqExecuted,
   OpenBmcRemoteJqRefused,
+  openbmc_fan_config_stepwise_count,
   openbmc_fan_config_stepwise_count_result,
   openbmc_fan_stepwise_count_program,
   openbmc_object_mapper_service_at_program,
@@ -135,6 +137,11 @@ test fn stepwise_count_remote_words_are_jq_plus_emitted_surface() -> Bool {
 // span, never a raw concatenation and never append(ssh_prefix, inner.argv). The program contains
 // double quotes, brackets, a pipe and a select() call; every byte travels inside single-quoted
 // spans (IEEE 1003.1-2017 §2.2.2).
+//
+// This witnesses the PURE EMITTER under a supplied interpretation (openbmc_dropbear_interpretation
+// is passed explicitly here as the repo's documented best understanding). It is NOT the production
+// gate: openbmc_remote_jq_execute refuses with Unknown until a live target confirms the
+// interpretation (review 38602) -- the tests below assert that gate.
 test fn stepwise_count_remote_command_string_is_grammar_owned() -> Bool {
   match stepwise_count_plan() {
     Absent => false
@@ -145,6 +152,42 @@ test fn stepwise_count_remote_command_string_is_grammar_owned() -> Bool {
           command as String
             == "'jq' '--raw-output' '--exit-status' '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length' '/etc/openbmc/fan_config.json'"
       }
+  }
+}
+
+// THE PRODUCTION GATE (review 38602, REQUEST_CHANGES). openbmc_remote_jq_execute must NOT assume a
+// POSIX-shell interpretation for every session: whether the far side hands the RFC 4254 command
+// string to a POSIX shell is an OBSERVED deployment fact, and remote_exec_command_live_confirmation
+// is declared Unexecuted. So the production path passes Unknown and REFUSES -- DESIGN 4b (external
+// reality is observed, refused, or mitigated at a declared boundary, never fabricated) and 5
+// (refuse rather than emit a plausible guess). The refusal happens before the transport, so it is
+// witnessable hermetically.
+test fn remote_jq_execute_gates_on_unknown_interpretation() -> Bool {
+  match stepwise_count_plan() {
+    Absent => false
+    Present { value: plan } =>
+      match openbmc_remote_jq_execute(session: witness_session, plan: plan) {
+        OpenBmcRemoteJqExecuted { observation: _ } => false
+        OpenBmcRemoteJqRefused { cause: cause } =>
+          match cause {
+            OpenBmcRemoteJqStdinUnwired => false
+            OpenBmcRemoteJqCommandStringRefused { cause: inner } =>
+              match inner {
+                RemoteExecInterpretationUnknown => true
+                SimpleCommandArgvRefused { cause: _ } => false
+              }
+          }
+      }
+  }
+}
+
+// The production caller inherits the gate: openbmc_fan_config_stepwise_count returns a REFUSAL
+// naming the live confirmation until the interpretation is observed, never a fabricated count.
+test fn fan_config_stepwise_count_refuses_until_live_confirmation() -> Bool {
+  match openbmc_fan_config_stepwise_count(session: witness_session, config_path: stepwise_config_path) {
+    OpenBmcIntegerObserved { value: _ } => false
+    OpenBmcIntegerRefused { reason: reason } =>
+      string_contains(s: reason, pattern: "remote-shell interpretation")
   }
 }
 
