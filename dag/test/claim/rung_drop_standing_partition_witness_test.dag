@@ -89,6 +89,23 @@ test fn the_roster_carries_both_declaration_arms() -> Bool {
 // unclaimed, and there is no arm to go unclaimed for a typed row. This assertion admits a FIFTH
 // typed row without complaint, deliberately -- a new typed drop is the path this consolidation
 // exists to open, and refusing it here would make the control a ratchet against its own purpose.
+// THE SPECIMEN, WRITTEN DOWN BECAUSE A PERMANENTLY-GREEN ASSERTION READS AS CEREMONY. This
+// refused a real loss on its first genuine merge, one merge after it was added. gunbc#10118
+// retired `floor_cut_heal` and taught the projection to render retirement; resolving that merge,
+// git placed main's incoming rows into the region this branch had MOVED
+// `spark_serving_fleet_global_configuration_drop` into, and the row was dropped. THE SURVIVING
+// TEXT WAS COHERENT: no conflict marker, no syntax error, no count that looked wrong, and every
+// other assertion in this file green. An identity diff of the declared set is what caught it.
+// That is the whole argument for asking the question at IDENTITY grain against the AUTHORITY
+// rather than reading the projection: the projection renders each row by its SUBJECT PROSE, so
+// grepping it for an identity slug returns zero whether the row is missing or the instrument is
+// asking a question the artifact does not answer.
+//
+// PER DESIGN section 4b(4) THIS DOES NOT RETIRE WHEN THE CONSOLIDATION LANDS. A climb deletes the
+// redundant lower-rung PRODUCTION machinery; the discriminating RED and its positive control stay
+// enrolled as the executing evidence that the higher rung is still real. Deleting this as
+// scaffolding for a landed change would remove the only thing that distinguishes a guarantee that
+// holds from one that was never tested.
 test fn every_consolidated_typed_row_is_still_rostered() -> Bool {
   every_consolidated_typed_drop_is_rostered_once(ds: rung_drop_roster)
     && length(xs: consolidated_typed_drop_identities) == 4
