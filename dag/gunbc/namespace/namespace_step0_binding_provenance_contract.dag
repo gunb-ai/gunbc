@@ -181,6 +181,40 @@ data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may
 // roster above, and treating it as complete would inherit an unmeasured blind spot as a baseline.
 data step0_census_candidate_producer_standing: NonEmptyStr = "compile_clean_unlisted_import_census is a CANDIDATE producer whose coverage of the reference-family roster is unestablished; it selects UnlistedImportUse diagnostic rows from a masked type-name emission path and has not been shown to discriminate bare call targets, constructors, bare variants or dispatch" as NonEmptyStr
 
+// THE PRODUCER'S FIRST OBLIGATION IS A LIVENESS CONTROL, AND IT IS NOT OPTIONAL. On a totally
+// stripped corpus the advisory diagnostic this candidate producer selects may vanish ENTIRELY --
+// UnlistedImportUse is emitted about an import LIST, and a source with no import list can stop
+// producing the row that names it. A producer that then returns zero has two indistinguishable
+// readings, and they are opposite: "the corpus has no unlisted use" and "the instrument stopped
+// seeing anything". So the ORDER of obligations is fixed here: emit a nonzero on a subject known to
+// contain the class BEFORE any figure over the stripped corpus is read as a finding, and a zero
+// without that control is a refusal ABOUT THE INSTRUMENT, never an observation of the corpus.
+//
+// The second reading is the absorbing fallback wearing a measurement's clothes -- the mechanism
+// cannot see, so it reports the empty answer, and the empty answer is exactly what a clean corpus
+// would look like.
+type Step0CensusLivenessObligation
+  = LivenessControlRequiredBeforeAnyFigure
+  | ZeroWithoutLivenessIsAnInstrumentRefusal
+  | ListedImportLivenessSubjectRequired
+
+fn step0_census_liveness_obligation_statement(obligation: Step0CensusLivenessObligation) -> NonEmptyStr {
+  match obligation {
+    LivenessControlRequiredBeforeAnyFigure =>
+      "before any census figure over a stripped population is read, the producer must emit a nonzero on a subject known to contain the class; a producer that has not been shown to emit at all has measured nothing" as NonEmptyStr
+    ZeroWithoutLivenessIsAnInstrumentRefusal =>
+      "a zero from a producer with no passing liveness control is a typed refusal about the instrument and may never be recorded as a finding about the corpus, because a blind instrument and a clean corpus produce the same number" as NonEmptyStr
+    ListedImportLivenessSubjectRequired =>
+      "the liveness subject must exercise the LISTED-import path the diagnostic is attached to, since a totally stripped source may carry no import list for the diagnostic to be about" as NonEmptyStr
+  }
+}
+
+data step0_census_liveness_obligations: List<Step0CensusLivenessObligation> = [
+  LivenessControlRequiredBeforeAnyFigure,
+  ZeroWithoutLivenessIsAnInstrumentRefusal,
+  ListedImportLivenessSubjectRequired
+]
+
 // THE PRODUCER STANDING IS A TYPED FIELD OF THIS CONTRACT AND IS WRITABLE NOWHERE ELSE. An earlier
 // draft had this contract and the canary's ImportDependenceNotJudged arm each state the same
 // current-state fact in their own words -- two writable authorities for one fact, which is the
@@ -200,6 +234,7 @@ type Step0BindingProvenanceReceiptContract {
   receipt_fields: List<Step0CensusReceiptField>
   no_policy_promotion_rule: NonEmptyStr
   candidate_producer_standing: NonEmptyStr
+  liveness_obligations: List<Step0CensusLivenessObligation>
   producer_standing: Step0BindingProvenanceProducerStanding
 }
 
@@ -215,6 +250,7 @@ data step0_binding_provenance_receipt_contract: Step0BindingProvenanceReceiptCon
   receipt_fields: step0_census_receipt_fields,
   no_policy_promotion_rule: step0_census_no_policy_promotion_rule,
   candidate_producer_standing: step0_census_candidate_producer_standing,
+  liveness_obligations: step0_census_liveness_obligations,
   producer_standing: NoProducerInhabits
 }
 
