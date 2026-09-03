@@ -22,6 +22,13 @@ use std::time::{Duration, Instant};
 const THREAD_START_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TERMINAL_TIMEOUT: Duration = Duration::from_secs(600);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+// No production measurement currently establishes how long Codex needs to flush after closing its
+// stdin. Five seconds is therefore an explicit policy bound, not a measured fact: exceeding it is
+// reported as a refusal below, so evidence can move the bound instead of the overrun staying hidden.
+const NATURAL_EXIT_GRACE: Duration = Duration::from_secs(5);
+// Likewise, ten seconds is an explicit, unmeasured policy bound for TERM/KILL teardown. Exceeding
+// it produces an Unsettled verdict that the session reports as a refusal.
+const PROCESS_GROUP_TERMINATION_GRACE: Duration = Duration::from_secs(10);
 
 pub const EXIT_THREAD_START_TIMEOUT: i32 = 97;
 pub const EXIT_TURN_TERMINAL_TIMEOUT: i32 = 98;
@@ -116,6 +123,19 @@ pub fn run_codex_app_server_stdio_session(
     .join()
     .map_err(|_| "stdin writer panicked".to_string())?;
 
+    // Give Codex its existing clean-EOF exit path, but observe it without reaping: the unreaped
+    // leader pins the process-group identity until teardown has finished signalling and observing
+    // every descendant. A bounded window also prevents an inherited pipe from blocking teardown.
+    let natural_exit = wait_for_natural_exit(pid, NATURAL_EXIT_GRACE);
+    let identity = crate::process_group::pin_process_group_identity(pid).map_err(|observed| {
+        format!("codex process-group identity was lost before teardown: {observed:?}")
+    })?;
+    let termination = crate::process_group::terminate_process_group(
+        &mut child,
+        &identity,
+        PROCESS_GROUP_TERMINATION_GRACE,
+    );
+
     if let Some(h) = stdout_reader {
         let _ = h.join();
     }
@@ -123,13 +143,29 @@ pub fn run_codex_app_server_stdio_session(
         let _ = h.join();
     }
 
-    let mut exit_code = child
-        .wait()
-        .map_err(|e| format!("wait codex child: {e}"))?
-        .code()
-        .unwrap_or(1);
-
-    kill_process_group(pid);
+    let protocol_failure = stdin_result.as_ref().err().map(String::as_str);
+    let with_protocol_failure = |message: String| match protocol_failure {
+        Some(why) => format!("{message}; session protocol failure: {why}"),
+        None => message,
+    };
+    if let Some(message) = natural_exit_error(natural_exit) {
+        return Err(with_protocol_failure(message));
+    }
+    if !termination.is_settled() {
+        return Err(with_protocol_failure(format!(
+            "codex process-group teardown did not settle: {termination:?}"
+        )));
+    }
+    let mut exit_code = match termination.settled_leader() {
+        Some(crate::process_group::SettledLeader::Exited { code }) => *code,
+        Some(crate::process_group::SettledLeader::Signaled { signal }) => 128 + *signal,
+        None => {
+            return Err(with_protocol_failure(format!(
+                "settled codex process-group teardown carried no settled leader: {}",
+                termination.state_debug()
+            )))
+        }
+    };
 
     let stdout = stdout_buf.lock().unwrap().clone();
     let stderr = stderr_buf.lock().unwrap().clone();
@@ -165,6 +201,48 @@ pub fn run_codex_app_server_stdio_session(
     }
 }
 
+fn natural_exit_error(observation: CodexNaturalExit) -> Option<String> {
+    match observation {
+        CodexNaturalExit::Exited => None,
+        CodexNaturalExit::TimedOut => Some(format!(
+            "codex did not exit naturally within {NATURAL_EXIT_GRACE:?}; process group was terminated"
+        )),
+        CodexNaturalExit::ObservationFailed { detail } => {
+            Some(format!("observe codex natural exit: {detail}"))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CodexNaturalExit {
+    Exited,
+    TimedOut,
+    ObservationFailed { detail: String },
+}
+
+fn wait_for_natural_exit(pid: u32, budget: Duration) -> CodexNaturalExit {
+    let deadline = Instant::now() + budget;
+    loop {
+        match crate::process_group::observe_leader_without_reaping(pid) {
+            crate::process_group::LeaderObservation::ExitedUnreaped => {
+                return CodexNaturalExit::Exited
+            }
+            crate::process_group::LeaderObservation::Running if Instant::now() < deadline => {
+                thread::sleep(POLL_INTERVAL);
+            }
+            crate::process_group::LeaderObservation::Running => return CodexNaturalExit::TimedOut,
+            crate::process_group::LeaderObservation::LeaderVanished => {
+                return CodexNaturalExit::ObservationFailed {
+                    detail: format!("leader {pid} absent before it was reaped"),
+                }
+            }
+            crate::process_group::LeaderObservation::ObservationFailed { detail } => {
+                return CodexNaturalExit::ObservationFailed { detail }
+            }
+        }
+    }
+}
+
 fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
     reader: R,
     buf: Arc<Mutex<String>>,
@@ -194,8 +272,6 @@ fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
 }
 
 fn spawn_codex_child(req: &CodexStdioSessionRequest<'_>, stdin_rx: File) -> Result<Child, String> {
-    use std::os::unix::process::CommandExt;
-
     let mut cmd = std::process::Command::new(req.executable);
     cmd.arg("app-server")
         .arg("--stdio")
@@ -205,24 +281,10 @@ fn spawn_codex_child(req: &CodexStdioSessionRequest<'_>, stdin_rx: File) -> Resu
         .env("CODEX_HOME", req.codex_home)
         .current_dir(req.cwd);
 
-    unsafe {
-        cmd.pre_exec(|| {
-            if libc::setpgid(0, 0) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-
-    cmd.spawn()
+    // The group mechanics moved to `crate::process_group` when the evaluation-budget falsifier
+    // became a second consumer of them; the protocol above and below stays here.
+    crate::process_group::spawn_in_new_process_group(&mut cmd)
         .map_err(|e| format!("spawn codex app-server: {e}"))
-}
-
-fn kill_process_group(pid: u32) {
-    unsafe {
-        let _ = libc::kill(pid as i32, libc::SIGTERM);
-        let _ = libc::kill(-(pid as i32), libc::SIGTERM);
-    }
 }
 
 fn poll_thread_start_id(
@@ -506,5 +568,12 @@ mod tests {
         let false_positive_needle = "\"id\":4";
         assert!(line_id41.contains(false_positive_needle));
         assert_eq!(extract_thread_id_for_rpc_response(line_id41, 4), None);
+    }
+
+    #[test]
+    fn natural_exit_timeout_is_a_refusal_not_a_silent_termination() {
+        let error = natural_exit_error(CodexNaturalExit::TimedOut).expect("timeout must refuse");
+        assert!(error.contains("did not exit naturally"));
+        assert!(error.contains("process group was terminated"));
     }
 }
