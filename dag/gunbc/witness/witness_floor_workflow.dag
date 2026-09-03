@@ -2557,10 +2557,29 @@ fn required_lanes_aggregate_job() -> Job {
   }
 }
 
-data witness_floor_workflow: Workflow = {
-  name: witness_floor_workflow_name,
-  run_name: none,
-  on: [
+// THE TRIGGERS AND THE LANE JOBS ARE NAMED SEPARATELY FROM THE WORKFLOW THEY ASSEMBLE, AND THE
+// REASON IS COST, NOT TASTE. A record is materialized whole, so a reader that wants one field pays
+// for every other -- and one of the other fields is `required_lanes_aggregate_job`, whose `run` is
+// the serialized `gunbc.required_lanes_gate` program, the largest bash AST this workflow carries.
+// Measured on this tree with `claim_batch --functions`, one witness per subject: each of the six
+// lane jobs costs about 220ms against a 210ms floor for reaching this module at all, the aggregate
+// alone costs 1353ms, and the assembled workflow costs 1569ms. So a witness asking "is the dispatch
+// input declared" was paying more than a second to serialize a gate script it says nothing about,
+// and three such rows exceeded `v2.workflow.required_floor`
+// `required_floor_claim_cpu_safety_limit_ms` on check 100530537497.
+//
+// SPLITTING THE ROWS WOULD NOT HAVE FIXED THAT AND WAS TRIED FIRST. Two rows became four, each half
+// landing nearer the ceiling, and the fold they both paid was untouched -- an improvement in the
+// arithmetic that was a coincidence of size, one emitted line from red again. DESIGN section 2 says
+// to minimize the demand graph before materializing its answers; the demand here was for the
+// aggregate's serialized text, and no consumer of these two producers asks for it.
+//
+// NEITHER IS A SECOND AUTHORITY FOR WHAT THE WORKFLOW IS. `witness_floor_workflow` is assembled
+// from exactly these, so a lane added here is a lane in the emitted yaml, and a reader folding
+// `witness_floor_lane_jobs` covers every witness-bearing lane by construction rather than by a
+// hand-listed roster that could fall behind.
+fn witness_floor_triggers() -> List<WorkflowTrigger> {
+  [
     WorkflowDispatch { inputs: [ci_heal_expected_healed_sha_input] },
     MergeGroup,
     Push { branches: [gunbc_default_branch_name], paths: [] },
@@ -2568,7 +2587,27 @@ data witness_floor_workflow: Workflow = {
       branches: [gunbc_default_branch_name],
       types: [Opened, Synchronize, Reopened]
     }
-  ],
+  ]
+}
+
+// THE AGGREGATE IS DELIBERATELY NOT A MEMBER. It checks out nothing and runs no witness: it reads
+// the other lanes' results. Every consumer of this list is asking about lanes that carry a subject,
+// and the aggregate joined that population only as something to filter back out.
+fn witness_floor_lane_jobs() -> List<Job> {
+  [
+    build_lane_job(),
+    witness_floor_job(),
+    rust_unit_tests_job(),
+    fabric_evidence_job(),
+    emit_copy_qualification_battery_job(),
+    heal_generated_artifacts_job()
+  ]
+}
+
+data witness_floor_workflow: Workflow = {
+  name: witness_floor_workflow_name,
+  run_name: none,
+  on: witness_floor_triggers(),
   concurrency: Present {
     value: concurrency_of_policy(
       policy: witness_floor_concurrency_policy,
@@ -2594,7 +2633,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), fabric_evidence_job(), emit_copy_qualification_battery_job(), heal_generated_artifacts_job(), required_lanes_aggregate_job()]
+  jobs: list_append(left: witness_floor_lane_jobs(), right: [required_lanes_aggregate_job()])
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim. A

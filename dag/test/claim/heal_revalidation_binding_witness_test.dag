@@ -11,12 +11,13 @@ import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
 }
 import gunbc.witness_floor_workflow {
-  witness_floor_workflow,
   heal_revalidation_preflight_step,
   heal_revalidation_preflight_step_name,
   ci_heal_expected_healed_sha_input_name,
   ci_heal_checkout_ref_expression,
-  heal_generated_artifacts_job_id
+  heal_generated_artifacts_job_id,
+  witness_floor_lane_jobs,
+  witness_floor_triggers
 }
 import gunbc.ci_spec { gunbc_ci_heal_commit_push_script, gunbc_ci_heal_dispatch_invoke }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_root_stamp_script }
@@ -72,7 +73,7 @@ fn preflight_immediately_follows_checkout(j: Job) -> Bool {
 }
 
 fn job_by_id(id: String) -> Job? {
-  fold(witness_floor_workflow.jobs, init: none, f: fn(acc, j) {
+  fold(witness_floor_lane_jobs(), init: none, f: fn(acc, j) {
     match acc {
       Present { value: found } => Present { value: found }
       Absent => if j.id == id { Present { value: j } } else { none }
@@ -84,12 +85,19 @@ fn job_has_checkout(j: Job) -> Bool {
   any(job_step_names(j: j), n => n == "Checkout")
 }
 
-// EVERY witness-bearing lane, derived from the workflow's own job list rather than from a roster
+// EVERY witness-bearing lane, derived from the workflow's own lane list rather than from a roster
 // retyped here: a job that checks out the ordinary subject is a job whose steps can report on it,
 // so the population is "carries a `Checkout` step", and adding a sixth such lane without the
 // preflight reds this row instead of slipping past a hand-listed five.
+//
+// THE SUBJECT IS `witness_floor_lane_jobs`, NOT THE ASSEMBLED WORKFLOW, AND THAT IS A COST FACT
+// WITH A RECEIPT. Reading the record forced `required_lanes_aggregate_job`, whose serialized gate
+// script measured 1353ms of the assembled workflow's 1569ms -- a subject no row in this file says
+// anything about, and the reason three of them exceeded the floor's per-claim ceiling on check
+// 100530537497. The producer carries the measurement and why splitting the rows was the wrong
+// repair.
 test fn every_ordinary_checkout_lane_preflights_before_its_first_witness() -> Bool {
-  let lanes = filter(witness_floor_workflow.jobs, j => job_has_checkout(j: j))
+  let lanes = filter(witness_floor_lane_jobs(), j => job_has_checkout(j: j))
   lanes.length() >= 5
     && all(lanes, j => preflight_immediately_follows_checkout(j: j))
 }
@@ -180,7 +188,7 @@ fn dispatch_input_is_declared_string(v: YamlValue) -> Bool {
 }
 
 fn dispatch_trigger_value() -> YamlValue {
-  fold(witness_floor_workflow.on, init: YamlNull, f: fn(acc, t) {
+  fold(witness_floor_triggers(), init: YamlNull, f: fn(acc, t) {
     match t {
       WorkflowDispatch { inputs: _ } => workflow_trigger_entry(trigger: t).value
       Push { branches: _, paths: _ } => acc
