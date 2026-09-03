@@ -360,60 +360,73 @@ in a `dag/test/claim/*.dag` entry named as a literal `--entry` path beside it.
 So of the P4/P7 call-by-name axis, this section attributes 52 sites (HEAD-subject, 0 stale); the
 remaining 68 are answered in the next section by a different question, and none is revision-addressed.
 
-## Closing the 68: the question was re-shaped, not enumerated
+## Closing the 68: the question was re-shaped twice, and the first re-shaping was still a spelling
 
-The 68 unattributed P4 sites were closed, and the method is the point. **Attributing 68 call sites
-one by one would have been the wrong question.** A call site does not have a subject revision — the
-`InterpContext` it runs in does, and many call sites share one context. So the question became: *which
-of the seed's InterpContext constructions is built from revision-addressed source text?*
+The 68 unattributed P4 sites are closed. The method took two attempts, and the failed first attempt is
+kept because it is the same defect this document is about, committed for the third time, in the
+paragraph that claimed to be immune to it.
 
-That population is **86** `InterpContext::new` / `make_eval_context` constructions across the hand
-`.rs` set, and it is answerable by MECHANISM rather than by spelling, which is what makes the closure
-trustworthy after everything above. A context needs SOURCES, and history can become sources in exactly
-two ways:
+**First re-shaping — right idea, wrong population.** A call site has no subject revision; the
+`InterpContext` it runs in does, and many sites share one context. So the question became *which
+context constructions are built from revision-addressed source text?* — and the population was given
+as "**86** `InterpContext::new` / `make_eval_context` constructions". **That population was itself
+discovered by grepping two constructor NAMES.** It is a spelling wearing a mechanism's clothes, and
+review 59276 refuted it with a positive hit: contexts are also constructed through
+`InterpContext::with_runtime_options` and `InterpContext::over_scope_indexes`. The 86 was a lower
+bound presented as a complete population — the exact move retracted twice above.
 
-| route | how history reaches a context | found |
+**The remedy the review proposed is the weaker of the two available**, and this is the one place this
+correction does not simply take the reviewer's instruction. "Expand the census to all constructors"
+re-keys on a longer list of names, so a constructor added tomorrow escapes it again. The stable fix is
+to anchor on the CONSTRUCTION ITSELF.
+
+**Second re-shaping — anchor on the struct literals, of which there are three.**
+
+| carrier | struct-literal construction sites | consequence |
 |---|---|---|
-| written into a source root | `fs::write` of git-obtained text into a directory later passed as `--source-root` | **1** — `cli_run.rs`, the roadmap carrier-introduction overlay |
-| supplied as in-memory source | `SourceFile { content: … }` or `single_source(…)` built from git/`Command` output | **0** |
+| `InterpContext` | **1** — inside `over_scope_indexes` | `new`, `with_fixture_store` and `with_runtime_options` all funnel into it; so does every future constructor, because there is nowhere else to build one |
+| `PreparedScopeIndexes` (its only content-bearing input) | **1** — inside `build_scope_indexes_with_module_order`, which takes `graph: &ResolvedGraph` | every context's content therefore comes from a `ResolvedGraph` |
+| `ResolvedGraph` | 21, of which 13 are empty test graphs, 4 are the compile path, and **4 are the resolved-graph cache** | the cache is the only one whose bytes are read from disk rather than freshly compiled |
 
-**Exactly one revision-addressed context exists in the hand-written seed, and it is the one already
-adjudicated.** Its call (`cli_run.rs:680`) is a single-line site counted in the original 42 — it is
-not among the 68. **Therefore none of the 68 is revision-addressed**; each runs in a context whose
-sources are the live worktree or an in-file synthetic module, and for the trigger's purposes both are
-HEAD-time subjects (a synthetic site's authority and consumer are the same expression and need no
-decoder at all).
+**The cache is not a third route, and it is refused into that shape rather than assumed into it.** Its
+key is `subject_digest_for_closure(sources: &[Rc<SourceFile>])` — derived from the sources themselves —
+and a header whose stored subject differs from `expected_subject` is REJECTED
+(`CacheRejectReason::BackendKeyMalformed`), not served. So a cache hit is content-identical to the
+sources the caller already holds; it is a memo keyed on the subject, not an independent origin.
 
-**The scope of THIS argument, stated because the document's whole subject is unstated scope.** The
-closure rests on a context having exactly two inputs — disk paths under a source root, or in-memory
-`SourceFile` content. That is a claim about the MECHANISM, not about a search string, which is what
-makes it stronger than "I grepped for `git show`".
+**The closure, now anchored on constructions rather than on names.** Every context's decodable content
+reaches it through one struct literal, from one `PreparedScopeIndexes` literal, from a `ResolvedGraph`
+that is either freshly compiled from `SourceFile`s or restored from a cache keyed on those same
+`SourceFile`s. And `SourceFile`s arrive by exactly two routes:
 
-**ORIGIN IS IRRELEVANT, and that is the whole strength of the argument.** It does not matter whether
-text comes from git, a network fetch, an archive, or synthesis: to be decoded it must become a
-context's source, and every origin must enter through one of the two enumerated routes. There is no
-third input. A fetch composed with a write is not a third route — it is route A with a different
-upstream, and route A is already enumerated.
+| route | how source text reaches a context | revision-addressed instances |
+|---|---|---|
+| a disk path under a `--source-root` | including `fs::write` of externally-obtained text into such a directory | **1** — the roadmap carrier-introduction overlay, already adjudicated |
+| in-memory `SourceFile { content: … }` / `single_source(…)` | | **0** |
 
-*An earlier revision of this section bounded the claim with an observation instead: "no network fetch
-or archive extraction exists in this tree". That was FALSE — `v1_interpreter` carries a live `ureq`
-REST transport, dispatched by method — and it is the kind of false a reader trusts precisely because
-it was labelled an observation, and observations read as checked. It was deleted rather than repaired,
-because it was doing no work the mechanism claim needed: a sentence that can rot, guarding a claim
-that cannot. Recorded here rather than silently removed, because the failure is instructive — the
-weaker sentence was written to bound the stronger one and ended up being the only part that could be
-wrong.*
+That one context's call is `cli_run.rs:680`, a single-line site counted in the original 42. **It is not
+among the 68, so none of the 68 is revision-addressed.**
 
-**What remains genuinely unknown**, and is stated as unknown rather than closed: whether any `.dag`
-program in this tree actually composes a fetch with a write into a directory later passed as a
-`--source-root`. No such composition was found and no exhaustive search was made. It does not affect
-the closure — such a composition is route A — but it would matter to anyone reasoning about where a
-context's bytes originate.
+**ORIGIN IS IRRELEVANT, and that is the strength of the argument.** Git, a network fetch, an archive,
+synthesis — to be decoded, text must become a context's source, and every origin enters by one of the
+two routes above. A fetch composed with a write is not a third route; it is the first route with a
+different upstream.
 
-**Why the HEAD-vs-synthetic split within the 68 was NOT then enumerated.** It does not change any
-answer: both are HEAD-time, both are typed by the trigger identically, and neither can drift against a
-revision. Enumerating it would be the same completeness-priced-as-completeness the correction above
-declines for the 14 `HelperParameter` rows — the purity trap wearing a census's clothes.
+*An earlier revision bounded this with an observation instead: "no network fetch or archive extraction
+exists in this tree". That was FALSE — `v1_interpreter` carries a live `ureq` REST transport,
+dispatched by method — and it is the kind of false a reader trusts precisely because it was labelled an
+observation, and observations read as checked. It was deleted rather than repaired: it was a sentence
+that can rot, guarding a claim that cannot. Recorded rather than silently removed, because the weaker
+sentence was written to bound the stronger one and ended up being the only part that could be wrong.*
+
+**What remains genuinely unknown**, stated as unknown: whether any `.dag` program composes a fetch with
+a write into a directory later passed as a `--source-root`. Not found, not exhaustively searched. It
+does not affect the closure — that composition is the first route — but it matters to anyone reasoning
+about where a context's bytes originate.
+
+**Why the HEAD-vs-synthetic split within the 68 was NOT enumerated.** It changes no answer: both are
+HEAD-time, both are typed by the trigger identically, neither can drift against a revision. It would be
+the same completeness-priced-as-completeness declined for the 14 `HelperParameter` rows.
 
 ## The identifier-preserving shape axis — a real, unmeasured sibling
 
