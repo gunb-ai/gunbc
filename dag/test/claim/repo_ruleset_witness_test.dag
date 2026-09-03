@@ -21,6 +21,7 @@ import gunbc.repo_ruleset {
   MergeQueueUnsigned,
   MergeQueueSignedOff,
   merge_queue_projection_refusal,
+  signed_desire_projection_refusal_for,
   merge_queue_check_response_timeout,
 }
 import v2.std.collection { Absent, Present }
@@ -437,6 +438,29 @@ test fn w_the_required_status_checks_rule_reads_back_as_no_queue() -> Bool {
   match merge_queue_standing(rules: desired_ruleset_rules()) {
     NoMergeQueueRule => true
     _ => false
+  }
+}
+
+// SIGNING OFF WITHOUT WIRING THE PROJECTION STOPS THE LINE INSTEAD OF SILENTLY UNDER-APPLYING.
+// desired_ruleset_rules appends no merge_queue rule under either arm today, so a flip to
+// MergeQueueSignedOff with nothing else changed would PUT a ruleset without the signed queue while
+// verify reported a divergence no apply could clear. The RED is authorable only because the check
+// takes the policy as an operand: the signed state does not exist in this tree, so a check reading
+// the desire row alone would be permanently green and would assert nothing.
+test fn w_RED_signing_off_without_wiring_the_projection_refuses_to_actuate() -> Bool {
+  match signed_desire_projection_refusal_for(policy: Present { value: gunbc_merge_queue_proposal }) {
+    Present { value: cause } =>
+      string_contains(s: cause, pattern: "never clear")
+        && string_contains(s: cause, pattern: "merge_queue rule")
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL: an unsigned desire is not a refusal, or converge would be dead today.
+test fn w_an_unsigned_desire_does_not_trip_the_sign_off_refusal() -> Bool {
+  match signed_desire_projection_refusal_for(policy: none) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 

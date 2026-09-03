@@ -1144,6 +1144,7 @@ mod roadmap_acceptance_history_projection_tests {
     };
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
     use im::HashMap;
     use std::rc::Rc;
@@ -1156,6 +1157,53 @@ mod roadmap_acceptance_history_projection_tests {
             emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    // WHAT A REST BODY DOES WITH AN ABSENT OPTIONAL FIELD, ESTABLISHED BY EXECUTION RATHER THAN BY
+    // READING THE FUNCTION. `extdeps.github.rulesets` decodes one `parameters` key whose object
+    // differs per rule type as the union of the readable shapes, so a required_status_checks rule
+    // constructs the merge_queue fields as `none`. Whether those keys are OMITTED from the PUT body
+    // or sent as seven explicit nulls is a WIRE fact and decides whether a converge run's body is
+    // one GitHub accepts -- and it is an actuation prerequisite for the merge-queue sign-off, so it
+    // needed a receipt rather than a mechanism argument.
+    //
+    // The positive control is the same record with the field PRESENT: without it, a serializer that
+    // dropped every field would pass the absence assertion.
+    #[test]
+    fn wire_body_omits_absent_optional_record_fields() {
+        let ctx = empty_ctx();
+        let absent = v1_interpreter::Value::Record {
+            type_name: ctx.sym("RuleParameters"),
+            fields: Rc::new(vec![
+                (ctx.sym("strict"), v1_interpreter::Value::Bool(false)),
+                (ctx.sym("grouping_strategy"), v1_interpreter::Value::Null),
+            ]),
+        };
+        let json = super::value_to_wire_json(&absent, &ctx).expect("serialize absent");
+        let obj = json.as_object().expect("object body");
+        assert!(
+            !obj.contains_key("grouping_strategy"),
+            "an absent optional must not reach the wire at all, as a null or otherwise: {json}"
+        );
+        assert_eq!(obj.get("strict"), Some(&serde_json::Value::Bool(false)));
+        assert_eq!(obj.len(), 1, "only the present field is sent: {json}");
+
+        let present = v1_interpreter::Value::Record {
+            type_name: ctx.sym("RuleParameters"),
+            fields: Rc::new(vec![
+                (ctx.sym("strict"), v1_interpreter::Value::Bool(false)),
+                (
+                    ctx.sym("grouping_strategy"),
+                    v1_interpreter::str_value("ALLGREEN".to_string()),
+                ),
+            ]),
+        };
+        let json = super::value_to_wire_json(&present, &ctx).expect("serialize present");
+        assert_eq!(
+            json.get("grouping_strategy"),
+            Some(&serde_json::Value::String("ALLGREEN".to_string())),
+            "the control must send the field it carries: {json}"
+        );
     }
 
     #[test]

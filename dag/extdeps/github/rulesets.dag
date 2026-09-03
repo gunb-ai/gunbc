@@ -126,11 +126,17 @@ type RequiredStatusCheckWire {
 // rather than defaulting the missing ones, which is the second half of the guard: the type tag says
 // which fields to expect, and the optionals say whether they came.
 //
-// NOT ESTABLISHED BY THIS CHANGE, and stated rather than assumed: how the REST body serializer
-// renders an absent optional in the PUT. If it emits explicit nulls, a converge run would send
-// seven null keys on a required_status_checks rule and GitHub may refuse the body. No CI step
-// exercises converge, so this has not been observed either way, and the merge-queue rule this
-// module would send is gated on operator sign-off in gunbc.repo_ruleset regardless.
+// ESTABLISHED BY EXECUTION: AN ABSENT OPTIONAL DOES NOT REACH THE WIRE AT ALL, as a null or
+// otherwise. The REST body goes through cli_run value_to_wire_json, whose record arm SKIPS a null
+// field rather than emitting it, and the `none` literal is the host null carrier. Both halves are
+// asserted by cli_run wire_body_omits_absent_optional_record_fields, which serializes a record
+// carrying one present and one absent field and requires the body to contain exactly the present
+// one -- with the same record carrying the field PRESENT as the control, so a serializer that
+// dropped everything could not pass it. That test runs in the required unit lane.
+//
+// So a required_status_checks rule sends its own three keys and not seven nulls, which is the
+// fact a converge body depends on. It was a mechanism argument until the receipt existed; it is
+// now a wire fact.
 //
 // NEXT-RUNG TRIGGER, named as the capability rather than as an artifact: a transport decode that
 // carries a discriminator from the enclosing object into a tagged value, so `parameters` can be a

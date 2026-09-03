@@ -56,6 +56,7 @@ import extdeps.github.rulesets {
   merge_queue_grouping_strategy_wire_label,
   merge_queue_merge_method_wire_label,
   ruleset_rule_types,
+  MergeQueueRule,
   ruleset_rule_type_wire_label,
   ruleset_enforcement_wire_label,
   ruleset_target_wire_label,
@@ -511,10 +512,46 @@ fn rule_unexpected_divergences(observed: List<RulesetRuleType>) -> List<RulesetD
 // line here rather than repairing anything -- the DESIGN section 5 factory model, where a deficit
 // halts the run and analysis precedes restart. `verify` still reports it as a divergence, because
 // reporting is what verify is for.
+// A SIGNED DESIRE THIS PROJECTION CANNOT BUILD IS ALSO AN ACTUATION REFUSAL, and it is here rather
+// than in a follow-up note because the trap is otherwise latent. desired_ruleset_rules returns the
+// three declared rules and appends NO merge_queue rule under either arm -- wiring that projection
+// is the increment after sign-off, because the queue rule must send its own parameter keys without
+// the required_status_checks keys beside it. So the day the arm flips to MergeQueueSignedOff and
+// nothing else changes, converge would PUT a ruleset with no queue in it while verify reported a
+// MergeQueueRuleAbsent divergence no apply could ever clear: a signed policy silently not in
+// force, which is the worst of the available states.
+//
+// Refusing instead makes the flip fail LOUDLY the moment it happens, naming what is missing --
+// which turns "do not forget the follow-up" from a comment somebody must read into a line-stop the
+// sign-off itself trips (DESIGN section 5: the deficit stops the line, and analysis precedes
+// restart).
+//
+// IT TAKES THE POLICY AS AN OPERAND SO ITS RED IS AUTHORABLE. The signed state does not exist in
+// this tree -- the desire row is Unsigned -- so a check reading only that row would be permanently
+// green by construction and would be cited as coverage while asserting nothing (DESIGN section
+// 4b: ask whether the RED can be written before writing the check). A witness can hand it the
+// proposal as though signed, and does.
+fn signed_desire_projection_refusal_for(policy: MergeQueuePolicy?) -> NonEmptyStr? {
+  match policy {
+    Absent => none
+    Present { value: _ } =>
+      if any(desired_ruleset_rule_types(), t =>
+        ruleset_rule_type_wire_label(t: t) == ruleset_rule_type_wire_label(t: MergeQueueRule)) {
+        none
+      } else {
+        Present { value: "the merge queue is signed off but desired_ruleset_rules projects no merge_queue rule, so applying desired would PUT a ruleset without the signed queue and the divergence would never clear. Wire the merge_queue rule into the projection before actuating." }
+      }
+  }
+}
+
+fn signed_desire_projection_refusal() -> NonEmptyStr? {
+  signed_desire_projection_refusal_for(policy: desired_merge_queue_policy())
+}
+
 fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmptyStr? {
   let unexpected = rule_unexpected_divergences(observed: rule_types)
   if length(unexpected) == 0 {
-    none
+    signed_desire_projection_refusal()
   } else {
     Present { value: concat(
       "the live ruleset carries rules this repository's desired projection does not declare, and converge sends the WHOLE ruleset: applying desired would delete them. Refusing rather than repairing. ",
