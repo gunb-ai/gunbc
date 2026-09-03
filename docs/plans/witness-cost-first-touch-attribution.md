@@ -650,25 +650,37 @@ rows while `required_floor_claim_cost.tsv` carries 295 over the 100ms line. A
 census taken from the log is the log's ranking read as the population —
 `instrument_output_read_as_subject_content`, observed twice on this lane.
 
+**And a third truncation lives in the ARTIFACT, not the log, which is why it is
+the dangerous one.** `required_floor_cross_claim_demand.tsv`'s `module_sample`
+column caps at **8 modules**; on run 33668368846, **1044 of 26317 rows** carry a
+`modules` count above that cap, so their consumer list is cut. Unlike the two
+print caps this one has no trailer — the row simply lists eight modules beside a
+`modules=71`, and a reader joining producers to consumer modules gets a silently
+partial answer.
+
+The consequence is specific and it bites exactly where the join matters: the
+producers whose sample is truncated are the WIDELY SHARED ones, which are
+precisely the producers most likely to explain why a whole module's rows cluster.
+So **a corpus-scale join from module to shared producer is not performable from
+this artifact today** — the per-module reading below is sound only where the join
+was performed by hand, one producer at a time. Widening or inverting that column
+is named here as an obligation and deliberately not undertaken in this lane.
+
+Three truncated renderings on one lane is a pattern rather than three accidents,
+and the shape they share is the reusable part: **an instrument that caps a
+collection reports the cap honestly at the top level (`modules=71`) while the
+column a consumer actually reads silently answers for eight.** Check the cap
+against the count before joining on any list-valued column.
+
 ### Eval steps, not milliseconds, is the within-module discriminator
 
 `required_floor_claim_cost.tsv` carries `eval_steps` beside the two clocks. Steps
-are deterministic where a millisecond is not, so a step figure cannot be explained
-by a quiet runner — which is exactly the confound that demoted the variance screen
-and the cluster-tightness prior above.
-
-**What `eval_steps` measures is WORK, and work is not OWNERSHIP.** Rows landing at
-near-identical step counts are not thereby shown to share a producer; that is a
-step-cluster inference, and the same total can arise from unrelated derivations of
-similar size. Ownership is established by the cross-claim demand artifact, which is
-keyed by PRODUCER IDENTITY and says which claims actually reach the same producer.
-The shared-derivation conclusion is a JOIN of the two instruments: demand identifies
-the shared producer, and `eval_steps` then characterises how much evaluation work
-the claims reaching it perform.
-
-Read that way on run 33668368846's over-line population, the majority of the CPU
-sits in modules where the demand artifact names a common producer AND the rows
-agree on steps to within a few percent: shared derivation, where
+are deterministic where a millisecond is not, so a set of rows landing at
+near-identical step counts is evidence of one derivation repeated, and cannot be
+explained by a quiet runner — which is exactly the confound that demoted the
+variance screen and the cluster-tightness prior above. Applied per module to run
+33668368846's over-line population, the majority of that CPU sits in modules
+whose rows agree on steps to within a few percent: shared derivation, where
 splitting re-attributes the fold and changes no real cost
 (`witness_row_cost` `witness_decomposition_does_not_reduce_entry_cost_note`).
 
@@ -714,13 +726,12 @@ Three classes are disqualified without a run:
   little reuse are cache population, which is why `formal_production_for_lhs_exact`
   was removed from the roster after a run measured 1,635 fills against 113
   consumer claims. *e.g.* `bind_outcome`, `zip_eq`, `fold_grammar_expr`,
-  `emit_host_list_map`. **claims ≈ evals is the shape that SURVIVES this
-  exclusion screen** — it is worth measuring, which is not the same as admitted.
+  `emit_host_list_map`. **claims ≈ evals is the shape that admits.**
 - **A constructor.** Its census cost is call volume plus inclusive callees, not a
   derivation, so there is nothing to serve. *e.g.* `decl_ref`,
   `effect_demand_key`, `formal_productions_catalog_to_node`.
 
-A fourth shape survives the screen but is usually a loss: a large argument reduced to a
+A fourth shape is admissible but usually a loss: a large argument reduced to a
 small value with little work between, such as
 `target_catalog_contains_node_shape(slot: Node, catalog_targets: List<Node>) -> Bool`,
 where hashing and verifying the node list per serve costs more than the fold it
@@ -764,26 +775,12 @@ to `cpu_deadline=0` and both refusals executed. Whoever makes that fold cheap by
 whatever route gets the same effect, because the mechanism is the row reaching a
 verdict rather than any particular repair.
 
-**Prioritise this population ahead of milliseconds — but the safety RANKING it
-would need does not exist yet, and this document does not supply one.** A
-preempted row is a strong candidate regardless of where it sits in a cost
-ranking. What is observable is only the VICTIM IDENTITY: `cpu_deadline` counts
-how many rows were cut off, `required_floor_claim_cost.tsv` carries each of them
-with `verdict_reached=false`, and both name WHICH claim was preempted.
-
-Neither names what that claim exists to PROVE. The two rows above are refusal
-probes because their source was read and verified one at a time, not because any
-instrument said so — and reading names off a diagnostic does not generalise to a
-corpus-wide procedure. `std.witness_purpose` is explicit that purpose is
-AUTHORED, NOT INFERRED FROM IMPLEMENTATION, and it presently carries no per-row
-declarations at all: zero declarers, zero consumers.
-
-So the honest statement of the method is three separate claims, and only the
-first two are discharged here: victim identity is observable; these two victims
-were independently verified as refusal probes; ranking the population by safety
-relevance REMAINS BLOCKED until an authored purpose can be joined against
-`verdict_reached`. Treating the second as if it were the third is how a class
-acquires a rung it did not earn.
+**So rank this population by which refusals are not executing, not by
+milliseconds.** A preempted row is the strongest candidate in the corpus
+regardless of where it sits in a cost ranking, and the floor's `cpu_deadline`
+counter names how many there are without naming which — the identities are in the
+interruption diagnostics, and only those say whether a discriminating RED is the
+one being cut off.
 
 **The repair for this class has to travel through the gate the class refuses.**
 Recorded because it is a structural property and not a queue accident, and
