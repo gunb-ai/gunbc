@@ -329,64 +329,129 @@ fn serving_unit_observed_units() -> List<ServingUnit> {
 // not a capacity limit waiting to be filled, and raising it without re-measuring is how a
 // configuration gets worse while looking more generous.
 //
-// AND SLOTS BUY CONCURRENCY, NOT SPEED. Single-stream decode is memory-bandwidth-bound at roughly
-// 13-16 tok/s no matter how many slots exist; per-stream rate FALLS as concurrency rises (13.3 at
-// one, 5.9 at ten). A reader who takes the aggregate figure as a per-session speed will size
-// sessions wrongly, which is why both quantities are recorded rather than the headline one.
+// AND SLOTS BUY CONCURRENCY, NOT SPEED. A reader who takes an aggregate figure as a per-session
+// speed will size sessions wrongly, which is why the two are separate quantities below.
+//
+// THE ROW ABOVE ONCE READ "single-stream decode is memory-bandwidth-bound at roughly 13-16 tok/s,
+// 13.3 at one and 5.9 at ten". EVERY PART OF THAT WAS WRONG, AND THE WAY IT WAS WRONG IS THIS
+// MODULE'S OWN SUBJECT. Asked directly, the server's `timings` report predicted_per_second 2.78 --
+// 359 ms per token -- against prompt_per_second 14.45. The 13-16 band was the PREFILL rate read as
+// the DECODE rate. Two different quantities, one number, exactly the shape of the `-c` trap this
+// module exists to close, committed in the same file that closes it.
+//
+// It is not a stale reading either: the front-door process has run since 14:19:26 UTC on 2026-09-02
+// and the handoff measurement was 18:11-18:19, so both readings observe ONE INCARNATION and no
+// restart explains the gap. The instrument reported faithfully; its output answered a question
+// nobody asked.
+//
+// AND THE MECHANISM IN THAT SENTENCE WAS WRONG TOO, WHICH MATTERS MORE THAN THE NUMBER. 359 ms per
+// token is not memory bandwidth on this hardware. The two GPUs ALTERNATE -- sampled means of roughly
+// 28% on the front door and 42% on the peer, with repeated 0% samples on both -- because an RPC
+// layer split runs one host's layers, ships activations, then idles while the other host runs its
+// half. A token cannot be faster than one full trip through that pipeline, and that serialization is
+// independent of batch size, which is why per-stream rate is PINNED rather than falling under load:
+// measured flat across a concurrency sweep while aggregate scaled linearly. The earlier claim that
+// per-stream falls with concurrency described contention that this configuration does not have.
+//
+// THE CONSEQUENCE FOR DESIRED STATE, since this module feeds one: the box is running at roughly a
+// third of its aggregate capacity and more concurrent sessions are close to free, while per-session
+// speed cannot improve without removing the alternation. Tensor parallelism is what removes it --
+// both GPUs computing each layer simultaneously instead of taking turns -- and that is a REALIZATION
+// choice, not a tuning knob on this one.
+//
+// WHAT IS KNOWN ABOUT THAT ALTERNATIVE, recorded here because it bounds what a desired state may
+// assert and NOT because this module selects it. A tensor-parallel vLLM attempt exists on the front
+// door and is not running: it crashed in the block-scaled fp8 cutlass dispatch, on the 26.08 image
+// rather than an older one, so "retry a newer container" is not the repair. The kernel is not
+// missing on this GPU -- per-tensor, per-token and 128-block scaled matmuls all return correct
+// results there.
+//
+// A TRITON LINEAR BACKEND WAS THE FIX CANDIDATE AND A LIVE WINDOW FALSIFIED IT. Triton refuses the
+// same model with `KeyError: 'float8_e8m0fnu'` -- that build does not know the UE8M0 scale dtype the
+// checkpoint carries, which the server names itself at startup as quantization_config.scale_fmt
+// ue8m0. The third backend, deep_gemm, is the one UE8M0 was designed for and is the one this image
+// ships without. So all three block-scaled fp8 paths fail for this checkpoint in this container,
+// and the earlier reading -- a dimension ceasing to be a 128-multiple once the weight is sliced --
+// was a plausible diagnosis the evidence did not support.
+//
+// THE CLASS MATTERS MORE THAN THE FLAG. This is not a misconfiguration with a working setting beside
+// it; it is a missing capability at the intersection of a checkpoint SCALE FORMAT and an image
+// KERNEL INVENTORY. That makes it a realization ADMISSION question -- whether this runtime can serve
+// this artifact at all -- rather than a tuning axis, and reaching it costs building DeepGEMM for this
+// GPU or obtaining a non-UE8M0 checkpoint.
+//
+// ONE OBSTACLE DID CLEAR AND IS WORTH KEEPING BECAUSE IT IS CHEAP TO LOSE: distributed init bound
+// its rendezvous to 127.0.0.1 and needed the fabric interface named explicitly through
+// GLOO_SOCKET_IFNAME and NCCL_SOCKET_IFNAME. That is the lesson gunbc.spark.fabric_link_desired
+// already carries -- a rail is selected by INTERFACE, not by reachability -- surfacing at a second
+// layer, which is evidence the rule generalizes rather than being an ip-address quirk.
+//
+// A SECOND BLOCKER IS UNTESTED AND STILL STANDS, because the run never reached serving: that attempt
+// was configured at max_model_len 32768 while live sessions run at 65k and 157k, so even a working
+// kernel would refuse the traffic this unit exists to serve. Whether the alternative can hold the
+// context this unit already holds remains answerable from the model configuration and the memory
+// budget rather than by taking the unit down, and it is still unanswered.
+//
+// NONE OF THIS IS A MEASUREMENT OF A RUNNING vLLM, and no row here may be read as one. It is what is
+// known about a realization that has never served on this pair.
 //
 // HONEST LIMIT ON ALL OF IT: measured on short completions against a near-empty context. Real
 // sessions at 90k+ decode slower, so these figures bound an idle deployment and are not a service
 // level. Re-derive rather than quote: the producer is the operator's handoff measurement between
 // 18:11 and 18:19 UTC on 2026-09-02, and a claim about delivered throughput needs its own
 // instrument rather than this row.
+// PREFILL AND DECODE ARE SEPARATE FIELDS BECAUSE THEY ARE SEPARATE QUANTITIES. Collapsing them to
+// one "throughput" number is what produced the retracted 13-16 figure, and a carrier that cannot
+// hold both invites the same collapse from the next author.
 type ServingUnitThroughputBand sole_constructor {
   slots: PositiveSlotCount
-  aggregate_low: TokensPerSecond
-  aggregate_high: TokensPerSecond
-  per_stream: TokensPerSecond
+  decode_low: TokensPerSecond
+  decode_high: TokensPerSecond
+  prefill: TokensPerSecond
 }
 
 fn serving_unit_throughput_band(
   slots: PositiveSlotCount,
-  aggregate_low: TokensPerSecond,
-  aggregate_high: TokensPerSecond,
-  per_stream: TokensPerSecond,
+  decode_low: TokensPerSecond,
+  decode_high: TokensPerSecond,
+  prefill: TokensPerSecond,
 ) -> ServingUnitThroughputBand? {
-  if tokens_per_second_count(r: aggregate_low) > tokens_per_second_count(r: aggregate_high) {
+  if tokens_per_second_count(r: decode_low) > tokens_per_second_count(r: decode_high) {
     none
   } else {
     Present { value: ServingUnitThroughputBand {
       slots: slots,
-      aggregate_low: aggregate_low,
-      aggregate_high: aggregate_high,
-      per_stream: per_stream,
+      decode_low: decode_low,
+      decode_high: decode_high,
+      prefill: prefill,
     } }
   }
 }
 
-// The band as measured at the selected slot count. Reported in whole tok/s because the spread
-// between the two runs is roughly eight tok/s -- an order of magnitude larger than any fraction
-// either run reported -- so a decimal here would carry precision the measurement does not have.
+// THE BAND AS MEASURED, AND THE INSTRUMENT IS THE SERVER'S OWN TIMINGS RATHER THAN A STOPWATCH.
+// A single completion on a 17-token prompt with cache_n 0 reported predicted_per_second 2.78 and
+// prompt_per_second 14.45. Reported in whole tok/s because a decimal would carry precision the
+// spread does not have.
 //
 // THE ROUNDING IS DIRECTIONAL AND THAT IS THE PART THAT MATTERS, because a band is not a number and
-// rounding it the wrong way changes what admission means. The low end rounds DOWN (50.9 -> 50) and
-// the high end rounds UP (58.8 -> 59), so the recorded band is a SUPERSET of the measured one. Since
-// serving_unit_throughput_meets compares a threshold against the LOW end, understating that end can
-// only make the check stricter: it refuses where the true figure would have passed, never the
-// reverse. Rounding the low end up would have been the fail-open direction and is what this note
-// exists to prevent someone doing later for tidiness.
+// rounding it the wrong way changes what admission means. The low end rounds DOWN and the high end
+// UP, so the recorded band is a SUPERSET of the measured one. serving_unit_throughput_meets compares
+// a threshold against the LOW end, so understating that end can only make the check stricter: it
+// refuses where the true figure would have passed, never the reverse. Rounding the low end up is the
+// fail-open direction and is what this note exists to prevent someone doing later for tidiness.
 //
-// THE PER-STREAM FIGURE ROUNDS DOWN FOR THE SAME REASON, 5.9 -> 5, AND IT FIRST SHIPPED AT 6. That
-// was the fail-open direction on an axis nothing currently admits against, which is precisely when
-// such a value is cheapest to fix and likeliest to be left: a later minimum-per-stream check would
-// have inherited an overstatement with no note saying it was one. Nothing here is a floor, and a
-// figure that could become one is rounded the direction a floor must be rounded.
+// WHAT IS DELIBERATELY NOT RECORDED IS AN AGGREGATE. The retracted row carried one, and no aggregate
+// was ever measured as an aggregate -- the figure was a prefill rate. A peer session's concurrency
+// sweep reports probe aggregates, but those exclude the six live sessions' own output and its own
+// rows do not reconcile (eight streams at 3.29 per stream is 26, reported as 12.8), so transcribing
+// them would import an unexplained inconsistency as a modeled fact. An aggregate claim needs its own
+// instrument, and until one exists the honest state is that this module does not carry one.
 fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
   serving_unit_throughput_band(
     slots: serving_unit_observed_slot_plan.slots,
-    aggregate_low: tokens_per_second(count: 50),
-    aggregate_high: tokens_per_second(count: 59),
-    per_stream: tokens_per_second(count: 5),
+    decode_low: tokens_per_second(count: 2),
+    decode_high: tokens_per_second(count: 3),
+    prefill: tokens_per_second(count: 14),
   )
 }
 
@@ -397,7 +462,7 @@ fn serving_unit_throughput_meets(
   band: ServingUnitThroughputBand,
   threshold: TokensPerSecond,
 ) -> Bool {
-  tokens_per_second_count(r: band.aggregate_low) >= tokens_per_second_count(r: threshold)
+  tokens_per_second_count(r: band.decode_low) >= tokens_per_second_count(r: threshold)
 }
 
 // ================= THE ARTIFACT ON DISK AT THE PATHS THE UNIT NAMES =================

@@ -165,5 +165,10 @@ test fn sccache_invalid_cited_digest_refuses_pin_integrity() -> Bool {
   ) {
     SubjectProjectedPinRefused { subject: _, cause: CitedDigestIdentityUnprojectable } => true
     SubjectProjectedPinIntegrityAdmitted { pin: _ } => false
+    SubjectProjectedPinRefused { subject: _, cause: ConstraintIsNotIdentity { constraint: _ } } => false
+    SubjectProjectedPinRefused { subject: _, cause: PinAbsent } => false
+    SubjectProjectedPinRefused { subject: _, cause: TrackedResolutionUnrecorded { channel: _ } } => false
+    SubjectProjectedPinRefused { subject: _, cause: CrossFamilyIdentityIncomparable { expected: _, observed: _ } } => false
+    SubjectProjectedPinRefused { subject: _, cause: ObservedIdentityMismatch { expected: _, observed: _ } } => false
   }
 }

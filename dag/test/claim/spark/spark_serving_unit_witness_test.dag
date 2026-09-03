@@ -180,9 +180,9 @@ test fn a_threshold_is_met_only_when_the_low_end_meets_it() -> Bool {
 test fn an_inverted_throughput_band_refuses() -> Bool {
   match serving_unit_throughput_band(
     slots: serving_unit_observed_slot_plan.slots,
-    aggregate_low: tokens_per_second(count: 59),
-    aggregate_high: tokens_per_second(count: 50),
-    per_stream: tokens_per_second(count: 6),
+    decode_low: tokens_per_second(count: 3),
+    decode_high: tokens_per_second(count: 2),
+    prefill: tokens_per_second(count: 14),
   ) {
     Absent => true
     Present { value: _ } => false
