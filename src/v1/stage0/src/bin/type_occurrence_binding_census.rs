@@ -461,6 +461,257 @@ fn category_label(c: &OccurrenceCategory) -> &'static str {
     }
 }
 
+/// THE OUTER STATE OF THE CENSUS, and the reason it exists is the exact failure this instrument
+/// found in its own subject.
+///
+/// `OldBinds_NewUnresolved` means "Y consulted an established declaration population and nothing
+/// admissible bound". Before the declaration stamping landed, Y never RECEIVED such a population,
+/// and reporting that state as a `New*Unresolved` arm turns PRODUCER ABSENT into a SEMANTIC
+/// RESOLUTION ANSWER -- a beautifully reconciled partition over an absent input, which is the
+/// `disagreement_census_blind_to_agreed_wrong` failure with the blindness moved one level out.
+/// So the thirteen classes are constructible ONLY inside `CensusReady`, and `CensusReady` is
+/// constructible only after the exact-set join below holds.
+enum TypeOccurrenceBindingCensusOutcome {
+    CensusUnavailable { cause: CensusUnavailableCause },
+    CensusReady { joined_declarations: usize },
+}
+
+enum CensusUnavailableCause {
+    /// The production type-declaration population is not established: the two independent readers
+    /// of "which module items are type declarations" do not agree as SETS.
+    ProductionTypeDeclarationPopulationUnestablished {
+        modules_diverging: usize,
+        missing_from_transport: Vec<String>,
+        extra_in_transport: Vec<String>,
+        duplicate_occurrences: Vec<String>,
+        not_in_index: Vec<String>,
+    },
+}
+
+/// THE INDEPENDENT SECOND READER. `v1.compiler.emit_core_support` decides "is this module item a
+/// type declaration" from CONNECTIVE, PARAMS and CHILDREN; the stamper in `v1.compiler.parse`
+/// decides it from the absence of BODY, TRANSPORT and TYPE_ANNOTATION. They are different facts
+/// about the same item, so their agreement is a join and not `measure() == measure()` -- which is
+/// the whole point: a join against the stamper's own output would assert nothing (DESIGN section 5).
+fn emit_side_reads_item_as_type_declaration(
+    item: &Rc<v1_compiler::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+) -> bool {
+    use v1_compiler::v1_compiler_emit_core_support::{
+        is_type_alias_item, is_type_decl_item, is_type_def_item,
+    };
+    is_type_def_item(item.clone())
+        || is_type_alias_item(item.clone(), source_indices.clone())
+        || is_type_decl_item(item.clone(), source_indices.clone())
+}
+
+fn item_occurrence_id(item: &Rc<v1_compiler::v1_std_core::Node>) -> Option<i64> {
+    match &*item.occurrence_identity {
+        v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted { id } => {
+            Some(id.value)
+        }
+        v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceProjected {
+            id,
+            ..
+        } => Some(id.value),
+        v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic => None,
+    }
+}
+
+/// THE EXACT-SET JOIN, RUN OVER THE PARSE TREE AND NOT THE TYPED GRAPH. The subject is
+/// "grammar-owned PARSED type declarations", so the join reads the module node the parser
+/// produced, in the same parse context that produced the transport it is joined against. Reading
+/// the post-typecheck item list instead measured the wrong tree: later stages rebuild items and
+/// the rebuilt copies carry `OccurrenceSynthetic`, so every item read as having no minted
+/// occurrence -- an instrument artifact that would have been reported as a production defect
+/// (`gunbc.recurring_failure_mode instrument_output_read_as_subject_content`).
+///
+/// Identity-set equality at OCCURRENCE-ID grain, uniqueness on both sides, no extra members --
+/// not count equality, which a compensating pair of errors satisfies. Passing it establishes, in
+/// one measurement, completeness (every grammar-owned type declaration contributes exactly one
+/// occurrence), soundness (nothing else contributes one), identity preservation (the occurrence is
+/// the declaration head's, already in the index) and uniqueness on both sides.
+fn establish_declaration_population(
+    workspace: &std::path::Path,
+    roots: &[String],
+) -> TypeOccurrenceBindingCensusOutcome {
+    let mut modules_diverging = 0usize;
+    let mut missing_from_transport: Vec<String> = Vec::new();
+    let mut extra_in_transport: Vec<String> = Vec::new();
+    let mut duplicate_occurrences: Vec<String> = Vec::new();
+    let mut not_in_index: Vec<String> = Vec::new();
+    let mut joined_declarations = 0usize;
+
+    for root in roots {
+        let paths = match collect_dag_files(workspace, root) {
+            Ok(p) => p,
+            Err(e) => {
+                missing_from_transport.push(format!("root {root}: {e}"));
+                continue;
+            }
+        };
+        for path in paths {
+            let rel = path
+                .strip_prefix(workspace)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                missing_from_transport.push(format!("{rel}: unreadable"));
+                continue;
+            };
+            let newline_index = build_newline_index(rel.clone(), content.clone());
+            let source_indices = v1_compiler::v1_rt::rc_map_insert(
+                v1_compiler::v1_rt::rc_empty_map::<
+                    String,
+                    Rc<v1_compiler::v1_std_core::NewlineIndex>,
+                >(),
+                rel.clone(),
+                newline_index,
+            );
+            let parsed = parse_with_table(
+                tokenize(content, rel.clone()),
+                source_indices.clone(),
+                empty_intern_table(),
+            );
+            if parse_with_table_ready_module_path(parsed.clone()).is_none() {
+                // A file that does not parse cannot establish anything about its declarations, and
+                // silently skipping it would let an unparsed corpus report a clean join.
+                missing_from_transport.push(format!("{rel}: did not parse"));
+                continue;
+            }
+            let Some(module_node) = parsed.result.module.clone() else {
+                missing_from_transport.push(format!("{rel}: parsed with no module node"));
+                continue;
+            };
+
+            let mut grammar_side: std::collections::HashSet<i64> = std::collections::HashSet::new();
+            for item in module_node.children.iter() {
+                if !emit_side_reads_item_as_type_declaration(item, &source_indices) {
+                    continue;
+                }
+                match item_occurrence_id(item) {
+                    Some(id) => {
+                        if !grammar_side.insert(id) {
+                            duplicate_occurrences
+                                .push(format!("{rel}::grammar-side occurrence {id}"));
+                        }
+                    }
+                    None => missing_from_transport
+                        .push(format!("{rel}::{} (no minted occurrence)", item.name)),
+                }
+            }
+
+            let parse_index_ids: std::collections::HashSet<i64> = parsed
+                .occurrence_transport
+                .index
+                .entries
+                .iter()
+                .map(|e| e.projection.occurrence.value)
+                .collect();
+            let mut name_of_parsed: HashMap<i64, String> = HashMap::new();
+            for e in parsed.occurrence_transport.index.entries.iter() {
+                name_of_parsed.insert(
+                    e.projection.occurrence.value,
+                    e.projection.authored_name.clone(),
+                );
+            }
+            let mut transport_side: std::collections::HashSet<i64> =
+                std::collections::HashSet::new();
+            for declaration in parsed.occurrence_transport.declarations.iter() {
+                if !matches!(declaration.category, OccurrenceCategory::TypeOccurrence) {
+                    continue;
+                }
+                let id = declaration.occurrence.value;
+                if !transport_side.insert(id) {
+                    duplicate_occurrences.push(format!("{rel}::transport occurrence {id}"));
+                }
+                // Membership is checked against THIS parse's own index. The whole-program index
+                // is a DIFFERENT id space -- the compile threads one allocator across all files
+                // while each parse here allocates from zero -- so joining the two id spaces
+                // compared numbers that never denoted the same occurrence and reported 40 phantom
+                // absences.
+                if !parse_index_ids.contains(&id) {
+                    not_in_index.push(format!("{rel}::occurrence {id}"));
+                }
+            }
+
+            let missing: Vec<i64> = grammar_side.difference(&transport_side).copied().collect();
+            let extra: Vec<i64> = transport_side.difference(&grammar_side).copied().collect();
+            if !missing.is_empty() || !extra.is_empty() {
+                modules_diverging += 1;
+            }
+            joined_declarations += grammar_side.intersection(&transport_side).count();
+            for id in missing {
+                missing_from_transport.push(format!("{rel}::occurrence {id}"));
+            }
+            for id in extra {
+                let nm = name_of_parsed
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| "<unnamed>".to_string());
+                extra_in_transport.push(format!("{rel}::{nm} (occurrence {id})"));
+            }
+        }
+    }
+
+    if modules_diverging == 0
+        && missing_from_transport.is_empty()
+        && extra_in_transport.is_empty()
+        && duplicate_occurrences.is_empty()
+        && not_in_index.is_empty()
+    {
+        TypeOccurrenceBindingCensusOutcome::CensusReady {
+            joined_declarations,
+        }
+    } else {
+        TypeOccurrenceBindingCensusOutcome::CensusUnavailable {
+            cause: CensusUnavailableCause::ProductionTypeDeclarationPopulationUnestablished {
+                modules_diverging,
+                missing_from_transport,
+                extra_in_transport,
+                duplicate_occurrences,
+                not_in_index,
+            },
+        }
+    }
+}
+
+fn report_unavailable(cause: &CensusUnavailableCause) {
+    let CensusUnavailableCause::ProductionTypeDeclarationPopulationUnestablished {
+        modules_diverging,
+        missing_from_transport,
+        extra_in_transport,
+        duplicate_occurrences,
+        not_in_index,
+    } = cause;
+    println!(
+        "\nCENSUS OUTCOME: CensusUnavailable {{ cause: ProductionTypeDeclarationPopulationUnestablished }}"
+    );
+    println!("  THE THIRTEEN CLASSES ARE NOT REPORTED. Y was not supplied an established type");
+    println!("  declaration population, so every arm it would produce would report PRODUCER");
+    println!("  ABSENT as a semantic resolution answer. That is not a partition, and a partition");
+    println!("  that closes over an absent input closes over nothing.");
+    println!("  modules_diverging={modules_diverging}");
+    for (label, rows) in [
+        (
+            "grammar-owned but ABSENT from the transport",
+            missing_from_transport,
+        ),
+        ("in the transport but NOT grammar-owned", extra_in_transport),
+        ("occurrence claimed twice", duplicate_occurrences),
+        (
+            "declaration occurrence not present in the index",
+            not_in_index,
+        ),
+    ] {
+        println!("  {label}: {}", rows.len());
+        for row in rows.iter().take(10) {
+            println!("    e.g. {row}");
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let workspace = match std::env::current_dir() {
         Ok(d) => d,
@@ -469,6 +720,10 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let denominator_only = args.first().map(|a| a == "--denominator").unwrap_or(false);
     if denominator_only {
+        args.remove(0);
+    }
+    let establish_only = args.first().map(|a| a == "--establish").unwrap_or(false);
+    if establish_only {
         args.remove(0);
     }
     let roots: Vec<String> = if args.is_empty() {
@@ -482,6 +737,24 @@ fn main() -> ExitCode {
 
     if denominator_only {
         return run_denominator(&workspace, &roots);
+    }
+
+    // THE JOIN ON ITS OWN, parse-only. The population obligation is answerable over the whole
+    // corpus at parse cost, and gating it behind a full compile would have made the honest
+    // measurement the expensive one.
+    if establish_only {
+        return match establish_declaration_population(&workspace, &roots) {
+            TypeOccurrenceBindingCensusOutcome::CensusUnavailable { cause } => {
+                report_unavailable(&cause);
+                ExitCode::from(1)
+            }
+            TypeOccurrenceBindingCensusOutcome::CensusReady {
+                joined_declarations,
+            } => {
+                println!("CENSUS OUTCOME: CensusReady joined_declarations={joined_declarations}");
+                ExitCode::SUCCESS
+            }
+        };
     }
 
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
@@ -624,6 +897,36 @@ fn main() -> ExitCode {
             )
         })
         .collect();
+
+    // THE GATE. The thirteen classes are inside CensusReady and nowhere else.
+    match establish_declaration_population(&workspace, &roots) {
+        TypeOccurrenceBindingCensusOutcome::CensusUnavailable { cause } => {
+            report_unavailable(&cause);
+            return ExitCode::from(1);
+        }
+        TypeOccurrenceBindingCensusOutcome::CensusReady {
+            joined_declarations,
+        } => {
+            println!("\nCENSUS OUTCOME: CensusReady");
+            println!("  Exact-set join holds at occurrence-id grain: grammar-owned parsed type");
+            println!(
+                "  declarations (read by the v1.compiler.emit_core_support item predicates, which"
+            );
+            println!(
+                "  decide from CONNECTIVE, PARAMS and CHILDREN) == TypeOccurrence declaration"
+            );
+            println!(
+                "  occurrences supplied to Y (stamped from the ABSENCE of body, transport and type"
+            );
+            println!(
+                "  annotation). Different facts about the same item, so this is a join and not"
+            );
+            println!(
+                "  measure() == measure(). Uniqueness on both sides, no extra members, every id"
+            );
+            println!("  present in the index. joined_declarations={joined_declarations}");
+        }
+    }
 
     let mut exit = ExitCode::SUCCESS;
     for (grounding, (module_paths, exposures, order)) in grounding_inputs.into_iter() {

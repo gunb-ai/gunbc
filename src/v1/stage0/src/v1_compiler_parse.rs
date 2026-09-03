@@ -3120,6 +3120,7 @@ pub enum ParsedModuleItemKind {
     ModuleItemFunction,
     ModuleItemDataValue,
     ModuleItemService,
+    ModuleItemResource,
     ModuleItemUnrecognized,
 }
 
@@ -3135,10 +3136,14 @@ pub fn parsed_module_item_kind(node: Rc<Node>) -> ParsedModuleItemKind {
             if (node.body.clone() != std::option::Option::None) {
                 ParsedModuleItemKind::ModuleItemFunction
             } else {
-                if (node.type_annotation.clone() == std::option::Option::None) {
-                    ParsedModuleItemKind::ModuleItemTypeDeclaration
+                if ((node.properties.clone().len() as i64) > 0) {
+                    ParsedModuleItemKind::ModuleItemResource
                 } else {
-                    ParsedModuleItemKind::ModuleItemUnrecognized
+                    if (node.type_annotation.clone() == std::option::Option::None) {
+                        ParsedModuleItemKind::ModuleItemTypeDeclaration
+                    } else {
+                        ParsedModuleItemKind::ModuleItemUnrecognized
+                    }
                 }
             }
         }
@@ -3159,6 +3164,9 @@ pub fn parsed_module_item_role(node: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
             Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
         }
         ParsedModuleItemKind::ModuleItemService => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemResource => {
             Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
         }
         ParsedModuleItemKind::ModuleItemUnrecognized => {
@@ -16794,5 +16802,7 @@ pub struct ModuleItemFunction;
 pub struct ModuleItemDataValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleItemService;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemResource;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleItemUnrecognized;

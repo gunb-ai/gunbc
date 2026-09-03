@@ -1636,6 +1636,29 @@ fn stamp_parsed_node_list_with_head_role(
 // stops the line rather than becoming a type (DESIGN section 5: a failure arm refuses, never
 // widens).
 //
+// THE ROSTER IS TEN KEYWORDS, NOT FOUR, and an exact-set join is what established that rather
+// than a reading of this file. The parser's own item error names alias, type, fn, func, service,
+// resource, data, extern, pattern and interface. `resource Filesystem` carries no body, no
+// transport and no type annotation, so the absence rule stamped all three resources in
+// std.resources as TYPE DECLARATIONS -- silently, at the parser, exactly the fail-open shape this
+// note warns about. ModuleItemResource is keyed on the properties the resource grammar attaches
+// (kind, mode, acquire, release), and the instrument that found it is
+// `type_occurrence_binding_census --establish`, which joins these stamps against an INDEPENDENT
+// reader -- the v1.compiler.emit_core_support item predicates, deciding from CONNECTIVE, PARAMS
+// and CHILDREN -- at occurrence-id grain over the whole corpus. Agreement between two readers of
+// different facts is a join; agreement with itself would have asserted nothing.
+//
+// THE GENERAL LESSON, WHICH IS WHY THE REFUSAL ARM WAS NOT THE SAFETY PROPERTY IT LOOKED LIKE.
+// A discriminator built from the ABSENCE of properties is only as complete as the enumeration of
+// kinds it was derived from, and it fails SILENTLY TOWARD THE DEFAULT BUCKET rather than toward
+// the refusal arm: the residual can only catch kinds whose absence PATTERN differs from the
+// accepted one, which is a strictly smaller population than the kinds that exist. A resource is
+// not merely unrecognised, it is INDISTINGUISHABLE from a type under this rule, so no arm of the
+// match could have fired on it. The refusal reads as coverage and is not. What closed the gap was
+// not a better predicate but an independent reader joined at identity grain -- and the denominator
+// that would have falsified the four-kind premise, the parser's own ten-keyword item error, was
+// sitting in this file the whole time.
+//
 // WHAT THIS DOES NOT FIX, stated so it is not read as closed: refusal covers the residual that can
 // be EXPRESSED today. It cannot cover an item kind nobody has invented yet, because the
 // discriminator is absence and a new kind's absence looks identical to a type's. TERMINAL FIX, and
@@ -1647,6 +1670,7 @@ type ParsedModuleItemKind
   | ModuleItemFunction
   | ModuleItemDataValue
   | ModuleItemService
+  | ModuleItemResource
   | ModuleItemUnrecognized
 
 fn parsed_module_item_kind(node: Node) -> ParsedModuleItemKind {
@@ -1656,6 +1680,8 @@ fn parsed_module_item_kind(node: Node) -> ParsedModuleItemKind {
     ModuleItemDataValue
   } else if node.body != none {
     ModuleItemFunction
+  } else if node.properties |> count > 0 {
+    ModuleItemResource
   } else if node.type_annotation == none {
     ModuleItemTypeDeclaration
   } else {
@@ -1669,6 +1695,7 @@ fn parsed_module_item_role(node: Node) -> ParsedOccurrenceRole {
     ModuleItemFunction => ParsedOccurrenceUnclassified
     ModuleItemDataValue => ParsedOccurrenceUnclassified
     ModuleItemService => ParsedOccurrenceUnclassified
+    ModuleItemResource => ParsedOccurrenceUnclassified
     ModuleItemUnrecognized => ParsedOccurrenceUnclassified
   }
 }
