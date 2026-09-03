@@ -10,6 +10,7 @@ import std.measure {
 }
 import extdeps.network.ipv4 { ipv4_address, render_ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.spark.fabric_link_desired { fabric_rail0, fabric_endpoint_on }
 import gunbc.spark.llama_cpp_rpc_observed {
   llama_cpp_rpc_front_door,
@@ -194,36 +195,50 @@ test fn an_inverted_throughput_band_refuses() -> Bool {
 }
 
 
-// THE CROSS-ROSTER WALL IS DELIBERATELY ABSENT HERE, AND ITS ABSENCE IS THE POINT.
+// THE CROSS-ROSTER REFUSAL, RESTORED AFTER A READBACK FALSIFIED THE REASON IT WAS REMOVED.
 //
-// A claim stood here asserting that no host in the CURRENT serving-cell roster is a weights peer of
-// llama_cpp_rpc_observed_units(). It was a good wall against the right hazard: the peer's host
-// answers 200 on :11434/api/tags and offers deepseek-v4-gguf:no-h3-stop, which is exactly what the
-// serving-cell roster selects, so two locally-correct rosters would together commit about 105 of
-// 121 GiB with swap disabled and no spill -- the OOM takes the front door down with it, because the
-// front door cannot serve without these layers.
+// This claim was deleted on the ground that llama_cpp_rpc_observed_units() had become a DATED
+// observation of a deployment that no longer runs, so a wall built on it would forbid current
+// enrollment on the authority of something dead. That ground was WRONG, and it was wrong because it
+// came from a report rather than an observation -- the exact substitution this module exists to
+// refuse, committed while recutting the module that refuses it.
 //
-// IT CANNOT LIVE IN THIS MODULE ANY MORE, because this module's subject changed underneath it. Once
-// llama_cpp_rpc_observed_units() means "the llama.cpp RPC deployment observed on 2026-09-02", a
-// wall built on it forbids CURRENT enrollment on the authority of a deployment that is NO LONGER
-// RUNNING -- the service has since been cut over to a different realization. A dead deployment
-// cannot be the present authority for a live roster: that is a past observation impersonating
-// current desired state, and it would go on refusing correct enrollments long after its subject
-// stopped existing, or pass them for the equally wrong reason.
+// WHAT THE READBACK ESTABLISHED, on 2026-09-03 against the live service and not from any summary:
+// 192.168.1.232:30000 answers /v1/models with owned_by "llamacpp", serving
+// deepseek-v4-flash:iq3s-split at ftype "IQ3_S - 3.4375 bpw", size 116063994204, n_ctx 1048576; and
+// /props answers 200 while /version answers 404, which is a llama.cpp surface and not a vLLM one.
+// The llama.cpp RPC realization is therefore the LIVE realization, not a retired one.
 //
-// WHAT SURVIVES IS THE HISTORICAL HALF, and it is asserted above: in the observed realization srv8
-// WAS an internal participant and srv7 was not. That is a fact about a dated deployment and stays
-// true forever.
+// AND THE HAZARD IS LIVE WITH IT. 192.168.1.233:11434 answers /api/tags with
+// deepseek-v4-gguf:no-h3-stop at 86720111694 bytes, IQ2_XXS -- an 86 GB model offered by the host
+// that holds the upper layers, which is precisely what the serving-cell roster selects. Two rosters
+// would each be locally correct and the load would be fatal: with the front door's own weights
+// already committed against roughly 121 GiB of unified memory and swap disabled, there is no spill,
+// and an OOM on the peer takes the front door down with it because the front door cannot serve
+// without those layers.
 //
-// WHAT DOES NOT SURVIVE is the current-roster conclusion. The live C1 wall belongs against the
-// CURRENT internal-participant population, which needs a fresh whole-unit readback of the running
-// deployment to establish -- worker population, front door, supervisors, and which hosts are
-// internal participants NOW. It returns with the runtime-neutral carrier, not here.
+// WHAT THE READBACK DID NOT ESTABLISH, recorded so the next reader does not over-read it. The RPC
+// port 50052 was unreachable from the observing container on both 192.168.100.11 and
+// 192.168.1.233. That is a VANTAGE-POINT limit -- 192.168.100.0/24 is the RoCE fabric and is not
+// routed to the observer -- so it is not evidence the peer is down, and it is not evidence it is up.
+// Where a vLLM deployment is running, if it is, is also unestablished: it answers on none of
+// :8000, :8080, or :30000 on either host. Neither gap weakens this claim, because the claim turns on
+// the front door being live and the peer host offering a competing model, and both were measured.
 //
-// THIS IS NOT AN UNGUARDED GAP IN THE MEANTIME. The standing operational ruling is that there is no
-// enrollment or serving actuation on srv7/srv8 at all until that readback exists, so removing a
-// stale assertion authorises no write. Recording that honestly is better than retaining a wall whose
-// subject has died, which would be carried as C1 coverage while checking a deployment nobody runs.
+// THE RULE IS DISJOINTNESS BETWEEN TWO ROSTERS, NOT A NAMED HOST. Nothing here says "srv8 may never
+// serve" -- that would transcribe today's assignment and go stale the moment the fleet is
+// repartitioned. It says an internal participant of a constructed deployment is not simultaneously a
+// client-routable serving cell, which stays the right rule under any partition.
+//
+// THE NON-EMPTINESS CONJUNCT IS NOT DECORATION. `any` over an empty list is false and its negation
+// is true, so the disjointness half alone goes GREEN when no deployment constructs -- a wall
+// reporting that nothing collides because nothing exists. This claim would then be carried as C1
+// coverage while establishing nothing.
+test fn no_serving_cell_is_also_a_weights_peer() -> Bool {
+  length(llama_cpp_rpc_observed_units()) > 0
+    && !any(spark_serving_cell_hosts(), h =>
+         llama_cpp_rpc_host_is_weights_peer(deployments: llama_cpp_rpc_observed_units(), host: h))
+}
 
 
 // THE ARTIFACT IDENTITY IS BOUND, established by hashing the four shards in place on the front-door
