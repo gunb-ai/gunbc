@@ -480,6 +480,16 @@ interpolated at one of those two constructions, where it appears as a non-litera
 *computed* above. A zero from a grep would have established nothing; this establishes it, and it
 establishes it without needing to enumerate the ways a string can come into existence.
 
+**Two facts of different kinds hold this up, and they must not be read as one.** The ENTRY argument is
+STRUCTURAL: a value becomes an argument only by being interpolated at a construction, so it is visible
+there as a non-literal whatever anyone does tomorrow. The POPULATION reading is CONTINGENT: that
+`suffix_args` has one caller passing `&["--claim-run"]`, and that all 30 call sites of the other
+`run_claim_batch` pass literal arrays, is true of this tree TODAY. **A second caller forwarding a read
+string breaks the second half silently** — no test fails, no gate fires, and the sentence above stays
+green while it is false. Nothing enforces it. Stating the two in one breath would make a rung-1 fact
+wear a rung-4 argument's clothes, which is this document's own recurring defect in another costume;
+the typed-decoder trigger is what eventually makes the contingent half unnecessary.
+
 **The computed sites are not hidden spellings, and their origins are named rather than assumed.** The
 33 computed `--entry` values and 3 of the 5 computed `--function` values are the P6 scratch-copy paths
 built by `unique_fs_witness_entry` / `closure_scale_witness_entry`, whose `.dag` spellings are already
