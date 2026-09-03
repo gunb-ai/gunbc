@@ -20,23 +20,47 @@ A single `dashboard-ops reviews 10180` payload carried **three different shas at
 and, in that same object: `stale_provider_count: 0`, `stale_providers: []`, `approvals: 1`,
 `meets_approval_rule: true`.
 
-**The reading that matters.** The obvious diagnosis is a lag: the dashboard has not yet noticed the
-newest push, so `stale = 0` means *not yet noticed* rather than *judged current*. That is true and is
-itself worth knowing — a summary can report a clean 1/1 on code no reviewer has seen. But it is not the
-whole defect: the approval sha differs from **the dashboard's own `head_sha`**, both fields present in
-one object, and staleness still reads 0. The comparison does not fire even when it has everything it
-needs.
+**What is observed, stated before what explains it.** The approval sha differed from the dashboard's
+own `head_sha`, both fields present in one object, and `stale_provider_count` still read 0. A later
+payload on the same PR DID report `stale_provider_count: 1`, so the field is not simply inert.
+
+**Correction to an earlier reading.** This document first concluded "the comparison does not fire even
+when it has everything it needs". Two observations now constrain it better, and the second refutes
+that sentence as written:
+
+| observation | `head_sha` | provider's latest review sha | `stale_provider_count` |
+|---|---|---|---|
+| A | `aff564ca8a7` | claude @ `60aefd9d3ac` | **0** |
+| B | `dee613521e4` | claude @ `dee613521e4`, codex @ `c29a33ce28e` | **1** (codex) |
+
+In B the field fires correctly. **Hypothesis that fits both, and it is a hypothesis, not a
+measurement:** staleness is evaluated when a review is INGESTED, against the head known at that
+moment, and stored — while `head_sha` is read live at query time. Under that reading A is a stored
+verdict that was true when written and went false underneath, not a comparison that failed to run.
+Distinguishing it would take a payload sampled at a known ingest boundary, which has not been done.
+
+**The operative rule is unchanged either way**, which is why the correction does not disturb it: a
+stored-and-gone-stale verdict and a non-firing comparison are indistinguishable to a reader, and both
+report 0 on an approval that is not on the current head.
 
 **Consequence for any merge decision.** Comparing the dashboard's `head_sha` to `gh`'s `headRefOid` is
-NECESSARY BUT NOT SUFFICIENT — it catches the lag case and would pass this payload the moment the
-dashboard caught up, with an approval three heads old. The sufficient check is computed by the reader:
+NECESSARY BUT NOT SUFFICIENT — it catches the lag case and would have passed observation A the moment
+the dashboard caught up, with an approval three heads old. The sufficient check is computed by the
+reader:
 
 ```
 gh pr view <N> --repo <owner/repo> --json headRefOid --jq .headRefOid
 dashboard-ops reviews <N>          # compare each reviews[].sha to that value yourself
 ```
 
-`stale_provider_count` is not evidence of anything.
+`stale_provider_count` is not evidence of anything on its own — it is right in B and wrong in A, and
+nothing in the payload distinguishes the two cases for you.
+
+**The same applies to `request_changes_count` reaching 0.** On this PR a codex REQUEST_CHANGES on
+`c29a33ce28e` disappeared from the counter after the next push. The findings WERE addressed in that
+push — but the counter would read 0 either way, because a REQUEST_CHANGES is superseded by any push
+regardless of whether anything was fixed. The commit and the reply are the evidence that the findings
+were addressed; the zero is not.
 
 **A second, softer form.** An approval can also be superseded in PREMISE rather than in sha. #10180's
 approving review reasoned explicitly from *"census-only … no code, no `.dag`, no seed changes"*; a
