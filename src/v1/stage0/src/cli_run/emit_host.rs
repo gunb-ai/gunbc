@@ -348,6 +348,244 @@ pub fn compile_dag_multi_module_fixture(
     }
 }
 
+/// Reference-occurrence-grain binding observation over exactly one supplied source vector.
+/// Occurrence discovery and resolution remain separate products in the returned carrier: callers
+/// anti-join them and must not use the resolver's emissions as their own denominator.
+pub fn compile_dag_reference_occurrence_binding_census(
+    paths: &[String],
+    contents: &[String],
+    entry: &str,
+) -> ReferenceOccurrenceBindingCensus {
+    if paths.len() != contents.len() || paths.is_empty() {
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: "reference binding census: manifest is empty or ragged".to_string(),
+        };
+    }
+    let sources: Vec<MultiModuleFixtureSource> = paths
+        .iter()
+        .zip(contents.iter())
+        .map(|(path, content)| MultiModuleFixtureSource {
+            path: path.clone(),
+            content: content.clone(),
+        })
+        .collect();
+    let mut seen = HashSet::new();
+    if sources
+        .iter()
+        .any(|source| source.path.trim().is_empty() || !seen.insert(source.path.clone()))
+    {
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: "reference binding census: every source path must be nonempty and unique"
+                .to_string(),
+        };
+    }
+    if !sources.iter().any(|source| source.path == entry) {
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: format!("reference binding census: entry '{entry}' names no supplied source"),
+        };
+    }
+    let source_digest = multi_module_fixture_source_digest(&sources, entry);
+    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
+    let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
+        .iter()
+        .map(|source| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: source.path.clone(),
+                content: source.content.clone(),
+            })
+        })
+        .collect();
+    let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
+    })) {
+        Ok(value) => value,
+        Err(_) => {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: "reference binding census: frontend panicked before producing a graph"
+                    .to_string(),
+            }
+        }
+    };
+    let Some(graph) = resolved.graph else {
+        return ReferenceOccurrenceBindingCensus::Refused {
+            cause: "reference binding census: frontend produced no resolved graph".to_string(),
+        };
+    };
+
+    use crate::std_occurrence_binding_candidates as candidates;
+    use crate::std_occurrence_identity as identity;
+    let mut entries = Vec::new();
+    let mut declarations = Vec::new();
+    let mut references = Vec::new();
+    let mut module_paths = Vec::new();
+    let mut exposure_rows = Vec::new();
+    let mut authored_order_rows = Vec::new();
+    let mut consumer_by_occurrence = std::collections::HashMap::new();
+    for module in graph.modules.iter() {
+        let module_path = module.type_env.module_path.clone();
+        let Some(transport) = module.occurrence_transport.clone() else {
+            continue;
+        };
+        for entry in transport.index.entries.iter() {
+            entries.push(entry.clone());
+            module_paths.push(Rc::new(candidates::OccurrenceModulePathRow {
+                occurrence: entry.projection.occurrence,
+                module_path: module_path.clone(),
+            }));
+            authored_order_rows.push(Rc::new(candidates::AuthoredOrderRow {
+                occurrence: entry.projection.occurrence,
+                ordinal: identity::AuthoredTokenOrdinal {
+                    value: entry.projection.diagnostic_span.start,
+                },
+            }));
+        }
+        for declaration in transport.declarations.iter() {
+            declarations.push(declaration.clone());
+            exposure_rows.push(Rc::new(candidates::DeclarationExposureRow {
+                occurrence: declaration.occurrence,
+                exposure: candidates::declaration_exposure_from_containment(
+                    module_path.clone(),
+                    declaration.containment.clone(),
+                    candidates::DeclarationExposureGrounding::NamespaceStructuralRootExposure,
+                ),
+            }));
+        }
+        for reference in transport.references.iter() {
+            references.push(reference.clone());
+            consumer_by_occurrence.insert(reference.occurrence.value, module_path.clone());
+        }
+    }
+    let transport = Rc::new(identity::OccurrenceTransport {
+        index: Rc::new(identity::OccurrenceIndex {
+            entries: Rc::new(entries.into()),
+        }),
+        declarations: Rc::new(declarations.into()),
+        references: Rc::new(references.clone().into()),
+    });
+    let inputs = Rc::new(candidates::OccurrenceBindingCandidateInputs {
+        module_paths: Rc::new(module_paths.into()),
+        exposure_rows: Rc::new(exposure_rows.into()),
+        authored_order_rows: Rc::new(authored_order_rows.into()),
+    });
+    let index = match &*candidates::occurrence_candidate_index_build(transport.clone(), inputs) {
+        candidates::OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index } => {
+            index.clone()
+        }
+        other => {
+            return ReferenceOccurrenceBindingCensus::Refused {
+                cause: format!("reference binding census: candidate index refused: {other:?}"),
+            }
+        }
+    };
+    let names: std::collections::HashMap<i64, String> = transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.projection.occurrence.value,
+                entry.projection.authored_name.clone(),
+            )
+        })
+        .collect();
+    let category = |value: &identity::OccurrenceCategory| {
+        match value {
+            identity::OccurrenceCategory::LexicalValueOccurrence => "lexical-value",
+            identity::OccurrenceCategory::TypeOccurrence => "type",
+            identity::OccurrenceCategory::CallableOccurrence => "callable",
+            identity::OccurrenceCategory::ConstructorOccurrence => "constructor",
+            identity::OccurrenceCategory::NamespaceSegmentOccurrence => "namespace-segment",
+            identity::OccurrenceCategory::FieldOccurrence => "field",
+            identity::OccurrenceCategory::MethodOccurrence => "method",
+        }
+        .to_string()
+    };
+    let mut denominator = Vec::new();
+    let mut observations = Vec::new();
+    let mut ordinals_by_file: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
+    for reference in references {
+        let consumer_module = consumer_by_occurrence
+            .get(&reference.occurrence.value)
+            .cloned()
+            .unwrap_or_else(|| "(module unavailable)".to_string());
+        let authored_name = names
+            .get(&reference.occurrence.value)
+            .cloned()
+            .unwrap_or_default();
+        let file_reference_ordinal = *ordinals_by_file
+            .entry(reference.diagnostic_span.file.clone())
+            .and_modify(|n| *n += 1)
+            .or_insert(0);
+        let base = ReferenceOccurrenceDenominatorRow {
+            occurrence: reference.occurrence.value,
+            consumer_file: reference.diagnostic_span.file.clone(),
+            consumer_module: consumer_module.clone(),
+            authored_name: authored_name.clone(),
+            category: category(&reference.category),
+            file_reference_ordinal,
+            span_start: reference.diagnostic_span.start,
+        };
+        denominator.push(base.clone());
+        let candidate_ids =
+            candidates::candidate_occurrence_ids_for_reference(index.clone(), reference.clone());
+        let disposition = match &*candidates::resolve_reference_via_structural_candidates(
+            index.clone(),
+            reference.clone(),
+        ) {
+            candidates::ReferenceBindingProjection::ReferenceBindingProjectionBound {
+                provider,
+            } => {
+                let binding_source = if authored_name.contains('.') {
+                    UnlistedImportBindingSource::DefinerResolvable
+                } else {
+                    let listed = graph
+                        .modules
+                        .iter()
+                        .find(|module| module.type_env.module_path == consumer_module)
+                        .map(import_module_paths_for_typed_module)
+                        .unwrap_or_default()
+                        .contains(&provider.provider_module);
+                    if listed {
+                        UnlistedImportBindingSource::ListedImport
+                    } else {
+                        UnlistedImportBindingSource::PoolCoincidence
+                    }
+                };
+                ReferenceOccurrenceBindingDisposition::Bound {
+                    declaration_occurrence: provider.declaration_occurrence.value,
+                    provider_module: provider.provider_module.clone(),
+                    binding_source,
+                }
+            }
+            candidates::ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
+                ..
+            } => ReferenceOccurrenceBindingDisposition::Unresolved,
+            candidates::ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
+                ..
+            } => ReferenceOccurrenceBindingDisposition::Ambiguous {
+                candidates: candidate_ids
+                    .iter()
+                    .map(|candidate| candidate.value)
+                    .collect(),
+            },
+            other => ReferenceOccurrenceBindingDisposition::Refused {
+                cause: format!("{other:?}"),
+            },
+        };
+        observations.push(ReferenceOccurrenceBindingRow {
+            denominator: base,
+            disposition,
+        });
+    }
+    ReferenceOccurrenceBindingCensus::Observed {
+        source_digest,
+        compiler_digest,
+        denominator,
+        observations,
+    }
+}
+
 /// `(hits, misses)` for the `compile_dag_rust_emit_check` memo across the whole process.
 /// Report-only; no consumer branches on it.
 pub fn compile_dag_rust_emit_check_memo_counts() -> (u64, u64) {

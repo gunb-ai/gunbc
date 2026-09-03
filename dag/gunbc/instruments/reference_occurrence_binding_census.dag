@@ -1,0 +1,61 @@
+module tools.reference_occurrence_binding_census
+
+import std.types { Int, List, NonEmptyStr, String }
+import gunbc.compile_clean_diagnostic_policy {
+  UnlistedImportBindingSource
+}
+import tools.multi_module_compile_fixture { FixtureSource }
+
+// One observation for every reference occurrence carried by the resolved graph.  The occurrence
+// id is graph-scoped; source file, authored spelling, category and span are carried so a caller can
+// establish a rewrite-stable join instead of pretending ids from two compilations share a scope.
+type ReferenceOccurrenceBindingDisposition
+  = ReferenceOccurrenceBound {
+      declaration_occurrence: Int
+      provider_module: NonEmptyStr
+      binding_source: UnlistedImportBindingSource
+    }
+  | ReferenceOccurrenceUnresolved
+  | ReferenceOccurrenceAmbiguous { candidates: List<Int> }
+  | ReferenceOccurrenceBindingRefused { cause: NonEmptyStr }
+
+type ReferenceOccurrenceBindingRow {
+  occurrence: Int
+  consumer_file: NonEmptyStr
+  consumer_module: NonEmptyStr
+  authored_name: String
+  category: NonEmptyStr
+  file_reference_ordinal: Int
+  span_start: Int
+  disposition: ReferenceOccurrenceBindingDisposition
+}
+
+type ReferenceOccurrenceDenominatorRow {
+  occurrence: Int
+  consumer_file: NonEmptyStr
+  consumer_module: NonEmptyStr
+  authored_name: String
+  category: NonEmptyStr
+  file_reference_ordinal: Int
+  span_start: Int
+}
+
+type ReferenceOccurrenceBindingCensus
+  = ReferenceOccurrenceBindingCensusRefused { cause: NonEmptyStr }
+  | ReferenceOccurrenceBindingCensusObserved {
+      source_digest: NonEmptyStr
+      compiler_digest: NonEmptyStr
+      denominator: List<ReferenceOccurrenceDenominatorRow>
+      observations: List<ReferenceOccurrenceBindingRow>
+    }
+
+fn reference_occurrence_binding_census(
+  sources: List<FixtureSource>,
+  entry: NonEmptyStr
+) -> ReferenceOccurrenceBindingCensus {
+  compile_dag_reference_occurrence_binding_census(
+    sources |> map(s => s.path as String),
+    sources |> map(s => s.content),
+    entry as String
+  )
+}

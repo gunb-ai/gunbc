@@ -1,7 +1,12 @@
 module gunbc.namespace_step0_binding_provenance_contract
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash { Sha256Digest }
+import extdeps.git.object_store { GitObjectId }
+import tools.reference_occurrence_binding_census { ReferenceOccurrenceBindingDisposition }
+import gunbc.namespace_step0_subject_collector { Step0PopulationIdentity }
+import gunbc.compile_clean_diagnostic_policy { UnlistedImportBindingSource }
 
 // THIS ROW IS DECLARED AND NO PRODUCER INHABITS IT. Read that first and read it as the whole
 // standing: nothing in this repository has observed a Step 0 binding-provenance census, this module
@@ -79,12 +84,61 @@ data step0_family_discriminator_law: NonEmptyStr = "each family in the roster is
 // SUCCESSFUL binding was sourced and has no arms for unresolved, ambiguous, target-changed or
 // unobserved. Those are outcomes, they belong in an outer result, and an occurrence that reached no
 // outcome is Unobserved rather than absent.
+type Step0SelectedDeclaration {
+  graph_occurrence: Int
+  module_path: NonEmptyStr
+}
+
 type Step0OccurrenceOutcome
-  = OccurrenceBound
-  | OccurrenceUnresolved
-  | OccurrenceAmbiguous
-  | OccurrenceTargetChanged
-  | OccurrenceUnobserved
+  = ReferenceBound {
+      selected_declaration: Step0SelectedDeclaration
+      source: UnlistedImportBindingSource
+    }
+  | ReferenceUnresolved
+  | ReferenceAmbiguous { candidates: List<Int> }
+  | ReferenceTargetChanged {
+      before: Step0SelectedDeclaration
+      after: Step0SelectedDeclaration
+    }
+  | ReferenceBindingUnobserved { cause: NonEmptyStr }
+
+type Step0BindingProvenanceRow {
+  consumer_file: NonEmptyStr
+  file_reference_ordinal: Int
+  authored_name: String
+  category: NonEmptyStr
+  pre_strip: ReferenceOccurrenceBindingDisposition
+  post_strip: ReferenceOccurrenceBindingDisposition?
+  outcome: Step0OccurrenceOutcome
+}
+
+type Step0BindingProvenanceCounts {
+  discovered: Int
+  bound: Int
+  unresolved: Int
+  ambiguous: Int
+  target_changed: Int
+  unobserved: Int
+}
+
+type Step0BindingProvenanceReceipt {
+  identity: NonEmptyStr
+  source_commit: GitObjectId
+  source_tree: GitObjectId
+  compiler_executable_sha256: Sha256Digest
+  collector_subject: Step0PopulationIdentity
+  pre_strip_population: Step0PopulationIdentity
+  stripped_population: Step0PopulationIdentity
+  resolver_policy_identity: NonEmptyStr
+  reference_family_roster_identity: NonEmptyStr
+  row_schema_identity: NonEmptyStr
+  rows: List<Step0BindingProvenanceRow>
+  counts: Step0BindingProvenanceCounts
+}
+
+type Step0BindingProvenanceProduction
+  = Step0BindingProvenanceProduced { receipt: Step0BindingProvenanceReceipt }
+  | Step0BindingProvenanceProductionRefused { cause: NonEmptyStr }
 
 // THE CONSERVATION LAWS. They are stated as rows rather than as a checker because no producer
 // exists to check anything yet; when one lands, these are what it must satisfy, and the check is
@@ -312,7 +366,13 @@ data step0_binding_provenance_receipt_contract: Step0BindingProvenanceReceiptCon
   liveness_obligations: step0_census_liveness_obligations,
   liveness_states: step0_census_liveness_states,
   unobserved_derivation_law: step0_unobserved_derivation_law,
-  producer_standing: NoProducerInhabits
+  producer_standing: ProducerInhabits {
+    producer: DeclarationRef {
+      module_path: "gunbc.namespace_step0_binding_provenance_producer",
+      decl_name: "produce_step0_binding_provenance_census",
+      field: WholeDeclaration
+    }
+  }
 }
 
 // THE ONE READER EVERY CONSUMER MUST GO THROUGH. A consumer asking "has this been observed" reads

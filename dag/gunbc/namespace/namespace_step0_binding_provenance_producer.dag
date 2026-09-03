@@ -1,0 +1,232 @@
+module gunbc.namespace_step0_binding_provenance_producer
+
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.content_hash { Sha256Digest }
+import extdeps.git.object_store { GitObjectId }
+import tools.multi_module_compile_fixture { FixtureSource }
+import std.import { ImportStripCoordinateSegment }
+import gunbc.compile_clean_diagnostic_policy { ListedImport }
+import tools.reference_occurrence_binding_census {
+  ReferenceOccurrenceBindingCensus,
+  ReferenceOccurrenceBindingCensusRefused,
+  ReferenceOccurrenceBindingCensusObserved,
+  ReferenceOccurrenceBindingDisposition,
+  ReferenceOccurrenceBound,
+  ReferenceOccurrenceUnresolved,
+  ReferenceOccurrenceAmbiguous,
+  ReferenceOccurrenceBindingRefused,
+  ReferenceOccurrenceBindingRow,
+  reference_occurrence_binding_census
+}
+import gunbc.namespace_step0_subject_collector {
+  Step0PopulationIdentity,
+  step0_population_identity_eq
+}
+import gunbc.namespace_step0_binding_provenance_contract {
+  Step0OccurrenceOutcome,
+  Step0SelectedDeclaration,
+  ReferenceBound,
+  ReferenceUnresolved,
+  ReferenceAmbiguous,
+  ReferenceTargetChanged,
+  ReferenceBindingUnobserved,
+  Step0BindingProvenanceRow,
+  Step0BindingProvenanceCounts,
+  Step0BindingProvenanceReceipt,
+  Step0BindingProvenanceProduction,
+  Step0BindingProvenanceProduced,
+  Step0BindingProvenanceProductionRefused,
+  step0_binding_provenance_receipt_contract
+}
+
+// The key is an address internal to one paired fold, never a second semantic name.  Import removal
+// changes byte offsets and may change graph-scoped OccurrenceIds; it does not reorder the surviving
+// reference occurrences within a file.  The producer nevertheless verifies spelling and category
+// at the join, so an ordinal collision refuses instead of pairing two different references.
+fn step0_reference_pair_key(file: NonEmptyStr, original_start: Int, category: NonEmptyStr) -> String {
+  concat(file as String, concat("\n", concat(to_string(original_start), concat("\n", category as String))))
+}
+
+type Step0PostIndexBuild {
+  rows: Map<String, ReferenceOccurrenceBindingRow>
+  duplicates: Int
+  unmappable: Int
+}
+
+fn step0_original_start_for_post(row: ReferenceOccurrenceBindingRow, coordinates: List<ImportStripCoordinateSegment>) -> Int? {
+  match first(coordinates |> filter(segment =>
+    segment.source_file == row.consumer_file
+      && row.span_start >= segment.rewritten_start
+      && row.span_start < segment.rewritten_end
+  )) {
+    Absent => none
+    Present { value: segment } => Present { value: segment.original_start + (row.span_start - segment.rewritten_start) }
+  }
+}
+
+fn step0_post_index(rows: List<ReferenceOccurrenceBindingRow>, coordinates: List<ImportStripCoordinateSegment>) -> Step0PostIndexBuild {
+  fold(rows, init: Step0PostIndexBuild { rows: empty_map(), duplicates: 0, unmappable: 0 }, f: fn(acc, row) {
+    match step0_original_start_for_post(row: row, coordinates: coordinates) {
+      Absent => Step0PostIndexBuild { rows: acc.rows, duplicates: acc.duplicates, unmappable: acc.unmappable + 1 }
+      Present { value: original_start } => {
+        let key = step0_reference_pair_key(file: row.consumer_file, original_start: original_start, category: row.category)
+        match map_get(acc.rows, key) {
+          Present { value: _ } => Step0PostIndexBuild { rows: acc.rows, duplicates: acc.duplicates + 1, unmappable: acc.unmappable }
+          Absent => Step0PostIndexBuild { rows: map_insert(acc.rows, key, row), duplicates: acc.duplicates, unmappable: acc.unmappable }
+        }
+      }
+    }
+  })
+}
+
+fn step0_paired_outcome(
+  pre: ReferenceOccurrenceBindingDisposition,
+  post: ReferenceOccurrenceBindingDisposition?
+) -> Step0OccurrenceOutcome {
+  match post {
+    Absent => ReferenceBindingUnobserved { cause: "the post-strip producer emitted no row for this denominator occurrence" as NonEmptyStr }
+    Present { value: post_value } => match post_value {
+      ReferenceOccurrenceUnresolved => ReferenceUnresolved
+      ReferenceOccurrenceAmbiguous { candidates: candidates } => ReferenceAmbiguous { candidates: candidates }
+      ReferenceOccurrenceBindingRefused { cause: cause } => ReferenceBindingUnobserved { cause: cause }
+      ReferenceOccurrenceBound { declaration_occurrence: post_occurrence, provider_module: post_provider, binding_source: post_source } =>
+        match pre {
+          ReferenceOccurrenceBound { declaration_occurrence: pre_occurrence, provider_module: pre_provider, binding_source: _ } =>
+            if pre_provider == post_provider {
+              ReferenceBound {
+                selected_declaration: Step0SelectedDeclaration { graph_occurrence: post_occurrence, module_path: post_provider },
+                source: post_source
+              }
+            } else {
+              ReferenceTargetChanged {
+                before: Step0SelectedDeclaration { graph_occurrence: pre_occurrence, module_path: pre_provider },
+                after: Step0SelectedDeclaration { graph_occurrence: post_occurrence, module_path: post_provider }
+              }
+            }
+          _ => ReferenceBound {
+            selected_declaration: Step0SelectedDeclaration { graph_occurrence: post_occurrence, module_path: post_provider },
+            source: post_source
+          }
+        }
+    }
+  }
+}
+
+type Step0PairFold {
+  rows_reversed: List<Step0BindingProvenanceRow>
+  post_rows: Map<String, ReferenceOccurrenceBindingRow>
+  identity_mismatches: Int
+}
+
+fn step0_pair_one(acc: Step0PairFold, pre: ReferenceOccurrenceBindingRow) -> Step0PairFold {
+  let key = step0_reference_pair_key(file: pre.consumer_file, original_start: pre.span_start, category: pre.category)
+  match map_get(acc.post_rows, key) {
+    Absent => Step0PairFold {
+      rows_reversed: concat([Step0BindingProvenanceRow {
+        consumer_file: pre.consumer_file,
+        file_reference_ordinal: pre.file_reference_ordinal,
+        authored_name: pre.authored_name,
+        category: pre.category,
+        pre_strip: pre.disposition,
+        post_strip: none,
+        outcome: ReferenceBindingUnobserved { cause: "the post-strip producer emitted no row for this denominator occurrence" as NonEmptyStr }
+      }], acc.rows_reversed),
+      post_rows: acc.post_rows,
+      identity_mismatches: acc.identity_mismatches
+    }
+    Present { value: post } =>
+      if pre.authored_name != post.authored_name || pre.category != post.category {
+        Step0PairFold { rows_reversed: acc.rows_reversed, post_rows: acc.post_rows, identity_mismatches: acc.identity_mismatches + 1 }
+      } else {
+        Step0PairFold {
+          rows_reversed: concat([Step0BindingProvenanceRow {
+            consumer_file: pre.consumer_file,
+            file_reference_ordinal: pre.file_reference_ordinal,
+            authored_name: pre.authored_name,
+            category: pre.category,
+            pre_strip: pre.disposition,
+            post_strip: Present { value: post.disposition },
+            outcome: step0_paired_outcome(pre: pre.disposition, post: Present { value: post.disposition })
+          }], acc.rows_reversed),
+          post_rows: acc.post_rows,
+          identity_mismatches: acc.identity_mismatches
+        }
+      }
+  }
+}
+
+fn step0_binding_provenance_counts(rows: List<Step0BindingProvenanceRow>) -> Step0BindingProvenanceCounts {
+  fold(rows, init: Step0BindingProvenanceCounts { discovered: 0, bound: 0, unresolved: 0, ambiguous: 0, target_changed: 0, unobserved: 0 }, f: fn(acc, row) {
+    match row.outcome {
+      ReferenceBound { selected_declaration: _, source: _ } => Step0BindingProvenanceCounts { discovered: acc.discovered + 1, bound: acc.bound + 1, unresolved: acc.unresolved, ambiguous: acc.ambiguous, target_changed: acc.target_changed, unobserved: acc.unobserved }
+      ReferenceUnresolved => Step0BindingProvenanceCounts { discovered: acc.discovered + 1, bound: acc.bound, unresolved: acc.unresolved + 1, ambiguous: acc.ambiguous, target_changed: acc.target_changed, unobserved: acc.unobserved }
+      ReferenceAmbiguous { candidates: _ } => Step0BindingProvenanceCounts { discovered: acc.discovered + 1, bound: acc.bound, unresolved: acc.unresolved, ambiguous: acc.ambiguous + 1, target_changed: acc.target_changed, unobserved: acc.unobserved }
+      ReferenceTargetChanged { before: _, after: _ } => Step0BindingProvenanceCounts { discovered: acc.discovered + 1, bound: acc.bound, unresolved: acc.unresolved, ambiguous: acc.ambiguous, target_changed: acc.target_changed + 1, unobserved: acc.unobserved }
+      ReferenceBindingUnobserved { cause: _ } => Step0BindingProvenanceCounts { discovered: acc.discovered + 1, bound: acc.bound, unresolved: acc.unresolved, ambiguous: acc.ambiguous, target_changed: acc.target_changed, unobserved: acc.unobserved + 1 }
+    }
+  })
+}
+
+fn step0_no_listed_post_strip(rows: List<Step0BindingProvenanceRow>) -> Bool {
+  count(rows |> filter(row => match row.post_strip {
+    Present { value: ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: _, binding_source: ListedImport } } => true
+    _ => false
+  })) == 0
+}
+
+fn produce_step0_binding_provenance_census(
+  source_commit: GitObjectId,
+  source_tree: GitObjectId,
+  compiler_executable_sha256: Sha256Digest,
+  collector_subject: Step0PopulationIdentity,
+  pre_strip_population: Step0PopulationIdentity,
+  stripped_population: Step0PopulationIdentity,
+  pre_strip_sources: List<FixtureSource>,
+  stripped_sources: List<FixtureSource>,
+  coordinate_map: List<ImportStripCoordinateSegment>,
+  entry: NonEmptyStr
+) -> Step0BindingProvenanceProduction {
+  match reference_occurrence_binding_census(sources: pre_strip_sources, entry: entry) {
+    ReferenceOccurrenceBindingCensusRefused { cause: cause } => Step0BindingProvenanceProductionRefused { cause: cause }
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: pre_compiler, denominator: denominator, observations: pre_rows } =>
+      match reference_occurrence_binding_census(sources: stripped_sources, entry: entry) {
+        ReferenceOccurrenceBindingCensusRefused { cause: cause } => Step0BindingProvenanceProductionRefused { cause: cause }
+        ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: post_compiler, denominator: _, observations: post_rows } => {
+          let post_index = step0_post_index(rows: post_rows, coordinates: coordinate_map)
+          let paired = fold(pre_rows, init: Step0PairFold { rows_reversed: [], post_rows: post_index.rows, identity_mismatches: 0 }, f: fn(acc, row) { step0_pair_one(acc: acc, pre: row) })
+          let rows = reverse(paired.rows_reversed)
+          let counts = step0_binding_provenance_counts(rows: rows)
+          if pre_compiler != post_compiler {
+            Step0BindingProvenanceProductionRefused { cause: "the pre- and post-strip observations came from different compiler executables" as NonEmptyStr }
+          } else if count(denominator) != count(pre_rows) {
+            Step0BindingProvenanceProductionRefused { cause: "the pre-strip resolver observations do not cover the independent reference denominator" as NonEmptyStr }
+          } else if post_index.duplicates > 0 {
+            Step0BindingProvenanceProductionRefused { cause: "the post-strip observation carries a duplicate rewrite-stable occurrence key" as NonEmptyStr }
+          } else if post_index.unmappable > 0 {
+            Step0BindingProvenanceProductionRefused { cause: "a post-strip reference occurrence is outside the strip-produced coordinate map" as NonEmptyStr }
+          } else if paired.identity_mismatches > 0 {
+            Step0BindingProvenanceProductionRefused { cause: "a pre/post ordinal paired different authored reference identities" as NonEmptyStr }
+          } else if !step0_no_listed_post_strip(rows: rows) {
+            Step0BindingProvenanceProductionRefused { cause: "a fully stripped subject still reported ListedImport binding provenance" as NonEmptyStr }
+          } else if counts.discovered != counts.bound + counts.unresolved + counts.ambiguous + counts.target_changed + counts.unobserved {
+            Step0BindingProvenanceProductionRefused { cause: "the occurrence dispositions do not conserve the reference denominator" as NonEmptyStr }
+          } else {
+            Step0BindingProvenanceProduced { receipt: Step0BindingProvenanceReceipt {
+              identity: "step0-binding-provenance-receipt-v1" as NonEmptyStr,
+              source_commit: source_commit,
+              source_tree: source_tree,
+              compiler_executable_sha256: compiler_executable_sha256,
+              collector_subject: collector_subject,
+              pre_strip_population: pre_strip_population,
+              stripped_population: stripped_population,
+              resolver_policy_identity: "std.occurrence_binding_candidates.resolve_reference_via_structural_candidates/v1" as NonEmptyStr,
+              reference_family_roster_identity: "step0-reference-family-roster-v1" as NonEmptyStr,
+              row_schema_identity: "step0-binding-provenance-row-v1" as NonEmptyStr,
+              rows: rows,
+              counts: counts
+            } }
+          }
+        }
+      }
+  }
+}
