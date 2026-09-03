@@ -90,10 +90,45 @@ type MergeAdmissionReceipt {
   conclusion: CheckConclusion
 }
 
+// THE FOURTH ARM IS THE LIVE ONE, AND IT IS WEAKER THAN THE ARM THIS REPOSITORY HAS BEEN CALLING
+// LIVE. `gunbc.merge_lifecycle` and `test.claim.merge_lifecycle_interleaving_witness` both name
+// `PerPrGateOnly` as "the live policy -- GitHub strict_required_status_checks false, no queue",
+// and that reading is refuted by measurement rather than by argument. `PerPrGateOnly` requires a
+// SUCCESS receipt minted for the exact head; a head with no receipt is refused under it, because
+// `merge_enabled` folds from `false`. GitHub's required-status-checks rule decides on the check
+// runs that HAVE REPORTED at the instant the merge call is made: a required context with no check
+// run yet is `expected`, not `failing`, and the merge is admitted. ABSENCE OF EVIDENCE IS READ AS
+// ABSENCE OF FAILURE -- the empty-observation narrow DESIGN section 5 names, sitting one level
+// above the ruleset read where `gunbc.repo_ruleset` already refuses it.
+//
+// MEASURED, NOT INFERRED, AND THE RULESET IS NOT DRIFTED. Ruleset 16178731 reads back exactly as
+// `desired_ruleset_*` declares it -- `active`, `~DEFAULT_BRANCH`, one required context
+// (`witnesses`, integration 15368), `current_user_can_bypass: never` -- so this is the CONVERGED
+// state admitting the merge, not a configuration that slipped. gunbc#10236 pushed head
+// d8cd3034 at 19:49:33Z on 2026-09-03, GitHub created its `witnesses` run at 19:49:40Z, and the
+// pull request merged at 19:49:43Z: THREE SECONDS after the run was created and before any job of
+// it reported. That run then concluded, and both `required-witnesses-build` and
+// `required-witnesses-floor` reported FAILURE on the head that had already landed on main as
+// cfe19ea7. The window is not a corner: over the forty most recently merged pull requests, six
+// carried no `witnesses` run that had COMPLETED SUCCESSFULLY on their own head before their
+// `merged_at`. THE FIGURES ARE TRANSCRIBED under the same declared exception
+// `std.evaluation_budget` takes for a cross-run divergence: the subject is a relation between a
+// push timestamp, a run-creation timestamp and a merge timestamp across three GitHub endpoints,
+// and no producer in this repository joins them -- building that join is this row's next rung, not
+// its precondition.
+//
+// WHY IT IS A FOURTH ARM RATHER THAN A REWORDING OF THE FIRST. The two policies disagree on
+// exactly one input -- the ABSENT receipt -- and agree on every present one, so collapsing them
+// would erase the only distinction that matters here and leave the stale-base analysis (which is
+// about a receipt that EXISTS at an older base) reading as if it covered a merge with no receipt
+// at all. They are different facts with different remedies: the stale-base half is priced,
+// operator-ruled debt awaiting a merge queue, while this half is closed by the queue too but is
+// ALSO closed by anything that makes a required context's absence blocking.
 type AdmissionPolicy
   = PerPrGateOnly
   | RequireUpToDateBase
   | KeyedReceipt
+  | ReportedContextsAtMergeInstant
 
 data gunbc_repo_standard: RepoStandard = RepoStandard {
   default_branch: gunbc_default_branch_name,
@@ -838,5 +873,28 @@ fn policy_admits(
         merge_target_tree_hash: merge_target_tree_hash,
         current_roster_hash: current_roster_hash,
       )
+    ReportedContextsAtMergeInstant => check_conclusion_is_success(c: receipt.conclusion)
+  }
+}
+
+// THE VERDICT OVER AN ABSENT RECEIPT IS A POLICY FACT, AND UNTIL NOW IT WAS A FOLD SEED. Every
+// consumer decided admission by folding `policy_admits` over the receipts found for a head from
+// `init: false`, so "no receipt" refused under all three policies -- not because any policy said
+// so, but because a seed value in one caller said so for all of them. That is the fail-closed
+// answer and it was also the WRONG MODEL of the live system, which is the one case where a
+// conservative default costs something: it made the live policy unrepresentable, so no witness
+// could go red on it and the divergence stayed invisible. Stating the absence verdict per policy
+// is what makes `ReportedContextsAtMergeInstant` differ from `PerPrGateOnly` at all.
+//
+// THE THREE FALSE ARMS ARE NOT A DEFAULT. Each is the same claim its `policy_admits` arm makes:
+// admission is derived FROM a receipt, so there is nothing to derive it from and the merge is
+// refused. `ReportedContextsAtMergeInstant` derives admission from what has REPORTED instead, and
+// nothing having reported is not a report of failure.
+fn policy_admits_absent_receipt(policy: AdmissionPolicy) -> Bool {
+  match policy {
+    PerPrGateOnly => false
+    RequireUpToDateBase => false
+    KeyedReceipt => false
+    ReportedContextsAtMergeInstant => true
   }
 }
