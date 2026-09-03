@@ -1,0 +1,10 @@
+module fixtures.if_join_pool_binding.colliding_module
+
+// THE PERTURBATION, AND IT IS THE ONLY DIFFERENCE BETWEEN THE TWO CLOSURES. A standalone product
+// spelled the same as an ARM of another module's coproduct. This module is not on
+// `declaring_module`'s ancestor chain, does not import it, and is not imported by it.
+//
+// namespace-resolution-design.md section 13 (operator-ratified 2026-07-21, default
+// NamespaceOnlyY) decides an off-chain candidate as ZERO-ON-CHAIN and therefore UnresolvedType.
+// The type and variant-arm channel does not honour that: it binds here instead.
+type PoolSpecimenSquare { s: Int }
