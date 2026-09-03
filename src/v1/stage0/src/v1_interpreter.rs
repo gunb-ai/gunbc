@@ -11746,6 +11746,172 @@ fn multi_module_compile_fixture_value(
     }
 }
 
+fn occurrence_category_value(
+    category: &crate::std_occurrence_identity::OccurrenceCategory,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_occurrence_identity::OccurrenceCategory;
+    Value::Variant {
+        type_name: ctx.sym("OccurrenceCategory"),
+        variant_name: ctx.sym(match category {
+            OccurrenceCategory::LexicalValueOccurrence => "LexicalValueOccurrence",
+            OccurrenceCategory::TypeOccurrence => "TypeOccurrence",
+            OccurrenceCategory::CallableOccurrence => "CallableOccurrence",
+            OccurrenceCategory::ConstructorOccurrence => "ConstructorOccurrence",
+            OccurrenceCategory::NamespaceSegmentOccurrence => "NamespaceSegmentOccurrence",
+            OccurrenceCategory::FieldOccurrence => "FieldOccurrence",
+            OccurrenceCategory::MethodOccurrence => "MethodOccurrence",
+        }),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn reference_occurrence_binding_census_value(
+    census: crate::cli_run::ReferenceOccurrenceBindingCensus,
+    ctx: &InterpContext,
+) -> Value {
+    let denominator_value =
+        |row: crate::cli_run::ReferenceOccurrenceDenominatorRow| Value::Record {
+            type_name: ctx.sym("ReferenceOccurrenceDenominatorRow"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("occurrence"), Value::Int(row.occurrence)),
+                (ctx.sym("consumer_file"), str_value(row.consumer_file)),
+                (ctx.sym("consumer_module"), str_value(row.consumer_module)),
+                (ctx.sym("authored_name"), str_value(row.authored_name)),
+                (
+                    ctx.sym("category"),
+                    occurrence_category_value(&row.category, ctx),
+                ),
+                (
+                    ctx.sym("file_reference_ordinal"),
+                    Value::Int(row.file_reference_ordinal),
+                ),
+                (ctx.sym("span_start"), Value::Int(row.span_start)),
+            ])),
+        };
+    let source_value = |source: crate::cli_run::UnlistedImportBindingSource| Value::Variant {
+        type_name: ctx.sym("UnlistedImportBindingSource"),
+        variant_name: ctx.sym(match source {
+            crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
+            crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
+            crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+        }),
+        fields: Rc::new(vec![]),
+    };
+    let disposition_value =
+        |disposition: crate::cli_run::ReferenceOccurrenceBindingDisposition| match disposition {
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Bound {
+                declaration_occurrence,
+                provider_module,
+                binding_source,
+            } => Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceBound"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("declaration_occurrence"),
+                        Value::Int(declaration_occurrence),
+                    ),
+                    (ctx.sym("provider_module"), str_value(provider_module)),
+                    (ctx.sym("binding_source"), source_value(binding_source)),
+                ])),
+            },
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Unresolved => Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceUnresolved"),
+                fields: Rc::new(vec![]),
+            },
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Ambiguous { candidates } => {
+                Value::Variant {
+                    type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                    variant_name: ctx.sym("ReferenceOccurrenceAmbiguous"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("candidates"),
+                        list_value(candidates.into_iter().map(Value::Int).collect::<Vec<_>>()),
+                    )])),
+                }
+            }
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Refused { cause } => {
+                Value::Variant {
+                    type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                    variant_name: ctx.sym("ReferenceOccurrenceBindingRefused"),
+                    fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+                }
+            }
+        };
+    match census {
+        crate::cli_run::ReferenceOccurrenceBindingCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingCensus"),
+            variant_name: ctx.sym("ReferenceOccurrenceBindingCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ReferenceOccurrenceBindingCensus::Observed {
+            source_digest,
+            compiler_digest,
+            denominator,
+            observations,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingCensus"),
+            variant_name: ctx.sym("ReferenceOccurrenceBindingCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("source_digest"), str_value(source_digest)),
+                (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+                (
+                    ctx.sym("denominator"),
+                    list_value(
+                        denominator
+                            .into_iter()
+                            .map(denominator_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("observations"),
+                    list_value(
+                        observations
+                            .into_iter()
+                            .map(|row| Value::Record {
+                                type_name: ctx.sym("ReferenceOccurrenceBindingRow"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (
+                                        ctx.sym("occurrence"),
+                                        Value::Int(row.denominator.occurrence),
+                                    ),
+                                    (
+                                        ctx.sym("consumer_file"),
+                                        str_value(row.denominator.consumer_file),
+                                    ),
+                                    (
+                                        ctx.sym("consumer_module"),
+                                        str_value(row.denominator.consumer_module),
+                                    ),
+                                    (
+                                        ctx.sym("authored_name"),
+                                        str_value(row.denominator.authored_name),
+                                    ),
+                                    (
+                                        ctx.sym("category"),
+                                        occurrence_category_value(&row.denominator.category, ctx),
+                                    ),
+                                    (
+                                        ctx.sym("file_reference_ordinal"),
+                                        Value::Int(row.denominator.file_reference_ordinal),
+                                    ),
+                                    (
+                                        ctx.sym("span_start"),
+                                        Value::Int(row.denominator.span_start),
+                                    ),
+                                    (ctx.sym("disposition"), disposition_value(row.disposition)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+    }
+}
+
 /// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct. Arms stay
 /// distinct to the substrate as `compile_diagnostic_census_value`'s do: `GateNotRun` must
 /// never arrive as a clean verdict — could-not-measure and passing are different facts with
@@ -17700,6 +17866,15 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(multi_module_compile_fixture_value(
                     crate::cli_run::compile_dag_multi_module_fixture(&paths, &contents, &entry),
                     $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_reference_occurrence_binding_census" { "compile_dag_reference_occurrence_binding_census" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(reference_occurrence_binding_census_value(
+                    crate::cli_run::compile_dag_reference_occurrence_binding_census(&paths, &contents, &entry), $ctx,
                 )))
             },
 
