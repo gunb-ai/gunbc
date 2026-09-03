@@ -2,7 +2,9 @@ module extdeps.network.mikrotik_crs812
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure {
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
   Bandwidth, bandwidth,
+  BitWidth, bit_width, bit_width_count,
   Watt, watt,
   Milliwatt, milliwatt,
   Hertz, hertz,
@@ -130,8 +132,8 @@ data crs812_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogRow {
 type Crs812PlatformFacts {
   cpu_model: NonEmptyStr
   cpu_architecture: NonEmptyStr
-  cpu_core_count: Int
-  cpu_thread_count: Int
+  cpu_core_count: HardwareThreadCount
+  cpu_thread_count: HardwareThreadCount
   cpu_nominal_frequency: Hertz
   switch_chip_model: NonEmptyStr
   ram: Gigabyte
@@ -145,8 +147,8 @@ type Crs812PlatformFacts {
 data crs812_platform: Crs812PlatformFacts = Crs812PlatformFacts {
   cpu_model: "AL52400",
   cpu_architecture: "ARM 64bit",
-  cpu_core_count: 4,
-  cpu_thread_count: 4,
+  cpu_core_count: hardware_thread_count(4),
+  cpu_thread_count: hardware_thread_count(4),
   cpu_nominal_frequency: hertz(2000000000),
   switch_chip_model: "98DX7335",
   ram: gigabyte(4),
@@ -251,16 +253,16 @@ data crs812_environmental: Crs812EnvironmentalFacts = Crs812EnvironmentalFacts {
 // support break-out modes to 1G/2.5G/5G/10G/25G/50G"; the rates are carried as a typed list.
 type Crs812ConsoleFacts {
   connector: NonEmptyStr
-  data_rate_bps: Int
-  data_bits: Int
+  data_rate: Bandwidth
+  data_bits: BitWidth
   stop_bits: Int
   parity: NonEmptyStr
 }
 
 data crs812_console: Crs812ConsoleFacts = Crs812ConsoleFacts {
   connector: "RJ45",
-  data_rate_bps: 115200,
-  data_bits: 8,
+  data_rate: bandwidth(115200),
+  data_bits: bit_width(8),
   stop_bits: 1,
   parity: "none",
 }

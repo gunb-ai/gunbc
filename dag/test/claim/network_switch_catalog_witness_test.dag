@@ -3,9 +3,10 @@ module test.claim.network_switch_catalog_witness
 import std.types { Bool, Int, List }
 import std.measure {
   bandwidth, bandwidth_count,
+  byte_size_count, hardware_thread_count_value,
   milliwatt_count, watt_count, hertz_count,
   gigabyte_count, mebibyte_count, volt_count,
-  millimeter_count, celsius_count, nanosecond_count,
+  millimeter_count, celsius_count, nanosecond_count, percent_count,
 }
 import extdeps.network.switch_types { SwitchPortGroup }
 import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
@@ -115,7 +116,8 @@ test fn crs812_max_power_draw_is_134_watts() -> Bool {
 
 test fn crs812_platform_facts_match_the_datasheet() -> Bool {
   crs812_platform.cpu_model == "AL52400"
-    && crs812_platform.cpu_core_count == 4
+    && hardware_thread_count_value(crs812_platform.cpu_core_count) == 4
+    && hardware_thread_count_value(crs812_platform.cpu_thread_count) == 4
     && hertz_count(crs812_platform.cpu_nominal_frequency) == 2000000000
     && crs812_platform.switch_chip_model == "98DX7335"
     && gigabyte_count(crs812_platform.ram) == 4
@@ -150,7 +152,7 @@ test fn crs812_dimensions_agree_on_length_and_height_but_disagree_on_depth() -> 
 
 test fn crs812_console_and_breakout_facts_are_carried() -> Bool {
   crs812_console.connector == "RJ45"
-    && crs812_console.data_rate_bps == 115200
+    && bandwidth_count(crs812_console.data_rate) == 115200
     && rates_contain(rates: crs812_qsfp_breakout_rates, wanted: bandwidth(1000000000))
     && rates_contain(rates: crs812_qsfp_breakout_rates, wanted: bandwidth(50000000000))
     && count(crs812_qsfp_breakout_rates) == 6
@@ -223,7 +225,8 @@ test fn arista_chassis_facts_match_the_datasheet() -> Bool {
     && celsius_count(arista_7050s_52_chassis.operating_temp_max) == 40
     && celsius_count(arista_7050s_52_chassis.storage_temp_min) == -40
     && celsius_count(arista_7050s_52_chassis.storage_temp_max) == 70
-    && arista_7050s_52_chassis.relative_humidity_percent_max == 95
+    && percent_count(arista_7050s_52_chassis.relative_humidity_min) == 5
+    && percent_count(arista_7050s_52_chassis.relative_humidity_max) == 95
 }
 
 test fn arista_scale_facts_match_the_datasheet() -> Bool {

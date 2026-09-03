@@ -3,6 +3,8 @@ module extdeps.network.arista_7050s_52
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure {
   Bandwidth, bandwidth,
+  ByteSize, byte_size, byte_size_count,
+  Percent, percent, percent_count,
   Watt, watt,
   Milliwatt, milliwatt,
   Volt, volt,
@@ -192,8 +194,8 @@ type Arista7050s52ChassisFacts {
   operating_temp_max: Celsius
   storage_temp_min: Celsius
   storage_temp_max: Celsius
-  relative_humidity_percent_min: Int
-  relative_humidity_percent_max: Int
+  relative_humidity_min: Percent
+  relative_humidity_max: Percent
   operating_altitude_ft: Int
 }
 
@@ -205,8 +207,8 @@ data arista_7050s_52_chassis: Arista7050s52ChassisFacts = Arista7050s52ChassisFa
   operating_temp_max: celsius(40),
   storage_temp_min: celsius(-40),
   storage_temp_max: celsius(70),
-  relative_humidity_percent_min: 5,
-  relative_humidity_percent_max: 95,
+  relative_humidity_min: percent(5),
+  relative_humidity_max: percent(95),
   operating_altitude_ft: 10000,
 }
 
@@ -221,7 +223,7 @@ type Arista7050s52ScaleFacts {
   ipv6_routes_unicast: Int
   ecmp_ways: Int
   vlans: Int
-  jumbo_frame_bytes: Int
+  jumbo_frame_size: ByteSize
 }
 
 data arista_7050s_52_scale: Arista7050s52ScaleFacts = Arista7050s52ScaleFacts {
@@ -231,7 +233,7 @@ data arista_7050s_52_scale: Arista7050s52ScaleFacts = Arista7050s52ScaleFacts {
   ipv6_routes_unicast: 8000,
   ecmp_ways: 32,
   vlans: 4096,
-  jumbo_frame_bytes: 9216,
+  jumbo_frame_size: byte_size(9216),
 }
 
 // ================= CROSS-CHECK AND OPEN GAPS =================
