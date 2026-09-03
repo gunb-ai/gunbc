@@ -1,6 +1,7 @@
 module test.claim.roadmap_presentation_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.harness.harness_throughput { HarnessThroughput, ThroughputUnobserved }
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge,
@@ -85,6 +86,7 @@ fn fx_specimen_activity() -> ActivityView {
     segments: fx_specimen_segments(),
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "Worked for 6m 34s",
   )
 }
@@ -114,9 +116,10 @@ test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Boo
 test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
   match fx_specimen_activity() {
     ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
-      count(evidence) == 2
+      count(evidence) == 3
         && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "session container" && row.value == "present"))
         && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "worker process" && row.value == "process exited"))
+        && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "throughput" && row.value == "unmeasured"))
         && count(obligations) == 7
     NoActiveWork => false
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
@@ -137,6 +140,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
     segments: segments,
     remaining: 5,
     process: WorkerProcessRunning { command: "codex exec" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
@@ -164,6 +168,7 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
     segments: segments,
     remaining: 6,
     process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
     ActiveWorkRefused { summary, located_reason, evidence: _ } =>
@@ -185,6 +190,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
     segments: segments,
     remaining: 6,
     process: WorkerProcessExited { exit_code: 1, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
@@ -275,6 +281,7 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
     segments: segments,
     remaining: 0,
     process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
     CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"

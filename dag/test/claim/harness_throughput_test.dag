@@ -4,7 +4,8 @@ import std.types { Bool, String, Int }
 import gunbc.harness.harness_throughput {
   HarnessThroughput, ThroughputObserved, ThroughputUnobserved,
   harness_throughput_from_events, throughput_centi_tokens_per_second,
-  throughput_rate_text, throughput_speed_emoji,
+  throughput_rate_text, throughput_band, throughput_band_word, throughput_cell_text,
+  ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
 
 // A CONTROLLED FIXTURE, NOT A TREE MEASUREMENT. The rows below are authored here with their answer
@@ -77,5 +78,8 @@ test fn an_event_stream_without_usage_rows_refuses() -> Bool {
 // The band boundary is a declared policy; this pins the measured rate to its symbol so a boundary
 // edit is a visible change rather than a silent one.
 test fn a_fast_rate_lands_in_the_top_band() -> Bool {
-  throughput_speed_emoji(t: harness_throughput_from_events(body: three_clocked_rounds())) == "bolt"
+  match throughput_band(t: harness_throughput_from_events(body: three_clocked_rounds())) {
+    Present { value: b } => throughput_band_word(band: b) == "sprinting"
+    Absent => false
+  }
 }

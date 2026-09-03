@@ -150,25 +150,63 @@ fn throughput_rate_text(t: HarnessThroughput) -> String {
   }
 }
 
-// THE BANDS ARE A DECLARED POLICY OVER MEASURED RATES, NOT A GUESS, and they are stated here so the
-// number behind each symbol is auditable. They come from this deployment's own runs of
+// A BAND IS A CONCEPT, THE GLYPH IS ITS PRESENTATION, and they are two functions because they are
+// two facts. A single fn returning "turtle" would make the SYMBOL the carrier of the distinction --
+// a renderer wanting different glyphs, or a text log wanting words, would have to match on
+// presentation strings and would silently break when one is retitled.
+type ThroughputBand = Crawling | Walking | Running | Sprinting
+
+// THE BOUNDARIES ARE A DECLARED POLICY OVER MEASURED RATES, NOT A GUESS, and they are stated here
+// so the number behind each symbol is auditable. They come from this deployment's own runs of
 // deepseek-v4-flash:iq3s-split: a contended run measured 0.60 tok/s end to end, an uncontended
 // 24-round run measured 4.22, a 9-round run measured 8.72, and the fastest individual rounds
-// observed reached 16.59. The boundaries sit between those clusters. They describe THIS backend on
-// THIS hardware and are expected to move when either changes -- which is why they are one row to
-// edit rather than a threshold buried in a renderer.
-fn throughput_speed_emoji(t: HarnessThroughput) -> String {
+// observed reached 16.59. The boundaries sit BETWEEN those clusters rather than inside any of them.
+// They describe THIS backend on THIS hardware and are expected to move when either changes -- which
+// is why they are one row to edit rather than a threshold buried in a renderer.
+fn throughput_band_of_centi(centi: Int) -> ThroughputBand {
+  if centi < 100 {
+    Crawling
+  } else if centi < 500 {
+    Walking
+  } else if centi < 1500 {
+    Running
+  } else {
+    Sprinting
+  }
+}
+
+fn throughput_band(t: HarnessThroughput) -> ThroughputBand? {
   match throughput_centi_tokens_per_second(t: t) {
-    Absent => "--"
-    Present { value: centi } =>
-      if centi < 100 {
-        "turtle"
-      } else if centi < 500 {
-        "walk"
-      } else if centi < 1500 {
-        "run"
-      } else {
-        "bolt"
-      }
+    Absent => none
+    Present { value: centi } => Present { value: throughput_band_of_centi(centi: centi) }
+  }
+}
+
+fn throughput_band_glyph(band: ThroughputBand) -> String {
+  match band {
+    Crawling => "🐢"
+    Walking => "🚶"
+    Running => "🏃"
+    Sprinting => "⚡"
+  }
+}
+
+fn throughput_band_word(band: ThroughputBand) -> String {
+  match band {
+    Crawling => "crawling"
+    Walking => "walking"
+    Running => "running"
+    Sprinting => "sprinting"
+  }
+}
+
+// WHAT A DASHBOARD CELL SHOWS. An unmeasured rate renders as the refusal's own mark, never as a
+// zero and never as a fast glyph -- "not yet measurable" and "measured at zero" are different
+// claims and only one of them is ever true here.
+fn throughput_cell_text(t: HarnessThroughput) -> String {
+  match throughput_band(t: t) {
+    Absent => "unmeasured"
+    Present { value: b } =>
+      join([throughput_band_glyph(band: b), " ", throughput_rate_text(t: t)], "")
   }
 }

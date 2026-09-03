@@ -48,6 +48,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessRunning, WorkerProcessExited,
   worker_process_evidence_label,
 }
+import gunbc.harness.harness_throughput { HarnessThroughput, throughput_cell_text }
 
 // THE PRESENTATION SEAM (A2, operator-directed 2026-08-01;
 // docs/plans/roadmap-presentation-seam-design.md). One projection layer between the
@@ -687,7 +688,18 @@ fn session_container_value(process: WorkerProcessEvidence) -> String {
   }
 }
 
-fn activity_evidence_rows(process: WorkerProcessEvidence) -> List<ActivityEvidenceRow> {
+// THROUGHPUT SITS BESIDE THE PROCESS ROW BECAUSE IT ANSWERS THE SAME QUESTION AT A DIFFERENT
+// ALTITUDE. "worker process: running" says the attempt is alive; it cannot distinguish an agent
+// producing tokens from one wedged on a backend that will never answer -- the state this deployment
+// actually hit, where a POST stayed open past thirty minutes while the process stayed perfectly
+// "running". A rate separates those two without the reader opening a transcript.
+//
+// AN UNMEASURED RATE RENDERS AS ITS REFUSAL, never as zero: throughput_cell_text carries the mark,
+// so "no interval yet" and "measured slow" stay distinguishable in the cell itself.
+fn activity_evidence_rows(
+  process: WorkerProcessEvidence,
+  throughput: HarnessThroughput,
+) -> List<ActivityEvidenceRow> {
   [
     ActivityEvidenceRow {
       label: "session container",
@@ -696,6 +708,10 @@ fn activity_evidence_rows(process: WorkerProcessEvidence) -> List<ActivityEviden
     ActivityEvidenceRow {
       label: "worker process",
       value: worker_process_evidence_label(evidence: process),
+    },
+    ActivityEvidenceRow {
+      label: "throughput",
+      value: throughput_cell_text(t: throughput),
     },
   ]
 }
@@ -726,9 +742,10 @@ fn activity_view_from_parts(
   segments: List<WorkflowSegment>,
   remaining: Int,
   process: WorkerProcessEvidence,
+  throughput: HarnessThroughput,
   current_activity: String,
 ) -> ActivityView {
-  let evidence = activity_evidence_rows(process: process)
+  let evidence = activity_evidence_rows(process: process, throughput: throughput)
   match first_refused(segments: segments) {
     Present { value: refused } => ActiveWorkRefused {
       summary: join([workflow_segment_kind_label(kind: refused.kind), " evidence refused"], ""),
@@ -772,13 +789,14 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
           summary: legacy_attempt_supersedable_label,
           located_reason: detail,
           attempt_key: attempt_key_short_form(key: progress.attempt_key),
-          evidence: activity_evidence_rows(process: progress.process),
+          evidence: activity_evidence_rows(process: progress.process, throughput: progress.throughput),
         }
       } else {
         activity_view_from_parts(
           segments: progress.segments,
           remaining: progress.reconciliation.remaining_count,
           process: progress.process,
+          throughput: progress.throughput,
           current_activity: provider_execution_activity(state: progress.provider),
         )
       }
@@ -787,6 +805,7 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
         segments: progress.segments,
         remaining: progress.reconciliation.remaining_count,
         process: progress.process,
+        throughput: progress.throughput,
         current_activity: provider_execution_activity(state: progress.provider),
       )
   }
