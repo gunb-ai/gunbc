@@ -41,11 +41,30 @@ type ReferenceOccurrenceDenominatorRow {
   span_start: Int
 }
 
+// The role the resolved graph's own occurrence transport assigns each entry in its index.  The
+// census owes an eligibility disposition against this population, not against the `references`
+// view: an entry carrying no role at all is invisible for a different reason, and admits a
+// different repair, than one the reference filter admitted and the census then dropped.
+type OccurrenceEntryRole
+  = EntryAdmittedAsReference
+  | EntryClassifiedAsDeclaration
+  | EntryCarriesNoRole
+
+type OccurrenceEntryRow {
+  occurrence: Int
+  entry_file: NonEmptyStr
+  entry_module: NonEmptyStr
+  authored_name: String
+  role: OccurrenceEntryRole
+  span_start: Int
+}
+
 type ReferenceOccurrenceBindingCensus
   = ReferenceOccurrenceBindingCensusRefused { cause: NonEmptyStr }
   | ReferenceOccurrenceBindingCensusObserved {
       source_digest: NonEmptyStr
       compiler_digest: NonEmptyStr
+      entries: List<OccurrenceEntryRow>
       denominator: List<ReferenceOccurrenceDenominatorRow>
       observations: List<ReferenceOccurrenceBindingRow>
     }

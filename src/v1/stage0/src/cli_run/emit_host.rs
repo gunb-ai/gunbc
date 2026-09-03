@@ -421,6 +421,8 @@ pub fn compile_dag_reference_occurrence_binding_census(
     let mut exposure_rows = Vec::new();
     let mut authored_order_rows = Vec::new();
     let mut consumer_by_occurrence = std::collections::HashMap::new();
+    let mut module_by_entry: std::collections::HashMap<i64, String> =
+        std::collections::HashMap::new();
     for module in graph.modules.iter() {
         let module_path = module.type_env.module_path.clone();
         let Some(transport) = module.occurrence_transport.clone() else {
@@ -428,6 +430,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
         };
         for entry in transport.index.entries.iter() {
             entries.push(entry.clone());
+            module_by_entry.insert(entry.projection.occurrence.value, module_path.clone());
             module_paths.push(Rc::new(candidates::OccurrenceModulePathRow {
                 occurrence: entry.projection.occurrence,
                 module_path: module_path.clone(),
@@ -477,6 +480,46 @@ pub fn compile_dag_reference_occurrence_binding_census(
             }
         }
     };
+    // The entries population, with the role the transport's own role-filtered views assign it.
+    // This is the independent denominator the census's eligibility disposition is owed against:
+    // an entry carrying no role is invisible to `references` for a different reason, and with a
+    // different repair, than an entry the filter admitted and the census dropped.
+    let reference_ids: std::collections::HashSet<i64> = transport
+        .references
+        .iter()
+        .map(|reference| reference.occurrence.value)
+        .collect();
+    let declaration_ids: std::collections::HashSet<i64> = transport
+        .declarations
+        .iter()
+        .map(|declaration| declaration.occurrence.value)
+        .collect();
+    let entry_rows: Vec<OccurrenceEntryRow> = transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| {
+            let occurrence = entry.projection.occurrence.value;
+            OccurrenceEntryRow {
+                occurrence,
+                entry_file: entry.projection.diagnostic_span.file.clone(),
+                entry_module: module_by_entry
+                    .get(&occurrence)
+                    .cloned()
+                    .unwrap_or_else(|| "(module unavailable)".to_string()),
+                authored_name: entry.projection.authored_name.clone(),
+                role: if reference_ids.contains(&occurrence) {
+                    OccurrenceEntryRole::AdmittedAsReference
+                } else if declaration_ids.contains(&occurrence) {
+                    OccurrenceEntryRole::ClassifiedAsDeclaration
+                } else {
+                    OccurrenceEntryRole::CarriesNoRole
+                },
+                span_start: entry.projection.diagnostic_span.start,
+            }
+        })
+        .collect();
+
     let names: std::collections::HashMap<i64, String> = transport
         .index
         .entries
@@ -605,6 +648,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
     ReferenceOccurrenceBindingCensus::Observed {
         source_digest,
         compiler_digest,
+        entries: entry_rows,
         denominator,
         observations,
     }

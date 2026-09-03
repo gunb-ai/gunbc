@@ -3072,6 +3072,23 @@ pub struct ReferenceOccurrenceBindingRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OccurrenceEntryRole {
+    AdmittedAsReference,
+    ClassifiedAsDeclaration,
+    CarriesNoRole,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OccurrenceEntryRow {
+    pub occurrence: i64,
+    pub entry_file: String,
+    pub entry_module: String,
+    pub authored_name: String,
+    pub role: OccurrenceEntryRole,
+    pub span_start: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReferenceOccurrenceBindingCensus {
     Refused {
         cause: String,
@@ -3079,6 +3096,7 @@ pub enum ReferenceOccurrenceBindingCensus {
     Observed {
         source_digest: String,
         compiler_digest: String,
+        entries: Vec<OccurrenceEntryRow>,
         denominator: Vec<ReferenceOccurrenceDenominatorRow>,
         observations: Vec<ReferenceOccurrenceBindingRow>,
     },

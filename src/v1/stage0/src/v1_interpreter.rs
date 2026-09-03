@@ -11789,6 +11789,32 @@ fn reference_occurrence_binding_census_value(
                 (ctx.sym("span_start"), Value::Int(row.span_start)),
             ])),
         };
+    let entry_value = |row: crate::cli_run::OccurrenceEntryRow| Value::Record {
+        type_name: ctx.sym("OccurrenceEntryRow"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("occurrence"), Value::Int(row.occurrence)),
+            (ctx.sym("entry_file"), str_value(row.entry_file)),
+            (ctx.sym("entry_module"), str_value(row.entry_module)),
+            (ctx.sym("authored_name"), str_value(row.authored_name)),
+            (
+                ctx.sym("role"),
+                Value::Variant {
+                    type_name: ctx.sym("OccurrenceEntryRole"),
+                    variant_name: ctx.sym(match row.role {
+                        crate::cli_run::OccurrenceEntryRole::AdmittedAsReference => {
+                            "EntryAdmittedAsReference"
+                        }
+                        crate::cli_run::OccurrenceEntryRole::ClassifiedAsDeclaration => {
+                            "EntryClassifiedAsDeclaration"
+                        }
+                        crate::cli_run::OccurrenceEntryRole::CarriesNoRole => "EntryCarriesNoRole",
+                    }),
+                    fields: Rc::new(vec![]),
+                },
+            ),
+            (ctx.sym("span_start"), Value::Int(row.span_start)),
+        ])),
+    };
     let source_value = |source: crate::cli_run::UnlistedImportBindingSource| Value::Variant {
         type_name: ctx.sym("UnlistedImportBindingSource"),
         variant_name: ctx.sym(match source {
@@ -11848,6 +11874,7 @@ fn reference_occurrence_binding_census_value(
         crate::cli_run::ReferenceOccurrenceBindingCensus::Observed {
             source_digest,
             compiler_digest,
+            entries,
             denominator,
             observations,
         } => Value::Variant {
@@ -11856,6 +11883,10 @@ fn reference_occurrence_binding_census_value(
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("source_digest"), str_value(source_digest)),
                 (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+                (
+                    ctx.sym("entries"),
+                    list_value(entries.into_iter().map(entry_value).collect::<Vec<_>>()),
+                ),
                 (
                     ctx.sym("denominator"),
                     list_value(
