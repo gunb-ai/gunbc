@@ -60,10 +60,10 @@ test fn record_literal_nominal_mismatch_at_call_arg_still_refuses() -> Bool {
   !w_nominal_record_at_call_arg_red()
 }
 
+// Assert the diagnostic's modeled identity and its declared position, not merely refusal. The
+// census projects DeclaredTypeNotInhabited's rendered position into subject_name, so an
+// UnresolvedType, parse error, lookup miss, or any other blocking diagnostic cannot satisfy it.
 test fn record_literal_container_element_mismatch_at_call_arg_still_refuses() -> Bool {
-  // Assert the diagnostic's modeled identity and its declared position, not merely refusal. The
-  // census projects DeclaredTypeNotInhabited's rendered position into subject_name, so an
-  // UnresolvedType, parse error, lookup miss, or any other blocking diagnostic cannot satisfy it.
   generic_type_argument_violation_count(source: container_element_record_at_call_arg_red_source) == 1
 }
 

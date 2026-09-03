@@ -5761,131 +5761,34 @@ pub fn direct_call_generic_type_argument_inhabitance_diags(
         Rc::new({
             let mut __result = Vec::new();
             for app in plan.iter().cloned() {
-                __result.extend(
-                    (*match app.matched_arg.clone() {
-                        Some(ta) => {
-                            let actual_expr = crate::v1_std_core::arg_value(ta.clone());
-                            let actual = crate::v1_compiler_infer_types::resolved_type(
-                                actual_expr.clone(),
-                            );
-                            if ((((exposure_is_application(
-                                exposure_view_for_node(
-                                    app.formal_subst.clone(),
-                                    source_indices.clone(),
-                                ),
-                            ) && exposure_is_application(
-                                exposure_view_for_node(
-                                    actual.clone(),
-                                    source_indices.clone(),
-                                ),
-                            )) && ((app.formal_subst.clone().children.clone().len() as i64) > 0))
-                                && ((app.formal_subst.clone().children.clone().len() as i64)
-                                    == (actual.children.clone().len() as i64)))
-                                && (crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    app.formal_subst.clone(),
-                                ) == crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    actual.clone(),
-                                )))
-                            {
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for declared_pair in Rc::new(
-                                        app.formal_subst
-                                            .clone()
-                                            .children
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .enumerate()
-                                            .map(|(i, v)| (i as i64, v))
-                                            .collect::<Vec<_>>(),
-                                    )
-                                    .iter()
-                                    .cloned()
-                                    {
-                                        __result.extend(
-                                            (*match actual
-                                                .children
-                                                .clone()
-                                                .iter()
-                                                .cloned()
-                                                .skip(declared_pair.0.clone() as usize)
-                                                .collect::<Vec<_>>()
-                                                .first()
-                                                .cloned()
-                                            {
-                                                Some(produced_child) => match app
-                                                    .formal_raw
-                                                    .children
-                                                    .clone()
-                                                    .iter()
-                                                    .cloned()
-                                                    .skip(declared_pair.0.clone() as usize)
-                                                    .collect::<Vec<_>>()
-                                                    .first()
-                                                    .cloned()
-                                                {
-                                                    Some(raw_declared_child) => {
-                                                        if (applied_type_argument_identity_known(
-                                                            crate::v1_std_core::authored_name_at(
-                                                                source_indices.clone(),
-                                                                crate::v1_compiler_infer_types::child_type_node(
-                                                                    raw_declared_child.clone(),
-                                                                ),
-                                                            ),
-                                                            scope.clone(),
-                                                        ) && applied_type_argument_identity_known(
-                                                            crate::v1_std_core::authored_name_at(
-                                                                source_indices.clone(),
-                                                                crate::v1_compiler_infer_types::child_type_node(
-                                                                    produced_child.clone(),
-                                                                ),
-                                                            ),
-                                                            scope.clone(),
-                                                        )) {
-                                                            declared_type_obligation_diags(
-                                                        Rc::new(DeclaredTypeObligation {
-                                                            position: DeclaredTypePosition::PositionGenericTypeArgument,
-                                                            subject: app.param_name.clone(),
-                                                            declared: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                                                                crate::v1_compiler_infer_types::child_type_node(declared_pair.1.clone()),
-                                                                scope.type_env.clone(),
-                                                                scope.module_name.clone(),
-                                                            ),
-                                                            produced: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                                                                crate::v1_compiler_infer_types::child_type_node(produced_child.clone()),
-                                                                scope.type_env.clone(),
-                                                                scope.module_name.clone(),
-                                                            ),
-                                                            span: actual_expr.span.clone(),
-                                                        }),
-                                                        scope.clone(),
-                                                    )
-                                                        } else {
-                                                            Rc::new(vec![])
-                                                        }
-                                                    }
-                                                    std::option::Option::None => Rc::new(vec![]),
-                                                },
-                                                std::option::Option::None => Rc::new(vec![]),
-                                            })
-                                            .iter()
-                                            .cloned(),
-                                        );
-                                    }
-                                    __result
-                                })
-                            } else {
-                                Rc::new(vec![])
-                            }
-                        }
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
+                __result.extend((*match app.matched_arg.clone() {
+    Some(ta) => {
+            let actual_expr = crate::v1_std_core::arg_value(ta.clone());
+let actual = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
+if ((((exposure_is_application(exposure_view_for_node(app.formal_subst.clone(), source_indices.clone())) && exposure_is_application(exposure_view_for_node(actual.clone(), source_indices.clone()))) && ((app.formal_subst.clone().children.clone().len() as i64) > 0)) && ((app.formal_subst.clone().children.clone().len() as i64) == (actual.children.clone().len() as i64))) && (crate::v1_std_core::authored_name_at(source_indices.clone(), app.formal_subst.clone()) == crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone()))) {
+                Rc::new({ let mut __result = Vec::new(); for declared_pair in Rc::new(app.formal_subst.clone().children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.extend((*match app.formal_raw.clone().children.clone().iter().cloned().skip(declared_pair.0.clone() as usize).next() {
+    Some(raw_declared_child) => match actual.children.clone().iter().cloned().skip(declared_pair.0.clone() as usize).next() {
+    Some(produced_child) => if (applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::child_type_node(raw_declared_child.clone())), scope.clone()) && applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::child_type_node(produced_child.clone())), scope.clone())) {
+                    declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
+    position: DeclaredTypePosition::PositionGenericTypeArgument,
+    subject: app.param_name.clone(),
+    declared: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::child_type_node(declared_pair.1.clone()), scope.type_env.clone(), scope.module_name.clone()),
+    produced: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::child_type_node(produced_child.clone()), scope.type_env.clone(), scope.module_name.clone()),
+    span: actual_expr.span.clone(),
+}), scope.clone())
+                } else {
+                    Rc::new(vec![])
+                },
+    std::option::Option::None => Rc::new(vec![]),
+},
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned()); } __result })
+            } else {
+                Rc::new(vec![])
+            }
+},
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned());
             }
             __result
         })
