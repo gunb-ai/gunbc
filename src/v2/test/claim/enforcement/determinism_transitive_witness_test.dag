@@ -4,10 +4,11 @@ import v2.lens.determinism {
   determinism_transitive_findings,
   determinism_transitive_holds
 }
-import v2.std.algebra { length }
+import v2.lens.module_graph { module_declaration_facts_live }
+import v2.std.algebra { contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -23,51 +24,75 @@ import v2.std.node {
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.text { String }
 
-// ── the live judgment: WITHDRAWN, AND WHY ────────────────────────────────────────────────────
+// ── the live judgment ─────────────────────────────────────────────────────────────────────────
 //
-// Clause 2 of this cut required a live required-floor consumer -- a witness whose declared
-// substrate and cadence truthfully match the inputs it reads, whose failure reaches the required
-// PR floor, and which cannot predict-skip. `determinism_transitive_live_closure_holds` WAS that
-// consumer and it is withdrawn here, not satisfied and not abandoned. The obligation stands and is
-// BLOCKED; the blocker is named below. It is not retired by this file and no rung drop is retired
-// by it either.
+// THE LIVE CONSUMER STANDS. Clause 2 of gunbc#10156 required a live required-floor consumer of the
+// grounded call-reachability authority -- one whose declared substrate and cadence match the inputs
+// it reads, whose failure reaches the required PR floor, and which cannot predict-skip.
+// `determinism_transitive_live_closure_holds` below is it.
 //
-// THE OBLIGATION HAS A CARRIER SO IT IS NOT AN UNTRACKED STALL (DESIGN section 4b(2)): work item
-// node://adhoc-ac804155-cdd, "Give v2.std.fn_index fn_arrow_decl_facts_live a caller-named subject".
-// A withdrawn clause described only in a merged PR body is a sentence in a squashed commit that
-// nobody greps, which is how a conjunctive brief silently becomes a completed one.
+// IT WAS WITHDRAWN ONCE, AND THE REASON IS RECORDED RATHER THAN DELETED, because a reader who finds
+// this row green needs to know what changed to make it possible. `fn_arrow_decl_facts_live` was
+// ZERO-ARITY in both .dag and host and always walked the whole of `ctx.modules`, so the smallest
+// live subject expressible still paid one whole-tree acquisition before evaluating anything --
+// decomposition INVERTED on it, and N witnesses over corpus slices cost N x acquisition rather than
+// acquisition/N. Measured on required run 33709585360 the withdrawn row was the single most
+// expensive subject on the floor, #1 of 3523, against a per-subject line the operator has since
+// regrounded to 100ms.
 //
-// WHY IT CANNOT STAND TODAY. Measured on required run 33709585360 (required_floor_claim_cost.tsv,
-// 3523 rows): the live row cost 473/481/561ms across three samples of a byte-identical head and was
-// the single most expensive subject on the floor, #1 of 3523. The operator has since regrounded the
-// per-subject line from 500ms to 100ms, so it is over by ~5x rather than marginally.
+// WHAT DISSOLVED THE BLOCKER, stated as the capability the withdrawal named: the acquisition now
+// has a caller-named subject. `fn_arrow_decl_facts_live(pool_roots:)` answers over the roots this
+// witness declares and over nothing else, so the cost is proportional to the subject rather than to
+// the corpus, and the floor's (roots, kinds) parse memo serves every claim naming the same roots
+// from one walk. Both consequences the withdrawal said were unavailable are what this row now uses.
 //
-// AND IT CANNOT BE DECOMPOSED TO GET THERE, which is the part that makes this a block rather than a
-// task. `fn_arrow_decl_facts_live` is ZERO-ARITY in both .dag and host, and always walks the whole
-// of `ctx.modules`. Splitting one live witness into N witnesses over corpus slices therefore costs
-// N x acquisition, not acquisition/N -- decomposition INVERTS on this subject. The smallest live
-// subject expressible still pays one whole-tree acquisition (~300ms measured) before it evaluates
-// anything, so no live-tree witness reaches 100ms at any grain.
+// THE SUBJECT AND THE CLOSURE HAVE ONE ORIGIN, which is the part a caller can otherwise get wrong.
+// `determinism_live_subject_roots` is passed to BOTH producers below -- the declaration population
+// and the module list that bounds the reachability walk -- so the closure cannot name a module the
+// declarations do not cover, or cover a module the closure does not admit. Pairing two
+// independently-chosen values here would make the judgment's scope a coincidence.
 //
-// THE BLOCKER, STATED AS A CAPABILITY AND NOT AN ARTIFACT: the acquisition has no caller-named
-// subject. Its two siblings `module_graph_facts` and `reference_edges` take `pool_roots` and are
-// enrolled in the floor's cross-claim fill netting; this one takes nothing, so its cost cannot be
-// shared without inventing a key, and every available key is either wrong (a pool-roots-shaped key
-// would serve one claim another claim's declaration set) or worthless (a ctx.modules digest costs
-// what the walk costs). Giving `fn_arrow_decl_facts_live` a declared subject is what unblocks this,
-// and it is a program across effect_reach, live_read_classification, wiring_liveness,
-// corpus_dependency_view and the origin probe -- deliberately not smuggled into this cut.
-//
-// WHAT STILL EXECUTES. The three fixture rows below are the discriminating evidence for clauses 1
-// and 3: they run on the required floor at 39/3/2ms and they discriminate -- a leak in reached code
-// is found, an IDENTICAL leak outside the call graph is not. The deletion of both duplicate walks
-// is proven by them. What is missing is a live consumer, which is clause 2 itself, not evidence for
-// it.
-//
-// The long lane is NOT the answer and was checked: long claims are declined from the required floor
-// (declined_long=366) and no CI job runs that lane -- witnesses.yml carries exactly two
-// --required-lane invocations, `build` and `witnesses`. Enrolling there would make clause 2's
-// required-floor reach false while the row still read as enrolled.
+// WHAT THIS ROW DOES NOT CLAIM. It judges ONE declared subject, not the corpus: a
+// non-deterministic primitive reachable from an entry outside these roots is invisible to it, and
+// widening the subject is a cost decision measured against the floor's per-subject line, not a
+// property this row establishes. That is the honest reading of a caller-named subject -- the scope
+// is exactly what the caller declared, and it is declared here in one place.
+
+data determinism_live_subject_roots: List<String> = ["src/v2/lens/affected_set"]
+
+data determinism_live_entry_module: String = "v2.lens.affected_set.entry_selection"
+
+data determinism_live_empty_modules: List<String> = []
+
+fn determinism_live_closure_modules() -> List<String> {
+  fold_list(
+    xs: module_declaration_facts_live(pool_roots: determinism_live_subject_roots),
+    empty: determinism_live_empty_modules,
+    cons: fn(acc, fact) { list_snoc_item(xs: acc, item: fact.module) }
+  )
+}
+
+test fn determinism_transitive_live_closure_holds() -> Bool {
+  determinism_transitive_holds(
+    entry_module: determinism_live_entry_module,
+    closure_modules: determinism_live_closure_modules(),
+    decls: fn_arrow_decl_facts_live(pool_roots: determinism_live_subject_roots)
+  )
+}
+
+// POSITIVE CONTROL ON THE LIVE SUBJECT, so the green above is not the empty-population green. If
+// the named roots yielded no declarations, or the entry module were absent from the closure, the
+// judgment would hold vacuously and report nothing -- which is the failure the fixture rows below
+// cannot see, because they supply their own declarations.
+test fn the_live_subject_is_not_empty() -> Bool {
+  length(xs: fn_arrow_decl_facts_live(pool_roots: determinism_live_subject_roots)) > 0
+    && length(xs: determinism_live_closure_modules()) > 0
+    && contains(
+      xs: determinism_live_closure_modules(),
+      item: determinism_live_entry_module,
+      eq: fn(a, b) { a == b }
+    )
+}
 
 // ── fixtures ──────────────────────────────────────────────────────────────────────────────────
 
