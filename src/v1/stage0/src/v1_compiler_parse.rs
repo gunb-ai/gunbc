@@ -11,10 +11,16 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
+use crate::std_import::ImportStatementParseCause::{
+    ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
+    SourceHasNoModuleDeclaration,
+};
 use crate::std_import::ParsedImportStatements::{
     ImportStatementParseRefused, ImportStatementsParsed,
 };
-pub use crate::std_import::{ParsedImportStatement, ParsedImportStatements};
+pub use crate::std_import::{
+    ImportStatementParseCause, ParsedImportStatement, ParsedImportStatements,
+};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
@@ -3825,13 +3831,15 @@ pub fn parse_import_statement_extents_acc(
             let r = parse_import(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                    cause: "an import statement did not parse".to_string(),
+                    cause: Rc::new(ImportStatementParseCause::ImportStatementMalformed),
                 });
             }
             match token_stream_first(tokens.clone()) {
                 std::option::Option::None => {
                     break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                        cause: "an import statement parsed from no token".to_string(),
+                        cause: Rc::new(ImportStatementParseCause::ImportParseInstrumentAnomaly {
+                            detail: "an import statement parsed from no token".to_string(),
+                        }),
                     });
                 }
                 Some(first) => {
@@ -3843,8 +3851,13 @@ pub fn parse_import_statement_extents_acc(
                     ) {
                         std::option::Option::None => {
                             break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                                cause: "an import statement parsed without consuming a token"
-                                    .to_string(),
+                                cause: Rc::new(
+                                    ImportStatementParseCause::ImportParseInstrumentAnomaly {
+                                        detail:
+                                            "an import statement parsed without consuming a token"
+                                                .to_string(),
+                                    },
+                                ),
                             });
                         }
                         Some(end) => {
@@ -3899,13 +3912,13 @@ pub fn parse_import_statement_extents(
         );
         if has_err(r.err.clone()) {
             return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                cause: "source does not open with a module declaration".to_string(),
+                cause: Rc::new(ImportStatementParseCause::SourceHasNoModuleDeclaration),
             });
         }
         let r = parse_dotted_ident(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                cause: "module declaration does not name a dotted module path".to_string(),
+                cause: Rc::new(ImportStatementParseCause::ModuleDeclarationPathMalformed),
             });
         }
         parse_import_statement_extents_acc(

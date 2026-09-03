@@ -294,6 +294,24 @@ fn gunbc_run_step_script_with_prelude(
   )
 }
 
+// THE STAMP ON ITS OWN, for a step that is not a gunbc-run step but composes one into its own
+// script (the heal dispatch wire). Without it $ROOT is empty in that step and the invocation
+// resolves to /target/release/gunbc, which exists nowhere -- a dispatch that cannot run at all.
+// It is exported rather than re-spelled at the call site so `ROOT=` keeps ONE definition:
+// ci_repo_root_shell, the same authority every ordinary step stamps from.
+// THE TERMINATOR IS PART OF THE FRAGMENT, not the caller's to remember. The pipeline emitter joins
+// its steps with newlines and does not terminate the last one, which is right for a whole step and
+// wrong for a fragment something else continues: the first emission of this ran the stamp and the
+// next command together on one line. A caller cannot get that wrong if the line arrives complete.
+fn gunbc_invoke_root_stamp_script() -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(
+      p: Pipeline { steps: [gunbc_invoke_root_stamp_step()], on_failure: FailFast }
+    ),
+    "\n"
+  )
+}
+
 // Same root for a call site that carries env bindings on the invocation itself and
 // inherits ROOT from the step it is composed into (the heal dispatch wire). The bindings
 // are the orchestration EnvBinding carrier, not a hand-spelled "NAME=value " prefix.
