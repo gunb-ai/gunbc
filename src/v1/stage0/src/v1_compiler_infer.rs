@@ -1502,6 +1502,28 @@ pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
         ))
 }
 
+pub fn optional_into_required_error(
+    declared: Rc<Node>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<ErrorNode> {
+    crate::v1_std_core::make_error_node(
+        Rc::new(CompilerDiagnostic::OptionalValueInRequiredPosition {
+            declared: crate::v1_compiler_infer_types::node_type_shape(
+                declared.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ),
+            span: span.clone(),
+        }),
+        scope.module_name.clone(),
+    )
+}
+
+pub fn optional_into_required_mismatch(declared: Rc<Node>, produced: Rc<Node>) -> bool {
+    ((produced.return_cardinality.clone() == Cardinality::CardOptional)
+        && (declared.return_cardinality.clone() != Cardinality::CardOptional))
+}
+
 pub fn declared_type_conformance_diags(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -6502,10 +6524,17 @@ if match (*actual_expr.expr_data.clone()).clone() {
                     {
                         let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
 let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
-if direct_call_arg_type_mismatch(formal.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone()) {
-                            Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone()), actual_expr.span.clone(), module_name.clone())])
+if optional_into_required_mismatch(formal.clone(), actual_raw.clone()) {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::OptionalValueInRequiredPosition {
+    declared: crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()),
+    span: actual_expr.span.clone(),
+}), module_name.clone())])
                         } else {
-                            Rc::new(vec![])
+                            if direct_call_arg_type_mismatch(formal.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone()) {
+                                Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone()), actual_expr.span.clone(), module_name.clone())])
+                            } else {
+                                Rc::new(vec![])
+                            }
                         }
 }
                 }
@@ -12838,16 +12867,20 @@ Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape
 };
 let formal_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(expected_required.clone(), scope.type_env.clone(), scope.module_name.clone());
 let actual_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(got_node.clone(), scope.type_env.clone(), scope.module_name.clone());
-if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clone(), scope.type_env.clone(), scope.type_env.clone().source_indices.clone()) {
-                            Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+if optional_into_required_mismatch(expected_node.clone(), got_node.clone()) {
+                            Rc::new(vec![optional_into_required_error(expected_node.clone(), ar_typed.span.clone(), scope.clone())])
                         } else {
-                            if structured_application_site_type_mismatch(expected_node.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), scope.clone()) {
+                            if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clone(), scope.type_env.clone(), scope.type_env.clone().source_indices.clone()) {
                                 Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                             } else {
-                                if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
+                                if structured_application_site_type_mismatch(expected_node.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), scope.clone()) {
                                     Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                                 } else {
-                                    Rc::new(vec![])
+                                    if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
+                                        Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                                    } else {
+                                        Rc::new(vec![])
+                                    }
                                 }
                             }
                         }

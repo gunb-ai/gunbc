@@ -766,6 +766,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "UnitVariantPhantomIdentityEvidenceUnavailable"
         }
         CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
+        CompilerDiagnostic::OptionalValueInRequiredPosition { .. } => {
+            "OptionalValueInRequiredPosition"
+        }
         CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
         CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
         CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
@@ -847,6 +850,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             name.clone()
         }
         CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
+        CompilerDiagnostic::OptionalValueInRequiredPosition { declared, .. } => declared.clone(),
         CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
         CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),
         CompilerDiagnostic::FieldNotFound { field, .. } => field.clone(),

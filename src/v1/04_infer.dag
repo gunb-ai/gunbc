@@ -1141,6 +1141,33 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope)
 }
 
+// DESIGN section 4b names "values inhabit declared types" as part of the ORDINARY COMPILER FLOOR,
+// and this is the position where that floor was open. Both seams below normalize the DECLARED side
+// with with_required_cardinality and then compare KERNELS, so the cardinality dimension was never
+// judged at all: a field declared String accepted a value typed Optional<String> with no
+// diagnostic. That is not a narrow gap. It made a method's declared return type NON-LOAD-BEARING at
+// every assignment and argument position -- so changing first()'s declared return type broke sites
+// at RUNTIME, in the evaluator, instead of at the check (gunbc#10187, extdeps/git/git.dag:629,
+// where `remote: String` received `parts.first()` and the failure surfaced as
+// "cannot concat on Variant" two calls later).
+//
+// The judgment is deliberately ONE-DIRECTIONAL. Required-into-optional is widening and is fine:
+// an Optional<T> position accepting a T loses nothing. Optional-into-required is the narrowing that
+// drops the absent case on the floor, and it is the only case decided here.
+fn optional_into_required_error(declared: Node, span: SourceSpan, scope: InferScope) -> ErrorNode {
+  make_error_node(
+    diagnostic: OptionalValueInRequiredPosition {
+      declared: node_type_shape(n: declared, source_indices: scope.type_env.source_indices),
+      span: span
+    },
+    module_name: scope.module_name
+  )
+}
+
+fn optional_into_required_mismatch(declared: Node, produced: Node) -> Bool {
+  produced.return_cardinality == CardOptional && declared.return_cardinality != CardOptional
+}
+
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
@@ -4367,7 +4394,15 @@ fn direct_call_arg_mismatch_diags(
           } else {
           let actual_raw = resolved_type(n: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if direct_call_arg_type_mismatch(
+          if optional_into_required_mismatch(declared: formal, produced: actual_raw) {
+            [make_error_node(
+              diagnostic: OptionalValueInRequiredPosition {
+                declared: node_type_shape(n: formal, source_indices: source_indices),
+                span: actual_expr.span
+              },
+              module_name: module_name
+            )]
+          } else if direct_call_arg_type_mismatch(
             formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
@@ -7680,7 +7715,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
           let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
           let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
-          if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
+          if optional_into_required_mismatch(declared: expected_node, produced: got_node) {
+            [optional_into_required_error(declared: expected_node, span: ar_typed.span, scope: scope)]
+          } else if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
