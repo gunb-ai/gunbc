@@ -1,0 +1,19 @@
+module gunbc.claim_batch_entry_closure_preflight_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the claim_batch loader-boundary projection. The earlier membership
+// instrument printed only after typed entry resolution, so a caller paid roughly 101 seconds
+// before learning whether the expensive evaluation could be skipped. The projection below calls
+// the entry loader's existing full fixpoint and adds no second closure authority.
+data claim_batch_entry_closure_preflight_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "entry_closure_source_paths", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: claim_batch must answer argv before any .dag evaluation frame exists. entry_closure_source_paths projects the exact SourceFile population returned by load_sources_for_entry_with_pool, the same loader resolve_entry_with_index consumes; it adds no reachability rule and stops before parsing, typechecking, reconciliation, and evaluation. The --print-entry-closure consumer exits immediately after this projection, so a prospective changed-path check can decide whether downstream work is demanded before paying for that work.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete entry_closure_source_paths, claim_batch --print-entry-closure, and this row when routed-entry execution is modeled and exposes its loader-boundary source population before materialization or evaluation.",
+  current_boundary: "The mode accepts explicit entries and source roots only, refuses discovery and function selections, prints stable repository-relative paths, and exits before claim_batch's corpus warm, output-policy install, mock precompute, typed resolve, or evaluation. Loader refusal remains refusal; no partial population is printed as complete."
+}
