@@ -682,8 +682,58 @@ fn floor_cost_debt_proven_chunk_04() -> List<String> {
   Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.roadmap_receipt_continuity_acceptance_contract_holds", tail: Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal", tail: Cons { head: "test.claim.roadmap_row_witness.roadmap_row_page_carries_the_cells", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_family_fixture_frame_occurrences_exact", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_sandbox_carries_auditioner_control", tail: Cons { head: "test.claim.roadmap_site_surface_readiness.witness_roadmap_site_surface_readiness_materialized_batch_holds", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_artifact_digests_are_content_hashes", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_dispatch_artifact_matches_file_content", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_healthz_route_json_ok", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_checks_health_and_digests", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_curls_are_wall_clock_bounded", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_roadmap_route_is_plain_text", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_site_artifact_model_populated", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_static_site_route_authority_paths_locked", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_text_routes_include_health_and_artifacts", tail: Cons { head: "test.claim.roadmap_tactile_witness.witness_sound_toggle_label_is_painted_by_the_program_not_the_markup", tail: Cons { head: "test.claim.seed_growth_admission_witness.a_live_roster_declaration_is_not_reported_stale", tail: Cons { head: "test.claim.sessions_panel_witness.sessions_panel_keystone_holds", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_requires_bash_receiver", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
 }
 
+// THE FIFTH w_RED IN witness_floor_workflow_consolidation, ENROLLED BY THE CHANGE THAT CAUSED IT
+// (gunbc#9725, the wet execution route).
+//
+// PROVENANCE, STATED BECAUSE A ROW THAT SAYS ONLY "505ms" TEACHES NOTHING. This identity is NOT
+// PLANNED ON MAIN AT ALL -- zero rows in 3549 on two consecutive main runs' claim-cost receipts.
+// It executes only as a CHANGED witness, and it is changed because #9725 edits
+// `gunbc.witness_floor_workflow`. The mechanism is indirect and worth naming: the witness
+// generates the WHOLE emitted workflow YAML and scans it four times, and #9725 adds 204 lines of
+// authority to the file that produces that YAML (the wet-receipts job). The witness's own body is
+// untouched by that PR. So the cost is attributable to the change and not to the claim, and the
+// 500ms line had never been exercised against this identity before -- the first PR to touch that
+// authority is the one that discovers it.
+//
+// BOTH OBSERVATIONS, because the pair is what makes it a measurement rather than a sample:
+// 504ms CPU at head 1e6f7eee and 505ms CPU at head 1732bff, read from the
+// `required-floor-claim-cost` artifact rather than a log line, against a 500ms line. The only
+// commit between those two heads touched a ledger row and its generated projection, so nothing in
+// that delta could have moved cost. It reproduces.
+//
+// WHAT THIS ROW ACTUALLY DOES, and it is a STRONGER ACT THAN JOINING A LIST. `v2.workflow
+// required_floor` `changed_witness_cost_policy` selects `ChangedCostDebtVerdictOnly` only when an
+// identity is BOTH changed AND held by this roster -- the module is explicit that no identity
+// gains the override by being changed alone. Under that policy the CPU line is observed and
+// reported and DECIDES NOTHING. So this row is what CREATES the override for this identity; it
+// does not merely record a cost.
+//
+// AND IT WILL READ LIKE AN ANOMALY THAT IT IS NOT. `cost_debt_roster_standing` will report this
+// identity as `CostDebtWithholdOverriddenForChangedVerdict` rather than `CostDebtWithheld`
+// whenever #9725's descendants touch the workflow authority. That standing IS NOT STALE: the
+// roster line is not edited, deleted or automatically repaid by it, and what changed is only that
+// changed-witness selection temporarily required the row's correctness. A reader filing a defect
+// against that standing would be filing against the modeled behaviour.
+//
+// THE FAMILY IS THE FINDING, AND IT IS EVIDENCE ABOUT THE LINE RATHER THAN ABOUT THE WITNESSES.
+// This module already has EIGHT identities on this roster, four of them `w_RED_*` siblings, and
+// the annotation above describes the population as "474-505ms CPU on three consecutive CI runs
+// ... the ceiling itself is what decides them, run by run, by which runner slot the job landed
+// on". This row makes a fifth `w_RED_` member at 505. When a roster's membership is a whole
+// family clustered within 6% of the threshold, THE THRESHOLD IS SITTING INSIDE THE DISTRIBUTION
+// IT IS SUPPOSED TO BOUND, and every future member reds for the same non-reason. Four mitigations
+// of one cause is the signal that nobody has priced the cause.
+//
+// dissolve-on: NOT "the cost comes down", which only this row's author could judge. The capability
+// is the one `v2.workflow.floor_cost_debt`'s own dissolution already names and which the cost lane
+// owns -- a per-witness DECLARED COST ENVELOPE replacing the shared ceiling, so that a claim's
+// bound is derived from its own measured shape rather than from a line calibrated on a different
+// population. At that point this family stops being decided by runner slot, the explicit
+// debt-removal transaction can retire all five rows together, and the roster collapses. Until
+// then the row stands, and reducing THIS witness's cost below 500ms would retire this row alone
+// while leaving the mis-grounded line to catch the next member.
 fn floor_cost_debt_proven_chunk_05() -> List<String> {
-  Cons { head: "test.claim.ssh_transport_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_fleet_converge_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_witnesses_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_lane_contexts_collide_with_no_other_emitted_workflow", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_retired_step_names_do_not_return", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_ci_invokes_one_composed_mode_not_a_step_ladder", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_no_phase_precondition_reads_another_phases_outcome", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_carries_both_lanes", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_does_not_build_the_parse_binary", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_build_job_needs_release_bins", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_no_heal_revalidation_paste_through", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.workflow_dispatch_choice_input_projects_options_list", tail: Cons { head: "v2.lens.registry.completeness_test.lens_registry_completeness_holds_live", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Empty {} } } } } } } } } } } } } } }  } } } } }
+  Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_fabric_evidence_executes_without_gating", tail: Cons { head: "test.claim.ssh_transport_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_fleet_converge_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_witnesses_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_lane_contexts_collide_with_no_other_emitted_workflow", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_retired_step_names_do_not_return", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_ci_invokes_one_composed_mode_not_a_step_ladder", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_no_phase_precondition_reads_another_phases_outcome", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_carries_both_lanes", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_does_not_build_the_parse_binary", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_build_job_needs_release_bins", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_no_heal_revalidation_paste_through", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.workflow_dispatch_choice_input_projects_options_list", tail: Cons { head: "v2.lens.registry.completeness_test.lens_registry_completeness_holds_live", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Empty {} }}}}}}}}}}}}}}}}}}}}
 }
 
 fn floor_cost_debt_proven_chunk_06() -> List<String> {
