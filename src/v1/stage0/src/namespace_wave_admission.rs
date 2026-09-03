@@ -871,6 +871,27 @@ pub struct TransitionAdmission {
 /// construction, cannot be made safe by diligence. Nothing here attempts to fix that; the
 /// replacement carrier is not this cut's to choose either.
 ///
+/// TWENTY-SECOND DISSOLUTION (2026-09-03, gunbc#10197). Six more consumed admissions are deleted on
+/// this same touch, from two cohorts that both landed while this branch was in CI: four
+/// `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows and two `gunbc#10206
+/// recurring_failure_mode split` rows. Their target changes have landed on main, so no run's base
+/// and head can differ on them, and the required run reported them by name as `6 CONSUMED
+/// ADMISSION(S) DUE FOR DELETION on this roster-touching change`.
+///
+/// THE SIX WERE READ OFF THE RUN'S OWN PER-ADMISSION LINES, NOT OFF A COHORT NAME, and that is the
+/// whole reason this entry is right. The report was relayed to this branch as "all six are #10028"
+/// -- a plausible reading, since four of them are, and one that would have left the two #10206 rows
+/// standing and the phase red for a second round. The gate prints one line per consumed admission;
+/// deleting what those lines name, rather than what a cohort label suggests, is the difference
+/// between a count that agrees and a set that is right.
+///
+/// THIS IS THE THIRD COHORT THIS ONE CHANGE HAS HAD TO RETIRE (17, then 6) FOR EVENTS IT DID NOT
+/// CAUSE, which is the eighteenth entry's predicted cost arriving twice in one PR rather than once.
+/// It is not evidence of anything new; it is the same coupling at a higher rate, because the more
+/// lanes touch this roster the more consumed rows any single toucher inherits. Recorded as an
+/// observation, as the twentieth entry recorded its own: choosing the replacement carrier is still
+/// not this cut's to make.
+///
 /// NINETEENTH TRANSITION (2026-09-03). Per-row file split of the declared rung-drop rows,
 /// gunbc#10197: `gunbc.rung_drop`'s 30 rows move out of the monolith into one module each under
 /// `gunbc.rung_drop.<row>`, with the enumeration in `gunbc.rung_drop.roster`. The type, the
@@ -933,66 +954,6 @@ const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#
 /// forget; the required run reports them as consumed admissions due for deletion on that change.
 ///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_preamble_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "collect_pattern_rc_variant_guards",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_typed_match_arm_strs",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_arm_has_refutable_plain_field",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_pattern_preludes",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
