@@ -3,6 +3,11 @@
 name: witnesses
 on:
   workflow_dispatch:
+    inputs:
+      expected_healed_sha:
+        description: Immutable healed commit required by an auto-heal revalidation run
+        required: false
+        type: string
   merge_group:
   push:
     branches: [main]
@@ -43,6 +48,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
@@ -109,6 +131,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
@@ -214,6 +253,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
@@ -274,6 +330,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
@@ -335,6 +408,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
@@ -375,6 +465,133 @@ jobs:
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
+  heal-generated-artifacts:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 90
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout triggering branch head (heal pushes the regeneration back to this branch)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Isolate toolchain homes
+        run: |
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Build the regenerator this job runs against its own checkout
+        id: build_witness_fold
+        run: |
+          cargo build --release -p v1-compiler --bin gunbc
+      - name: Regenerate every committed generated artifact
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet
+      - name: Converge repository-local git config
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/repo/repo_local_git_config.dag --function converge
+      - name: Commit and push the regeneration
+        id: heal_commit_push
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          git config user.name "gunbc-ci-auto-heal"
+          git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
+          AUTHOR_COMMIT_DRIFT=""
+          if [ -e ".github/workflows/witnesses.yml" ] && ! git diff --quiet -- ".github/workflows/witnesses.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/witnesses.yml"; fi
+          if [ -e ".github/workflows/fleet-converge.yml" ] && ! git diff --quiet -- ".github/workflows/fleet-converge.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/fleet-converge.yml"; fi
+          if [ -e ".github/workflows/fleet-desired.yml" ] && ! git diff --quiet -- ".github/workflows/fleet-desired.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/fleet-desired.yml"; fi
+          echo "heal_author_commit_required=0" >> "$GITHUB_OUTPUT"
+          if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
+            rm -rf "heal-author-commit-required"
+            for p in $AUTHOR_COMMIT_DRIFT; do
+              if ! mkdir -p "heal-author-commit-required/$(dirname "$p")"; then echo "::error::HealRepairBundleIncomplete path=$p" >&2; exit 1; fi
+              if ! cp "$p" "heal-author-commit-required/$p"; then echo "::error::HealRepairBundleIncomplete path=$p" >&2; exit 1; fi
+            done
+            echo "heal_author_commit_required=1" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -e ".gitignore" ]; then git add ".gitignore"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitignore"; fi
+          if [ -e ".gitattributes" ]; then git add ".gitattributes"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitattributes"; fi
+          if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
+          if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
+          if [ -e "docs/design-failure-modes.md" ]; then git add "docs/design-failure-modes.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-failure-modes.md"; fi
+          if [ -e "docs/design-rung-drops.md" ]; then git add "docs/design-rung-drops.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-rung-drops.md"; fi
+          if [ -e ".githooks/pre-push" ]; then git add ".githooks/pre-push"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-push"; fi
+          if [ -e ".githooks/pre-commit" ]; then git add ".githooks/pre-commit"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-commit"; fi
+          if [ -e ".githooks/generated-artifact-merge" ]; then git add ".githooks/generated-artifact-merge"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/generated-artifact-merge"; fi
+          if [ -e "dag/gunbc/stage0/stage0_crate_layout_generated.dag" ]; then git add "dag/gunbc/stage0/stage0_crate_layout_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0/stage0_crate_layout_generated.dag"; fi
+          if [ -e "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs" ]; then git add "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"; fi
+          if [ -e "dag/gunbc/stage0/stage0_crate_partition_generated.dag" ]; then git add "dag/gunbc/stage0/stage0_crate_partition_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0/stage0_crate_partition_generated.dag"; fi
+          if [ -e "dag/gunbc/stage0/stage0_executable_assembly_generated.dag" ]; then git add "dag/gunbc/stage0/stage0_executable_assembly_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0/stage0_executable_assembly_generated.dag"; fi
+          if [ -e "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs" ]; then git add "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"; fi
+          if [ -e "provisioning/srv1/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv1/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv1/gunbc-ghrunner.sudoers"; fi
+          if [ -e "provisioning/srv2/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv2/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv2/gunbc-ghrunner.sudoers"; fi
+          if [ -e "provisioning/srv3/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv3/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv3/gunbc-ghrunner.sudoers"; fi
+          if [ -e "provisioning/srv4/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv4/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv4/gunbc-ghrunner.sudoers"; fi
+          if [ -e "docs/plans/dag-v2-defork-audit.md" ]; then git add "docs/plans/dag-v2-defork-audit.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/dag-v2-defork-audit.md"; fi
+          if [ -e "docs/plans/v2-self-hosting.md" ]; then git add "docs/plans/v2-self-hosting.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/v2-self-hosting.md"; fi
+          if [ -e "docs/plans/model-realization-fork.md" ]; then git add "docs/plans/model-realization-fork.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/model-realization-fork.md"; fi
+          if [ -e "docs/plans/inert-layer-lens.md" ]; then git add "docs/plans/inert-layer-lens.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/inert-layer-lens.md"; fi
+          if [ -e "docs/plans/compile-clean-forcecheck.md" ]; then git add "docs/plans/compile-clean-forcecheck.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/compile-clean-forcecheck.md"; fi
+          if [ -e "docs/plans/budget-tree.md" ]; then git add "docs/plans/budget-tree.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/budget-tree.md"; fi
+          if [ -e "docs/plans/compute-envelope-model.md" ]; then git add "docs/plans/compute-envelope-model.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/compute-envelope-model.md"; fi
+          if [ -e "docs/plans/input-envelope-roadmap.md" ]; then git add "docs/plans/input-envelope-roadmap.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/input-envelope-roadmap.md"; fi
+          if [ -e "docs/plans/ci-humming.md" ]; then git add "docs/plans/ci-humming.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-humming.md"; fi
+          if [ -e "docs/plans/realization-measurement-loop.md" ]; then git add "docs/plans/realization-measurement-loop.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/realization-measurement-loop.md"; fi
+          if [ -e "docs/plans/host-effect-orchestration.md" ]; then git add "docs/plans/host-effect-orchestration.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/host-effect-orchestration.md"; fi
+          if [ -e "docs/plans/representation-minimization.md" ]; then git add "docs/plans/representation-minimization.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/representation-minimization.md"; fi
+          if [ -e "docs/plans/cli-run-hollowing-plan.md" ]; then git add "docs/plans/cli-run-hollowing-plan.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/cli-run-hollowing-plan.md"; fi
+          if [ -e "docs/plans/discrete-cost-derivation.md" ]; then git add "docs/plans/discrete-cost-derivation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/discrete-cost-derivation.md"; fi
+          if [ -e "docs/plans/deploy-convergence-observed-side.md" ]; then git add "docs/plans/deploy-convergence-observed-side.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/deploy-convergence-observed-side.md"; fi
+          PRIOR_HEAD=$(git rev-parse HEAD)
+          if git diff --cached --quiet; then
+            if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
+              echo "::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ActionsJobCredentialScopeUnavailable regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet'" >&2
+              exit 1
+            fi
+            echo "HealNoChange head=$PRIOR_HEAD"
+            exit 0
+          else
+            CHANGED_ARTIFACTS=$(git diff --cached --name-only)
+            git commit --no-verify -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            HEALED_HEAD=$(git rev-parse HEAD)
+            git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
+            echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
+            GUNBC_HEALED_HEAD="$HEALED_HEAD" GUNBC_HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/ci_heal_dispatch.dag --function main
+            echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
+            if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
+              echo "::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ActionsJobCredentialScopeUnavailable regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet'" >&2
+            fi
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Upload the author-commit-required regeneration
+        uses: actions/upload-artifact@v4
+        with:
+          name: heal-author-commit-required
+          path: heal-author-commit-required
+          if-no-files-found: error
+          retention-days: 14
+        if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [required-witnesses-build, required-witnesses-floor, rust-unit-tests]

@@ -1,0 +1,529 @@
+module v2.test.wet_evidence
+
+import v2.workflow.wet_evidence {
+  WetRoute, LocalRepoCoResidentRoute, SelfHostTransportedRoute,
+  WetRouteAntecedent, LocalRepoAfterHermeticRouteGap, SelfHostAfterDirectWetDecline,
+  wet_route_of_antecedent,
+  WetEvidenceBinding, CoResidentPreparedSubject, TransportedReceiptSubject,
+  WetEvidenceRequirement, LocalRepoCoResidentRequirement, SelfHostTransportedRequirement,
+  wet_antecedent_of_requirement, wet_binding_of_requirement, wet_route_of_requirement,
+  WetScheduledClaim, WetTerminalRow,
+  WetEvidenceRefusal,
+  WetTerminalMissing, WetTerminalDuplicated, WetTerminalUnscheduled,
+  WetTerminalForeignEntry, WetTerminalForeignFunction, WetTerminalVerdictNotExpected,
+  WetTerminalForeignRoute,
+  WetBindingPreparedSubjectDiffers, WetBindingSemanticSubjectDiffers,
+  WetBindingExecutorContractDiffers, WetBindingRelationMismatch,
+  WetCrossRouteIdentityOverlap,
+  WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
+  wet_evidence_validate, wet_evidence_admits, wet_cross_route_overlap_causes
+}
+import v2.workflow.floor2_prepared_subject { WitnessIdentity }
+import v2.workflow.floor_terminal_ledger {
+  ClaimAttemptTerminal, Returned, RuntimeErrored, BudgetRefused,
+  ClaimObservation, ObservedVerdict,
+  ClaimExpectation, ExpectedToHold, ExpectedRed,
+  ClaimDisposition, PassedOverBudget
+}
+import v2.workflow.required_floor {
+  ClaimSafetyOutcome, CompletedPastSafetyLimit,
+  ClaimPreemptionReachability, CooperativelyPollable
+}
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn alpha_identity() -> WitnessIdentity {
+  WitnessIdentity { module_path: "test.claim.fixture", function: "alpha_holds" }
+}
+
+fn passed() -> ClaimAttemptTerminal {
+  Returned { observation: ObservedVerdict { holds: true } }
+}
+
+fn co_resident_binding(subject: String) -> WetEvidenceBinding {
+  CoResidentPreparedSubject { prepared_subject: subject }
+}
+
+fn transported_binding(subject: String, executor: String) -> WetEvidenceBinding {
+  TransportedReceiptSubject { semantic_subject: subject, executor_contract: executor }
+}
+
+fn co_resident_requirement(subject: String) -> WetEvidenceRequirement {
+  LocalRepoCoResidentRequirement { prepared_subject: subject }
+}
+
+fn transported_requirement(subject: String, executor: String) -> WetEvidenceRequirement {
+  SelfHostTransportedRequirement { semantic_subject: subject, executor_contract: executor }
+}
+
+fn scheduled_alpha(expectation: ClaimExpectation) -> WetScheduledClaim {
+  WetScheduledClaim {
+    identity: alpha_identity(),
+    entry: "dag/test/claim/fixture_test.dag",
+    function: "alpha_holds",
+    expectation: expectation
+  }
+}
+
+fn terminal_alpha(route: WetRoute, binding: WetEvidenceBinding, terminal: ClaimAttemptTerminal) -> WetTerminalRow {
+  WetTerminalRow {
+    route: route,
+    identity: alpha_identity(),
+    observed_entry: "dag/test/claim/fixture_test.dag",
+    observed_function: "alpha_holds",
+    terminal: terminal,
+    binding: binding
+  }
+}
+
+fn causes_of(v: WetEvidenceValidation) -> List<WetEvidenceRefusal> {
+  match v {
+    WetEvidenceAdmitted { binding: _, terminals: _ } => []
+    WetEvidenceRefused { causes: c } => c
+  }
+}
+
+// ONE EXHAUSTIVE CLASSIFIER INSTEAD OF ONE PREDICATE PER CAUSE. Distinctness is the property under
+// test in several witnesses below, and asserting it with per-cause predicates costs a twelve-arm
+// match each time and still cannot say two causes DIFFER -- only that each matches its own arm.
+// A tag makes the inequality directly assertable, and the match stays exhaustive so a new refusal
+// arm breaks this function rather than silently landing untagged in whatever the wildcard was.
+fn cause_tag(c: WetEvidenceRefusal) -> String {
+  match c {
+    WetTerminalMissing { identity: _ } => "missing"
+    WetTerminalDuplicated { identity: _, occurrences: _ } => "duplicated"
+    WetTerminalUnscheduled { identity: _ } => "unscheduled"
+    WetTerminalForeignEntry { identity: _, observed: _, required: _ } => "foreign-entry"
+    WetTerminalForeignFunction { identity: _, observed: _, required: _ } => "foreign-function"
+    WetTerminalVerdictNotExpected { identity: _, disposition: _ } => "verdict-not-expected"
+    WetTerminalForeignRoute { identity: _ } => "foreign-route"
+    WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => "prepared-subject-differs"
+    WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => "semantic-subject-differs"
+    WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => "executor-contract-differs"
+    WetBindingRelationMismatch { identity: _ } => "relation-mismatch"
+    WetCrossRouteIdentityOverlap { identity: _ } => "cross-route-overlap"
+  }
+}
+
+fn sole_cause_tag(v: WetEvidenceValidation) -> String {
+  let cs = causes_of(v: v)
+  if length(xs: cs) == 1 {
+    match first(cs) { Absent => "none", Present { value: c } => cause_tag(c: c) }
+  } else {
+    "not-exactly-one"
+  }
+}
+
+fn is_prepared_subject_differs(c: WetEvidenceRefusal) -> Bool {
+  match c {
+    WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => true
+    WetTerminalMissing { identity: _ } => false
+    WetTerminalDuplicated { identity: _, occurrences: _ } => false
+    WetTerminalUnscheduled { identity: _ } => false
+    WetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+    WetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+    WetTerminalVerdictNotExpected { identity: _, disposition: _ } => false
+    WetTerminalForeignRoute { identity: _ } => false
+    WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingRelationMismatch { identity: _ } => false
+    WetCrossRouteIdentityOverlap { identity: _ } => false
+  }
+}
+
+fn is_semantic_subject_differs(c: WetEvidenceRefusal) -> Bool {
+  match c {
+    WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => true
+    WetTerminalMissing { identity: _ } => false
+    WetTerminalDuplicated { identity: _, occurrences: _ } => false
+    WetTerminalUnscheduled { identity: _ } => false
+    WetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+    WetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+    WetTerminalVerdictNotExpected { identity: _, disposition: _ } => false
+    WetTerminalForeignRoute { identity: _ } => false
+    WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingRelationMismatch { identity: _ } => false
+    WetCrossRouteIdentityOverlap { identity: _ } => false
+  }
+}
+
+fn is_executor_contract_differs(c: WetEvidenceRefusal) -> Bool {
+  match c {
+    WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => true
+    WetTerminalMissing { identity: _ } => false
+    WetTerminalDuplicated { identity: _, occurrences: _ } => false
+    WetTerminalUnscheduled { identity: _ } => false
+    WetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+    WetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+    WetTerminalVerdictNotExpected { identity: _, disposition: _ } => false
+    WetTerminalForeignRoute { identity: _ } => false
+    WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingRelationMismatch { identity: _ } => false
+    WetCrossRouteIdentityOverlap { identity: _ } => false
+  }
+}
+
+fn is_relation_mismatch(c: WetEvidenceRefusal) -> Bool {
+  match c {
+    WetBindingRelationMismatch { identity: _ } => true
+    WetTerminalMissing { identity: _ } => false
+    WetTerminalDuplicated { identity: _, occurrences: _ } => false
+    WetTerminalUnscheduled { identity: _ } => false
+    WetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+    WetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+    WetTerminalVerdictNotExpected { identity: _, disposition: _ } => false
+    WetTerminalForeignRoute { identity: _ } => false
+    WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
+    WetCrossRouteIdentityOverlap { identity: _ } => false
+  }
+}
+
+fn any_cause(causes: List<WetEvidenceRefusal>, p: fn(WetEvidenceRefusal) -> Bool) -> Bool {
+  fold_list(xs: causes, empty: false, cons: fn(acc, c) { acc || p(c) })
+}
+
+// THE ROUTE IS DERIVED FROM THE ANTECEDENT, AND A TERMINAL FROM THE OTHER ROUTE REFUSES.
+//
+// There is no witness here for "a co-resident route paired with a direct wet decline", because
+// that pairing HAS NO CONSTRUCTOR — the two facts are one coproduct, so the invalid states cannot
+// be written rather than being caught. What remains checkable is that the projection is the right
+// one and that a terminal claiming the OTHER route than its schedule derives is refused, which is
+// the residue the type cannot close: a terminal's route is an execution fact, not a schedule fact.
+test fn the_route_is_derived_and_a_foreign_route_terminal_refuses() -> Bool {
+  let binding = transported_binding(subject: "s", executor: "x")
+  let requirement = transported_requirement(subject: "s", executor: "x")
+  let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let wrong_route = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: binding, terminal: passed())]
+  let right_route = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed())]
+  let refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong_route, requirement: requirement)
+  let admitted = wet_evidence_validate(scheduled: scheduled, terminals: right_route, requirement: requirement)
+  wet_route_eq_local(r: wet_route_of_antecedent(antecedent: LocalRepoAfterHermeticRouteGap {}))
+    && !wet_route_eq_local(r: wet_route_of_antecedent(antecedent: SelfHostAfterDirectWetDecline {}))
+    && !wet_evidence_admits(v: refused)
+    && wet_evidence_admits(v: admitted)
+}
+
+fn wet_route_eq_local(r: WetRoute) -> Bool {
+  match r {
+    LocalRepoCoResidentRoute => true
+    SelfHostTransportedRoute => false
+  }
+}
+
+fn is_co_resident_binding(b: WetEvidenceBinding) -> Bool {
+  match b {
+    CoResidentPreparedSubject { prepared_subject: _ } => true
+    TransportedReceiptSubject { semantic_subject: _, executor_contract: _ } => false
+  }
+}
+
+fn is_local_antecedent(a: WetRouteAntecedent) -> Bool {
+  match a {
+    LocalRepoAfterHermeticRouteGap => true
+    SelfHostAfterDirectWetDecline => false
+  }
+}
+
+// ROUTE, ANTECEDENT AND REQUIRED BINDING ALL COME FROM ONE AUTHORITY, which is what closes the
+// second defect: a local schedule under a transported requirement had no referent, yet every
+// pairwise check passed because route and requirement were supplied through different doors.
+//
+// There is no witness here for that batch, because it no longer HAS A CONSTRUCTOR -- the same
+// reason the dry-source pairing has none. What IS checkable is that the three projections agree
+// arm-for-arm, so a future antecedent arm cannot silently take one route's binding relation with
+// another's route. The negative half is the other arm of each projection: without it this witness
+// would pass over a projection that returned the local answer unconditionally.
+test fn one_requirement_derives_route_antecedent_and_binding_together() -> Bool {
+  let local = co_resident_requirement(subject: "s")
+  let transported = transported_requirement(subject: "s", executor: "x")
+  wet_route_eq_local(r: wet_route_of_requirement(requirement: local))
+    && is_local_antecedent(a: wet_antecedent_of_requirement(requirement: local))
+    && is_co_resident_binding(b: wet_binding_of_requirement(requirement: local))
+    && !wet_route_eq_local(r: wet_route_of_requirement(requirement: transported))
+    && !is_local_antecedent(a: wet_antecedent_of_requirement(requirement: transported))
+    && !is_co_resident_binding(b: wet_binding_of_requirement(requirement: transported))
+}
+
+// PROOF 10, ARM ONE — THE CO-RESIDENT WRONG-BINDING RED, and it is authorable, which is the
+// question that had to be asked before the wall was written. A co-resident execution whose
+// prepared subject is NOT the one the floor required refuses, and the refusal names the prepared
+// subject axis specifically rather than reporting a generic invalidity.
+//
+// THE POSITIVE CONTROL IS THE SAME EVIDENCE WITH THE MATCHING SUBJECT. Without it this witness
+// would pass over evidence that refuses for any reason at all, which is the vacuous-green shape:
+// the two halves differ by exactly the fact under test.
+test fn co_resident_wrong_prepared_subject_refuses_and_names_the_axis() -> Bool {
+  let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let wrong = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: co_resident_binding(subject: "subject-OTHER"), terminal: passed())]
+  let right = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: co_resident_binding(subject: "subject-THIS"), terminal: passed())]
+  let requirement = co_resident_requirement(subject: "subject-THIS")
+  let refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong, requirement: requirement)
+  let admitted = wet_evidence_validate(scheduled: scheduled, terminals: right, requirement: requirement)
+  !wet_evidence_admits(v: refused)
+    && any_cause(causes: causes_of(v: refused), p: is_prepared_subject_differs)
+    && wet_evidence_admits(v: admitted)
+}
+
+// PROOF 10, ARM TWO — THE TRANSPORTED WRONG-BINDING RED, and it is TWO reds because the transported
+// binding carries two independent facts. A receipt whose SEMANTIC SUBJECT differs means the tree
+// disagreed; a receipt whose EXECUTOR CONTRACT differs means the producer disagreed while the tree
+// agreed. They are separate causes because they send a reader to separate places, and the second is
+// the one a single-digest binding could never have expressed.
+test fn transported_wrong_subject_and_wrong_executor_are_separate_reds() -> Bool {
+  let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let requirement = transported_requirement(subject: "semantic-THIS", executor: "executor-THIS")
+  let wrong_subject = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "semantic-OTHER", executor: "executor-THIS"), terminal: passed())]
+  let wrong_executor = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "semantic-THIS", executor: "executor-OTHER"), terminal: passed())]
+  let exact = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "semantic-THIS", executor: "executor-THIS"), terminal: passed())]
+  let subject_refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong_subject, requirement: requirement)
+  let executor_refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong_executor, requirement: requirement)
+  let admitted = wet_evidence_validate(scheduled: scheduled, terminals: exact, requirement: requirement)
+  any_cause(causes: causes_of(v: subject_refused), p: is_semantic_subject_differs)
+    && !any_cause(causes: causes_of(v: subject_refused), p: is_executor_contract_differs)
+    && any_cause(causes: causes_of(v: executor_refused), p: is_executor_contract_differs)
+    && !any_cause(causes: causes_of(v: executor_refused), p: is_semantic_subject_differs)
+    && wet_evidence_admits(v: admitted)
+}
+
+// THE DEFECT THE BARE STRING COULD NOT SPELL. Evidence of the WRONG KIND — a transported receipt
+// offered where a co-resident execution was required — is its own cause, not a digest that happens
+// to differ. Under `candidate: String` this could only ever have reported "not equal", which sends
+// the reader to compare two unrelated hashes. Both directions are asserted, because a wall that
+// fires in only one is half a wall.
+test fn evidence_of_the_wrong_kind_is_its_own_cause_in_both_directions() -> Bool {
+  let local_scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let transported_scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let transported_terminal = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: passed())]
+  let local_terminal = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: co_resident_binding(subject: "s"), terminal: passed())]
+  let a = wet_evidence_validate(scheduled: local_scheduled, terminals: transported_terminal, requirement: co_resident_requirement(subject: "s"))
+  let b = wet_evidence_validate(scheduled: transported_scheduled, terminals: local_terminal, requirement: transported_requirement(subject: "s", executor: "x"))
+  any_cause(causes: causes_of(v: a), p: is_relation_mismatch)
+    && any_cause(causes: causes_of(v: b), p: is_relation_mismatch)
+    && !any_cause(causes: causes_of(v: a), p: is_prepared_subject_differs)
+    && !any_cause(causes: causes_of(v: b), p: is_semantic_subject_differs)
+}
+
+// PROOF 7, DERIVED RATHER THAN RE-IMPLEMENTED. A claim that reached its verdict and then exceeded
+// its line is NOT agreement — the ledger's own `claim_disposition` sends it to `PassedOverBudget`,
+// and this join refuses it as a verdict-not-expected carrying that disposition. Nothing here
+// re-derives the rule; the witness proves the join consumes the ledger's derivation.
+//
+// The control is the same terminal under ExpectedRed enrolment reaching KnownRedNowPassing, which
+// is also refused: a cost debt must not retire an enrolled red.
+// THIS WITNESS IS NAMED FOR THE DISPOSITION IT CARRIES, so it reads that disposition rather than
+// stopping at refuse-versus-admit. Without this the name asserted a payload nothing inspected, and
+// a refusal carrying any other cause would have kept it green.
+test fn completed_over_budget_is_refused_and_carries_the_ledgers_disposition() -> Bool {
+  let over = BudgetRefused {
+    safety: CompletedPastSafetyLimit { observed_cpu: 505, observed_wall: 505, preemption: CooperativelyPollable {} }
+  }
+  let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let terminals = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: over)]
+  let v = wet_evidence_validate(scheduled: scheduled, terminals: terminals, requirement: transported_requirement(subject: "s", executor: "x"))
+  let clean = wet_evidence_validate(
+    scheduled: scheduled,
+    terminals: [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: passed())],
+    requirement: transported_requirement(subject: "s", executor: "x")
+  )
+  let carried = match first(causes_of(v: v)) {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        WetTerminalVerdictNotExpected { identity: _, disposition: d } =>
+          match d { PassedOverBudget => true, _ => false }
+        _ => false
+      }
+  }
+  sole_cause_tag(v: v) == "verdict-not-expected"
+    && carried
+    && !wet_evidence_admits(v: v)
+    && wet_evidence_admits(v: clean)
+}
+
+// AN ENROLLED RED OBSERVED RED IS AGREEMENT, and this is what proves the shared expectation type
+// did not narrow to the co-resident roster's single arm. The transported route derives ExpectedRed
+// from canonical enrolment; the ledger maps ExpectedRed plus a false verdict to KnownRedHeld; this
+// join admits it. A type that could not represent ExpectedRed would make this witness unwritable.
+test fn an_enrolled_red_observed_red_is_agreement() -> Bool {
+  let scheduled = [scheduled_alpha(expectation: ExpectedRed {})]
+  let red = Returned { observation: ObservedVerdict { holds: false } }
+  let terminals = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: red)]
+  let v = wet_evidence_validate(scheduled: scheduled, terminals: terminals, requirement: transported_requirement(subject: "s", executor: "x"))
+  wet_evidence_admits(v: v)
+}
+
+// THE SET EQUALITY, BOTH DIRECTIONS, AND THE THREE CAUSES STAY THREE. A scheduled identity with no
+// terminal, a terminal nobody scheduled, and two terminals for one identity are different defects
+// with different remedies; a coverage count would report the first two as one number and miss the
+// third entirely.
+// THE NAME OF THIS WITNESS CLAIMS DISTINCTNESS, SO THE ASSERTION MUST ESTABLISH IT. An earlier
+// revision asserted only that each scenario produced exactly ONE cause and admitted none, which an
+// implementation returning `WetTerminalMissing` for all three would satisfy -- the check was
+// narrower than its own declared claim. The tags are compared to their expected values AND to each
+// other, so neither a collapse onto one cause nor a permutation of the three survives.
+test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool {
+  let binding = transported_binding(subject: "s", executor: "x")
+  let requirement = transported_requirement(subject: "s", executor: "x")
+  let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let none_run = wet_evidence_validate(scheduled: scheduled, terminals: [], requirement: requirement)
+  let twice_run = wet_evidence_validate(
+    scheduled: scheduled,
+    terminals: [
+      terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed()),
+      terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed())
+    ],
+    requirement: requirement
+  )
+  let unscheduled = wet_evidence_validate(
+    scheduled: [],
+    terminals: [terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed())],
+    requirement: requirement
+  )
+  sole_cause_tag(v: none_run) == "missing"
+    && sole_cause_tag(v: twice_run) == "duplicated"
+    && sole_cause_tag(v: unscheduled) == "unscheduled"
+    && sole_cause_tag(v: none_run) != sole_cause_tag(v: twice_run)
+    && sole_cause_tag(v: twice_run) != sole_cause_tag(v: unscheduled)
+    && sole_cause_tag(v: none_run) != sole_cause_tag(v: unscheduled)
+    && !wet_evidence_admits(v: none_run)
+    && !wet_evidence_admits(v: twice_run)
+    && !wet_evidence_admits(v: unscheduled)
+}
+
+// THE CROSS-ROUTE WALL. An identity evidenced by both routes refuses, and the union is derived from
+// the two rosters rather than transcribed as a third. The negative control is two disjoint rosters,
+// which must produce nothing — otherwise the wall would be firing on something other than overlap.
+test fn an_identity_on_both_routes_refuses_and_disjoint_rosters_do_not() -> Bool {
+  let overlap = wet_cross_route_overlap_causes(
+    local_identities: ["test.claim.a.holds", "test.claim.b.holds"],
+    transported_identities: ["test.claim.b.holds", "test.claim.c.holds"]
+  )
+  let disjoint = wet_cross_route_overlap_causes(
+    local_identities: ["test.claim.a.holds"],
+    transported_identities: ["test.claim.c.holds"]
+  )
+  length(xs: overlap) == 1 && length(xs: disjoint) == 0
+}
+
+// THE FOREIGN-RESOLUTION JOIN, and it is not tautological: the observed entry and function are what
+// the executor actually resolved, so they can DISAGREE with the scheduled row. Recopying the
+// scheduled values into the terminal would make this witness impossible to fail.
+test fn a_terminal_that_resolved_elsewhere_refuses() -> Bool {
+  let binding = transported_binding(subject: "s", executor: "x")
+  let requirement = transported_requirement(subject: "s", executor: "x")
+  let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let foreign_entry = [
+    WetTerminalRow {
+      route: SelfHostTransportedRoute {},
+      identity: alpha_identity(),
+      observed_entry: "dag/test/claim/OTHER_test.dag",
+      observed_function: "alpha_holds",
+      terminal: passed(),
+      binding: binding
+    }
+  ]
+  let foreign_function = [
+    WetTerminalRow {
+      route: SelfHostTransportedRoute {},
+      identity: alpha_identity(),
+      observed_entry: "dag/test/claim/fixture_test.dag",
+      observed_function: "some_other_function",
+      terminal: passed(),
+      binding: binding
+    }
+  ]
+  let a = wet_evidence_validate(scheduled: scheduled, terminals: foreign_entry, requirement: requirement)
+  let b = wet_evidence_validate(scheduled: scheduled, terminals: foreign_function, requirement: requirement)
+  !wet_evidence_admits(v: a) && !wet_evidence_admits(v: b)
+}
+
+// THE TWO LOCATION AXES OF A TERMINAL, KEPT APART. A terminal may name the identity the roster
+// scheduled and still have been produced by the wrong file or the wrong function in it, and those
+// are different repairs: a wrong entry sends the reader to the roster's path, a wrong function to
+// the module's contents. Folding them into one cause would name neither.
+//
+// THIS WITNESS EXISTS BECAUSE THE MIGRATION WOULD OTHERWISE HAVE DROPPED IT. Both causes were
+// emittable by the local route's own join before that join was replaced by this shared validator,
+// and both were covered by its acceptance matrix. The shared validator emits them, but nothing here
+// asserted so -- a refusal an authority can construct and no test discriminates is a refusal that
+// can be deleted without anything going red.
+fn terminal_at(entry: String, function: String) -> WetTerminalRow {
+  WetTerminalRow {
+    route: LocalRepoCoResidentRoute {},
+    identity: alpha_identity(),
+    observed_entry: entry,
+    observed_function: function,
+    terminal: passed(),
+    binding: co_resident_binding(subject: "tree-aaaa")
+  }
+}
+
+fn is_foreign_entry(c: WetEvidenceRefusal) -> Bool {
+  match c {
+    WetTerminalForeignEntry { identity: _, observed: o, required: r } =>
+      o == "dag/test/claim/other_test.dag" && r == "dag/test/claim/fixture_test.dag"
+    WetTerminalMissing { identity: _ } => false
+    WetTerminalDuplicated { identity: _, occurrences: _ } => false
+    WetTerminalUnscheduled { identity: _ } => false
+    WetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+    WetTerminalVerdictNotExpected { identity: _, disposition: _ } => false
+    WetTerminalForeignRoute { identity: _ } => false
+    WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingRelationMismatch { identity: _ } => false
+    WetCrossRouteIdentityOverlap { identity: _ } => false
+  }
+}
+
+fn is_foreign_function(c: WetEvidenceRefusal) -> Bool {
+  match c {
+    WetTerminalForeignFunction { identity: _, observed: o, required: r } =>
+      o == "beta_holds" && r == "alpha_holds"
+    WetTerminalMissing { identity: _ } => false
+    WetTerminalDuplicated { identity: _, occurrences: _ } => false
+    WetTerminalUnscheduled { identity: _ } => false
+    WetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+    WetTerminalVerdictNotExpected { identity: _, disposition: _ } => false
+    WetTerminalForeignRoute { identity: _ } => false
+    WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
+    WetBindingRelationMismatch { identity: _ } => false
+    WetCrossRouteIdentityOverlap { identity: _ } => false
+  }
+}
+
+fn one_cause_satisfying(row: WetTerminalRow, p: fn(WetEvidenceRefusal) -> Bool) -> Bool {
+  let cs = causes_of(v: wet_evidence_validate(
+    scheduled: [scheduled_alpha(expectation: ExpectedToHold {})],
+    terminals: [row],
+    requirement: co_resident_requirement(subject: "tree-aaaa")
+  ))
+  length(xs: cs) == 1 && fold_list(xs: cs, empty: false, cons: fn(acc, c) { acc || p(c) })
+}
+
+test fn a_wrong_entry_and_a_wrong_function_stay_two_distinct_causes() -> Bool {
+  one_cause_satisfying(
+    row: terminal_at(entry: "dag/test/claim/other_test.dag", function: "alpha_holds"),
+    p: fn(c) { is_foreign_entry(c: c) }
+  )
+    && one_cause_satisfying(
+      row: terminal_at(entry: "dag/test/claim/fixture_test.dag", function: "beta_holds"),
+      p: fn(c) { is_foreign_function(c: c) }
+    )
+    && !one_cause_satisfying(
+      row: terminal_at(entry: "dag/test/claim/other_test.dag", function: "alpha_holds"),
+      p: fn(c) { is_foreign_function(c: c) }
+    )
+    && !one_cause_satisfying(
+      row: terminal_at(entry: "dag/test/claim/fixture_test.dag", function: "beta_holds"),
+      p: fn(c) { is_foreign_entry(c: c) }
+    )
+}

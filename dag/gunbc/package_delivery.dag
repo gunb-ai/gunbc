@@ -53,7 +53,6 @@ import extdeps.filesystem.filesystem_io
 import extdeps.tools.npm
 import gunbc.host_cli_dependency {
   observe_host_cli_dependency,
-  HostCliDependencyAbsent,
   host_dependency_absent_wire,
   first_absent_codex_wet_materialization_host_cli_dependency,
 }
@@ -2158,9 +2157,12 @@ type CodexRuntimeMaterialization
 
 fn require_npm_host_dependency_for_materialization() -> CodexRuntimeMaterialization? {
   match first_absent_codex_wet_materialization_host_cli_dependency() {
-    Present { value: HostCliDependencyAbsent { tool, hint } } =>
+    Present { value: absence } =>
       Present {
-        value: CodexRuntimeHostDependencyRefused { tool: tool, hint: hint },
+        value: CodexRuntimeHostDependencyRefused {
+          tool: absence.tool,
+          hint: absence.hint,
+        },
       }
     Absent => none
   }
@@ -2497,8 +2499,11 @@ fn prepare_codex_runtime_closure(
   source: AdmittedCodexRuntimeSource,
 ) -> CodexRuntimeClosurePrepareOutcome {
   match first_absent_codex_wet_materialization_host_cli_dependency() {
-    Present { value: HostCliDependencyAbsent { tool, hint } } =>
-      CodexRuntimeClosurePrepareHostDependencyRefused { tool: tool, hint: hint }
+    Present { value: absence } =>
+      CodexRuntimeClosurePrepareHostDependencyRefused {
+        tool: absence.tool,
+        hint: absence.hint,
+      }
     Absent =>
       match admit_codex_package_lock_text(text: source.lock_bytes) {
         CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>

@@ -14,6 +14,26 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+// THIS FILE'S EVIDENCE EXECUTES ON DEMAND AND DOES NOT GATE, AND EVERY RUNG BELOW MUST BE READ
+// THROUGH THAT. It declares ReadsLiveTree -- truthfully, because compile_dag_diagnostic_census
+// resolves its synthetic sources against the live checkout -- and the required floor DISCOVERS then
+// DECLINES witness files carrying that disposition (v2.workflow.required_floor
+// RequiredFloorDisposition DeclinedLiveTree). So every seal claim in this PR is green by execution
+// when run directly and is NOT enrolled in a gating lane.
+//
+// The measured consequence, which is why this is stated here rather than assumed: the repository's
+// own audit probe for coproduct-variant construction,
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, is RED on
+// main right now and nothing catches it -- it sits in the same declined arm (26 identities). A red
+// witness invisible to CI is how the first cut of the handler came to declare a sealed coproduct and
+// assert in a comment that it closed the bare-geometry route while a foreign variant literal
+// compiled clean.
+//
+// DO NOT REPAIR THIS BY RETYPING THE DECLARATION. gunbc.guarantee_probe_corpus adjudicates that
+// already: a SubstrateInputsOnly relabel would be a fabricated fact about a live-tree read and would
+// corrupt affected-set selection eligibility, which is the question live_tree_disposition owns. The
+// next-rung trigger is the capability that lets census-compiling probes execute on the required
+// floor, not a one-line edit here.
 // The seal on product.printed_chassis.realization_contract.DecodedRealizationV0 is what makes
 // judge_realization the ONLY route from wire bytes to a judged realization: a foreign module that
 // could write the record literal could hand a downstream consumer an admitted value that never
@@ -35,7 +55,7 @@ fn rows_of_subject(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> Li
 
 // -1 on the NotRunnable arm, so a harness that never ran can satisfy no witness below: every
 // assertion here compares against a non-negative quantity.
-fn seal_violation_count(source: String) -> Int {
+fn seal_violation_count_of(source: String, subject: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => census_total_count(
       rows: rows_of_subject(
@@ -43,11 +63,15 @@ fn seal_violation_count(source: String) -> Int {
           rows: census_blocking_rows(rows: rows),
           wanted: "SoleConstructorViolation"
         ),
-        wanted: "DecodedRealizationV0"
+        wanted: subject
       )
     )
     CensusNotRunnable { cause: _ } => 0 - 1
   }
+}
+
+fn seal_violation_count(source: String) -> Int {
+  seal_violation_count_of(source: source, subject: "DecodedRealizationV0")
 }
 
 test fn w_foreign_record_literal_of_admitted_realization_refuses() -> Bool {
@@ -66,4 +90,114 @@ test fn w_lawful_foreign_use_of_admitted_realization_is_unsealed() -> Bool {
 // closure; the subtraction is what states that the forged literal is the whole difference.
 test fn w_the_seal_is_the_only_difference_between_the_two_sources() -> Bool {
   seal_violation_count(source: forged_source) - seal_violation_count(source: lawful_source) >= 1
+}
+
+
+// THE FINAL ACTUATOR CAPABILITY NEEDS ITS OWN BATTERY, BECAUSE A SEAL IS NOT INHERITED.
+//
+// Everything above tests DecodedRealizationV0, the wire-side carrier. AdmittedRealizationV0 is the
+// stronger capability -- it is the only thing the CadQuery handler accepts, and it is minted only on
+// the arm where geometry conformance held -- and it had NO probe naming it anywhere while an
+// annotation in the handler's witness asserted its seal held. Both types carry sole_constructor, but
+// the evidence is not transitive: the source says the seal has the same standing as its sibling, and
+// only an executed refusal makes that true rather than plausible.
+//
+// The forged source takes CouponSpecimen as a PARAMETER rather than constructing one, which isolates
+// this seal from the specimen's own: a red here is the admitted carrier's literal being refused, not
+// a failure to build its field.
+data forged_admitted_carrier_source: String = "module probe_chassis_forged_carrier\nimport product.printed_chassis.realization_contract { AdmittedRealizationV0 }\nimport product.printed_chassis.coupon { CouponSpecimen }\nfn forged(specimen: CouponSpecimen) -> AdmittedRealizationV0 {\n  AdmittedRealizationV0 { specimen: specimen }\n}\n"
+
+data lawful_admitted_carrier_source: String = "module probe_chassis_lawful_carrier\nimport product.printed_chassis.realization_contract { AdmittedRealizationV0 }\nimport product.printed_chassis.coupon { CouponSpecimen }\nfn lawful(value: AdmittedRealizationV0) -> AdmittedRealizationV0 {\n  value\n}\n"
+
+fn admitted_carrier_violation_count(source: String) -> Int {
+  seal_violation_count_of(source: source, subject: "AdmittedRealizationV0")
+}
+
+test fn w_foreign_record_literal_of_the_admitted_carrier_refuses() -> Bool {
+  admitted_carrier_violation_count(source: forged_admitted_carrier_source) >= 1
+}
+
+test fn w_lawful_foreign_use_of_the_admitted_carrier_is_unsealed() -> Bool {
+  admitted_carrier_violation_count(source: lawful_admitted_carrier_source) == 0
+}
+
+test fn w_the_admitted_carrier_seal_is_the_only_difference() -> Bool {
+  admitted_carrier_violation_count(source: forged_admitted_carrier_source) -
+    admitted_carrier_violation_count(source: lawful_admitted_carrier_source) >= 1
+}
+
+// THE SEALED INSTRUCTION IS THE WALL THAT REPLACED THE BARE-GEOMETRY HELPERS, so it needs its own
+// executed refusal rather than inheriting the two above.
+//
+// The emitters used to be plate_line(plate: PlateDimensions) and cut_line(op, thickness), callable
+// by any foreign module on geometry it minted itself. They now take CadQueryInstructionV0, which is
+// a sole_constructor COPRODUCT -- a different construction form from the two records above, and one
+// this repository probes separately precisely because reaching the check through a variant literal
+// is not implied by reaching it through a record literal.
+//
+// THE FIRST VERSION OF THIS BATTERY WENT RED, AND THAT IS WHY IT EXISTS. The instruction was first
+// declared as a sole_constructor COPRODUCT, and a foreign module writing `RealizePlateV0 { plate:
+// plate }` compiled clean -- the marker does not seal variant literals. The repository's own audit
+// probe for that form, test.claim.sole_constructor_completeness_audit_probe
+// f13_variant_construction_refuses, is red for the same reason, so the gap is general. The handler
+// now carries an ordinary coproduct INSIDE a sole_constructor record, which is the form
+// AdmittedRealizationV0's battery establishes by execution, and this forges the record.
+//
+// Scoped by CLASS rather than by subject, since the discrimination is carried by the differential --
+// two sources identical but for the forged literal. A subject filter that matched nothing would
+// drive the red count to zero and fail loudly, so this is the weaker filter, not a weaker claim.
+fn class_violation_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(
+      rows: census_rows_of_class(
+        rows: census_blocking_rows(rows: rows),
+        wanted: "SoleConstructorViolation"
+      )
+    )
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+data forged_instruction_source: String = "module probe_chassis_forged_instruction\nimport product.printed_chassis.cadquery_realization { CadQueryInstructionV0, InstructionSubjectV0 }\nfn forged(subject: InstructionSubjectV0) -> CadQueryInstructionV0 {\n  CadQueryInstructionV0 { subject: subject }\n}\n"
+
+data lawful_instruction_source: String = "module probe_chassis_lawful_instruction\nimport product.printed_chassis.cadquery_realization { CadQueryInstructionV0, InstructionSubjectV0 }\nfn lawful(value: CadQueryInstructionV0) -> CadQueryInstructionV0 {\n  value\n}\n"
+
+test fn w_foreign_construction_of_a_sealed_instruction_refuses() -> Bool {
+  class_violation_count(source: forged_instruction_source) >= 1
+}
+
+test fn w_lawful_foreign_use_of_a_sealed_instruction_is_unsealed() -> Bool {
+  class_violation_count(source: lawful_instruction_source) == 0
+}
+
+test fn w_the_instruction_seal_is_the_only_difference() -> Bool {
+  class_violation_count(source: forged_instruction_source) -
+    class_violation_count(source: lawful_instruction_source) >= 1
+}
+
+// THE PLAN IS SEALED SEPARATELY FROM THE INSTRUCTION, because one forgery needs no instruction at all.
+//
+// The instruction battery above closes construction of RealizePlateV0 and RealizeThroughHoleV0. It
+// does not close CadQueryEmissionPlanV0, and the gap is not theoretical: the plan's only field is a
+// LIST, and the empty list requires no instruction values, so a foreign module could write
+// CadQueryEmissionPlanV0 { instructions: [] } while every instruction stayed unforgeable. That plan
+// would drive the emitter to a program with a preamble and no geometry -- an artifact that looks
+// like a successful emission and describes nothing.
+//
+// The empty literal is therefore the discriminating red, not a weaker one: it is the single forgery
+// the instruction seal cannot reach.
+data forged_plan_source: String = "module probe_chassis_forged_plan\nimport product.printed_chassis.cadquery_realization { CadQueryEmissionPlanV0 }\nfn forged() -> CadQueryEmissionPlanV0 {\n  CadQueryEmissionPlanV0 { instructions: [] }\n}\n"
+
+data lawful_plan_source: String = "module probe_chassis_lawful_plan\nimport product.printed_chassis.cadquery_realization { CadQueryEmissionPlanV0 }\nfn lawful(value: CadQueryEmissionPlanV0) -> CadQueryEmissionPlanV0 {\n  value\n}\n"
+
+test fn w_foreign_construction_of_an_empty_emission_plan_refuses() -> Bool {
+  class_violation_count(source: forged_plan_source) >= 1
+}
+
+test fn w_lawful_foreign_use_of_an_emission_plan_is_unsealed() -> Bool {
+  class_violation_count(source: lawful_plan_source) == 0
+}
+
+test fn w_the_plan_seal_is_the_only_difference() -> Bool {
+  class_violation_count(source: forged_plan_source) -
+    class_violation_count(source: lawful_plan_source) >= 1
 }

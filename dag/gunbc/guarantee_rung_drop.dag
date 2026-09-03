@@ -566,6 +566,77 @@ data algebra_operation_associativity_undeclarable_stall: GuaranteeStall = Guaran
   next_rung_trigger: "associativity of a declared operation is expressible and checkable -- SUFFICIENT FOR n-ary application of a binary operation declared associative to fold to nested binary application, which is what gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding waits on. Magma<T> is { op: fn(T, T) -> T } and Semigroup<T> is { op: fn(T, T) -> T }: structurally identical, differing by a blank line where the law would sit, so the type whose ENTIRE content is the associativity law carries no law. This is a DESIGN section 5 wall-after-grounding rather than a ratchet -- associativity of a DECLARED operation is a modeled fact, not an undecidable property of an arbitrary function."
 }
 
+
+// THE MICROVM GUEST SIZE, filed by the change that removed the wrong derivation rather than by a
+// later reviewer. This is AwaitsOneGrounding and not ClimbableButUnbuilt: the obstacle is not
+// unwritten code, it is that the quantity to subtract may not exist as a constant at all -- a
+// VMM's resident footprint scales with guest size through page tables, with the device model, and
+// with host page size, so what upstream documents is typically a MEASURED overhead for one stated
+// configuration, which is an observation about one boot rather than a property of the realization.
+// A trigger reading "model the overhead" would presume that number exists and would be
+// unsatisfiable in exactly the way this carrier's own rows warn about.
+//
+// THE POPULATION WAS RE-CENSUSED, NOT SPOT-REPAIRED, AND THE MEMBERSHIP RULE IS WRITTEN DOWN SO
+// COMPLETENESS IS CHECKABLE. An earlier version of this row named runner_microvm_sizing_of_cores,
+// which the same commit deleted, and gave the witness module as test.claim.runner.runner_microvm_
+// witness_test when the module declares test.claim.runner_microvm_witness_test with no intermediate
+// segment. A phantom member beside an omitted live one means the row never carried the BOUNDED
+// population DESIGN 4b requires, and two spot fixes would have left completeness unestablished --
+// so the row was re-derived from the module's declarations rather than edited.
+//
+// MEMBERSHIP RULE: a symbol is a member when, IN PRODUCTION, it cannot reach its intended answer
+// because of the two missing quantities. That deliberately includes guest_memory_fits, which is
+// correct code that always returns MemoryFitUnresolved on the production path, and deliberately
+// excludes guest_resources_of_machine_config and the topology and credential arms, which decide
+// fully today. It also includes fabric_cell_slice_desired_directives, which is not in this module:
+// the CPU obstacle is owed there, and a row scoped to the file rather than the class would be
+// satisfied while the capability stayed dead.
+//
+// THE TRIGGER CARRIES TWO CLAUSES AND BOTH ARE REQUIRED, because satisfying the first alone would
+// take the admission's accept arm live having never executed. Retargeting the microVM witnesses
+// onto the refusal path left the success path with NO executed coverage: RunnerMicroVmAdmitted is
+// unreachable while sizing refuses, so every witness now proves a gate is passed on the way to a
+// refusal and none proves an admissible VM is admitted. A gate whose accept arm has never run is
+// not a gate that has been tested.
+//
+// THE CPU AXIS IS NOT A SECOND COPY OF THE MEMORY ONE, WHICH IS WHY THE TRIGGER SPLITS THEM. On
+// memory the quantity may exist and be uncited. On CPU the cell realizes no absolute entitlement at
+// all: fabric_cell_slice_desired_directives emits CPUWeight, a relative share that guarantees no
+// amount of anything under contention. The absolute ceiling this fleet does declare is written by
+// host_converge onto the RUNNER UNIT, a different systemd object from the cell slice -- so a guest
+// vCPU count derived from the cell would equal a number the cell never enforces. That is the
+// failure gunbc.ci.ci_runner_placement already records once: "the arithmetic said six threads per
+// slot and the host was never told."
+//
+// AND THE CONTROLS MUST COME BACK AS FIT CONTROLS. The pair this row replaced asserted EQUALITY to
+// the envelope in both directions -- it admitted a guest sized at the whole ceiling and refused a
+// 4 GiB guest against a 16 GiB cell. Under containment the smaller guest FITS, so both arms were
+// wrong in opposite directions while the pair looked discriminating. A nonconstant predicate with
+// both polarities observed can still be answering a question nobody asked.
+data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.runner_microvm cannot derive a guest's resource envelope from the bounded cell on EITHER axis: memory needs a subtrahend for the Firecracker VMM's own footprint that is not cited anywhere, and CPU needs an absolute entitlement the cell does not carry",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "what quantities, if any, relate a cell's declared envelope to an admissible guest. On MEMORY that may be a cited VMM footprint, or the finding that guest RAM is an operator-declared input BOUNDED BY the envelope rather than derived from it. On CPU it is prior: gunbc.fabric.fabric_cell_effect emits CPUWeight, a RELATIVE share that guarantees no amount of anything, so there is no absolute cell entitlement for a guest vCPU count to be derived from -- the absolute ceiling this fleet does declare, gunbc.host.host_converge runner_cpu_boundary_knobs writing CapacityQuota as a CPUQuota drop-in, lands on the RUNNER UNIT and not on the cell slice. One bounded execution context, two realizations, different axes enforced",
+  },
+  population: BoundedPopulation {
+    members: [
+      "gunbc.runner_microvm guest_memory_fits",
+      "gunbc.runner_microvm gunbc_runner_microvm_realization_reserve",
+      "gunbc.runner_microvm gunbc_runner_microvm_cell_cpu_entitlement",
+      "gunbc.runner_microvm runner_microvm_sizing",
+      "gunbc.runner_microvm runner_microvm_size_from_cell_envelope",
+      "gunbc.runner_microvm runner_microvm_admission_after_credential",
+      "gunbc.runner_microvm gunbc_runner_microvm_admission",
+      "gunbc.runner_microvm gunbc_runner_microvm_vm_config",
+      "gunbc.fabric.fabric_cell_effect fabric_cell_slice_desired_directives",
+      "test.claim.runner_microvm_witness_test",
+    ],
+  },
+  next_rung_trigger: "BOTH of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) the cell realizing an ABSOLUTE CPU entitlement that a guest vCPU count can be derived from -- a CPUQuota or CPU set on the CELL SLICE, not the CPUQuota gunbc.host.host_converge already writes onto the runner UNIT -- or guest topology renamed as a separately declared product decision that is NOT derived from the cell. The clauses are separate because the obstacles differ in kind: the memory quantity may exist and merely be uncited, while the cell grants no CPU quantity at all, so a trigger naming only the memory subtrahend would be satisfied while the CPU axis stayed unfounded. THE THIRD CLAUSE THIS ROW CARRIED IS DISCHARGED: RunnerMicroVmAdmitted is reachable again and executed, because the realization reserve is a PARAMETER of the admission rather than a global, so a witness declaring one drives the accept arm while production still refuses. What is NOT discharged and is not claimed here is that PRODUCTION can reach that arm -- it cannot, and clauses 1 and 2 are what would change that"
+}
+
 // THIS IS A PRE-EXISTING CAPABILITY GAP, NOT A RUNG LOWERED BY THE CUT-OVER. The legacy transport
 // did put HEAD/objects/refs beside working bytes in an empty directory, but omitted the index and
 // therefore could not produce the consistent repository state this deployment claims. Calling that
@@ -587,7 +658,44 @@ data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeS
   next_rung_trigger: "a modeled Git-native bootstrap sufficient to initialize an empty deployed repository from the admitted runner checkout at the exact candidate, with HEAD, index and tracked worktree read back as that one revision before any later deployment member runs; copying any .git path as files, relaxing ConvergencePreStateUnobservable, or merely creating an empty git directory does not satisfy the capability"
 }
 
+// ONE EXPRESSION, TWO EVALUATORS -- AND WHY THIS IS A STALL RATHER THAN A DROP, which is the whole
+// reason it is in this carrier. Nothing ever required this comparison, so no rung was lowered and
+// there is no previous rung to restore; a `RungDrop` row would make the declared-drop ledger report
+// a newly discovered gap as a regression, which is the rung inflation section 4b(1) forbids applied
+// to the compiler's own self-description. It was drafted as a drop on gunbc#10154 and moved here
+// (codex review 59064) rather than kept with a disclaimer, because a row denying the meaning of the
+// carrier it sits in is a meaning fork, not a caveat.
+//
+// WHY IT IS NOT `gunbc.recurring_failure_mode` `realization_arms_diverge_on_whether_the_program_refuses`,
+// stated with a specimen on each side because the question a reader actually has is which row owns a
+// given specimen. The two subjects CROSS. IN THIS ROW AND NOT IN THAT ONE: .dag evaluates both
+// operands of a conjunction and emitted Rust short-circuits, so where the right operand is total the
+// two arms agree on every answer and differ only in WHAT RAN -- no refusal fires, so there is no
+// refusal divergence for that row to see and every result-comparison oracle is green through it. IN
+// THAT ROW AND NOT IN THIS ONE: a divergence between two realization arms NEITHER of which is the
+// authority, which is not an authority-versus-target relation at all. Neither contains the other.
+//
+// THE CEILING IS 2 AND NOT HIGHER BECAUSE THIS ROW OWNS DETECTION, NOT CONSTRUCTION. Making the
+// divergence unwritable -- evaluation order modeled as a property of a connective and consulted by
+// both realizations -- is that failure-mode row's trigger. This row is the executed check over
+// whatever construction does not yet cover, which is the order section 5 states, so the two coexist.
+//
+// THE POPULATION IS HONESTLY UNCOUNTABLE AND A GREP UNDERSTATES IT BY CONSTRUCTION: the interpreter
+// is the STRICTER arm, so any author who wrote the guard idiom over a refusing right operand hit the
+// refusal while authoring and rewrote it. The surviving matches are the cases that do NOT carry the
+// consequence, so a low count is not evidence the class is small.
+data authority_target_same_expression_equivalence_stall: GuaranteeStall = GuaranteeStall {
+  subject: "one expression evaluated by the .dag authority and by the emitted target is never compared by execution, so the two may agree on the returned value and differ on which subexpressions ran",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable { reason: "the affected population is every expression whose two realizations could diverge, and it is survivorship-filtered: the interpreter is the stricter arm, so sites where the divergence carried a consequence were rewritten while authoring and only the harmless matches survive to be grepped" },
+  next_rung_trigger: "a lane that runs ONE expression through BOTH realizations and refuses a divergence, sufficient for an emission differing from its authority in value OR in what it evaluates being caught, demonstrated by a red on a fixture where the two agree on the returned value and differ on which subexpressions ran; the fixture is already executed and dated on gunbc#10139, so what is owed is enrolment and not a harness, and enrolling behavioral_differential discharges the seed-Rust versus emitted-Rust axis ONLY and does not touch this row"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  authority_target_same_expression_equivalence_stall,
+  runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
   heterogeneous_child_list_stall,

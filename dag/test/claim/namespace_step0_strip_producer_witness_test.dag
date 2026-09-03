@@ -1,0 +1,480 @@
+module test.claim.namespace_step0_strip_producer_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, SourceSpan, String }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.import {
+  ImportStatementsParsed,
+  ImportStatementParseRefused,
+  ImportStatementParseCause,
+  SourceHasNoModuleDeclaration,
+  ModuleDeclarationPathMalformed,
+  ImportStatementMalformed,
+  ImportStatementsStripped,
+  ImportStripRefused,
+  ImportSpanNamesAnotherFile,
+  ImportSpanDoesNotDelimitAnImportStatement,
+  ImportSpansOutOfAscendingOrder,
+  ParsedImportStatement,
+  ParsedImportStatements,
+  ImportStripOutcome,
+  ImportStripRefusal,
+  strip_import_statements,
+  strip_one_import_statement,
+}
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.parsed_import_statement_production { parsed_import_statements_live }
+import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.namespace_step0_canary {
+  NamespaceStep0CanaryReceipt,
+  NamespaceStep0CanaryAdmission,
+  NamespaceStep0ReceiptAdmitted,
+  NamespaceStep0ReceiptRefused,
+  NoStep0Observation,
+  Step0StripObservation,
+  admit_namespace_step0_canary_receipt,
+}
+import gunbc.namespace_step0_strip_producer {
+  Step0StripProduction,
+  Step0ReceiptProduced,
+  Step0StripProductionRefused,
+  Step0StripProductionRefusalCause,
+  Step0SubjectHadNoImportStatements,
+  Step0ContainmentCompileCompleted,
+  Step0SourceImportsNotParsed,
+  namespace_step0_strip_receipt,
+}
+
+// EXECUTED EVIDENCE FOR THE TWO CAPABILITIES gunbc.namespace_step0_canary names as missing at
+// ApplyTypedImportStrip: a typed parse-level rewrite that removes one complete import statement,
+// and an owned producer that applies it and folds the compile observation that follows.
+//
+// THIS ENTRY DOES NOT CLAIM STEP 0 MOVED. It does not touch the frozen contract, the classifier,
+// the subject-entry rule or the controls in test.claim.namespace_step0_canary_witness, and it mints
+// no receipt over the repository tree. What it proves is that a receipt at the longer frontier is
+// now PRODUCIBLE by execution rather than only authorable by a fixture: the producer strips a real
+// subject, compiles it, and the frozen classifier admits what came back. Rebinding the canary's
+// baseline to a corpus-scale run is a separate change, exactly as the freeze note requires.
+//
+// HERMETIC: every subject below is an in-memory source. The parse bridge reads no repository file
+// and the multi-module compile instrument has no corpus pool, which is what makes the stripped
+// subjects refuse for the reason the witness is about rather than by pool-membership coincidence.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn provider_path() -> NonEmptyStr { "w/provider.dag" as NonEmptyStr }
+fn entry_path() -> NonEmptyStr { "w/entry.dag" as NonEmptyStr }
+
+fn provider_source() -> String {
+  "module w.provider\n\nimport std.types { NonEmptyStr }\n\nfn w_provided() -> NonEmptyStr {\n  \"x\" as NonEmptyStr\n}\n"
+}
+
+// A braced member list broken over three lines: the case a line-oriented filter gets wrong, and the
+// reason the rewrite takes a parser-delimited span rather than searching the text.
+fn entry_source() -> String {
+  "module w.entry\n\nimport w.provider {\n  w_provided,\n}\nimport std.types { NonEmptyStr }\n\nfn w_entry() -> NonEmptyStr {\n  w_provided()\n}\n"
+}
+
+// MEASURED, NOT ASSUMED: with both imports removed this pair STILL COMPILES. `Bool` is a kernel
+// type that needs no import, and `w_provided` is reached by bare-name resolution across the two
+// supplied modules, so the imports were carrying nothing the resolution could not recover. It is the
+// same "compiles only by pool-membership coincidence" shape v2.lens.module_graph records from #7908,
+// reproduced here as the subject that proves the producer refuses instead of inventing a blocker.
+fn kernel_typed_provider_source() -> String {
+  "module w.kprovider\n\nimport std.types { Bool }\n\nfn w_kprovided() -> Bool {\n  true\n}\n"
+}
+
+fn kernel_typed_entry_source() -> String {
+  "module w.kentry\n\nimport w.kprovider { w_kprovided }\nimport std.types { Bool }\n\nfn w_kentry() -> Bool {\n  w_kprovided()\n}\n"
+}
+
+fn importless_source() -> String {
+  "module w.alone\n\ntype WAlone = WAloneOnly\n\nfn w_alone() -> WAlone {\n  WAloneOnly\n}\n"
+}
+
+fn subject_sources() -> List<FixtureSource> {
+  [
+    FixtureSource { path: provider_path(), content: provider_source() },
+    FixtureSource { path: entry_path(), content: entry_source() },
+  ]
+}
+
+fn statements_of(file: NonEmptyStr, source: String) -> List<ParsedImportStatement> {
+  match parsed_import_statements_live(file: file as String, source: source) {
+    ImportStatementParseRefused { cause: _ } => []
+    ImportStatementsParsed { statements: statements } => statements
+  }
+}
+
+fn stripped_source_of(file: NonEmptyStr, source: String) -> String {
+  match strip_import_statements(
+    source_file: file as String,
+    source: source,
+    statements: statements_of(file: file, source: source)
+  ) {
+    ImportStripRefused { refusal: _ } => ""
+    ImportStatementsStripped { rewritten_source: rewritten, removed_statements: _ } => rewritten
+  }
+}
+
+// ------------------------------------------------------------------ the parse observation
+
+test fn the_parser_delimits_both_import_statements_of_the_entry_source() -> Bool {
+  count(statements_of(file: entry_path(), source: entry_source())) == 2
+}
+
+// A source that is not a module has no import statements to delimit, and says so rather than
+// reporting none -- the distinction the carrier is a coproduct for.
+test fn a_source_that_is_not_a_module_refuses_rather_than_reporting_no_imports() -> Bool {
+  match parsed_import_statements_live(file: "w/none.dag", source: "fn w_loose() -> Bool { true }\n") {
+    ImportStatementsParsed { statements: _ } => false
+    ImportStatementParseRefused { cause: _ } => true
+  }
+}
+
+// ------------------------------------------------------------------ the typed rewrite
+
+// The multi-line braced statement is removed WHOLE, and the statement after it survives its own
+// removal at the shifted offsets -- the property a per-statement rewrite applied repeatedly cannot
+// have, and the reason the fold consumes the ascending span set once.
+test fn the_rewrite_removes_every_complete_import_statement_of_the_entry_source() -> Bool {
+  stripped_source_of(file: entry_path(), source: entry_source())
+    == "module w.entry\n\n\n\n\nfn w_entry() -> NonEmptyStr {\n  w_provided()\n}\n"
+}
+
+test fn the_rewrite_reports_the_statements_it_removed() -> Bool {
+  match strip_import_statements(
+    source_file: entry_path() as String,
+    source: entry_source(),
+    statements: statements_of(file: entry_path(), source: entry_source())
+  ) {
+    ImportStripRefused { refusal: _ } => false
+    ImportStatementsStripped { rewritten_source: _, removed_statements: removed } =>
+      removed == ["import w.provider {\n  w_provided,\n}", "import std.types { NonEmptyStr }"]
+  }
+}
+
+// DISCRIMINATING RED. A span taken from one file cannot cut a hole in another: the caller holds the
+// source and the parse holds the span, and nothing else would notice the mismatch.
+test fn a_span_from_another_file_is_refused_rather_than_applied() -> Bool {
+  match strip_one_import_statement(
+    source_file: entry_path() as String,
+    source: entry_source(),
+    statement: ParsedImportStatement {
+      span: SourceSpan { file: provider_path() as String, start: 12, end: 37 },
+      imported_module: "std.types"
+    }
+  ) {
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStripRefused { refusal: refusal } =>
+      match refusal {
+        ImportSpanNamesAnotherFile { span_file: _, source_file: _ } => true
+        _ => false
+      }
+  }
+}
+
+// DISCRIMINATING RED. A well-formed span over bytes that are not an import statement is refused,
+// which is what makes the operation parse-level rather than an offset-driven text cut.
+test fn a_span_that_does_not_delimit_an_import_statement_is_refused() -> Bool {
+  match strip_one_import_statement(
+    source_file: entry_path() as String,
+    source: entry_source(),
+    statement: ParsedImportStatement {
+      span: SourceSpan { file: entry_path() as String, start: 0, end: 10 },
+      imported_module: "w.entry"
+    }
+  ) {
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStripRefused { refusal: refusal } =>
+      match refusal {
+        ImportSpanDoesNotDelimitAnImportStatement { span: _, source_text: _ } => true
+        _ => false
+      }
+  }
+}
+
+// DISCRIMINATING RED, and the one review 58968 asked for. `w.provid` is a proper PREFIX of the
+// module the span actually imports, so a `string_contains` check would have said the span names it
+// and cut the statement out under a module path that does not exist. The boundary is positional:
+// the module path is the exact run after the keyword, delimited by a character that cannot continue
+// it, and `e` can.
+test fn a_span_naming_a_prefix_of_the_module_it_imports_is_refused() -> Bool {
+  match strip_one_import_statement(
+    source_file: entry_path() as String,
+    source: entry_source(),
+    statement: ParsedImportStatement {
+      span: SourceSpan { file: entry_path() as String, start: 16, end: 51 },
+      imported_module: "w.provid"
+    }
+  ) {
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStripRefused { refusal: refusal } =>
+      match refusal {
+        ImportSpanDoesNotNameItsModule { span: _, imported_module: _, source_text: _ } => true
+        _ => false
+      }
+  }
+}
+
+// DISCRIMINATING RED, the same softness read from the other end: a declaration whose name merely
+// BEGINS with the keyword is not an import statement. `starts_with` alone admitted this text.
+test fn a_span_whose_text_only_begins_with_the_keyword_is_refused() -> Bool {
+  match strip_one_import_statement(
+    source_file: entry_path() as String,
+    source: "import_alias w.provider\n",
+    statement: ParsedImportStatement {
+      span: SourceSpan { file: entry_path() as String, start: 0, end: 23 },
+      imported_module: "w.provider"
+    }
+  ) {
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStripRefused { refusal: refusal } =>
+      match refusal {
+        ImportSpanDoesNotDelimitAnImportStatement { span: _, source_text: _ } => true
+        _ => false
+      }
+  }
+}
+
+// DISCRIMINATING RED. Descending spans are refused rather than silently rebuilding the source from
+// gaps that overlap, which would drop or duplicate bytes with no diagnostic.
+test fn descending_spans_are_refused_rather_than_rebuilding_the_source() -> Bool {
+  match strip_import_statements(
+    source_file: entry_path() as String,
+    source: entry_source(),
+    statements: reverse(statements_of(file: entry_path(), source: entry_source()))
+  ) {
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStripRefused { refusal: refusal } =>
+      match refusal {
+        ImportSpansOutOfAscendingOrder { previous_end: _, next_start: _ } => true
+        _ => false
+      }
+  }
+}
+
+// ------------------------------------------------------------------ the owned producer
+
+fn witness_commit() -> GitObjectId? {
+  git_sha1_object_id(hex: "1111111111111111111111111111111111111111")
+}
+
+fn witness_tree() -> GitObjectId? {
+  git_sha1_object_id(hex: "2222222222222222222222222222222222222222")
+}
+
+fn witness_compiler() -> Sha256Digest? {
+  sha256_hex_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333")
+}
+
+fn production_over(sources: List<FixtureSource>, entry: NonEmptyStr) -> Step0StripProduction? {
+  match witness_commit() {
+    Absent => none
+    Present { value: commit } => match witness_tree() {
+      Absent => none
+      Present { value: tree } => match witness_compiler() {
+        Absent => none
+        Present { value: compiler } => Present { value: namespace_step0_strip_receipt(
+          source_commit: commit,
+          source_tree: tree,
+          compiler_program: "target/release/gunbc" as NonEmptyStr,
+          compiler_executable_sha256: compiler,
+          sources: sources,
+          entry: entry
+        ) }
+      }
+    }
+  }
+}
+
+fn admitted(receipt: NamespaceStep0CanaryReceipt) -> Bool {
+  match witness_commit() {
+    Absent => false
+    Present { value: commit } => match witness_tree() {
+      Absent => false
+      Present { value: tree } => match witness_compiler() {
+        Absent => false
+        Present { value: compiler } =>
+          match admit_namespace_step0_canary_receipt(
+            receipt: receipt,
+            expected_commit: commit,
+            expected_tree: tree,
+            expected_compiler_sha256: compiler
+          ) {
+            NamespaceStep0ReceiptAdmitted => true
+            NamespaceStep0ReceiptRefused { field: _, cause: _ } => false
+          }
+      }
+    }
+  }
+}
+
+fn production_refused_with(production: Step0StripProduction, wanted: Step0StripProductionRefusalCause) -> Bool {
+  match production {
+    Step0ReceiptProduced { receipt: _ } => false
+    Step0StripProductionRefused { cause: cause } => cause == wanted
+  }
+}
+
+// THE MOVEMENT CLAIM, green by execution and not by authorship: the producer strips a real subject,
+// compiles what it produced, and the FROZEN classifier admits the receipt at the strictly longer
+// frontier. Nothing in this test constructs a receipt.
+test fn the_producer_mints_a_receipt_the_frozen_classifier_admits() -> Bool {
+  match production_over(sources: subject_sources(), entry: entry_path()) {
+    Absent => false
+    Present { value: production } =>
+      match production {
+        Step0StripProductionRefused { cause: _ } => false
+        Step0ReceiptProduced { receipt: receipt } => admitted(receipt: receipt)
+      }
+  }
+}
+
+test fn the_produced_receipt_carries_the_statements_the_rewrite_removed() -> Bool {
+  match production_over(sources: subject_sources(), entry: entry_path()) {
+    Absent => false
+    Present { value: production } =>
+      match production {
+        Step0StripProductionRefused { cause: _ } => false
+        Step0ReceiptProduced { receipt: receipt } =>
+          match receipt.observed_subject {
+            NoStep0Observation => false
+            Step0StripObservation { observed_tree: _, observed_manifest: _, observed_import_statements: observed } =>
+              count(observed) == 3
+          }
+      }
+  }
+}
+
+// DISCRIMINATING RED. A subject with no import statements did not enter the Step 0 subject, and the
+// producer says so rather than minting a receipt whose observation is empty -- the shape the frozen
+// classifier would refuse at ObservedSubjectField, reached here one stage earlier.
+test fn a_subject_with_no_import_statements_refuses_rather_than_claiming_entry() -> Bool {
+  match production_over(
+    sources: [FixtureSource { path: "w/alone.dag" as NonEmptyStr, content: importless_source() }],
+    entry: "w/alone.dag" as NonEmptyStr
+  ) {
+    Absent => false
+    Present { value: production } =>
+      production_refused_with(production: production, wanted: Step0SubjectHadNoImportStatements)
+  }
+}
+
+// DISCRIMINATING RED, and the arm that matters most. A stripped subject that COMPILES has no
+// blocking transition, and the canary's receipt has no spelling for one. The producer refuses with
+// the compile's own module count rather than fabricating a blocker that did not occur.
+test fn a_stripped_subject_that_still_compiles_refuses_rather_than_fabricating_a_blocker() -> Bool {
+  match production_over(
+    sources: [
+      FixtureSource { path: "w/kprovider.dag" as NonEmptyStr, content: kernel_typed_provider_source() },
+      FixtureSource { path: "w/kentry.dag" as NonEmptyStr, content: kernel_typed_entry_source() },
+    ],
+    entry: "w/kentry.dag" as NonEmptyStr
+  ) {
+    Absent => false
+    Present { value: production } =>
+      match production {
+        Step0ReceiptProduced { receipt: _ } => false
+        Step0StripProductionRefused { cause: cause } =>
+          match cause {
+            Step0ContainmentCompileCompleted { module_count: _ } => true
+            _ => false
+          }
+      }
+  }
+}
+
+// DISCRIMINATING RED. A source whose imports could not be delimited is not a source with none: the
+// producer refuses at the parse rather than reporting a clean rewrite of a file it never read.
+test fn a_subject_whose_imports_did_not_parse_refuses_at_the_parse() -> Bool {
+  match production_over(
+    sources: [FixtureSource { path: "w/loose.dag" as NonEmptyStr, content: "fn w_loose() -> Bool { true }\n" }],
+    entry: "w/loose.dag" as NonEmptyStr
+  ) {
+    Absent => false
+    Present { value: production } =>
+      match production {
+        Step0ReceiptProduced { receipt: _ } => false
+        Step0StripProductionRefused { cause: cause } =>
+          match cause {
+            Step0SourceImportsNotParsed { file: _, cause: _ } => true
+            _ => false
+          }
+      }
+  }
+}
+
+// ------------------------------------------------------------------ the typed parse-refusal cause
+//
+// ONE WITNESS PER STATE A SOURCE CAN PUT THE PARSE IN, because the consumers of this refusal
+// partition on the cause and the partition is only as sound as the arm each state actually takes.
+// Three of the four arms are reachable from a source and are pinned here. The fourth,
+// ImportParseInstrumentAnomaly, is NOT reachable from any source: it reports a broken invariant
+// inside the extents walk -- a statement that parsed from no token, or without consuming one -- so
+// no fixture can author it, and its enrolled evidence is the exhaustive match in every consumer
+// rather than a red here. That is why it is a separate arm and not folded into
+// ImportStatementMalformed: a consumer must be able to tell "this file is broken" from "the
+// instrument is broken" without matching prose, and the second is never a fact about the file.
+
+fn parse_cause_of(file: String, source: String) -> ImportStatementParseCause? {
+  match parsed_import_statements_live(file: file, source: source) {
+    ImportStatementsParsed { statements: _ } => Absent
+    ImportStatementParseRefused { cause: cause } => Present { value: cause }
+  }
+}
+
+test fn a_source_with_no_module_declaration_refuses_at_the_no_module_arm() -> Bool {
+  match parse_cause_of(file: "w/none.dag", source: "fn w_loose() -> Bool { true }\n") {
+    Absent => false
+    Present { value: cause } => match cause {
+      SourceHasNoModuleDeclaration => true
+      _ => false
+    }
+  }
+}
+
+// A malformed module PATH is a defect in the declaration the subject is defined by, and it is not
+// the same fact as a file that is not a module at all. A consumer that excluded this file from a
+// subject would have dropped a real module because its header was broken.
+test fn a_malformed_module_path_refuses_at_its_own_arm_and_not_at_the_no_module_arm() -> Bool {
+  match parse_cause_of(file: "w/badpath.dag", source: "module 9\n") {
+    Absent => false
+    Present { value: cause } => match cause {
+      ModuleDeclarationPathMalformed => true
+      _ => false
+    }
+  }
+}
+
+// A broken IMPORT statement is a defect in the thing being stripped, under a module declaration
+// that parsed. Distinct arm, distinct repair.
+test fn a_malformed_import_statement_refuses_at_the_import_arm() -> Bool {
+  match parse_cause_of(file: "w/badimport.dag", source: "module w.badimport\n\nimport {\n") {
+    Absent => false
+    Present { value: cause } => match cause {
+      ImportStatementMalformed => true
+      _ => false
+    }
+  }
+}
+
+// The positive control for the three reds above: a well-formed module still parses, so the arms are
+// discriminating rather than a parse that refuses everything.
+test fn a_well_formed_module_still_parses_its_import_statements() -> Bool {
+  match parse_cause_of(file: entry_path() as String, source: entry_source()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A module whose BODY is broken is NOT a parse refusal here: the extents walk stops at the first
+// non-import token, so the source is reported as parsed and its breakage surfaces where it belongs,
+// at the compile. This is the arm most easily got wrong in the direction of quietly dropping a real
+// module from a subject.
+test fn a_module_with_a_broken_body_is_reported_as_parsed_not_refused() -> Bool {
+  match parse_cause_of(file: "w/badbody.dag", source: "module w.badbody\n\nimport std.types { Bool }\n\nfn broken( -> Bool {\n") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
