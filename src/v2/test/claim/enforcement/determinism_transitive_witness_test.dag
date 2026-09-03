@@ -1,18 +1,14 @@
 module v2.test.claim.enforcement.determinism_transitive_witness
 
-import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.lens.determinism {
   determinism_transitive_findings,
   determinism_transitive_holds
 }
-import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import std.algebra { Cons }
-import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -27,73 +23,46 @@ import v2.std.node {
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.text { String }
 
-// THE CORPUS-CADENCE HALF OF TRANSITIVE DETERMINISM, AND THE REASON IT IS HERE RATHER THAN IN THE
-// COMPILE DOOR. The producer in v2.lens.determinism is pure and parameterized precisely so that
-// v2.compiler.compile, which imports that module, reaches no live-read carrier. This module is the
-// consumer that actually reads the tree, and it declares that honestly below. Putting this read
-// behind validate_then_compile instead would re-open the census class the lens_module_gate
-// de-enrolment closed — the annotation on always_required_root_lenses is the standing ruling, and
-// naming a live corpus read "determinism" would not have made it tree-grain.
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
-
-// The determinism gate's own subject. If anything the compile door can REACH leaks host traversal
-// order, every compile is deciding against a nondeterministic closure, which is the strongest
-// standing form of the question this corpus is entitled to ask.
+// ── the live judgment: WITHDRAWN, AND WHY ────────────────────────────────────────────────────
 //
-// THE SCOPE IS THE WHOLE CORPUS, AND THE NARROWER ONE WAS BUILT, MEASURED AND REFUSED. Passing
-// every module name is a STRUCTURAL OVER-APPROXIMATION COMPUTED AS THE ANSWER, which DESIGN
-// section 5 names explicitly as NOT the absorbing fallback: it is chosen up front rather than
-// substituted after a mechanism failed to compute something precise, and it errs toward MORE
-// findings. Its residue is therefore a false positive naming a declaration the door cannot really
-// reach -- loud, and dismissible by reading the diagnostic. It cannot produce a false negative.
+// Clause 2 of this cut required a live required-floor consumer -- a witness whose declared
+// substrate and cadence truthfully match the inputs it reads, whose failure reaches the required
+// PR floor, and which cannot predict-skip. `determinism_transitive_live_closure_holds` WAS that
+// consumer and it is withdrawn here, not satisfied and not abandoned. The obligation stands and is
+// BLOCKED; the blocker is named below. It is not retired by this file and no rung drop is retired
+// by it either.
 //
-// The precise alternative -- scoping to the door's own dependency_closure over
-// dependency_resolution_facts_live -- was measured rather than argued about:
+// WHY IT CANNOT STAND TODAY. Measured on required run 33709585360 (required_floor_claim_cost.tsv,
+// 3523 rows): the live row cost 473/481/561ms across three samples of a byte-identical head and was
+// the single most expensive subject on the floor, #1 of 3523. The operator has since regrounded the
+// per-subject line from 500ms to 100ms, so it is over by ~5x rather than marginally.
 //
-//   whole-corpus scope           358ms
-//   dependency-closure scope  193,269ms
+// AND IT CANNOT BE DECOMPOSED TO GET THERE, which is the part that makes this a block rather than a
+// task. `fn_arrow_decl_facts_live` is ZERO-ARITY in both .dag and host, and always walks the whole
+// of `ctx.modules`. Splitting one live witness into N witnesses over corpus slices therefore costs
+// N x acquisition, not acquisition/N -- decomposition INVERTS on this subject. The smallest live
+// subject expressible still pays one whole-tree acquisition (~300ms measured) before it evaluates
+// anything, so no live-tree witness reaches 100ms at any grain.
 //
-// against a 500ms required_floor_claim_cpu_safety_limit_ms. Precision costs 540x here and would
-// leave the witness permanently budget-refused, which enforces NOTHING while redding the floor
-// every run -- strictly worse than an over-approximation that returns a verdict. The cost is in
-// the two extra live producers and in modules_of_closure_paths, which accumulates with
-// list_snoc_item and so carries the same quadratic removed from module_names_live below. If that
-// helper is fixed, this choice is worth re-measuring.
-data determinism_transitive_live_entry: String = "v2.compiler.compile"
-
-data empty_module_names: List<String> = []
-
-// PREPEND-THEN-REVERSE, NOT APPEND-IN-STEP, and the difference is 33 seconds rather than a style
-// preference. list_snoc_item is list_append(xs, Cons { head: item, tail: Empty }), so it walks the
-// whole accumulator on every element -- building this ~4500-name list by snoc is the
-// copied-accumulator quadratic DESIGN section 6 says is ALWAYS fixed. Isolated by its own probe:
+// THE BLOCKER, STATED AS A CAPABILITY AND NOT AN ARTIFACT: the acquisition has no caller-named
+// subject. Its two siblings `module_graph_facts` and `reference_edges` take `pool_roots` and are
+// enrolled in the floor's cross-claim fill netting; this one takes nothing, so its cost cannot be
+// shared without inventing a key, and every available key is either wrong (a pool-roots-shaped key
+// would serve one claim another claim's declaration set) or worthless (a ctx.modules digest costs
+// what the walk costs). Giving `fn_arrow_decl_facts_live` a declared subject is what unblocks this,
+// and it is a program across effect_reach, live_read_classification, wiring_liveness,
+// corpus_dependency_view and the origin probe -- deliberately not smuggled into this cut.
 //
-//   module_names_live, snoc                33,443ms
-//   module_names_live, prepend-then-reverse    32ms
+// WHAT STILL EXECUTES. The three fixture rows below are the discriminating evidence for clauses 1
+// and 3: they run on the required floor at 39/3/2ms and they discriminate -- a leak in reached code
+// is found, an IDENTICAL leak outside the call graph is not. The deletion of both duplicate walks
+// is proven by them. What is missing is a live consumer, which is clause 2 itself, not evidence for
+// it.
 //
-// against 203ms to acquire the entire declaration population. The whole witness was 34,467ms and
-// this one helper was 97% of it -- the reachability walk it feeds is roughly 120ms. The same
-// prepend-then-reverse rule is already recorded on run_required_lens_gates_on_subtree in
-// v2.compiler.compile.
-fn module_names_live() -> List<String> {
-  list_reverse(xs: fold_list(
-    xs: module_declaration_facts_live(pool_roots: witness_layer_roots),
-    empty: empty_module_names,
-    cons: fn(acc, node) { Cons { head: node.module, tail: acc } }
-  ))
-}
-
-// ── the live judgment ─────────────────────────────────────────────────────────────────────────
-//
-// ReadsLiveTree, corpus cadence, executes per PR, reds the required floor, never predict-skips.
-
-test fn determinism_transitive_live_closure_holds() -> Bool {
-  determinism_transitive_holds(
-    entry_module: determinism_transitive_live_entry,
-    closure_modules: module_names_live(),
-    decls: fn_arrow_decl_facts_live()
-  )
-}
+// The long lane is NOT the answer and was checked: long claims are declined from the required floor
+// (declined_long=366) and no CI job runs that lane -- witnesses.yml carries exactly two
+// --required-lane invocations, `build` and `witnesses`. Enrolling there would make clause 2's
+// required-floor reach false while the row still read as enrolled.
 
 // ── fixtures ──────────────────────────────────────────────────────────────────────────────────
 

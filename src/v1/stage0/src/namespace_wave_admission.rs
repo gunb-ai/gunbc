@@ -686,6 +686,59 @@ pub struct TransitionAdmission {
 /// the rule exactly: consumed rows are "due for deletion on this roster-touching change". So they
 /// are charged to a change that touches the file, and this one does.
 ///
+/// SO THE DELETION IS OWED AND IT SHOULD NOT WAIT FOR ME. They must be removed in the first PR
+/// after #10077 lands, by whoever next touches this roster, which is the convention the sweep above
+/// establishes rather than a favour asked of them. Removing them early is safe and loud — an
+/// unadjudicated delta refuses by name and is closed by re-authoring a row, never by a silent
+/// admission — so the only dangerous direction is leaving them standing.
+/// THAT LAST SENTENCE WAS TRUE WHEN IT WAS WRITTEN AND IS NOT TRUE OF THIS FILE, which is why it is
+/// corrected here rather than edited above: the sweep it describes really did return the roster to
+/// empty on main, and the merge that brought it here re-opened the roster with the five gunbc#10011
+/// rows below. The paragraph is left standing as the record of that sweep; those five rows'
+/// DISSOLVE-ON is gunbc#10011 merging.
+///
+/// AND THE ROSTER'S CURRENT STATE IS THE FIVE ROWS AGAIN, though it passed through sixty-two on
+/// the way: the gunbc#10077 conflict briefly added fifty-seven that turned out to be consumed. Writing "the roster's current state is the five open rows" was correct for
+/// exactly one merge and false at the next one, which is the same mistake as the RESTORED-TO-EMPTY
+/// sentence it was written to correct. A claim about the WHOLE roster made from inside one
+/// transition's paragraph goes stale the moment any other transition opens; a claim about that
+/// transition's OWN rows does not.
+///
+/// THIS MERGE IS THE FIRST APPLICATION OF THE RULE BELOW AND IS RECORDED AS ONE. Main and this
+/// branch conflicted on this const: the base held the four SJT-1 rows, main deleted them by the
+/// dissolution above, and this branch had deleted the same four independently while adding five of
+/// its own. Reading it row by row rather than side by side: the SJT-1 four are MERGED, so both
+/// deletions agree and the deletion is taken; the gunbc#10011 five are OPEN, so they survive. The
+/// resolution is neither side's file -- it is main's prose, which carries receipts this branch never
+/// saw, over this branch's rows, which are the only unconsumed ones in the merge.
+///
+/// THE RULE HAS NOW BEEN APPLIED TWICE AND FIRED THE SAME WAY BOTH TIMES, and the first draft of
+/// this paragraph said the opposite, so the correction is the entry. Resolving the gunbc#10077
+/// conflict I kept main's fifty-seven rows and wrote that the rule had gone "the other way" --
+/// that they were live on main and deleting them would un-adjudicate a running transition. That
+/// was an ASSERTION WHERE A MEASUREMENT WAS AVAILABLE. The wall answered it directly on the next
+/// run: fifty-seven CONSUMED ADMISSION lines, every one of them gunbc#10077, and none of the five
+/// gunbc#10011 rows among them. gunbc#10077 had merged, so its rows were BORN CONSUMED in exactly
+/// the way the SJT-1 four were, and the roster refused this branch a second time for a second
+/// cohort of rows I had preserved for a second wrong reason.
+///
+/// WHAT THE MISTAKE ACTUALLY WAS, because "I got the arm backwards" does not describe it: I read
+/// PRESENT ON MAIN as evidence of OPEN. It is not evidence of anything. A row's disposition is a
+/// fact about whether its transition has merged, the wall computes exactly that fact per row and
+/// prints it, and I substituted an inference from where the row lived for a receipt I could have
+/// read. That is the same substitution as the first incident wearing different clothes -- there I
+/// took the union because both sides had rows, here I took main's because main had them.
+///
+/// SO THE RULE IS UNCHANGED AND ITS DISCRIMINATOR IS NOT THE SIDE, IT IS THE RECEIPT. Both
+/// applications deleted merged rows and kept open ones; neither had anything to do with which
+/// branch authored them. If a future conflict here seems to call for keeping rows because they are
+/// main's, that is this paragraph's exact error and the answer is to run the gate and read the
+/// dispositions.
+///
+/// THE RULE, STATED SO THE NEXT CONFLICT IS NOT RESOLVED BY REFLEX: on a conflict in this roster,
+/// union the rows whose transitions are still OPEN and delete the rows whose transitions have
+/// MERGED. "Take both sides" is not a safe default here; it is safe only for the unconsumed half.
+///
 /// I AM THE TOUCHER MY OWN TRIGGER NAMED. The rows' trigger said the deletion is owed by whoever
 /// next touches this roster; re-tensing that very trigger touched it, so the obligation landed on
 /// the change that went looking for it. Removing them here is the trigger being honoured rather
@@ -693,6 +746,27 @@ pub struct TransitionAdmission {
 ///
 /// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
 /// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
+/// AND THE ROSTER RE-OPENS ONCE MORE, for the same reason and by the same rule. The sweep above is
+/// main's and it is correct: the gunbc#10077 rows were consumed and the change that re-tensed their
+/// trigger owed their deletion. It restored the resting state to empty ON MAIN. This merge then
+/// re-opens it with the five gunbc#10011 rows below, whose transition has NOT merged -- verified
+/// rather than assumed, because assuming is what I got wrong the last two times: main still
+/// declares HeldSpecificationSupersessionStanding in
+/// extdeps.cpu.ampere_altra_platform_hw_design.subject and extdeps.publication does not carry it,
+/// so the deltas these three adjudicate are still producible and none of them is consumed.
+///
+/// TWO OF THE FIVE ARE GONE AND THAT IS THE SAME TRIGGER FIRING, NOT A SEPARATE DECISION. They
+/// adjudicated bindings inside `platform_facts_are_from_the_latest_revision`, and review 59072
+/// established that predicate as the dissolved variant-test shape, so this change DELETES the
+/// declaration rather than widening its match. A row naming a declaration that no longer exists
+/// matches no producible delta -- it is STALE, and a stale row refuses every unrelated PR in the
+/// repository, which is the failure mode this whole roster exists to avoid. Deleting the
+/// declaration and keeping its admission rows would have been the fabricated-debt shape: a
+/// permission over nothing that reads as coverage.
+///
+/// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
+/// deletion -- the specification record's field type, and the standing row's declared type and
+/// constructor. Their transition is still open for the reason stated above.
 /// SIXTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
 /// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
 /// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
@@ -731,6 +805,36 @@ const CALL_REACHABILITY_GROUNDING_LABEL: &str =
     "call-reachability grounding gunbc#10156 2026-09-03";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: specification record field type",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+            in_declaration: "AltraPlatformHwDesignSpecification",
+            spelling: "HeldSpecificationSupersessionStanding",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: platform standing row, declared type",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+            in_declaration: "altra_platform_hw_design_supersession_standing",
+            spelling: "HeldSpecificationSupersessionStanding",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10011 supersession-standing re-home: platform standing row, constructor",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+            in_declaration: "altra_platform_hw_design_supersession_standing",
+            spelling: "NewerRevisionExistsUnretrieved",
+            target: "extdeps.publication",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: CALL_REACHABILITY_GROUNDING_LABEL,
         subject: AdmissionSubject::Binding {
