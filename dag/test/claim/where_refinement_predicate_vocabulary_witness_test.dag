@@ -64,20 +64,28 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // the roster and membership is checked at spelling grain, never by count, which is what DESIGN
 // section 5 requires of a debt contract before it may block a merge.
 
+// FIELD NOTES, hoisted here because source annotations are module-item grain and one inside a
+// declaration body refuses (DESIGN 4c). `clause` is the full where-clause text as an author writes
+// it and is NOT the spelling: `brand` and `range` are parenthesised forms and a bare spelling would
+// not parse, so carrying only the key would have quietly restricted this witness to the
+// unparenthesised predicates -- the narrowed subject that looks identical to a passing one.
+// `value_text` is the literal as it appears in source, quotes included for string bases, and every
+// one of them VIOLATES its predicate wherever the predicate is decidable at all, because a
+// satisfying literal is silent under both arms of the partition and could not discriminate them.
+
 type WherePredicateProbe {
   spelling: String
-  // The full where-clause text as an author writes it. It is NOT the spelling: `brand` and `range`
-  // are parenthesised forms and a bare spelling would not parse, so carrying only the key would
-  // have quietly restricted this witness to the unparenthesised predicates -- the narrowed subject
-  // that looks identical to a passing one.
   clause: String
   base_type: String
-  // The literal as it appears in source, quotes included for string bases. Every one of these
-  // VIOLATES its predicate where the predicate is decidable at all, because a satisfying literal
-  // is silent under both arms of the partition and could not discriminate them.
   value_text: String
   expected_refusal: Bool
 }
+
+// THE LAST THREE ROWS ARE THE FINDING. oci_path_component_syntax, oci_tag_syntax and
+// c_translation_unit_basename_safe each carry a value_text no author could mistake for a valid
+// instance of the type -- an OCI path component may not contain spaces or exclamation marks, an OCI
+// tag may not either, and a C translation-unit basename may not. All three predicates are declared,
+// total String -> Bool functions that decide exactly this. All three compile clean.
 
 data where_predicate_probes: List<WherePredicateProbe> = [
   WherePredicateProbe {
@@ -164,10 +172,6 @@ data where_predicate_probes: List<WherePredicateProbe> = [
     value_text: "\"anything\"",
     expected_refusal: false
   },
-  // THE THREE. Each value_text below is a string no author could mistake for a valid instance of
-  // the type -- an OCI path component may not contain spaces or exclamation marks, an OCI tag may
-  // not either, and a C translation-unit basename may not. All three predicates are declared, total
-  // String -> Bool functions that decide exactly this. All three compile clean.
   WherePredicateProbe {
     spelling: "oci_path_component_syntax",
     clause: "oci_path_component_syntax",

@@ -1,6 +1,6 @@
 module gunbc.where_refinement_predicate_vocabulary
 
-import std.types { String, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -68,6 +68,17 @@ fn where_predicate_decl(module_path: String, decl_name: String) -> WherePredicat
 // maps "brand" onto "Brand" so the two spellings meet. The authored form is the key here because
 // this roster's population is what an author can write, not what the parser rewrites it into.
 
+// THE non_empty ROW IS THE FORK, AND IT IS THE ONE A GREP FOR THE SPELLING CANNOT FIND. It is
+// recorded as NoDeclarationCompilerInternal even though `fn non_empty` EXISTS in the corpus,
+// because the declaration that exists is v2.std.algebra non_empty<T>(xs: FreeMonoid<T>) -> Bool --
+// a different predicate over a different domain. The where-predicate `non_empty` means String
+// length > 0 and that meaning is hand-written inside 04_infer
+// decidable_where_string_predicate_holds. Claiming the algebra declaration as that row's grounding
+// would be the fabrication DESIGN section 5 forbids: it would assert an authority that does not
+// answer for this predicate. A THIRD carrier of the same concept exists at
+// v2.lens.enforcement.gate non_empty_string(s: String) -> Bool. One concept, three authorities, and
+// the load-bearing one is not a declaration at all.
+
 data where_refinement_predicate_vocabulary: List<WherePredicateRow> = [
   WherePredicateRow {
     spelling: "brand",
@@ -84,16 +95,6 @@ data where_refinement_predicate_vocabulary: List<WherePredicateRow> = [
     enforcement: IntLiteralDecidable,
     grounding: NoDeclarationCompilerInternal
   },
-  // THE FORK, AND IT IS THE ONE A GREP FOR THE SPELLING CANNOT FIND. `non_empty` is recorded here
-  // as NoDeclarationCompilerInternal even though `fn non_empty` EXISTS in the corpus, because the
-  // declaration that exists is v2.std.algebra non_empty<T>(xs: FreeMonoid<T>) -> Bool -- a
-  // different predicate over a different domain. The where-predicate `non_empty` means String
-  // length > 0 and that meaning is hand-written inside 04_infer
-  // decidable_where_string_predicate_holds. Claiming the algebra declaration as this row's
-  // grounding would be the fabrication DESIGN section 5 forbids: it would assert an authority that
-  // does not answer for this predicate. A THIRD carrier of the same concept exists at
-  // v2.lens.enforcement.gate non_empty_string(s: String) -> Bool. One concept, three authorities,
-  // and the load-bearing one is not a declaration at all.
   WherePredicateRow {
     spelling: "non_empty",
     enforcement: StringLiteralDecidable,
@@ -208,8 +209,6 @@ fn where_predicate_grounded_rows(rows: List<WherePredicateRow>) -> List<WherePre
 // executes the roster against the compiler's real behaviour name by name, so a new unenrolled
 // predicate reds rather than joining a list.
 
-data where_refinement_unenrolled_predicate_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "TRIGGER, one and checkable: a where-refinement predicate spelling is RESOLVED to its declaration rather than matched against a name-keyed table, so that the declaration is the predicate's single authority for both its meaning and its identity under subsumption. SUFFICIENT FOR: (a) deleting where_refinement_is_int_literal_predicate, where_refinement_is_string_literal_predicate, where_refinement_is_deferred_predicate and decidable_where_string_predicate_holds rather than adding rows to them, since a resolved declaration states its own semantics; (b) refusing an unresolvable predicate spelling at acceptance, which retires the 'predicate not enforced at compile time' arm of is_where_refinement_unenforced_advisory_reason; and (c) keying where_refinement_predicates_equivalent on the resolved declaration rather than on the spelling. A CHANGE THAT DELIVERS ONLY ONE OF THE THREE DOES NOT RETIRE THIS ROW, and the reason is stated because the grain mismatch is the review tell DESIGN 4b(3) names: the loss here is a CORPUS-GRAIN loss over every predicate spelling, so a trigger naming one predicate's enrolment, or one table's replacement, would be satisfied while the capability stays dead. ENROLLING THESE THREE NAMES IN THE EXISTING TABLES IS EXPLICITLY NOT THE TRIGGER AND WOULD NOT DISCHARGE THIS ROW: it would grow the forked authority this row exists to record, which DESIGN section 2 calls a failed decomposition. There is a STANDING declared trigger in the tree naming a DIFFERENT end-state for the same subject -- feature:where-refinement-predicate-coproduct, a closed WhereRefinementPredicateKind coproduct replacing the string classifiers, cited by where_refinement_deferral_reason_scaffold_note in v1.std.core and by the predicate min-length tables in v1.compiler.infer. THIS ROW DOES NOT SUPERSEDE IT AND MUST NOT BE READ AS DOING SO. DESIGN 4b(3) is categorical that a declared drop is retired by its trigger and by nothing else, so the choice between a resolved declaration and a closed coproduct is a trigger CHANGE owed in the open as its own decision, not something a better answer may outrun. Whichever wins, this roster's rows are the population that change has to cover. TWO FACTS ABOUT THE SHAPE ARE ALREADY DECIDED AND ARE RECORDED HERE RATHER THAN RE-ARGUED LATER, because the second one is a refusal and a refusal that lives only in a chat thread is not an authority. ASKED of the lane carrying gunbc#10146 (declaration-bound direct-call formal authority, the same move applied to call formals on the same file) whether its ResolvedFormal / DeclarationBoundFormals coproduct generalises to predicates. IT DOES NOT, and reusing it was REFUSED: its fields are parameter_identity, declared_type, declaration_bound_conformance and substitution_basis, and its consumers depend on formal-to-argument correspondence, so a predicate inhabiting it would give those four fields a second meaning under one name -- the DESIGN section 3 fork this row exists to close, re-created while closing it. What generalises is the PATTERN and not the carrier: resolve at the declaration-owning environment, carry an exact declaration identity or a typed unavailable cause forward to the later judgment, and prohibit reconstruction from a bare string at the consuming site. So the predicate move owes its OWN domain carrier declared in substrate, keyed by DeclarationRef rather than by spelling, with its own unavailable causes -- a predicate's ways of failing to resolve are not a call formal's. SEQUENCING, agreed with that lane: the predicate move is a FOLLOW-ON that consumes the established pattern after gunbc#10146 lands, and is NOT folded into it; that PR is integrating main and validating its direct-call floor, and widening its subject would obscure both witnesses.")
-
 // CEILING AND WHAT THIS ROSTER CANNOT DO, stated because a roster read as a census is worse than
 // no roster (DESIGN 4b meta-obligation 1: the reported rung must equal the rung executed evidence
 // establishes).
@@ -237,3 +236,5 @@ data where_refinement_unenrolled_predicate_dissolve_trigger: DissolutionConditio
 // live tree, SUFFICIENT FOR a .dag lens to assert checked == total over the corpus population
 // without the roster being consulted. Until that exists, a new predicate spelling that never
 // reaches this file is invisible to every mechanism in this repository.
+
+data where_refinement_unenrolled_predicate_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "TRIGGER, one and checkable: a where-refinement predicate spelling is RESOLVED to its declaration rather than matched against a name-keyed table, so that the declaration is the predicate's single authority for both its meaning and its identity under subsumption. SUFFICIENT FOR: (a) deleting where_refinement_is_int_literal_predicate, where_refinement_is_string_literal_predicate, where_refinement_is_deferred_predicate and decidable_where_string_predicate_holds rather than adding rows to them, since a resolved declaration states its own semantics; (b) refusing an unresolvable predicate spelling at acceptance, which retires the 'predicate not enforced at compile time' arm of is_where_refinement_unenforced_advisory_reason; and (c) keying where_refinement_predicates_equivalent on the resolved declaration rather than on the spelling. A CHANGE THAT DELIVERS ONLY ONE OF THE THREE DOES NOT RETIRE THIS ROW, and the reason is stated because the grain mismatch is the review tell DESIGN 4b(3) names: the loss here is a CORPUS-GRAIN loss over every predicate spelling, so a trigger naming one predicate's enrolment, or one table's replacement, would be satisfied while the capability stays dead. ENROLLING THESE THREE NAMES IN THE EXISTING TABLES IS EXPLICITLY NOT THE TRIGGER AND WOULD NOT DISCHARGE THIS ROW: it would grow the forked authority this row exists to record, which DESIGN section 2 calls a failed decomposition. There is a STANDING declared trigger in the tree naming a DIFFERENT end-state for the same subject -- feature:where-refinement-predicate-coproduct, a closed WhereRefinementPredicateKind coproduct replacing the string classifiers, cited by where_refinement_deferral_reason_scaffold_note in v1.std.core and by the predicate min-length tables in v1.compiler.infer. THIS ROW DOES NOT SUPERSEDE IT AND MUST NOT BE READ AS DOING SO. DESIGN 4b(3) is categorical that a declared drop is retired by its trigger and by nothing else, so the choice between a resolved declaration and a closed coproduct is a trigger CHANGE owed in the open as its own decision, not something a better answer may outrun. Whichever wins, this roster's rows are the population that change has to cover. TWO FACTS ABOUT THE SHAPE ARE ALREADY DECIDED AND ARE RECORDED HERE RATHER THAN RE-ARGUED LATER, because the second one is a refusal and a refusal that lives only in a chat thread is not an authority. ASKED of the lane carrying gunbc#10146 (declaration-bound direct-call formal authority, the same move applied to call formals on the same file) whether its ResolvedFormal / DeclarationBoundFormals coproduct generalises to predicates. IT DOES NOT, and reusing it was REFUSED: its fields are parameter_identity, declared_type, declaration_bound_conformance and substitution_basis, and its consumers depend on formal-to-argument correspondence, so a predicate inhabiting it would give those four fields a second meaning under one name -- the DESIGN section 3 fork this row exists to close, re-created while closing it. What generalises is the PATTERN and not the carrier: resolve at the declaration-owning environment, carry an exact declaration identity or a typed unavailable cause forward to the later judgment, and prohibit reconstruction from a bare string at the consuming site. So the predicate move owes its OWN domain carrier declared in substrate, keyed by DeclarationRef rather than by spelling, with its own unavailable causes -- a predicate's ways of failing to resolve are not a call formal's. SEQUENCING, agreed with that lane: the predicate move is a FOLLOW-ON that consumes the established pattern after gunbc#10146 lands, and is NOT folded into it; that PR is integrating main and validating its direct-call floor, and widening its subject would obscure both witnesses.")
