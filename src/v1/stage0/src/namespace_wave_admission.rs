@@ -349,6 +349,14 @@ pub struct TransitionAdmission {
 /// only the all-empty shape in a const: it refused loudly as stale, but no const row could name a
 /// real module.
 ///
+/// EVERY ROW BELOW IS `TargetChanged`, AND THAT IS THE WHOLE CLAIM: a spelling authored on both
+/// sides now resolves to a different module. NONE of them changes WHICH DECLARATION the spelling
+/// denotes -- the wall reports the module-membership half of the same motion as
+/// `SameDeclarationIdentityRebind` and auto-admits it, and a binding whose meaning had actually
+/// moved would refuse on its own row rather than be covered by these. The rows are enumerated by
+/// exact identity, never by a pattern over the renamed modules, because a pattern would admit a
+/// genuine rebind that happened to land in the same module pair.
+
 /// EMPTY IS THE RESTING STATE between transitions.
 ///
 /// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
@@ -744,8 +752,39 @@ pub struct TransitionAdmission {
 /// the change that went looking for it. Removing them here is the trigger being honoured rather
 /// than a sweep of convenience, and it is why no separate follow-up PR is owed.
 ///
-/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
-/// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
+/// THE RESTING STATE WAS RESTORED BY THE EIGHTEENTH DISSOLUTION (2026-09-03): empty, as of that
+/// change and before the seventeenth transition below. That half is a dated observation about a
+/// moment, so it carries its date.
+///
+/// EMPTY IS NOT PERMISSIVE — a run with a real delta still refuses it as UNADJUDICATED, closed by
+/// authoring a row and never by a silent admission. That is a claim about the MECHANISM, it holds
+/// whatever the roster contains, and it is stated on its own rather than as a subordinate clause of
+/// a snapshot that can go stale underneath it.
+///
+/// NINETEENTH DISSOLUTION (2026-09-03). The three `gunbc#10011 supersession-standing re-home`
+/// rows are removed by their own trigger, which fired: #10011 merged as 4acf8ac234, so main
+/// carries the re-home and no run after it can produce those deltas. They arrived here through a
+/// merge rather than by being authored here -- this branch composed the roster from both sides
+/// when git cut its hunks through the middle of the records -- and the required run reported them
+/// as `3 consumed admission(s) due for deletion on this roster-touching change`.
+///
+/// THE OBLIGATION IS CHARGED TO THE TOUCHER AND THIS COMMIT IS ONE, which is the same rule the
+/// eighteenth dissolution above paid. A row whose subject has landed is not merely useless: it is
+/// stale on every subsequent run, so leaving it refuses unrelated changes. The roster shrinks with
+/// its subject or it becomes a tax on everyone downstream.
+///
+/// SEVENTEENTH TRANSITION (2026-09-03, gunbc#10106), AND IT LANDED ON A ROSTER THIS BRANCH AND
+/// MAIN EMPTIED INDEPENDENTLY, WHICH IS THE TRIGGER MECHANISM WORKING RATHER THAN A COLLISION.
+/// Main deleted the 57 consumed rows on one side while this branch deleted the same 57 on the
+/// other, neither aware of the other, both paying the rule that consumed rows are due for deletion
+/// on the next roster-touching change. A trigger that reaches two unrelated changes and is
+/// honoured by both is doing what a trigger is for.
+///
+/// THE SENTENCE ABOVE WAS SPLIT, NOT RE-TENSED, and the distinction is the point. It was doing two
+/// jobs: a dated claim that the roster was empty, which the rows below falsify, and a claim that an
+/// empty roster is not permissive, which is a property of the mechanism and remains true.
+/// Re-tensing the whole sentence would have weakened a live invariant in order to correct a stale
+/// fact standing beside it -- the same error as taking either side of a conflict whole.
 /// AND THE ROSTER RE-OPENS ONCE MORE, for the same reason and by the same rule. The sweep above is
 /// main's and it is correct: the gunbc#10077 rows were consumed and the change that re-tensed their
 /// trigger owed their deletion. It restored the resting state to empty ON MAIN. This merge then
@@ -767,34 +806,161 @@ pub struct TransitionAdmission {
 /// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
 /// deletion -- the specification record's field type, and the standing row's declared type and
 /// constructor. Their transition is still open for the reason stated above.
+/// TWENTIETH DISSOLUTION (2026-09-03, gunbc#10156). The 47 `rung drop authority consolidation
+/// gunbc#10106` rows are deleted, by their own trigger: #10106 merged as 78e022c51e4, so main
+/// carries the consolidation and no run after it can produce those deltas. Required run 33772725454
+/// on 646058e82c reported `FAILED PHASE namespace-wave-admission (0 unadjudicated delta(s),
+/// 0 stale admission(s), 47 consumed admission(s) due for deletion on this roster-touching
+/// change)`, with the floor CLEAN in that same run -- so the phase failure was this and nothing
+/// else. The resting state returns to this branch's own 17 rows.
+///
+/// THIS IS THE SAME EVENT FOR THE THIRD TIME, AND THE SECOND TIME ON THIS ONE BRANCH. At 57 rows
+/// (main and a branch, independently), at 3 rows (this branch and #10106, independently, both
+/// authoring the same NINETEENTH DISSOLUTION), and now at 47. The trigger is working exactly as
+/// designed each time -- it reaches every concurrent roster-touching change and is honoured by
+/// whichever observes it first. What recurs is the COST of honouring it: a branch that touches this
+/// roster for its own reasons inherits the obligation to delete someone else's consumed rows, and
+/// must author or yield a record for an event it did not cause. This branch has now done that twice
+/// in one PR, for two different upstream transitions.
+///
+/// NO YIELD THIS TIME, AND THE ASYMMETRY IS THE POINT. The gunbc#10011 deletion was yielded to
+/// #10106 because that branch was live and had authored the same record concurrently; two records
+/// of one event would have been a §3 violation that merged silently. #10106 has now MERGED, so
+/// nothing else is going to delete its consumed rows and no competing record exists. Deleting
+/// without recording would leave 47 admissions vanishing from main with nothing describing why,
+/// which is the failure the roster's history exists to prevent. So this branch records it.
+///
+/// THE THREE `gunbc#10011` ROWS ARE DELETED HERE AND THE RECORD OF THAT DISSOLUTION IS NOT HERE.
+/// It is gunbc#10106's NINETEENTH DISSOLUTION, and this branch deliberately authors no second one.
+///
+/// Both branches discovered the same three consumed admissions independently, both concluded the
+/// deletion was owed by the first roster-touching change to observe it, and both were right -- the
+/// trigger obliges EVERY concurrent roster-touching branch, so concurrent discovery is the
+/// mechanism working, not a race. What does not follow is two records. One event with two
+/// ordinal-bearing writeups is a §3 single-authority violation whichever ordinals they wear, and
+/// it would survive the git conflict rather than being caught by it. #10106 pushed first and is
+/// mid-CI, so it carries the record and this branch carries only the deletion the gate requires.
+///
+/// THIS IS THE THIRD ORDINAL COLLISION ON THIS FILE FROM ONE BRANCH, AND THE SECOND TIME THIS
+/// EXACT EVENT HAS BEEN DOUBLE-RECORDED. #10106's own SEVENTEENTH TRANSITION documents the same
+/// thing happening one round earlier with 57 rows -- "main deleted the 57 consumed rows on one
+/// side while this branch deleted the same 57 on the other, neither aware of the other" -- and
+/// wrote it up as the trigger working. It is now twice, at 57 rows and at 3, which makes it a
+/// property of the carrier rather than an accident: an author-assigned ordinal, in prose, in a
+/// file every lane must write by construction, cannot be made safe by diligence. Recorded here as
+/// the observation; choosing the replacement carrier is not this cut's to make.
+///
+/// EIGHTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
+/// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
+/// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
+/// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
+/// head is `v2.std.fn_index` -- verified as the only `TargetChanged` shape in the report, so no row
+/// here adjudicates a delta this transition did not cause. Measured from required run 33700978133
+/// on cdd31b664a, which reported exactly `17 unadjudicated delta(s)`.
+///
+/// THE BASES ARE NOT ALL ONE MODULE, and that is the transition's shape rather than an error: the
+/// concept had FOUR authorities, so the spellings move from four different bases -- the two lenses
+/// that carried the walk, plus `v2.lens.production_qualification_origin_probe` and
+/// `v2.lens.affected_set.entry_selection`, which each held a copy of one helper. One row names a
+/// consumer outside `src/v2` entirely: `test.claim.bmc_onboarding_quarantine_witness_test` bound
+/// `atom_identities_in_node` by name. Nothing broke -- the name still resolves -- but a cross-root
+/// binding whose target moved is exactly the delta a reader must be shown.
+///
+/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Seventeen deltas, seventeen rows, each naming
+/// its module, its declaration and the exact spelling whose target moved. A wildcard over
+/// "anything that moved to v2.std.fn_index" would also admit the next relocation nobody reviewed.
+///
+/// TRIGGER: #10156 MERGING. After that, main carries the grounding, so a later run's base and head
+/// both have it and no run can produce these deltas.
+///
+/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established and the
+/// eighteenth dissolution then confirmed: rows authored in the same PR that performs their own move
+/// are satisfied at the BASE of every later run, never merely unmatched. Born consumed, like the
+/// SJT-1, DCH-1 and #10077 cohorts. Their deletion is therefore owed by whoever next touches this
+/// roster, on the convention the entry above honoured rather than delegated.
+///
+/// THE ORDINAL IS THE NEXT UNUSED ONE, NOT THE NEXT IN SEQUENCE, because this ledger's transition
+/// ordinals already collide: FOURTH and FIFTH each name two different transitions (gunbc#9665 and
+/// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
+/// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
+/// have made the entry uncitable by its own name -- which is what an ordinal is for.
+
+/// NINETEENTH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
+/// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
+/// because the type module cannot import the rows back without a cycle. Two bindings in
+/// `gunbc.design_ledgers` therefore resolve to a new target, which is `TargetChanged` and is not
+/// one of the auto-admitted dispositions.
+///
+/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY. They add no branch, no
+/// dispatch and no code path; the mechanism that reads them is unchanged and every namespace
+/// rebind in this repository is declared exactly this way. What would be a scaffold here is a
+/// second route around the adjudicator, and there is none: the whole point of the row is to make
+/// the transition adjudicated rather than silent.
+///
+/// DISSOLVE-ON is gunbc#10206 merging, and the trigger names the CAPABILITY rather than an
+/// artifact: once main carries the split, no run can produce these two deltas, so the rows become
+/// stale and a stale row refuses unrelated changes. By this module's own rule the deletion is
+/// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
+/// forget; the required run reports them as consumed admissions due for deletion on that change.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: specification record field type",
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "AltraPlatformHwDesignSpecification",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, declared type",
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_preamble_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, constructor",
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "NewerRevisionExistsUnretrieved",
-            target: "extdeps.publication",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "collect_pattern_rc_variant_guards",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_typed_match_arm_strs",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_arm_has_refutable_plain_field",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_pattern_preludes",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

@@ -248,9 +248,29 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 //
 // AGAINST THAT CONTROL THE SERVE BEATS THE RECOMPUTE IN BOTH PAIRS, by roughly a tenth on the
 // rows it reaches, with about an eighth of their eval_steps avoided; the two pairs' bootstrap
-// intervals overlap and neither admits 1. Re-derive with the instrument named rather than
-// trusting this sentence. The estimate is biased TOWARD the null, not toward this result: a row
-// the serve reached whose step count happened not to move lands in the control group.
+// intervals overlap and neither admits 1. The estimate is biased TOWARD the null, not toward this
+// result: a row the serve reached whose step count happened not to move lands in the control group.
+//
+// WHAT RE-DERIVES WHICH HALF OF THAT, BECAUSE ONE INSTRUMENT DOES NOT EXIST. An earlier revision
+// of this paragraph said `re-derive with the instrument named`, and named none: the run ids above
+// are the measurement's STORAGE and `eval_steps` is its OUTPUT column, and neither performs the
+// control split or the interval. Promising a producer that does not exist is worse than
+// transcribing a figure, because a reader who tries to act on the sentence finds nothing to run --
+// and it is a different defect from the one the paragraphs above avoid, which name real
+// instruments (claim_batch under GUNBC_RECOMPUTE_TRACE=1, and the floor's own cost artifact).
+// Corrected rather than softened (raised as REQUEST_CHANGES by codex, review 59321):
+//   RE-DERIVABLE with no instrument at all, from the four run ids plus
+//   `required_floor_claim_cost.tsv`: join the subject's rows across a pair at identity grain,
+//   take the consumer set from the present arm's own `[floor-shared-fill] modules=` field, split
+//   those rows into steps-FELL and steps-BYTE-IDENTICAL, and ratio the aggregates. That is the
+//   decisive comparison, and it needs arithmetic rather than tooling.
+//   NOT RE-DERIVABLE that way: the bootstrap intervals. Resampling needs an RNG the report path
+//   does not have, so they stand as observed and cannot be reproduced from anything named here.
+//   The claim they support -- that neither interval admits 1 -- therefore rests on the original
+//   measurement rather than on anything a later reader can re-run.
+// The row's admission stands on the ratio, which is re-derivable; the intervals corroborate it
+// and are not load-bearing for it. Dropping the split and the intervals while keeping the
+// confident register would have been the same defect with the evidence removed.
 //
 // SO THE ROW STAYS, on all three conjuncts rather than two. The refusal that opened this question
 // is already gone, and by the same reasoning rather than by exemption: gunbc#10141's overlap join
@@ -314,11 +334,23 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // roster rows claiming one saving, which is the failure gunbc#10108's own note names about
 // enrolling a nest. This paragraph stands in the withdrawn row's place so the next reader does
 // not re-derive its cost figures and re-propose it.
+//
+// THE ARROW-BODY PROJECTION ROW IS MEASURED CROSS-CLAIM WORK, NOT INFERRED FROM THE FOUR ROWS
+// that exposed it. Required-floor run 33707763185's complete cross-claim-demand artifact names
+// `target_project_arrow_body_to_value_expression` at 95 claims / 117 evaluations, 4396ms total
+// and 4350ms cross-claim across the emit family. The four `v2.test.emit.rust_body_add_emit`
+// identities are consumers of that same declaration and argument population; moving their five
+// fixture values between modules changed each by exactly 39 of ~171k evaluator steps and thereby
+// refuted import closure as their cost owner. This row enrolls the producer the run-scoped census
+// actually named. Its present-vs-absent receipt is #10170's required-floor claim-cost and shared-
+// fill artifacts; if serve does not beat recompute at identity grain, this row is withdrawn under
+// the admission criterion above rather than defended by the family aggregate.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
   "v2.compiler.translate.grammar_relation_row_for_emitted",
   "v2.std.grammar.formal_productions_from_catalog_node",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness",
+  "v2.std.compilers.target_model.target_project_arrow_body_to_value_expression"
 ]
 
 // ── REFUSED CANDIDATES: THE ROWS THIS ROSTER MEASURED AND TURNED DOWN ─────────────────────

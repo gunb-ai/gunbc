@@ -1,0 +1,331 @@
+module gunbc.spark.vllm_rank_population
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity, host_identity_eq }
+
+// THE LAW THAT DECIDES WHETHER A SET OF OBSERVED WORKERS IS THE UNIT IT CLAIMS TO BE.
+//
+// gunbc.spark.vllm_observed refuses to call a front-door readback a tensor-parallel realization,
+// because one front door establishes an engine and an artifact and says nothing about which machines
+// carry which rank. This module is the missing half: given a resolved parallel configuration and a
+// set of participants, it decides whether they form a coherent population -- and refuses, with every
+// finding, when they do not.
+//
+// IT PROVES THE LAW EXECUTES; IT DOES NOT CLAIM ANY WORKER EXISTS. Nothing here acquires anything.
+// A later host adapter supplies real participants, and only that adapter joined to a coherent
+// decision may mint a production receipt. Landing the law first is deliberate: the alternative was to
+// author the receipt records now and leave them uninhabited, which would be a family of types with no
+// constructor path and no discriminating RED -- decoration that would later be cited as coverage.
+//
+// THE SHAPE IS NOT INVENTED. It was read off a live pair: world_size=2 with DP rank 0, PP rank 0 and
+// TP ranks 0 and 1, two worker processes with distinct pids, one on each fabric address, all under a
+// single engine incarnation. Every refusal arm below is a way that observation could have come back
+// wrong.
+
+// THIS MODULE MAKES NO ACQUISITION CLAIM, AND THAT IS WHY IT CARRIES NO PROVENANCE.
+//
+// An earlier version had the observation carry `HermeticFixture | AcquiredFromHostVantage` and the
+// decision carry it forward, so a consumer needing acquired evidence could demand it. The acquired
+// arm was minted by wrapping each host in a `VllmHostVantage` -- a constructor that took a host name
+// and nothing else. That did not cost a connection, an executed host effect, or a capture: it changed
+// the free relabel from one keyword into one wrapper call per host. Naming the wrapper after the
+// vantage did not make it one.
+//
+// The honest shape is that the DECLARING side owns the claim. This kernel decides whether a declared
+// population is coherent, which is a pure question about ranks, hosts and identities; the future host
+// adapter owns `VllmAcquiredJoinedObservation`, mints acquisition from a real executed observation,
+// projects its semantic fields into this law, and joins its own acquired record to the coherent
+// decision to make a production receipt. The adapter earns provenance. The kernel cannot, so it does
+// not claim it -- an acquisition vocabulary in a module whose stated scope is "nothing here acquires
+// anything" is the decoration this module refuses everywhere else.
+
+// AN ENGINE INCARNATION, WHICH IS NOT A VERSION STRING.
+//
+// Three vLLM launches on one pair in one day reported an identical self-reported version and an
+// identical checkpoint snapshot while differing in resolved capacity by 22%. So the thing that makes
+// evidence joinable is the incarnation, and the incarnation is the engine process, not anything the
+// HTTP surface advertises.
+type VllmEngineIncarnation sole_constructor {
+  engine_core_identity: NonEmptyStr
+}
+
+fn vllm_engine_incarnation(engine_core_identity: NonEmptyStr) -> VllmEngineIncarnation {
+  VllmEngineIncarnation { engine_core_identity: engine_core_identity }
+}
+
+fn vllm_engine_incarnation_eq(a: VllmEngineIncarnation, b: VllmEngineIncarnation) -> Bool {
+  a.engine_core_identity as String == b.engine_core_identity as String
+}
+
+// THE RESOLVED DECOMPOSITION, AND THE REASON world_size IS NOT ENOUGH ON ITS OWN.
+//
+// A world size of 2 is consistent with TP=2, with PP=2 and with DP=2. Anything that reads only the
+// product cannot tell a tensor-parallel pair from a pipeline-parallel one, which is why the expected
+// rank set must be derived from the full decomposition rather than from the total.
+type VllmResolvedParallelConfiguration sole_constructor {
+  tensor_parallel_degree: Nat
+  pipeline_parallel_degree: Nat
+  data_parallel_degree: Nat
+  world_size: Nat
+}
+
+fn vllm_resolved_parallel_configuration(
+  tensor_parallel_degree: Nat,
+  pipeline_parallel_degree: Nat,
+  data_parallel_degree: Nat,
+  world_size: Nat,
+) -> VllmResolvedParallelConfiguration {
+  VllmResolvedParallelConfiguration {
+    tensor_parallel_degree: tensor_parallel_degree,
+    pipeline_parallel_degree: pipeline_parallel_degree,
+    data_parallel_degree: data_parallel_degree,
+    world_size: world_size,
+  }
+}
+
+type VllmRankParticipant sole_constructor {
+  global_rank: Nat
+  tensor_parallel_rank: Nat
+  host: HostIdentity
+  host_local_worker_process_key: NonEmptyStr
+  incarnation: VllmEngineIncarnation
+}
+
+fn vllm_rank_participant(
+  global_rank: Nat,
+  tensor_parallel_rank: Nat,
+  host: HostIdentity,
+  host_local_worker_process_key: NonEmptyStr,
+  incarnation: VllmEngineIncarnation,
+) -> VllmRankParticipant {
+  VllmRankParticipant {
+    global_rank: global_rank,
+    tensor_parallel_rank: tensor_parallel_rank,
+    host: host,
+    host_local_worker_process_key: host_local_worker_process_key,
+    incarnation: incarnation,
+  }
+}
+
+// THE OBSERVATION, WHOSE COMPLETENESS IS A FIELD BECAUSE A PARTIAL COLLECTION LOOKS LIKE A SMALL ONE.
+//
+// A collector that returned three of four workers and a collector that found three workers produce
+// the same list. Only the first is a missing rank; the second is a real population. Nothing
+// downstream can tell them apart from the list, so the collector must say which it was, and a
+// partial return refuses rather than being read as a population with a gap.
+//
+// THE PARTICIPANTS LIVE INSIDE THE OBSERVATION, so what is decided is one declared collection rather
+// than a list and a completeness flag that were assembled separately and happen to be passed together.
+type VllmJoinedObservation sole_constructor {
+  incarnation: VllmEngineIncarnation
+  returned_completely: Bool
+  participants: List<VllmRankParticipant>
+}
+
+fn vllm_declared_joined_observation(
+  incarnation: VllmEngineIncarnation,
+  returned_completely: Bool,
+  participants: List<VllmRankParticipant>,
+) -> VllmJoinedObservation {
+  VllmJoinedObservation {
+    incarnation: incarnation,
+    returned_completely: returned_completely,
+    participants: participants,
+  }
+}
+
+// THE SELECTED UNIT IS THE OTHER AUTHORITY IN THE JOIN, and it is supplied separately on purpose:
+// one side says which hosts were CHOSEN, the other says which hosts ANSWERED, and a decision that
+// derived both from one input would be checking a list against itself.
+type VllmSelectedServingUnit sole_constructor {
+  participant_hosts: List<HostIdentity>
+}
+
+fn vllm_selected_serving_unit(participant_hosts: List<HostIdentity>) -> VllmSelectedServingUnit {
+  VllmSelectedServingUnit { participant_hosts: participant_hosts }
+}
+
+type VllmRankPopulationFinding
+  = ObservationDidNotReturnCompletely
+  | DecompositionDoesNotAccountForWorldSize
+  | NotATensorParallelDecomposition
+  | ParticipantCountDoesNotMatchWorldSize
+  | RankObservedMoreThanOnce { rank: Nat }
+  | RankOutsideExpectedSet { rank: Nat }
+  | TensorParallelRankDoesNotMatchGlobalRank { global_rank: Nat, tensor_parallel_rank: Nat }
+  | ParticipantOnUnselectedHost { host: HostIdentity }
+  | SelectedHostCarriedNoRank { host: HostIdentity }
+  | SelectedHostNamedMoreThanOnce { host: HostIdentity }
+  | RanksShareHostLocalWorkerProcessKey { host: HostIdentity, process_key: NonEmptyStr }
+  | ParticipantFromAnotherIncarnation { engine_core_identity: NonEmptyStr }
+
+type VllmRankPopulationDecision
+  = RankPopulationCoherent
+  | RankPopulationRefused { findings: List<VllmRankPopulationFinding> }
+
+// EVERY FINDING IS COLLECTED, NOT THE FIRST ONE.
+//
+// A decision that stopped at the first problem would make an operator fix one thing, re-collect, and
+// meet the next -- paying a full observation cycle per finding against a service whose incarnation
+// changes between attempts. On this pair that is not hypothetical: three incarnations came and went
+// inside one day, so a re-collection is against a different subject.
+fn decide_vllm_rank_population(
+  resolved: VllmResolvedParallelConfiguration,
+  selected_unit: VllmSelectedServingUnit,
+  observation: VllmJoinedObservation,
+) -> VllmRankPopulationDecision {
+  let participants = observation.participants
+  let completeness =
+    if observation.returned_completely { [] } else { [ObservationDidNotReturnCompletely] }
+  let decomposition =
+    if resolved.tensor_parallel_degree * resolved.pipeline_parallel_degree
+         * resolved.data_parallel_degree == resolved.world_size {
+      []
+    } else { [DecompositionDoesNotAccountForWorldSize] }
+  let shape =
+    if resolved.pipeline_parallel_degree == 1 && resolved.data_parallel_degree == 1
+         && resolved.tensor_parallel_degree > 1 {
+      []
+    } else { [NotATensorParallelDecomposition] }
+  let population_size =
+    if length(participants) == resolved.world_size {
+      []
+    } else { [ParticipantCountDoesNotMatchWorldSize] }
+  let findings = concat(completeness, concat(decomposition, concat(shape, concat(population_size,
+    concat(vllm_rank_findings(resolved: resolved, participants: participants),
+      concat(vllm_host_findings(selected_unit: selected_unit, participants: participants),
+        vllm_identity_findings(observation: observation, participants: participants)))))))
+  if length(findings) > 0 {
+    RankPopulationRefused { findings: findings }
+  } else {
+    RankPopulationCoherent
+  }
+}
+
+// THE EXPECTED RANK SET IS PINNED WITHOUT EVER BEING ENUMERATED, and that is a better construction
+// than listing it would have been.
+//
+// Three checks together force the participant ranks to be exactly the half-open range of the world
+// size: the count equals the world size, no rank appears twice, and no rank falls outside it. By
+// pigeonhole those cannot all hold unless every rank in the range appears exactly once -- so
+// completeness is a CONSEQUENCE rather than a separate assertion, and there is no enumerated expected
+// list for a caller to supply, disagree with, or drift from.
+//
+// This also removes the temptation the reviewer warned about: an expected set passed in beside the
+// participants would let the caller author both sides of its own join.
+fn vllm_rank_findings(
+  resolved: VllmResolvedParallelConfiguration,
+  participants: List<VllmRankParticipant>,
+) -> List<VllmRankPopulationFinding> {
+  concat(
+    flat_map(participants, p =>
+      if p.global_rank < resolved.world_size { [] }
+      else { [RankOutsideExpectedSet { rank: p.global_rank }] }),
+    concat(
+      flat_map(participants, p =>
+        if length(filter(participants, q => q.global_rank == p.global_rank)) > 1 {
+          [RankObservedMoreThanOnce { rank: p.global_rank }]
+        } else { [] }),
+      flat_map(participants, p =>
+        if p.tensor_parallel_rank == p.global_rank { [] }
+        else {
+          [TensorParallelRankDoesNotMatchGlobalRank {
+            global_rank: p.global_rank,
+            tensor_parallel_rank: p.tensor_parallel_rank,
+          }]
+        })))
+}
+
+// WHY CORRESPONDENCE IS THE WHOLE TENSOR-PARALLEL RANK LAW, AND RANGE AND UNIQUENESS ARE NOT SEPARATE
+// ARMS.
+//
+// The field was previously carried and never examined, so a population with valid global ranks and
+// nonsense tensor-parallel ranks read as coherent -- an inert field in a law named after it, which is
+// the decoration this module refuses everywhere else.
+//
+// The check is correspondence rather than three checks, because inside this module's accepted domain
+// the other two follow from it. `NotATensorParallelDecomposition` already refuses anything with
+// pipeline or data parallelism, so every population that reaches here has PP=1 and DP=1 -- and under
+// that decomposition vLLM assigns global rank and tensor-parallel rank identically, which is what the
+// live pair showed: "rank 0 ... TP rank 0" and "rank 1 ... TP rank 1". Given that, a tensor-parallel
+// rank equal to an already-range-checked, already-unique global rank is itself in range and unique.
+//
+// Adding separate range and uniqueness arms would be adding two findings that cannot fire while the
+// third holds -- permanently-green checks that would be cited as coverage, which is the failure this
+// repository names rather than a thoroughness win.
+
+// THE SELECTED HOSTS MUST BE DISTINCT IDENTITIES, because a two-entry LIST is not a two-host UNIT.
+//
+// Both directions of the join are existence checks, so `[A, A]` with both ranks on A satisfied every
+// one of them: the count matched, the ranks were 0 and 1 and corresponded, both participants sat on a
+// selected host, both selected entries named a host carrying a rank, the process keys differed. A
+// single machine presented as a pair, and the whole two-host claim rested on list multiplicity
+// standing in for host identity.
+//
+// The invariant is distinctness of the selected population, NOT one rank per host: a legitimate
+// tensor-parallel deployment may place several ranks on one selected machine. With distinct hosts and
+// a world size of two, one-per-host follows for this pair rather than being asserted.
+
+// THE HOST JOIN RUNS IN BOTH DIRECTIONS, which is what makes it a join rather than a filter. A
+// population sitting entirely on one selected host satisfies "no participant is on an unselected
+// host" while leaving the other half of the unit carrying nothing -- exactly the state that would let
+// a two-host unit be declared coherent while one machine sat idle.
+fn vllm_host_findings(
+  selected_unit: VllmSelectedServingUnit,
+  participants: List<VllmRankParticipant>,
+) -> List<VllmRankPopulationFinding> {
+  concat(
+    flat_map(selected_unit.participant_hosts, h =>
+      if length(filter(selected_unit.participant_hosts, g => host_identity_eq(a: g, b: h))) > 1 {
+        [SelectedHostNamedMoreThanOnce { host: h }]
+      } else { [] }),
+  concat(
+    flat_map(participants, p =>
+      if any(selected_unit.participant_hosts, h => host_identity_eq(a: h, b: p.host)) { [] }
+      else { [ParticipantOnUnselectedHost { host: p.host }] }),
+    flat_map(selected_unit.participant_hosts, h =>
+      if any(participants, p => host_identity_eq(a: h, b: p.host)) { [] }
+      else { [SelectedHostCarriedNoRank { host: h }] })))
+}
+
+// ONE INCARNATION, AND DISTINCT WORKER PROCESS KEYS WITHIN ONE HOST.
+//
+// Both halves were read off the live pair: every worker line carried the same EngineCore identity,
+// and the two workers had different pids. A participant from another incarnation is evidence spliced
+// across launches -- the failure this whole line exists to prevent -- and two ranks sharing one
+// process key on one host is one process counted twice, which is how a single-host deployment can
+// present as a pair.
+//
+// THE KEY IS SCOPED TO ITS HOST, because a pid is host-local. Compared as a bare string across the
+// population it refused a legitimate cross-host pair whenever two machines happened to birth their
+// worker at the same number -- a collision this exact two-host unit can produce on any launch, about
+// two real processes.
+//
+// AND IT IS CALLED A PROCESS KEY RATHER THAN A BIRTH IDENTITY, because that is all this law consumes.
+// A pid is a host-local process slot at one observation instant; the number is reused, and under Ray
+// an actor can restart while the logical actor persists. Nothing here can tell a restart from
+// continuity, so naming the field after an identity it has not earned would be the same inflation
+// this module removed from its provenance. The wet adapter, which can retain a Ray session, actor id,
+// restart ordinal, node id and process-start evidence, projects a real identity into this equality
+// key; the kernel only ever asks whether two declared ranks claim one process slot.
+fn vllm_identity_findings(
+  observation: VllmJoinedObservation,
+  participants: List<VllmRankParticipant>,
+) -> List<VllmRankPopulationFinding> {
+  concat(
+    flat_map(participants, p =>
+      if vllm_engine_incarnation_eq(a: p.incarnation, b: observation.incarnation) { [] }
+      else {
+        [ParticipantFromAnotherIncarnation {
+          engine_core_identity: p.incarnation.engine_core_identity,
+        }]
+      }),
+    flat_map(participants, p =>
+      if length(filter(participants, q =>
+           q.host_local_worker_process_key as String == p.host_local_worker_process_key as String
+             && host_identity_eq(a: q.host, b: p.host))) > 1 {
+        [RanksShareHostLocalWorkerProcessKey { host: p.host, process_key: p.host_local_worker_process_key }]
+      } else { [] }))
+}
+

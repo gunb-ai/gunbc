@@ -19,6 +19,7 @@ import gunbc.namespace_step0_candidate_run {
   Step0DifferentialOutcome,
   Step0DifferentialUndefined,
   Step0DifferentialComputed,
+  step0_census_occurrences,
   step0_histogram_differential,
   step0_partition_step
 }
@@ -59,6 +60,12 @@ import gunbc.namespace_step0_canary_v2 {
   CompileAttemptedAndRefused,
   CompileAttemptedAndCompleted,
   Step0HistogramDifferential,
+  Step0DifferentialDomain,
+  EveryCensusRow,
+  BlockingCensusRowsOnly,
+  step0_differential_conserves,
+  step0_differential_gross_decreases,
+  step0_differential_gross_increases,
   Step0DifferentialStanding,
   HistogramsIdentical,
   HistogramBucketsChanged,
@@ -143,12 +150,24 @@ fn pre_strip_refused() -> Step0V2CompileStanding {
   CompileAttemptedAndRefused { observation: observation(members: 9, tag: "admitted", rows: 45, occurrences: 96) }
 }
 
+fn post_strip_completed() -> Step0V2CompileStanding {
+  CompileAttemptedAndCompleted {
+    observation: observation(members: 9, tag: "stripped", rows: 0, occurrences: 0),
+    module_count: 9
+  }
+}
+
 fn both_refused() -> Step0PairStanding {
   BothCompileAttemptsRefused {
     differential_standing: HistogramBucketsChanged {
       differential: Step0HistogramDifferential {
-        gross_increases: 1108,
-        gross_decreases: 0,
+        domain: EveryCensusRow,
+        pre_occurrences: 510,
+        post_occurrences: 1618,
+        shared_increases: 705,
+        shared_decreases: 0,
+        pre_only_occurrences: 0,
+        post_only_occurrences: 403,
         unchanged_buckets: 45,
         pre_only_buckets: 0,
         post_only_buckets: 403
@@ -328,6 +347,70 @@ fn holds(a: NamespaceStep0V2Admission?, f: fn(NamespaceStep0V2Admission) -> Bool
 // refuses everything.
 test fn a_coherent_entered_receipt_is_admitted() -> Bool {
   holds(a: coherent_entered(), f: fn(a) { admitted_is(a: a) })
+}
+
+// GREEN IS AN OBSERVED COMPILE OUTCOME, NOT A VERDICT ON IMPORT DEPENDENCE. This is the successor
+// to v1's now-retired "green must refuse" witness: v2 can represent the completed compile honestly,
+// while the run still says that it did not execute the occurrence-grain producer. The three checks
+// stay together so no later edit can quote the green arm while silently retracting subject entry,
+// the compile transition, or the deliberately separate provenance judgment.
+test fn a_green_post_strip_compile_stays_entered_without_judging_import_dependence() -> Bool {
+  let post = post_strip_completed()
+  let prefix = step0_v2_entered_prefix_for(standing: post)
+  let frontier = entered_with_standing(standing: post)
+  let import_dependence = step0_import_dependence_not_judged()
+  let shape_is_honest = match frontier {
+    Step0V2SubjectNotEntered { blocked_at: _, cause: _ } => false
+    Step0V2SubjectEntered { stripped_population: _, compile_input_population: _, removed_statement_count: _, compile_standing: standing } =>
+      match standing {
+        CompileAttemptedAndCompleted { observation: _, module_count: _ } =>
+          prefix == step0_v2_entered_prefix
+            && match import_dependence {
+              ImportDependenceNotJudged { cause: _, required_capability: _ } => true
+              ImportDependenceCensusObserved { receipt_identity: _, subject_population_identity: _, completeness: _ } => false
+            }
+        CompileInstrumentUnavailable { cause: _ } => false
+        CompileAttemptedAndRefused { observation: _ } => false
+      }
+  }
+  shape_is_honest && holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: CompileOutcomesDiffer {
+        pre_strip_completed: false,
+        differential_standing: HistogramBucketsChanged {
+          differential: Step0HistogramDifferential {
+            domain: EveryCensusRow,
+            pre_occurrences: 45,
+            post_occurrences: 0,
+            shared_increases: 0,
+            shared_decreases: 0,
+            pre_only_occurrences: 45,
+            post_only_occurrences: 0,
+            unchanged_buckets: 0,
+            pre_only_buckets: 45,
+            post_only_buckets: 0
+          }
+        }
+      },
+      order_invariance: OrderInvarianceHeld,
+      prefix: prefix,
+      frontier: frontier,
+      import_dependence: import_dependence
+    ),
+    f: fn(a) { admitted_is(a: a) }
+  )
 }
 
 test fn a_coherent_unentered_receipt_is_admitted() -> Bool {
@@ -981,4 +1064,122 @@ test fn the_same_class_and_subject_at_two_severities_are_two_buckets() -> Bool {
       CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: false, count: 7 }
     ]
   ))
+}
+
+// -------------------------------------------------------- the differenced population names itself
+//
+// WHY THESE FOUR EXIST. The receipt printed blocking_rows / blocking_occurrences beside
+// gross_increases, and those two figures range over DIFFERENT populations:
+// step0_blocking_measure filters to row.blocking, while step0_histogram_differential is handed the
+// FULL census. Both were arithmetically right, so a reader who differenced the blocking
+// occurrences and could not reach gross_increases had no way to discover why -- nothing in either
+// value said which rows it was about, and no assertion anywhere could go red on the mismatch.
+// The domain is now a typed field, and the conservation identity below is what makes a domain
+// mismatch a REFUSAL rather than a printed number.
+
+fn increase_pair_pre() -> List<CompileDiagnosticCensusRow> {
+  [
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shared.dag", blocking: true, count: 3 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shrinks.dag", blocking: true, count: 9 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/vanishes.dag", blocking: false, count: 4 }
+  ]
+}
+
+fn increase_pair_post() -> List<CompileDiagnosticCensusRow> {
+  [
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shared.dag", blocking: true, count: 11 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shrinks.dag", blocking: true, count: 2 },
+    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/appears.dag", blocking: false, count: 6 }
+  ]
+}
+
+fn computed_differential(pre: List<CompileDiagnosticCensusRow>, post: List<CompileDiagnosticCensusRow>) -> Step0HistogramDifferential? {
+  match step0_histogram_differential(pre: pre, post: post) {
+    Step0DifferentialUndefined { cause: _ } => none
+    Step0DifferentialComputed { differential: d } => Present { value: d }
+  }
+}
+
+// CONTROL A. The four occurrence movements are reported SEPARATELY, and this pair discriminates
+// the split from the collapse it replaced: a wholly new bucket contributes 6 to
+// post_only_occurrences and NOT to shared_increases, so shared_increases (8) and gross_increases
+// (14) are different numbers here. Under the prior model they were one field and this row could
+// not be written.
+test fn the_four_occurrence_movements_are_reported_separately() -> Bool {
+  match computed_differential(pre: increase_pair_pre(), post: increase_pair_post()) {
+    Absent => false
+    Present { value: d } =>
+      d.shared_increases == 8
+        && d.shared_decreases == 7
+        && d.pre_only_occurrences == 4
+        && d.post_only_occurrences == 6
+        && d.unchanged_buckets == 0
+        && d.pre_only_buckets == 1
+        && d.post_only_buckets == 1
+        && step0_differential_gross_increases(differential: d) == 14
+        && step0_differential_gross_decreases(differential: d) == 11
+        && step0_differential_gross_increases(differential: d) != d.shared_increases
+  }
+}
+
+// CONTROL B. The differential names its own domain, and that domain is the WHOLE census rather than
+// the blocking subset: this pair carries advisory rows (blocking: false) and their occurrences are
+// inside the movements above, which is exactly the fact the receipt failed to state.
+test fn the_differential_names_the_whole_census_as_its_domain() -> Bool {
+  match computed_differential(pre: increase_pair_pre(), post: increase_pair_post()) {
+    Absent => false
+    Present { value: d } => match d.domain {
+      EveryCensusRow => d.pre_occurrences == step0_census_occurrences(rows: increase_pair_pre())
+        && d.post_occurrences == step0_census_occurrences(rows: increase_pair_post())
+        && d.pre_occurrences == 16
+        && d.post_occurrences == 19
+      BlockingCensusRowsOnly => false
+    }
+  }
+}
+
+// CONTROL C, THE DISCRIMINATING RED. A differential whose movements do not reconcile with the
+// occurrence totals it is differenced against fails the identity, and a real one satisfies it. The
+// perturbed value is authored HERE rather than produced: the production fold cannot emit it, which
+// is the point -- the identity is the wall that keeps it unemittable, so its red must be authorable
+// in a fixture (DESIGN 4b). The perturbation is exactly a domain mismatch: the totals are the
+// blocking subset's while the movements are the whole census's.
+fn movements_over_one_population_totals_over_another() -> Step0HistogramDifferential {
+  Step0HistogramDifferential {
+    domain: EveryCensusRow,
+    pre_occurrences: 12,
+    post_occurrences: 13,
+    shared_increases: 8,
+    shared_decreases: 7,
+    pre_only_occurrences: 4,
+    post_only_occurrences: 6,
+    unchanged_buckets: 0,
+    pre_only_buckets: 1,
+    post_only_buckets: 1
+  }
+}
+
+fn the_real_pair_conserves() -> Bool {
+  match computed_differential(pre: increase_pair_pre(), post: increase_pair_post()) {
+    Absent => false
+    Present { value: d } => step0_differential_conserves(differential: d)
+  }
+}
+
+test fn a_differential_whose_movements_do_not_conserve_its_population_is_refused() -> Bool {
+  let perturbed_conserves = step0_differential_conserves(differential: movements_over_one_population_totals_over_another())
+  !perturbed_conserves && the_real_pair_conserves()
+}
+
+// CONTROL D. The identity is not satisfiable by an empty population alone: the pair above moves
+// occurrences in all four directions and still conserves, so a conserving answer is evidence about
+// this pair rather than about zero.
+test fn the_conservation_identity_is_not_vacuous_on_a_moving_pair() -> Bool {
+  match computed_differential(pre: increase_pair_pre(), post: increase_pair_post()) {
+    Absent => false
+    Present { value: d } =>
+      d.post_occurrences - d.pre_occurrences == 3
+        && (d.shared_increases + d.post_only_occurrences) > 0
+        && (d.shared_decreases + d.pre_only_occurrences) > 0
+  }
 }

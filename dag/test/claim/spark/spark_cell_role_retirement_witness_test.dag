@@ -3,6 +3,15 @@ module test.claim.spark.spark_cell_role_retirement_witness_test
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.serving_convergence_withholding {
+  SparkServingConvergenceWithholding,
+  SparkServingWithholdingReason,
+  RunsARealizationNoDesiredStateModels,
+  HeldByOperatorDecision,
+  spark_serving_convergence_withholding,
+  spark_serving_withheld_hosts,
+  spark_serving_host_is_withheld,
+}
 import gunbc.spark.cell_role {
   SparkCellRole,
   SparkServingCell,
@@ -516,15 +525,27 @@ data w_fixture_roster: List<SparkCellRoleAssignment> = [
   SparkCellRoleAssignment { host: w_training_cell_host, role: SparkTrainingCell },
 ]
 
-fn w_role_scoped_count(host: HostIdentity) -> Int {
+// THE WITHHOLDING ROSTER IS A FIXTURE HERE FOR THE SAME REASON THE ASSIGNMENT ROSTER IS. The role
+// arms have nothing to do with which machines are withheld today, so they are exercised against an
+// EMPTY withholding roster and keep deciding what they always decided. The withholding arm gets its
+// own fixture below.
+fn w_role_scoped_count_withheld(
+  withheld: List<SparkServingConvergenceWithholding>,
+  host: HostIdentity,
+) -> Int {
   match spark_serving_role_scoped_desired_members_in(
     assignments: w_fixture_roster,
+    withheld: withheld,
     occurrence: w_occurrence(host: host),
     serving_release: w_release(),
   ) {
     SparkServingRoleScopedDesiredReady { members: ms } => length(ms)
     SparkServingRoleScopedDesiredRefused { cause: _ } => 0 - 1
   }
+}
+
+fn w_role_scoped_count(host: HostIdentity) -> Int {
+  w_role_scoped_count_withheld(withheld: [], host: host)
 }
 
 // THE TRAINING CELL'S DESIRED STATE IS THE BASELINE ALONE, FROM THE ROLE.
@@ -538,17 +559,66 @@ test fn w_the_planner_scopes_desired_state_by_role() -> Bool {
 }
 
 // AND THE PRODUCTION ROSTER AGREES WITH THE ARM IT SELECTS. Without this the fixture above could
-// drift from what production actually asks: every production serving cell must reach the seven-member
-// desired state through the real entry point.
-test fn w_the_production_roster_reaches_the_serving_arm() -> Bool {
+// drift from what production actually asks.
+//
+// THE CLAIM IS QUANTIFIED OVER THE WITHHOLDING, NOT OVER THE CURRENT SERVING ROSTER, and that is the
+// whole content of this rewrite. It used to read "every production serving cell reaches the
+// seven-member arm", which stopped being true the moment srv5 and srv6 were withheld -- not because
+// the planner regressed but because a wall landed in front of it. Written that way the claim would
+// have to be edited every time the withholding list moves, which makes it a change detector rather
+// than a check. Written this way it says the thing that is actually invariant: a withheld production
+// serving cell refuses, and one that is not withheld reaches the seven-member desired state. Both
+// arms stay meaningful whether the list is full, partial or empty.
+test fn w_the_production_roster_reaches_the_arm_its_withholding_selects() -> Bool {
   all(spark_serving_cell_hosts(), h =>
     match spark_serving_role_scoped_desired_members(
       occurrence: w_occurrence(host: h),
       serving_release: w_release(),
     ) {
-      SparkServingRoleScopedDesiredReady { members: ms } => length(ms) == 7
-      SparkServingRoleScopedDesiredRefused { cause: _ } => false
+      SparkServingRoleScopedDesiredReady { members: ms } =>
+        !spark_serving_host_is_withheld(host: h) && length(ms) == 7
+      SparkServingRoleScopedDesiredRefused { cause: _ } =>
+        spark_serving_host_is_withheld(host: h)
     })
+}
+
+// A WITHHELD HOST REFUSES EVEN THOUGH THE ROSTER SAYS IT SERVES, WHICH IS THE POINT OF THE WALL.
+//
+// The discriminating case is exactly this one: the fixture host holds `SparkServingCell`, so every
+// role check passes and the planner is one step from constructing seven members for it. Delete the
+// withholding check from `spark_serving_role_scoped_desired_members_in` and this claim reads 7 where
+// it demands a refusal. That is what makes the refusal a modelled fact rather than an accident of
+// which manifest happens not to match: the host is fully eligible by role and is still refused.
+data w_withheld_fixture_roster: List<SparkServingConvergenceWithholding> = [
+  spark_serving_convergence_withholding(
+    host: w_serving_cell_host, reason: RunsARealizationNoDesiredStateModels),
+]
+
+test fn w_a_withheld_host_refuses_although_its_role_admits_serving() -> Bool {
+  w_role_scoped_count_withheld(
+    withheld: w_withheld_fixture_roster, host: w_serving_cell_host) == 0 - 1
+    && w_role_scoped_count_withheld(
+         withheld: [], host: w_serving_cell_host) == 7
+}
+
+// AND THE OTHER REASON ARM IS CONSTRUCTIBLE AND WITHHOLDS TOO. Without this only one arm of
+// `SparkServingWithholdingReason` is ever built, and an operator hold would be an untested path on
+// the day someone reaches for it.
+test fn w_an_operator_hold_withholds_the_same_way() -> Bool {
+  w_role_scoped_count_withheld(
+    withheld: [
+      spark_serving_convergence_withholding(
+        host: w_serving_cell_host, reason: HeldByOperatorDecision),
+    ],
+    host: w_serving_cell_host) == 0 - 1
+}
+
+// A WITHHOLDING NAMES ONE HOST AND NOT THE FLEET. A wall that refused every host would satisfy both
+// claims above while making convergence permanently dead, so the training cell -- absent from the
+// withholding roster -- must still reach its own arm.
+test fn w_withholding_one_host_leaves_the_others_planning() -> Bool {
+  w_role_scoped_count_withheld(
+    withheld: w_withheld_fixture_roster, host: w_training_cell_host) == 3
 }
 
 // A HOST NOBODY ASSIGNED REFUSES RATHER THAN DEFAULTING TO SERVING. This planner is reachable with

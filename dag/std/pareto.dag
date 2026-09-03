@@ -268,8 +268,23 @@ type AxisReading {
   interval_micro: OrderedClosedInterval<Int>
 }
 
+// A GAP IS ABOUT ONE AXIS, BECAUSE THAT IS THE GRAIN AT WHICH IT EXCUSES ANYTHING. The prior
+// carrier was a bare List<NonEmptyStr> over the whole entry, and entry_contradicts_its_declaration
+// read it as a single Bool OUTSIDE its per-axis fold - so a gap declared about one axis exempted
+// the absent-reading check on EVERY axis. Measured on the spine's own fixtures: an entry declaring
+// power unmeasured, carrying a power reading, and silently missing its COST reading produced an
+// EMPTY contradiction list, identical to an honest complete row. Both still reached NotComputable,
+// so dominance did not fail open - what failed was DISTINGUISHABILITY: a dropped reading was
+// indistinguishable from a declaration. That is the same conflation the per-defect-class exemption
+// split was made to end, one level down - the split separated DUPLICATE from ABSENT and left ABSENT
+// blind to WHICH axis had been excused.
+type AxisGap {
+  axis: DeclarationRef
+  cause: NonEmptyStr
+}
+
 // One candidate as the spine sees it: a structural identity, a display label, its
-// funded-axis readings, and the inputs it is missing. A nonempty missing_inputs list makes
+// funded-axis readings, and the axis-scoped gaps it declares. A nonempty missing_inputs list makes
 // the entry incomparable BY ITS OWN declaration - the projector states what is absent
 // instead of substituting a zero or an average, the same rule the node-build model already
 // enforces for missing rates.
@@ -277,7 +292,7 @@ type ParetoEntry {
   identity: DeclarationRef
   display_label: NonEmptyStr
   readings: List<AxisReading>
-  missing_inputs: List<NonEmptyStr>
+  missing_inputs: List<AxisGap>
 }
 
 type Domination {
@@ -374,6 +389,22 @@ data no_dominators: List<Domination> = []
 
 fn one_name(name: NonEmptyStr) -> List<NonEmptyStr> { [name] }
 
+data no_gaps: List<AxisGap> = []
+
+// The prose a gap carries, for the diagnostics that render a cause. The axis is kept beside it
+// rather than folded into the string, so the exemption below reads the AXIS and never parses text.
+fn gap_causes(gaps: List<AxisGap>) -> List<NonEmptyStr> {
+  fold(gaps, init: no_names, f: fn(acc, g) { concat(acc, one_name(name: g.cause)) })
+}
+
+fn gap_on_axis(gaps: List<AxisGap>, wanted: DeclarationRef) -> Bool {
+  fold(gaps, init: false, f: fn(acc, g) { acc || declaration_ref_eq(a: g.axis, b: wanted) })
+}
+
+fn axis_is_funded(axes: List<SelectionAxis>, wanted: DeclarationRef) -> Bool {
+  fold(axes, init: false, f: fn(acc, ax) { acc || declaration_ref_eq(a: ax.identity, b: wanted) })
+}
+
 fn one_axis_id(id: DeclarationRef) -> List<DeclarationRef> { [id] }
 
 fn accum_refusal(acc: PairAccum, axis: SelectionAxis, defect: NonEmptyStr) -> PairAccum {
@@ -465,10 +496,10 @@ fn pair_from_accum(folded: PairAccum) -> PairStanding {
 // eligible to be shown dominating, and a b that cannot be evaluated cannot be shown dominated.
 fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
   let from_a = if count(a.missing_inputs) > 0 {
-    one_name(name: join([declaration_ref_display_key(ref: a.identity), " declares missing inputs, so it is not eligible to be shown dominating: ", join(a.missing_inputs, " ; ")], ""))
+    one_name(name: join([declaration_ref_display_key(ref: a.identity), " declares missing inputs, so it is not eligible to be shown dominating: ", join(gap_causes(gaps: a.missing_inputs), " ; ")], ""))
   } else { no_names }
   let from_b = if count(b.missing_inputs) > 0 {
-    one_name(name: join([declaration_ref_display_key(ref: b.identity), " declares missing inputs, so it cannot be shown dominated: ", join(b.missing_inputs, " ; ")], ""))
+    one_name(name: join([declaration_ref_display_key(ref: b.identity), " declares missing inputs, so it cannot be shown dominated: ", join(gap_causes(gaps: b.missing_inputs), " ; ")], ""))
   } else { no_names }
   concat(from_a, from_b)
 }
@@ -626,26 +657,40 @@ fn field_has_duplicate_identity(field: List<ParetoEntry>) -> Bool {
 // rule exists to refuse. Exempting the whole entry let a duplicate ride in behind an unrelated
 // declared gap and surface as NotComputable -- a projector defect wearing the report of an honest
 // one, which is exactly the conflation this split was made to end.
+// THE EXEMPTION IS SCOPED TO THE AXIS THE GAP NAMES. A gap about power excuses an absent power
+// reading and nothing else; an absent COST reading beside it is still a projector defect and is
+// still named. A gap naming an axis this selection does not fund is itself a contradiction rather
+// than a silent no-op: without that arm a mistyped axis reference would quietly stop excusing
+// anything AND quietly stop blocking, which is a fail-open reachable by a typo.
 fn entry_contradicts_its_declaration(e: ParetoEntry, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
-  let declares_its_gaps = count(e.missing_inputs) > 0
-  fold(axes, init: no_names, f: fn(acc, ax) {
+  let unfunded_gaps = fold(e.missing_inputs, init: no_names, f: fn(acc, g) {
+    if axis_is_funded(axes: axes, wanted: g.axis) { acc } else {
+      concat(acc, one_name(name: join([
+        declaration_ref_display_key(ref: e.identity),
+        " declares a gap on ",
+        declaration_ref_display_key(ref: g.axis),
+        ", which this selection does not fund - a gap must name a funded axis or it excuses and blocks nothing"], "")))
+    }
+  })
+  concat(unfunded_gaps, fold(axes, init: no_names, f: fn(acc, ax) {
     match reading_for(e: e, wanted: ax.identity) {
       ReadingFound { interval_micro } => acc
       ReadingAbsent { absent_axis } =>
-        if declares_its_gaps {
+        if gap_on_axis(gaps: e.missing_inputs, wanted: absent_axis) {
           acc
         } else {
           concat(acc, one_name(name: join([
             declaration_ref_display_key(ref: e.identity),
-            " declares complete inputs but has no reading on funded axis ",
-            declaration_ref_display_key(ref: absent_axis)], "")))
+            " has no reading on funded axis ",
+            declaration_ref_display_key(ref: absent_axis),
+            " and declares no gap naming it"], "")))
         }
       ReadingDuplicated { duplicated_axis } => concat(acc, one_name(name: join([
         declaration_ref_display_key(ref: e.identity),
         " has duplicate readings on funded axis ",
         declaration_ref_display_key(ref: duplicated_axis)], "")))
     }
-  })
+  }))
 }
 
 fn field_contradictions(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
@@ -763,7 +808,7 @@ fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<Sel
         SelectionRefused { cause: join(contradictions, " ; ") }
       } else {
       if count(subject.missing_inputs) > 0 {
-        NotComputable { missing: join(subject.missing_inputs, " ; ") }
+        NotComputable { missing: join(gap_causes(gaps: subject.missing_inputs), " ; ") }
       } else {
         standing_from_accum(
           folded: fold(field, init: FieldAccum { refusal_causes: no_names, dominators: no_dominators, pending_causes: no_names }, f: fn(acc, other) {

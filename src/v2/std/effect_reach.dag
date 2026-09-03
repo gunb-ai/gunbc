@@ -1,7 +1,7 @@
 module v2.std.effect_reach
 
 import v2.std.collection { List }
-import gunbc.guarantee_rung_drop { GuaranteeRung, Mitigatable }
+import gunbc.guarantee_rung { GuaranteeRung, Mitigatable }
 
 // Phase 0 inference bridge (docs/plans/module-identity-storage-binding-design.md §3): a
 // witness/tool closure reaches host-effect sinks when call-reachable bodies pass string literals

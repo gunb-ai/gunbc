@@ -8,6 +8,7 @@ import std.witness_admission {
   DiscoverySelection,
   OfflineLocalRecipe,
 }
+import gunbc.rung_drop { deleted_cadence_reference_drop }
 import gunbc.deleted_cadence_reference_census {
   DeletedCadenceReference,
   ExecutingConsumerReceipt,
@@ -17,7 +18,6 @@ import gunbc.deleted_cadence_reference_census {
   ReboundToExecutingConsumer,
   PremiseInvalidated,
   LostWithDeletedCadence,
-  deleted_cadence_reference_drop,
   TerminalVerdictObserved,
   NeverReachedTerminal,
   deleted_cadence_reference_row_holds,
