@@ -11,6 +11,8 @@ import std.import {
   ParsedImportStatements,
   ImportStatementsParsed,
   ImportStatementParseRefused,
+  ImportStatementParseCause,
+  import_statement_parse_cause_label,
   strip_import_statements,
 }
 import extdeps.git.object_store { GitObjectId }
@@ -59,7 +61,7 @@ import gunbc.namespace_step0_canary {
 type Step0StripProductionRefusalCause
   = Step0SourceImportsNotParsed {
       file: NonEmptyStr
-      cause: NonEmptyStr
+      cause: ImportStatementParseCause
     }
   | Step0SourceRewriteRefused {
       file: NonEmptyStr
