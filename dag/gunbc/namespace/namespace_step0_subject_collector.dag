@@ -8,17 +8,13 @@ import extdeps.git.inspect
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_sha1_object_id }
 import std.decl_ref { decl_ref }
 import tools.multi_module_compile_fixture { FixtureSource }
-import gunbc.namespace_step0_canary {
-  namespace_step0_canary_contract,
-  namespace_step0_manifest_identity
-}
 
 // THE SUBJECT VECTOR AND THE TREE IT WAS READ FROM GET ONE PRODUCER, WHICH IS THIS MODULE'S WHOLE
 // CONTENT. gunbc.namespace_step0_strip_producer strips and compiles the (path, content) vector it
 // is HANDED, and says so: "that the handed vector is the whole of the tree the receipt names is the
 // caller's obligation ... nothing here can check it." Its next-rung trigger is exactly this
 // capability. Until it exists, a receipt naming the frozen manifest over a hand-supplied vector is
-// a lie admit_namespace_step0_canary_receipt cannot catch, because the classifier checks the tree
+// a lie the retired v1 classifier could not catch, because it checked the tree
 // PIN and never that the vector IS that tree.
 //
 // SO THE DISAGREEMENT IS MADE UNREPRESENTABLE RATHER THAN CHECKED, and the mechanism is that every
@@ -48,9 +44,8 @@ import gunbc.namespace_step0_canary {
 // revision does not contain -- is a REFUSAL. So no cap, no unsupported git object and no read
 // failure can become a smaller SUCCESSFUL vector: the smaller-successful state has no constructor.
 // HOW THE LIVE HALF IS EXECUTED, stated here because it has no witness and the absence must not be
-// silent. Its route is the one gunbc.namespace_step0_canary is itself confined to: a local or CI
-// dispatch of gunbc.namespace_step0_canary_run run_current_step0_canary, which calls this fold and
-// hands what it collects to the strip producer. It has NO enrolled witness, and that is a route
+// silent. Its route is the v2 one-dispatch candidate entry, which calls this fold and hands what it
+// collects to the strip producer. It has NO enrolled witness, and that is a route
 // deficit rather than a judgement about its worth -- a probe of it reaches four revision-addressed
 // git operations with no mock_response, so the hermetic floor refuses it before it reaches a
 // verdict, and the one lane that could reach those effects (v2.workflow.local_repo_wet_terminal)
@@ -181,10 +176,10 @@ fn step0_mint_subject_vector(
     decl_ref(module_path: "gunbc.namespace_step0_subject_collector", decl_name: "collect_step0_subject_vector_at")
   ]
   = Step0SubjectVector {
-    contract_identity: namespace_step0_canary_contract.identity,
+    contract_identity: "step0-subject-vector-v1" as NonEmptyStr,
     source_commit: source_commit,
     source_tree: source_tree,
-    input_subject_manifest: namespace_step0_manifest_identity(),
+    input_subject_manifest: step0_subject_manifest_identity(),
     members: members
   }
 
@@ -192,7 +187,11 @@ fn step0_mint_subject_vector(
 // root literals would give the scan's scope a second authority, and a scan whose scope disagrees
 // with the contract it reports under describes a subject nobody declared.
 fn step0_subject_source_roots() -> List<String> {
-  namespace_step0_canary_contract.source_roots |> map(root => root as String)
+  ["dag", "src/v2", "src/v1"]
+}
+
+fn step0_subject_manifest_identity() -> NonEmptyStr {
+  "roots=dag,src/v2,src/v1; members=.dag blobs at the pinned revision" as NonEmptyStr
 }
 
 fn step0_path_has_root(path: String) -> Bool {
