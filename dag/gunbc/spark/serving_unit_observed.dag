@@ -400,9 +400,26 @@ fn serving_unit_throughput_meets(
   tokens_per_second_count(r: band.aggregate_low) >= tokens_per_second_count(r: threshold)
 }
 
-// ================= THE ARTIFACT THE UNIT ACTUALLY LOADED =================
+// ================= THE ARTIFACT ON DISK AT THE PATHS THE UNIT NAMES =================
 //
-// ITS IDENTITY IS BOUND BY AN IN-PLACE MEASUREMENT OF THE BYTES.
+// ITS ON-DISK IDENTITY IS BOUND BY AN IN-PLACE MEASUREMENT OF THE BYTES.
+//
+// AND ON-DISK IDENTITY IS NOT EXECUTED-ARTIFACT IDENTITY. This section was first written as "the
+// artifact the unit actually loaded", and that sentence does not follow from the measurement that
+// backs it. Hashing four files establishes THESE PATHS CONTAIN THESE BYTES AT THE TIME OF THE READ.
+// It does not establish that the llama-server process whose throughput and API surface were recorded
+// loaded those bytes: the files can be replaced after a process has mapped them, the service can
+// restart between the two readings, and nothing here observes an incarnation boundary that would
+// rule either out. The two observations may straddle one.
+//
+// This is the same over-claim as the observation mixer removed below, in its other direction, so it
+// gets the same treatment rather than a note asking readers to be careful. The join field is named
+// `on_disk_artifact`, so no consumer can read it as the executed artifact without reading that it is
+// not. WHAT WOULD CLOSE IT is an incarnation identity -- a process start or restart witness the
+// artifact read and the performance read are both keyed to -- and that is the trigger. It cannot be
+// had from the serving surface today: GET /v1/models returns this model with `"digest": ""`, an
+// empty string rather than an absent field, so no probe against the API binds identity however it is
+// written.
 //
 // This carrier first shipped with the identity UNOBSERVED, and that was honest at the time: the
 // serving surface carries no digest -- GET /v1/models returns this model with `"digest": ""`, an
@@ -411,8 +428,8 @@ fn serving_unit_throughput_meets(
 // then granted access, and the gap closed with a MEASUREMENT rather than a promotion of the prose.
 //
 // WHAT ESTABLISHES IT. The four shards were hashed in place on the front-door host with sha256sum,
-// which is an observation of the bytes that are actually loaded, and that measurement alone is what
-// the chain below carries.
+// which is an observation of the bytes AT THOSE PATHS, and that measurement alone is what the chain
+// below carries.
 //
 // AN EARLIER VERSION OF THIS NOTE CLAIMED TWO INDEPENDENT CORROBORATING SOURCES, and the model does
 // not carry that. The registration payload written when the model was created does record its own
@@ -578,6 +595,34 @@ fn serving_unit_observed_artifact() -> ServingUnitArtifact? {
 // step consults, and it is now a TRIVIAL ELIMINATOR: every exactness condition was moved into
 // serving_unit_bound_artifact_identity, so a Bound value is exact by construction and there is no
 // second rule for a consumer to forget. It answers true for the observed artifact.
+//
+// READ WHAT IT SAYS AND NOT MORE: true here means THE PATHS HELD THESE BYTES WHEN THEY WERE READ. A
+// converge step that needs "the process now serving loaded exactly these bytes" does not get that
+// fact from this predicate, and there is no arm here that would supply it -- see the incarnation
+// boundary above.
+//
+// DISPOSITION ON ELIMINATING THIS COPRODUCT BY MATCH RATHER THAN THROUGH A DERIVED PROJECTION.
+// Review asked for this to consume a canonical fold or query surface instead of matching the two
+// variants directly. Considered and declined, for three reasons that are checkable rather than
+// stylistic.
+//
+// The precedent it invokes is gunbc.spark.cell_role, where a hand-rolled predicate matched a
+// coproduct against ITSELF for equality while a canonical wire projection of the same variants
+// already existed beside it. Deriving equality from that projection REMOVED a second enumeration.
+// Here there is no such projection: ServingUnitArtifactIdentity has no canonical surface anywhere in
+// the corpus, so routing through one means MINTING one -- creating a construct in order to satisfy a
+// rule about not creating constructs, which is the re-invention §2 warns closes nothing.
+//
+// The two production matches on this type ask DIFFERENT questions, not one question twice.
+// serving_unit_artifact asks the bound arm for its shard count in order to refuse a contradiction;
+// this function asks which arm is present. Neither restates the other, so §5's "a check that
+// re-states a constraint the model already carries" does not describe them.
+//
+// And the drift hazard the rule exists to prevent cannot occur here: `Match` over a closed variant
+// set is one of the substrate's six behaviors, and exhaustive elimination of closed variants is part
+// of the ordinary compiler floor DESIGN names. A third arm added to this type fails to compile at
+// BOTH sites rather than silently defaulting at either, so there is nothing silent for a canonical
+// surface to protect.
 fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
   match a.identity {
     ArtifactIdentityBound { identity: _ } => true
@@ -647,9 +692,12 @@ fn serving_unit_model_listing_route(surface: ServingUnitApiSurface) -> NonEmptyS
 // IQ3_S, no engine anywhere in ServingUnit: it is the stable structural subject -- a front door, a
 // weights peer, a fabric and a slot plan -- while ServingUnitObservation is ONE MEASURED
 // REALIZATION of that subject.
+// THE ARTIFACT FIELD IS NAMED FOR WHAT IT IS. `on_disk_artifact` rather than `artifact`, because
+// this record otherwise reads as four facts about one running process and one of them is a fact
+// about a filesystem. The name is the only thing that travels to every consumer.
 type ServingUnitObservation sole_constructor {
   unit: ServingUnit
-  artifact: ServingUnitArtifact
+  on_disk_artifact: ServingUnitArtifact
   api_surface: ServingUnitApiSurface
   throughput: ServingUnitThroughputBand
 }
@@ -669,7 +717,7 @@ fn serving_unit_observed_observation() -> ServingUnitObservation? {
             Present { value: art } =>
               Present { value: ServingUnitObservation {
                 unit: u,
-                artifact: art,
+                on_disk_artifact: art,
                 api_surface: serving_unit_observed_api_surface,
                 throughput: band,
               } }
