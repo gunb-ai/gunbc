@@ -1,0 +1,281 @@
+module test.claim.printed_chassis_cadquery_witness_test
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import product.printed_chassis.coupon {
+  LengthLadder, LadderConstruction, LadderReady, LadderStepIsZero, LadderTooFewRungs,
+  hole_ladder_spec, hole_ladder_specimen, CouponSpecimen, CouponOperation, OpThroughHole,
+  HoleDiameterCouponGeometry,
+}
+import product.printed_chassis.realization_contract {
+  realization_contract, judge_realization,
+  RealizationVerdict, RealizationAccepted, RealizationRejected, RealizationRefusedAtWire,
+  AdmittedRealizationV0,
+  RawRealizationEnvelope, raw_realization_envelope, RawOperationRow, raw_operation_row,
+  contract_schema_version,
+}
+import product.printed_chassis.cadquery_realization {
+  CadQueryEmission, CadQueryEmitted, CadQueryDimensionUnrenderable,
+  CadQueryProgram, cadquery_program_source, realize_admitted,
+  MillimetreRendering, MillimetreRendered, MillimetreScaleRefused,
+  micrometre_millimetre_wire, micrometre_half_millimetre_wire, cut_overtravel,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ONLY WAY TO REACH THE HANDLER IS THROUGH A JUDGMENT, so every witness here goes through
+// judge_realization rather than constructing an admitted value -- which it could not do anyway,
+// since AdmittedRealizationV0 is sole_constructor, a seal whose executing evidence is the red/green
+// differential in test.claim.printed_chassis_admitted_realization_seal_witness and NOT this file.
+// That distinction is the point: this annotation previously asserted the seal with no probe naming
+// that type anywhere, which is citing a wall as coverage while its RED went unauthored. It is the
+// discharged
+// pairing being exercised by its consumer, which is the only place the discharge is observable.
+fn row_of(op: CouponOperation) -> RawOperationRow {
+  match op {
+    OpThroughHole { diameter: d, center_x: x, center_y: y } =>
+      raw_operation_row(
+        kind: "through_hole",
+        diameter_um: micrometer_count(m: d),
+        center_x_um: micrometer_count(m: x),
+        center_y_um: micrometer_count(m: y),
+      )
+  }
+}
+
+fn envelope_of(s: CouponSpecimen) -> RawRealizationEnvelope {
+  raw_realization_envelope(
+    schema_version: contract_schema_version,
+    plate_x_um: micrometer_count(m: s.geometry.plate.size_x),
+    plate_y_um: micrometer_count(m: s.geometry.plate.size_y),
+    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    orientation_datum: row_of(op: s.geometry.orientation_datum),
+    ladder_holes: fold(s.geometry.ladder_holes, init: [], f: fn(acc, op) {
+      concat(acc, [row_of(op: op)])
+    }),
+  )
+}
+
+type SourceProbe
+  = SourceReady { text: String }
+  | SourceUnavailable
+
+// The probe REFUSES rather than answering an empty string on the non-accepting paths, for the same
+// reason the emitter does: an empty source would make every substring assertion below vacuously
+// false and every absence assertion vacuously true, which is a test that inverts silently.
+fn emitted_source(l: LengthLadder) -> SourceProbe {
+  let contract = realization_contract(declaration: l)
+  match judge_realization(contract: contract, envelope: envelope_of(s: contract.specimen)) {
+    RealizationAccepted { admitted: a } =>
+      match realize_admitted(a: a) {
+        CadQueryEmitted { program: p } => SourceReady { text: cadquery_program_source(p: p) as String }
+        CadQueryDimensionUnrenderable { micrometres: _ } => SourceUnavailable
+      }
+    RealizationRejected { divergence: _ } => SourceUnavailable
+    RealizationRefusedAtWire { refusal: _ } => SourceUnavailable
+  }
+}
+
+fn wire_of(r: MillimetreRendering) -> String {
+  match r {
+    MillimetreRendered { wire: w } => w as String
+    MillimetreScaleRefused { micrometres: _ } => "UNRENDERABLE"
+  }
+}
+
+// The EXPECTED cut line, rebuilt here from the model rather than copied from the emitter's output.
+// A witness that asserted the emitter's own string against itself would be the change detector
+// DESIGN section 5 names; rebuilding the line from the coupon's numbers means the assertion fails
+// when the emitter and the model disagree, which is the only disagreement that matters.
+fn expected_cut_line(op: CouponOperation, thickness: Micrometer) -> String {
+  match op {
+    OpThroughHole { diameter: d, center_x: cx, center_y: cy } =>
+      join([
+        "result = result.cut(cq.Workplane(\"XY\", origin=(0, 0, -",
+        wire_of(r: micrometre_millimetre_wire(m: cut_overtravel)),
+        ")).moveTo(",
+        wire_of(r: micrometre_millimetre_wire(m: cx)),
+        ", ",
+        wire_of(r: micrometre_millimetre_wire(m: cy)),
+        ").circle(",
+        wire_of(r: micrometre_half_millimetre_wire(m: d)),
+        ").extrude(",
+        wire_of(r: micrometre_millimetre_wire(
+          m: micrometer(count: micrometer_count(m: thickness) + 2 * micrometer_count(m: cut_overtravel)),
+        )),
+        "))",
+      ], "")
+  }
+}
+
+// WITNESS 1 — TRACE: ONE MODEL FEATURE, ONE REALIZED FEATURE, AND THE DATUM IS ITS OWN SUBJECT.
+//
+// Every one of the twelve modeled operations must appear in the emitted program as its own cut line
+// carrying its own three numbers, and the datum is checked as a distinct subject rather than folded
+// into the ladder population. An emitter that dropped one hole, emitted one twice, or replaced the
+// twelve cuts with a loop over a generated list fails here.
+test fn w_every_modeled_feature_appears_as_its_own_cut_line() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } =>
+      match emitted_source(l: l) {
+        SourceUnavailable => false
+        SourceReady { text: src } => {
+          let g = hole_ladder_specimen(l: l).geometry
+          let datum_present = src.contains(expected_cut_line(op: g.orientation_datum, thickness: g.plate.size_z))
+          let all_rungs = fold(g.ladder_holes, init: true, f: fn(acc, op) {
+            acc && src.contains(expected_cut_line(op: op, thickness: g.plate.size_z))
+          })
+          datum_present && all_rungs && g.ladder_holes.length() == 11
+        }
+      }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 2 — THE PLATE IS EMITTED UNCENTRED, WHICH IS THE ONE DEFAULT THAT WOULD MOVE EVERY HOLE.
+//
+// CadQuery centres a box on the origin unless told otherwise, and the coupon states every hole
+// centre from the plate CORNER. An emitter that omitted the argument would produce a program whose
+// twelve holes are all displaced by half a plate -- valid Python, valid geometry, wrong part, and
+// no other witness here would see it because every cut line would still be exactly right.
+test fn w_the_plate_is_emitted_with_centering_off_on_all_three_axes() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } =>
+      match emitted_source(l: l) {
+        SourceUnavailable => false
+        SourceReady { text: src } => {
+          let g = hole_ladder_specimen(l: l).geometry
+          src.contains(join([
+            "result = cq.Workplane(\"XY\").box(",
+            wire_of(r: micrometre_millimetre_wire(m: g.plate.size_x)), ", ",
+            wire_of(r: micrometre_millimetre_wire(m: g.plate.size_y)), ", ",
+            wire_of(r: micrometre_millimetre_wire(m: g.plate.size_z)),
+            ", centered=(False, False, False))",
+          ], ""))
+        }
+      }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 3 — COMPLETENESS: THE PROGRAM IS EXACTLY WHAT THE MODEL ACCOUNTS FOR, AND NOTHING ELSE.
+//
+// Witness 1 proves every modeled feature is PRESENT. It cannot prove nothing else is: an emitter
+// that added a thirteenth hole, a chamfer, a text label or a "helpful" fillet would still contain
+// all twelve expected lines and still pass. This is the other half, and it is the geometry-taint
+// wall in its strongest available form -- the whole program rebuilt from the coupon's own numbers
+// and compared byte for byte, so an extra operation has nowhere to hide.
+//
+// It is NOT a change detector, and the distinction is where the expectation comes from. A change
+// detector compares the emitter's output to a copy of the emitter's output, so updating it is
+// mechanical and it asserts nothing. This rebuilds the program from the MODEL -- the same coupon
+// declaration the emitter reads -- through this file's own expected_cut_line, so the two agree only
+// when the emitter says what the model says. Changing the emitted format reds it, and the honest
+// repair is to state the new format here from the model again.
+fn expected_program(g: HoleDiameterCouponGeometry) -> String {
+  join(
+    concat(
+      [
+        "import cadquery as cq\n",
+        join([
+          "result = cq.Workplane(\"XY\").box(",
+          wire_of(r: micrometre_millimetre_wire(m: g.plate.size_x)), ", ",
+          wire_of(r: micrometre_millimetre_wire(m: g.plate.size_y)), ", ",
+          wire_of(r: micrometre_millimetre_wire(m: g.plate.size_z)),
+          ", centered=(False, False, False))\n",
+        ], ""),
+        join([expected_cut_line(op: g.orientation_datum, thickness: g.plate.size_z), "\n"], ""),
+      ],
+      fold(g.ladder_holes, init: [], f: fn(acc, op) {
+        concat(acc, [join([expected_cut_line(op: op, thickness: g.plate.size_z), "\n"], "")])
+      }),
+    ),
+    "",
+  )
+}
+
+test fn w_the_program_is_exactly_what_the_model_accounts_for() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } =>
+      match emitted_source(l: l) {
+        SourceUnavailable => false
+        SourceReady { text: src } =>
+          src == expected_program(g: hole_ladder_specimen(l: l).geometry)
+      }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 4 — THE MILLIMETRE RENDERING IS EXACT, INCLUDING FOR AN ODD MICROMETRE DIAMETER.
+//
+// This is the arithmetic the whole emission rests on, and it is the one place a silent wrong number
+// enters. Integer division by 1000 truncates: 3100 um would emit "3" and lose a tenth of a
+// millimetre in the artifact whose only job is to be a dimensional nominal. Halving an odd
+// micrometre diameter for a radius truncates the same way: 3001 um would be cut at 3000 um across.
+//
+// The ladder is even-valued today, so neither truncation is reachable from the canonical coupon --
+// which is exactly why this witness supplies values the corpus does not contain. Asserting only
+// against the ladder would leave both walls permanently green and unexercised, and a future rung of
+// 3.05 mm would break them silently. The RED here is authorable because the argument is a fixture,
+// not a corpus value.
+test fn w_the_millimetre_rendering_loses_nothing_on_odd_micrometres() -> Bool {
+  wire_of(r: micrometre_millimetre_wire(m: micrometer(count: 3100))) == "3.1"
+    && wire_of(r: micrometre_millimetre_wire(m: micrometer(count: 3000))) == "3"
+    && wire_of(r: micrometre_millimetre_wire(m: micrometer(count: 102000))) == "102"
+    && wire_of(r: micrometre_millimetre_wire(m: micrometer(count: 1))) == "0.001"
+    && wire_of(r: micrometre_half_millimetre_wire(m: micrometer(count: 3000))) == "1.5"
+    && wire_of(r: micrometre_half_millimetre_wire(m: micrometer(count: 3001))) == "1.5005"
+    && wire_of(r: micrometre_half_millimetre_wire(m: micrometer(count: 4000))) == "2"
+}
+
+// WITNESS 5 — THE CUT OVERTRAVEL MOVES NO MEASURED DIMENSION.
+//
+// Overtravel is the one number this handler adds that the authority layer did not state, so it is
+// the one place a forbidden compensating clearance could hide. The distinction is exact: overtravel
+// runs along the cut AXIS, so it may change where a cutting cylinder starts and how tall it is, and
+// it may NOT change any hole diameter, any hole centre, or the plate.
+//
+// WHAT THIS WITNESS EXECUTES, stated to match its body rather than overstate it: every hole's centre
+// and radius wire is rebuilt FROM THE MODEL and required to appear verbatim in the emitted source,
+// so an overtravel term that had leaked into a radius or a centre would leave the model-derived wire
+// absent and go red. It does NOT re-emit with a doubled overtravel and diff the two programs -- an
+// earlier version of this comment claimed it did, and no such body ever existed. It also cannot
+// constrain the VALUE, because the whole-program expectation reads the same cut_overtravel
+// declaration the emitter reads, so the two move together. The value's conformance is the open
+// kernel-readback obligation recorded beside the declaration.
+//
+// Concretely: every hole's diameter and centre wire is asserted to appear exactly as the model
+// states it, with no term involving overtravel. If overtravel were added to a radius, the emitted
+// circle() argument would be 1.5 plus something and this would go red.
+test fn w_overtravel_moves_no_measured_dimension() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } =>
+      match emitted_source(l: l) {
+        SourceUnavailable => false
+        SourceReady { text: src } => {
+          let g = hole_ladder_specimen(l: l).geometry
+          fold(concat([g.orientation_datum], g.ladder_holes), init: true, f: fn(acc, op) {
+            match op {
+              OpThroughHole { diameter: d, center_x: cx, center_y: cy } =>
+                acc
+                  && src.contains(join([
+                       ").moveTo(",
+                       wire_of(r: micrometre_millimetre_wire(m: cx)), ", ",
+                       wire_of(r: micrometre_millimetre_wire(m: cy)),
+                       ").circle(",
+                       wire_of(r: micrometre_half_millimetre_wire(m: d)),
+                       ")",
+                     ], ""))
+            }
+          })
+            && src.contains(join([
+                 ", centered=(False, False, False))",
+               ], ""))
+        }
+      }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}

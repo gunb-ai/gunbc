@@ -9,7 +9,7 @@ import extdeps.cargo_build
 import gunbc.self_host_compile_phase_frontier {
   TargetPinnedOnInvocation,
   CompilePhaseInvocation,
-  self_host_compile_phase_frontier_receipts
+  current_compile_phase_frontier_standing
 }
 import extdeps.languages.rust.compiler_phases { rustc_phase_classification_policy_digest }
 import gunbc.self_host_compile_phase_live_gate {
@@ -142,7 +142,7 @@ fn write_gate_report(report: String, m: EmissionMeasurement, verdict_text: Strin
 // only other constructor for an observation does not exist.
 fn adjudicate(report: String, m: EmissionMeasurement, reading: LiveToolchainReading) -> ProcessExit {
   let verdict = live_tree_verdict_for_measurement(
-    series: self_host_compile_phase_frontier_receipts,
+    standing: current_compile_phase_frontier_standing(),
     m: m,
     toolchain: reading
   )

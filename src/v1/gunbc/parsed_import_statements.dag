@@ -1,0 +1,21 @@
+module v1.gunbc.parsed_import_statements
+
+import std.types { String }
+import std.import { ParsedImportStatements }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_import_statement_extents }
+import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
+
+// THE TRANSPORT FROM ONE IN-MEMORY SOURCE TO ITS PARSED IMPORT STATEMENTS, and nothing else.
+// It reads no repository file, consults no module index and decides nothing: the statements are
+// delimited by v1.compiler.parse parse_import_statement_extents, which is the parser reading its
+// own consumption, and the carrier is std.import's. It exists because a caller outside the seed
+// holds a source string and cannot assemble a token vector, a newline index and an intern table.
+
+fn parsed_import_statements(file: String, source: String) -> ParsedImportStatements {
+  parse_import_statement_extents(
+    tokens: tokenize(source: source, file: file),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+}

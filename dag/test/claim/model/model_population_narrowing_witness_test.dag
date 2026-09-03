@@ -1,0 +1,291 @@
+module test.claim.model.model_population_narrowing_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, parameter_count }
+import gunbc.model.publication {
+  ModelRelease, OpenWeightRelease, ClosedWeightRelease,
+  ReleaseIdentity, WeightPublication, ParameterCounts, DeclaredContext,
+  MitLicense, YarnScaling, NoScaling,
+  DistributionObservation,
+  OllamaLibrary, OllamaCloudEndpoint,
+  PresentInChannel, AbsentFromChannel, SingleFileWeights,
+  release_identity, release_is_open_weight, observation_reports_presence,
+}
+import gunbc.model.population {
+  ModelPopulation,
+  OpenWeightStage, LocallyPackagedStage,
+  ReleaseDiscoverySource,
+  PublisherReleaseCatalog, SingleDistributorCatalog,
+  open_weight_population, narrow_population,
+  NarrowingOutcome, NarrowingProduced, NarrowingRefused,
+  population_members_are_subset_of_parent,
+  completeness, CompletenessQuestion, CompleteForPublisher, CompleteForOpenWeightUniverse,
+  CompletenessVerdict, CompletenessAnswerable, CompletenessRefused,
+}
+
+// A narrowing that must succeed for the claim under test to mean anything. A refusal here is not a
+// green: the claims below are about what a PRODUCED narrowing contains, so a refused outcome would
+// satisfy them vacuously. This helper makes that distinction explicit at every call site.
+fn produced_or_empty(outcome: NarrowingOutcome) -> ModelPopulation {
+  match outcome {
+    NarrowingProduced { population: p } => p
+    NarrowingRefused { reason: _ } =>
+      open_weight_population(discovered: [], sources: [])
+  }
+}
+
+fn was_produced(outcome: NarrowingOutcome) -> Bool {
+  match outcome {
+    NarrowingProduced { population: _ } => true
+    NarrowingRefused { reason: _ } => false
+  }
+}
+
+// THE FIXTURE IS THE RELEASE THAT ACTUALLY BROKE. DeepSeek V4 Flash 0731 is openly published under
+// MIT, is absent from the Ollama library, IS present as an Ollama cloud endpoint, and does not fit a
+// single 118 GiB node at its published precision. Every one of those was read as "the model does not
+// exist" by the predecessor authority, so it is the right discriminating subject: a fixture that was
+// merely plausible would leave the original inference untested.
+data deepseek_v4_flash_id: ReleaseIdentity = ReleaseIdentity {
+  publisher: "deepseek-ai" as NonEmptyStr,
+  family: "DeepSeek-V4-Flash" as NonEmptyStr,
+  revision: "0731" as NonEmptyStr,
+}
+
+// Counts kept as three sourced facts. The attached figure is the DSpark speculative draft, which
+// ships as its own file -- which is why the two circulating totals differ rather than one being wrong.
+data deepseek_v4_flash: ModelRelease = OpenWeightRelease {
+  identity: deepseek_v4_flash_id,
+  publication: WeightPublication {
+    repository: "deepseek-ai/DeepSeek-V4-Flash-0731" as NonEmptyStr,
+    revision: "main" as NonEmptyStr,
+    license: MitLicense,
+    parameters: ParameterCounts {
+      base_total: parameter_count(millions: 284300),
+      activated_per_token: parameter_count(millions: 13000),
+      attached_speculative: parameter_count(millions: 20000),
+    },
+  },
+  declared_context: DeclaredContext {
+    max_positions: token_count(count: 1048576),
+    scaling: YarnScaling { original_positions: token_count(count: 65536), factor: 16 },
+  },
+}
+
+data a_closed_release: ModelRelease = ClosedWeightRelease {
+  identity: ReleaseIdentity {
+    publisher: "example-lab" as NonEmptyStr,
+    family: "Proprietary-XL" as NonEmptyStr,
+    revision: "1" as NonEmptyStr,
+  },
+  declared_context: DeclaredContext { max_positions: token_count(count: 200000), scaling: NoScaling },
+}
+
+data probed_at: Timestamp = 1788240000 as Timestamp
+
+data publisher_source: ReleaseDiscoverySource = ReleaseDiscoverySource {
+  authority: "huggingface publisher catalog" as NonEmptyStr,
+  coverage: PublisherReleaseCatalog { publisher: "deepseek-ai" as NonEmptyStr },
+  observed_at: probed_at,
+}
+
+data ollama_only_source: ReleaseDiscoverySource = ReleaseDiscoverySource {
+  authority: "ollama library index" as NonEmptyStr,
+  coverage: SingleDistributorCatalog { channel: OllamaLibrary },
+  observed_at: probed_at,
+}
+
+fn discovered() -> List<ModelRelease> {
+  [deepseek_v4_flash, a_closed_release]
+}
+
+fn root() -> ModelPopulation {
+  open_weight_population(discovered: discovered(), sources: [publisher_source])
+}
+
+fn population_holds(population: ModelPopulation, id: ReleaseIdentity) -> Bool {
+  length(filter(population.members, r =>
+    (release_identity(subject: r).family as String) == (id.family as String)
+  )) > 0
+}
+
+// ============================ THE FORBIDDEN EDGES ============================
+// Each is an inference that was actually drawn in production and was wrong. They are written as
+// tests rather than as prose because a comment cannot go red.
+
+// RED 1 -- the original defect, verbatim. A 404 from one distributor's registry.
+test fn w_ollama_local_absence_does_not_remove_from_the_open_weight_population() -> Bool {
+  let absent_from_ollama = DistributionObservation {
+    subject: deepseek_v4_flash_id,
+    channel: OllamaLibrary,
+    presence: AbsentFromChannel { probed_reference: "deepseek-v4-flash:latest" as NonEmptyStr },
+    observed_at: probed_at,
+  }
+  !observation_reports_presence(observation: absent_from_ollama)
+    && release_is_open_weight(subject: deepseek_v4_flash)
+    && population_holds(population: root(), id: deepseek_v4_flash_id)
+}
+
+// RED 2 -- a cloud tag existing was read as proof that local weights do not.
+test fn w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable() -> Bool {
+  let cloud_present = DistributionObservation {
+    subject: deepseek_v4_flash_id,
+    channel: OllamaCloudEndpoint,
+    presence: PresentInChannel {
+      reference: "deepseek-v4-flash:cloud" as NonEmptyStr,
+      packaging: SingleFileWeights { quantization: "hosted" as NonEmptyStr },
+    },
+    observed_at: probed_at,
+  }
+  observation_reports_presence(observation: cloud_present)
+    && release_is_open_weight(subject: deepseek_v4_flash)
+    && population_holds(population: root(), id: deepseek_v4_flash_id)
+}
+
+// RED 3 -- a narrowing that admits NOTHING must still leave the root intact. This is the general
+// form of the original error: not fitting one host was read as the model being unavailable.
+//
+// The specific single-node verdict is no longer expressible as a population stage, because it is a
+// verdict about a REALIZATION and this population is keyed by release -- see PopulationStage. The
+// invariant it was witnessing is the one asserted here, and it is the stronger statement: NO
+// narrowing, empty or otherwise, reaches back into its parent.
+test fn w_an_empty_narrowing_does_not_remove_from_the_open_weight_population() -> Bool {
+  let outcome = narrow_population(parent: root(), stage: LocallyPackagedStage, admits: [])
+  was_produced(outcome: outcome)
+    && length(produced_or_empty(outcome: outcome).members) == 0
+    && population_holds(population: root(), id: deepseek_v4_flash_id)
+}
+
+// RED 4 -- narrowing must not introduce a member the parent lacked.
+test fn w_narrowing_cannot_introduce_a_member_the_parent_lacked() -> Bool {
+  let stranger = ReleaseIdentity {
+    publisher: "nobody" as NonEmptyStr,
+    family: "Never-Discovered" as NonEmptyStr,
+    revision: "1" as NonEmptyStr,
+  }
+  let outcome = narrow_population(
+    parent: root(),
+    stage: LocallyPackagedStage,
+    admits: [stranger, deepseek_v4_flash_id],
+  )
+  let narrowed = produced_or_empty(outcome: outcome)
+  was_produced(outcome: outcome)
+    && length(narrowed.members) == 1
+    && population_holds(population: narrowed, id: deepseek_v4_flash_id)
+    && population_members_are_subset_of_parent(population: narrowed)
+}
+
+// The positive control that the root filter discriminates at all -- without it every test above
+// would pass on an unfiltered list.
+test fn w_a_closed_weight_release_is_excluded_from_the_open_weight_population() -> Bool {
+  length(root().members) == 1
+}
+
+// RED 5 -- the DISCOVERY half, which the layer split alone does not repair. A census assembled from
+// one distributor's catalog must refuse to say how complete it is.
+test fn w_completeness_refuses_when_every_source_is_a_single_distributor() -> Bool {
+  let ollama_shaped = open_weight_population(discovered: discovered(), sources: [ollama_only_source])
+  is_refusal(verdict: completeness(
+    population: ollama_shaped,
+    question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }))
+}
+
+fn is_refusal(verdict: CompletenessVerdict) -> Bool {
+  match verdict {
+    CompletenessRefused { reason: _ } => true
+    CompletenessAnswerable { publisher: _, member_count: _ } => false
+  }
+}
+
+// Positive control for RED 5: the publisher whose catalogue IS held does answer.
+test fn w_completeness_answers_for_the_publisher_whose_catalog_is_held() -> Bool {
+  match completeness(
+    population: root(),
+    question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }) {
+    CompletenessAnswerable { publisher: p, member_count: n } =>
+      (p as String) == "deepseek-ai" && n == 1
+    CompletenessRefused { reason: _ } => false
+  }
+}
+
+// RED 6 -- THE DEFECT THIS FUNCTION WAS WRITTEN TO PREVENT, RE-COMMITTED BY IT. A complete catalogue
+// for deepseek-ai is complete about deepseek-ai and about nobody else. The predecessor answered
+// `CompletenessAnswerable` for ANY publisher-catalogue source, so it would have reported the
+// open-weight universe as fully enumerated from one publisher's index -- a real count over the wrong
+// population, which is the original error verbatim.
+test fn w_one_publishers_catalog_does_not_answer_for_another_publisher() -> Bool {
+  is_refusal(verdict: completeness(
+    population: root(),
+    question: CompleteForPublisher { publisher: "qwen" as NonEmptyStr }))
+}
+
+// RED 7 -- and it never answers for the UNIVERSE, whatever sources are held. There is no arm that
+// can return Answerable here, which is the honest terminal rather than a stall: no source shape this
+// module can hold spans every publisher.
+test fn w_universe_completeness_is_never_answerable() -> Bool {
+  is_refusal(verdict: completeness(
+    population: root(), question: CompleteForOpenWeightUniverse))
+    && is_refusal(verdict: completeness(
+      population: open_weight_population(discovered: discovered(), sources: [ollama_only_source]),
+      question: CompleteForOpenWeightUniverse))
+}
+
+// RED 8 -- a BACKWARD transition is not a narrowing. Re-keying a locally-packaged population as
+// open-weight would assert that failing a later test restored membership in an earlier stage, which
+// is the module's invariant inverted. Same-stage is refused for the same reason.
+test fn w_a_backward_or_same_stage_transition_refuses() -> Bool {
+  let packaged = produced_or_empty(outcome: narrow_population(
+    parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id]))
+  !was_produced(outcome: narrow_population(
+    parent: packaged, stage: OpenWeightStage, admits: [deepseek_v4_flash_id]))
+    && !was_produced(outcome: narrow_population(
+      parent: packaged, stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id]))
+    && was_produced(outcome: narrow_population(
+      parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id]))
+}
+
+// A later stage refuses completeness about the universe: it is a verdict about realizations and
+// under-reports by construction.
+test fn w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe() -> Bool {
+  let narrowed = produced_or_empty(outcome: narrow_population(
+    parent: root(), stage: LocallyPackagedStage, admits: [deepseek_v4_flash_id],
+  ))
+  is_refusal(verdict: completeness(
+    population: narrowed,
+    question: CompleteForPublisher { publisher: "deepseek-ai" as NonEmptyStr }))
+}
+
+// AGGREGATE, so the whole carrier is established in ONE corpus resolve rather than eight. It is a
+// conjunction of the individual claims and adds no coverage; it exists because each separate entry
+// point re-resolves the corpus, and eight resolves exceed a remote dispatch budget that one fits
+// inside. Every conjunct remains independently runnable, so a failure is still located.
+test fn w_all_population_claims_hold() -> Bool {
+  w_ollama_local_absence_does_not_remove_from_the_open_weight_population()
+    && w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable()
+    && w_an_empty_narrowing_does_not_remove_from_the_open_weight_population()
+    && w_narrowing_cannot_introduce_a_member_the_parent_lacked()
+    && w_a_closed_weight_release_is_excluded_from_the_open_weight_population()
+    && w_completeness_refuses_when_every_source_is_a_single_distributor()
+    && w_completeness_answers_for_the_publisher_whose_catalog_is_held()
+    && w_one_publishers_catalog_does_not_answer_for_another_publisher()
+    && w_universe_completeness_is_never_answerable()
+    && w_a_backward_or_same_stage_transition_refuses()
+    && w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe()
+}
+
+// THE DISCRIMINATING CONTROL, kept enrolled. `population_holds` must not be constantly true, or
+// every claim above is a conjunction of things that hold by vacuity rather than by the structural
+// separation. It asserts both directions in one row: a release the root population does not carry
+// is NOT held, and the one it does carry IS. The forbidden edge -- a channel-absent observation
+// removing a release -- is asserted directly by RED 1 above; what was missing, and is supplied
+// here, is evidence that the membership predicate can answer false at all.
+test fn w_population_membership_discriminates_in_both_directions() -> Bool {
+  let stranger = ReleaseIdentity {
+    publisher: "nobody" as NonEmptyStr,
+    family: "Never-Discovered" as NonEmptyStr,
+    revision: "1" as NonEmptyStr,
+  }
+  !population_holds(population: root(), id: stranger)
+    && population_holds(population: root(), id: deepseek_v4_flash_id)
+}
