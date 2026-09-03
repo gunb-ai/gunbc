@@ -1,0 +1,382 @@
+module gunbc.path_writer_set
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.render {
+  Document,
+  Leaf,
+  RenderFrame,
+  Append,
+  RenderCapability,
+  plain_line
+}
+import std.symbols { Ascii }
+import extdeps.render.surface { RenderTarget, PlainTerminal }
+import gunbc.cli_wire { CliWireResponse, cli_wire_response }
+import gunbc.cross_pr_contradiction {
+  PrDiffUnobservedCause,
+  pr_diff_unobserved_cause_text
+}
+
+// THE WRITER SET FOR A CONTENDED AUTHORITY.
+//
+// WHAT IT ANSWERS. Given one path, WHO IS CURRENTLY WRITING IT -- every open pull request whose
+// diff against its own merge base touches that path. One question, asked of the live fleet, printed.
+//
+// WHY IT IS WORTH ASKING. This repository's authorities are single by construction (DESIGN section
+// 3), which makes them contention points: one file is where a concept lives, so every lane touching
+// that concept edits that file. A lane about to restructure a module cannot see, from its own
+// branch, that three other branches are already rewriting it -- the conflict is created at authoring
+// time and discovered at merge time, by whoever lands second. The displaced cost is the rework the
+// later lane pays, and it is paid in full every time. This answers the question BEFORE the edit.
+//
+// IT REPORTS. Nothing here closes, comments, edits, rebases or merges. The report is the deliverable.
+//
+// WHAT THIS IS NOT, AND THE NEIGHBOUR IT DELIBERATELY DOES NOT WIDEN INTO.
+// `gunbc.cross_pr_contradiction` reads the same population and asks a different question: whether
+// two branches move one ROSTER IDENTITY in opposite directions. It states in its own header that a
+// same-direction overlap index is out of scope for it, because 45 of the 53 multi-PR keys its hand
+// run found were same-direction and would have buried the one row that mattered. That ruling is
+// correct FOR A SCAN over the whole corpus, and it is exactly why this is a QUERY: the subject is
+// supplied by the asker, so there is no population to bury a finding in. The two share the
+// observation vocabulary -- `PrDiffUnobservedCause` is imported, not re-coined -- and share nothing
+// else, because the grains genuinely differ: that instrument extracts quoted identities from a
+// unified diff, this one reads a path list.
+//
+// THE RUNG IS `mitigatable`, AND THE CEILING IS NAMED. This is an advisory reader over open pull
+// requests; it gates nothing, and no report can make a concurrent edit unwritable. Nothing above
+// mitigation is reachable for it: what is being prevented is two humans choosing to edit one file,
+// which is not a state a compiler can refuse. NEXT-RUNG TRIGGER: none -- this class's ceiling is
+// mitigation, and the ceiling is REACHED rather than stalled below.
+
+// ---------------------------------------------------------------------------------------------
+// THE SUBJECT AND WHAT COUNTS AS TOUCHING IT.
+//
+// THE MATCH RULE IS DERIVED FROM THE SUBJECT'S OWN SPELLING, and it travels with the report on its
+// own row. A query whose scope is implicit is the one that quietly answers a narrower question than
+// it was asked: `dag/gunbc` meaning "that file" and `dag/gunbc` meaning "that subtree" are different
+// questions with different writer sets, and a rule that guesses between them decides for the asker
+// while reporting itself complete. So the trailing separator SAYS which was asked, and the report
+// prints the rule it used.
+type PathMatchRule
+  = ExactPath
+  | DirectoryPrefix
+
+fn path_match_rule(subject: String) -> PathMatchRule {
+  if ends_with(s: subject, suffix: "/") { DirectoryPrefix } else { ExactPath }
+}
+
+fn path_match_rule_text(rule: PathMatchRule) -> String {
+  match rule {
+    ExactPath =>
+      "exact path equality — the subject names one file (end the subject with `/` to ask about a subtree)"
+    DirectoryPrefix =>
+      "directory prefix — the subject ends with `/`, so every changed path beneath it counts"
+  }
+}
+
+fn path_touches_subject(changed: String, subject: String, rule: PathMatchRule) -> Bool {
+  match rule {
+    ExactPath => changed == subject
+    DirectoryPrefix => starts_with(s: changed, prefix: subject)
+  }
+}
+
+// RENAMES ARE THE REASON THE OBSERVATION MUST BE TAKEN WITHOUT RENAME DETECTION, and this is where
+// that requirement is recorded rather than left to whoever next edits the observation half.
+//
+// git's `diff.renames` defaults to true, so a pure rename reports only the DESTINATION path
+// (measured: `git mv a.txt b.txt` then `git diff --name-only HEAD~1 HEAD` prints `b.txt` alone,
+// while `--no-renames` prints both). The branch RENAMING OR DELETING the contended authority is
+// precisely the writer a lane most needs to know about, and rename detection makes it invisible.
+// `extdeps.git.git` therefore carries `DiffNameOnlyNoRenames` as its own operation, and this scope
+// value is printed so a report taken any other way is legible as a different observation.
+type DiffPathScope
+  = | EveryChangedPathBothSidesOfARename
+
+fn diff_path_scope_text(scope: DiffPathScope) -> String {
+  match scope {
+    EveryChangedPathBothSidesOfARename =>
+      "every changed path, rename detection disabled — a branch renaming or deleting the subject is a writer of it"
+  }
+}
+
+data writer_set_diff_scope: DiffPathScope = EveryChangedPathBothSidesOfARename
+
+// ---------------------------------------------------------------------------------------------
+// WHO A WRITER IS.
+//
+// "WHO" IS THE PULL REQUEST, ITS BRANCH AND ITS AUTHOR, NOT A NUMBER. The asker's next action is
+// to read a branch or talk to somebody, and a bare integer supports neither. All four fields are
+// read from the forge's own listing, so none of them is inferred.
+//
+// THE BRANCH IS THE IDENTIFYING COLUMN IN THIS FLEET, AND THE AUTHOR IS THE COARSER ONE. Measured
+// on gunb-ai/gunbc (2026-09-03, `gh pr list --state open --json author`): 39 of 55 open pull
+// requests report `author.login` as `app/gunbai-bot` and 16 report a human login, because the
+// sessions that do most of the writing push through one app installation. So `author` separates
+// automation from human and no further, while `head_ref_name` -- which carries the session name --
+// is what tells two automated writers apart.
+//
+// Both are carried, and the first draft of this annotation is the reason to say why. It asserted
+// that EVERY open pull request is authored by the bot, from a three-row sample; the first live run
+// of this instrument printed a human-authored writer and refuted it. The claim that survives is the
+// weaker one above, and the row that survives carries both fields -- dropping `author` would make
+// this module assert that the branch name IS the author, which is a fact about this repository's
+// current automation rather than about pull requests.
+type PullIdentity {
+  number: Int
+  author: String
+  head_ref_name: String
+  title: String
+}
+
+fn pull_identity_text(pull: PullIdentity) -> String {
+  concat(
+    concat("#", to_string(pull.number)),
+    concat(
+      concat("\t", pull.author),
+      concat(concat("\t", pull.head_ref_name), concat("\t", pull.title))
+    )
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// ONE PULL REQUEST'S OBSERVATION.
+//
+// EMPTY IS NOT ABSENT, AND THIS COPRODUCT IS WHERE THAT IS ENFORCED -- the same discipline
+// `gunbc.cross_pr_contradiction` establishes for its own observation, and for a sharper reason here.
+// This query's most common true answer is "nobody", so an instrument that renders "I could not read
+// this pull request" as "this pull request touches nothing" produces the answer the asker is most
+// likely to accept without checking, from an observation that was never made. The whole value of
+// the query is that a clean "nobody" can be trusted, and it can only be trusted if an unread branch
+// is spelled differently from a branch that touches nothing.
+//
+// The two admissible emptinesses are the ones its neighbour derived and are kept apart for its
+// reasons: DERIVED means the head is an ancestor of the base, so the branch contains nothing;
+// CORROBORATED means the forge reports zero changed files and the local diff agrees.
+type PrPathObservation
+  = PrPathsRead { pull: PullIdentity, head_oid: String, touched: List<String> }
+  | PrPathsEmptyDerived { pull: PullIdentity, head_oid: String }
+  | PrPathsEmptyCorroborated { pull: PullIdentity, head_oid: String }
+  | PrPathsUnobserved { pull: PullIdentity, cause: PrDiffUnobservedCause }
+
+fn pr_path_observation_pull(observation: PrPathObservation) -> PullIdentity {
+  match observation {
+    PrPathsRead { pull: p, head_oid: _, touched: _ } => p
+    PrPathsEmptyDerived { pull: p, head_oid: _ } => p
+    PrPathsEmptyCorroborated { pull: p, head_oid: _ } => p
+    PrPathsUnobserved { pull: p, cause: _ } => p
+  }
+}
+
+fn pr_path_observation_is_unobserved(observation: PrPathObservation) -> Bool {
+  match observation {
+    PrPathsRead { pull: _, head_oid: _, touched: _ } => false
+    PrPathsEmptyDerived { pull: _, head_oid: _ } => false
+    PrPathsEmptyCorroborated { pull: _, head_oid: _ } => false
+    PrPathsUnobserved { pull: _, cause: _ } => true
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN.
+//
+// A WRITER ROW CARRIES THE PATHS THAT MATCHED, NOT A BOOLEAN. Under `ExactPath` that list is the
+// subject and says nothing new; under `DirectoryPrefix` it is the whole content of the answer --
+// "this branch is somewhere under dag/gunbc" is not actionable, "this branch rewrites
+// dag/gunbc/pr_digests.dag" is. Carrying the evidence for the verdict beside the verdict is the
+// same choice `KeyDirections` makes next door, for the same reason.
+type WriterRow {
+  pull: PullIdentity
+  head_oid: String
+  matched: List<String>
+}
+
+fn observation_writer_row(
+  observation: PrPathObservation,
+  subject: String,
+  rule: PathMatchRule
+) -> List<WriterRow> {
+  match observation {
+    PrPathsRead { pull: pull, head_oid: oid, touched: touched } => {
+      let matched = filter(touched, p => path_touches_subject(changed: p, subject: subject, rule: rule))
+      if matched.length() == 0 {
+        []
+      } else {
+        [WriterRow { pull: pull, head_oid: oid, matched: matched }]
+      }
+    }
+    PrPathsEmptyDerived { pull: _, head_oid: _ } => []
+    PrPathsEmptyCorroborated { pull: _, head_oid: _ } => []
+    PrPathsUnobserved { pull: _, cause: _ } => []
+  }
+}
+
+type WriterSetReport {
+  subject: String
+  rule: PathMatchRule
+  scope: DiffPathScope
+  observations: List<PrPathObservation>
+  writers: List<WriterRow>
+}
+
+fn writer_set_report(subject: String, observations: List<PrPathObservation>) -> WriterSetReport {
+  let rule = path_match_rule(subject: subject)
+  WriterSetReport {
+    subject: subject,
+    rule: rule,
+    scope: writer_set_diff_scope,
+    observations: observations,
+    writers: flat_map(
+      observations,
+      o => observation_writer_row(observation: o, subject: subject, rule: rule)
+    )
+  }
+}
+
+fn report_unobserved(report: WriterSetReport) -> List<PrPathObservation> {
+  filter(report.observations, o => pr_path_observation_is_unobserved(observation: o))
+}
+
+// COMPLETENESS IS A PROPERTY OF THE OBSERVATION, NOT OF THE FINDING, and here it decides whether
+// the ANSWER may be believed rather than merely how many rows it has. A writer this report names is
+// real whatever else failed; what it may never do is let "no writers listed" be read as "nobody is
+// writing this" over a population it could not fully read. The exit status is bound to THIS.
+fn report_is_complete(report: WriterSetReport) -> Bool {
+  report_unobserved(report: report).length() == 0
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REPORT AS LINES.
+
+fn writer_row_lines(row: WriterRow) -> List<String> {
+  append(
+    [
+      concat(
+        concat("writer\t", pull_identity_text(pull: row.pull)),
+        concat("\t", row.head_oid)
+      )
+    ],
+    items: map(row.matched, p => concat("  touches\t", p))
+  )
+}
+
+fn unobserved_line(observation: PrPathObservation) -> List<String> {
+  match observation {
+    PrPathsUnobserved { pull: pull, cause: cause } =>
+      [
+        concat(
+          concat("unobserved\t", pull_identity_text(pull: pull)),
+          concat("\t", pr_diff_unobserved_cause_text(cause: cause))
+        )
+      ]
+    PrPathsRead { pull: _, head_oid: _, touched: _ } => []
+    PrPathsEmptyDerived { pull: _, head_oid: _ } => []
+    PrPathsEmptyCorroborated { pull: _, head_oid: _ } => []
+  }
+}
+
+// NOBODY IS AN ANSWER AND IS SAID IN WORDS. A report whose writer list is empty renders as a header
+// and then nothing, which is indistinguishable to a reader from a report that failed to render its
+// rows -- the empty-observation narrow carried to a human. The sentence is only reachable when the
+// population was fully read, because that is the only state in which it is true.
+fn writer_summary_lines(report: WriterSetReport) -> List<String> {
+  if report.writers.length() > 0 {
+    flat_map(report.writers, row => writer_row_lines(row: row))
+  } else {
+    if report_is_complete(report: report) {
+      [concat("no open pull request touches ", report.subject)]
+    } else {
+      [
+        concat(
+          "no writer found among the pull requests that COULD be read — the population is incomplete, so this is not the answer `nobody is writing ",
+          concat(report.subject, "`")
+        )
+      ]
+    }
+  }
+}
+
+fn writer_set_lines(report: WriterSetReport) -> List<String> {
+  append(
+    append(
+      [
+        concat("subject\t", report.subject),
+        concat("match_rule\t", path_match_rule_text(rule: report.rule)),
+        concat("diff_scope\t", diff_path_scope_text(scope: report.scope)),
+        concat("pull_requests\t", to_string(report.observations.length())),
+        concat("unobserved\t", to_string(report_unobserved(report: report).length())),
+        concat("writers\t", to_string(report.writers.length()))
+      ],
+      items: writer_summary_lines(report: report)
+    ),
+    items: flat_map(report.observations, o => unobserved_line(observation: o))
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ANSWER AND THE VERDICT, WHICH ARE TWO FACTS.
+//
+// FINDING WRITERS IS A SUCCESSFUL QUERY. Contention is what was asked about, so exiting nonzero on
+// a nonempty writer set would report the instrument's subject as the instrument's failure and make
+// a script unable to tell a contended path from a broken lookup. Failing to READ some pull request
+// exits nonzero, for the reason `report_is_complete` states.
+fn writer_set_exit(report: WriterSetReport) -> ProcessExit {
+  if report_is_complete(report: report) {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: concat(
+        to_string(report_unobserved(report: report).length()),
+        " open pull request(s) could not be read — the printed writer set is real but is not known to be complete"
+      )
+    )
+  }
+}
+
+// THE CAPABILITY IS DECLARED, NOT DETECTED -- the same standing choice `gunbc.scm.cli` makes and
+// for its reason: no colour, ASCII, no cursor addressing is the floor every terminal meets, and a
+// module that cannot observe the real terminal must not fabricate one. When a host learns to report
+// a capability it passes one in and these rows become the fallback rather than the answer.
+data plain_terminal_capability: RenderCapability = RenderCapability {
+  color: false,
+  tier: Ascii,
+  cursor_addressable: false
+}
+
+data plain_terminal_target: RenderTarget = PlainTerminal
+
+fn text_lines_document(lines: List<String>) -> Document {
+  Document {
+    blocks: [
+      Leaf {
+        frame: RenderFrame {
+          lines: map(lines, l => plain_line(text: l)),
+          cursor_action: Append
+        }
+      }
+    ]
+  }
+}
+
+// THE REFUSAL STILL PRINTS. A query invoked without a subject has no writer set to report and an
+// operator who must be told why; `CliWireResponse` carries exactly that pair, and the argument that
+// a refusal should print nothing and exit nonzero loses to the one this repository already made
+// when it built that carrier.
+fn writer_set_refusal(reason: String) -> CliWireResponse {
+  cli_wire_response(
+    doc: text_lines_document(lines: [concat("refused\t", reason)]),
+    target: plain_terminal_target,
+    capability: plain_terminal_capability,
+    exit: exit_failure(reason: reason)
+  )
+}
+
+fn writer_set_response(report: WriterSetReport) -> CliWireResponse {
+  cli_wire_response(
+    doc: text_lines_document(lines: writer_set_lines(report: report)),
+    target: plain_terminal_target,
+    capability: plain_terminal_capability,
+    exit: writer_set_exit(report: report)
+  )
+}
