@@ -37,11 +37,20 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // on the reasoning that declaration_ref_resolves needs an expensive decl_facts index resolved
 // against a pool. That claim was FALSE, and the required floor proved it by refusing: its
 // declarations phase resolves every cited module path in the corpus and failed this PR with
-// CITED-MODULE-ABSENT when a sibling fixture cited a module nobody declares. So a DeclarationRef
-// here is a gated citation, the strongest of the three forms this program considered, and it needs
-// no local witness. What was nearly recorded instead was a fabricated gap -- an admission of missing
-// evidence for a check that was already running -- which would have understated the rung exactly as
-// inflating it would overstate it.
+// CITED-MODULE-ABSENT when a sibling fixture cited a module nobody declares. What was nearly recorded
+// instead was a fabricated gap -- an admission of missing evidence for a check that was already
+// running -- which understates a rung exactly as inflation overstates it.
+//
+// THE GATE HOLDS AT MODULE-PATH GRAIN, AND NO FURTHER. That red proves the cited module_path is
+// resolved. It does NOT establish that the decl_name resolves, that the field exists, or that the
+// named declaration is a catalog row -- no mutation here tested any of those, and claiming the whole
+// DeclarationRef has been adjudicated would promote the evidence past what it measured. This is why
+// the manifest compares module_path alone and its refusal arm carries expected_module/found_module:
+// the admission asserts that the asset's catalog module identifies the A1 mini product AUTHORITY,
+// not that it names an exact catalog row, because extdeps.printing.bambu_lab_a1_mini exposes product
+// facts such as a1_mini_build_envelope and no separately named catalog record for one to point at.
+// The trigger for the stronger claim is authoring that catalog declaration; until it exists, the
+// weaker sentence is the true one.
 
 data forged_source: String = "module probe_manifest_forged_admitted\nimport product.printed_chassis.manufacturing_manifest { AdmittedPrinterAsset }\nimport product.placement_supply { PhysicalAsset, PhysicalAssetIdentity }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\nfn forged() -> AdmittedPrinterAsset {\n  AdmittedPrinterAsset {\n    asset: PhysicalAsset {\n      identity: \"forged\" as PhysicalAssetIdentity,\n      catalog: DeclarationRef { module_path: \"extdeps.printing.bambu_lab_a1_mini\", decl_name: \"a1_mini_build_envelope\", field: WholeDeclaration },\n      physical_serial: Absent,\n      procurement: Absent,\n    },\n  }\n}\n"
 

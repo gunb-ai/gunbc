@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply {
   PhysicalAsset,
   PhysicalAssetIdentity,
+  physical_asset_identity_eq,
 }
 
 // THE MANIFEST BINDS A PRINTED THING TO THE PROCESS THAT PRODUCED IT, and it exists because the
@@ -55,11 +56,7 @@ type PrinterAssetAdmission
   = PrinterAssetAdmitted { binding: AdmittedPrinterAsset }
   | PrinterAssetAbsent { requested: PhysicalAssetIdentity }
   | PrinterAssetDuplicate { requested: PhysicalAssetIdentity, matches: Int }
-  | PrinterCatalogMismatch { requested: PhysicalAssetIdentity, expected_module: NonEmptyStr, found_module: NonEmptyStr }
-
-fn physical_asset_identity_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
-  a as String == b as String
-}
+  | PrinterCatalogModuleMismatch { requested: PhysicalAssetIdentity, expected_module: NonEmptyStr, found_module: NonEmptyStr }
 
 // THE SCAN CARRIES THE MATCHES RATHER THAN A COUNT PLUS A VALUE, because a count and a separately
 // held candidate can disagree. Holding the matched rows is what lets the duplicate arm report how
@@ -126,7 +123,7 @@ fn admit_printer_asset(inventory: List<PhysicalAsset>, requested: PhysicalAssetI
         if catalog_matches {
           PrinterAssetAdmitted { binding: AdmittedPrinterAsset { asset: a } }
         } else {
-          PrinterCatalogMismatch {
+          PrinterCatalogModuleMismatch {
             requested: requested,
             expected_module: a1_mini_catalog_module,
             found_module: a.catalog.module_path,

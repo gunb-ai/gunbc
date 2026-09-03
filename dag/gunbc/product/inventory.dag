@@ -13,7 +13,7 @@ import std.minted_identity {
   minted_id_eq,
   minted_id_ordinal,
 }
-import product.placement_supply { PhysicalAssetIdentity, ProcurementReceiptIdentity }
+import product.placement_supply { PhysicalAssetIdentity, ProcurementReceiptIdentity, physical_asset_identity_eq }
 
 // INVENTORY-0: the generic product-layer authority for procurement lots and the append-only
 // event ledger over them. It answers, for one lot of fungible stock: how much was acquired, what
@@ -509,6 +509,120 @@ fn departure_origin_position(origin: DepartureOrigin) -> StockPosition {
     DepartFromQuarantined => Quarantined
     DepartFromUnqualified => Unqualified
     DepartFromInstalled => Installed
+  }
+}
+
+// WHICH LOT NAMED THIS PHYSICAL ASSET -- the narrowest generic projection over the event ledger, and
+// it lives HERE because this module owns what an installation event says. A consumer that needs an
+// asset's provenance must not re-read assets, origin or stock semantics for itself: that would be a
+// second interpretation of one event shape, and the two would drift.
+//
+// THIS ANSWERS ABOUT ONE REQUESTED ASSET, NOT ABOUT THE WHOLE EVENT. The distinction is load-bearing
+// and was nearly lost. QuantityInstalled deliberately permits fewer named assets than units
+// installed -- it refuses only when there are MORE -- so `quantity: 2, assets: [spool_a]` records
+// two installed units of which one is individually identified. That is a state this ledger means to
+// represent. An earlier proposed rule made `identified count == quantity` a precondition for
+// resolving ANY asset's lot, which would refuse spool_a's provenance because its SIBLING is
+// anonymous: evidence unrelated to the requested subject, and an over-strict refusal is a defect in
+// the same way a permissive one is. Whether the whole population is individuated is a DIFFERENT
+// question, and a caller that needs it must ask it separately rather than reading it out of this.
+//
+// REPEATED EVIDENCE REFUSES RATHER THAN CORROBORATING. Two installation events naming the same asset
+// -- even under one lot -- are not a stronger fact; they are an unadjudicated one, because these
+// events carry no asset-grained removal or reinstallation history, so a legitimate reinstall and a
+// double installation are indistinguishable here. Calling that corroboration would be the absorbing
+// fallback: answering confidently where the model cannot discriminate. The trigger for admitting
+// repeated same-lot occurrences is an asset-grained stock lifecycle.
+type AssetSourceLotStanding
+  = AssetSourceLotUnobserved { asset: PhysicalAssetIdentity }
+  | AssetSourceLotResolved { asset: PhysicalAssetIdentity, lot: InventoryLotIdentity, event_ordinal: Nat }
+  | AssetSourceLotEvidenceDuplicate { asset: PhysicalAssetIdentity, occurrences: Nat }
+  | AssetSourceLotConflict { asset: PhysicalAssetIdentity, first_lot: InventoryLotIdentity, further_lots: List<InventoryLotIdentity> }
+
+// One hit: the asset was named by an installation event, and where.
+type AssetLotHit sole_constructor {
+  lot: InventoryLotIdentity
+  ordinal: Nat
+}
+
+type AssetLotScan sole_constructor {
+  hits: List<AssetLotHit>
+  next_ordinal: Nat
+}
+
+// The asset may appear more than once WITHIN one event's list, and that counts as more than one
+// occurrence: a list naming the same asset twice is malformed evidence, not one sighting.
+fn asset_hits_in_event(event: InventoryEvent, asset: PhysicalAssetIdentity, ordinal: Nat) -> List<AssetLotHit> {
+  match event {
+    QuantityInstalled { lot: l, quantity: _, origin: _, assets: a } =>
+      map(filter(a, x => physical_asset_identity_eq(a: x, b: asset)), _ => AssetLotHit { lot: l, ordinal: ordinal })
+    LotAcquired { lot: _ } => []
+    LotReceived { lot: _, quantity: _ } => []
+    QuantityQualified { lot: _, quantity: _ } => []
+    QuantityQuarantined { lot: _, quantity: _ } => []
+    QuantityReserved { lot: _, quantity: _, holder: _ } => []
+    ReservationReleased { lot: _, quantity: _, holder: _ } => []
+    QuantityRemoved { lot: _, quantity: _ } => []
+    QuantityFailed { lot: _, quantity: _, origin: _ } => []
+    QuantitySold { lot: _, quantity: _, origin: _ } => []
+    QuantityDisposed { lot: _, quantity: _, origin: _ } => []
+  }
+}
+
+fn scan_asset_lot_hits(events: List<InventoryEvent>, asset: PhysicalAssetIdentity) -> AssetLotScan {
+  fold(events, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, e) {
+    AssetLotScan {
+      hits: concat(acc.hits, asset_hits_in_event(event: e, asset: asset, ordinal: acc.next_ordinal)),
+      next_ordinal: acc.next_ordinal + 1
+    }
+  })
+}
+
+fn distinct_hit_lots(hits: List<AssetLotHit>) -> List<InventoryLotIdentity> {
+  fold(hits, init: [], f: fn(acc, h) {
+    let already = fold(acc, init: false, f: fn(seen, l) { seen || minted_id_eq(left: l, right: h.lot) })
+    if already { acc } else { concat(acc, [h.lot]) }
+  })
+}
+
+// The first lot names the conflict and the rest are carried beside it, built in ONE pass rather than
+// by a head-and-tail pair: `.first()` yields an option, so a head/tail split would introduce an
+// absent-arm that cannot occur here (the caller has already established more than one lot) and would
+// have to be discharged with a fabricated default.
+fn conflict_over_lots(asset: PhysicalAssetIdentity, lots: List<InventoryLotIdentity>) -> AssetSourceLotStanding {
+  fold(lots, init: AssetSourceLotUnobserved { asset: asset }, f: fn(acc, l) {
+    match acc {
+      AssetSourceLotUnobserved { asset: _ } =>
+        AssetSourceLotConflict { asset: asset, first_lot: l, further_lots: [] }
+      AssetSourceLotConflict { asset: _, first_lot: fl, further_lots: fr } =>
+        AssetSourceLotConflict { asset: asset, first_lot: fl, further_lots: concat(fr, [l]) }
+      AssetSourceLotResolved { asset: _, lot: _, event_ordinal: _ } => acc
+      AssetSourceLotEvidenceDuplicate { asset: _, occurrences: _ } => acc
+    }
+  })
+}
+
+// CONFLICT OUTRANKS DUPLICATE, because two lots is the more specific and more actionable statement:
+// reporting "seen twice" for an asset claimed by two different lots would discard the fact a reader
+// most needs. Duplicate is what remains when the repetition is within ONE lot.
+fn asset_source_lot_standing(events: List<InventoryEvent>, asset: PhysicalAssetIdentity) -> AssetSourceLotStanding {
+  let scan = scan_asset_lot_hits(events: events, asset: asset)
+  let lots = distinct_hit_lots(hits: scan.hits)
+  let n = count(scan.hits)
+  if n == 0 {
+    AssetSourceLotUnobserved { asset: asset }
+  } else {
+    if count(lots) > 1 {
+      conflict_over_lots(asset: asset, lots: lots)
+    } else {
+      if n > 1 {
+        AssetSourceLotEvidenceDuplicate { asset: asset, occurrences: n }
+      } else {
+        fold(scan.hits, init: AssetSourceLotUnobserved { asset: asset }, f: fn(_, h) {
+          AssetSourceLotResolved { asset: asset, lot: h.lot, event_ordinal: h.ordinal }
+        })
+      }
+    }
   }
 }
 
