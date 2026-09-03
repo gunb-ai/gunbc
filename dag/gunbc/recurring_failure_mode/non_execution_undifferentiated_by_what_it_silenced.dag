@@ -1,0 +1,92 @@
+module gunbc.recurring_failure_mode.non_execution_undifferentiated_by_what_it_silenced
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data non_execution_undifferentiated_by_what_it_silenced: RecurringFailureMode = RecurringFailureMode {
+  identity: "non_execution_undifferentiated_by_what_it_silenced" as NonEmptyStr,
+
+  receipts: [
+    "**a required row does not execute, and NOTHING DECLARES WHAT ITS EXECUTION ESTABLISHED, so every non-execution looks alike** (INVALID STATE: a row that is preempted, skipped or otherwise reaches no verdict is reported as undecided, and the report carries no fact separating a row whose absence merely leaves a question open from a row whose absence REMOVES A WALL. ",
+
+    "HARM: the second kind is silently decoverage. ",
+
+    "The row PASSES in the ordinary case, so preempting it turns a standing guarantee off with nothing red anywhere -- and because the population cannot be ordered by consequence, the expensive rows get the optimisation attention while the load-bearing ones are invisible. ",
+
+    "A retry that draws a faster runner then buys a green OVER REFUSALS THAT DID NOT EXECUTE, which is why re-running is not an exit. ",
+
+    "SPECIMEN, and the two concepts are DISJOINT rather than conflated -- the opposite of what the lane suspected before it read the setter. ",
+
+    "`v1.cli_run` `InterruptedBeforeVerdict.enrolled_expected_red` is KnownRed QUARANTINE and nothing else: it is set true on exactly one branch of the required-floor claim loop, the expected-red arm reaching `ExpectedRedArm::BudgetRefused`, and it means the identity is rostered as DECLARED-TO-FAIL. ",
+
+    "The rows whose silencing motivated this class carry it FALSE. ",
+
+    "`test.claim.self_host_compile_phase_live_gate_witness` `a_live_tree_that_gained_an_identity_refuses_and_names_it` and `a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses` are ordinary PASSING rows on no expected-red, cost-debt or quarantine roster in the tree; their content is that `live_tree_frontier_verdict` returns `LiveFrontierRefused` and NAMES the planted identity. ",
+
+    "The second carries an in-source comment stating that it is precisely the probe that would go green if the join were replaced by a population-size comparison -- so preempting that one row makes that sentence stop being true while the run reports one more undecided claim. ",
+
+    "THAT IS THE WHOLE SEVERITY, and it is why the quarantine flag cannot stand in for the missing fact: quarantine names rows expected to be RED, and the silenced rows are GREEN by construction. ",
+
+    "Two different questions, one of them unasked. ",
+
+    "THE CARRIER FOR THE MISSING FACT ALREADY EXISTS AND IS INERT, which is what makes this one missing consumer rather than two problems. ",
+
+    "`std.witness_purpose` `WitnessPurpose` declares the authored taxonomy -- BehavioralDiscriminator, BoundaryCrossing, PopulationTotality, ExternalFidelity, ResourceContract -- landed under the operator's 2026-08-04 witness-cost-derives-from-purpose ruling, its own header stating that purpose is AUTHORED AND NOT INFERRED FROM IMPLEMENTATION. ",
+
+    "It is rostered in `v2.lens.inert_carrier` with the reason that it landed ahead of the consumer that derives witness size from it: zero witnesses declare one, zero consumers read one, and its only reference is its own taxonomy test `test.claim.witness_purpose_taxonomy_witness`. ",
+
+    "So the purpose vocabulary landed, the consumer slices never did, and in the meantime the required floor grew a cost mechanism that JUDGES ROWS WITH NO ACCESS TO WHAT ANY ROW IS FOR. ",
+
+    "The cpu_deadline population is unrankable for the same reason witness size is underivable. ",
+
+    "AN OBSERVABILITY FACT THAT MUST NOT BE RESTATED AS THE GAP, because this lane's first framing had it backwards and the correction is the load-bearing half. ",
+
+    "WHICH rows were preempted is ALREADY a joinable run product: `v1.cli_run` `write_required_floor_claim_cost_tsv` emits one row per EXECUTED claim carrying identity, module, outcome and `verdict_reached`, and the occurrence is minted in `v1.cli_run.required_floor_runner`'s claim loop BEFORE any classification branches, so preempted rows are present with `verdict_reached` false rather than dropped. ",
+
+    "The identities are not log-only. ",
+
+    "Reading the `INTERRUPTED-BEFORE-VERDICT` diagnostic lines as the population is `instrument_output_read_as_subject_content` and was committed twice in one lane. ",
+
+    "What is missing is not the population but the RANKING KEY over it. ",
+
+    "RECOGNITION RULE: when a mechanism reports that a check did not run, ask what the report lets a reader conclude about WHAT STOPPED BEING CHECKED. ",
+
+    "If the answer is nothing -- if a silenced wall and an open question produce the same row -- the mechanism counts non-executions without ranking them, and no amount of per-row cost detail supplies the missing fact. ",
+
+    "A second tell, which is what caught this one: a flag that looks like the distinction but is set on exactly one branch for a different reason. ",
+
+    "Read the SETTER before concluding a fact is represented. ",
+
+    "RUNG FOUND AT: mitigatable. ",
+
+    "The line does stop -- a non-verdict on a required claim blocks, typed and located -- so nothing is admitted that should not be; what is absent is the ability to rank what was lost. ",
+
+    "CEILING, and it is split rather than single because the two halves have different decidability. ",
+
+    "That every enrolled witness CARRIES a declared purpose is structurally guaranteeable: make the declaration mandatory at admission and a purposeless enrolled row has no constructor. ",
+
+    "That a declared purpose is TRUE of the row's body is undeclared intent and stays OUTSIDE the modeled guarantee -- observed and refused at a declared boundary, never inferred from the test body, which the taxonomy's own header forbids. ",
+
+    "Between them the join is mechanically preventable: a preempted row whose declared purpose is refusal-establishing reports as its own counted disposition, and rows with no declaration report as PURPOSE-UNDECLARED rather than as safe, which is the fail-closed direction. ",
+
+    "NEXT TRIGGER -- AN AUTHORED PURPOSE DECLARATION A FLOOR CONSUMER CAN JOIN AGAINST, and it is stated as the CAPABILITY because a trigger naming less gets satisfied while the capability stays dead. ",
+
+    "It must be sufficient for all three: (i) an operator ruling on whether refusal-establishing is a REFINEMENT of `BehavioralDiscriminator` carrying what the row requires to be refused, or a peer arm -- the coarse existing arm covers a positive control equally well, so spending it here would buy a key cited as coverage for a distinction it does not draw, which is the 4b(1) inflation that stops a class ever ranking for climbing; (ii) a purpose declared at IDENTITY grain that a witness authors, as a REAL DECLARATION BINDING A `DeclarationRef` TO THE ROW rather than a source annotation -- 4c forecloses the cheap version of this outright, because semantic passes receive only the ANNOTATION-ERASED PROJECTION, so an annotated purpose is unreadable by the floor BY CONSTRUCTION and would be a declaration no consumer could ever join against. ",
+
+    "That is 4c's own rule that an annotation is never evidence a machine claim holds, applied to this fact; it is recorded here so the annotation is not re-proposed as an economy later. ",
+
+    "And not a roster of interesting rows kept by hand -- this class has already retracted one hand-derivation described as a run product, and selecting a first population out of the non-verdict arm would be that shape a third time, since the selection would be derived from the very run product whose membership is redrawn per attempt; (iii) a floor consumer joining that declaration against `verdict_reached` and counting the undeclared remainder. ",
+
+    "THE CONSUMER DESIGN IS BLOCKED ON THE RULING AND IS NOT REJECTED ON MERIT -- recorded so the next lane does not re-derive it and does not read the absence as a refusal of the approach. ",
+
+    "NOT PROPOSED, AND EXCLUDED BY THE OPERATOR WHEN ASKED: raising the 500ms ceiling, widening a budget, moving rows to a laxer lane, or making the floor stop refusing on non-verdicts. ",
+
+    "Each hides the class rather than ranking it, and the last also deletes the refusal that makes the silencing detectable at all. ",
+
+    "This row is about what is REPORTED, never about what is ADMITTED. ",
+
+    "RELATED: `non_verdict_disposition_surfaces_as_refusal` carries the aggregate-boundary half, and the `gunbc.rung_drop` row `floor_cost_claim_qualification_unavailable` carries the cost half -- neither names the missing purpose join, which is why this is its own row.",
+  ],
+
+  evidence: [],
+}
