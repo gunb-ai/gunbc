@@ -20,7 +20,8 @@ import extdeps.standards.rfc_8118 {
   project_navigable_uri,
   NavigableUriProjected,
   NavigableUriRefused,
-  PdfOpenParameterPercentEncodeRefused,
+  NavigableUriPercentEncodeRefused,
+  PdfOpenParameterPercentEncodeRefusal,
   SequenceConstructed,
   pdf_profile_parameter_wire,
   PdfProfileParameterWired,
@@ -249,7 +250,11 @@ test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
         base: witness_pdf_base_uri,
         sequence_wire: PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause },
       ) {
-        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: _, cause: _ } } => true
+        NavigableUriRefused {
+          cause: NavigableUriPercentEncodeRefused {
+            refusal: PdfOpenParameterPercentEncodeRefusal { parameter: _, cause: _ },
+          },
+        } => true
         _ => false
       }
     _ => false
