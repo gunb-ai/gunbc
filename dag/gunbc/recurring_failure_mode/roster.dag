@@ -93,6 +93,7 @@ import gunbc.recurring_failure_mode.stale_base_branch_reads_as_pending_work { st
 import gunbc.recurring_failure_mode.binding_chosen_by_pool_membership_rather_than_by_the_declared_rule { binding_chosen_by_pool_membership_rather_than_by_the_declared_rule }
 import gunbc.recurring_failure_mode.join_judged_against_its_sibling_rather_than_its_declared_context { join_judged_against_its_sibling_rather_than_its_declared_context }
 import gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement { premise_that_a_shared_subject_means_disagreement }
+import gunbc.recurring_failure_mode.trigger_names_route_while_capability_remains_dead { trigger_names_route_while_capability_remains_dead }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -177,4 +178,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   binding_chosen_by_pool_membership_rather_than_by_the_declared_rule,
   join_judged_against_its_sibling_rather_than_its_declared_context,
   premise_that_a_shared_subject_means_disagreement,
+  trigger_names_route_while_capability_remains_dead,
 ]
