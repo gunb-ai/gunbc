@@ -32,6 +32,7 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 type FloorCostRow {
   identity: String
   module: String
+  verdict_reached: Bool
   cpu_ms: Millisecond
   eval_steps: Int
 }
@@ -62,6 +63,7 @@ type RunCost {
 type ClaimCostColumns {
   identity: Int
   module: Int
+  verdict_reached: Int
   cpu_ms: Int
   eval_steps: Int
 }
@@ -74,6 +76,12 @@ fn claim_cost_column_index(header_fields: List<String>, name: String) -> Int? {
     |> first
 }
 
+fn parse_verdict_reached(value: String) -> Bool? {
+  if value == "true" { Present { value: true } }
+  else if value == "false" { Present { value: false } }
+  else { none }
+}
+
 // THE HEADER LINE IS THE ONE THAT NAMES `identity` FIRST. The artifact's `#`-prefixed summary
 // precedes it, and a data row can never be mistaken for it because no claim identity is the
 // literal string "identity".
@@ -83,12 +91,15 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
     Absent => none
     Present { value: id } => match claim_cost_column_index(header_fields: fields, name: "module") {
       Absent => none
-      Present { value: md } => match claim_cost_column_index(header_fields: fields, name: "cpu_ms") {
+      Present { value: md } => match claim_cost_column_index(header_fields: fields, name: "verdict_reached") {
         Absent => none
-        Present { value: cpu } => match claim_cost_column_index(header_fields: fields, name: "eval_steps") {
+        Present { value: verdict } => match claim_cost_column_index(header_fields: fields, name: "cpu_ms") {
           Absent => none
-          Present { value: steps } => Present {
-            value: ClaimCostColumns { identity: id, module: md, cpu_ms: cpu, eval_steps: steps }
+          Present { value: cpu } => match claim_cost_column_index(header_fields: fields, name: "eval_steps") {
+            Absent => none
+            Present { value: steps } => Present {
+              value: ClaimCostColumns { identity: id, module: md, verdict_reached: verdict, cpu_ms: cpu, eval_steps: steps }
+            }
           }
         }
       }
@@ -105,7 +116,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
     none
   } else {
     let fields = split(s: line, delimiter: "\t")
-    let widest = max_int(a: max_int(a: columns.identity, b: columns.module), b: max_int(a: columns.cpu_ms, b: columns.eval_steps))
+    let widest = max_int(a: max_int(a: max_int(a: columns.identity, b: columns.module), b: columns.verdict_reached), b: max_int(a: columns.cpu_ms, b: columns.eval_steps))
     if count(fields) <= widest {
       none
     } else if fields[columns.identity] == "identity" {
@@ -115,12 +126,16 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
         Absent => none
         Present { value: cpu } => match parse_int(s: fields[columns.eval_steps]) {
           Absent => none
-          Present { value: steps } => Present {
-            value: FloorCostRow {
-              identity: fields[columns.identity],
-              module: fields[columns.module],
-              cpu_ms: millisecond(count: cpu),
-              eval_steps: steps
+          Present { value: steps } => match parse_verdict_reached(value: fields[columns.verdict_reached]) {
+            Absent => none
+            Present { value: reached } => Present {
+              value: FloorCostRow {
+                identity: fields[columns.identity],
+                module: fields[columns.module],
+                verdict_reached: reached,
+                cpu_ms: millisecond(count: cpu),
+                eval_steps: steps
+              }
             }
           }
         }
@@ -414,4 +429,139 @@ fn crossing_recurrence(
 // single-run, which is the shape a run-level cause produces.
 fn recurring_crossers(recurrence: List<CrossingRecurrence>) -> List<CrossingRecurrence> {
   recurrence |> filter(r => r.runs_crossed > 1)
+}
+
+// EVALUATOR-STEP DETERMINISM IS A DIFFERENT QUESTION FROM COST DISTRIBUTION. CPU may move between
+// attempts; completed work on one byte-identical head may not. Both observed heads are carried:
+// artifact acquisition supplies them, and the comparison refuses before looking at rows when they
+// differ. A caller therefore cannot turn two different trees into a plausible determinism result.
+type SameHeadAttemptPair {
+  left_head: NonEmptyStr
+  left_attempt: NonEmptyStr
+  left_rows: List<FloorCostRow>
+  right_head: NonEmptyStr
+  right_attempt: NonEmptyStr
+  right_rows: List<FloorCostRow>
+}
+
+// CAUSE IS OPEN. The measured 15-row drift does not travel through map_keys or map_values in the
+// affected v2 witness paths, and std.primitive_identity already classifies both as
+// HostUnspecifiedOrder behind the determinism gate. That eliminates one tempting attribution; it
+// does not establish another. The existing cache-purity oracle was also run on
+// rust_crate_partition_witness.witness_partition_fold_unit_count_holds, one of the 15: cold and
+// resolved-graph-cache-warm executions returned byte-identical 88-byte PASS output. That rules out
+// semantic cache impurity for the specimen; it does NOT rule out a cache hit changing only the
+// instrumentation count by itself. The two retained same-head artifacts disfavor that explanation
+// independently: attempt 3 is LOWER for five drifting identities and HIGHER for ten, whereas a warm
+// cache skipping work predicts one direction. The cross-attempt sum is nearly, but not exactly,
+// conserved, so attribution movement remains live beside genuine work drift. CAUSE IS NOT
+// ESTABLISHED. THE FIXED-COMPONENT OWNERSHIP FORK IS OPEN: it may be work each claim must genuinely
+// perform, in which case a declared per-claim complexity envelope is the next question; or the same
+// setup may be recomputed per claim, in which case the remedy is compute-once rather than a budget.
+// `v2.workflow.floor_pure_producer_share` makes the second arm non-obvious rather than hypothetical:
+// the Rust target-model producers were measured and WITHDRAWN because serving them made the
+// produced-declaration consumers worse. That arithmetic predates this fixed-component observation
+// and is a load-bearing prior to re-derive, not permission to re-enrol them by inference.
+// This detector names the first divergent
+// ROW available in the cost artifact (identity, module, attempts and both counts). The artifact carries no expression trace,
+// so claiming a first divergent evaluator point here would fabricate precision the producer does
+// not expose.
+type EvalStepDeterminismViolation
+  = AttemptHeadsDiffer {
+      left_head: NonEmptyStr
+      left_attempt: NonEmptyStr
+      right_head: NonEmptyStr
+      right_attempt: NonEmptyStr
+    }
+  | CompletedIdentityAbsent {
+      identity: String
+      module: String
+      completed_attempt: NonEmptyStr
+      absent_attempt: NonEmptyStr
+    }
+  | CompletedIdentityUnavailable {
+      identity: String
+      module: String
+      completed_attempt: NonEmptyStr
+      unavailable_attempt: NonEmptyStr
+    }
+  | CompletedIdentityStepsDiffer {
+      identity: String
+      module: String
+      left_attempt: NonEmptyStr
+      left_steps: Int
+      right_attempt: NonEmptyStr
+      right_steps: Int
+    }
+
+fn completed_left_violations(pair: SameHeadAttemptPair) -> List<EvalStepDeterminismViolation> {
+  pair.left_rows
+    |> filter(row => row.verdict_reached)
+    |> flat_map(left => match pair.right_rows |> filter(right => right.identity == left.identity) |> first {
+         Absent => [CompletedIdentityAbsent {
+           identity: left.identity,
+           module: left.module,
+           completed_attempt: pair.left_attempt,
+           absent_attempt: pair.right_attempt
+         }]
+         Present { value: right } =>
+           if !right.verdict_reached {
+             [CompletedIdentityUnavailable {
+               identity: left.identity,
+               module: left.module,
+               completed_attempt: pair.left_attempt,
+               unavailable_attempt: pair.right_attempt
+             }]
+           } else if left.eval_steps != right.eval_steps {
+             [CompletedIdentityStepsDiffer {
+               identity: left.identity,
+               module: left.module,
+               left_attempt: pair.left_attempt,
+               left_steps: left.eval_steps,
+               right_attempt: pair.right_attempt,
+               right_steps: right.eval_steps
+             }]
+           } else { [] }
+       })
+}
+
+// The reverse pass contributes only identities wholly absent on the left. A right-completed row
+// paired with a left interruption was already emitted by the left-to-right pass only when the
+// left completed, so handle that asymmetric case here without duplicating two completed rows.
+fn completed_right_only_violations(pair: SameHeadAttemptPair) -> List<EvalStepDeterminismViolation> {
+  pair.right_rows
+    |> filter(row => row.verdict_reached)
+    |> flat_map(right => match pair.left_rows |> filter(left => left.identity == right.identity) |> first {
+         Absent => [CompletedIdentityAbsent {
+           identity: right.identity,
+           module: right.module,
+           completed_attempt: pair.right_attempt,
+           absent_attempt: pair.left_attempt
+         }]
+         Present { value: left } => if !left.verdict_reached {
+           [CompletedIdentityUnavailable {
+             identity: right.identity,
+             module: right.module,
+             completed_attempt: pair.right_attempt,
+             unavailable_attempt: pair.left_attempt
+           }]
+         } else { [] }
+       })
+}
+
+fn same_head_eval_step_violations(pair: SameHeadAttemptPair) -> List<EvalStepDeterminismViolation> {
+  if pair.left_head != pair.right_head {
+    [AttemptHeadsDiffer {
+      left_head: pair.left_head,
+      left_attempt: pair.left_attempt,
+      right_head: pair.right_head,
+      right_attempt: pair.right_attempt
+    }]
+  } else {
+    concat(completed_left_violations(pair: pair), completed_right_only_violations(pair: pair))
+  }
+}
+
+fn same_head_eval_steps_are_deterministic(pair: SameHeadAttemptPair) -> Bool {
+  count(same_head_eval_step_violations(pair: pair)) == 0
 }

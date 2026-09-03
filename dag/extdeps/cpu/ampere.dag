@@ -5,6 +5,7 @@ import std.measure { ByteSize, byte_size, celsius, hardware_thread_count, hertz,
 import extdeps.external_authority { ExternalAuthority, FactCitation }
 import std.decl_ref { decl_field_ref }
 import extdeps.uri { Uri, Https }
+import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisionPubliclyServed, HeldRevisionIsCurrentPublicCopy }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.types {
@@ -30,6 +31,80 @@ data ampere_altra_classic_rev_a1_datasheet_authority: ExternalAuthority = Extern
     scheme: Https
     locator: "amperecomputing.com/assets/Altra_Rev_A1_DS_v1_50_20240130_3375c3dec5_1c5d4604fa.pdf"
   }
+}
+
+// AMPERE SERVES ITS DATASHEETS FROM MORE THAN ONE SURFACE, AND THEY DISAGREE. This block was first
+// written on 2026-09-02 from the family product brief alone, which links Altra v1.50 and Altra Max
+// v1.25, and it concluded that v1.50 was current. That conclusion was WRONG, and the error is worth
+// naming because the measurement itself was sound: the brief was fetched, its links read, and each
+// PDF confirmed to resolve. What failed was reading ONE publication surface as the publisher's
+// current serving state. The brief is a stale index. Ampere's customer-connect device-documentation
+// surface serves newer revisions of both documents.
+//
+// SO THE INDEX IS PART OF THE FACT, NOT A CONVENIENCE. A supersession standing is relative to what
+// the publisher serves NOW, so naming which surface was consulted is what makes the standing
+// falsifiable; collapsing two disagreeing pages into "the Ampere page" would conceal exactly the
+// stale-index condition this vocabulary exists to expose.
+//
+// AND THE SURFACE NAMED MUST BE ONE THAT SERVES THE ROSTER. An earlier revision named
+// products/altra#device-documentation, which was measured on 2026-09-02 to redirect to
+// amperecomputing.com/auth/login and serve no document roster anonymously at all. A field whose
+// entire purpose is to name the page actually read is defeated by naming a login redirect. The
+// dedicated family surface below resolves directly, 152047 bytes, no redirect.
+data ampere_altra_device_documentation_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/customer-connect/products/altra-family-device-documentation"
+  }
+}
+
+// THE NON-MAX ALTRA CITATION IS SUPERSEDED BY ISSUE 1.55, VERIFIED BY RETRIEVAL. The locator below
+// was fetched on 2026-09-02: HTTP 200, 6630790 bytes, a valid PDF whose own content stream carries
+// the string "Issue 1.55". This row exists because an earlier revision of this block recorded the
+// OPPOSITE -- HeldRevisionIsCurrentPublicCopy -- on the strength of 1.55 being absent from the
+// product brief. Absence from one index is not absence from the publisher.
+//
+// The standard that produced the wrong answer is nevertheless the right standard, and it is kept:
+// a supersession is recorded only for a revision actually retrieved, never for one merely listed.
+// 1.55 now meets it. Retiring this standing means ingesting 1.55 and re-deriving the rows that
+// cite the datasheet -- section 2.10's active-channel facts are reported unchanged there, but
+// "reported unchanged" is not a reading, and no row here is restated from it.
+data ampere_altra_classic_rev_a1_v1_55_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=h51y6okvdig3i4u3lst6n120&file=Altra_Rev_A1_DS_v1_55_20250408_e814f50701.pdf&type=technical-document"
+  }
+}
+
+data ampere_altra_classic_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionPubliclyServed {
+  newer_version_label: "v1.55",
+  newer_authority: ampere_altra_classic_rev_a1_v1_55_authority,
+  index_authority: ampere_altra_device_documentation_authority,
+  held_version_label: "v1.50",
+  detail: "retrieved 2026-09-02: HTTP 200, 6630790 bytes, PDF self-identifying as Issue 1.55 dated 2025-04-08, while the cited locator pins v1.50 dated 2024-01-30; the family product brief still links v1.50 and is a stale index",
+}
+
+// THE ALTRA MAX CITATION IS SUPERSEDED BY v1.30, VERIFIED BY RETRIEVAL. An earlier revision of
+// this block recorded the debt as "AT LEAST v1.25", because v1.30 was reported on the
+// device-documentation surface but no locator for it had been retrieved, and citing a document
+// nobody has held is the precise error the non-Max row above corrects in the other direction.
+// That reasoning was right and the conclusion is now simply superseded by evidence: the v1.30
+// locator was supplied, fetched on 2026-09-02, and measured at HTTP 200, 6613878 bytes, a valid
+// PDF of 89 pages whose decompressed content streams carry "1.30" 94 times against "1.25" four.
+// v1.25 remains a true historical observation; it is no longer the furthest revision held.
+data ampere_altra_max_rev_a1_v1_30_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=z7tgvww8kuqd9ofrrwq381df&file=Altra_Max_Rev_A1_DS_v1_30_20250408_99487b8f45.pdf&type=technical-document"
+  }
+}
+
+data ampere_altra_max_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionPubliclyServed {
+  newer_version_label: "v1.30",
+  newer_authority: ampere_altra_max_rev_a1_v1_30_authority,
+  index_authority: ampere_altra_device_documentation_authority,
+  held_version_label: "v1.15",
+  detail: "retrieved 2026-09-02: Altra Max Rev A1 DS v1.30 dated 2025-04-08 resolves HTTP 200 at 6613878 bytes over 89 pages while the cited locator pins v1.15 dated 2023-08-09; v1.25 was also retrieved and is superseded in turn, so this debt is retired only by ingesting v1.30",
 }
 
 data ampere_altra_max_m12830_thermal_limits: ProcessorThermalLimits = ProcessorThermalLimits {
