@@ -396,5 +396,13 @@ fn daemon_absent_refuses_fail_closed() -> Bool {
   ) {
     BuildCacheProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true
     BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalDaemonUnresponsive, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalDaemonMisconfigured, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalPrivilegeDenied, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalCatalogUnknown, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalPathShadowed, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalDaemonUnsupervised, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalPlacementUnknown, reason: _ } => false
   }
 }

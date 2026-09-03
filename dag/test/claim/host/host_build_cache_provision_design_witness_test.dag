@@ -34,6 +34,14 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
     BuildCacheProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
     BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalDaemonUnresponsive, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalDaemonMisconfigured, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalPrivilegeDenied, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalPathShadowed, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalDaemonUnsupervised, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => false
+    BuildCacheProvisionRefused { cause: RefusalPlacementUnknown, reason: _ } => false
   }
 }
 

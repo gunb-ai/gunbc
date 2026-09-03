@@ -95,6 +95,7 @@ pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
         Some(InferredNode::CompilerError { message: m, .. }) => {
             v1_rt::concat("CompilerError:".to_string(), m.clone())
         }
+        Some(InferredNode::Divergent) => "Divergent".to_string(),
     }
 }
 

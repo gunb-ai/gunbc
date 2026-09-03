@@ -136,6 +136,13 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
     }
 }
 
+pub fn mebibyte_scale_factor_bytes() -> Nat {
+    {
+        let k = kibi_factor();
+        (k.clone() * k.clone())
+    }
+}
+
 pub fn kibi_factor() -> Nat {
     crate::extdeps_units_iec_80000_13::iec_kibi_factor()
 }
@@ -359,6 +366,10 @@ pub fn kibibyte_count(k: Kibibyte) -> Nat {
 
 pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
     byte_size((kibibyte_count(k.clone()) * kibi_factor()))
+}
+
+pub fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
+    byte_size((mebibyte_count(m.clone()) * mebibyte_scale_factor_bytes()))
 }
 
 pub type BitWidth = Rc<Measure<Information, One, i64>>;
@@ -953,6 +964,19 @@ pub fn character_count_value(c: CharacterCount) -> Nat {
     measure_count(c.clone())
 }
 
+pub type ParameterCount = Rc<Measure<Count, Mega, i64>>;
+
+pub fn parameter_count(millions: Nat) -> ParameterCount {
+    Rc::new(Measure {
+        count: millions.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn parameter_count_value(p: ParameterCount) -> Nat {
+    measure_count(p.clone())
+}
+
 pub fn token_count(count: Nat) -> TokenCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -962,6 +986,19 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;
+
+pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
 }
 
 pub fn millicore(count: Nat) -> Millicore {

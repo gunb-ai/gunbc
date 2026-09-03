@@ -185,6 +185,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
     TypeVariable { id: _ } => []
+    Divergent => []
     Resolved { node: rt } =>
         let has_structure = rt.connective != NoConnective
         if has_structure {
