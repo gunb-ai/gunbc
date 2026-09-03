@@ -33,7 +33,7 @@ import v2.workflow.floor_purpose_standing {
 
 fn watched_decision() -> DeclarationRef {
   decl_ref(
-    module_path: "test.claim.self_host_compile_phase_live_gate_witness",
+    module_path: "gunbc.self_host_compile_phase_live_gate",
     decl_name: "live_tree_frontier_verdict",
   )
 }
