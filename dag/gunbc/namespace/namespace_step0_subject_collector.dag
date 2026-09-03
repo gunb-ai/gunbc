@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import extdeps.git
 import extdeps.git.inspect
-import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_sha1_object_id }
 import std.decl_ref { decl_ref }
 import tools.multi_module_compile_fixture { FixtureSource }
 import gunbc.namespace_step0_canary {
@@ -472,7 +472,7 @@ fn step0_population_identity_of_rows(rows: List<NonEmptyStr>) -> Step0Population
 fn step0_collected_population_identity(vector: Step0SubjectVector) -> Step0PopulationIdentity {
   step0_population_identity_of_rows(
     rows: vector.members |> map(member =>
-      concat(member.path as String, concat(" ", member.blob.hex as String)) as NonEmptyStr
+      concat(member.path as String, concat(" ", git_object_id_wire_hex(oid: member.blob) as String)) as NonEmptyStr
     )
   )
 }

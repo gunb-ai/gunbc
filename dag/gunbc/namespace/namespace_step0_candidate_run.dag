@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.import { ImportStatementsParsed, ImportStatementParseRefused }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
-import extdeps.git.object_store { GitObjectId }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import tools.multi_module_compile_fixture {
   FixtureSource,
   MultiModuleCompileFixture,
@@ -278,6 +278,54 @@ fn run_current_step0_candidate() -> Step0CandidateRun {
   }
 }
 
+// THE PRE-STRIP CONTROL, AND IT IS NOT OPTIONAL COLOUR. A post-strip diagnostic count on its own
+// licenses no inference at all: the same number is produced by missing bindings, by defects the
+// rewrite introduced, by corpus errors this instrument already reported before anything was
+// stripped, and by type errors the strip merely exposed. So the control compiles the SAME collected
+// and admitted population, UNSTRIPPED, through the SAME instrument with the SAME entry selection,
+// and the pair is what may be read -- exactly the shape the source-population destruction control
+// takes, and for the same reason.
+//
+// WHAT THE PAIR STILL DOES NOT ESTABLISH: neither number is an import-dependence judgment. A
+// compile refusal is an observation OF THAT COMPILE ATTEMPT. The receipt says so in its own
+// ImportDependenceNotJudged field, and a reader who takes the delta as a dependence measurement has
+// substituted the proxy this contract exists to keep out of the record.
+type Step0PreStripControl
+  = Step0PreStripUnavailable { cause: NonEmptyStr }
+  | Step0PreStripObserved { attempt: Step0ContainmentAttempt, member_count: Int }
+
+fn step0_prestrip_control(admitted: List<FixtureSource>) -> Step0PreStripControl {
+  match step0_candidate_entry(sources: admitted) {
+    Absent => Step0PreStripUnavailable { cause: "the admitted population is empty, so no entry names it" as NonEmptyStr }
+    Present { value: entry } => match step0_containment_attempt(
+      outcome: compile_fixture(fixture: MultiModuleCompileFixture { sources: admitted, entry: entry })
+    ) {
+      Absent => Step0PreStripUnavailable { cause: "the compile instrument refused on the unstripped population" as NonEmptyStr }
+      Present { value: attempt } => Step0PreStripObserved { attempt: attempt, member_count: count(admitted) }
+    }
+  }
+}
+
+fn step0_prestrip_control_line() -> String {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: _ } => "step0-prestrip-control: subject unavailable"
+    Step0SubjectCollected { vector: vector } => {
+      let partition = step0_partition_subject(vector: vector)
+      match step0_prestrip_control(admitted: partition.admitted) {
+        Step0PreStripUnavailable { cause: cause } => concat("step0-prestrip-control: unavailable: ", cause as String)
+        Step0PreStripObserved { attempt: attempt, member_count: members } =>
+          concat(
+            concat("step0-prestrip-control: revision=", git_object_id_wire_hex(oid: vector.source_commit) as String),
+            concat(
+              concat(" unstripped_members=", to_string(members)),
+              concat(" ", step0_attempt_line(attempt: attempt))
+            )
+          )
+      }
+    }
+  }
+}
+
 // THE RECEIPT LINE THE CONTRACT'S COMMAND PRINTS. It reports the frontier and the standing, never a
 // pass or a fail: a completed containment compile is an observation of that attempt, and rendering it
 // as success is the proxy this contract exists to keep out of the record.
@@ -322,7 +370,10 @@ fn current_step0_candidate_receipt_line() -> String {
       concat("step0-candidate: compiler digest unreadable: ", hex)
     Step0CandidateObserved { receipt: receipt, admission: admission, collected_members: collected, excluded_members: excluded } =>
       concat(
-        concat("step0-candidate: collected=", to_string(collected)),
+        concat(
+          concat("step0-candidate: revision=", git_object_id_wire_hex(oid: receipt.source_commit) as String),
+          concat(" collected=", to_string(collected))
+        ),
         concat(
           concat(" excluded=", to_string(excluded)),
           concat(" ", concat(step0_frontier_line(frontier: receipt.frontier), concat(" classifier=", step0_admission_line(admission: admission))))
