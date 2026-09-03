@@ -746,32 +746,27 @@ pub struct TransitionAdmission {
 ///
 /// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
 /// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
-/// NINETEENTH DISSOLUTION (2026-09-03, gunbc#10156). The three gunbc#10011 rows this merge
-/// brought in are DELETED, and the deletion is owed here rather than by a follow-up: the roster
-/// rule is that a change TOUCHING the roster with consumed admissions on it owes their removal,
-/// and this change touches the roster to add the transition below.
+/// THE THREE `gunbc#10011` ROWS ARE DELETED HERE AND THE RECORD OF THAT DISSOLUTION IS NOT HERE.
+/// It is gunbc#10106's NINETEENTH DISSOLUTION, and this branch deliberately authors no second one.
 ///
-/// THE TRIGGER FIRED BETWEEN THE MERGE AND THE RUN, WHICH IS WHY THE PROSE ABOVE READS AS STALE
-/// RATHER THAN WRONG. When main authored those rows their transition had not merged, and the block
-/// said so explicitly and verified it. gunbc#10011 has since merged, so all three now report
-/// CONSUMED ADMISSION on the required run and the resting state is restored to empty. This is the
-/// dissolve-on condition that block declared, honoured by the first roster-touching change to
-/// observe it -- not a sweep of convenience and not a judgement about another lane's work.
+/// Both branches discovered the same three consumed admissions independently, both concluded the
+/// deletion was owed by the first roster-touching change to observe it, and both were right -- the
+/// trigger obliges EVERY concurrent roster-touching branch, so concurrent discovery is the
+/// mechanism working, not a race. What does not follow is two records. One event with two
+/// ordinal-bearing writeups is a §3 single-authority violation whichever ordinals they wear, and
+/// it would survive the git conflict rather than being caught by it. #10106 pushed first and is
+/// mid-CI, so it carries the record and this branch carries only the deletion the gate requires.
 ///
-/// MEASURED, NOT ASSUMED: required run 33744702651 on 6df76f5172b reported
-/// `FAILED PHASE namespace-wave-admission (0 unadjudicated delta(s), 0 stale admission(s),
-/// 3 consumed admission(s) due for deletion on this roster-touching change)`, naming all three by
-/// label. The floor in that same run was FloorClean, so the phase failure was this and nothing
-/// else.
+/// THIS IS THE THIRD ORDINAL COLLISION ON THIS FILE FROM ONE BRANCH, AND THE SECOND TIME THIS
+/// EXACT EVENT HAS BEEN DOUBLE-RECORDED. #10106's own SEVENTEENTH TRANSITION documents the same
+/// thing happening one round earlier with 57 rows -- "main deleted the 57 consumed rows on one
+/// side while this branch deleted the same 57 on the other, neither aware of the other" -- and
+/// wrote it up as the trigger working. It is now twice, at 57 rows and at 3, which makes it a
+/// property of the carrier rather than an accident: an author-assigned ordinal, in prose, in a
+/// file every lane must write by construction, cannot be made safe by diligence. Recorded here as
+/// the observation; choosing the replacement carrier is not this cut's to make.
 ///
-/// THE "FIVE" IN THE DELETED BLOCK WAS NEVER A MISCOUNT, and the record should say so because it
-/// was read as one. Five rows were authored; two adjudicated bindings inside a predicate that
-/// review 59072 established as the dissolved variant-test shape, so they were deleted as STALE in
-/// the same change that removed the declaration. The block explained that in its own middle
-/// paragraph. A reader comparing only its first sentence to the roster count sees a three-versus-
-/// five mismatch that the paragraph between them already resolves.
-///
-/// SEVENTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
+/// EIGHTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
 /// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
 /// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
 /// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
