@@ -18,6 +18,8 @@ import gunbc.generated_artifact_assessment {
   unadjudicated_finding_rendered
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ExitFailure, ExitSuccess }
+import tools.generated_artifact_gate { generated_artifact_agreement_verdict }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -384,21 +386,24 @@ test fn clean_population_agrees_over_a_nonempty_roster() -> Bool {
 // assertion: the first pass wrote "first-pass", the second generation produced "second-pass",
 // and the comparison must refuse with the affected path rather than warn or collapse to clean.
 test fn heal_second_generation_divergence_refuses_and_locates() -> Bool {
+  let observations = [artifact_observation_fixture(
+    a: DesignFailureModesArtifact,
+    path: "docs/design-failure-modes.md",
+    gen: "second-pass",
+    com: "first-pass",
+    valid: true
+  )]
   let findings = generated_artifact_population_findings(
     expected: [DesignFailureModesArtifact],
-    observations: [artifact_observation_fixture(
-      a: DesignFailureModesArtifact,
-      path: "docs/design-failure-modes.md",
-      gen: "second-pass",
-      com: "first-pass",
-      valid: true
-    )]
+    observations: observations
   )
-  !generated_artifact_population_findings_empty(f: findings)
-    && string_contains(
-         s: generated_artifact_population_findings_rendered(f: findings),
-         pattern: "docs/design-failure-modes.md"
-       )
+  let verdict = generated_artifact_agreement_verdict(
+    findings: findings
+  )
+  !generated_artifact_population_findings_empty(f: findings) && match verdict {
+    ExitSuccess => false
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "docs/design-failure-modes.md")
+  }
 }
 
 // THE BOOLEAN IS A PROJECTION AND NOT A SECOND OPINION. If the two ever disagreed, the fork this

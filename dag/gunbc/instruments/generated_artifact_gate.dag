@@ -19,9 +19,26 @@ import gunbc.generated_artifact_observation {
 }
 import v2.std.algebra { fold_list, length }
 import gunbc.generated_artifact_assessment {
+  GeneratedArtifactPopulationFindings,
   generated_artifact_population_findings,
   generated_artifact_population_findings_empty,
   generated_artifact_population_findings_rendered
+}
+
+// ONE VERDICT CONSTRUCTOR FOR THE REQUIRED GATE AND HEAL'S SECOND PASS. Keeping the injected
+// expected/observed populations at this pure seam gives the non-idempotence refusal a real RED:
+// a fixture can present different first- and second-pass bytes to the exact function production
+// calls, rather than merely testing a nearby findings renderer. The observation and findings are
+// still each produced once; this consumes the retained finding population instead of recomputing it.
+fn generated_artifact_agreement_verdict(findings: GeneratedArtifactPopulationFindings) -> ProcessExit {
+  if generated_artifact_population_findings_empty(f: findings) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "generated-artifact agreement failed: ",
+      generated_artifact_population_findings_rendered(f: findings)
+    ))
+  }
 }
 
 fn exit_ok(e: ProcessExit) -> Bool {
@@ -56,21 +73,16 @@ func run_generated_artifact_drift_gate_body() -> ProcessExit {
   let observations = observe_generated_artifact_population()
   let findings = generated_artifact_population_findings(expected: committed_generated_artifacts(), observations: observations)
   let all_ok = generated_artifact_population_findings_empty(f: findings)
-  let reason = if all_ok {
-    ""
-  } else {
-    concat("generated-artifact agreement failed: ", generated_artifact_population_findings_rendered(f: findings))
-  }
+  let verdict = generated_artifact_agreement_verdict(
+    findings: findings
+  )
+  let reason = generated_artifact_drift_failure_reason(exit: verdict)
   if all_ok {
     record_generated_artifact_drift_gate_clean()
   } else {
     record_generated_artifact_drift_gate_failure_detail(detail: reason)
   }
-  return if all_ok {
-    ExitSuccess
-  } else {
-    exit_failure(reason: reason)
-  }
+  return verdict
 }
 
 func main() -> ProcessExit {
