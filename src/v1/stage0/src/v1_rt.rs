@@ -1147,6 +1147,46 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
     format!("{:016x}", fnv1a64(&bytes))
 }
 
+pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = 1024;
+
+pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let mut attempted: u32 = 0;
+    let (mut staged, staging_path) = loop {
+        if attempted >= GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT {
+            return Err(std::io::Error::other(format!(
+                "gunbc create-new: StagingCandidateBudgetExhausted attempted={} limit={}",
+                attempted, GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT
+            )));
+        }
+        attempted += 1;
+        let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let candidate = format!("{}.gunbc-create-{}-{}", file_path, std::process::id(), seq);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => break (file, candidate),
+            Err(occupied) if occupied.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(host) => return Err(host),
+        }
+    };
+    if let Err(staging_err) = staged.write_all(content) {
+        let _ = std::fs::remove_file(&staging_path);
+        return Err(staging_err);
+    }
+    if let Err(sync_err) = staged.sync_all() {
+        let _ = std::fs::remove_file(&staging_path);
+        return Err(sync_err);
+    }
+    drop(staged);
+    let published = std::fs::hard_link(&staging_path, file_path);
+    let _ = std::fs::remove_file(&staging_path);
+    published
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,

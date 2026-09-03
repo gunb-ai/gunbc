@@ -510,6 +510,66 @@ observed difference is the printer alone.
 **Deferred as definition-only residue until each has a consumer:** `CONTRACT` (needs the generator),
 `DeploymentEnvelope` (needs the layout-comparison consumer). The design of both is pinned above.
 
+## Supply identity — RULED, and it unblocks the filament slice
+
+The open question was whether a spool is an inventory **lot** or a **PhysicalAsset instance**. Ruled:
+**one supply instance per physical spool, allocated at durable physical individuation, each retaining
+its source procurement lot.** The dependency runs one way only —
+
+```
+identity makes a later divergence attributable
+NOT: a later divergence earns the object an identity
+```
+
+so the two day-one spools are separate instances *before* either print begins, even though they came
+from one order, name one catalog product, and have no known difference. Waiting for measured
+divergence would leave the first divergence with nowhere truthful to live.
+
+Grains stay distinct rather than collapsing onto the lot: catalog product (what was sold),
+manufacturer batch (what the maker says), procurement lot (what was bought), supply instance (which
+spool fed this print), condition observation (instance x time). **One order is not one material
+batch** — `ProcurementLotIdentity` and manufacturer batch standing stay independent, since one order
+may span two production batches and two orders may share one. Moisture at print time is an
+instance-and-time observation; a drying cycle mints a new condition observation, never a new spool
+identity.
+
+RFID and operator label are both **evidence routes, not identity kinds**. They may coexist; an RFID
+read failure does not create a different spool, replacing a label does not create a different spool,
+and disagreement must refuse the attribution rather than letting either route silently win. The RFID
+UID is a machine-read manufacturer identifier, not a guaranteed globally unique spool serial, until
+something establishes that.
+
+The lot-to-spool relation must not be authored twice. The existing inventory event already relates
+installed assets to the lot whose stock moved, so day one is one install event per spool with
+`quantity: 1`. The generic rule refuses only when assets *exceed* quantity, which would admit
+`quantity 2, assets [spool_a]`; an attribution-critical supply needs the stronger local law
+`asset count == installed quantity AND the requested asset occurs exactly once`. The admitted supply
+may carry the derived source lot, and must never accept an independently authored `source_lot`
+without comparing it against the event.
+
+Catalog boundary: `PhysicalAsset` requires a catalog `DeclarationRef` while `ProcurementLot` may
+carry an unread catalog standing. Instance-per-spool must not force a fabricated exact filament
+product — where only a package description is known, keep the unresolved standing and limit the
+receipt to an end-to-end observation. Do not point a spool at the `Pla` polymer class as though a
+class were a particular commercial product.
+
+### Correction landed to the printer slice
+
+The manifest annotation said the roster is filled by **reading the serial off each machine**. That
+conflated two states the carrier already distinguishes: `PhysicalAsset.physical_serial` is optional,
+so a printer present on the bench with an unread serial and a printer that has not arrived are
+different facts, and collapsing them would report a machine the operator is standing in front of as
+absent. A row is allocated at receipt and durable individuation — an operator-applied label suffices
+— and the serial **corroborates** that binding rather than establishing it. If a serial is ever
+required before attribution, that is an admission refusal arm, visible and countable, never silence.
+
+### Two coupons per machine is two attempts, not two objects on one plate
+
+`A1/B1` then `A2/B2`, each pair consuming the same machine artifact, supplies and nozzle unchanged
+and no intervening calibration unless recorded. Two copies printed together answer **within-job /
+bed-position** variation; two executions answer **print-to-print** variation. Both are useful and
+they must not share one receipt name.
+
 ## On arrival (2026-09-03)
 
 ```
@@ -525,6 +585,39 @@ printer setup and identity observation
 The duplicate-measurement repair already has the right semantics for this: lookup refuses
 contradiction. A future adjudication relation may supersede a measurement, but selection must never
 be smuggled into ordinary resolution.
+
+### The bench procedure, in the order it must physically happen
+
+Written out because the ordering is the whole content: two steps here capture facts that **no later
+measurement can reconstruct**, and both are cheap only while the parts are still on the machines.
+
+1. **Label both printers before either is powered on.** A physical label, applied by hand — `A` and
+   `B` is sufficient. This is the durable individuation the roster needs; the identity is allocated
+   here, not derived from anything read later. Record the machine each label went on.
+2. **Label both spools before either is loaded.** Same rule, `PLA-A` / `PLA-B`. Do this while they
+   are still sealed and distinguishable as objects rather than as "the one in the left printer".
+3. **Read the serials, if convenient — and do not wait on them.** The serial *corroborates* the
+   binding made in step 1; it does not establish it. If a serial is unreadable, the printer is still
+   registered. If an RFID tag reads, record it as evidence beside the label, never instead of it.
+   Label and tag disagreeing is a refusal to resolve later, not a coin flip.
+4. **Load spool A into printer A, spool B into printer B, and write down which went where.** This
+   pairing is the treatment variable of the entire experiment. It is not recoverable from the plastic.
+5. **Print the same coupon on both machines, concurrently.** Same generated artifact, same profile,
+   same nozzle. Concurrency matters: it holds ambient conditions roughly fixed across the pair.
+6. **Bind each coupon to its printer and spool BEFORE it leaves the bed.** Write on it, bag it and
+   label the bag, or photograph it in place — any durable mark. **This is the irreversible step.**
+   The two coupons are geometrically identical *by design*, so once both are off their beds and on
+   the same table, nothing measured afterwards can tell them apart. Getting this wrong does not
+   degrade the experiment; it voids it.
+7. **Then repeat as a second attempt: A2 and B2**, same supplies, same nozzle, same profile, no
+   intervening calibration unless it is recorded. A1/B1 versus A2/B2 answers *print-to-print*
+   variation. Two copies on one plate would instead answer *bed-position* variation — a different
+   question with a different receipt name, and conflating them is how a machine difference gets
+   attributed to a corner of a build plate.
+
+What is deliberately **not** on this list: any dimension read off a coupon, any compensation constant,
+any judgement about which machine is better. Those are measurements, and they are all still available
+tomorrow. Steps 1, 2, 4 and 6 are the only ones that expire.
 
 
 ## The floor-budget cluster, and why this program did not take the coverage loss
