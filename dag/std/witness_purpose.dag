@@ -69,9 +69,15 @@ type WitnessPurpose
 
 // ONE WITNESS'S DECLARED PURPOSE, as a binding that NAMES the witness rather than a field on it.
 // There is no per-`test fn` declaration slot in the language, so the fact has to be authored
-// beside the witness and point at it. Authored in the witness's OWN module by whoever owns the
-// witness -- which is what makes the population independently defined rather than selected: no
-// central roster names which rows matter, and nobody picks a subset.
+// beside the witness and point at it. THIS SLICE MAKES A WITNESS-LOCAL AUTHORED BINDING
+// REPRESENTABLE AND NOTHING MORE. `witness` is a `DeclarationRef` and points anywhere, so a central
+// module can author bindings to arbitrary witnesses just as readily as a witness's own module can:
+// the type does not construct same-module provenance, and no test here executes a locality rule.
+// So this row must NOT be cited as evidence that the population is independently defined rather
+// than selected -- that property is owed by the future consumer, which must decide provenance from
+// `v1.declaration_index` discovery (below) and refuse a central roster, and it is unbuilt. Claiming
+// it here would be 4b's richer-type-names-are-not-safety: cosmetic until construction AND
+// acceptance enforce the distinction, and it would let another row's trigger be retired by nothing.
 //
 // WHY THIS IS JOINABLE WITHOUT A NEW AUTHORITY, and the reason the binding is a `DeclarationRef`
 // rather than a string. `v1.declaration_index` already records, per module, every typed-literal
