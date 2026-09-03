@@ -1,0 +1,174 @@
+module gunbc.harness.harness_throughput
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.languages.json.emit { JsonValue, JsonNumber, JsonString }
+import extdeps.languages.json.parse {
+  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
+  JsonMemberFound,
+  parse_json_document, json_object_unique_member,
+}
+
+// READING THE ROUND.USAGE STREAM THE HARNESS WRITES. This module sits beside the writer rather than
+// beside the dashboard that renders it, because the events file's shape is the harness's fact: the
+// module that emits round.usage owns the module that decodes it, and a decoder living next to a
+// consumer would be a second authority on a format it does not define.
+//
+// WHY A RATE IS DERIVED AND NEVER STORED. The observation carries tokens, an interval and a round
+// count; tokens-per-second is a function of those three. Storing it alongside would be a second
+// representation of one fact, free to disagree with its own inputs after any edit.
+
+type HarnessThroughput
+  = ThroughputObserved { output_tokens: Int, elapsed_ms: Int, rounds: Int }
+  | ThroughputUnobserved { reason: NonEmptyStr }
+
+// THE FIRST ROUND'S TOKENS ARE EXCLUDED FROM THE NUMERATOR ON PURPOSE, and the reason is that they
+// were produced BEFORE the first timestamp exists. A usage row is written when a response has
+// already arrived, so the earliest clock reading marks the END of round 1's generation, not its
+// start. Dividing every round's tokens by the interval between the first and last readings would
+// credit round 1's output to a window it did not run in and overstate the rate by exactly that
+// round -- worst at the small round counts where the dashboard is most often read. The honest
+// measure over the same rows is the tokens produced BETWEEN two readings, which is rounds 2..N.
+type ThroughputAccumulator {
+  rounds: Int
+  later_tokens: Int
+  first_ms: Int
+  last_ms: Int
+  clocked: Int
+}
+
+fn throughput_member_int(doc: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: lex } => parse_int(s: lex as String)
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn throughput_is_usage_row(doc: JsonValue) -> Bool {
+  match json_object_unique_member(v: doc, key: "type") {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => s == "round.usage"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn throughput_absorb_row(acc: ThroughputAccumulator, doc: JsonValue) -> ThroughputAccumulator {
+  match throughput_member_int(doc: doc, key: "epoch_ms") {
+    Absent => acc
+    Present { value: ms } => {
+      let toks = match throughput_member_int(doc: doc, key: "output_tokens") {
+        Present { value: t } => t
+        Absent => 0
+      }
+      ThroughputAccumulator {
+        rounds: acc.rounds + 1,
+        later_tokens: if acc.clocked == 0 { 0 } else { acc.later_tokens + toks },
+        first_ms: if acc.clocked == 0 { ms } else { acc.first_ms },
+        last_ms: ms,
+        clocked: acc.clocked + 1,
+      }
+    }
+  }
+}
+
+fn throughput_absorb_line(acc: ThroughputAccumulator, line: String) -> ThroughputAccumulator {
+  if trim(line) == "" {
+    acc
+  } else {
+    match parse_json_document(s: line) {
+      JsonDocumentUnreadable { gap: _ } => acc
+      JsonDocumentParsed { value: doc } =>
+        if throughput_is_usage_row(doc: doc) {
+          throughput_absorb_row(acc: acc, doc: doc)
+        } else {
+          acc
+        }
+    }
+  }
+}
+
+// THE REFUSAL ARMS ARE SEPARATE BECAUSE THEIR REMEDIES DIFFER. No usage rows at all means the run
+// predates this stream or never reached a response; rows present but unclocked means the host clock
+// refused and the fix is on the host; a single clocked row means the turn is still in its first
+// round and an interval does not exist yet. Collapsing these into one "unknown" would hand the
+// reader one symbol for three different situations.
+fn harness_throughput_from_events(body: String) -> HarnessThroughput {
+  let acc = fold(
+    split(s: body, delimiter: "\n"),
+    init: ThroughputAccumulator { rounds: 0, later_tokens: 0, first_ms: 0, last_ms: 0, clocked: 0 },
+    f: (a, line) => throughput_absorb_line(acc: a, line: line),
+  )
+  if acc.clocked == 0 {
+    ThroughputUnobserved {
+      reason: "no clocked round.usage row in the event stream" as NonEmptyStr,
+    }
+  } else if acc.clocked < 2 {
+    ThroughputUnobserved {
+      reason: "one clocked round so far; an interval needs two" as NonEmptyStr,
+    }
+  } else if acc.last_ms <= acc.first_ms {
+    ThroughputUnobserved {
+      reason: "clock did not advance between the first and last round" as NonEmptyStr,
+    }
+  } else {
+    ThroughputObserved {
+      output_tokens: acc.later_tokens,
+      elapsed_ms: acc.last_ms - acc.first_ms,
+      rounds: acc.rounds,
+    }
+  }
+}
+
+// Hundredths of a token per second, so the rate is an exact Int ratio rather than a rounded one.
+fn throughput_centi_tokens_per_second(t: HarnessThroughput) -> Int? {
+  match t {
+    ThroughputUnobserved { reason: _ } => none
+    ThroughputObserved { output_tokens: toks, elapsed_ms: ms, rounds: _ } =>
+      if ms <= 0 { none } else { Present { value: (toks * 100000) / ms } }
+  }
+}
+
+fn throughput_rate_text(t: HarnessThroughput) -> String {
+  match throughput_centi_tokens_per_second(t: t) {
+    Absent => "-- tok/s"
+    Present { value: centi } => {
+      let whole = centi / 100
+      let frac = centi - (whole * 100)
+      join([
+        to_string(value: whole), ".",
+        if frac < 10 { join(["0", to_string(value: frac)], "") } else { to_string(value: frac) },
+        " tok/s",
+      ], "")
+    }
+  }
+}
+
+// THE BANDS ARE A DECLARED POLICY OVER MEASURED RATES, NOT A GUESS, and they are stated here so the
+// number behind each symbol is auditable. They come from this deployment's own runs of
+// deepseek-v4-flash:iq3s-split: a contended run measured 0.60 tok/s end to end, an uncontended
+// 24-round run measured 4.22, a 9-round run measured 8.72, and the fastest individual rounds
+// observed reached 16.59. The boundaries sit between those clusters. They describe THIS backend on
+// THIS hardware and are expected to move when either changes -- which is why they are one row to
+// edit rather than a threshold buried in a renderer.
+fn throughput_speed_emoji(t: HarnessThroughput) -> String {
+  match throughput_centi_tokens_per_second(t: t) {
+    Absent => "--"
+    Present { value: centi } =>
+      if centi < 100 {
+        "turtle"
+      } else if centi < 500 {
+        "walk"
+      } else if centi < 1500 {
+        "run"
+      } else {
+        "bolt"
+      }
+  }
+}

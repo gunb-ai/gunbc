@@ -1,7 +1,7 @@
 module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, Second, second }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
@@ -98,6 +98,18 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 // different authority.
 data harness_context_budget: TokenCount = harness_router_context_window
 
+// HOW LONG ONE MODEL CALL MAY HANG BEFORE IT IS A FAILURE RATHER THAN A SLOW ANSWER. The number is
+// chosen against measured rounds on this deployment, not picked for feel: completed POSTs here have
+// run from 13 seconds to 480, so a deadline at or below eight minutes would kill rounds this
+// backend genuinely completes, and the observed wedge held one request open past thirty minutes
+// with no arm to end it. Fifteen minutes sits above every success actually observed and well below
+// the wedge, so it separates the two populations that exist rather than splitting either.
+//
+// IT IS ONE ROW BECAUSE IT IS EXPECTED TO MOVE. A faster engine or a less contended router makes
+// this generous, and the edit is here rather than inside an argv where a reader would have to know
+// curl to find it.
+data harness_request_deadline: Second = second(count: 900)
+
 fn harness_macbook_config() -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: harness_router_backend_url(),
@@ -107,6 +119,7 @@ fn harness_macbook_config() -> HarnessTurnConfig {
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
     context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
     environment: harness_macbook_environment(),
   }
 }
@@ -183,6 +196,7 @@ fn harness_worker_config(
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
       timeout_program: timeout_program,

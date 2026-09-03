@@ -1,0 +1,81 @@
+module test.claim.harness_throughput
+
+import std.types { Bool, String, Int }
+import gunbc.harness.harness_throughput {
+  HarnessThroughput, ThroughputObserved, ThroughputUnobserved,
+  harness_throughput_from_events, throughput_centi_tokens_per_second,
+  throughput_rate_text, throughput_speed_emoji,
+}
+
+// A CONTROLLED FIXTURE, NOT A TREE MEASUREMENT. The rows below are authored here with their answer
+// computed by hand, so the assertion compares a fold against an independent oracle rather than
+// against whatever the current tree happens to produce -- the distinction DESIGN section 5 draws
+// between a check and a change detector.
+//
+// THE ARITHMETIC, STATED SO A FAILURE IS READABLE: three clocked rounds at t=1000, 3000, 5000 ms
+// carrying 100, 200 and 300 output tokens. Round 1's tokens are excluded because its timestamp
+// marks the END of its own generation, so the numerator is 200+300=500 over an interval of
+// 5000-1000=4000 ms, which is 125.00 tok/s exactly.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn three_clocked_rounds() -> String {
+  join([
+    "{\"type\":\"turn.started\"}",
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"epoch_ms\":3000}",
+    "{\"type\":\"round.usage\",\"step\":3,\"input_tokens\":30,\"output_tokens\":300,\"epoch_ms\":5000}",
+  ], "\n")
+}
+
+test fn three_clocked_rounds_measure_the_exact_rate() -> Bool {
+  match throughput_centi_tokens_per_second(t: harness_throughput_from_events(body: three_clocked_rounds())) {
+    Present { value: centi } => centi == 12500
+    Absent => false
+  }
+}
+
+test fn the_rate_renders_with_two_decimal_places() -> Bool {
+  throughput_rate_text(t: harness_throughput_from_events(body: three_clocked_rounds())) == "125.00 tok/s"
+}
+
+// THE FIRST ROUND IS EXCLUDED FROM THE NUMERATOR. If it were counted the numerator would be 600 and
+// the rate 150.00, so this witness goes red exactly if that decision is silently reversed.
+test fn the_first_rounds_tokens_are_not_credited_to_the_interval() -> Bool {
+  throughput_rate_text(t: harness_throughput_from_events(body: three_clocked_rounds())) != "150.00 tok/s"
+}
+
+// DISCRIMINATING RED. One clocked round cannot yield an interval, and the refusal must say so
+// rather than reporting a rate over a zero-width window.
+test fn a_single_clocked_round_refuses_rather_than_dividing() -> Bool {
+  match harness_throughput_from_events(
+    body: "{\"type\":\"round.usage\",\"step\":1,\"output_tokens\":100,\"epoch_ms\":1000}",
+  ) {
+    ThroughputUnobserved { reason: _ } => true
+    ThroughputObserved { output_tokens: _, elapsed_ms: _, rounds: _ } => false
+  }
+}
+
+// DISCRIMINATING RED. A usage row whose clock read was refused carries clock_refused and no
+// epoch_ms; it must not be absorbed as if it had a time.
+test fn an_unclocked_usage_row_is_not_counted_as_a_reading() -> Bool {
+  match harness_throughput_from_events(
+    body: "{\"type\":\"round.usage\",\"step\":1,\"output_tokens\":100,\"clock_refused\":\"no clock\"}",
+  ) {
+    ThroughputUnobserved { reason: _ } => true
+    ThroughputObserved { output_tokens: _, elapsed_ms: _, rounds: _ } => false
+  }
+}
+
+// A stream carrying no usage rows at all refuses; it does not report zero.
+test fn an_event_stream_without_usage_rows_refuses() -> Bool {
+  match harness_throughput_from_events(body: "{\"type\":\"turn.started\"}") {
+    ThroughputUnobserved { reason: _ } => true
+    ThroughputObserved { output_tokens: _, elapsed_ms: _, rounds: _ } => false
+  }
+}
+
+// The band boundary is a declared policy; this pins the measured rate to its symbol so a boundary
+// edit is a visible change rather than a silent one.
+test fn a_fast_rate_lands_in_the_top_band() -> Bool {
+  throughput_speed_emoji(t: harness_throughput_from_events(body: three_clocked_rounds())) == "bolt"
+}
