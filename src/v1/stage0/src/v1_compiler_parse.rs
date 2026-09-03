@@ -10,6 +10,10 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
+use crate::std_import::ParsedImportStatements::{
+    ImportStatementParseRefused, ImportStatementsParsed,
+};
+pub use crate::std_import::{ParsedImportStatement, ParsedImportStatements};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
@@ -39,7 +43,7 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSym
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
 };
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_file_span;
@@ -3330,6 +3334,29 @@ pub fn occurrence_transport_from_parse_context(ctx: Rc<ParseContext>) -> Rc<Occu
     })
 }
 
+pub fn parse_context_for_tokens(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
+    heads_only: bool,
+) -> Rc<ParseContext> {
+    Rc::new(ParseContext {
+        source_indices: source_indices.clone(),
+        intern_table: crate::v1_std_core::pre_intern_tokens(tokens.clone(), intern_table.clone()),
+        occurrence_allocator: crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
+            occurrence_base.allocator.clone(),
+            intern_table.authored_token_ordinals.clone(),
+        ),
+        occurrence_index: Some(Rc::new(OccurrenceIndex {
+            entries: Rc::new(vec![]),
+        })),
+        declaration_occurrences: Some(Rc::new(vec![])),
+        reference_occurrences: Some(Rc::new(vec![])),
+        heads_only: heads_only.clone(),
+    })
+}
+
 pub fn parse_with_table_at(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3343,19 +3370,13 @@ pub fn parse_with_table_at(
                 occurrence_base.allocator.clone(),
                 intern_table.authored_token_ordinals.clone(),
             );
-        let pre_interned =
-            crate::v1_std_core::pre_intern_tokens(tokens.clone(), intern_table.clone());
-        let ctx = Rc::new(ParseContext {
-            source_indices: source_indices.clone(),
-            intern_table: pre_interned.clone(),
-            occurrence_allocator: occurrence_allocator.clone(),
-            occurrence_index: Some(Rc::new(OccurrenceIndex {
-                entries: Rc::new(vec![]),
-            })),
-            declaration_occurrences: Some(Rc::new(vec![])),
-            reference_occurrences: Some(Rc::new(vec![])),
-            heads_only: heads_only.clone(),
-        });
+        let ctx = parse_context_for_tokens(
+            tokens.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            occurrence_base.clone(),
+            heads_only.clone(),
+        );
         let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             {
@@ -3637,6 +3658,147 @@ pub fn parse_imports_acc(
                 err: std::option::Option::None,
             });
         }
+    }
+}
+
+pub fn last_consumed_token_end(
+    mut all: Rc<Vec<Rc<Token>>>,
+    mut from: i64,
+    mut until: i64,
+    mut end: Option<i64>,
+) -> Option<i64> {
+    loop {
+        if (from.clone() >= until.clone()) {
+            break end;
+        } else {
+            match all.clone().get((from.clone()) as usize).cloned() {
+                std::option::Option::None => {
+                    let __tco_0 = (from + 1);
+                    from = __tco_0;
+                    continue;
+                }
+                Some(t) => {
+                    if is_newline_shape(t.shape.clone()) {
+                        {
+                            let __tco_0 = (from + 1);
+                            from = __tco_0;
+                            continue;
+                        }
+                    } else {
+                        {
+                            let __tco_0 = (from + 1);
+                            let __tco_1 = Some(t.span.clone().end.clone());
+                            from = __tco_0;
+                            end = __tco_1;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn parse_import_statement_extents_acc(
+    mut tokens: Rc<TokenStream>,
+    mut ctx: Rc<ParseContext>,
+    mut acc: Rc<Vec<Rc<ParsedImportStatement>>>,
+) -> Rc<ParsedImportStatements> {
+    loop {
+        tokens = skip_newlines(tokens.clone());
+        if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
+            let before = tokens.pos.clone();
+            let r = parse_import(tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
+                    cause: "an import statement did not parse".to_string(),
+                });
+            }
+            match token_stream_first(tokens.clone()) {
+                std::option::Option::None => {
+                    break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
+                        cause: "an import statement parsed from no token".to_string(),
+                    });
+                }
+                Some(first) => {
+                    match last_consumed_token_end(
+                        tokens.all.clone(),
+                        before.clone(),
+                        r.tokens.clone().pos.clone(),
+                        std::option::Option::None,
+                    ) {
+                        std::option::Option::None => {
+                            break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
+                                cause: "an import statement parsed without consuming a token"
+                                    .to_string(),
+                            });
+                        }
+                        Some(end) => {
+                            let __tco_0 = r.tokens.clone();
+                            let __tco_1 = parse_context_after_node(r.ctx.clone(), r.import.clone());
+                            let __tco_2 = v1_rt::rc_list_push(
+                                acc,
+                                Rc::new(ParsedImportStatement {
+                                    span: Rc::new(SourceSpan {
+                                        file: first.span.clone().file.clone(),
+                                        start: first.span.clone().start.clone(),
+                                        end: end.clone(),
+                                    }),
+                                    imported_module: r.import.clone().name.clone(),
+                                }),
+                            );
+                            tokens = __tco_0;
+                            ctx = __tco_1;
+                            acc = __tco_2;
+                            continue;
+                        }
+                    }
+                }
+            }
+        } else {
+            break Rc::new(ParsedImportStatements::ImportStatementsParsed {
+                statements: acc.clone(),
+            });
+        }
+    }
+}
+
+pub fn parse_import_statement_extents(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ParsedImportStatements> {
+    {
+        let ctx = parse_context_for_tokens(
+            tokens.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            intern_table.authored_token_ordinals.clone(),
+            false,
+        );
+        let stream = skip_newlines(token_stream_new(tokens.clone()));
+        let r = expect(
+            stream.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
+                text: "module".to_string(),
+            }),
+        );
+        if has_err(r.err.clone()) {
+            return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
+                cause: "source does not open with a module declaration".to_string(),
+            });
+        }
+        let r = parse_dotted_ident(r.tokens.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
+                cause: "module declaration does not name a dotted module path".to_string(),
+            });
+        }
+        parse_import_statement_extents_acc(
+            skip_newlines(r.tokens.clone()),
+            ctx.clone(),
+            Rc::new(vec![]),
+        )
     }
 }
 
