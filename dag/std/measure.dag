@@ -909,12 +909,57 @@ fn character_count_value(c: CharacterCount) -> Nat {
 // TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one
 // construction site each, never a wall.
 
+// A count of MODEL PARAMETERS, a fifth member of the same Count family -- and the one member whose
+// SCALE is the whole point. A published parameter figure is quoted in billions and is not an
+// integer number of them: DeepSeek-V4's own /api/show reports 284.3B. Stored at Giga over Nat that
+// fact is unwritable and rounds to 284; stored as a bare Nat the scale lives in prose, which is how
+// `284` comes to mean 284,000,000,000 with nothing to say so. Mega holds it exactly -- 284.3B is
+// 284300 -- so the fraction survives without introducing a rational.
+//
+// It lives HERE for the reason its four siblings do: Measure of Count at Mega over Nat takes only
+// arguments std.measure already owns, so an instantiation declared downstream would be a fifth name
+// for a shape this module already names. Landed by review 58449 on gunbc#9897, which caught
+// gunbc.model.publication's ParameterCounts storing scaled quantities as raw naturals.
+//
+// HONEST LIMIT, the same one the siblings carry: the family is structurally identical, so passing a
+// ParameterCount where a CharacterCount belongs is WRITABLE. It buys reading clarity and one
+// construction site, never a wall.
+type ParameterCount = Measure<Count, Mega, Nat>
+
+fn parameter_count(millions: Nat) -> ParameterCount {
+  Measure { count: millions }
+}
+
+fn parameter_count_value(p: ParameterCount) -> Nat {
+  measure_count(p)
+}
+
 fn token_count(count: Nat) -> TokenCount {
   Measure { count: count }
 }
 
 fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
+}
+
+// A per-second rate of tokens -- the frequency family at One, period marker in the type, sibling of
+// EventsPerMinute and MegatransfersPerSecond. It exists because token throughput is quoted two ways
+// that are NOT the same quantity and get confused constantly: PREFILL rate (how fast an existing
+// prompt is absorbed) and DECODE rate (how fast new tokens are emitted). Both are tokens per second,
+// so the type cannot separate them -- the FIELD NAME must, and a consumer carrying only one of them
+// is under-specified rather than merely terse.
+//
+// First consumer: gunbc.model.choice, where prefill rate is a serving-admission floor. It is a rate
+// and not a TokenCount because a count answers "how many" and a rate answers "how fast"; assigning
+// one to the other is the class this family exists to make unwritable.
+type TokensPerSecond = Measure<Frequency, One, Nat>
+
+fn tokens_per_second(count: Nat) -> TokensPerSecond {
+  Measure { count: count }
+}
+
+fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+  measure_count(r)
 }
 
 fn millicore(count: Nat) -> Millicore {

@@ -2195,24 +2195,6 @@ fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, sc
   }
 }
 
-// A DIVERGING ARM PRODUCES NO VALUE OF THE MATCH'S TYPE, so it is not a party to the join: its
-// body's inferred type is the ENCLOSING FUNCTION'S return type, which is a different question and
-// answers to the return seam. Judging it against the join is the fabricated refusal DESIGN section 5
-// forbids as firmly as a fabricated success -- measured, not reasoned: extdeps.uri_path
-// path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
-// ones, and the check refused that correct module before this predicate existed.
-fn arm_body_diverges(n: Node) -> Bool {
-  match n.expr_data {
-    ExprReturn => true
-    ExprBlock =>
-      match n.children |> last {
-        Present { value: tail } => arm_body_diverges(n: tail)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
 // THE JOIN ANSWERS WITH ONE TYPE, so an arm whose body type is not that type is never judged
 // anywhere downstream: the match's inferred type is the join's, and a consumer's declared-type check
 // sees only that. The join tie-breaks to the FIRST arm, so before this predicate a later arm
@@ -2300,7 +2282,7 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
 }
 
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
-  if arm_body_diverges(n: arm_body(n: arm.typed_arm)) {
+  if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
   } else if match_arm_types_are_disjoint_coproducts(
     unified_arm_type: unified_arm_type,
@@ -6391,7 +6373,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           body_type: resolved_type(n: body_typed)
         }
       )
-      let arm_body_types = arm_infer_results |> map(ar => ar.body_type)
+      let non_diverging_arm_results = arm_infer_results |> filter(ar => !arm_body_diverges(body: arm_body(n: ar.typed_arm)))
+      let arm_body_types = match non_diverging_arm_results |> first {
+        Present { value: _ } => non_diverging_arm_results |> map(ar => ar.body_type)
+        Absent => match expected {
+          Present { value: expected_type } => [expected_type]
+          Absent => [divergent_type()]
+        }
+      }
       let unified_arm_type = match arm_body_types |> first {
         Present { value: first_type } =>
           arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
@@ -6408,7 +6397,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: ar } => ar
             Absent => ArmInferResult { typed_arm: arm_node, diagnostics: [], body_type: scrut_rt }
           }
-          if !is_fully_resolved(n: original.body_type, source_indices: scope.type_env.source_indices) {
+          if arm_body_diverges(body: arm_body(n: arm_node)) {
+            original
+          } else if !is_fully_resolved(n: original.body_type, source_indices: scope.type_env.source_indices) {
             let arm_pat = arm_pattern(n: arm_node)
             let arm_g = arm_guard(n: arm_node)
             let arm_b = arm_body(n: arm_node)
@@ -9631,6 +9622,39 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
 type BodyTerminal {
   expr: Node
   let_prov: Map<String, Map<String, SubValueRelation>>
+}
+
+// A DIVERGING ARM PRODUCES NO VALUE OF THE MATCH'S TYPE, so it is not a party to the join: its
+// body's inferred type is the ENCLOSING FUNCTION'S return type, which is a different question and
+// answers to the return seam. Judging it against the join is the fabricated refusal DESIGN section 5
+// forbids as firmly as a fabricated success -- measured, not reasoned: extdeps.uri_path
+// path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
+// ones, and the check refused that correct module before this predicate existed.
+//
+// TWO DECLARATIONS OF THIS PREDICATE MET IN A MERGE (2026-09-02, #9964 into main after #10045).
+// The survivor is this one, and it is the NEWCOMER, not the incumbent: it delegates the walk to
+// ownership.fold_terminal_expr, which folds through ExprLet as well as ExprBlock. The deleted
+// declaration was main's incumbent from #10045; it hand-rolled the block-tail recursion and handled
+// no ExprLet, so an arm shaped `let x = ...; return y` diverges and it answered false. Re-inventing
+// a walk the codebase already owns is the DESIGN section 2 failure, and here it cost correctness
+// too. Deleting the incumbent re-points its call site at this declaration -- a deliberate narrowing
+// of two spellings to one, not an incidental merge artifact.
+//
+// THE BLAST RADIUS OF THAT DELETION IS EMPTY, CHECKED RATHER THAN ASSUMED (tidy-lynx-804,
+// independently, 2026-09-02): on origin/main the deleted declaration had exactly ONE declaration
+// site, ONE recursive self-call, and ONE caller, plus its generated Rust mirror. No third caller
+// depended on the ExprBlock-only answer, so re-pointing that one call site orphans nothing. The
+// section 3 argument says the deletion is defensible; this census is what makes it landable, and
+// the two are not the same claim.
+//
+// THE MERGE WAS TEXTUALLY CLEAN. The two declarations landed in different regions of one file, so
+// no conflict was raised and no diff review of either side could see it; only compiling the merged
+// authority reported it, as a call-shape mismatch against the surviving parameter name.
+fn arm_body_diverges(body: Node) -> Bool {
+  match fold_terminal_expr(body: body).expr_data {
+    ExprReturn => true
+    _ => false
+  }
 }
 
 fn unwrap_body_terminal(expr: Node, let_prov: Map<String, Map<String, SubValueRelation>>, type_env: TypeEnv) -> BodyTerminal {
