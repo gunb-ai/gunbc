@@ -689,9 +689,10 @@ fn floor_expected_red_chunk_22() -> List<String> {
   Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
 }
 
-// RETIRED chunk_23 history. PositionGenericTypeArgument now constructs the missing element
-// obligation at the direct-call seam; the witness remains enrolled as an ordinary permanent
-// regression control, while its expected-red admission is deleted here.
+// RETIRED chunk_23 EXPECTED-RED ADMISSION history. PositionGenericTypeArgument now constructs the
+// missing element obligation at the direct-call seam; the witness remains enrolled as an ordinary
+// permanent regression control, tightened to require DeclaredTypeNotInhabited at the generic type
+// argument position, while only its temporary expected-red admission is deleted here.
 //
 // THE MEASUREMENT IS CARRIED HERE RATHER THAN CITED: a row that has told an assertion not to
 // assert is where a reader most needs the reason, and a pointer to a pull request is worthless if
@@ -712,8 +713,10 @@ fn floor_expected_red_chunk_22() -> List<String> {
 //      carries NO type-mismatch diagnostic. `v2.std.node` referenced those two types fully
 //      qualified WITHOUT importing that module, so every closure importing `v2.std.node` inherited
 //      them. This branch adds the import, they resolve, and the accidental refusal goes with them.
-//   4. CORRECTED NEXT-RUNG TRIGGER. A child obligation constructed at
-//      PositionGenericTypeArgument and decided by declared_type_inhabitance. The earlier trigger,
+//   4. DISCHARGED NEXT-RUNG TRIGGER. A child obligation constructed at
+//      PositionGenericTypeArgument and decided by declared_type_inhabitance. This trigger is
+//      discharged by direct_call_generic_type_argument_inhabitance_diags constructing that exact
+//      obligation and handing it to declared_type_obligation_diags. The earlier trigger,
 //      `container_element_nominal_brand_mismatch` reaching the direct-call-argument position, was
 //      already satisfied while this mismatch remained accepted: direct_call_arg_type_mismatch
 //      already called it here. It named a route rather than the missing capability and could have
