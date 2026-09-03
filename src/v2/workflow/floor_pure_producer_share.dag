@@ -127,13 +127,26 @@ import v2.std.collection { List }
 // is the property the hand-over rests on, and it was established before this change rather
 // than by it.
 //
-// EVERY RUST TARGET MODEL STAYS OUT, AND THE REASON IS NOW A MEASUREMENT AGAINST THE CURRENT
-// SERVE RATHER THAN AGAINST THE OLD ONE. The zero-walk serve made re-enrolment TESTABLE; it did
-// not decide it, and that difference is the whole of why this note exists. Admission here is a
-// measured present-vs-absent floor receipt and never an inference from "the serve is cheaper
-// now" -- that inference is the specification-without-execution DESIGN section 5 names, and it
-// would have been wrong three times over, because all three candidates were enrolled on exactly
-// that expectation and all three were withdrawn on measurement.
+// EVERY RUST TARGET MODEL STAYS OUT, AND THE MEASUREMENT THAT PUT THEM OUT PRICED THE OLD
+// SERVE, NOT THIS ONE. Stating that plainly is the point of this paragraph, because an earlier
+// draft of it said the opposite and the error was mine: I read gunbc#10094 as having landed the
+// zero-walk serve when what #10094 landed still rebuilt the container in every consuming frame.
+// The Rc-clone hand-over is FIRST landed here. So the five runs below are historical
+// measurements against #10094's O(size) serve, and they remain valid as that.
+//
+// WHAT THIS PR DOES TO THEM IS FIRE THEIR OWN RE-ENROL TRIGGER, which makes those withdrawals
+// STALE AS CURRENT EXCLUSION EVIDENCE. The honest present state of the three candidates is
+// neither admitted nor measured-out: they are UNMEASURED under zero-walk, and their next state
+// is a controlled present-versus-absent serve-below-recompute pair that has NOT been run. This
+// PR does not run it and does not claim to.
+//
+// The distinction being protected is the one the withdrawals themselves established. Admission
+// is a measured present-vs-absent floor receipt and NEVER an inference from "the serve is
+// cheaper now" -- that inference is the specification-without-execution DESIGN section 5 names,
+// and it would have been wrong three times over, because all three candidates were enrolled on
+// exactly that expectation and all three were withdrawn on measurement. A serve that got
+// cheaper does not re-admit them; only a measurement does. That is why the trigger firing
+// returns them to UNMEASURED rather than to enrolled.
 //
 // WHAT WAS TRIED, ACROSS FOUR RUNS, NORMALISED AGAINST THE ROWS IN NO CONSUMER MODULE OF ANY
 // ENROLLED KEY -- the population the change cannot reach, which is the only sound control when
@@ -183,7 +196,8 @@ import v2.std.collection { List }
 // CONSUMERS SPECIFICALLY -- not on their family total, which has already been observed pointing
 // the wrong way.
 //
-// THE TWO RUNS ARE gunbc#10094 33657893880 (ABSENT: the zero-walk serve, no rust row enrolled)
+// THE TWO RUNS ARE gunbc#10094 33657893880 (ABSENT: #10094's per-frame-rebuild serve, no rust
+// row enrolled -- NOT the zero-walk serve, which lands in this PR)
 // AND 33661252708 (PRESENT: the same tree plus those rows), and the comparison is
 // `required_floor_claim_cost.tsv` from each, joined at IDENTITY grain. Re-derive it rather than
 // trusting a sentence: the absent run REFUSED, `verdict=FloorRefused` with `failed=0`, carried
