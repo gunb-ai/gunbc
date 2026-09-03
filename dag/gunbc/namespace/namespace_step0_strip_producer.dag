@@ -1,7 +1,6 @@
 module gunbc.namespace_step0_strip_producer
 
-import std.types { Int, List, NonEmptyStr, String }
-import std.content_hash { Sha256Digest }
+import std.types { List, NonEmptyStr, String }
 import std.import {
   ImportStripOutcome,
   ImportStatementsStripped,
@@ -15,48 +14,13 @@ import std.import {
   import_statement_parse_cause_label,
   strip_import_statements,
 }
-import extdeps.git.object_store { GitObjectId }
 import gunbc.parsed_import_statement_production { parsed_import_statements_live }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
-import tools.multi_module_compile_fixture {
-  FixtureSource,
-  MultiModuleCompileFixture,
-  MultiModuleCompileFixtureOutcome,
-  FixtureInstrumentRefused,
-  FixtureCompileRefused,
-  FixtureCompileCompleted,
-  compile_fixture,
-}
-import gunbc.namespace_step0_canary {
-  NamespaceStep0CanaryReceipt,
-  namespace_step0_canary_contract,
-  namespace_step0_manifest_identity,
-  namespace_step0_strip_applied_receipt,
-}
+import tools.multi_module_compile_fixture { FixtureSource }
 
-// THE OWNED STEP-0 PRODUCER. It applies the typed import strip to a supplied subject and folds the
-// compile observation that follows it, and those two acts are the two capabilities the frozen canary
-// names as missing (gunbc.namespace_step0_canary namespace_step0_unavailable_receipt: "a typed
-// parse-level source rewrite that removes one complete import statement" and "an owned Step-0
-// producer that applies the rewrite and folds the resulting compile observation").
-//
-// EVERY STAGE REFUSES RATHER THAN WIDENS. A source whose imports did not parse is not a source with
-// no imports; a span set the rewrite would not accept is not a clean rewrite; a subject in which
-// nothing was removed did not enter the Step 0 subject. Each is a typed, located cause here, and
-// none of them can reach the receipt constructor -- which is why that constructor takes the removed
-// statements and the compile's own cause as arguments rather than deriving them.
-//
-// AND A COMPLETED CONTAINMENT COMPILE IS A REFUSAL HERE, WHICH IS THE OPPOSITE OF A FAILURE. The
-// canary's receipt has exactly two blocking transitions and no spelling for "nothing blocked", so a
-// stripped subject that COMPILES has no honest receipt on this carrier. Minting one anyway would be
-// fabricating a blocker that did not occur; reporting it as its own refusal cause is how the day
-// Step 0 actually succeeds becomes visible instead of being rendered as a stall.
-//
-// WHAT THIS PRODUCER DOES NOT ESTABLISH, stated because a receipt must not claim coverage it does
-// not have. It observes the sources it was HANDED. That the handed vector is the whole of the tree
-// the receipt names is the caller's obligation and is bound only by the canary's commit and tree
-// pins; nothing here can check it. The next-rung trigger is a capability that COLLECTS the subject
-// from the pinned tree, so the vector and the tree have one producer instead of two.
+// The v1 canary and its receipt producer were deleted at the Step-0-proper cut.  This module now
+// owns only the typed per-source rewrite reused by the live v2 pair and the provenance census.
+// Compilation and judgment belong to those callers; keeping the old fold here would preserve the
+// superseded receipt as a second authority after deleting its root.
 
 type Step0StripProductionRefusalCause
   = Step0SourceImportsNotParsed {
@@ -66,21 +30,6 @@ type Step0StripProductionRefusalCause
   | Step0SourceRewriteRefused {
       file: NonEmptyStr
       refusal: ImportStripRefusal
-    }
-  | Step0SubjectHadNoImportStatements
-  | Step0ContainmentCompileInstrumentRefused {
-      cause: NonEmptyStr
-    }
-  | Step0ContainmentCompileCompleted {
-      module_count: Int
-    }
-
-type Step0StripProduction
-  = Step0ReceiptProduced {
-      receipt: NamespaceStep0CanaryReceipt
-    }
-  | Step0StripProductionRefused {
-      cause: Step0StripProductionRefusalCause
     }
 
 // One source, rewritten. The parse observation and the rewrite are two different authorities and
@@ -112,116 +61,6 @@ fn namespace_step0_strip_source(source: FixtureSource) -> Step0SourceStrip {
             source: FixtureSource { path: source.path, content: rewritten },
             removed_statements: removed
           }
-      }
-  }
-}
-
-// The absorbing arm is the refusal, and the first one is the one reported: a later source cannot
-// repair an earlier one, and continuing would compile a subject already known to be unstripped.
-type Step0StripFold
-  = Step0StripFolding {
-      sources: List<FixtureSource>
-      removed_statements: List<String>
-    }
-  | Step0StripFoldHalted {
-      cause: Step0StripProductionRefusalCause
-    }
-
-fn namespace_step0_strip_fold_step(fold: Step0StripFold, source: FixtureSource) -> Step0StripFold {
-  match fold {
-    Step0StripFoldHalted { cause: cause } => Step0StripFoldHalted { cause: cause }
-    Step0StripFolding { sources: sources, removed_statements: removed } =>
-      match namespace_step0_strip_source(source: source) {
-        Step0SourceStripRefused { cause: cause } => Step0StripFoldHalted { cause: cause }
-        Step0SourceStripped { source: stripped, removed_statements: source_removed } =>
-          Step0StripFolding {
-            sources: sources |> list_push(stripped),
-            removed_statements: concat(removed, source_removed)
-          }
-      }
-  }
-}
-
-fn namespace_step0_strip_subject(sources: List<FixtureSource>) -> Step0StripFold {
-  sources |> fold(
-    init: Step0StripFolding { sources: [], removed_statements: [] },
-    f: (fold, source) => namespace_step0_strip_fold_step(fold: fold, source: source)
-  )
-}
-
-// The compile observation, folded to the one thing the canary's carrier can say about it: whether
-// containment resolution refused, and with what cause. The instrument's three arms stay apart
-// because a broken harness, a refusing subject and a passing subject have different owners: only
-// the middle one is an observation of containment resolution at all.
-type Step0ContainmentObservation
-  = Step0ContainmentResolutionRefused {
-      cause: NonEmptyStr
-    }
-  | Step0ContainmentObservationUnavailable {
-      cause: Step0StripProductionRefusalCause
-    }
-
-fn namespace_step0_containment_refusal_text(diagnostics: List<CompileDiagnosticCensusRow>) -> NonEmptyStr {
-  concat(
-    "containment resolution of the import-stripped subject refused with ",
-    concat(to_string(count(diagnostics |> filter(d => d.blocking))), " blocking diagnostic(s)")
-  ) as NonEmptyStr
-}
-
-fn namespace_step0_observe_containment(
-  outcome: MultiModuleCompileFixtureOutcome
-) -> Step0ContainmentObservation {
-  match outcome {
-    FixtureInstrumentRefused { cause: cause } =>
-      Step0ContainmentObservationUnavailable { cause: Step0ContainmentCompileInstrumentRefused { cause: cause } }
-    FixtureCompileCompleted { module_count: module_count, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
-      Step0ContainmentObservationUnavailable { cause: Step0ContainmentCompileCompleted { module_count: module_count } }
-    FixtureCompileRefused { module_count: _, diagnostics: diagnostics, source_digest: _, compiler_digest: _ } =>
-      Step0ContainmentResolutionRefused { cause: namespace_step0_containment_refusal_text(diagnostics: diagnostics) }
-  }
-}
-
-// THE FOLD, and the only caller the receipt constructor admits. Its arguments are the executed
-// rewrite (the statements actually removed) and the observation that followed it (the containment
-// compile's own cause); it invents neither.
-//
-// THE COMPILER IS ONE FACT AND ARRIVES FROM ONE CALLER. compiler_program travels beside
-// compiler_executable_sha256 rather than being spelled here, because which program was run and
-// which bytes it had are two halves of one observation about one dispatch; a literal here would
-// make this module a second authority on the first half while the caller owned the second, and the
-// two could then disagree with nothing to notice (review 58952).
-fn namespace_step0_strip_receipt(
-  source_commit: GitObjectId,
-  source_tree: GitObjectId,
-  compiler_program: NonEmptyStr,
-  compiler_executable_sha256: Sha256Digest,
-  sources: List<FixtureSource>,
-  entry: NonEmptyStr
-) -> Step0StripProduction {
-  match namespace_step0_strip_subject(sources: sources) {
-    Step0StripFoldHalted { cause: cause } => Step0StripProductionRefused { cause: cause }
-    Step0StripFolding { sources: stripped, removed_statements: removed } =>
-      if count(removed) == 0 {
-        Step0StripProductionRefused { cause: Step0SubjectHadNoImportStatements }
-      } else {
-        match namespace_step0_observe_containment(
-          outcome: compile_fixture(fixture: MultiModuleCompileFixture { sources: stripped, entry: entry })
-        ) {
-          Step0ContainmentObservationUnavailable { cause: cause } =>
-            Step0StripProductionRefused { cause: cause }
-          Step0ContainmentResolutionRefused { cause: containment_cause } =>
-            Step0ReceiptProduced { receipt: namespace_step0_strip_applied_receipt(
-              contract_identity: namespace_step0_canary_contract.identity,
-              source_commit: source_commit,
-              source_tree: source_tree,
-              compiler_program: compiler_program,
-              compiler_executable_sha256: compiler_executable_sha256,
-              input_subject_manifest: namespace_step0_manifest_identity(),
-              observed_tree: source_tree,
-              observed_import_statements: removed |> map(statement => statement as NonEmptyStr),
-              containment_compile_cause: containment_cause
-            ) }
-        }
       }
   }
 }
