@@ -22,6 +22,9 @@ use std::time::{Duration, Instant};
 const THREAD_START_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TERMINAL_TIMEOUT: Duration = Duration::from_secs(600);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+// No production measurement currently establishes how long Codex needs to flush after closing its
+// stdin. Five seconds is therefore an explicit policy bound, not a measured fact: exceeding it is
+// reported as a refusal below, so evidence can move the bound instead of the overrun staying hidden.
 const NATURAL_EXIT_GRACE: Duration = Duration::from_secs(5);
 const PROCESS_GROUP_TERMINATION_GRACE: Duration = Duration::from_secs(10);
 
@@ -136,27 +139,32 @@ pub fn run_codex_app_server_stdio_session(
         let _ = h.join();
     }
 
-    if let crate::process_group::ProcessGroupNaturalExit::ObservationFailed { detail } =
-        natural_exit
-    {
-        return Err(format!("observe codex natural exit: {detail}"));
+    let protocol_failure = stdin_result.as_ref().err().map(String::as_str);
+    let with_protocol_failure = |message: String| match protocol_failure {
+        Some(why) => format!("{message}; session protocol failure: {why}"),
+        None => message,
+    };
+    if let Some(message) = natural_exit_error(natural_exit) {
+        return Err(with_protocol_failure(message));
     }
     if !termination.group_is_gone() {
-        return Err(format!(
+        return Err(with_protocol_failure(format!(
             "codex process-group teardown left residue: {:?}",
             termination.residue
-        ));
+        )));
     }
     let mut exit_code = match termination.leader {
         crate::process_group::ProcessGroupWait::Exited { code } => code,
         crate::process_group::ProcessGroupWait::Signaled { signal } => 128 + signal,
         crate::process_group::ProcessGroupWait::TimedOut => {
-            return Err("timed out reaping codex child after process-group teardown".to_string())
+            return Err(with_protocol_failure(
+                "timed out reaping codex child after process-group teardown".to_string(),
+            ))
         }
         crate::process_group::ProcessGroupWait::WaitFailed { detail } => {
-            return Err(format!(
+            return Err(with_protocol_failure(format!(
                 "reap codex child after process-group teardown: {detail}"
-            ))
+            )))
         }
     };
 
@@ -190,6 +198,20 @@ pub fn run_codex_app_server_stdio_session(
                 stdout,
                 stderr,
             })
+        }
+    }
+}
+
+fn natural_exit_error(
+    observation: crate::process_group::ProcessGroupNaturalExit,
+) -> Option<String> {
+    match observation {
+        crate::process_group::ProcessGroupNaturalExit::Exited => None,
+        crate::process_group::ProcessGroupNaturalExit::TimedOut => Some(format!(
+            "codex did not exit naturally within {NATURAL_EXIT_GRACE:?}; process group was terminated"
+        )),
+        crate::process_group::ProcessGroupNaturalExit::ObservationFailed { detail } => {
+            Some(format!("observe codex natural exit: {detail}"))
         }
     }
 }
@@ -519,5 +541,13 @@ mod tests {
         let false_positive_needle = "\"id\":4";
         assert!(line_id41.contains(false_positive_needle));
         assert_eq!(extract_thread_id_for_rpc_response(line_id41, 4), None);
+    }
+
+    #[test]
+    fn natural_exit_timeout_is_a_refusal_not_a_silent_termination() {
+        let error = natural_exit_error(crate::process_group::ProcessGroupNaturalExit::TimedOut)
+            .expect("timeout must refuse");
+        assert!(error.contains("did not exit naturally"));
+        assert!(error.contains("process group was terminated"));
     }
 }
