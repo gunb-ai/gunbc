@@ -986,7 +986,7 @@ corpus rather than a fixture someone must maintain.
 | `v2.workflow.compile_door_ledger` | `src/v2/workflow/compile_door_ledger.dag` | 341 | {'dag': 1} `src/v2/test/claim/long/door_real_module_probe_test.dag` |
 | `v2.workflow.compiler_closure_ingest_transport` | `src/v2/workflow/compiler_closure_ingest_transport.dag` | 150 | {'dag': 4} `dag/gunbc/instruments/ci_gates.dag` `dag/gunbc/ci/ci_layer_roots.dag` |
 | `v2.workflow.phase_profile_proof_plan` | `src/v2/workflow/phase_profile_proof_plan.dag` | 22 | {'rs': 1} `src/v1/stage0/tests/phase_profile_claim_executor.rs` |
-| `v2.workflow.source_root_ingest_gate` | `src/v2/workflow/source_root_ingest_gate.dag` | 18 | {'dag': 3} `dag/test/claim/guarantee_rung_drop_witness_test.dag` `dag/gunbc/instruments/ci_gates.dag` |
+| `v2.workflow.source_root_ingest_gate` | `src/v2/workflow/source_root_ingest_gate.dag` | 18 | {'dag': 3} `dag/test/claim/guarantee_stall_witness_test.dag` `dag/gunbc/instruments/ci_gates.dag` |
 | `v2.workflow.source_root_ingest_transport` | `src/v2/workflow/source_root_ingest_transport.dag` | 90 | {'dag': 2} `dag/gunbc/instruments/ci_gates.dag` `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag` |
 
 ### CITED-AUTHORITY — 103 modules

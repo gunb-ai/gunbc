@@ -1,6 +1,7 @@
 module gunbc.hostname_set
 
 import std.types { String, NonEmptyStr, List, Bool }
+import v2.std.diagnostic { Accepted, Rejected }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.tools.hostname
 import gunbc.hostname_read {
@@ -24,21 +25,16 @@ type HostnameSetCasOutcome
   | HostnameSetCasBaseMismatch { observed: String, base: DnsLabel }
   | HostnameSetCasApplyFailed { stderr: String }
 
-fn hostname_set_operation_argv(desired: DnsLabel) -> List<String> {
-  hostname_set_argv(desired: desired)
-}
-
+// THE PRIVILEGED ARGV, DERIVED. The `sudo -n` wrapper and the ABSOLUTE hostnamectl path are the
+// elevation/authority shape a sudoers NOPASSWD rule matches -- they stay here, on the SSH
+// realization edge. The VERB is the cited row (hostnamectl_set_hostname_verb), so a hand-typed
+// subcommand cannot drift from the one the local leg executes: one verb, one spelling, both
+// legs. The desired label is the invocation's operand.
 fn hostname_set_privileged_operation_argv(
   hostnamectl_path: NonEmptyStr,
   desired: DnsLabel,
 ) -> List<String> {
-  ["sudo", "-n", hostnamectl_path as String, "set-hostname", desired as String]
-}
-
-fn hostname_set_operation_argv_matches_authority(desired: DnsLabel) -> Bool {
-  let materialized = hostname_set_operation_argv(desired: desired)
-  let authority = hostname_set_argv(desired: desired)
-  join(materialized, " ") == join(authority, " ")
+  ["sudo", "-n", hostnamectl_path as String, hostnamectl_set_hostname_verb as String, desired as String]
 }
 
 fn hostname_set_privileged_operation_argv_matches_fleet_grant(
@@ -54,12 +50,28 @@ fn hostname_set_privileged_operation_argv_matches_fleet_grant(
   )
 }
 
+// THE LOCAL LEG: the caller describes the invocation, the model derives the argv, the handler
+// executes it. `os.Hostname.Set`'s hand-authored transport row is deleted with this function's
+// migration onto extdeps.tools.hostname's hostname_set_invocation_process_plan -- the argv
+// reaching the process is the one the row-driven lowering produced, and the exit contract is
+// read by hostname_set_classify_observation, never by a domain-side exit-code comparison.
 fn hostname_set_local(desired: DnsLabel) -> HostnameSetCasOutcome {
-  let result = os.Hostname.Set(desired: desired)
-  if result.success {
-    HostnameSetCasApplied
-  } else {
-    HostnameSetCasApplyFailed { stderr: result.stderr }
+  match hostname_set_invocation_process_plan(invocation: HostnameSetInvocation { desired: desired }) {
+    Rejected { diagnostics: _ } =>
+      HostnameSetCasApplyFailed { stderr: "hostname set invocation could not be lowered to a hostnamectl argv" }
+    Accepted { value: plan, diagnostics: _ } =>
+      hostname_set_cas_from_set_outcome(
+        outcome: hostname_set_classify_observation(
+          observation: hostname_set_execute_plan(plan: plan),
+        ),
+      )
+  }
+}
+
+fn hostname_set_cas_from_set_outcome(outcome: HostnameSetOutcome) -> HostnameSetCasOutcome {
+  match outcome {
+    HostnameSetApplied => HostnameSetCasApplied
+    HostnameSetFailed { exit_code: _, stderr: e } => HostnameSetCasApplyFailed { stderr: e }
   }
 }
 

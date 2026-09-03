@@ -143,6 +143,13 @@ fn pre_strip_refused() -> Step0V2CompileStanding {
   CompileAttemptedAndRefused { observation: observation(members: 9, tag: "admitted", rows: 45, occurrences: 96) }
 }
 
+fn post_strip_completed() -> Step0V2CompileStanding {
+  CompileAttemptedAndCompleted {
+    observation: observation(members: 9, tag: "stripped", rows: 0, occurrences: 0),
+    module_count: 9
+  }
+}
+
 fn both_refused() -> Step0PairStanding {
   BothCompileAttemptsRefused {
     differential_standing: HistogramBucketsChanged {
@@ -328,6 +335,65 @@ fn holds(a: NamespaceStep0V2Admission?, f: fn(NamespaceStep0V2Admission) -> Bool
 // refuses everything.
 test fn a_coherent_entered_receipt_is_admitted() -> Bool {
   holds(a: coherent_entered(), f: fn(a) { admitted_is(a: a) })
+}
+
+// GREEN IS AN OBSERVED COMPILE OUTCOME, NOT A VERDICT ON IMPORT DEPENDENCE. This is the successor
+// to v1's now-retired "green must refuse" witness: v2 can represent the completed compile honestly,
+// while the run still says that it did not execute the occurrence-grain producer. The three checks
+// stay together so no later edit can quote the green arm while silently retracting subject entry,
+// the compile transition, or the deliberately separate provenance judgment.
+test fn a_green_post_strip_compile_stays_entered_without_judging_import_dependence() -> Bool {
+  let post = post_strip_completed()
+  let prefix = step0_v2_entered_prefix_for(standing: post)
+  let frontier = entered_with_standing(standing: post)
+  let import_dependence = step0_import_dependence_not_judged()
+  let shape_is_honest = match frontier {
+    Step0V2SubjectNotEntered { blocked_at: _, cause: _ } => false
+    Step0V2SubjectEntered { stripped_population: _, compile_input_population: _, removed_statement_count: _, compile_standing: standing } =>
+      match standing {
+        CompileAttemptedAndCompleted { observation: _, module_count: _ } =>
+          prefix == step0_v2_entered_prefix
+            && match import_dependence {
+              ImportDependenceNotJudged { cause: _, required_capability: _ } => true
+              ImportDependenceCensusObserved { receipt_identity: _, subject_population_identity: _, completeness: _ } => false
+            }
+        CompileInstrumentUnavailable { cause: _ } => false
+        CompileAttemptedAndRefused { observation: _ } => false
+      }
+  }
+  shape_is_honest && holds(
+    a: score(
+      contract_identity: namespace_step0_canary_v2_contract.identity,
+      commit_hex_in: commit_hex(),
+      tree_hex_in: tree_hex(),
+      compiler_program: "target/release/gunbc" as NonEmptyStr,
+      compiler_hex_in: compiler_hex(),
+      manifest: namespace_step0_v2_manifest_identity(),
+      collected: population(members: 10, tag: "collected"),
+      excluded: excluded_one(),
+      excluded_projection: population(members: 1, tag: "excluded"),
+      admitted: population(members: 9, tag: "admitted"),
+      compile_entry: "dag/std/types.dag" as NonEmptyStr,
+      pre_strip_standing: pre_strip_refused(),
+      pair_standing: CompileOutcomesDiffer {
+        pre_strip_completed: false,
+        differential_standing: HistogramBucketsChanged {
+          differential: Step0HistogramDifferential {
+            gross_increases: 0,
+            gross_decreases: 45,
+            unchanged_buckets: 0,
+            pre_only_buckets: 45,
+            post_only_buckets: 0
+          }
+        }
+      },
+      order_invariance: OrderInvarianceHeld,
+      prefix: prefix,
+      frontier: frontier,
+      import_dependence: import_dependence
+    ),
+    f: fn(a) { admitted_is(a: a) }
+  )
 }
 
 test fn a_coherent_unentered_receipt_is_admitted() -> Bool {

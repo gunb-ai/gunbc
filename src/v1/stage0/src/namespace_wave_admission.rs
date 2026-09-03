@@ -342,13 +342,6 @@ pub struct TransitionAdmission {
     pub disposition: NamespaceDeltaDisposition,
 }
 
-/// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
-/// deltas, a file, environment state, or any runtime input: its permission set is exactly what an
-/// author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str` patterns
-/// distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject admitted
-/// only the all-empty shape in a const: it refused loudly as stale, but no const row could name a
-/// real module.
-///
 /// EMPTY IS THE RESTING STATE between transitions.
 ///
 /// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
@@ -744,8 +737,39 @@ pub struct TransitionAdmission {
 /// the change that went looking for it. Removing them here is the trigger being honoured rather
 /// than a sweep of convenience, and it is why no separate follow-up PR is owed.
 ///
-/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive — a run with a real delta
-/// still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent admission.
+/// THE RESTING STATE WAS RESTORED BY THE EIGHTEENTH DISSOLUTION (2026-09-03): empty, as of that
+/// change and before the seventeenth transition below. That half is a dated observation about a
+/// moment, so it carries its date.
+///
+/// EMPTY IS NOT PERMISSIVE — a run with a real delta still refuses it as UNADJUDICATED, closed by
+/// authoring a row and never by a silent admission. That is a claim about the MECHANISM, it holds
+/// whatever the roster contains, and it is stated on its own rather than as a subordinate clause of
+/// a snapshot that can go stale underneath it.
+///
+/// NINETEENTH DISSOLUTION (2026-09-03). The three `gunbc#10011 supersession-standing re-home`
+/// rows are removed by their own trigger, which fired: #10011 merged as 4acf8ac234, so main
+/// carries the re-home and no run after it can produce those deltas. They arrived here through a
+/// merge rather than by being authored here -- this branch composed the roster from both sides
+/// when git cut its hunks through the middle of the records -- and the required run reported them
+/// as `3 consumed admission(s) due for deletion on this roster-touching change`.
+///
+/// THE OBLIGATION IS CHARGED TO THE TOUCHER AND THIS COMMIT IS ONE, which is the same rule the
+/// eighteenth dissolution above paid. A row whose subject has landed is not merely useless: it is
+/// stale on every subsequent run, so leaving it refuses unrelated changes. The roster shrinks with
+/// its subject or it becomes a tax on everyone downstream.
+///
+/// SEVENTEENTH TRANSITION (2026-09-03, gunbc#10106), AND IT LANDED ON A ROSTER THIS BRANCH AND
+/// MAIN EMPTIED INDEPENDENTLY, WHICH IS THE TRIGGER MECHANISM WORKING RATHER THAN A COLLISION.
+/// Main deleted the 57 consumed rows on one side while this branch deleted the same 57 on the
+/// other, neither aware of the other, both paying the rule that consumed rows are due for deletion
+/// on the next roster-touching change. A trigger that reaches two unrelated changes and is
+/// honoured by both is doing what a trigger is for.
+///
+/// THE SENTENCE ABOVE WAS SPLIT, NOT RE-TENSED, and the distinction is the point. It was doing two
+/// jobs: a dated claim that the roster was empty, which the rows below falsify, and a claim that an
+/// empty roster is not permissive, which is a property of the mechanism and remains true.
+/// Re-tensing the whole sentence would have weakened a live invariant in order to correct a stale
+/// fact standing beside it -- the same error as taking either side of a conflict whole.
 /// AND THE ROSTER RE-OPENS ONCE MORE, for the same reason and by the same rule. The sweep above is
 /// main's and it is correct: the gunbc#10077 rows were consumed and the change that re-tensed their
 /// trigger owed their deletion. It restored the resting state to empty ON MAIN. This merge then
@@ -768,36 +792,6 @@ pub struct TransitionAdmission {
 /// deletion -- the specification record's field type, and the standing row's declared type and
 /// constructor. Their transition is still open for the reason stated above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: specification record field type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "AltraPlatformHwDesignSpecification",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, declared type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, constructor",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "NewerRevisionExistsUnretrieved",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
         subject: AdmissionSubject::Binding {

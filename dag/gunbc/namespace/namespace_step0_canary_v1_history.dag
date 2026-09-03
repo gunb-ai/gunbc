@@ -1,0 +1,40 @@
+module gunbc.namespace_step0_canary_v1_history
+
+import std.types { NonEmptyStr }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+
+// Historical receipt zero retained after deleting the v1 canary authority.  It records what the
+// retired command truthfully observed at its own revision; it has no classifier, command, producer,
+// or transition policy and therefore cannot delay Step 0 or score later work.
+type NamespaceStep0CanaryV1HistoricalStanding
+  = HistoricalStep0SubjectNotEntered
+
+type NamespaceStep0CanaryV1HistoricalReceipt {
+  contract_identity: NonEmptyStr
+  source_commit: GitObjectId
+  source_tree: GitObjectId
+  compiler_program: NonEmptyStr
+  compiler_executable_sha256: Sha256Digest
+  standing: NamespaceStep0CanaryV1HistoricalStanding
+}
+
+fn namespace_step0_canary_v1_historical_receipt() -> NamespaceStep0CanaryV1HistoricalReceipt? {
+  match git_sha1_object_id(hex: "20caf4eb0477c5a46d5b0d1302e337db14fcbd59") {
+    Absent => none
+    Present { value: commit } => match git_sha1_object_id(hex: "a6a6e0a531e23cc88fbbe01a2fa582b84867c625") {
+      Absent => none
+      Present { value: tree } => match sha256_hex_digest(hex: "a89dfc88a9ef07b6648f5a7e1f1fa5bafd8272defb74300910b18406786f6fa2") {
+        Absent => none
+        Present { value: compiler } => Present { value: NamespaceStep0CanaryV1HistoricalReceipt {
+          contract_identity: "namespace-step0-strip-entry-canary-v1" as NonEmptyStr,
+          source_commit: commit,
+          source_tree: tree,
+          compiler_program: "target/release/gunbc" as NonEmptyStr,
+          compiler_executable_sha256: compiler,
+          standing: HistoricalStep0SubjectNotEntered
+        } }
+      }
+    }
+  }
+}
