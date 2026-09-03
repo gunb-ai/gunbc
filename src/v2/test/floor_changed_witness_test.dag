@@ -1,7 +1,8 @@
 module v2.test.floor_changed_witness
 
-import v2.workflow.local_repo_wet_terminal {
-  LocalRepoWetJoin, LocalRepoWetJoinHolds, LocalRepoWetJoinRefused, LocalRepoWetTerminalMissing,
+import v2.workflow.wet_evidence {
+  WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused, WetTerminalMissing,
+  WetEvidenceBinding, CoResidentPreparedSubject,
 }
 
 import v2.workflow.floor_changed_witness {
@@ -625,15 +626,25 @@ data wet_other_identity: String = "test.claim.x.w_other"
 data wet_candidate: String = "subject-8993beb0d2808db6"
 data wet_other_candidate: String = "subject-0000000000000000"
 
-fn wet_admitted(identity: String, candidate: String, lane: LocalRepoWetJoin) -> HermeticRouteGapWetEvidence {
+fn wet_admitted(identity: String, candidate: String, lane: WetEvidenceValidation) -> HermeticRouteGapWetEvidence {
   HermeticRouteGapWetAdmitted {
     admitted: WetTerminalAdmitted { identity: identity, candidate: candidate },
     lane: lane,
   }
 }
 
-fn lane_refused() -> LocalRepoWetJoin {
-  LocalRepoWetJoinRefused { causes: [LocalRepoWetTerminalMissing { identity: wet_identity }] }
+fn lane_refused() -> WetEvidenceValidation {
+  WetEvidenceRefused { causes: [WetTerminalMissing { identity: wet_identity }] }
+}
+
+// THE ADMITTED LANE CARRIES ITS BINDING. The shared validator's admitted arm is not a bare marker:
+// it reports WHICH subject the evidence was bound to, so a standing built on it cannot claim
+// admission without naming the tree that produced it.
+fn lane_holds() -> WetEvidenceValidation {
+  WetEvidenceAdmitted {
+    binding: CoResidentPreparedSubject { prepared_subject: wet_candidate },
+    terminals: []
+  }
 }
 
 fn route_gap_reading() -> ChangedWitnessDispositionReading {
@@ -650,7 +661,7 @@ fn standing_blocks_for(wet: HermeticRouteGapWetEvidence) -> Bool {
 }
 
 fn admitted_here() -> HermeticRouteGapWetEvidence {
-  wet_admitted(identity: wet_identity, candidate: wet_candidate, lane: LocalRepoWetJoinHolds)
+  wet_admitted(identity: wet_identity, candidate: wet_candidate, lane: lane_holds())
 }
 
 test fn a_route_gap_with_matching_evidence_is_admitted() -> Bool {
@@ -667,7 +678,7 @@ test fn a_route_gap_with_matching_evidence_is_admitted() -> Bool {
 // exactly as well as the right one.
 test fn a_route_gap_whose_evidence_names_another_identity_still_blocks() -> Bool {
   standing_blocks_for(
-    wet: wet_admitted(identity: wet_other_identity, candidate: wet_candidate, lane: LocalRepoWetJoinHolds),
+    wet: wet_admitted(identity: wet_other_identity, candidate: wet_candidate, lane: lane_holds()),
   )
 }
 
@@ -675,7 +686,7 @@ test fn a_route_gap_whose_evidence_names_another_identity_still_blocks() -> Bool
 // workflow read as coverage for months.
 test fn a_route_gap_whose_evidence_names_another_candidate_still_blocks() -> Bool {
   standing_blocks_for(
-    wet: wet_admitted(identity: wet_identity, candidate: wet_other_candidate, lane: LocalRepoWetJoinHolds),
+    wet: wet_admitted(identity: wet_identity, candidate: wet_other_candidate, lane: lane_holds()),
   )
 }
 
