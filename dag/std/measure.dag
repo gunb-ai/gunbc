@@ -597,27 +597,6 @@ fn events_per_minute_count(r: EventsPerMinute) -> Nat {
 // TOKENS PER SECOND, which is the same family move EventsPerMinute above makes at a different
 // period and for a different counted thing.
 //
-// A DECODE RATE IS NOT A BARE Int, and the reason is the one that sibling already states: the period
-// marker is part of the type, so a per-second figure and a per-minute figure cannot be compared or
-// assigned across without a modeled conversion. A serving unit reports aggregate and per-stream
-// decode rates, and those are the numbers an operator threshold is compared against -- exactly the
-// place where a silently mismatched period produces a threshold that is wrong by 60x and looks fine.
-//
-// It is Measure<Frequency, One, Nat> rather than a new Quantity because tokens per second IS a count
-// per unit time, which is what the Frequency axis already carries here; minting a parallel axis for
-// it would be the re-invention that DESIGN §2's net-concepts test forbids. Structurally identical to
-// Hertz, and the family's honest limit applies unchanged -- the distinct name buys reading clarity
-// and one construction site, never a wall against passing one where the other belongs.
-type TokensPerSecond = Measure<Frequency, One, Nat>
-
-fn tokens_per_second(count: Nat) -> TokensPerSecond {
-  Measure { count: count }
-}
-
-fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
-  measure_count(r)
-}
-
 // HOW MANY FILES ONE ARTIFACT IS SPLIT INTO, on the Count axis beside PositiveSlotCount and built
 // the same way over PositiveMeasureCount.
 //

@@ -429,9 +429,24 @@ fn serving_unit_throughput_band(
 }
 
 // THE BAND AS MEASURED, AND THE INSTRUMENT IS THE SERVER'S OWN TIMINGS RATHER THAN A STOPWATCH.
-// A single completion on a 17-token prompt with cache_n 0 reported predicted_per_second 2.78 and
-// prompt_per_second 14.45. Reported in whole tok/s because a decimal would carry precision the
-// spread does not have.
+// Two readings, both single completions on short prompts with cache_n 0: predicted_per_second 2.78
+// with prompt_per_second 14.45 on a unit that had served six long-context sessions for eight hours,
+// and predicted_per_second 6.38 with prompt_per_second 12.18 sixteen minutes after that unit was
+// restarted. Reported in whole tok/s because a decimal would carry precision the spread does not
+// have.
+//
+// DECODE RATE DEPENDS ON WHAT ELSE THE UNIT IS HOLDING, WHICH IS WHY THE BAND IS WIDE AND WHY IT IS
+// A BAND. The 2.3x between those two readings is not noise and not a configuration change -- the
+// launch argv is identical across the restart. What differed is resident KV: the slow reading came
+// from a unit whose ten slots held sessions at 65k and 157k, the fast one from a unit whose slots
+// were nearly empty. A REPORT THAT SAMPLES ONLY A FRESH UNIT WILL THEREFORE OVERSTATE WHAT A LOADED
+// ONE DELIVERS BY ROUGHLY DOUBLE, and a report that samples only a loaded one understates a fresh
+// one by as much.
+//
+// This is also why a concurrency sweep run entirely on top of an already-loaded unit cannot see the
+// effect: every sample sits at one occupancy, per-stream rate looks flat across added probes, and
+// the honest conclusion from that shape is that ADDING STREAMS AT FIXED OCCUPANCY is cheap -- not
+// that occupancy is free. The two questions have different answers here.
 //
 // THE ROUNDING IS DIRECTIONAL AND THAT IS THE PART THAT MATTERS, because a band is not a number and
 // rounding it the wrong way changes what admission means. The low end rounds DOWN and the high end
@@ -450,8 +465,8 @@ fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
   serving_unit_throughput_band(
     slots: serving_unit_observed_slot_plan.slots,
     decode_low: tokens_per_second(count: 2),
-    decode_high: tokens_per_second(count: 3),
-    prefill: tokens_per_second(count: 14),
+    decode_high: tokens_per_second(count: 7),
+    prefill: tokens_per_second(count: 12),
   )
 }
 
