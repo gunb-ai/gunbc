@@ -1,6 +1,19 @@
 module gunbc.projection_admission_transaction
 
 import std.types { String, Bool, Int, List }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
+  GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  DesignFailureModesArtifact, DesignRungDropsArtifact,
+  GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
+  RunnerDeployArtifact, CouponCadQueryProgramArtifact,
+  Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact,
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
+  committed_generated_artifacts, artifact_path,
+}
 
 // WHAT THIS MODULE OWNS: the ORDER in which a serialized generated projection is derived relative
 // to the advance of main, and what a slot must exclude for that order to be establishable at all.
@@ -30,6 +43,15 @@ import std.types { String, Bool, Int, List }
 // (its base is the branch's, not the tip's), and a peer landing the same projection invalidates it
 // with no event it can observe. So the transaction is a MERGE-CONTRACT change; making heal smarter
 // cannot reach it.
+//
+// A FOURTH REASON, OBSERVED 2026-09-03 AND NOT MODELED HERE: the remediator's push does not merely
+// fail to establish order, it can SUSPEND the thing that would. gunbc#10157 sat two hours with the
+// required aggregate in action_required awaiting manual approval, because the bot-authored push
+// gated the run -- and that state reads identically to "no checks reported", so nobody was waiting
+// on anything they could see. This module does not model forge approval states and should not grow
+// to; the reason it is recorded here rather than in the failure-mode row is that the row is a
+// PROJECTED ledger, and editing it to record a fact about projection churn would cost exactly the
+// serialized regeneration this lane exists to remove.
 //
 // RUNG (DESIGN section 4b): the class sits at MITIGATABLE today. Stale projections are writable
 // and cycles are wasted, but the generated-artifact merge driver refuses a diverged projection and
@@ -85,122 +107,90 @@ type RosterId {
 // Projection membership: which members the FIRST implementation may cover
 // ---------------------------------------------------------------------------
 
-type GeneratorId {
-  name: String
-}
-
-// `generator_built_from_own_output` is the ONLY discriminant, and it is a fact about the
-// generator, never about the path. A bootstrap source mirror -- the stage0 Rust the compiler is
-// itself built from -- cannot be regenerated from the composed authority without first consuming
-// its own stale projection to build the generator, so it needs a staged or fixed-point admission
-// arm of its own. A whole-document ledger (docs/design-failure-modes.md) has no such loop. The
-// distinction is the thing most likely to sink this lane, so it is a modeled field with a refusal
-// arm rather than a paragraph.
-type ProjectionMember {
-  path: String
-  generator: GeneratorId
-  generator_built_from_own_output: Bool
-}
-
+// THE SUBJECT IS gunbc.generated_artifact GeneratedArtifact, NOT A RECORD OF ITS OWN, and the
+// difference is a RUNG rather than a refinement. An earlier cut of this module carried a
+// ProjectionMember record with a hand-declared generator_built_from_own_output flag; a caller can
+// build any record, so a NEWLY ADDED ARTIFACT WAS SILENTLY ELIGIBLE, and the classifier could be
+// satisfied by editing the declaration while the realization lied -- DESIGN section 5's own tell
+// for validation standing where construction was available. GeneratedArtifact is a closed
+// coproduct whose emit dispatch is already an exhaustive match, so keying on it means a new
+// variant FAILS TO COMPILE until it is classified here: the invalid state has no constructor. It
+// also stops this module carrying a second identity for an artifact the registry already owns
+// (section 3).
+//
+// THE DISCRIMINANT IS A BOOTSTRAP LOOP, decided per artifact rather than per directory. A
+// projection whose generator is BUILT FROM THAT PROJECTION cannot be derived from the composed
+// authority without first consuming its own stale bytes to produce the generator, so it needs a
+// staged or fixed-point admission arm this module does not model. Exactly two members are in that
+// state: the emitted Rust under src/v1/stage0/src, which `gunbc` itself is compiled from. The
+// stage0 `.dag` projections are NOT, and the distinction is the loop rather than the neighbourhood
+// -- they are read by the interpreter at run time and nothing is built from them. A whole-document
+// ledger such as docs/design-failure-modes.md has no loop at all, which is why the first
+// implementation covers it.
+//
+// THE CONSTRUCTION CLAIM IS MEASURED RATHER THAN ASSERTED, because a rung claim about a wall
+// nobody fired is the inflation DESIGN section 4b(1) names. Deleting a single arm from the match
+// below and compiling this module refuses with `non-exhaustive match: missing variant(s)
+// <the deleted one>`, one blocking error -- so the classifier cannot silently acquire a member,
+// and the same refusal is what a newly registered artifact meets. The probe is the ordinary
+// `gunbc compile --entry` over this module; it needs no fixture, because the discriminating RED is
+// authorable in the module itself.
 type ProjectionMemberEligibility
   = DerivableFromComposedAuthority
   | RequiresBootstrapFixedPointArm
 
-fn projection_member_eligibility(member: ProjectionMember) -> ProjectionMemberEligibility {
-  if member.generator_built_from_own_output {
-    RequiresBootstrapFixedPointArm
-  } else {
-    DerivableFromComposedAuthority
+fn projection_member_eligibility(artifact: GeneratedArtifact) -> ProjectionMemberEligibility {
+  match artifact {
+    Stage0CrateLayoutGeneratedRsArtifact => RequiresBootstrapFixedPointArm
+    V1InterpreterDispatchGeneratedRsArtifact => RequiresBootstrapFixedPointArm
+    WitnessFloorYamlArtifact => DerivableFromComposedAuthority
+    FleetConvergeYamlArtifact => DerivableFromComposedAuthority
+    FleetDesiredAdmissionYamlArtifact => DerivableFromComposedAuthority
+    GitignoreArtifact => DerivableFromComposedAuthority
+    GitattributesArtifact => DerivableFromComposedAuthority
+    RoadmapArtifact => DerivableFromComposedAuthority
+    DesignArtifact => DerivableFromComposedAuthority
+    DesignFailureModesArtifact => DerivableFromComposedAuthority
+    DesignRungDropsArtifact => DerivableFromComposedAuthority
+    GithooksPrePushArtifact => DerivableFromComposedAuthority
+    GithooksPreCommitArtifact => DerivableFromComposedAuthority
+    GeneratedArtifactMergeDriverArtifact => DerivableFromComposedAuthority
+    RunnerDeployArtifact => DerivableFromComposedAuthority
+    Stage0CrateLayoutGeneratedDagArtifact => DerivableFromComposedAuthority
+    Stage0CratePartitionGeneratedDagArtifact => DerivableFromComposedAuthority
+    Stage0ExecutableAssemblyGeneratedDagArtifact => DerivableFromComposedAuthority
+    CouponCadQueryProgramArtifact => DerivableFromComposedAuthority
+    AutoinstallUserDataArtifact { spec: _ } => DerivableFromComposedAuthority
+    RunnerHostSudoersArtifact { host: _ } => DerivableFromComposedAuthority
+    PlanArtifact { plan: _ } => DerivableFromComposedAuthority
   }
 }
 
-fn member_eligibility_is_derivable(member: ProjectionMember) -> Bool {
-  match projection_member_eligibility(member: member) {
+fn member_eligibility_is_derivable(artifact: GeneratedArtifact) -> Bool {
+  match projection_member_eligibility(artifact: artifact) {
     DerivableFromComposedAuthority => true
     RequiresBootstrapFixedPointArm => false
   }
 }
 
-fn first_implementation_members(members: List<ProjectionMember>) -> List<ProjectionMember> {
-  members |> filter(member => member_eligibility_is_derivable(member: member))
+// The population is DERIVED from the committed registry, not declared beside it: whatever
+// gunbc.generated_artifact admits as committed, minus the bootstrap loop.
+fn first_implementation_members() -> List<GeneratedArtifact> {
+  committed_generated_artifacts() |> filter(a => member_eligibility_is_derivable(artifact: a))
 }
 
-fn deferred_bootstrap_members(members: List<ProjectionMember>) -> List<ProjectionMember> {
-  members |> filter(member => !member_eligibility_is_derivable(member: member))
+fn deferred_bootstrap_members() -> List<GeneratedArtifact> {
+  committed_generated_artifacts() |> filter(a => !member_eligibility_is_derivable(artifact: a))
 }
 
-// ---------------------------------------------------------------------------
-// Sharding: the rule is written over the RESOURCE, never over an observed file list
-// ---------------------------------------------------------------------------
-
-// A projection resource is (generator, derived authority closure) with its outputs carried only so
-// the presumption this model REFUSES can be stated over the same value. Two candidates may run
-// concurrently only when a DERIVED closure proves neither can affect the other's projection or
-// generator. Output-path disjointness is not that proof, in either direction: two ledgers with
-// disjoint filenames share one generator, and a freeze declared over an observed four-path file
-// list has blocked lanes whose closures did not intersect at all (operator receipt, 2026-09-03).
-type ProjectionResource {
-  outputs: List<String>
-  generator: GeneratorId
-  authority_closure: List<String>
-}
-
-type ShardPolicy
-  = GloballySerialized
-  | ShardedByDerivedClosure
-
-// START HERE AND CHANGE IT ONLY AGAINST A CLOSURE PROOF (ruling, 2026-09-03).
-data initial_shard_policy: ShardPolicy = GloballySerialized
-
-type ShardAdmission
-  = ShardAdmitted
-  | ShardRefusedGloballySerialized
-  | ShardRefusedSharedGenerator { generator: String }
-  | ShardRefusedSharedAuthorityClosure { module_path: String }
-
-fn shared_authority_closure_member(left: ProjectionResource, right: ProjectionResource) -> List<String> {
-  left.authority_closure |> filter(module_path => right.authority_closure |> any(other => other == module_path))
-}
-
-fn classify_shard_admission(
-  policy: ShardPolicy,
-  left: ProjectionResource,
-  right: ProjectionResource,
-) -> ShardAdmission {
-  match policy {
-    GloballySerialized => ShardRefusedGloballySerialized
-    ShardedByDerivedClosure => {
-      if left.generator.name == right.generator.name {
-        ShardRefusedSharedGenerator { generator: left.generator.name }
-      } else {
-        let shared = shared_authority_closure_member(left: left, right: right)
-        match (shared |> first) {
-          Present { value: module_path } => ShardRefusedSharedAuthorityClosure { module_path: module_path }
-          Absent => ShardAdmitted
-        }
-      }
-    }
-  }
-}
-
-fn shard_admits_concurrency(
-  policy: ShardPolicy,
-  left: ProjectionResource,
-  right: ProjectionResource,
-) -> Bool {
-  match classify_shard_admission(policy: policy, left: left, right: right) {
-    ShardAdmitted => true
-    ShardRefusedGloballySerialized => false
-    ShardRefusedSharedGenerator { generator: _ } => false
-    ShardRefusedSharedAuthorityClosure { module_path: _ } => false
-  }
-}
-
-// The presumption this model refuses, written so a witness can compare the two answers on one pair
-// rather than asserting the rule in prose.
-fn outputs_are_disjoint(left: ProjectionResource, right: ProjectionResource) -> Bool {
-  !(left.outputs |> any(output => right.outputs |> any(other => other == output)))
-}
+// NO SHARD CLASSIFIER LIVES HERE, AND ITS ABSENCE IS THE RULING RATHER THAN AN OMISSION
+// (operator, 2026-09-03). A shard rule must be proved by a DERIVED dependency closure, and the
+// classifier this module briefly carried took its closure as a hand-supplied list -- a presumption
+// wearing a parameter, which is the same defect as the record above one level down and is exactly
+// what the ruling forbade when it said path-disjointness must not be presumed. It is deleted
+// rather than left staged: the starting policy is global serialization, which needs no classifier
+// at all, and a rule keyed on v2.lens.module_graph would come back as construction. Until then,
+// two candidates are never concurrent.
 
 // ---------------------------------------------------------------------------
 // The admission slot
@@ -254,7 +244,7 @@ type Lane {
   inherited_projection: ProjectionId
   composes_cleanly: Bool
   foreign_machine_authored_path: String
-  members: List<ProjectionMember>
+  members: List<GeneratedArtifact>
 }
 
 type ProjectionDerivationOrder
@@ -468,11 +458,11 @@ fn apply_derive(state: TransactionState, candidate: OpenCandidate) -> Transactio
   if !stage_is(candidate: candidate, stage: CandidateComposed) {
     refuse(state: state, cause: StageOutOfOrder { lane: candidate.lane.id.name })
   } else {
-    match (deferred_bootstrap_members(members: candidate.lane.members) |> first) {
+    match (candidate.lane.members |> filter(a => !member_eligibility_is_derivable(artifact: a)) |> first) {
       Present { value: member } =>
         discard_candidate(
           state: state,
-          cause: MemberNotDerivableFromComposedAuthority { lane: candidate.lane.id.name, path: member.path }
+          cause: MemberNotDerivableFromComposedAuthority { lane: candidate.lane.id.name, path: artifact_path(a: member) }
         )
       Absent =>
         with_candidate(

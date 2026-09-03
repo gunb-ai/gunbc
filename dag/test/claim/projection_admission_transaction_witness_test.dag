@@ -3,15 +3,9 @@ module test.claim.projection_admission_transaction_witness
 import gunbc.projection_admission_transaction {
   ProjectionId,
   trunk_tip_is_coherent,
-  GeneratorId, ProjectionMember,
   DerivableFromComposedAuthority, RequiresBootstrapFixedPointArm,
-  projection_member_eligibility,
+  projection_member_eligibility, member_eligibility_is_derivable,
   first_implementation_members, deferred_bootstrap_members,
-  ProjectionResource, ShardedByDerivedClosure,
-  initial_shard_policy,
-  ShardAdmitted, ShardRefusedGloballySerialized,
-  ShardRefusedSharedGenerator, ShardRefusedSharedAuthorityClosure,
-  classify_shard_admission, shard_admits_concurrency, outputs_are_disjoint,
   HumanMergeAnnouncement, DashboardFreezeRoster, AdvisoryLease,
   EnforcedMergeQueue, AdmissionCoordinator,
   slot_excludes_concurrent_advance, all_slot_mechanisms,
@@ -26,6 +20,13 @@ import gunbc.projection_admission_transaction {
   count_incoherent_admitting_sequences, count_discarding_sequences,
 }
 import std.types { List, Bool }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact,
+  Stage0CrateLayoutGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact,
+  Stage0CrateLayoutGeneratedDagArtifact,
+  committed_generated_artifacts,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -34,36 +35,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Fixtures
 // ---------------------------------------------------------------------------
 
-// Two real generators, named as the modules that own them rather than as the paths they write.
-data design_ledgers_generator: GeneratorId = GeneratorId { name: "gunbc.design_ledgers" }
-data merge_rows_generator: GeneratorId = GeneratorId { name: "gunbc.generated_projection_paths" }
-data stage0_generator: GeneratorId = GeneratorId { name: "gunbc.stage0_rust_source_lifecycle_scaffold" }
-
-// The whole-document ledgers the FIRST implementation covers: their generator runs from the
-// composed authority and never reads its own previous output.
-data failure_modes_member: ProjectionMember = ProjectionMember {
-  path: "docs/design-failure-modes.md",
-  generator: design_ledgers_generator,
-  generator_built_from_own_output: false,
-}
-
-data rung_drops_member: ProjectionMember = ProjectionMember {
-  path: "docs/design-rung-drops.md",
-  generator: design_ledgers_generator,
-  generator_built_from_own_output: false,
-}
-
-// The bootstrap source mirror. `gunbc` is compiled FROM these bytes, so deriving them inside the
-// transaction requires consuming the stale projection first -- its own staged or fixed-point arm.
-data stage0_mirror_member: ProjectionMember = ProjectionMember {
-  path: "src/v1/stage0/src/v1_rt.rs",
-  generator: stage0_generator,
-  generator_built_from_own_output: true,
-}
-
-fn every_member() -> List<ProjectionMember> {
-  [failure_modes_member, rung_drops_member, stage0_mirror_member]
-}
+// THE MEMBERS ARE REGISTRY VARIANTS, NOT FIXTURE RECORDS. There is nothing to declare here: the
+// artifacts are gunbc.generated_artifact's own, so a witness cannot construct a member the
+// registry does not have, and the eligibility answers below are answers about the live population.
 
 fn clean_lane() -> Lane {
   Lane {
@@ -72,7 +46,7 @@ fn clean_lane() -> Lane {
     inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
     composes_cleanly: true,
     foreign_machine_authored_path: "",
-    members: [failure_modes_member, rung_drops_member],
+    members: [DesignFailureModesArtifact, DesignRungDropsArtifact],
   }
 }
 
@@ -83,7 +57,7 @@ fn conflicting_lane() -> Lane {
     inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
     composes_cleanly: false,
     foreign_machine_authored_path: "",
-    members: [failure_modes_member],
+    members: [RoadmapArtifact],
   }
 }
 
@@ -94,7 +68,7 @@ fn foreign_change_lane() -> Lane {
     inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
     composes_cleanly: true,
     foreign_machine_authored_path: "src/v2/lens/module_graph.dag",
-    members: [failure_modes_member],
+    members: [RoadmapArtifact],
   }
 }
 
@@ -105,7 +79,7 @@ fn bootstrap_lane() -> Lane {
     inherited_projection: ProjectionId { derived_from: "pr-head-authority" },
     composes_cleanly: true,
     foreign_machine_authored_path: "",
-    members: [failure_modes_member, stage0_mirror_member],
+    members: [DesignFailureModesArtifact, Stage0CrateLayoutGeneratedRsArtifact],
   }
 }
 
@@ -347,12 +321,35 @@ test fn a_second_transaction_cannot_open_while_one_is_held() -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn eligibility_splits_the_ledgers_from_the_bootstrap_mirror() -> Bool {
-  length(first_implementation_members(members: every_member())) == 2
-    && length(deferred_bootstrap_members(members: every_member())) == 1
-    && match projection_member_eligibility(member: stage0_mirror_member) {
+  match projection_member_eligibility(artifact: Stage0CrateLayoutGeneratedRsArtifact) {
+    RequiresBootstrapFixedPointArm => true
+    DerivableFromComposedAuthority => false
+  }
+    && match projection_member_eligibility(artifact: V1InterpreterDispatchGeneratedRsArtifact) {
       RequiresBootstrapFixedPointArm => true
       DerivableFromComposedAuthority => false
     }
+    && member_eligibility_is_derivable(artifact: DesignFailureModesArtifact)
+    && member_eligibility_is_derivable(artifact: DesignRungDropsArtifact)
+}
+
+// THE NEIGHBOURHOOD IS NOT THE DISCRIMINANT, and this is the witness that says so: a stage0 `.dag`
+// projection sits beside the two mirrors and is DERIVABLE, because nothing is built from it. A
+// classifier keyed on the directory would answer the same as the loop for the two mirrors and
+// differently here, so this is where the two rules come apart.
+test fn a_stage0_dag_projection_is_derivable_though_it_neighbours_the_mirrors() -> Bool {
+  member_eligibility_is_derivable(artifact: Stage0CrateLayoutGeneratedDagArtifact)
+}
+
+// THE POPULATION IS THE LIVE REGISTRY, not a fixture list, so this partitions whatever
+// gunbc.generated_artifact currently admits as committed. The two halves must cover it exactly --
+// a member that fell out of both would be a silent eligibility, which is the class the re-key
+// closed.
+test fn the_committed_registry_partitions_into_the_two_arms() -> Bool {
+  length(first_implementation_members()) + length(deferred_bootstrap_members())
+    == length(committed_generated_artifacts())
+    && length(deferred_bootstrap_members()) == 2
+    && length(first_implementation_members()) > 0
 }
 
 test fn a_lane_carrying_the_bootstrap_mirror_refuses_at_derive() -> Bool {
@@ -364,97 +361,4 @@ test fn a_lane_carrying_the_bootstrap_mirror_refuses_at_derive() -> Bool {
   end_state.discarded_candidate_count == 1
     && end_state.tip.authority.tag == "main-0"
     && !end_state.incoherent_tip_seen
-}
-
-// ---------------------------------------------------------------------------
-// Sharding: output-path disjointness is not a closure proof, in either direction
-// ---------------------------------------------------------------------------
-
-data failure_modes_resource: ProjectionResource = ProjectionResource {
-  outputs: ["docs/design-failure-modes.md"],
-  generator: design_ledgers_generator,
-  authority_closure: ["gunbc.design_ledgers", "gunbc.recurring_failure_mode"],
-}
-
-data rung_drops_resource: ProjectionResource = ProjectionResource {
-  outputs: ["docs/design-rung-drops.md"],
-  generator: design_ledgers_generator,
-  authority_closure: ["gunbc.design_ledgers", "gunbc.rung_drop"],
-}
-
-data merge_rows_resource: ProjectionResource = ProjectionResource {
-  outputs: [".gitattributes"],
-  generator: merge_rows_generator,
-  authority_closure: ["gunbc.generated_projection_paths", "gunbc.generated_artifact"],
-}
-
-// THE UNSOUND PRESUMPTION, EXECUTED. The two ledgers write different files and share one
-// generator, so a shard rule keyed on output paths would run them concurrently and let each
-// candidate invalidate the other's projection.
-test fn disjoint_outputs_do_not_imply_independent_resources() -> Bool {
-  outputs_are_disjoint(left: failure_modes_resource, right: rung_drops_resource)
-    && !shard_admits_concurrency(
-      policy: ShardedByDerivedClosure,
-      left: failure_modes_resource,
-      right: rung_drops_resource
-    )
-    && match classify_shard_admission(
-      policy: ShardedByDerivedClosure,
-      left: failure_modes_resource,
-      right: rung_drops_resource
-    ) {
-      ShardRefusedSharedGenerator { generator } => generator == "gunbc.design_ledgers"
-      ShardAdmitted => false
-      ShardRefusedGloballySerialized => false
-      ShardRefusedSharedAuthorityClosure { module_path: _ } => false
-    }
-}
-
-// The other direction, and the one that cost a lane an hour: two resources whose closures do not
-// intersect are independent, so a freeze declared over an observed file list spanning both was
-// over-broad by construction rather than by bad luck.
-test fn disjoint_closures_admit_concurrency_under_the_derived_policy() -> Bool {
-  shard_admits_concurrency(
-    policy: ShardedByDerivedClosure,
-    left: failure_modes_resource,
-    right: merge_rows_resource
-  )
-}
-
-// And the starting policy admits neither pair: sharding is unlocked by a closure proof, not by
-// this model existing.
-test fn the_starting_policy_serializes_globally() -> Bool {
-  !shard_admits_concurrency(
-    policy: initial_shard_policy,
-    left: failure_modes_resource,
-    right: merge_rows_resource
-  )
-    && match classify_shard_admission(
-      policy: initial_shard_policy,
-      left: failure_modes_resource,
-      right: merge_rows_resource
-    ) {
-      ShardRefusedGloballySerialized => true
-      ShardAdmitted => false
-      ShardRefusedSharedGenerator { generator: _ } => false
-      ShardRefusedSharedAuthorityClosure { module_path: _ } => false
-    }
-}
-
-test fn a_shared_closure_member_refuses_even_with_distinct_generators() -> Bool {
-  let overlapping = ProjectionResource {
-    outputs: ["docs/design-rung-drops.md"],
-    generator: merge_rows_generator,
-    authority_closure: ["gunbc.recurring_failure_mode", "gunbc.generated_artifact"],
-  }
-  match classify_shard_admission(
-    policy: ShardedByDerivedClosure,
-    left: failure_modes_resource,
-    right: overlapping
-  ) {
-    ShardRefusedSharedAuthorityClosure { module_path } => module_path == "gunbc.recurring_failure_mode"
-    ShardAdmitted => false
-    ShardRefusedGloballySerialized => false
-    ShardRefusedSharedGenerator { generator: _ } => false
-  }
 }
