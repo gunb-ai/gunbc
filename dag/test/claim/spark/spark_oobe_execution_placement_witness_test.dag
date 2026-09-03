@@ -3,13 +3,18 @@ module test.claim.spark.spark_oobe_execution_placement_witness
 import std.types { Bool, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ssh.openssh_port_forwarding {
-  TcpForwardingPermitted,
-  TcpForwardingAdministrativelyProhibited,
-  ForwardingPermissionUnobserved,
+  ForwardingAdmission,
+  ForwardingAdmitted,
+  ForwardingAdministrativelyProhibited,
+  ForwardingAdmissionUnobserved,
+  ForwardingAdmissionSubject,
   LocalForward,
   RemoteForward,
   forward_flag,
 }
+import extdeps.network.endpoint { SocketAddress, HostByName, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualified }
 import extdeps.access.posix { PosixLoginName }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import product.placement_supply { HostIdentity }
@@ -39,6 +44,17 @@ import gunbc.spark.oobe_execution_placement {
   renderer_srv4_briansrls,
   renderer_pi1_briansrls,
   relay_pi1,
+  relay_srv4,
+  pi1_local_forward_to_unit_admission,
+  pi1_local_forward_to_unit_subject,
+  measured_route_use,
+  ForwardingUseStanding,
+  ObservationTrafficAdmitted,
+  SecretBearingTrafficAdmitted,
+  SecretBearingTrafficRefused,
+  SecretTrafficRefusalCause,
+  ProxyLocusNotAdmittedForCredentials,
+  TransportNotConfidential,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -107,44 +123,91 @@ test fn w_renderer_rows_name_the_account_the_capability_was_measured_under() -> 
 // ---- forwarding permission is a per-relay fact, and the fixtures prove the arms discriminate ---
 
 // THE RED IS AUTHORABLE HERE EVEN THOUGH NO SUCH ROW EXISTS IN THE POPULATION, which is why these
-// are fixtures rather than a gap. A relay carrying a radio, associated with the right access point,
-// and REFUSING TCP forwarding is a state this fleet has already seen once -- gunbc.fleet_reach
-// records srv2 setting AllowTcpForwarding no -- so the arm that would call it ready is a real
-// mistake to guard against, not a hypothetical one.
-data fixture_relay_refusing_forwarding: RadioRelayStanding = RadioRelayReady {
-  host: "fixture-refuser" as HostIdentity,
-  radio_interface: "wlan0" as RadioInterfaceName,
-  associated_ssid: "spark-0c75" as ObservedUnitAccessPointSsid,
-  forwarding_permission: TcpForwardingAdministrativelyProhibited,
+// are fixtures rather than a gap. A relay carrying a radio and REFUSING a forwarding request is a
+// state this fleet has already seen once -- gunbc.fleet_reach records srv2 setting
+// AllowTcpForwarding no -- so an arm that read a refusal as permission is a real mistake to guard
+// against, not a hypothetical one.
+fn subject_for(host_label: DnsLabel) -> ForwardingAdmissionSubject {
+  ForwardingAdmissionSubject {
+    relay: HostByName {
+      name: HostName {
+        name: DomainName { labels: [host_label] },
+        qualification: PartiallyQualified,
+      },
+    },
+    principal: "briansrls",
+    direction: LocalForward,
+    target: SocketAddress {
+      host: host_by_ipv4(addr: ipv4_address(octet1: 10, octet2: 92, octet3: 7, octet4: 127)),
+      port: 80,
+    },
+  }
 }
 
-// AND UNOBSERVED MUST NOT BE READ AS PERMITTED. This is the fail-closed half: a relay nobody has
-// asked is not a relay that said yes, and the arm that treated silence as permission would pick it
-// and fail at the first connection.
-data fixture_relay_unobserved_forwarding: RadioRelayStanding = RadioRelayReady {
-  host: "fixture-unasked" as HostIdentity,
-  radio_interface: "wlan0" as RadioInterfaceName,
-  associated_ssid: "spark-0c75" as ObservedUnitAccessPointSsid,
-  forwarding_permission: ForwardingPermissionUnobserved,
+data fixture_admission_prohibited: ForwardingAdmission = ForwardingAdministrativelyProhibited {
+  subject: subject_for(host_label: "fixture-refuser" as DnsLabel),
 }
 
-test fn w_a_radio_that_refuses_forwarding_is_not_a_ready_relay() -> Bool {
-  !relay_is_ready(r: fixture_relay_refusing_forwarding)
-    && !relay_is_ready(r: fixture_relay_unobserved_forwarding)
-    && relay_is_ready(r: relay_pi1)
+// AND UNOBSERVED MUST NOT BE READ AS ADMITTED. This is the fail-closed half: a request nobody has
+// made is not a request that was granted, and an arm treating silence as permission would pick the
+// relay and fail at the first connection.
+data fixture_admission_unobserved: ForwardingAdmission = ForwardingAdmissionUnobserved {
+  subject: subject_for(host_label: "fixture-unasked" as DnsLabel),
+}
+
+fn admission_permits(a: ForwardingAdmission) -> Bool {
+  match a {
+    ForwardingAdmitted { subject: _ } => true
+    ForwardingAdministrativelyProhibited { subject: _ } => false
+    ForwardingAdmissionUnobserved { subject: _ } => false
+  }
+}
+
+test fn w_only_a_measured_admission_permits_a_forward() -> Bool {
+  admission_permits(a: pi1_local_forward_to_unit_admission)
+    && !admission_permits(a: fixture_admission_prohibited)
+    && !admission_permits(a: fixture_admission_unobserved)
+}
+
+// THE ADMISSION IS KEYED BY PRINCIPAL, DIRECTION AND TARGET, and the witness asserts all three.
+// A row that kept the relay and lost the principal would let one login's measurement license
+// another's request -- the confound that made the wrong user look like an incapable host.
+test fn w_the_admission_names_the_principal_direction_and_target_it_was_measured_for() -> Bool {
+  match pi1_local_forward_to_unit_admission {
+    ForwardingAdmitted { subject: s } =>
+      s.principal == "briansrls"
+        && (match s.direction { LocalForward => true, RemoteForward => false })
+        && s.target.port == 80
+    ForwardingAdministrativelyProhibited { subject: _ } => false
+    ForwardingAdmissionUnobserved { subject: _ } => false
+  }
+}
+
+// THE ROUTE THAT WORKED FOR OBSERVATION IS REFUSED FOR CREDENTIALS, and this is the witness that
+// stops "returned HTTP 200" from becoming "safe to transport secrets". The portal is HTTP, so every
+// locus on the path is inside the trust boundary of anything typed into the wizard; the measured
+// proxy locus is an ephemeral session container and is not an admitted production locus for a
+// host-administrator password.
+//
+// Discriminating RED: promote the measured route to SecretBearingTrafficAdmitted and this fails.
+test fn w_the_measured_route_is_refused_for_secret_bearing_traffic() -> Bool {
+  match measured_route_use {
+    SecretBearingTrafficRefused { cause: c } =>
+      match c {
+        ProxyLocusNotAdmittedForCredentials { proxy_locus: p } => p == "sleek-bear-442"
+        TransportNotConfidential { unit_endpoint: _ } => false
+      }
+    ObservationTrafficAdmitted => false
+    SecretBearingTrafficAdmitted { admitted_loci: _ } => false
+  }
 }
 
 // pi1's readiness is asserted with its measured members, not merely as a boolean, so a row that
 // kept the host and lost the association -- or silently downgraded the permission -- goes red.
-test fn w_pi1_is_ready_with_the_measured_interface_ssid_and_permission() -> Bool {
+test fn w_pi1_is_ready_with_the_measured_interface_and_ssid() -> Bool {
   match relay_pi1 {
-    RadioRelayReady { host: h, radio_interface: i, associated_ssid: s, forwarding_permission: p } =>
+    RadioRelayReady { host: h, radio_interface: i, associated_ssid: s } =>
       h == "pi1" && i == "wlan0" && s == "spark-0c75"
-        && match p {
-          TcpForwardingPermitted => true
-          TcpForwardingAdministrativelyProhibited => false
-          ForwardingPermissionUnobserved => false
-        }
     RelayHasNoRadioInterface { host: _ } => false
     RelayRadioNotAssociated { host: _, radio_interface: _ } => false
   }
@@ -156,7 +219,7 @@ test fn w_pi1_is_ready_with_the_measured_interface_ssid_and_permission() -> Bool
 fn relay_lacks_radio(r: RadioRelayStanding) -> Bool {
   match r {
     RelayHasNoRadioInterface { host: _ } => true
-    RadioRelayReady { host: _, radio_interface: _, associated_ssid: _, forwarding_permission: _ } => false
+    RadioRelayReady { host: _, radio_interface: _, associated_ssid: _ } => false
     RelayRadioNotAssociated { host: _, radio_interface: _ } => false
   }
 }

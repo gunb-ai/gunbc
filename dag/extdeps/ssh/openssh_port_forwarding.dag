@@ -45,24 +45,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the host the command runs on, and an absolute path would be a claim about one.
 data ssh_program: NonEmptyStr = "ssh"
 
-// THE SERVER'S PERMISSION IS A FACT ABOUT THE SERVER, NOT ABOUT THE REQUEST, and it is the reason
-// this type exists rather than a Bool on the client side. sshd_config's AllowTcpForwarding governs
-// whether a -L or -W request is honoured at all; when it is "no" the daemon answers
-// "administratively prohibited" and the client's flags are irrelevant.
-//
-// THE REPOSITORY ALREADY HOLDS A MEASURED "no". gunbc.fleet_reach records that srv2 refuses TCP
-// forwarding, which is why the srv3 ProxyJump reach realizes by NESTED EXEC rather than -J. So a
-// model that treated forwarding as universally available would contradict a fact this repository
-// has already written down, and any consumer choosing a relay must ASK rather than assume.
-//
-// ForwardingPermissionUnobserved is the honest third state and not a synonym for refused: a host
-// nobody has asked is not a host that said no, and collapsing them would let an unmeasured relay be
-// reported as a refusing one -- a wrong answer that looks conservative.
-type TcpForwardingPermission
-  = TcpForwardingPermitted
-  | TcpForwardingAdministrativelyProhibited
-  | ForwardingPermissionUnobserved
-
 // THE TWO CLIENT-SIDE FORWARD SHAPES THIS REPOSITORY USES. -L binds a listener on the CLIENT and
 // carries each connection to one fixed target reached from the server; -R binds a listener on the
 // SERVER and carries connections back to a target reached from the client. They are not
@@ -71,6 +53,40 @@ type TcpForwardingPermission
 type ForwardDirection
   = LocalForward
   | RemoteForward
+
+// THE SERVER DECIDES, AND WHAT IT DECIDES IS NARROWER THAN "THIS HOST SUPPORTS FORWARDING".
+//
+// sshd_config's AllowTcpForwarding governs whether a -L or -R request is honoured; when it is
+// "no" the daemon answers "administratively prohibited" and the client's flags are irrelevant. But
+// the answer is not a property of the HOST. It is the outcome of one request, and sshd can differ
+// by authenticated principal (Match blocks), by direction (AllowTcpForwarding accepts "local" and
+// "remote" separately), and by target (PermitOpen restricts which host:port a forward may reach).
+//
+// So this repository does not model "pi1 permits forwarding". It models "this principal, asking
+// for this direction, toward this target, on this relay, was admitted" -- which is the same
+// correction that srv2 and srv3 forced on renderer capability, where the wrong login made a
+// capable host look incapable. A host-grain permission would let one measurement under one
+// principal license a different principal's request, and the failure would appear at the far end
+// as an unreachable endpoint.
+//
+// AdmissionUnobserved is the honest third state and not a synonym for prohibited: a request nobody
+// has made is not a request that was refused, and collapsing them would report an unmeasured relay
+// as a refusing one -- a wrong answer wearing conservative clothes.
+//
+// THE REPOSITORY ALREADY HOLDS A MEASURED PROHIBITION. gunbc.fleet_reach records srv2 refusing TCP
+// forwarding, which is why the srv3 ProxyJump reach realizes by NESTED EXEC rather than -J. That is
+// the counter-example that makes asking mandatory.
+type ForwardingAdmissionSubject {
+  relay: NetworkHost
+  principal: NonEmptyStr
+  direction: ForwardDirection
+  target: SocketAddress
+}
+
+type ForwardingAdmission
+  = ForwardingAdmitted { subject: ForwardingAdmissionSubject }
+  | ForwardingAdministrativelyProhibited { subject: ForwardingAdmissionSubject }
+  | ForwardingAdmissionUnobserved { subject: ForwardingAdmissionSubject }
 
 // listener is where the socket appears; target is what each accepted connection is joined to, and
 // the two are resolved on OPPOSITE SIDES of the connection. Keeping them as one type with a

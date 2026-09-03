@@ -1,16 +1,22 @@
 module gunbc.spark.oobe_execution_placement
 
 import std.types { NonEmptyStr, Bool, List, Int }
-import extdeps.network.endpoint { SocketAddress }
+import extdeps.network.endpoint { SocketAddress, NetworkHost, HostByName, HostByAddress, host_by_ipv4 }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualified }
 import extdeps.access.posix { PosixLoginName }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.oobe_screen_observation { ObservedUnitAccessPointSsid }
 import extdeps.ssh.openssh_port_forwarding {
-  TcpForwardingPermission,
-  TcpForwardingPermitted,
-  TcpForwardingAdministrativelyProhibited,
-  ForwardingPermissionUnobserved,
+  ForwardingAdmission,
+  ForwardingAdmitted,
+  ForwardingAdministrativelyProhibited,
+  ForwardingAdmissionUnobserved,
+  ForwardingAdmissionSubject,
+  ForwardDirection,
+  LocalForward,
+  RemoteForward,
   PortForwardSpec,
 }
 
@@ -78,24 +84,22 @@ type RendererCapabilityStanding
     }
 
 // ------------------------------------------------------------------------------------------
-// RELAY CAPABILITY, AND THE MEMBER THAT WOULD OTHERWISE BE ASSUMED.
+// RELAY CAPABILITY STOPS AT THE RADIO, and that boundary is a correction rather than a
+// simplification. An earlier revision of this module carried forwarding_permission here, which
+// made it a property of the HOST. It is not: sshd can answer differently per authenticated
+// principal, per direction, and per target, so the permission belongs to the forwarding request
+// and lives in extdeps.ssh.openssh_port_forwarding keyed by all four. Leaving it here would let a
+// measurement taken under one principal license another principal's request -- the same confound
+// that made the wrong login look like an incapable host.
 //
-// forwarding_permission is measured from the host rather than inferred from the mechanism, and
-// this repository already holds the counter-example that makes the distinction load-bearing:
-// gunbc.fleet_reach records that srv2 sets AllowTcpForwarding no, which is why the srv3 ProxyJump
-// reach realizes by nested exec rather than -J. A relay that carries a radio and refuses
-// forwarding is useless to a browser and perfectly fine for a shell, so the two questions cannot
-// share an answer.
-//
-// A radio that is PRESENT is not a radio that is ASSOCIATED. Both are carried because they fail
-// differently: no interface is a hardware fact and needs a different relay, while an unassociated
-// interface is a state that can be fixed on the relay we have.
+// A radio that is PRESENT is not a radio that is ASSOCIATED, and both are carried because they
+// fail differently: no interface is a hardware fact needing a different relay, while an
+// unassociated interface is a state fixable on the relay we have.
 type RadioRelayStanding
   = RadioRelayReady {
       host: HostIdentity,
       radio_interface: RadioInterfaceName,
       associated_ssid: ObservedUnitAccessPointSsid,
-      forwarding_permission: TcpForwardingPermission,
     }
   | RelayHasNoRadioInterface { host: HostIdentity }
   | RelayRadioNotAssociated { host: HostIdentity, radio_interface: RadioInterfaceName }
@@ -123,34 +127,105 @@ type OobeEndpointRoute
     }
 
 // ------------------------------------------------------------------------------------------
-// A PLAN IS NOT A LEASE, AND THE DIFFERENCE IS THE WHOLE REASON THIS TYPE IS NOT A BOOLEAN.
+// A PLAN IS NOT A LEASE, AND A LEASE IS NOT ONE STATE.
 //
-// "A route can be established" and "a listener is up right now" are different claims with
-// different remedies, and an actuator that conflated them would drive a browser at a socket that
-// nobody is holding open. ForwardingEstablished therefore carries the teardown obligation with it:
-// the value that says the tunnel exists is the same value that says who must close it.
+// An earlier revision had a single flat coproduct -- admitted, established, refused, released --
+// and it carried a crash hole: between launching the forwarding process and constructing the
+// value that says a tunnel exists, there was no teardown obligation anywhere, so a run that died
+// in that window left a live listener nobody owned. The obligation must therefore exist BEFORE
+// the process starts, which is why Reserved is a state and not a formality: a reaper can find it.
 //
-// ForwardingReleased is a terminal receipt rather than an absence, because "we never opened one"
-// and "we opened one and closed it" are different states of the relay, and only the second
-// discharges an obligation. The teardown was verified in both directions on the measured run --
-// after release, the renderer's listener and the session's listener both refuse.
-type ForwardingRefusalCause
-  = RelayRefusesTcpForwarding { relay: HostIdentity }
-  | RelayForwardingPermissionUnknown { relay: HostIdentity }
+// The two layers answer different questions. A plan decision is PURE -- it is whether this route
+// may be attempted at all, and it can be taken with no effect on the world. A lease state is a
+// fact about a live process on a real host.
+type ForwardingPlanRefusalCause
+  = RelayRefusedForwardingAdmission { relay: HostIdentity }
+  | ForwardingAdmissionNotMeasured { relay: HostIdentity }
   | ProxyCannotReachRelay { proxy_locus: HostIdentity, relay: HostIdentity }
   | RendererCannotReachProxy { renderer: HostIdentity, proxy_locus: HostIdentity }
-  | ListenerAddressUnavailable { listener: SocketAddress }
-  | UnitEndpointUnreachable { unit_endpoint: SocketAddress }
+  | RouteUseNotAdmittedForPayload { route_use: ForwardingUseStanding }
 
-type OobeForwardingStanding
-  = ForwardingPlanAdmitted { route: OobeEndpointRoute, forwards: List<PortForwardSpec> }
-  | ForwardingEstablished {
-      route: OobeEndpointRoute,
-      forwards: List<PortForwardSpec>,
-      teardown_owed_by: HostIdentity,
+type ForwardingPlan {
+  route: OobeEndpointRoute
+  forwards: List<PortForwardSpec>
+  intended_use: ForwardingUseStanding
+}
+
+type ForwardingPlanDecision
+  = ForwardingPlanAdmitted { plan: ForwardingPlan }
+  | ForwardingPlanRefused { cause: ForwardingPlanRefusalCause }
+
+type LeaseIdentity = NonEmptyStr where brand("LeaseIdentity")
+
+// THE OBLIGATION NAMES WHO MUST CLOSE WHAT. A teardown that named only the lease would not say
+// which host holds the process, and a reaper on the wrong host cannot discharge it.
+type TeardownObligation {
+  lease: LeaseIdentity
+  owner: HostIdentity
+  owned_listener: SocketAddress
+}
+
+// THE RELEASE RECEIPT PROVES THE LISTENER IS GONE, NOT THAT THE TARGET IS UNREACHABLE, and the
+// distinction is the whole content. "The Spark no longer answers" is not evidence the forward was
+// released: the unit may be unreachable for a dozen reasons while our listener is still bound, and
+// treating one as the other would leave a process running under a receipt claiming it stopped.
+// Releasing the forward is also NOT evidence that the relay's radio association has been restored;
+// those are separate brackets with separate receipts.
+type TeardownReceipt {
+  lease: LeaseIdentity
+  listener_absent_on: HostIdentity
+  listener: SocketAddress
+}
+
+type LeaseResidue
+  = NoResidue
+  | ListenerPossiblyBound { listener: SocketAddress }
+  | ForwardingProcessPossiblyAlive { owner: HostIdentity }
+
+// The readiness receipt is what separates "the process launched" from "the endpoint answers".
+// A launched forwarder whose target probe failed must NEVER construct Established -- that is the
+// arm through which a browser would be pointed at a socket carrying nothing.
+type EndpointReadinessReceipt {
+  probed_listener: SocketAddress
+  observed_status: Int
+}
+
+type ForwardingLeaseState
+  = ForwardingLeaseReserved { lease: LeaseIdentity, teardown: TeardownObligation }
+  | ForwardingLeaseEstablishing { lease: LeaseIdentity, teardown: TeardownObligation }
+  | ForwardingLeaseEstablished {
+      lease: LeaseIdentity,
+      teardown: TeardownObligation,
+      readiness: EndpointReadinessReceipt,
     }
-  | ForwardingRefused { cause: ForwardingRefusalCause }
-  | ForwardingReleased { route: OobeEndpointRoute }
+  | ForwardingLeaseEstablishmentFailed {
+      lease: LeaseIdentity,
+      teardown: TeardownObligation,
+      residue: LeaseResidue,
+    }
+  | ForwardingLeaseReleaseFailed { lease: LeaseIdentity, residue: LeaseResidue }
+  | ForwardingLeaseReleased { receipt: TeardownReceipt }
+
+// ------------------------------------------------------------------------------------------
+// WHAT THE ROUTE MAY CARRY, WHICH IS NOT SETTLED BY THE ROUTE WORKING.
+//
+// The portal is HTTP. Every locus on the path therefore sits inside the trust boundary of
+// anything typed into the wizard, and the eventual workflow types a host-administrator password
+// and probably the fleet Wi-Fi PSK. A route adequate for reading a DOM is not automatically
+// adequate for carrying a credential, and the tempting error is precise: turning "returned HTTP
+// 200" into "safe to transport secrets".
+//
+// The measured route is admitted for OBSERVATION only. Its proxy locus is an ephemeral session
+// container, which grounds the mechanics and is not an admitted production locus for live
+// credentials; a FillSecretControl reached through it must refuse rather than proceed.
+type SecretTrafficRefusalCause
+  = ProxyLocusNotAdmittedForCredentials { proxy_locus: HostIdentity }
+  | TransportNotConfidential { unit_endpoint: SocketAddress }
+
+type ForwardingUseStanding
+  = ObservationTrafficAdmitted
+  | SecretBearingTrafficAdmitted { admitted_loci: List<HostIdentity> }
+  | SecretBearingTrafficRefused { cause: SecretTrafficRefusalCause }
 
 // ------------------------------------------------------------------------------------------
 // THE SELECTION.
@@ -163,12 +238,19 @@ type OobePlacementSelection
   = PlacementReady { placement: OobeExecutionPlacement }
   | NoRendererCandidate { considered: List<RendererCapabilityStanding> }
   | NoRelayCandidate { considered: List<RadioRelayStanding> }
-  | NoComposableRoute { renderer: HostIdentity, relay: HostIdentity, cause: ForwardingRefusalCause }
+  | NoComposableRoute { renderer: HostIdentity, relay: HostIdentity, cause: ForwardingPlanRefusalCause }
 
+// THE PLACEMENT CARRIES THE LEASE AND THE USE STANDING, not merely the route. A browser kernel
+// should consume an ADMITTED SESSION and never learn that SSH exists: the lease layer knows
+// nothing about controls or screens, and the semantic verbs know nothing about listeners, proxy
+// processes or teardown. The dependency between them is an EXECUTION dependency, and putting the
+// lease inside the placement is what keeps it from leaking upward into the verb vocabulary.
 type OobeExecutionPlacement {
   renderer: RendererCapabilityStanding
   relay: RadioRelayStanding
   route: OobeEndpointRoute
+  lease: ForwardingLeaseState
+  route_use: ForwardingUseStanding
 }
 
 // ------------------------------------------------------------------------------------------
@@ -229,15 +311,10 @@ data observed_renderer_standings: List<RendererCapabilityStanding> = [
   gunbc.spark.oobe_execution_placement.renderer_pi1_briansrls,
 ]
 
-// pi1's forwarding permission is TcpForwardingPermitted by MEASUREMENT, not by default: a local
-// forward was established through it with ExitOnForwardFailure set, an HTTP request through the
-// listener returned 200, and after teardown the same listener refused. The refusal after teardown
-// is what makes the 200 attributable to the tunnel.
 data relay_pi1: RadioRelayStanding = RadioRelayReady {
   host: "pi1" as HostIdentity,
   radio_interface: "wlan0" as RadioInterfaceName,
   associated_ssid: "spark-0c75" as ObservedUnitAccessPointSsid,
-  forwarding_permission: TcpForwardingPermitted,
 }
 
 data relay_srv1: RadioRelayStanding = RelayHasNoRadioInterface { host: "srv1" as HostIdentity }
@@ -252,6 +329,51 @@ data observed_relay_standings: List<RadioRelayStanding> = [
   gunbc.spark.oobe_execution_placement.relay_srv3,
   gunbc.spark.oobe_execution_placement.relay_srv4,
 ]
+
+// ------------------------------------------------------------------------------------------
+// THE MEASURED FORWARDING ADMISSION, KEYED BY EVERYTHING THAT CAN CHANGE THE ANSWER.
+//
+// This row does not say "pi1 permits forwarding". It says that briansrls, asking for a LOCAL
+// forward toward 10.92.7.127:80 on pi1, was admitted -- and it is scoped that tightly because
+// sshd can answer differently per principal, per direction and per target. A second principal
+// needing the same route owes its own measurement.
+//
+// The measurement: a local forward was established with ExitOnForwardFailure set, so a failed
+// bind would have failed the command rather than warning; an HTTP request through the listener
+// returned 200; and after teardown the SAME listener refused. The refusal after teardown is what
+// attributes the 200 to the tunnel rather than to anything else answering locally.
+data pi1_local_forward_to_unit_subject: ForwardingAdmissionSubject = ForwardingAdmissionSubject {
+  relay: HostByName {
+    name: HostName {
+      name: DomainName { labels: ["pi1" as DnsLabel] },
+      qualification: PartiallyQualified,
+    },
+  },
+  principal: "briansrls",
+  direction: LocalForward,
+  target: SocketAddress {
+    host: host_by_ipv4(
+      addr: ipv4_address(octet1: 10, octet2: 92, octet3: 7, octet4: 127)
+    ),
+    port: 80,
+  },
+}
+
+data pi1_local_forward_to_unit_admission: ForwardingAdmission = ForwardingAdmitted {
+  subject: gunbc.spark.oobe_execution_placement.pi1_local_forward_to_unit_subject,
+}
+
+// ------------------------------------------------------------------------------------------
+// WHAT THE MEASURED ROUTE MAY CARRY, AND THE REFUSAL THAT IS THE POINT OF ASKING.
+//
+// The route worked for observation and is REFUSED for credentials. Its proxy locus is an
+// ephemeral session container: it grounded the mechanics, and it is not an admitted production
+// locus for a host-administrator password on an HTTP portal. Recording this as a refusal rather
+// than leaving the question unasked is what stops the eventual FillSecretControl from inheriting
+// an observation route's success as permission.
+data measured_route_use: ForwardingUseStanding = SecretBearingTrafficRefused {
+  cause: ProxyLocusNotAdmittedForCredentials { proxy_locus: "sleek-bear-442" as HostIdentity },
+}
 
 // ------------------------------------------------------------------------------------------
 // THE DERIVATIONS. Each folds the observed population rather than restating a conclusion, so a
@@ -273,14 +395,12 @@ fn renderer_host_of(r: RendererCapabilityStanding) -> HostIdentity {
   }
 }
 
+// READY MEANS THE RADIO IS ASSOCIATED, not that a forward will be admitted. Those are two
+// questions with two remedies and this function answers only the first; a consumer that needs a
+// socket must also carry a ForwardingAdmission for its own principal and target.
 fn relay_is_ready(r: RadioRelayStanding) -> Bool {
   match r {
-    RadioRelayReady { host: _, radio_interface: _, associated_ssid: _, forwarding_permission: p } =>
-      match p {
-        TcpForwardingPermitted => true
-        TcpForwardingAdministrativelyProhibited => false
-        ForwardingPermissionUnobserved => false
-      }
+    RadioRelayReady { host: _, radio_interface: _, associated_ssid: _ } => true
     RelayHasNoRadioInterface { host: _ } => false
     RelayRadioNotAssociated { host: _, radio_interface: _ } => false
   }
@@ -288,7 +408,7 @@ fn relay_is_ready(r: RadioRelayStanding) -> Bool {
 
 fn relay_host_of(r: RadioRelayStanding) -> HostIdentity {
   match r {
-    RadioRelayReady { host: h, radio_interface: _, associated_ssid: _, forwarding_permission: _ } => h
+    RadioRelayReady { host: h, radio_interface: _, associated_ssid: _ } => h
     RelayHasNoRadioInterface { host: h } => h
     RelayRadioNotAssociated { host: h, radio_interface: _ } => h
   }
