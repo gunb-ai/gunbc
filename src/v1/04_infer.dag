@@ -3025,13 +3025,13 @@ fn foreign_concrete_coproduct_where_parent_required(
 // was produced; declared_type_inhabitance is the single relation that decides; the position
 // travels with the obligation so the diagnostic can locate the refusal without the decision
 // procedure forking per position.
-// TWO OF THE TWELVE ARE WIRED. THE OTHER TEN ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
+// THREE OF THE TWELVE ARE WIRED. THE OTHER NINE ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
 // THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
-// Measured by construction site, not by reading: PositionDirectCallArgument and
-// PositionListElement are the only two members CONSTRUCTED anywhere -- every other member
-// occurs solely in declared_type_position_label's match, which renders a name and judges
-// nothing. So this coproduct is today an OBLIGATION VOCABULARY, of which two positions have a
-// producer.
+// Measured by construction site, not by reading: PositionDirectCallArgument,
+// PositionListElement, and PositionGenericTypeArgument are the only three members CONSTRUCTED
+// anywhere -- every other member occurs solely in declared_type_position_label's match, which
+// renders a name and judges nothing. So this coproduct is today an OBLIGATION VOCABULARY, of
+// which three positions have a producer.
 //
 // WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
 // MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
@@ -3045,14 +3045,13 @@ fn foreign_concrete_coproduct_where_parent_required(
 // that builds a DeclaredTypeObligation and hands it to declared_type_obligation_diags. The
 // decision procedure is already shared and position-agnostic, so wiring one is authoring a
 // construction site, never extending this relation -- which is the whole point of the carrier
-// and is why the residual ten cost a call each rather than a rule each.
+// and is why the residual nine cost a call each rather than a rule each.
 //
-// THE TEN AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
+// THE NINE AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
 // PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
-// PositionGenericTypeArgument, PositionCastTarget, PositionParameterDefault,
-// PositionCallableReturn. Wiring any of them is a separate change with its own evidence: a
+// PositionCastTarget, PositionParameterDefault, PositionCallableReturn. Wiring any of them is a
 // discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
-// carrier's honest claim is TWO POSITIONS JUDGED, ten declared -- and any statement that it
+// carrier's honest claim is THREE POSITIONS JUDGED, nine declared -- and any statement that it
 // judges "every grammar type position" is false.
 type DeclaredTypePosition
   = PositionRecordLiteralField
@@ -4021,6 +4020,15 @@ fn direct_call_structured_application_mismatch_diags(
   )
 }
 
+// The outer nominal obligation consumes the substituted DECLARED spelling, not the
+// declaration-bound conformance. For an applied product Beta<String>, conformance
+// resolves to the generic declaration body Beta<P>; treating that body as the outer
+// obligation makes the already-applied call site look generic and therefore
+// undecidable. Conformance remains the authority for compatibility checks above,
+// while declared_type preserves the constructor and its applied arguments for this
+// position. A genuinely unbound function-generic spelling still uses the raw
+// substitution basis so the undecidable verdict remains explicit.
+//
 // A callable formal carries its parameter types in `params`, which is exactly what
 // `declared_type_inhabitance` reads as generic type parameters, so passing one here
 // produced a counted advisory with a false reason on every higher-order call.
@@ -4047,7 +4055,7 @@ fn direct_call_argument_inhabitance_diags(
                 declared: if direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis) {
                   app.formal.substitution_basis
                 } else {
-                  app.formal.declaration_bound_conformance
+                  app.formal.declared_type
                 },
                 produced: resolved_type(n: actual_expr),
                 span: actual_expr.span
@@ -4055,6 +4063,75 @@ fn direct_call_argument_inhabitance_diags(
               scope: scope
             )
           }
+        Absent => []
+        }
+        Absent => []
+      }
+  )
+}
+
+// A direct-call obligation over an applied element container reaches the shared relation as the
+// OUTER generic node, where UndecidableGenericFormal is the honest verdict for that outer fact.
+// Its concrete element pair is a separate declared position and used to have no producer at all:
+// List<RightCensoredCost> could therefore inhabit List<ExactCompletionCost> even though both
+// element identities were established. Construct that inner obligation here, at the same matched
+// formal/actual seam, and leave the position-agnostic relation unchanged. Both sides must expose
+// the same applied constructor and arity; a bare, malformed, or different carrier is not this
+// position and produces no fabricated comparison. Every aligned argument gets its own obligation,
+// so this is the generic-argument position rather than a List-specific second relation. A raw
+// generic formal (K/V/T) and an inference placeholder (`element`) do not yet name an identity that
+// this nominal obligation can judge; keep those with the existing outer obligation instead of
+// manufacturing false mismatches from an unresolved substitution.
+fn direct_call_generic_type_argument_inhabitance_diags(
+  plan: List<ResolvedCallFormal>,
+  typed_args: List<Node>,
+  scope: InferScope
+) -> List<ErrorNode> {
+  let source_indices = scope.type_env.source_indices
+  flat_map(
+    plan,
+    app =>
+      match app.matched_argument_index {
+        Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
+        Present { value: ta } =>
+          let actual_expr = arg_value(n: ta)
+          let actual = resolved_type(n: actual_expr)
+          if exposure_is_application(exposure: exposure_view_for_node(n: app.formal.declared_type, source_indices: source_indices))
+            && exposure_is_application(exposure: exposure_view_for_node(n: actual, source_indices: source_indices))
+            && (app.formal.declared_type.children |> count) > 0
+            && (app.formal.declared_type.children |> count) == (actual.children |> count)
+            && authored_name_at(source_indices: source_indices, node: app.formal.declared_type)
+              == authored_name_at(source_indices: source_indices, node: actual) {
+            flat_map(
+              app.formal.declared_type.children |> enumerate,
+              declared_pair =>
+                match app.formal.substitution_basis.children |> skip(declared_pair.first) |> first {
+                  Present { value: raw_declared_child } =>
+                    match actual.children |> skip(declared_pair.first) |> first {
+                      Present { value: produced_child } =>
+                        if applied_type_argument_identity_known(
+                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: raw_declared_child)), scope: scope)
+                          && applied_type_argument_identity_known(
+                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: produced_child)), scope: scope) {
+                          declared_type_obligation_diags(
+                            obligation: DeclaredTypeObligation {
+                              position: PositionGenericTypeArgument,
+                              subject: app.formal.parameter_identity,
+                              declared: peel_nominal_alias_identity(
+                                n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
+                              produced: peel_nominal_alias_identity(
+                                n: child_type_node(ch: produced_child), env: scope.type_env, module_name: scope.module_name),
+                              span: actual_expr.span
+                            },
+                            scope: scope
+                          )
+                        } else { [] }
+                      Absent => []
+                    }
+                  Absent => []
+                }
+            )
+          } else { [] }
         Absent => []
         }
         Absent => []
@@ -6066,6 +6143,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           typed_args: typed_args,
           scope: scope
         )
+        let generic_type_argument_inhabitance_diags = direct_call_generic_type_argument_inhabitance_diags(
+          plan: call_application_plan,
+          typed_args: typed_args,
+          scope: scope
+        )
         InferResult {
           typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
             name: func_name, expr_data: ExprCall { call_semantics: Present { value: ResolvedDirectCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup), application_plan: call_application_plan } }, descent_evidence: none },
@@ -6074,7 +6156,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, inhabitance_arg_diags)))))
+          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags))))))
         }
         }
       } else {

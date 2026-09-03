@@ -18,6 +18,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  match_pattern_is_irrefutable,
   declaration_provenance_of, type_reference_provenance,
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
@@ -9423,14 +9424,6 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       let bindings_str = binding_strs |> join(separator: ", ")
       concat(qualified, " { ", bindings_str, ", .. }")
     }
-  }
-}
-
-fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
-  match pattern {
-    Bind { declaration: _ } => true
-    Wildcard => true
-    _ => false
   }
 }
 

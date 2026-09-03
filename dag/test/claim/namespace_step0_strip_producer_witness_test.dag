@@ -8,6 +8,7 @@ import std.import {
   SourceHasNoModuleDeclaration,
   ModuleDeclarationPathMalformed,
   ImportStatementMalformed,
+  ImportStripCoordinateSegment,
   ImportStatementsStripped,
   ImportStripRefused,
   ImportSpanNamesAnotherFile,
@@ -57,7 +58,7 @@ fn stripped_source_of(file: NonEmptyStr, source: String) -> String {
     statements: statements_of(file: file, source: source)
   ) {
     ImportStripRefused { refusal: _ } => ""
-    ImportStatementsStripped { rewritten_source: rewritten, removed_statements: _ } => rewritten
+    ImportStatementsStripped { rewritten_source: rewritten, removed_statements: _, coordinate_map: _ } => rewritten
   }
 }
 
@@ -93,8 +94,46 @@ test fn the_rewrite_reports_the_statements_it_removed() -> Bool {
     statements: statements_of(file: entry_path(), source: entry_source())
   ) {
     ImportStripRefused { refusal: _ } => false
-    ImportStatementsStripped { rewritten_source: _, removed_statements: removed } =>
+    ImportStatementsStripped { rewritten_source: _, removed_statements: removed, coordinate_map: _ } =>
       removed == ["import w.provider {\n  w_provided,\n}", "import std.types { NonEmptyStr }"]
+  }
+}
+
+// THE MAP IS PRODUCED BY THE REWRITE THAT MOVES THE BYTES. A later pre/post join may use these
+// segments to recover source coordinates; it may not guess that identity from the shifted span or
+// from a repeated spelling. The retained newline between the two imports is deliberately its own
+// segment, proving that two removals accumulate rather than applying one stale offset twice.
+test fn the_rewrite_reports_every_retained_segment_in_original_and_rewritten_coordinates() -> Bool {
+  match strip_import_statements(
+    source_file: entry_path() as String,
+    source: entry_source(),
+    statements: statements_of(file: entry_path(), source: entry_source())
+  ) {
+    ImportStripRefused { refusal: _ } => false
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _, coordinate_map: coordinate_map } =>
+      coordinate_map == [
+        ImportStripCoordinateSegment {
+          source_file: entry_path() as String,
+          original_start: 0,
+          original_end: 16,
+          rewritten_start: 0,
+          rewritten_end: 16
+        },
+        ImportStripCoordinateSegment {
+          source_file: entry_path() as String,
+          original_start: 51,
+          original_end: 52,
+          rewritten_start: 16,
+          rewritten_end: 17
+        },
+        ImportStripCoordinateSegment {
+          source_file: entry_path() as String,
+          original_start: 84,
+          original_end: 133,
+          rewritten_start: 17,
+          rewritten_end: 66
+        }
+      ]
   }
 }
 
@@ -109,7 +148,7 @@ test fn a_span_from_another_file_is_refused_rather_than_applied() -> Bool {
       imported_module: "std.types"
     }
   ) {
-    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _, coordinate_map: _ } => false
     ImportStripRefused { refusal: refusal } =>
       match refusal {
         ImportSpanNamesAnotherFile { span_file: _, source_file: _ } => true
@@ -129,7 +168,7 @@ test fn a_span_that_does_not_delimit_an_import_statement_is_refused() -> Bool {
       imported_module: "w.entry"
     }
   ) {
-    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _, coordinate_map: _ } => false
     ImportStripRefused { refusal: refusal } =>
       match refusal {
         ImportSpanDoesNotDelimitAnImportStatement { span: _, source_text: _ } => true
@@ -152,7 +191,7 @@ test fn a_span_naming_a_prefix_of_the_module_it_imports_is_refused() -> Bool {
       imported_module: "w.provid"
     }
   ) {
-    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _, coordinate_map: _ } => false
     ImportStripRefused { refusal: refusal } =>
       match refusal {
         ImportSpanDoesNotNameItsModule { span: _, imported_module: _, source_text: _ } => true
@@ -172,7 +211,7 @@ test fn a_span_whose_text_only_begins_with_the_keyword_is_refused() -> Bool {
       imported_module: "w.provider"
     }
   ) {
-    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _, coordinate_map: _ } => false
     ImportStripRefused { refusal: refusal } =>
       match refusal {
         ImportSpanDoesNotDelimitAnImportStatement { span: _, source_text: _ } => true
@@ -189,7 +228,7 @@ test fn descending_spans_are_refused_rather_than_rebuilding_the_source() -> Bool
     source: entry_source(),
     statements: reverse(statements_of(file: entry_path(), source: entry_source()))
   ) {
-    ImportStatementsStripped { rewritten_source: _, removed_statements: _ } => false
+    ImportStatementsStripped { rewritten_source: _, removed_statements: _, coordinate_map: _ } => false
     ImportStripRefused { refusal: refusal } =>
       match refusal {
         ImportSpansOutOfAscendingOrder { previous_end: _, next_start: _ } => true

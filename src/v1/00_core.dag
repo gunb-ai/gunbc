@@ -236,6 +236,23 @@ type MatchPattern
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
 
+// IRREFUTABILITY IS A FACT ABOUT `MatchPattern`, SO IT LIVES WITH THE TYPE. It was previously
+// answered twice -- once for emission and once for exhaustiveness -- and two authorities for one
+// classification drift apart as the type grows, which is the parallel authority DESIGN section 3
+// forbids. Consumers import this; neither re-derives it.
+//
+// THE MATCH IS EXHAUSTIVE ON PURPOSE, with no `_` arm. A catch-all would answer `false` for any
+// constructor added to `MatchPattern` later, silently classifying a new irrefutable form as
+// refutable; without one, adding a constructor refuses here and the author is made to decide.
+fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
+  match pattern {
+    Wildcard => true
+    Bind { declaration: _ } => true
+    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => false
+    LitPattern { value: _ } => false
+  }
+}
+
 type UnaryOpKind = Not | Neg
 
 type StringPart
