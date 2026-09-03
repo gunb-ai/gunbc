@@ -497,10 +497,10 @@ test fn import_dependence_is_unjudged_because_the_contract_says_no_producer_inha
     BindingProvenanceObservable { producer: _ } => false
     BindingProvenanceUnobservable { detail: detail } => match step0_import_dependence_not_judged() {
       ImportDependenceCensusObserved { receipt_identity: _, subject_population_identity: _, completeness: _ } => false
-      ImportDependenceNotJudged { cause: cause, required_capability: capability } =>
+      ImportDependenceNotJudged { cause: cause, required_capability: required_capability } =>
         (cause as String) == (detail as String)
-          && capability.module_path == "gunbc.namespace_step0_binding_provenance_contract"
-          && capability.decl_name == "step0_binding_provenance_receipt_contract"
+          && required_capability.module_path == "gunbc.namespace_step0_binding_provenance_contract"
+          && required_capability.decl_name == "step0_binding_provenance_receipt_contract"
     }
   }
 }
