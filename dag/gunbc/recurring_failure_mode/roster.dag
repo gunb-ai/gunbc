@@ -97,6 +97,7 @@ import gunbc.recurring_failure_mode.exact_duplicate_match_arm_not_refused { exac
 import gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement { premise_that_a_shared_subject_means_disagreement }
 import gunbc.recurring_failure_mode.live_argument_threaded_past_the_arm_that_decides { live_argument_threaded_past_the_arm_that_decides }
 import gunbc.recurring_failure_mode.comparison_discards_the_dimension_it_judges { comparison_discards_the_dimension_it_judges }
+import gunbc.recurring_failure_mode.source_text_census_counts_its_own_documentation { source_text_census_counts_its_own_documentation }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -185,4 +186,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   premise_that_a_shared_subject_means_disagreement,
   live_argument_threaded_past_the_arm_that_decides,
   comparison_discards_the_dimension_it_judges,
+  source_text_census_counts_its_own_documentation,
 ]

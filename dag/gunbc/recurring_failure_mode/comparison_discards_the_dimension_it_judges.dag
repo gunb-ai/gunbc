@@ -39,6 +39,14 @@ data comparison_discards_the_dimension_it_judges: RecurringFailureMode = Recurri
 
     "**A DERIVED EXCLUSION MASKED IT**: bare-`none` values were excluded at both seams by deriving the predicate from its existing owner, which is correct by DESIGN section 3 and still treated a symptom -- with the declared side read correctly the excluded sites are not mismatches at all, so the exclusion had no work to do and its presence is why nobody asked why the check believed the wrong thing. ",
 
+    "**THE CENSUS OF THIS CLASS IS ITSELF BLOCKED ON ONE MISSING CAPABILITY, AND IT IS THE SAME ROOT TWICE.** Measuring the population required naming, per site, which expression PRODUCED the possibly-absent value and whether a preceding branch already proved it present. Both were attempted over SOURCE TEXT and both failed in the same way. ",
+
+    "Producer naming failed on 32 of 118 sites because the diagnostic span points at the ENCLOSING expression rather than the call, so the read begins mid-token or at a lambda head; the sites were counted into a declared unclassified bucket rather than dropped, which is the only reason the shortfall is visible at all. ",
+
+    "Guard detection failed in the other direction and by an unbounded amount: a narrow predicate answered 50 guarded of 118 and a wider one 85, disagreeing on 35 sites, because each was keyed to remembered spellings of a proof -- `count() == 0` found, `length(parts) != 2` missed at `extdeps.container.oci.digest`, `count(segs) >= 2` missed at `gunbc.roadmap.roadmap_dispatch_actuator`. Enumerating spellings is not the repair; each new form is discovered only by reading a site the predicate got wrong. ",
+
+    "**NEXT-RUNG TRIGGER FOR THE CENSUS, STATED AS ONE CAPABILITY**: an AST-grain reader over the RESOLVED program that answers, for a site, both its producing expression and the branch conditions dominating it. Not a better classifier, not another predicate, and not a per-question tool -- the two failures above are one root, and a trigger naming either alone would be satisfied while the census stayed unmeasurable. The compiler already holds this tree; the gap is that the measurement was taken beside it instead of from it. ",
+
     "**NOT ESTABLISHED HERE**: whether other checks in the tree prepare their operands the same way. This row names one class found at two seams; the general audit is the trigger's own subject and is not claimed by this row.",
   ],
 
