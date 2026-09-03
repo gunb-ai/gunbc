@@ -7264,10 +7264,6 @@ pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
 }
 
-pub fn corpus_dependency_view_bridge_fn_names() -> &'static [&'static str] {
-    CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS
-}
-
 pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
     STD_DATA_INDEX_BRIDGE_FNS
 }

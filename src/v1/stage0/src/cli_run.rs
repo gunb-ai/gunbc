@@ -38473,13 +38473,13 @@ pub fn run_floor_prepared_toll_receipt() {
 
     let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         None,
     )
     .expect("disk parse");
     let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         Some(&inventory),
     )
     .expect("inventory parse");

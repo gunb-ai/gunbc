@@ -96,10 +96,7 @@ fn expect_pool_roots(
         Value::List(items) => items.iter().cloned().collect::<Vec<_>>(),
         other => crate::v1_interpreter::free_monoid_to_vec(other).ok_or_else(|| {
             InterpError::TypeError {
-                msg: format!(
-                    "{what} expects `{param}: List<String>`, got {}",
-                    other.type_label()
-                ),
+                msg: format!("{what} expects `{param}: List<String>`, got {other:?}"),
             }
         })?,
     };
@@ -109,10 +106,7 @@ fn expect_pool_roots(
             Value::Str(s) => out.push(s.to_string()),
             other => {
                 return Err(InterpError::TypeError {
-                    msg: format!(
-                        "{what} expects `{param}: List<String>`, got element {}",
-                        other.type_label()
-                    ),
+                    msg: format!("{what} expects `{param}: List<String>`, got element {other:?}"),
                 })
             }
         }
