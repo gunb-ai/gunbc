@@ -1,0 +1,19 @@
+module gunbc.parsed_import_statement_production
+
+import std.import { ParsedImportStatements }
+import std.types { String }
+
+// THE PRODUCTION SEAM FOR PARSED IMPORT STATEMENTS, AND IT IS A TRANSPORT RATHER THAN AN AUTHORITY.
+//
+// The statements are delimited by v1.compiler.parse parse_import_statement_extents -- the parser
+// reading its own consumption -- and carried in std.import's vocabulary. No module under dag
+// imports a v1 module anywhere in the corpus, and the required floor resolves `dag` and `src/v2`
+// only, so a dag consumer cannot name that producer at all; this row is the one crossing.
+//
+// IT DECIDES NOTHING. One in-memory source in, the parse's own observation out. It reads no
+// repository file and consults no module index, so a witness on it is hermetic. If a policy
+// question ever arises about WHICH sources to ask about, it belongs in the caller.
+
+fn parsed_import_statements_live(file: String, source: String) -> ParsedImportStatements {
+  parsed_import_statements(file: file, source: source)
+}

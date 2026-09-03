@@ -227,6 +227,9 @@ test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
       cause: InterfaceClosureUnreachedFixpoint { unit_id: _ },
     } => true
     PartitionFoldOk { units: _ } => false
+    PartitionFoldRefused { cause: ModuleDagExportsLookupRejected { module: _ } } => false
+    PartitionFoldRefused { cause: ModuleDagTypeDefinitionsLookupRejected { module: _ } } => false
+    PartitionFoldRefused { cause: ModuleAssignmentLookupRejected { module: _ } } => false
   }
 }
 

@@ -6,11 +6,13 @@ import product.printed_chassis.coupon {
   hole_ladder_spec, hole_ladder_specimen, ladder_rungs, ladder_base, specimen_ladder_hole_diameters,
   CouponSpecimen, CouponOperation, OpThroughHole, PlateDimensions,
   HoleDiameterCouponGeometry, hole_ladder_orientation_datum, hole_ladder_datum_center_y,
+  CouponSpecimenIdentity, HoleDiameterLadderR1,
 }
 import product.printed_chassis.realization_contract {
   RealizationContract,
   realization_contract,
-  GeometryConformance, GeometryConforms,
+  GeometryConformance, GeometryConforms, GeometryDiverges,
+  GeometryDivergence,
   GeometryPlateDiverges, GeometryDatumDiverges,
   GeometryOperationCountDiverges, GeometryOperationDiverges,
   PlateAxis, PlateAxisX, PlateAxisY, PlateAxisZ,
@@ -20,7 +22,8 @@ import product.printed_chassis.realization_contract {
   RawOperationRow, raw_operation_row,
   EnvelopeSchemaUnsupported, EnvelopeOperationUnknown, EnvelopeCarriesNoOperations,
   decode_envelope, contract_schema_version,
-  RealizationVerdict, RealizationRefusedAtWire, RealizationJudged,
+  RealizationVerdict, RealizationRefusedAtWire, RealizationRejected, RealizationAccepted,
+  AdmittedRealizationV0, admitted_realization_geometry, admitted_realization_identity,
   judge_realization,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -176,13 +179,11 @@ test fn w_a_faithful_envelope_is_judged_conforming() -> Bool {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
       match judge_realization(contract: contract, envelope: envelope_of(s: contract.specimen)) {
-        RealizationJudged { conformance: c } => match c {
-          GeometryConforms => true
-          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
-          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
-          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
-          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
-        }
+        RealizationAccepted { admitted: a } =>
+          micrometer_count(m: admitted_realization_geometry(a: a).plate.size_x)
+            == micrometer_count(m: contract.specimen.geometry.plate.size_x)
+            && admitted_realization_geometry(a: a).ladder_holes.length() == 11
+        RealizationRejected { divergence: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -202,18 +203,18 @@ test fn w_a_wrong_plate_thickness_is_caught_on_its_axis() -> Bool {
       let contract = realization_contract(declaration: l)
       let bad = envelope_with_plate_z(s: contract.specimen, z: micrometer_count(m: contract.specimen.geometry.plate.size_z) + 500)
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryPlateDiverges { axis: a, modeled: m, realized: r } =>
             match a {
               PlateAxisZ => micrometer_count(m: r) - micrometer_count(m: m) == 500
               PlateAxisX => false
               PlateAxisY => false
             }
-          GeometryConforms => false
           GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -234,18 +235,18 @@ test fn w_a_hole_at_the_wrong_position_is_caught_and_located() -> Bool {
       let rows = bump_first_center_x(rows: rows_of(s: contract.specimen), delta: 250)
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
             match f {
               FieldCenterX => i == 0 && micrometer_count(m: r) - micrometer_count(m: m) == 250
               FieldDiameter => false
               FieldCenterY => false
             }
-          GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -264,18 +265,18 @@ test fn w_a_wrong_diameter_is_reported_as_a_diameter() -> Bool {
       let rows = bump_first_diameter(rows: rows_of(s: contract.specimen), delta: 50)
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
             match f {
               FieldDiameter => i == 0 && micrometer_count(m: r) - micrometer_count(m: m) == 50
               FieldCenterX => false
               FieldCenterY => false
             }
-          GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -294,13 +295,13 @@ test fn w_a_dropped_operation_diverges_on_count() -> Bool {
       let rows = rows_of(s: contract.specimen).skip(n: 1)
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryOperationCountDiverges { modeled: m, realized: r } => m == 11 && r == 10
-          GeometryConforms => false
           GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -326,13 +327,13 @@ test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
         ladder_holes: rows,
       )
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => true
-          GeometryConforms => false
           GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -363,7 +364,8 @@ test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
             EnvelopeOperationUnknown { received: _ } => false
             EnvelopeCarriesNoOperations => false
           }
-        RealizationJudged { conformance: _ } => false
+        RealizationRejected { divergence: _ } => false
+        RealizationAccepted { admitted: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -391,7 +393,8 @@ test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeCarriesNoOperations => false
           }
-        RealizationJudged { conformance: _ } => false
+        RealizationRejected { divergence: _ } => false
+        RealizationAccepted { admitted: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -421,7 +424,8 @@ test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeOperationUnknown { received: _ } => false
           }
-        RealizationJudged { conformance: _ } => false
+        RealizationRejected { divergence: _ } => false
+        RealizationAccepted { admitted: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -457,7 +461,8 @@ test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
             EnvelopeSchemaUnsupported { received: _, supported: _ } => false
             EnvelopeCarriesNoOperations => false
           }
-        RealizationJudged { conformance: _ } => false
+        RealizationRejected { divergence: _ } => false
+        RealizationAccepted { admitted: _ } => false
       }
     }
     LadderStepIsZero => false
@@ -506,18 +511,18 @@ test fn w_an_unauthorised_operation_order_refuses() -> Bool {
       let rows = reversed_rows(rows: rows_of(s: contract.specimen))
       let bad = envelope_with_rows(s: contract.specimen, rows: rows)
       match judge_realization(contract: contract, envelope: bad) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryOperationDiverges { index: i, field: f, modeled: m, realized: r } =>
             match f {
               FieldDiameter => i == 0 && micrometer_count(m: m) == 3000 && micrometer_count(m: r) == 4000
               FieldCenterX => false
               FieldCenterY => false
             }
-          GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -543,13 +548,12 @@ test fn w_the_canonical_datum_conforms() -> Bool {
     LadderReady { ladder: l } => {
       let contract = realization_contract(declaration: l)
       match judge_realization(contract: contract, envelope: envelope_of(s: contract.specimen)) {
-        RealizationJudged { conformance: c } => match c {
-          GeometryConforms => true
-          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
-          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
-          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
-          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
-        }
+        RealizationAccepted { admitted: a } =>
+          match admitted_realization_geometry(a: a).orientation_datum {
+            OpThroughHole { diameter: _, center_x: _, center_y: y } =>
+              micrometer_count(m: y) == micrometer_count(m: hole_ladder_datum_center_y)
+          }
+        RealizationRejected { divergence: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -574,7 +578,7 @@ test fn w_a_datum_at_the_far_end_is_refused_as_a_reversed_reading() -> Bool {
         y: micrometer_count(m: hole_ladder_datum_center_y),
       )
       match judge_realization(contract: contract, envelope: envelope_with_datum(s: s, datum: mirrored)) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryDatumDiverges { field: f, modeled: m, realized: r } =>
             match f {
               FieldCenterX =>
@@ -583,11 +587,11 @@ test fn w_a_datum_at_the_far_end_is_refused_as_a_reversed_reading() -> Bool {
               FieldDiameter => false
               FieldCenterY => false
             }
-          GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -608,7 +612,7 @@ test fn w_a_datum_on_the_ladder_centreline_is_refused_as_ambiguous() -> Bool {
       let s = contract.specimen
       let flat = datum_moved_to(s: s, x: datum_center_x_um(s: s), y: 9000)
       match judge_realization(contract: contract, envelope: envelope_with_datum(s: s, datum: flat)) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryDatumDiverges { field: f, modeled: m, realized: r } =>
             match f {
               FieldCenterY =>
@@ -617,11 +621,11 @@ test fn w_a_datum_on_the_ladder_centreline_is_refused_as_ambiguous() -> Bool {
               FieldDiameter => false
               FieldCenterX => false
             }
-          GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }
@@ -729,7 +733,7 @@ test fn w_a_datum_mirrored_across_the_centreline_is_refused() -> Bool {
         micrometer_count(m: s.geometry.plate.size_y) - micrometer_count(m: hole_ladder_datum_center_y)
       let flipped = datum_moved_to(s: s, x: datum_center_x_um(s: s), y: mirrored_y)
       match judge_realization(contract: contract, envelope: envelope_with_datum(s: s, datum: flipped)) {
-        RealizationJudged { conformance: c } => match c {
+        RealizationRejected { divergence: c } => match c {
           GeometryDatumDiverges { field: f, modeled: m, realized: r } =>
             match f {
               FieldCenterY =>
@@ -739,11 +743,87 @@ test fn w_a_datum_mirrored_across_the_centreline_is_refused() -> Bool {
               FieldDiameter => false
               FieldCenterX => false
             }
-          GeometryConforms => false
           GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => false
           GeometryOperationCountDiverges { modeled: _, realized: _ } => false
           GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
         }
+        RealizationAccepted { admitted: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+
+// WITNESS 20 — THE ADMITTED CARRIER HOLDS THE CANONICAL GEOMETRY, NOT THE TRANSPORTED GEOMETRY.
+//
+// This is the one assertion that separates the discharge that was built from the one that would have
+// looked identical and been worthless. The tempting mint carries the DECODED geometry, on the
+// reasoning that conformance just proved the two equal. They are equal along every axis the
+// comparison READS -- a smaller set than "the geometry", and this file has already been wrong about
+// exactly that twice: it compared the ladder law and missed the artifact, then compared a projection
+// and missed the plate and the centres.
+//
+// So the check cannot be "admitted equals decoded", which both mints satisfy. It has to observe the
+// mint's SOURCE, and the way to do that is an envelope whose geometry the comparison does not fully
+// read. There is no such axis today, which is the honest reason this witness asserts identity
+// against the CONTRACT rather than difference against the envelope: it pins that the admitted value
+// is the contract's own specimen object, so a later revision that swapped the mint to the decoded
+// geometry would have to make the two agree on every field to keep this green -- and if a third
+// comparison gap exists, they will not.
+//
+// It also pins the IDENTITY, which the geometry comparison never reads at all. A specimen identity
+// is carried and single-armed today, so it is the one field where a decoded-geometry mint would
+// have nothing to copy from: the wire carries no identity, so an admitted carrier built from the
+// envelope could not name one without inventing it.
+test fn w_the_admitted_carrier_is_the_canonical_specimen() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      match judge_realization(contract: contract, envelope: envelope_of(s: contract.specimen)) {
+        RealizationAccepted { admitted: a } => {
+          let g = admitted_realization_geometry(a: a)
+          let canonical = contract.specimen.geometry
+          micrometer_count(m: g.plate.size_x) == micrometer_count(m: canonical.plate.size_x)
+            && micrometer_count(m: g.plate.size_y) == micrometer_count(m: canonical.plate.size_y)
+            && micrometer_count(m: g.plate.size_z) == micrometer_count(m: canonical.plate.size_z)
+            && g.ladder_holes.length() == canonical.ladder_holes.length()
+            && match admitted_realization_identity(a: a) {
+                 HoleDiameterLadderR1 {} => true
+               }
+        }
+        RealizationRejected { divergence: _ } => false
+        RealizationRefusedAtWire { refusal: _ } => false
+      }
+    }
+    LadderStepIsZero => false
+    LadderTooFewRungs { supplied: _ } => false
+  }
+}
+
+// WITNESS 21 — A DIVERGENT ENVELOPE YIELDS NO ADMITTED CARRIER AT ALL. The pairing is closed by
+// CONSTRUCTION rather than by a caller checking the verdict first, and this is what says so: on the
+// rejecting path there is no admitted value in existence to hand an actuator, so "judge A, actuate
+// B" has nothing to actuate. Before the discharge, decode_envelope would have produced usable
+// geometry on exactly this input.
+test fn w_a_rejected_realization_mints_no_admitted_carrier() -> Bool {
+  match hole_ladder_spec {
+    LadderReady { ladder: l } => {
+      let contract = realization_contract(declaration: l)
+      let bad = envelope_with_plate_z(
+        s: contract.specimen,
+        z: micrometer_count(m: contract.specimen.geometry.plate.size_z) + 500,
+      )
+      match judge_realization(contract: contract, envelope: bad) {
+        RealizationRejected { divergence: d } => match d {
+          GeometryPlateDiverges { axis: _, modeled: _, realized: _ } => true
+          GeometryDatumDiverges { field: _, modeled: _, realized: _ } => false
+          GeometryOperationCountDiverges { modeled: _, realized: _ } => false
+          GeometryOperationDiverges { index: _, field: _, modeled: _, realized: _ } => false
+        }
+        RealizationAccepted { admitted: _ } => false
         RealizationRefusedAtWire { refusal: _ } => false
       }
     }

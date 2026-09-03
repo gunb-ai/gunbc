@@ -199,6 +199,56 @@ fn namespace_step0_unavailable_receipt(
   }
 }
 
+// THE STEP-0 PRODUCER'S OWN CONSTRUCTOR, and the one the freeze note above reserved for it: "the
+// eventual strip producer must own a separate constructor whose inputs are the executed rewrite and
+// its observation". Its inputs are exactly that -- the statements a typed source rewrite actually
+// removed, and the cause the containment compile of the rewritten sources actually reported. It
+// cannot be reached from the fixtures' caller seal and the fixtures cannot be reached from here, so
+// production and fixture mint through disjoint doors and neither can stand in for the other.
+//
+// IT IS DECLARED HERE BECAUSE NamespaceStep0CanaryReceipt IS sole_constructor. Ownership of the
+// production route is expressed by the caller seal, not by which file the constructor sits in: the
+// only caller admitted is the producer's fold, so no other module -- and no future witness -- can
+// mint a subject-entered receipt.
+//
+// THE ARGUMENTS IT REFUSES TO INVENT. A producer that stripped nothing has no observation, and
+// passing an empty list here would mint a receipt the classifier refuses at ObservedSubjectField
+// rather than one that quietly claims entry; the producer refuses before reaching this row instead.
+// Likewise a containment compile that COMPLETED has no blocking cause, and there is no argument
+// here that could express it -- which is why the producer's refusal coproduct carries that case.
+fn namespace_step0_strip_applied_receipt(
+  contract_identity: NonEmptyStr,
+  source_commit: GitObjectId,
+  source_tree: GitObjectId,
+  compiler_program: NonEmptyStr,
+  compiler_executable_sha256: Sha256Digest,
+  input_subject_manifest: NonEmptyStr,
+  observed_tree: GitObjectId,
+  observed_import_statements: List<NonEmptyStr>,
+  containment_compile_cause: NonEmptyStr
+) -> NamespaceStep0CanaryReceipt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.namespace_step0_strip_producer", decl_name: "namespace_step0_strip_receipt")
+  ]
+  = NamespaceStep0CanaryReceipt {
+    contract_identity: contract_identity,
+    source_commit: source_commit,
+    source_tree: source_tree,
+    compiler_program: compiler_program,
+    compiler_executable_sha256: compiler_executable_sha256,
+    input_subject_manifest: input_subject_manifest,
+    completed_production_prefix: [CanaryContractFrozen, SourceTreePinned, CompilerExecutablePinned, InputSubjectManifestPinned, TypedImportStripApplied],
+    first_blocking_transition: CompileContainmentResolution,
+    first_blocking_cause: ContainmentCompileObservationRefused { cause: containment_compile_cause },
+    subject_entry: Step0SubjectEntered,
+    observation_completeness: Step0ObservationIncomplete,
+    observed_subject: Step0StripObservation {
+      observed_tree: observed_tree,
+      observed_manifest: input_subject_manifest,
+      observed_import_statements: observed_import_statements
+    }
+  }
+
 // Admission is intentionally exact and narrow, but it is NOT frozen to today's frontier. The two
 // coherent shapes are today's stop at the strip and the next possible stop after a real strip has
 // entered the subject. That makes a longer prefix and a different blocker fixture-authorable now,
