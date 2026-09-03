@@ -305,10 +305,24 @@ fn ruleset_rule_wire_type(rule: RulesetRuleWire) -> RulesetRuleType {
   parse_ruleset_rule_type(raw: rule.type)
 }
 
+// ITS SIBLING BELOW CARRIES THE SAME WILDCARD DEFECT AND IS REPAIRED WITH IT, because leaving one
+// of two identical predicates exhaustive would make the pair a worse guide than either choice made
+// consistently: a reader adding a third would copy whichever they happened to read. This one is
+// older than the merge-queue work and is not repaired because it was flagged -- it is repaired
+// because the flag was correct about the shape and this is the same shape, in the same module,
+// guarding the same coproduct.
 fn rule_is_required_status_checks(rule: RulesetRuleWire) -> Bool {
   match ruleset_rule_wire_type(rule: rule) {
     RequiredStatusChecksRule => true
-    _ => false
+    DeletionRule => false
+    NonFastForwardRule => false
+    RequiredLinearHistoryRule => false
+    RequiredSignaturesRule => false
+    PullRequestRule => false
+    CreationRule => false
+    UpdateRule => false
+    MergeQueueRule => false
+    UnrecognizedRuleType { raw: _ } => false
   }
 }
 
@@ -407,10 +421,25 @@ fn merge_queue_merge_method_wire_label(m: MergeQueueMergeMethod) -> String {
   }
 }
 
+// EXHAUSTIVE RATHER THAN WILDCARD, for the reason `workflow_trigger_is_merge_group` is: a
+// `_ => false` arm answers for constructors that do not exist yet, so adding a rule type to the
+// coproduct above would silently classify it as not-a-merge-queue instead of failing here until
+// someone decides what it means. GitHub adds rule types; this repository has already had to add
+// `UnrecognizedRuleType` for the ones it does not model. A wildcard is the fabricated default
+// DESIGN section 5 reserves for a refusal, and it was left standing here when the sibling
+// predicate was written out.
 fn rule_is_merge_queue(rule: RulesetRuleWire) -> Bool {
   match ruleset_rule_wire_type(rule: rule) {
     MergeQueueRule => true
-    _ => false
+    DeletionRule => false
+    NonFastForwardRule => false
+    RequiredStatusChecksRule => false
+    RequiredLinearHistoryRule => false
+    RequiredSignaturesRule => false
+    PullRequestRule => false
+    CreationRule => false
+    UpdateRule => false
+    UnrecognizedRuleType { raw: _ } => false
   }
 }
 
