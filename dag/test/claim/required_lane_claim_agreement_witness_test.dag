@@ -1,0 +1,121 @@
+module test.claim.required_lane_claim_agreement_witness_test
+
+import std.types { Bool, List, String }
+import v2.std.algebra { count_where, length, list_map, non_empty_to_list }
+import v2.workflow.required_lane_claim_agreement {
+  ProjectedDocument,
+  RequiredLaneClaimRefused,
+  RequiredLaneClaimSite,
+  RequiredLaneClaimVerdict,
+  RequiredLaneClaimsAgree,
+  required_lane_claim_agreement_check,
+}
+import test.fixture.required_lane_claim.stale_claim_fixture {
+  stale_claim_fixture_documents,
+  stale_claim_fixture_rostered_job_ids,
+}
+import gunbc.witness_floor_workflow { RequiredLane, required_lanes_roster }
+import gunbc.design_document { expected_design_md }
+import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
+
+// OFFLINE LOCAL RECIPE: target/release/gunbc run --source-root dag --source-root src/v2 --entry
+// dag/test/claim/required_lane_claim_agreement_witness_test.dag --function <row>
+//
+// WHY THIS FILE EXISTS: gunbc#10078 promoted `rust-unit-tests` into the required aggregate and left
+// twelve sites asserting that it had not. Three of them were the DESIGN ledgers, which every
+// session loads in full on every turn. The full range of this check, and the three populations it
+// deliberately does NOT reach, are stated once in `v2.workflow.required_lane_claim_agreement` and
+// are not restated here.
+
+// THE FIRST EXECUTION OF THE WALL BELOW WENT RED ON THE REAL DEFECT, WHICH IS THE RECEIPT THIS FILE
+// EXISTS TO CARRY. Run against a tree where `gunbc.design_document` and
+// `gunbc.emitted_closure_compile_seed_growth` had been repaired and `gunbc.rung_drop` and
+// `gunbc.recurring_failure_mode` had NOT, the four controls passed and
+// `w_no_projected_ledger_denies_a_lane_the_roster_requires` FAILED -- naming the two ledgers still
+// carrying the sentence. It was not authored green and then argued to be discriminating; it was
+// authored red by the corpus and greened by fixing the corpus. Re-derive with the recipe above.
+//
+// AND IT GREENED WHEN THE LEDGER REPAIR LANDED, IN THE SAME LANE: with `gunbc.rung_drop` and
+// `gunbc.recurring_failure_mode` repaired and the projections regenerated, all five rows pass. The
+// FAIL-then-PASS pair over one subject is the discriminating evidence, and neither half was
+// authored to produce the other.
+//
+// AND THE COST IS THE OTHER HALF OF WHY THIS SHAPE WAS CHOSEN. Measured on the same run: five
+// witness rows, 174ms of evaluation TOTAL, against a 109-second entry resolve that every witness in
+// this directory pays and that this file does not add to. A `decl_facts` corpus walk would have put
+// the scan itself in the seconds-to-minutes range on every pull request, which is the cost the
+// declared drop on `test.claim.long.host_identity_single_authoring_witness_test` already refused.
+
+data rostered_job_ids: List<String> = list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) { lane.job_id })
+
+data projected_ledgers: List<ProjectedDocument> = [
+  ProjectedDocument { document: "DESIGN.md", text: expected_design_md() },
+  ProjectedDocument { document: "docs/design-rung-drops.md", text: expected_design_rung_drops_md() },
+  ProjectedDocument { document: "docs/design-failure-modes.md", text: expected_design_failure_modes_md() }
+]
+
+// ── THE RED, AND THE TWO CONTROLS THAT KEEP IT FROM PASSING FOR THE WRONG REASON ───────────────
+
+// RED. A document making the standing negation about a lane the roster carries must refuse, and
+// must refuse WITH THE SITE NAMED -- a bare `false` would tell a maintainer that something in three
+// ledgers is wrong and nothing about which sentence.
+test fn w_a_stale_claim_about_a_rostered_lane_refuses_and_names_the_document() -> Bool {
+  match required_lane_claim_agreement_check(
+    documents: stale_claim_fixture_documents,
+    job_ids: stale_claim_fixture_rostered_job_ids
+  ) {
+    RequiredLaneClaimRefused { sites } =>
+      count_where(xs: sites, predicate: fn(s) {
+        s.document == "fixture/stale.md" && s.job_id == "fixture-required-lane"
+      }) == 1
+    RequiredLaneClaimsAgree { checked_document_count: _, checked_lane_count: _ } => false
+  }
+}
+
+// CONTROL A. The refusal must be EXACTLY the stale document. The same fixture pool carries a true
+// negation about an unrostered lane and a true mention of a rostered one; if either is refused the
+// check is a phrase blacklist rather than a disagreement between two authorities, and it would fire
+// on correct documentation.
+test fn w_a_true_negation_and_a_bare_mention_are_not_refused() -> Bool {
+  match required_lane_claim_agreement_check(
+    documents: stale_claim_fixture_documents,
+    job_ids: stale_claim_fixture_rostered_job_ids
+  ) {
+    RequiredLaneClaimRefused { sites } => length(xs: sites) == 1
+    RequiredLaneClaimsAgree { checked_document_count: _, checked_lane_count: _ } => false
+  }
+}
+
+// CONTROL B, NON-VACUITY, and it is about the LIVE roster rather than the fixture. Every live row
+// below is a universal over `rostered_job_ids`, so a roster that arrived empty would satisfy all of
+// them by having nothing to check -- green forever, carrying no information. This row fails in that
+// case. It asserts membership at IDENTITY grain and not by count, because a count equality against
+// a literal measured from this same tree is the change detector DESIGN section 5 refuses.
+test fn w_the_live_roster_is_read_and_carries_the_promoted_lane() -> Bool {
+  count_where(xs: rostered_job_ids, predicate: fn(id) { id == "rust-unit-tests" }) == 1
+    && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-build" }) == 1
+    && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-floor" }) == 1
+}
+
+// CONTROL C, the other half of non-vacuity: the ledgers must have been PROJECTED, not arrive empty.
+// A serializer returning "" would make the wall below green against every roster. Grounded in the
+// documents' own required structure rather than in a length literal.
+test fn w_the_ledgers_are_projected_and_not_empty() -> Bool {
+  count_where(xs: projected_ledgers, predicate: fn(d) {
+    string_contains(s: d.text, pattern: "# gunbc")
+  }) == 3
+}
+
+// ── THE WALL ───────────────────────────────────────────────────────────────────────────────────
+
+// The live claim. Every lane the roster declares required, against every ledger this repository
+// projects. This is the row gunbc#10078 would have reddened.
+test fn w_no_projected_ledger_denies_a_lane_the_roster_requires() -> Bool {
+  match required_lane_claim_agreement_check(
+    documents: projected_ledgers,
+    job_ids: rostered_job_ids
+  ) {
+    RequiredLaneClaimsAgree { checked_document_count: _, checked_lane_count: _ } => true
+    RequiredLaneClaimRefused { sites: _ } => false
+  }
+}

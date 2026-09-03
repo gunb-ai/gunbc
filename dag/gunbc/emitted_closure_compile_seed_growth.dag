@@ -94,11 +94,14 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // `cargo test --release -p v1-compiler --lib fixture_closure_rustc_discrimination -- --ignored`.
 // It DOES NOT EXECUTE BY DEFAULT on push or pull request: it is `#[ignore]`d because it spawns
 // cargo and compiles two emitted crates, which is minutes inside a suite that runs on every push.
-// And `rust-unit-tests` is not a `needs` of the required aggregate, so even un-ignored a red
-// there would be visible and would not block through the required context. THE EVIDENCE IS
-// THEREFORE CANDIDATE EVIDENCE -- reviewable on demand, no wall -- and an `#[ignore]` is a COST
-// DECISION AND NOT A RUNG. Nothing here may be cited as coverage that executes on the merge path,
-// which is what the false sentence above got right for the wrong reason.
+// THE EVIDENCE IS THEREFORE CANDIDATE EVIDENCE -- reviewable on demand, no wall -- and an
+// `#[ignore]` is a COST DECISION AND NOT A RUNG. THAT RESTS ON THE `#[ignore]` ALONE. A second
+// clause stood here until gunbc#10078 and is REMOVED rather than softened: it said
+// `rust-unit-tests` is not a `needs` of the required aggregate. It is one now, so the un-ignored
+// case is no longer merely visible -- it would BLOCK. Un-ignoring this test is by itself
+// sufficient to move this evidence onto the acceptance path. Nothing here may be cited as
+// coverage that executes on the merge path, which is what the false sentence above got right for
+// the wrong reason.
 //
 // The older reason still stands, and it is a different claim from the paragraph above: the
 // phase's OWN executed evidence is the phase itself, not any unit test.
@@ -161,11 +164,13 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // `compiler_tests.rs` and run by `repo_self_test_command` -- and it is `#[ignore]`d, so it is
 // ENROLLED AND AVAILABLE via `cargo test --release -p v1-compiler --lib
 // fixture_closure_rustc_discrimination -- --ignored` and DOES NOT EXECUTE BY DEFAULT on push or
-// pull request. `rust-unit-tests` is additionally not a `needs` of the required aggregate, so even
-// un-ignored a red there would be visible and would not block through the required context. The
-// evidence is therefore CANDIDATE EVIDENCE -- reviewable on demand, NO WALL -- and an `#[ignore]`
-// is a cost decision and NOT a rung. It discharges no next-rung trigger naming this capability:
-// the capability exists, the evidence does not execute. Nothing here claims a rung for the
+// pull request. The evidence is therefore CANDIDATE EVIDENCE -- reviewable on demand, NO WALL --
+// and an `#[ignore]` is a cost decision and NOT a rung. THE `#[ignore]` IS THE WHOLE OF IT: a
+// second clause stood here until gunbc#10078, saying `rust-unit-tests` is additionally not a
+// `needs` of the required aggregate. That is false now and is removed rather than weakened,
+// because two clauses read as two protections and only one was ever load-bearing here. It
+// discharges no next-rung trigger naming this capability: the capability exists, the evidence
+// does not execute. Nothing here claims a rung for the
 // text-boundary class, which stays exactly where its own row puts it.
 //
 // THE #[ignore] IS A MEASURED DECISION WITH A REVERSAL CONDITION, NOT NEGLECT, and it is written
@@ -181,18 +186,53 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // both linking the seed crate. It is rustc doing the work that makes the arm mean anything, not
 // test logic, so it cannot be optimised away without removing the subject.
 //
-// THE ARGUMENT THAT DECIDES IT IS A RUNG ARGUMENT AND NOT A COST ONE. Un-ignoring would move this
-// evidence from AVAILABLE to EXECUTES-ON-A-NON-BLOCKING-JOB. That is a real honesty improvement and
-// it is still not an acceptance path, because `rust-unit-tests` is not a `needs` of the required
-// aggregate. DESIGN 4b(1) establishes a rung by evidence executing on the REAL ACCEPTANCE PATH, so
-// BOTH STATES LEAVE A NEXT-RUNG TRIGGER NAMING THIS CAPABILITY UNFIRED. The ignore therefore costs
-// NOTHING in rung terms and saves 40% of a per-push suite, which is the whole argument.
+// THE ARGUMENT THAT DECIDED IT WAS A RUNG ARGUMENT AND NOT A COST ONE, AND ITS PREMISE HAS SINCE
+// BEEN FALSIFIED. It read: un-ignoring would move this evidence from AVAILABLE to
+// EXECUTES-ON-A-NON-BLOCKING-JOB, a real honesty improvement and still not an acceptance path,
+// because `rust-unit-tests` is not a `needs` of the required aggregate; DESIGN 4b(1) establishes a
+// rung by evidence executing on the REAL ACCEPTANCE PATH, so BOTH STATES leave a next-rung trigger
+// naming this capability unfired, and the ignore therefore cost NOTHING in rung terms while saving
+// 40% of a per-push suite. Every clause of that is still true of the tree it was written against
+// and the load-bearing one is no longer true of this one.
 //
-// THE CONDITION THAT REVERSES IT, named so this is re-decided rather than inherited: when
-// `rust-unit-tests` is promoted into the required aggregate. At that point the cost and the WALL
-// arrive together -- the evidence would execute on an acceptance path and could block a merge --
-// and the trade this row prices no longer holds. Nothing else reverses it: not the suite getting
-// faster, not the roster growing, and not a lane wanting to cite this as coverage.
+// THE REVERSAL CONDITION THIS ROW NAMED HAS FIRED (gunbc#10078, 2026-09-02): `rust-unit-tests` IS
+// a member of `required_lanes_roster` and the aggregate reads its result, so the lane gates. The
+// row said, in as many words, that at that point the cost and the WALL arrive together and the
+// trade priced here no longer holds -- so THE `#[ignore]` IS NOW AN OPEN RE-DECISION AND NOT A
+// SETTLED ONE, which is exactly what naming the condition was for.
+//
+// THE RE-DECISION WAS TAKEN AND THE ANSWER IS NO, RECORDED WITH ITS MEASUREMENT SO THE NEXT READER
+// RE-DERIVES THE NUMBERS RATHER THAN RE-ARGUING THE PRINCIPLE (manager ruling, 2026-09-03). What is
+// UNCHANGED by the falsification: the evidence is still CANDIDATE EVIDENCE and this row still
+// establishes NO rung, because the test still does not run -- that conclusion survives intact and
+// rests on the `#[ignore]` alone. What is NEWLY DECIDED: do not un-ignore.
+//
+// AND THE REASON IS THE OPPOSITE OF THE ONE THIS ROW ASSUMED. `rust-unit-tests` is not comfortably
+// under the floor lane; it is ON the critical path. The aggregate WAITS FOR THE SLOWEST of the
+// three required lanes, so what decides the cost of un-ignoring is not the suite's own growth but
+// where that growth lands it against `required-witnesses-floor`. Re-derive with `gh api
+// repos/OWNER/REPO/actions/workflows/witnesses.yml/runs?status=completed` then
+// `/actions/runs/<id>/jobs`, successful jobs only, and compare the two lanes at the SAME quantile.
+// As dated evidence for the RELATION and nothing more -- the figures belong to the tree and the
+// fleet they were measured on, over the last 40 completed runs on 2026-09-03 -- floor median 26.5m
+// / p90 27.5m against unit median 25.5m / p90 27.6m, the aggregate itself a tenth of a minute. Unit
+// is one minute under the floor at the median and ALREADY ABOVE IT AT p90. A +40% suite would put
+// it near 35 minutes against a floor near 27, making it the new critical path and adding roughly
+// nine minutes to EVERY MERGE IN THE FLEET. That is not a price worth paying for one fixture pair's
+// climb, and the climb is reachable another way.
+//
+// WHICH FALSIFIES A SECOND SENTENCE, AND IT IS gunbc#10078'S OWN. That promotion argued the cost
+// was zero because this job "sits BELOW `required-witnesses-floor` at every quantile". At p90 it no
+// longer does. Whether that was true when measured and has since drifted, or was never true, is NOT
+// established here and must not be assumed either way -- what is established is that the sentence
+// is load-bearing for the promotion argument and is currently false at p90. The promotion was still
+// right; its argument has decayed, and a decayed argument for a correct decision is exactly the
+// thing that gets cited later as though it were still measured.
+//
+// SO THIS STAYS OPEN AS A PRICED TRADE RATHER THAN A CLOSED QUESTION: if the floor lane gets slower,
+// or this suite gets faster, the comparison flips and the un-ignore becomes cheap. That is why the
+// relation is written down instead of a verdict. Nothing else reverses the ignore: not the roster
+// growing, and not a lane wanting to cite this as coverage.
 //
 // AN EARLIER REVISION OF THIS PARAGRAPH CITED TWO `claim_executor` MODES THAT NO LONGER EXIST
 // (`--fixture-closure-compile`, `--fixture-closure-pair`) AND SAID THE PAIR'S VERDICT JOINED
@@ -262,12 +302,14 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // ct_function_value_adapter_fixture_closure_discrimination_test, emitted into compiler_tests.rs,
 // and it is #[ignore]d: ENROLLED AND AVAILABLE via `cargo test --release -p v1-compiler --lib
 // function_value_adapter_fixture_closure_discrimination -- --ignored`, DOES NOT EXECUTE BY DEFAULT
-// on push or pull request, and `rust-unit-tests` is not a `needs` of the required aggregate, so
-// even un-ignored a red would be visible and would not block through the required context.
-// CANDIDATE EVIDENCE, NO WALL. An #[ignore] is a cost decision and NOT a rung, so this establishes
-// NO rung for the adapter and discharges NO next-rung trigger naming it: the evidence exists and
-// does not execute on the acceptance path. The reversal condition is the one that row already
-// carries and is not re-minted here -- `rust-unit-tests` promoted into the required aggregate.
+// on push or pull request. CANDIDATE EVIDENCE, NO WALL, ON THE `#[ignore]` ALONE -- the second
+// clause that stood here, that `rust-unit-tests` is not a `needs` of the required aggregate, was
+// made false by gunbc#10078 and is removed rather than softened. An #[ignore] is a cost decision
+// and NOT a rung, so this establishes NO rung for the adapter and discharges NO next-rung trigger
+// naming it: the evidence exists and does not execute on the acceptance path. The reversal
+// condition is the one that row already carries and is not re-minted here -- and it HAS FIRED, so
+// this #[ignore] is open for the same re-decision, on the same terms, and inherits that row's
+// verdict rather than minting a second one.
 //
 // HOW THIS SITS BESIDE THE BYTE-LEVEL CONTROL THAT LANDED ON main WHILE THIS LANE RAN (#9938,
 // v1.compiler.compiler_tests_rust ct_function_value_adapter_bound_alignment_control_test). That
