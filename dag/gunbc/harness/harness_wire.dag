@@ -12,9 +12,6 @@ import extdeps.languages.json.parse {
   parse_json_document, json_object_unique_member, json_document_gap_text,
 }
 import extdeps.llm.anthropic_messages_api {
-  AnthropicChatMessage, UserMessage, AssistantMessage,
-  AnthropicUserContentBlock, UserTextBlock, UserToolResultBlock,
-  AnthropicAssistantContentBlock, AssistantTextBlock, AssistantToolUseBlock,
   AnthropicToolDefinition,
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
   ModelContextWindowExceeded,
@@ -82,38 +79,18 @@ fn harness_stop_reason_wire(reason: AnthropicStopReason) -> String {
   }
 }
 
-// REQUEST ENCODING -------------------------------------------------------------------------
+// REQUEST ENCODING ------------------------------------------------------------------------
+//
+// THE TYPED MESSAGE ENCODER THAT SAT HERE IS DELETED, and the deletion is the point rather than
+// tidiness. It was a SECOND encoder for one fact -- an assistant message projected to wire JSON --
+// beside the live one in gunbc.harness.harness_turn, with no caller anywhere in the corpus. The
+// fork was also the LOSSY half: its tool_use arm wrote `input` as an empty object, so a history
+// replayed through it would have shown the model its own prior commands with the commands removed,
+// and a worker that cannot see what it already ran re-runs it. Nothing was reaching that arm, which
+// is exactly why it survived: a dead fork is invisible until someone repoints at the tidier-looking
+// surface. Per DESIGN section 3 the live path is the single authority; per section 6 an artifact
+// with no consumer is a dead scaffold. Both say delete rather than annotate.
 
-fn harness_encode_user_block(block: AnthropicUserContentBlock) -> JsonValue {
-  match block {
-    UserTextBlock { text } =>
-      json_object([
-        json_kv(key: "type", value: json_string(s: "text")),
-        json_kv(key: "text", value: json_string(s: text)),
-      ])
-    UserToolResultBlock { tool_use_id, content: _, is_error } =>
-      json_object([
-        json_kv(key: "type", value: json_string(s: "tool_result")),
-        json_kv(key: "tool_use_id", value: json_string(s: tool_use_id)),
-        json_kv(key: "content", value: json_string(s: "")),
-        json_kv(
-          key: "is_error",
-          value: match is_error {
-            Present { value: flag } => JsonBool { value: flag }
-            Absent => JsonBool { value: false }
-          },
-        ),
-      ])
-  }
-}
-
-// THE TOOL RESULT'S TEXT DOES NOT COME THROUGH AnthropicToolResultContent, and that is a modelled
-// gap rather than an oversight to be papered over. That type carries the full block-list form --
-// text blocks, images, documents, citations -- and encoding it faithfully is the whole of the
-// structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads disposition the DCH-1
-// module already declares against itself. The harness needs exactly one shape of result today, a
-// string, so it carries one through its own constructor below rather than half-encoding a richer
-// type and producing a payload that satisfies the schema while dropping members.
 fn harness_tool_result_block(tool_use_id: String, text: String, is_error: Bool) -> JsonValue {
   json_object([
     json_kv(key: "type", value: json_string(s: "tool_result")),
@@ -121,38 +98,6 @@ fn harness_tool_result_block(tool_use_id: String, text: String, is_error: Bool) 
     json_kv(key: "content", value: json_string(s: text)),
     json_kv(key: "is_error", value: JsonBool { value: is_error }),
   ])
-}
-
-fn harness_encode_assistant_block(block: AnthropicAssistantContentBlock) -> JsonValue {
-  match block {
-    AssistantTextBlock { text } =>
-      json_object([
-        json_kv(key: "type", value: json_string(s: "text")),
-        json_kv(key: "text", value: json_string(s: text)),
-      ])
-    AssistantToolUseBlock { id, name, input: _ } =>
-      json_object([
-        json_kv(key: "type", value: json_string(s: "tool_use")),
-        json_kv(key: "id", value: json_string(s: id)),
-        json_kv(key: "name", value: json_string(s: name)),
-        json_kv(key: "input", value: json_object([])),
-      ])
-  }
-}
-
-fn harness_encode_message(message: AnthropicChatMessage) -> JsonValue {
-  match message {
-    UserMessage { content } =>
-      json_object([
-        json_kv(key: "role", value: json_string(s: "user")),
-        json_kv(key: "content", value: json_array(elements: map(content, b => harness_encode_user_block(block: b)))),
-      ])
-    AssistantMessage { content } =>
-      json_object([
-        json_kv(key: "role", value: json_string(s: "assistant")),
-        json_kv(key: "content", value: json_array(elements: map(content, b => harness_encode_assistant_block(block: b)))),
-      ])
-  }
 }
 
 fn harness_encode_tool(tool: AnthropicToolDefinition, schema: JsonValue) -> JsonValue {

@@ -1,0 +1,113 @@
+module test.claim.harness_guidance
+
+import std.types { Bool, String, Int, List }
+import gunbc.harness.harness_guidance {
+  HarnessGroundedPremise, HarnessPremise, HarnessConclusion,
+  ActingAs, CodingWorkerInWorktree,
+  ToolCanWriteBy, HeredocWrite,
+  CompletionRequires, FilesOnDiskDiffer, AcceptanceCheckPasses,
+  RoundsRemaining,
+  ChangeTheTreeWithTheTool, VerifyWithTheTool, ReadingAloneCompletesNothing,
+  grounded, harness_conclusions, harness_guidance_prose,
+  harness_worker_guidance, harness_probe_guidance,
+}
+import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
+
+// WHAT THESE TEST, AND WHAT THEY DELIBERATELY DO NOT.
+//
+// A prompt has three separable layers and only two of them have a deterministic oracle. PROJECTION
+// (a premise renders to its clause) and ENTAILMENT (a premise SET derives an imperative set) are
+// pure folds over .dag values: no model, no host effect, no network, so they answer on every run at
+// substrate cost. BEHAVIOUR -- does a worker given this prompt edit N lines -- is a sampled property
+// of a nondeterministic system, and an assertion over it is a flaky oracle, not a test. It is
+// measured elsewhere and is not enrolled here.
+//
+// THE LOAD-BEARING HALF IS THE NEGATIVE ONE. Asserting that the worker roster yields the change
+// imperative is nearly free to satisfy and would stay green if the derivation were replaced by a
+// hardcoded list. The witnesses that carry information are the ones that DROP a premise and require
+// the imperative to disappear: they are the discriminating RED that DESIGN section 5 asks for, and
+// they fail exactly when the syllogism decays back into authored prose.
+//
+// NOT WRITTEN, AND THE OMISSION IS THE POINT: "every premise cites a declaration". DeclarationRef
+// carries NonEmptyStr fields and HarnessGroundedPremise requires one, so an ungrounded premise has
+// no constructor. Per DESIGN section 4b that check's RED is unauthorable, which makes it a
+// permanently-green decoration that would be cited as coverage. The carrier already holds it.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn at(premise: HarnessPremise) -> HarnessGroundedPremise {
+  grounded(premise: premise, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command")
+}
+
+fn counts_change_imperative(c: HarnessConclusion) -> Bool {
+  match c { ChangeTheTreeWithTheTool => true  _ => false }
+}
+
+fn counts_verify_imperative(c: HarnessConclusion) -> Bool {
+  match c { VerifyWithTheTool => true  _ => false }
+}
+
+fn counts_reading_clause(c: HarnessConclusion) -> Bool {
+  match c { ReadingAloneCompletesNothing => true  _ => false }
+}
+
+fn derives(rows: List<HarnessGroundedPremise>, f: fn(HarnessConclusion) -> Bool) -> Bool {
+  list_length(items: harness_conclusions(rows: rows) |> filter(c => f(c))) > 0
+}
+
+fn can_write() -> HarnessGroundedPremise { at(premise: ToolCanWriteBy { form: HeredocWrite }) }
+fn must_differ() -> HarnessGroundedPremise { at(premise: CompletionRequires { term: FilesOnDiskDiffer }) }
+fn must_accept() -> HarnessGroundedPremise { at(premise: CompletionRequires { term: AcceptanceCheckPasses }) }
+fn is_worker() -> HarnessGroundedPremise { at(premise: ActingAs { role: CodingWorkerInWorktree }) }
+
+// POSITIVE CONTROL. Both entailing premises present, so the imperative is derived.
+test fn write_form_and_difference_term_entail_the_change_imperative() -> Bool {
+  derives(rows: [is_worker(), can_write(), must_differ()], f: counts_change_imperative)
+}
+
+// DISCRIMINATING RED. Drop the write form: the harness can no longer write, so an imperative telling
+// the model to write is a sentence about a system that does not exist. It must not survive.
+test fn without_a_write_form_no_change_imperative_is_derived() -> Bool {
+  !derives(rows: [is_worker(), must_differ()], f: counts_change_imperative)
+}
+
+// DISCRIMINATING RED. Drop the completion term: writing is possible but not required, so the
+// imperative is unentailed even though the capability is held.
+test fn without_a_difference_term_no_change_imperative_is_derived() -> Bool {
+  !derives(rows: [is_worker(), can_write()], f: counts_change_imperative)
+}
+
+// The reading clause shares the change imperative's premises and must share its absence.
+test fn the_reading_clause_tracks_the_change_imperative() -> Bool {
+  !derives(rows: [is_worker(), must_differ()], f: counts_reading_clause)
+}
+
+test fn an_acceptance_term_entails_the_verify_imperative() -> Bool {
+  derives(rows: [is_worker(), must_accept()], f: counts_verify_imperative)
+}
+
+// DISCRIMINATING RED. No acceptance term, no verify imperative.
+test fn without_an_acceptance_term_no_verify_imperative_is_derived() -> Bool {
+  !derives(rows: [is_worker(), can_write(), must_differ()], f: counts_verify_imperative)
+}
+
+// THE ROSTER-LEVEL CONSEQUENCE. The probe roster is read-only by construction, so no write
+// imperative may reach a prompt built from it.
+test fn the_probe_roster_derives_no_write_imperative() -> Bool {
+  !derives(rows: harness_probe_guidance(), f: counts_change_imperative)
+}
+
+test fn the_worker_roster_derives_the_write_imperative() -> Bool {
+  derives(rows: harness_worker_guidance(), f: counts_change_imperative)
+}
+
+// PROJECTION. The prompt reads the tool's wire name rather than spelling it, so the prose and the
+// wire cannot disagree about what the model is being told to call.
+test fn worker_prose_names_the_tool_by_its_wire_name() -> Bool {
+  harness_guidance_prose(rows: harness_worker_guidance())
+    .contains(harness_tool_wire_name(tool: RunCommandTool))
+}
+
+// PROJECTION. A measured count reaches the prose as that count, not as a rounded or authored one.
+test fn a_rounds_premise_projects_its_measured_count() -> Bool {
+  harness_guidance_prose(rows: [is_worker(), at(premise: RoundsRemaining { rounds: 7 })]).contains("7")
+}
