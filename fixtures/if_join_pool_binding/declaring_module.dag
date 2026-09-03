@@ -1,0 +1,20 @@
+module fixtures.if_join_pool_binding.declaring_module
+
+// THE SUBJECT. This module declares BOTH arms of its own coproduct and returns one arm per
+// if-branch, which is a well-typed inhabitant of the declared return in every closure. Nothing
+// here refers to any other module, and the file is BYTE-IDENTICAL across the two closures that
+// disagree about it -- that invariance is the whole instrument.
+//
+// A coproduct ARM is pool-visible corpus-wide while NOT being a local binding under its own
+// spelling, so `PoolSpecimenSquare` below misses local lookup and lands in the pool. When
+// `colliding_module` is present it binds THERE, the arm stops widening to its owner coproduct,
+// and the if-join then compares a widened arm against a bare product. Inside this module not even
+// the unlisted-import advisory fires, because the spelling is in `source_visible_names` here --
+// which is why the class is silent at the site that causes it.
+type PoolSpecimenShape
+  = PoolSpecimenCircle { r: Int }
+  | PoolSpecimenSquare { s: Int }
+
+fn pick_shape(c: Bool) -> PoolSpecimenShape {
+  if c { PoolSpecimenCircle { r: 1 } } else { PoolSpecimenSquare { s: 2 } }
+}
