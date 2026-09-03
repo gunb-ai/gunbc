@@ -8852,3 +8852,154 @@ mod pure_producer_share_refused_carrier_overlap_tests {
         );
     }
 }
+
+/// THE HEARTBEAT'S WINDOW OVER THE REFUSAL'S OWN METRIC.
+///
+/// The heartbeat printed `cpu_ms` as utime PLUS stime and no share at all, so every green run
+/// carried no figure comparable to the one the stall refusal decides on, and the sub-threshold
+/// population was unmeasurable at the grain the verdict is taken at. Reconstructing it from the
+/// printed fields does not recover it: a census over 60 recent floor runs scored a REFUSING run
+/// at a 31.6% compute share and a GREEN one at 19.7%, ranking the refusal as the healthier of the
+/// two, because `utime + stime` reads a pure treadmill as roughly one-third computing -- exactly
+/// what `MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS` says it does, with its own receipt.
+///
+/// So this is a SECOND READ OF ONE PRODUCER, never a second computation. The window is the
+/// heartbeat's rather than the stall check's -- a different window over the same quantity -- and
+/// the two figures come from `memory_stall_major_faults_per_minute` and
+/// `memory_stall_self_cpu_share_basis_points`, the same mirrors `memory_stall_verdict` consumes.
+/// A copy of either formula here would drift from the refusal the first time either was touched,
+/// which is the defect this repair removes rather than one it must avoid introducing.
+///
+/// WHAT THIS METRIC IS SILENT ABOUT, stated because the opposite was proposed and measured false:
+/// it reports the STALL condition and says nothing about the `cpu_deadline` population. Over the
+/// same 60-run census, the 16 runs carrying an `interrupted_cpu_deadline` were indistinguishable
+/// from the other 44 on both axes (median peak 341,656/min against 356,630; median minimum share
+/// 0.537 against 0.504). That is a DATA result at n=16, not a claim about what a page fault does.
+pub(crate) struct FloorStallWindow {
+    pub started: std::time::Instant,
+    pub major_faults: u64,
+    pub self_user_cpu_ms: u64,
+}
+
+/// Pure renderer, separated from the `/proc` read so the treadmill case is authorable in a test.
+/// `None` for either counter renders the sentinel rather than a fabricated zero, on the same
+/// all-or-nothing rule as the cpu pair above: a share computed from half a reading is not a share.
+pub(crate) fn floor_stall_metric_fields(
+    window_wall_ms: u64,
+    major_faults_in_window: Option<u64>,
+    self_user_cpu_ms_in_window: Option<u64>,
+) -> String {
+    let (Some(faults), Some(user_cpu_ms)) = (major_faults_in_window, self_user_cpu_ms_in_window)
+    else {
+        return format!(
+            "stall_majflt_per_min={} stall_user_cpu_share_bp={}",
+            FLOOR_SAMPLE_UNREADABLE, FLOOR_SAMPLE_UNREADABLE
+        );
+    };
+    let observation = crate::memory_governor::MemoryStallObservation {
+        window_wall_ms,
+        major_faults_in_window: faults,
+        self_user_cpu_ms_in_window: user_cpu_ms,
+        // The cache counters are the refusal's diagnostic detail, not inputs to either figure
+        // this line carries; zero here is a true statement about what this window measured, not
+        // a stand-in for an unread counter.
+        cache_evictions_in_window: 0,
+        cache_readmissions_in_window: 0,
+    };
+    format!(
+        "stall_majflt_per_min={} stall_user_cpu_share_bp={}",
+        crate::memory_governor::memory_stall_major_faults_per_minute(&observation),
+        crate::memory_governor::memory_stall_self_cpu_share_basis_points(&observation)
+    )
+}
+
+#[cfg(test)]
+mod floor_stall_metric_tests {
+    use super::*;
+
+    /// THE DISCRIMINATING RED, built before the producer it justifies and calibrated on the
+    /// receipt `MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS` already carries: a measured
+    /// treadmill running 178,795 majflt/min with utime at 0.8% of wall and stime at 34%.
+    ///
+    /// Over a 60s window that is 178,795 faults, 480ms of user CPU and 20,400ms of system CPU.
+    /// The emitted share must place it BELOW the 2000bp floor -- the refusal's own verdict. The
+    /// second assertion is what makes this a discriminator rather than a restatement: the same
+    /// window computed the way the heartbeat used to compute cpu_ms lands ABOVE the floor, so a
+    /// regression that reaches for `utime + stime` reds here instead of silently reporting a
+    /// thrashing run as one-third busy.
+    #[test]
+    fn the_emitted_share_is_user_cpu_and_a_treadmill_falls_below_the_floor() {
+        let window_ms = 60_000u64;
+        let faults = 178_795u64;
+        let utime_ms = 480u64; // 0.8% of 60s
+        let stime_ms = 20_400u64; // 34% of 60s
+
+        let line = floor_stall_metric_fields(window_ms, Some(faults), Some(utime_ms));
+        assert!(
+            line.contains("stall_majflt_per_min=178795"),
+            "rate must come from the refusal's own mirror: {line}"
+        );
+        assert!(
+            line.contains("stall_user_cpu_share_bp=80"),
+            "0.8% of wall is 80 basis points: {line}"
+        );
+
+        // WHAT THIS TEST DOES AND DOES NOT ESTABLISH, measured rather than asserted.
+        //
+        // It establishes the QUANTITY: 80 basis points is utime alone, and the control below
+        // shows that the number the heartbeat used to print for the same window is 3480, on the
+        // other side of the refusal's floor. That assertion has an authorable red -- feed this
+        // renderer utime+stime and it fails.
+        //
+        // IT DOES NOT ESTABLISH SINGLE AUTHORITY, AND TWO MUTATIONS PROVE IT CANNOT.
+        // Replacing both mirror calls with an inline copy of their arithmetic left this test
+        // green, because a copy agrees with its original the day it is written. Adding a join
+        // against the producer -- asserting the line contains what the mirror returns -- was
+        // WORSE: perturbing the mirror's own constant kept it green too, because the expectation
+        // is computed by the thing under test. A check whose red is not authorable is a
+        // decoration, and it would have been cited as coverage for exactly the property it
+        // cannot see, so it is deleted rather than kept.
+        //
+        // Single authority here is structural: there is one arithmetic expression for each of
+        // these two figures in the tree, in `memory_governor`, and this file calls it. That is a
+        // grep against the namespace, not something a value comparison can decide.
+        let emitted_bp = 80u64;
+        assert!(
+            emitted_bp < crate::memory_governor::MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS,
+            "the treadmill must read BELOW the refusal's floor"
+        );
+
+        // The control: the quantity the heartbeat printed before this change.
+        let utime_plus_stime_bp = (utime_ms + stime_ms) * 10_000 / window_ms;
+        assert!(
+            utime_plus_stime_bp
+                > crate::memory_governor::MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS,
+            "the old quantity must read ABOVE the floor, or this test discriminates nothing"
+        );
+        assert_eq!(
+            utime_plus_stime_bp, 3480,
+            "utime+stime reads a pure treadmill as roughly one-third computing"
+        );
+    }
+
+    /// A window that reads only one of the two counters renders the sentinel for BOTH figures.
+    /// A share derived from half a reading is not a share, and a fabricated zero here would read
+    /// as the most severe possible stall -- the direction that manufactures a refusal.
+    #[test]
+    fn a_half_read_window_renders_the_sentinel_rather_than_a_share() {
+        let only_faults = floor_stall_metric_fields(60_000, Some(1), None);
+        let only_cpu = floor_stall_metric_fields(60_000, None, Some(1));
+        for line in [&only_faults, &only_cpu] {
+            assert!(
+                line.contains(&format!(
+                    "stall_user_cpu_share_bp={FLOOR_SAMPLE_UNREADABLE}"
+                )),
+                "{line}"
+            );
+            assert!(
+                line.contains(&format!("stall_majflt_per_min={FLOOR_SAMPLE_UNREADABLE}")),
+                "{line}"
+            );
+        }
+    }
+}
