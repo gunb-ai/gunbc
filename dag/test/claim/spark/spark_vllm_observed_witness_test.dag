@@ -1,0 +1,109 @@
+module test.claim.spark.spark_vllm_observed_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.vllm_observed {
+  VllmObservedRuntime,
+  vllm_observed_runtime_2026_09_03,
+  VllmTpRealizationMissingEvidence,
+  ResolvedParallelConfigurationNotObserved,
+  JoinedRankPopulationNotObserved,
+  VllmTpRealizationRefusal,
+  vllm_tp_realization_2026_09_03,
+  vllm_tp_realization_refusal_cause,
+  vllm_tp_realization_missing_wire,
+  VllmObservedCapacity,
+  CapacityNotObserved,
+  vllm_observed_capacity_2026_09_03,
+}
+import extdeps.vllm.server {
+  VllmRoute,
+  VllmRouteAvailability,
+  AlwaysServed,
+  ServedOnlyUnderDevelopmentMode,
+  vllm_routes,
+  vllm_route_server_info,
+  vllm_route_get_world_size,
+  vllm_route_collective_rpc,
+  vllm_route_health,
+}
+
+// THE SERVED ID IS NOT THE ARTIFACT, WHICH IS THE ONE THING THIS OBSERVATION EXISTS TO SETTLE.
+//
+// The id says "iq3s-split" and names a quantisation this deployment is not running. Two sessions
+// concluded the wrong thing about the weights from it -- once in a design ruling that propagated.
+// This claim pins the disagreement itself: the id advertises iq3s AND the artifact root is the
+// official checkpoint snapshot. A future edit that "tidies" the id to match the root would erase the
+// evidence that an alias can lie, so both halves are asserted together.
+test fn w_the_served_id_advertises_a_quantisation_the_artifact_root_contradicts() -> Bool {
+  contains(vllm_observed_runtime_2026_09_03.served_model_id as String, "iq3s")
+    && contains(
+         vllm_observed_runtime_2026_09_03.model_artifact_root as String,
+         "models--deepseek-ai--DeepSeek-V4-Flash")
+    && !contains(vllm_observed_runtime_2026_09_03.model_artifact_root as String, "iq3s")
+}
+
+// THE READBACK REFUSES, AND REFUSES AT THE EARLIER STAGE.
+//
+// If someone later constructs a tensor-parallel realization from this observation, this goes red --
+// which is the whole point, because the observation did not become sufficient by being reused.
+test fn w_the_readback_refuses_before_it_reaches_the_population_question() -> Bool {
+  match vllm_tp_realization_2026_09_03.missing {
+    ResolvedParallelConfigurationNotObserved => true
+    JoinedRankPopulationNotObserved => false
+  }
+}
+
+// THE REFUSAL NAMES A MISSING POSITIVE FACT, NEVER AN UNANSWERED PORT.
+//
+// This is the discriminating claim for the wording ruling. A refusal phrased as "rank two did not
+// answer" would model the absence of something vLLM never promised -- a tensor-parallel worker is
+// not required to serve its own front door -- and would go green the moment an unrelated server
+// appeared on that port. Both arms are checked, so the property belongs to the vocabulary rather
+// than to the row that happens to be current.
+test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
+  all(
+    [ResolvedParallelConfigurationNotObserved, JoinedRankPopulationNotObserved],
+    m => !contains(vllm_tp_realization_missing_wire(missing: m), "port")
+           && !contains(vllm_tp_realization_missing_wire(missing: m), "unreachable")
+           && !contains(vllm_tp_realization_missing_wire(missing: m), "did not answer"))
+    && contains(vllm_tp_realization_refusal_cause(refusal: vllm_tp_realization_2026_09_03),
+         "missing positive fact")
+}
+
+// THE EVIDENCE THAT WOULD DISCHARGE THE REFUSAL IS EXACTLY THE EVIDENCE THAT WAS NOT SERVED.
+//
+// Every route capable of answering the parallel question is development-mode gated, and none of the
+// always-served routes is. That is what makes the refusal a vantage limit rather than an oversight:
+// there was no always-served call that would have answered it.
+test fn w_every_route_that_could_answer_the_parallel_question_is_development_gated() -> Bool {
+  all(
+    [vllm_route_server_info, vllm_route_get_world_size, vllm_route_collective_rpc],
+    r => match r.availability {
+      ServedOnlyUnderDevelopmentMode => true
+      AlwaysServed => false
+    })
+}
+
+// AND HEALTH IS NOT A SUBSTITUTE FOR THEM. The always-served route someone would reach for instead
+// is /health, and it is always served -- so nothing structural stops the substitution, which is why
+// extdeps.vllm.server carries a typed row saying it does not probe workers.
+test fn w_health_is_always_served_and_therefore_the_tempting_wrong_substitute() -> Bool {
+  match vllm_route_health.availability {
+    AlwaysServed => true
+    ServedOnlyUnderDevelopmentMode => false
+  }
+}
+
+// CAPACITY IS ABSENT RATHER THAN ESTIMATED.
+//
+// A block count and a minimum block size were observed and their product was published as a token
+// pool before the discrepancy was caught. This asserts the carrier holds no capacity at all, so the
+// arithmetic cannot re-enter through a field.
+test fn w_no_capacity_is_carried_until_the_group_aware_log_line_is_read() -> Bool {
+  match vllm_observed_capacity_2026_09_03 {
+    CapacityNotObserved => true
+    CapacityFromGroupAwareStartupLog { pool_tokens: _ } => false
+  }
+}

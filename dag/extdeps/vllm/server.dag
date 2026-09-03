@@ -1,0 +1,120 @@
+module extdeps.vllm.server
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// VLLM AS ITS OWN UPSTREAM AUTHORITY, for the reason extdeps.ollama.api states from the other side:
+// an independently versioned product gets its own module rather than a variant in a generic
+// serving-runtime enum. That file says adding vLLM "must not require editing this file, and must not
+// widen a central product enum". This is that module, and it was written without touching it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm"
+  }
+}
+
+// THE SUBJECT IS THE HTTP SURFACE THIS REPOSITORY REACHED, and deliberately not the full API. An
+// endpoint modelled with no gunbc caller is inventory, not grounding.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.server",
+      decl_name: "VllmRoute",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE ROUTE SPLIT IS THE LOAD-BEARING FACT IN THIS MODULE, not the route list.
+//
+// vLLM serves two populations of routes from one port. The always-served ones answer on any
+// deployment. The development-mode ones are served only when the server was LAUNCHED with
+// development mode enabled -- they are not a capability the running server can be asked to grow, and
+// their absence is a 404 indistinguishable by shape from a route that does not exist.
+//
+// That distinction is why this is modelled at all: the evidence needed to establish a distributed
+// worker population lives ENTIRELY in the development-mode population, so whether those routes
+// answer decides whether a rank receipt is obtainable without relaunching the server.
+type VllmRouteAvailability
+  = AlwaysServed
+  | ServedOnlyUnderDevelopmentMode
+
+type VllmRoute sole_constructor {
+  path: NonEmptyStr
+  availability: VllmRouteAvailability
+}
+
+data vllm_route_models: VllmRoute = VllmRoute {
+  path: "/v1/models" as NonEmptyStr, availability: AlwaysServed }
+data vllm_route_version: VllmRoute = VllmRoute {
+  path: "/version" as NonEmptyStr, availability: AlwaysServed }
+data vllm_route_health: VllmRoute = VllmRoute {
+  path: "/health" as NonEmptyStr, availability: AlwaysServed }
+data vllm_route_ping: VllmRoute = VllmRoute {
+  path: "/ping" as NonEmptyStr, availability: AlwaysServed }
+data vllm_route_metrics: VllmRoute = VllmRoute {
+  path: "/metrics" as NonEmptyStr, availability: AlwaysServed }
+
+data vllm_route_server_info: VllmRoute = VllmRoute {
+  path: "/server_info" as NonEmptyStr, availability: ServedOnlyUnderDevelopmentMode }
+data vllm_route_get_world_size: VllmRoute = VllmRoute {
+  path: "/get_world_size" as NonEmptyStr, availability: ServedOnlyUnderDevelopmentMode }
+data vllm_route_collective_rpc: VllmRoute = VllmRoute {
+  path: "/collective_rpc" as NonEmptyStr, availability: ServedOnlyUnderDevelopmentMode }
+
+data vllm_routes: List<VllmRoute> = [
+  vllm_route_models,
+  vllm_route_version,
+  vllm_route_health,
+  vllm_route_ping,
+  vllm_route_metrics,
+  vllm_route_server_info,
+  vllm_route_get_world_size,
+  vllm_route_collective_rpc,
+]
+
+// /health DOES NOT PROBE DISTRIBUTED WORKERS, AND THIS ROW EXISTS SO NOBODY READS IT AS IF IT DID.
+//
+// The HTTP health route delegates to engine health, and under the Ray executor that implementation
+// assumes the workers are healthy and returns successfully without contacting them -- upstream marks
+// the gap with its own TODO. So a 200 here is a statement about the front door's engine handle and
+// carries NO information about whether any remote worker is alive.
+//
+// Modelled as a typed row rather than left to reviewer memory because the tempting misuse is
+// specific and cheap: a health probe is the one call always available, so it is exactly what someone
+// reaches for when the development-mode routes are absent -- which is precisely the case where the
+// answer is needed and precisely the case where this route cannot give it.
+// The second arm is not speculative padding: upstream's own TODO in that implementation says the
+// worker check is the thing not done. So this row records which side of that TODO the cited version
+// is on, and flips arm when upstream closes it rather than being deleted and re-reasoned.
+type VllmHealthRouteWorkerCoverage
+  = HealthDoesNotProbeDistributedWorkers
+  | HealthProbesEveryDistributedWorker
+
+data vllm_health_route_worker_coverage: VllmHealthRouteWorkerCoverage = HealthDoesNotProbeDistributedWorkers
+
+// THE CACHE-CONFIG GAUGE REPORTS CONFIGURATION, NOT CAPACITY, AND THE DIFFERENCE IS NOT COSMETIC.
+//
+// vllm:cache_config_info is generated from the fields of the engine's CacheConfig. It carries
+// num_gpu_blocks and a RESOLVED MINIMUM block_size across ranks. It does not carry the engine's
+// group-aware KV capacity.
+//
+// SO THE OBVIOUS PRODUCT IS NOT THE CAPACITY LAW. Multiplying num_gpu_blocks by block_size looks
+// like a token pool and is arithmetically fine, but a model with a multi-group cache layout can have
+// different per-group block sizes and windows, so the true capacity is computed group-aware and then
+// logged at startup -- "GPU KV cache size: N tokens" and a maximum-concurrency line -- after
+// reducing every worker's cache configuration to the minimum block count across ranks.
+//
+// This row is here because that product WAS computed from these two fields in this repository, and
+// published, before the discrepancy was caught. The fields are legitimate observations; the quotient
+// is not a capacity claim, and the type says so rather than trusting the next reader to know.
+type VllmCacheCapacityAuthority
+  = GroupAwareStartupLogLine
+  | BlockCountTimesMinimumBlockSizeIsNotCapacity
+
+data vllm_cache_capacity_authority: VllmCacheCapacityAuthority = GroupAwareStartupLogLine
