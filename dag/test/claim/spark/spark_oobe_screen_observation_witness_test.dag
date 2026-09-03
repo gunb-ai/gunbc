@@ -303,13 +303,19 @@ test fn w_reached_fields_are_covered() -> Bool {
   observed_screen_covers_field(field: OobeLanguage)
     && observed_screen_covers_field(field: OobeTimeZone)
     && observed_screen_covers_field(field: OobeTermsAndConditions)
+    && observed_screen_covers_field(field: OobeUserAccount)
 }
 
+// OobeUserAccount LEFT THIS LIST BY BEING OBSERVED, and the witness records the departure rather
+// than quietly shrinking. §4b(4): observing the account screen retires that coverage obligation,
+// so the row that used to assert it was pending now asserts it is NOT -- which is a stronger
+// check than deletion, because deleting the row would leave nothing red if a later edit dropped
+// the account screen from the prefix and silently re-opened the obligation.
 test fn w_unreached_documented_fields_are_pending() -> Bool {
   field_is_pending_observation(field: OobeKeyboardLayout)
-    && field_is_pending_observation(field: OobeUserAccount)
     && field_is_pending_observation(field: OobeAnalytics)
     && field_is_pending_observation(field: OobeWirelessNetwork)
+    && !field_is_pending_observation(field: OobeUserAccount)
 }
 
 test fn w_hostname_is_not_pending_because_it_is_not_documented_as_prompted() -> Bool {
@@ -482,12 +488,20 @@ test fn w_receipt_names_the_observed_browser_and_origin() -> Bool {
 // Coverage is now FOLDED from presented_subjects, so this is the witness that would have caught
 // the original defect: a screen presenting a subject must make that subject covered, and the
 // two must not be separately editable.
+// THE NEGATIVE HALF MOVED, AND THAT MOVE IS THE POINT. It used to name OobeUserAccount as the
+// subject no observed screen covers; the account screen now presents it, so holding that
+// assertion would be asserting we had NOT seen what we had just modeled. The negative is
+// re-aimed at a subject still genuinely unobserved, which keeps the check discriminating: a
+// coverage function that returned true for everything would still be caught.
 test fn w_coverage_follows_the_screens_presented_subjects() -> Bool {
   screen_presents_field(screen: oobe_screen_settings, field: OobeLanguage)
     && screen_presents_field(screen: oobe_screen_eula, field: OobeTermsAndConditions)
+    && screen_presents_field(screen: oobe_screen_account, field: OobeUserAccount)
     && !screen_presents_field(screen: oobe_screen_welcome, field: OobeLanguage)
+    && !screen_presents_field(screen: oobe_screen_account, field: OobeLanguage)
     && observed_screen_covers_field(field: OobeLanguage)
-    && !observed_screen_covers_field(field: OobeUserAccount)
+    && observed_screen_covers_field(field: OobeUserAccount)
+    && !observed_screen_covers_field(field: OobeWirelessNetwork)
 }
 
 // ---- the account screen: three fields behind one address ---------------------------------
