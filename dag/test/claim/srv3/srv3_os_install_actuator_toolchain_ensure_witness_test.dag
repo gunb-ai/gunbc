@@ -16,6 +16,8 @@ test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_bash_emit_scaff
   match os_install_actuator_toolchain_ensure_dissolution_trigger {
     Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
     && os_install_actuator_toolchain_ensure_routes_through_host_effect_apply()
 }

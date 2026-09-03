@@ -198,6 +198,50 @@ fn namespace_step0_v2_candidate_receipt(
     import_dependence: step0_import_dependence_not_judged()
   }
 
+// THE FIXTURE MINT, AND ITS DOOR IS DISJOINT FROM PRODUCTION'S. A classifier is only worth having if
+// its refusals execute, and every refusal below is about a receipt shape production must never
+// produce -- a partition that does not exhaust, a prefix that disagrees with the frontier, a census
+// naming a foreign population. Those shapes have to be AUTHORABLE somewhere or the classifier is a
+// permanently green decoration, and the place they are authorable is a fixture.
+//
+// So this constructor takes every field, and it is sealed to the witness helper alone. Production
+// mints through namespace_step0_v2_candidate_receipt, which is sealed to the one-dispatch fold and
+// derives the manifest, the contract identity and the import-dependence standing rather than
+// accepting them. Neither door can reach the other's callers, which is what keeps a fixture from
+// becoming an advance route: a receipt authored here can never be produced by a run, and a receipt
+// produced by a run can never be hand-shaped.
+fn namespace_step0_v2_fixture_receipt(
+  contract_identity: NonEmptyStr,
+  source_commit: GitObjectId,
+  source_tree: GitObjectId,
+  compiler_program: NonEmptyStr,
+  compiler_executable_sha256: Sha256Digest,
+  input_subject_manifest: NonEmptyStr,
+  collected_population: Step0PopulationIdentity,
+  excluded_sources: List<Step0V2ExcludedSource>,
+  admitted_population: Step0PopulationIdentity,
+  completed_production_prefix: List<Step0V2CompletedTransition>,
+  frontier: Step0V2Frontier,
+  import_dependence: Step0ImportDependenceStanding
+) -> NamespaceStep0V2Receipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.namespace_step0_canary_v2_witness", decl_name: "fixture_receipt")
+  ]
+  = NamespaceStep0V2Receipt {
+    contract_identity: contract_identity,
+    source_commit: source_commit,
+    source_tree: source_tree,
+    compiler_program: compiler_program,
+    compiler_executable_sha256: compiler_executable_sha256,
+    input_subject_manifest: input_subject_manifest,
+    collected_population: collected_population,
+    excluded_sources: excluded_sources,
+    admitted_population: admitted_population,
+    completed_production_prefix: completed_production_prefix,
+    frontier: frontier,
+    import_dependence: import_dependence
+  }
+
 data step0_v2_pre_strip_prefix: List<Step0V2CompletedTransition> = [
   CanaryContractFrozen,
   SourceTreePinned,
