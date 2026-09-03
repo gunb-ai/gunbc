@@ -1,0 +1,248 @@
+module gunbc.recurring_failure_mode.instrument_output_read_as_subject_content
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data instrument_output_read_as_subject_content: RecurringFailureMode = RecurringFailureMode {
+  identity: "instrument_output_read_as_subject_content" as NonEmptyStr,
+
+  receipts: [
+    "**instrument output read as subject content** (a consumer derives a SET from a report whose completeness is a property of the REPORTING TOOL rather than of the subject. ",
+
+    "**The boundary against `execution_provenance_loss` is the whole justification for a separate row, because the two look identical at the call site and have opposite repairs**: there a value is consumed as though an observation produced it while nothing proves the observation path RAN, and the fix is to bind an execution receipt; here the observation ran and reported FAITHFULLY — the instrument answered its own question correctly — and what is wrong is that its output was complete for the REPORTER s purpose and was read as complete for the CONSUMER s. ",
+
+    "Provenance is intact; the SUBJECT is substituted, so no receipt binding can detect it and the repair is instead to derive the set from the subject itself. ",
+
+    "Distinct from `total_at_the_level_examined_blind`, which is a judgment shape (a match total over the type it examines, blind inside an arm), and from `reachability_read_as_occupancy`, which asks whether a quiet guard should exist; this is neither a match nor a guard. ",
+
+    "Specimen with a receipt, repaired on main by gunbc#9829: the required floor asked `extdeps.git` `git.Core.DiffUnified0` (`git diff -U0 <range>`) which lines a change touched, and `floor_diff_edits_from_line_ranges` attributed those lines to enclosing declarations to decide which witness identities the change established. ",
+
+    "Git prints only the hunks that DIFFER, so on a rename it prints the module line and whatever else moved — while every identity at the destination is a newly qualified `module.function` that has never executed under that spelling, because the authored module name moved with the file. ",
+
+    "**THE REASON IT SURVIVED IS THAT THE TWO ANSWERS COINCIDE BY ACCIDENT IN THE COMMON CASE**: for a wholly-added file every line is a `+` line, so line attribution reaches every declaration and the defect is invisible; it appears only when the instrument gets TERSE, which rename detection is. ",
+
+    "Measured over the window reachable in a shallow session clone — a floor on the population, not the population, since older renames are unmeasured — 8 of 8 rename-destination `.dag` files carrying test decls were under-enrolled and at least 87 of their 103 identities were never selected; a PURE MOVE with no content edit enrolled NOTHING. ",
+
+    "It was not merely a reporting gap: changed-witness membership is what OVERRIDES the cost-debt withhold and the outside-gate suppression, so the same miss on a rostered identity is a silent decline of a witness whose author is present, which is the state `v2.workflow.floor_changed_witness` `changed_witness_execution_standing` exists to red. ",
+
+    "The repair derives the set from the subject: a path `parse_unified_diff_added_paths` already rules new-at-path contributes the declarations THE FILE ITSELF PARSES TO, bounded to that file s own decl list and never the corpus, so it is the precise answer rather than an absorbing widen. ",
+
+    "Its discriminating red is `rename_destination_enrolls_every_test_decl_not_only_the_diff_touched_one`, which feeds the specimen s verbatim diff and FAILS when the rule is disabled, paired with `in_place_modify_enrolls_only_the_touched_test_decl`, which passes under both states so the first cannot be satisfied by widening. ",
+
+    "**Recognition rule, and it predicts well beyond git**: whenever a set is read out of a tool s output, ask whether that tool promised completeness over YOUR question or over its own — `--stat`, any de-duplicating or truncating reporter, and any porcelain that elides for human brevity all report faithfully and none of them promise the consumer s set. ",
+
+    "**Its near twin is `executed_conjunct_discriminates_nothing`, approached from the other side**: there the satisfied signal is EXECUTION -- the conjunct genuinely runs and is genuinely gated on -- while here it is COMPLETENESS RELATIVE TO THE REPORTER, which is why this class is not a reachability problem and looking for an unexecuted path finds everything healthy. ",
+
+    "In both, the axis the diligent reader checks already reads green, and checking it harder returns the same green.)**THREE RECEIPTS FROM ONE SESSION (2026-09-01, XL-0T), ALL READ AS A GREEN OR A ZERO, AND THE THIRD IS THE ONE THIS ROW DID NOT ALREADY COVER.** (1) A remote build read as `ctrl-build --remote -- cargo check ... ",
+
+    "| tail -8`: the pipeline exits with TAIL's status, so it is zero whatever the compiler said, and the eight-line window it keeps is executor cleanup chatter carrying no line capable of holding an error. ",
+
+    "Absence of an error read as success AFTER every line that could contradict it had been discarded. ",
+
+    "(2) A regeneration wrapped in `/usr/bin/time -v` in a container where that binary does not exist: bash died at the wrapper, exited ZERO, the program never ran, and the subsequent `git diff` was EMPTY -- which reads exactly as `no drift`, the answer that would have RETRACTED a correct finding already registered as a prediction. ",
+
+    "(3) The floor's `[over-cost]` listing, from which order statistics were computed and reported as a distribution -- `median 390ms, p95 418ms, a dense band at 78-84% of the 500ms ceiling`. ",
+
+    "The listing is not the population and SAYS SO IN ITS OWN LAST LINE: `and 260 further row(s) over the 100ms line, not printed ... ",
+
+    "this list is the 25 most expensive, ranked on the declared cost basis`, against `over_cost_line_diagnostic=285`. ",
+
+    "The true shape was the OPPOSITE: one outlier 73ms clear of the field (501 refused, runner-up 428, the remaining 260 all at or below 337ms), and the gap claimed to be empty had a row sitting in it. ",
+
+    "**WHY THE THIRD IS THE SEVERE ONE AND WHY IT NEEDED THIS ROW RATHER THAN A NEW ONE.** The first two were filters the CONSUMER wrote, and the standing guard -- select on the result pattern, never on position -- catches both. ",
+
+    "The third was truncation the PRODUCER performed, for its own readability, and DECLARED IN BAND; there was no consumer-authored `head -N` to notice, so the guard does not fire and diligence along it returns green. ",
+
+    "That is this class exactly: the report was complete for the REPORTER's purpose and read as complete for the CONSUMER's, with provenance intact and the subject substituted. ",
+
+    "**GENERAL FORM, which extends the recognition rule above from completeness to ORDER: a ranked list is a VIEW, and a view's order statistics are not the population's.** A median or a percentile computed over a top-K is an order statistic of a truncated tail; it carries no trace of the truncation, it has the same shape and units as the real thing, and it is therefore strictly more dangerous than a wrong count, which at least invites the question `out of how many`. ",
+
+    "So: before computing ANY statistic over a tool's lines, find the producer's own statement of what it printed -- a `N further rows`, a `top K`, a `ranked by`, a total beside the listing -- and where the producer names a fuller artifact, THAT is the population and the log is a preview. ",
+
+    "**THE HARM WAS NOT TO THE AUTHOR'S OWN CONCLUSIONS**, which is what separates this receipt from the two beside it: the wrong distribution had already been relayed to a lane authoring a DECLARED RUNG DROP whose population is stated as a function of headroom against observed inflation. ",
+
+    "At the measured 8-11% a row tips only from a baseline near 450ms, so the true at-risk population was ONE row -- the 501 itself -- and the relayed number would have made it twenty-five, inside the one artifact whose entire value is that its population is honest, and in the direction that makes a class look larger, which is the direction nobody audits.)**FOURTH RECEIPT, AND IT WAS FOUND INSIDE THE INSTRUMENT BEING USED TO WRITE THE REPORT ABOUT THIS CLASS (2026-09-01, same session).** `v1.tests.claim.carrier_realization_census`, run over 1320 `.dag` files, prints `subjects=1320` -- and 1320 is the count of FILES INGESTED, not modules CENSUSED. ",
+
+    "Only 845 modules produce rows; 475, or 36 percent, are silently omitted. ",
+
+    "The omissions are not obscure: `v2.compiler.parse` is absent, and `v2.std.compilers.lexing` is absent while its siblings `body_lowering`, `cli_surface`, `sugar` and `semantic_decl_emission` are all present, so it is neither a test-module filter nor obvious unreachability. ",
+
+    "A consumer reads `subjects=` as coverage, which is this class exactly: the count is complete for the REPORTER's purpose -- files it accepted -- and was read as complete for the CONSUMER's, which is modules it examined. ",
+
+    "**THE SELECTION RULE IS DELIBERATELY NOT STATED HERE**: it was not determined, and guessing it would put a fabricated mechanism in a ledger row, which is worse than an incomplete one. ",
+
+    "**WHAT IT COST, MEASURED RATHER THAN IMAGINED.** A fixture authored specifically to settle an unrelated question landed in the omitted 475 and produced ZERO rows -- including its own positive control. ",
+
+    "Its emptiness was exactly what the hypothesis under test predicted, so without the control it would have been reported as confirmation of a hypothesis on evidence containing none. ",
+
+    "The absence-versus-zero distinction this class names reproduced itself INSIDE the test built to settle it, which is the practical lesson: catching a pattern does not inoculate you against it, and the exposure is highest immediately after being careful. ",
+
+    "**THE RESOLUTION-AXIS FORM, MEASURED 2026-09-02 (bold-stag-665 specimen i, bold-carp-449 specimen ii): THE INSTRUMENT RESOLVED THE REFERENCE TO SOMETHING ADJACENT TO THE INTENDED SUBJECT AND REPORTED FAITHFULLY ABOUT WHAT IT RESOLVED TO.** The adjacency is a different VERSION or a different SPELLING; and NEITHER specimen here is temporal, which is the clearest statement of where the boundary against `stable_citation_mutable_referent` falls: the time axis went there with the attempt case. ",
+
+    "Specimen (i) reads one fixed branch against one fixed main, specimen (ii) one fixed tree against one fixed staged copy at one instant; both would answer identically tomorrow, and their adjacency is ANCESTRY and NAMING rather than time.** The forms above substitute WHAT the instrument covered for what the subject contains. ",
+
+    "Here the instrument resolves to a DIFFERENT VERSION or a DIFFERENT NAME for the same subject, and its answer carries no mark of having done so. ",
+
+    "**THE TEETH: EVERY RUNG RETURNS A WELL-FORMED PLAUSIBLE ANSWER RATHER THAN AN ERROR, SO THE WRONG ANSWER DOES NOT LOOK LIKE A FAILURE, IT LOOKS LIKE DATA.** `+76/-31` reads as a change; `five functions missing` reads as a deletion. ",
+
+    "Each arrives with a mechanism ready to explain it, which is what makes it persuasive rather than merely wrong. ",
+
+    "**THE LADDER, WHICH IS THE TRANSFERABLE PART -- EVERY RUNG BUT THE LAST IS POSITIONAL, AND EACH GOES RED FOR A DIFFERENT IRRELEVANT REASON:** line-diff is red on a REWRITE; identifier-diff is red on a RENAME; concept-mapping is the only test that decides. ",
+
+    "Identifier-absence is not the cure for line-absence, it is the SAME positional test one level up -- **absence of a NAME is not absence of a CAPABILITY, and only the second is a loss.** **SPECIMEN (i), the line rung -- an ancestry the merge destroyed.** Under SQUASH merge the squashed commit is not an ancestor of the branch, so `git diff --stat origin/main...origin/session/<branch>` re-renders ALREADY-LANDED work as unlanded: gunbc#10100 rendered 3 files, +76/-31, for content wholly present on main. ",
+
+    "The deciding test is content -- `git merge-tree --write-tree origin/main <branch>` against `git rev-parse origin/main^\{tree\}`, identical shas meaning the merge is a no-op. ",
+
+    "A peer hit the same rendering on gunbc#9995 and reported a no-op as a 5313-line partial revert. ",
+
+    "**SPECIMEN (ii), the identifier rung -- a rename read as a deletion (bold-carp-449, whose session is archived, so this row is the specimen's only durable form).** A worktree held staged residue: `prose_citation_census.dag` staged at 576 lines against main's 802, with 56 lines staged-only; its witness test 245 against 461, 23 staged-only. ",
+
+    "The first read reasoned from SIZE to CONTENT -- main is 226 lines further along, so these must be earlier phrasings -- which is unsound because a file can grow 226 lines while independently dropping 56. ",
+
+    "The token test that replaced it pulled distinctive identifiers from each staged-only line and grepped main: 25 of 56 and 15 of 23 were ABSENT, INCLUDING FIVE WHOLE FUNCTIONS AND FOUR WHOLE TEST FNS, which reads as a substantial deletion. ",
+
+    "IT WAS ENTIRELY RENAMES. ",
+
+    "Every construct exists in main under different wording -- staged `cross_file: Bool` became main's `ProseCitationLocality = InRetiringFile | InAnotherFile | RetiringFileAmbiguous`; `prose_citation_baseline_row` became `prose_citation_baseline_reading`; `a_citation_in_the_retiring_file_is_not_cross_file` became `a_citation_in_the_retiring_file_is_local_to_it`. ",
+
+    "**TWO WERE STRICTLY STRONGER IN MAIN** -- the `Bool` became a three-arm coproduct expressing the several-paths case a `Bool` cannot, and main carried an entire second axis the staged copy lacked -- so the instrument reported a LOSS where the truth was a GAIN. ",
+
+    "What settled it was reading main's type and function definitions and asking which CONCEPT each staged construct maps onto. ",
+
+    "**RECOGNITION RULE, COVERING BOTH, AND IT MUST FIRE AT READING TIME RATHER THAN AT RETRACTION TIME:** before reading an ABSENCE or a DIFFERENCE as a fact about the subject, establish that the instrument resolved to the subject you meant -- the same version, the same concept -- because every cheap test available resolves to something adjacent and says nothing about having done so. ",
+
+    "**THE NEAR-MISSES ARE PART OF THE RECEIPT AND ARE WHY THIS IS FILED AT ALL.** Neither reached a wrong decision and each halted one step short: the no-op diffstat was settled by tree sha before anyone acted on reopening; the deletion was settled by concept-mapping before anything was restored. ",
+
+    "A class whose specimens each halt one step from harm names exactly what the recognition rule has to beat. ",
+
+    "**BOUNDED AGAINST THE FOUR NEAREST ROWS, and these boundaries are the justification for a form here rather than a fourth authority.** `receipt_names_a_property_not_the_tree_it_holds_of` is a RECEIPT that was valid and EXPIRED when its base moved, repaired by re-deriving against the new base; here nothing expires -- every reading is live and true of its own subject, and the defect is manufactured by JOINING two of them. ",
+
+    "`positional_citation` is an authored HANDLE that decays and fails by matching zero; here the handle keeps matching perfectly and returns a confident answer about something else -- and note the sharper relation, that specimen (ii) shows an identifier GREP is itself a positional test, so `positional_citation` names the decaying-pointer half while this row names the unsound-absence half. ",
+
+    "`execution_provenance_loss` asks whether the observation ran; here it ran and reported faithfully. ",
+
+    "`stable_citation_mutable_referent` is the boundary that decides what this form does NOT carry, and it is the sharpest of the four because the two look identical at the call site -- both are a confident well-formed answer about a subject the reader did not mean. ",
+
+    "**THE TEST THAT SEPARATES THEM IS NOT WHETHER THEY FEEL DIFFERENT BUT WHETHER THE REPAIRS TRANSFER: does a reader who correctly diagnoses one perform the RIGHT FIX for the other? No -- and each fix is actively wrong applied to the other, which is why this is a boundary rather than a framing.** There the identifier resolves to its own correct subject and the WORLD replaces the content served underneath it, so the reader's test was right and re-reading CONFIRMS the wrong answer; the repair is to pin the citation to something that cannot be replaced -- an attempt number, a sha, an immutable artifact. ",
+
+    "Here nothing is replaced and nothing moves: every reading is live and would be identical tomorrow, the reader's TEST is what resolved to the neighbouring question, and the repair is to change the test rather than the citation -- line-diff to identifier-diff to concept-mapping. ",
+
+    "Crossed over, both fixes fail: PIN a squash-merge two-dot and you have pinned a merge base that was always the wrong one, and CONCEPT-MAP two attempts and you conclude a migration is real without ever establishing the two readings share a subject. ",
+
+    "That is why the ATTEMPT axis is not in the list above and why the job-id receipt is filed there rather than here: an attempt genuinely was replaced, which is that class and not this one. ",
+
+    "All of them share provenance-intact subject substitution, which is why this is a FORM of this row and not a new one.) **RECEIPT (1) IS NOW MEASURED RATHER THAN ASSERTED, AND A NAMED TOOL IS CLEARED BY THE SAME CONTROL (2026-09-03, vivid-ibex-751).** Receipt (1) above states that a `| tail` pipeline exits with tail's status; it was true and it was prose. ",
+
+    "The discriminating pair, one line apart on one command: `ctrl-build --local -- cargo check -Z definitely-not-a-real-flag 2>&1 | tail -2` reports rc=0 with PIPESTATUS[0]=101, and the same command unpiped reports rc=101. ",
+
+    "A positive control and a red on a fixed subject, so the mechanism is now established by execution rather than by description. ",
+
+    "THE EXONERATION IS THE PART THIS ROW DID NOT CARRY. ",
+
+    "On the strength of the piped reading, `ctrl-build` was reported to a manager as a fleet-wide false-green generator -- a build wrapper whose exit status did not reflect its compile -- and was one message from being filed as a defect against a shared tool. ",
+
+    "THE UNPIPED CONTROL CLEARS IT: the wrapper reports the compile's status correctly and always did. ",
+
+    "The 0 was tail succeeding at printing the failure. ",
+
+    "That is the first receipt here where a named component was ACCUSED and then CLEARED, and it is recorded beside the accusation deliberately: fabricated debt against a blameless component costs more than the misreading that produced it, because it sends every other lane hunting in the wrong place, and a clearing that lives only in a chat thread does not reach them. ",
+
+    "The three remedies are not interchangeable: `set -o pipefail` and reading PIPESTATUS[0] both work and both require the author to remember at the exact moment they are not thinking about it; NOT PIPING THE THING WHOSE STATUS YOU NEED is the only unconditionally safe one. ",
+
+    "AND THE MISATTRIBUTION SURVIVED A WRITTEN NOTE OF THIS EXACT FACT. ",
+
+    "What stopped it was being asked to file the row: a failure-mode row must name its DISTINGUISHING FACT, and that is the one field that cannot be filled without measuring. ",
+
+    "**FIFTH RECEIPT, AND IT IS THE SECOND HIT ON THE SAME ARTIFACT (2026-09-03, calm-boar-314).** The required-floor log prints, for a witness interrupted by the cpu deadline, both `cpu_at_least=503ms/500ms` and the sentence `interrupt_point=503ms is where the poll observed the ceiling; every interrupted row reports approximately whatever ceiling interrupted it, so that figure is a property of the BUDGET and not of this row -- do not compare it with the budget or with another row's`, together with `ABOVE 500ms with NO UPPER BOUND (a bound, not a near miss: it is wrong as a cost by an unbounded amount, always low)`. ",
+
+    "A 926KB log was downloaded, grepped for the blocking populations, and three figures transcribed into margins of 0.6, 0.8 and 5.4 percent against a 500ms ceiling -- percentages computed against a sentence forbidding that comparison, printed on the same line as the figures. ",
+
+    "Only one of the three was a margin at all; the other two were interrupt points, and a cost unbounded above is INDISTINGUISHABLE THROUGH THIS INSTRUMENT from the step change the reading was offered to rule out, so the conclusion was not merely unsupported but unfalsifiable from the evidence held. ",
+
+    "**What makes it the second hit rather than a first: the same log's `[over-cost]` listing had already produced the truncated-order-statistics receipt above, so this artifact had already taught this lesson once, to the same reader, on the same file.** The structural argument the margins were decorating -- that a prose string in a ledger row has no path to the CPU cost of an emit test -- was sound alone, which is the harm: the numbers added the appearance of a measured claim to an argument that was already better without them. ",
+
+    "**WHAT THE TWO 2026-09-03 RECEIPTS SAY TOGETHER, co-signed by both lanes and stated in the form that survives the difference between them.** Two lanes, one hour, unrelated subjects, both reading a STATUS or a FIGURE as a fact about a subject the instrument was not reporting on -- and in the one case where a guard rail WAS printed in band, it did not hold. ",
+
+    "The narrowing is deliberate and was calm-boar-314's: the strong form -- that both read past an in-band guard rail -- is true of the margin receipt, whose forbidding sentence sat on the line the figures were extracted from, and FALSE of the status receipt, where the `tail` window had already DISCARDED every contradicting line. ",
+
+    "Nothing was there to read past; the guard rail was absent, not ignored. ",
+
+    "This row already keeps those apart as consumer-authored versus producer-declared truncation, and the co-signed claim is written so it does not need the weaker case to be stronger than it was. ",
+
+    "**SECOND SPECIMEN, AND IT MOVES THE REPORTER PROPERTY FROM SCOPE TO VINTAGE** (eager-pike-541, 2026-09-03). ",
+
+    "The instrument was the locally built `claim_executor`; it ran and answered its own question correctly, and its question was asked under the semantics of an OLDER corpus than the tree under test. ",
+
+    "After merging a main that had added new compiler seed files, the floor refused with `function parsed_import_statements not found in scope` before any claim executed and reported zero passing claims, whose surface reading is that the branch broke the corpus. ",
+
+    "It had not; the binary predated the function. ",
+
+    "THE COMPLETENESS AXIS IS THE SAME AND THE REPORTER PROPERTY IS DIFFERENT -- above, the report was complete for the reporter's SCOPE rather than the subject's; here it was correct for the reporter's VERSION rather than the subject's, which is why this is a specimen of this row rather than a new one. ",
+
+    "**THE RECEIPT IS THE DESTRUCTIVE ARM**: the same stale binary, asked to regenerate projections, DELETED three live rows from DESIGN.md -- a merged rung drop and two failure modes belonging to other lanes -- while the .dag authorities still declared all three, because a projection generated by an instrument that cannot see a row renders its absence as authoritative. ",
+
+    "THE GENERATED-ARTIFACT GATE CANNOT CATCH THIS: it compares the projection to its authority and reports clean once both sides agree on the loss, so only the instrument's vintage separates a projection from a deletion. ",
+
+    "The operative rule is that a local refusal measured against a MOVED main is not evidence about the branch until the instrument is rebuilt against that main.**THE NEXT-RUNG FORMULATION FOR THE RESOLUTION AXIS, AND THE ROW THAT DISSOLVED INTO IT (2026-09-03).** This form was drafted as a separate class, `contingent_instrument_coincidence_read_as_equivalence`, and filed as its own row before the repair-crossing test above was run against it. ",
+
+    "IT DOES NOT SURVIVE THAT TEST, and running it deliberately rather than arguing the names is what decided this, so the reasoning is recorded here for the next author who arrives with the same shape. ",
+
+    "THE PROPOSED CLASS: a standing evidence binding from a PROXY INSTRUMENT P to a TARGET QUESTION Q, holding only inside an UNOWNED SUBJECT CONDITION C, where inside C the answers agree and outside it they diverge with the instrument's output identical either way. ",
+
+    "CROSSING ONE, does this row's repair close that class: applying ESTABLISH THAT THE INSTRUMENT RESOLVED TO THE SUBJECT YOU MEANT to a two-dot comparison means checking whether the base you diff from IS the merge base, which is checking C exactly. ",
+
+    "It closes. ",
+
+    "CROSSING TWO, does the warrant repair close this row's specimens: for specimen (ii)'s identifier-absence read as capability-absence there IS a condition -- no renames occurred -- so a warrant demanding it refuses the unsound reading. ",
+
+    "It closes too. ",
+
+    "Both repairs close both classes, and DESIGN section 4b keys rows on the repair, so this is ONE class and the separate row was a second authority for a fact this row already owned. ",
+
+    "**WHAT THE DISSOLVED ROW CONTRIBUTES, AND IT IS NOT NOTHING: A NAME FOR THE CONDITION AND A CEILING ARGUMENT THIS ROW LACKED.** The recognition rule above fires at READING TIME and asks a reader to establish resolution; it has no vocabulary for a resolution that is CORRECT NOW AND LAPSES LATER, because C is stateful while naming a subject is static. ",
+
+    "The rungs enumerated above are all POSITIONAL and all repaired by a better reader. ",
+
+    "C is repaired by a CONSTRUCTION: state P, Q, C, the population, and C'S STANDING -- which authority asserts it and what happens when it lapses. ",
+
+    "Where C's standing resolves to review, memory, habit, or a merge somebody did earlier, it is UNOWNED, and an unowned condition lapses through OTHER PEOPLE'S CORRECT WORK, which is the hardest kind to notice because the mechanism that ends it is indistinguishable from ordinary progress. ",
+
+    "**ONE SENTENCE OF THE DRAFT WAS WRONG AT EVIDENCE GRAIN AND THE CORRECTION IS THE USEFUL PART.** It said the backing is ACCIDENTAL. ",
+
+    "It is not: the observation genuinely backs P, faithfully and completely, exactly as this row's opening insists. ",
+
+    "It supplies NO backing whatever for Q absent an equivalence warrant. ",
+
+    "What is accidental is THE AGREEMENT OF THE ANSWERS -- and P HAPPENED TO EQUAL Q is not P WAS EVIDENCE FOR Q. ",
+
+    "Collapsing those two is the same substitution this row names, performed on the word EVIDENCE instead of on a set. ",
+
+    "**THE CEILING IS 4 AND IT IS DEMONSTRATED IN THIS REPOSITORY TODAY, WHICH IS WHY IT IS NOT ASPIRATION.** `gunbc.diff_baseline`'s `DiffBaseline` arm `ExactReplayBoundary` carries `observed_relation: GitObservedMergeBase` beside its base and head object identities, produced by `gunbc.git_diff_change_window`, consumed through `v2.workflow.floor_diff_observe`, with enrolled witnesses in `dag/test/claim/diff_baseline_witness_test.dag`. ",
+
+    "Its own note states the rule: the comparison is direct two-dot and NOT triple-dot BECAUSE THE PRODUCER ALREADY CLAIMS THE MERGE-BASE BOUNDARY. ",
+
+    "That field IS C, carried in the binding's own type, so the two-dot answer cannot be minted without the warrant that makes it answer Q. ",
+
+    "NEXT-RUNG TRIGGER, AND THE PAIRING IS THE WHOLE TRIGGER: a subject-bound typed equivalence warrant TOGETHER WITH an enumerating consumer over instrument-to-question bindings. ",
+
+    "The construction half exists today for exactly ONE pair, in one module; nothing ranges over such bindings asking which carry a warrant. ",
+
+    "Naming either half alone would satisfy the trigger while the capability stayed dead, which is the section 4b(3) defect. ",
+
+    "**THE ARGUMENT FOR THE PAIRING IS MADE BY THAT ASYMMETRY RATHER THAN BY ASSERTION: a repository can hold the correct construction and still be blind to the class, because a construction nobody enumerates protects exactly the one binding whose author happened to think of it.** **A FOURTH RESOLUTION-AXIS RECEIPT, CROSS-SECTIONAL RATHER THAN ANCESTRAL OR LEXICAL, contributed by tidy-swift-334 from their own retracted finding.** P was a success-and-failure partition of CI runs by HOST FAMILY; Q was stable per-family provisioning capability; the unheld condition was that transient runner state stayed fixed across the sample. ",
+
+    "The partition was published as a fleet-wide fact and was refuted when THE SAME HOST CHANGED SIDES while host identity stayed constant -- so the instrument had resolved to an adjacent subject, a few minutes of scheduling, and reported faithfully about that. ",
+
+    "It is the cleanest specimen of the form because the adjacency is neither version nor spelling but SAMPLING WINDOW, and because two disjoint sets of four hosts are exactly what an intermittent defect looks like when each side samples different minutes. ",
+
+    "**A SECOND INSTANCE IN A DIFFERENT SUBSYSTEM, carried compactly: the required floor's `planned=` delta read as proof that new witnesses ENROLLED.** Two arms, 2026-08-22, each cited by naming its producer -- `report_required_floor_outcome` over `v1_compiler.cli_run` `RequiredFloorOutcome`. ",
+
+    "Run 32553383403 at e82653fc1, two attempts of one sha on two runners, shows the counters agree. ",
+
+    "The commit pair af719cc6 and 951683ae, whose whole diff is one `.md` and ONE added line in `src/v2/lens/inert_carrier.dag`, shows that same `offered` counter MOVES while the decline counters stay identical, so the movement is new discovery and not re-classification. ",
+
+    "DETERMINISM IS NOT INDEPENDENCE: an instrument can be exactly reproducible per commit and still unable to isolate the change under study, and an author who verifies the first and concludes the second has checked the half that was never in doubt.",
+  ],
+
+  evidence: [],
+}

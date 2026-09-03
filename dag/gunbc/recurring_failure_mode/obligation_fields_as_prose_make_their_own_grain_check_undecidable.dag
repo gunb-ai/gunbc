@@ -1,0 +1,118 @@
+module gunbc.recurring_failure_mode.obligation_fields_as_prose_make_their_own_grain_check_undecidable
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data obligation_fields_as_prose_make_their_own_grain_check_undecidable: RecurringFailureMode = RecurringFailureMode {
+  identity: "obligation_fields_as_prose_make_their_own_grain_check_undecidable" as NonEmptyStr,
+
+  receipts: [
+    "**the facts an obligation REQUIRES are carried as one prose field, so the obligation's own consistency is not a join any consumer can run -- and the mismatch it hides is then found, if at all, by a human reading a paragraph** (INVALID STATE: a typed carrier whose record declares identity and a few labels while every fact the governing rule NAMES lives inside one `String`. ",
+
+    "DESIGN section 4b(3) names five for a rung drop -- previous rung, temporary rung, reason, bounded population, restoration trigger -- and `gunbc.rung_drop`'s `RungDrop` has a field for none of them. ",
+
+    "HARM, and it is not that prose is ugly: the rule's OWN review tell becomes unmechanisable. ",
+
+    "4b(3) tells reviewers to watch for a grain mismatch between the loss sentence and the trigger sentence -- a plural loss with a singular trigger, a corpus loss with a per-module trigger. ",
+
+    "That is a JOIN over two populations, decidable the moment both are typed, and undecidable while both are sentences. ",
+
+    "THE SPECIMEN IS MEASURED, NOT HYPOTHETICAL (gunbc#10154, 2026-09-03). ",
+
+    "`floor_cut`'s loss clause named EIGHT lost capabilities; its restoration trigger enumerated FIVE siblings; one of those five had ALREADY RETIRED. ",
+
+    "On that path the row would have retired with three undeclared-dead guarantees under it, no row standing over them and no trigger left to fire. ",
+
+    "**THE AGGRAVATING FACT IS THAT THE GAP SURVIVED A REPAIR AUTHORED AGAINST THE EXACT TELL.** The trigger had been rewritten once already, on 2026-09-01, specifically to replace a prose-edit trigger with capability-grain siblings -- and that rewrite enumerated five against a loss sentence naming eight, in the same paragraph, without anyone noticing. ",
+
+    "A defect that survives its own targeted repair is evidence about the MEDIUM, not about the author's care. ",
+
+    "AND IT WAS NOT FOUND BY AUDIT: it surfaced from the floor's refusal of an unrelated PR. ",
+
+    "Nothing was looking. ",
+
+    "WHY THIS IS NOT `check_subject_narrower_than_its_declared_claim`, which is the nearest row and answers a different question. ",
+
+    "There, a check EXECUTES, is reached, goes green, and its implementation ranges over less than its declared subject -- the repair is to widen the check's range. ",
+
+    "Here NO check exists or can exist over the subject at all, because the two populations to be joined are not addressable; the repair is to type the fields so that a check becomes WRITABLE. ",
+
+    "One is a wall with too narrow a range; the other is a wall that cannot be built. ",
+
+    "They will co-occur -- once the fields are typed, the resulting join can itself under-range, which is that row and not this one. ",
+
+    "WHAT THIS ROW DOES NOT CLAIM, because the carrier already argued the other side and it argued it well. ",
+
+    "`gunbc.rung_drop`'s own module note pre-registers this exact point: it records that splitting `authored` into the five fields was deliberately NOT attempted, because deciding per row which sentence is the reason and which the population is semantic rewriting with no oracle, and because doing it inside a relocation would make a content change indistinguishable from a move. ",
+
+    "That reasoning is sound and this row does not contest it -- the note is CITED rather than restated (DESIGN section 3). ",
+
+    "**WHAT THIS ROW ADDS IS THE CONSEQUENCE, WHICH CHANGES THE PRIORITY WITHOUT CHANGING THE ARGUMENT.** The note reasons from AUTHORING COST -- the split is expensive and unoracled, so defer it. ",
+
+    "The measured consequence is that while it is deferred, the obligation's own consistency check cannot be written, and a grain mismatch of exactly the kind 4b(3) warns about survived in a load-bearing row until an unrelated refusal exposed it. ",
+
+    "That converts the field split from tidiness into a correctness obligation with a demonstrated cost, and DESIGN section 4b is explicit that below ceiling is a correctness gap and never optional elegance. ",
+
+    "THE SEQUENCING THE NOTE ITSELF ASKED FOR IS NOW ARRIVING: the note says the field work lands in a follow-up where each row is a readable diff, and gunbc#10197 splits the carrier one row per file, which is that condition. ",
+
+    "Before it, the change is dozens of edits to one file with no reviewable unit; after it, each row is an independent diff. ",
+
+    "So the blocker the note names is dissolving on another lane's schedule, and this row exists so the obligation is not forgotten when it does. ",
+
+    "RECOGNITION RULE, stated to generalise past this carrier: **for any rule that NAMES the facts a declaration must carry, count how many of those names are FIELDS.** If the count is zero and the rule also supplies a review tell, the tell is unmechanisable by construction and the rule is enforced by attention alone. ",
+
+    "The tell that you are looking at an instance rather than at ordinary prose is a governing document that enumerates required facts, plus a carrier whose record shape does not mention any of them, plus a review instruction phrased as something a reader should NOTICE. ",
+
+    "A SECOND, SHARPER TELL: the carrier has a SIBLING that types the same family of obligation. ",
+
+    "`gunbc.guarantee_stall`'s `GuaranteeStall` carries subject, current rung, ceiling, blocker, population and next-rung trigger as typed fields, and has TWO EXECUTING CONSUMERS over them -- `every_live_stall_is_below_its_ceiling` and `every_live_stall_names_a_next_rung_trigger`. ",
+
+    "Two carriers for two genuinely distinct 4b obligations is correct and is NOT a section 3 fork; what is not correct is that one of them can check itself and the other cannot. ",
+
+    "The sibling is the existence proof that the fields are authorable. ",
+
+    "**A BOUND ON THE TRIGGER BELOW, ESTABLISHED BY SOMEONE BUILDING THE WRONG VERSION OF IT (zesty-gull-732, 2026-09-03), recorded so this row's own remedy is not cited past its subject.** I proposed to that lane a neighbouring invariant -- every sibling identity a row NAMES resolves to a file -- and they implemented it, which falsified it twice. ",
+
+    "FIRST, the general form is not computable from `authored` at all: a backticked name in prose may be a sibling drop, a function, a data row in another module or a config key, and a prefix heuristic reported 21 UNRESOLVED across 10 rows, every one a false positive. ",
+
+    "A smuggled heuristic standing exactly where the structure is missing, which is an INSTANCE of this row rather than a check that could precede it. ",
+
+    "SECOND and sharper: narrowed to the one family a naming convention makes decidable, it ran GREEN on a tree carrying five siblings where main had eight. ",
+
+    "A whole-file restructure keeps its whole side, so the trigger TEXT and the sibling ROWS are lost together and the family stays internally consistent while being three guarantees short. ",
+
+    "**A self-consistency check cannot discriminate a CONSISTENT STALE COPY** -- green before the loss, green after it, green on the merged tree -- so it would be cited as coverage for a class it never touches. ",
+
+    "WHAT THAT DOES AND DOES NOT BOUND. ",
+
+    "It does NOT weaken the trigger below, whose subject is the grain relation WITHIN one row -- does this row's trigger population span this row's loss population -- which is decidable once both are fields and is exactly what no reader reliably performs. ",
+
+    "It DOES establish that such a join is confined to one tree, so it can never detect rows LOST BETWEEN TREES; that defect lives in the relationship between two versions and is invisible to anything reading one. ",
+
+    "Those are different subjects with different oracles, the second being an external comparison against another tree, and this row claims only the first. ",
+
+    "The general lesson is the cheaper one: the way that limit was found was by BUILDING the check and running it against the tree it was supposed to refuse. ",
+
+    "A proposed invariant that has not been run against its own discriminating red is a specification, and DESIGN section 5 says so. ",
+
+    "I proposed it without doing that; they did it, and the proposal did not survive. ",
+
+    "RUNG FOUND AT: outside the ladder. ",
+
+    "The failure is silent by construction -- a mismatched row is well-formed, projects cleanly, and passes every gate, because nothing reads inside the field. ",
+
+    "CEILING: 3, structurally guaranteed. ",
+
+    "Once previous rung, temporary rung, reason, population and trigger are typed, 'the trigger's population spans the loss population' is a decidable join at identity grain, and a row failing it need not be `Accepted`. ",
+
+    "Rung 4 is not attainable while a population is a list of names an author writes, since a wrong name is still spellable. ",
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **the five 4b(3) facts carried as TYPED FIELDS on the drop carrier, with an executing consumer that joins a row's trigger population against its loss population and REFUSES a row whose trigger does not span it** -- sufficient for the `floor_cut` five-against-eight state to be refused rather than reviewed. ",
+
+    "Typing the fields WITHOUT that consumer does not discharge this: the sibling carrier shows fields plus consumers is the shape that works, and fields alone would leave the same tell unmechanised in a nicer record. ",
+
+    "Nor does the one-row-per-file split discharge it -- that removes the CONFLICT grain and leaves every fact still inside one prose field, which is how this row is known to be a distinct subject from gunbc#10197 rather than a restatement of it.)",
+  ],
+
+  evidence: [],
+}
