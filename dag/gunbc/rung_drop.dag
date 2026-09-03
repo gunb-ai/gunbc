@@ -48,9 +48,28 @@ module gunbc.rung_drop
 // is an inert lens and is why the rung stays where it is. RUNG: 1, mitigated -- the shape is safe by
 // default and by nothing else. CEILING: 2, mechanically preventable; not higher, because git's text
 // merge is external reality and no model here can make a shared line unwritable in another clone.
-// NEXT-RUNG TRIGGER, naming the capability and not an artifact: a declaration-extent producer able
-// to refuse BOTH a second growth-surface row in one file AND the removal of the separation between
-// an amendable row's fields, at authoring time on the real acceptance path. It has not landed.
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: a required-lane consumer that
+// EXECUTES a witness whose inputs are recorded from a non-hermetic origin, sufficient for a
+// three-arm merge probe to produce a VERDICT rather than a route gap.
+//
+// WHY THE TRIGGER IS THAT AND NOT "WRITE THE PROBE", established from the tree rather than
+// predicted. The probe itself is expressible today: `extdeps.git.plumbing` already models git
+// plumbing with typed argv, existing wet witnesses already reach `extdeps.shell` and
+// `extdeps.filesystem.filesystem_io`, and the three arms above ARE the probe. What it would not do
+// is produce a verdict. Its nearest existing analogue is `test.claim.fleet_revision_relation_wet_matrix`,
+// a witness matrix over real git operations: `v2.workflow.floor_route_gap` declares all seven of its
+// identities as expected route gaps, every one `operation: "MergeBase"` with ground `NoMockResponse`,
+// and the recorded fixtures for that operation EXIST in the corpus while the matrix still yields no
+// verdict. The contrast is inside the same subject: `test.claim.fleet_main_revision_witness_test`
+// consumes the same fleet-revision concept, is in no gap row, and executes ordinary fns. So the line
+// the required lane draws is not hermetic-versus-wet posture but INPUT ORIGIN -- a witness that
+// constructs its inputs executes, a matrix over recorded external operations route-gaps -- and
+// `Record` mode does not cross it, since the fixtures being present is exactly the case measured.
+//
+// SO THE PROBE IS DELIBERATELY NOT WRITTEN HERE. Landing it would add rows to the route-gap roster
+// and buy no wall, and a probe cited in a change as the evidence for its own fix while producing no
+// verdict is the rung inflation this ladder exists to refuse. The separation therefore rests on this
+// paragraph, which is prose, and that is the honest state until the trigger above fires.
 //
 // WHICH SIDE OF THE PROJECTION LINE THESE FILES SIT ON, because the answer decides whether the
 // separation can survive. They are HAND-AUTHORED. `gunbc.generated_artifact` emits exactly three
