@@ -453,8 +453,9 @@ type SameHeadAttemptPair {
 // semantic cache impurity for the specimen; it does NOT rule out a cache hit changing only the
 // instrumentation count by itself. The two retained same-head artifacts disfavor that explanation
 // independently: attempt 3 is LOWER for five drifting identities and HIGHER for ten, whereas a warm
-// cache skipping work predicts one direction. The remaining order- or hidden-state mechanism is
-// open. This detector names the first divergent
+// cache skipping work predicts one direction. The cross-attempt sum is nearly, but not exactly,
+// conserved, so attribution movement remains live beside genuine work drift. CAUSE IS NOT
+// ESTABLISHED. This detector names the first divergent
 // ROW available in the cost artifact (identity, module, attempts and both counts). The artifact carries no expression trace,
 // so claiming a first divergent evaluator point here would fabricate precision the producer does
 // not expose.
