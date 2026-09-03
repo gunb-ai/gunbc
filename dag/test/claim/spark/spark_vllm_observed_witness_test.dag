@@ -24,6 +24,8 @@ import gunbc.spark.vllm_observed {
   vllm_tp_realization_missing_wire,
   vllm_tp_realization_refusal_cause,
   vllm_capacity_from_cache_config_fields,
+  vllm_served_id_is_not_derivable_from_configured_path,
+  vllm_version_route_2026_09_03,
   vllm_readback_2026_09_03,
 }
 import extdeps.vllm.server {
@@ -31,13 +33,19 @@ import extdeps.vllm.server {
   VllmRoutePopulation,
   OrdinarilyRegistered,
   RegisteredOnlyUnderDevelopmentMode,
-  VllmBuildIdentity,
-  vllm_build_identity,
+  VllmSelfReportedVersion,
+  vllm_self_reported_version,
   vllm_parallel_evidence_routes,
   vllm_evidence_route_server_info,
   vllm_evidence_route_get_world_size,
   vllm_evidence_route_collective_rpc,
   VllmEvidenceRoute,
+  VllmEvidenceRouteResponse,
+  EvidenceRouteNotServed,
+  EvidenceRouteAnsweredWithoutParse,
+  EvidenceRouteResolvedConfiguration,
+  vllm_resolved_parallel_configuration_capture,
+  vllm_group_aware_capacity_capture,
   VllmEvidenceKind,
   ResolvedParallelConfiguration,
   DerivedWorldSizeProduct,
@@ -68,7 +76,7 @@ fn w_acquisition(host: HostIdentity) -> VllmReadbackAcquisition {
   vllm_readback_acquisition(
     front_door_host: host,
     observed_on: "w-fixture-date" as NonEmptyStr,
-    build: vllm_build_identity(version_string: "w-fixture-build" as NonEmptyStr))
+    version_route: vllm_version_route_readback(server_version: "w-fixture-build" as NonEmptyStr))
 }
 
 fn w_models_route() -> VllmModelsRouteReadback {
@@ -78,11 +86,24 @@ fn w_models_route() -> VllmModelsRouteReadback {
     max_model_len: "1024" as NonEmptyStr)
 }
 
-fn w_outcomes(answered: Bool) -> List<VllmEvidenceRouteOutcome> {
-  map(vllm_parallel_evidence_routes, r => vllm_evidence_route_outcome(route: r, answered: answered))
+fn w_not_served() -> VllmEvidenceRouteResponse {
+  EvidenceRouteNotServed { http_status: "404" as NonEmptyStr }
 }
 
-fn w_transaction(host: HostIdentity, answered: Bool) -> VllmReadbackTransaction {
+fn w_parsed_config() -> VllmEvidenceRouteResponse {
+  EvidenceRouteResolvedConfiguration {
+    capture: vllm_resolved_parallel_configuration_capture(
+      tensor_parallel_degree: "2" as NonEmptyStr,
+      pipeline_parallel_degree: "1" as NonEmptyStr,
+      data_parallel_degree: "1" as NonEmptyStr),
+  }
+}
+
+fn w_outcomes(response: VllmEvidenceRouteResponse) -> List<VllmEvidenceRouteOutcome> {
+  map(vllm_parallel_evidence_routes, r => vllm_evidence_route_outcome(route: r, response: response))
+}
+
+fn w_transaction(host: HostIdentity, response: VllmEvidenceRouteResponse) -> VllmReadbackTransaction {
   vllm_readback_transaction(
     acquisition: w_acquisition(host: host),
     models_route: w_models_route(),
@@ -91,7 +112,7 @@ fn w_transaction(host: HostIdentity, answered: Bool) -> VllmReadbackTransaction 
       kv_cache_dtype: "w-dtype" as NonEmptyStr,
       gpu_memory_utilization: "0.5" as NonEmptyStr,
       prefix_caching_enabled: true),
-    parallel_evidence_outcomes: w_outcomes(answered: answered),
+    parallel_evidence_outcomes: w_outcomes(response: response),
   )
 }
 
@@ -102,9 +123,9 @@ fn w_transaction(host: HostIdentity, answered: Bool) -> VllmReadbackTransaction 
 // drives the constructor with two DIFFERENT hosts and asserts the refusal followed each -- which is
 // a claim about the derivation, not about either row.
 test fn w_the_refusal_host_is_derived_from_the_acquisition_it_belongs_to() -> Bool {
-  w_transaction(host: w_fixture_host, answered: false).realization.front_door_host as String
+  w_transaction(host: w_fixture_host, response: w_not_served()).realization.front_door_host as String
     == w_fixture_host as String
-  && w_transaction(host: operator_host_srv5, answered: false).realization.front_door_host as String
+  && w_transaction(host: operator_host_srv5, response: w_not_served()).realization.front_door_host as String
        == operator_host_srv5 as String
 }
 
@@ -114,11 +135,11 @@ test fn w_the_refusal_host_is_derived_from_the_acquisition_it_belongs_to() -> Bo
 // arm. Something answering moves the open question to the population. Both are driven through the
 // real function, so an implementation that hardcoded either arm fails here.
 test fn w_the_missing_stage_follows_whether_any_evidence_route_answered() -> Bool {
-  match vllm_missing_evidence_for(outcomes: w_outcomes(answered: false)) {
+  match vllm_missing_evidence_for(outcomes: w_outcomes(response: w_not_served())) {
     ResolvedParallelConfigurationNotObserved => true
     JoinedRankPopulationNotObserved => false
   }
-  && match vllm_missing_evidence_for(outcomes: w_outcomes(answered: true)) {
+  && match vllm_missing_evidence_for(outcomes: w_outcomes(response: w_parsed_config())) {
     JoinedRankPopulationNotObserved => true
     ResolvedParallelConfigurationNotObserved => false
   }
@@ -126,7 +147,7 @@ test fn w_the_missing_stage_follows_whether_any_evidence_route_answered() -> Boo
 
 // AND THE TRANSACTION CARRIES THAT SAME DERIVATION rather than a separately supplied stage.
 test fn w_the_transaction_carries_the_derived_stage_and_not_a_supplied_one() -> Bool {
-  match w_transaction(host: w_fixture_host, answered: true).realization.missing {
+  match w_transaction(host: w_fixture_host, response: w_parsed_config()).realization.missing {
     JoinedRankPopulationNotObserved => true
     ResolvedParallelConfigurationNotObserved => false
   }
@@ -145,7 +166,7 @@ test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
            && !contains(vllm_tp_realization_missing_wire(missing: m), "did not answer"))
     && contains(
          vllm_tp_realization_refusal_cause(
-           refusal: w_transaction(host: w_fixture_host, answered: false).realization),
+           refusal: w_transaction(host: w_fixture_host, response: w_not_served()).realization),
          "missing positive fact")
 }
 
@@ -158,13 +179,16 @@ test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
 test fn w_cache_config_block_fields_are_refused_as_a_capacity_authority() -> Bool {
   match decide_vllm_capacity_evidence(proposal: CacheConfigBlockFields) {
     CapacityEvidenceRefused { cause: c } => contains(c, "not a generally sufficient")
-    CapacityEvidenceAdmitted => false
+    CapacityEvidenceAdmitted { capture: _ } => false
   }
 }
 
 test fn w_the_group_aware_startup_capture_is_the_admitted_capacity_evidence() -> Bool {
-  match decide_vllm_capacity_evidence(proposal: GroupAwareStartupLogCapture) {
-    CapacityEvidenceAdmitted => true
+  match decide_vllm_capacity_evidence(proposal: GroupAwareStartupLogCapture {
+    capture: vllm_group_aware_capacity_capture(
+      pool_tokens: "w-pool" as NonEmptyStr, per_request_tokens: "w-req" as NonEmptyStr),
+  }) {
+    CapacityEvidenceAdmitted { capture: c } => c.pool_tokens as String == "w-pool"
     CapacityEvidenceRefused { cause: _ } => false
   }
 }
@@ -173,7 +197,7 @@ test fn w_the_group_aware_startup_capture_is_the_admitted_capacity_evidence() ->
 test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool {
   match vllm_capacity_from_cache_config_fields() {
     CapacityEvidenceRefused { cause: _ } => true
-    CapacityEvidenceAdmitted => false
+    CapacityEvidenceAdmitted { capture: _ } => false
   }
 }
 
@@ -206,9 +230,9 @@ test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bo
 // the production row, because the disagreement IS the observation -- and it is asserted as a
 // disagreement so a later edit that tidies the id to match the path cannot quietly erase the
 // evidence that an alias can lie.
-test fn w_the_served_id_advertises_a_quantisation_the_configured_path_contradicts() -> Bool {
-  contains(vllm_readback_2026_09_03.models_route.served_model_id as String, "iq3s")
-    && !contains(vllm_readback_2026_09_03.models_route.configured_model_path as String, "iq3s")
+test fn w_the_served_id_is_not_derivable_from_the_configured_path() -> Bool {
+  vllm_served_id_is_not_derivable_from_configured_path(
+    readback: vllm_readback_2026_09_03.models_route)
     && match vllm_readback_2026_09_03.realization.missing {
          ResolvedParallelConfigurationNotObserved => true
          JoinedRankPopulationNotObserved => false
@@ -223,9 +247,9 @@ test fn w_the_served_id_advertises_a_quantisation_the_configured_path_contradict
 // matters. A world size of 2 is consistent with TP=2, PP=2 and DP=2 alike.
 test fn w_a_world_size_answer_alone_does_not_advance_the_refusal_stage() -> Bool {
   match vllm_missing_evidence_for(outcomes: [
-    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, answered: false),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, answered: true),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, answered: true),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, response: w_not_served()),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, response: w_parsed_config()),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, response: w_parsed_config()),
   ]) {
     ResolvedParallelConfigurationNotObserved => true
     JoinedRankPopulationNotObserved => false
@@ -236,9 +260,9 @@ test fn w_a_world_size_answer_alone_does_not_advance_the_refusal_stage() -> Bool
 // advance", which would pass the claim above while making the later arm unreachable.
 test fn w_the_configuration_bearing_answer_alone_advances_the_stage() -> Bool {
   match vllm_missing_evidence_for(outcomes: [
-    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, answered: true),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, answered: false),
-    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, answered: false),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, response: w_parsed_config()),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_get_world_size, response: w_not_served()),
+    vllm_evidence_route_outcome(route: vllm_evidence_route_collective_rpc, response: w_not_served()),
   ]) {
     JoinedRankPopulationNotObserved => true
     ResolvedParallelConfigurationNotObserved => false
@@ -251,4 +275,19 @@ test fn w_only_the_server_info_route_bears_resolved_parallel_configuration() -> 
   vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_server_info.kind)
     && !vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_get_world_size.kind)
     && !vllm_evidence_kind_establishes_configuration(kind: vllm_evidence_route_collective_rpc.kind)
+}
+
+// AN UNPARSED 200 IS NOT KNOWLEDGE, AND MUST LEAVE THE REFUSAL WHERE A 404 DOES.
+//
+// This is the case a Bool could not express. A route that answered but whose body nobody read tells
+// you the route exists and nothing about the topology, so treating it as an answer is how "we did
+// not look" becomes "we know". The configuration-bearing route is the one answering here, so only
+// the unparsed-ness is doing the work.
+test fn w_an_unparsed_answer_does_not_advance_the_refusal_stage() -> Bool {
+  match vllm_missing_evidence_for(outcomes: [
+    vllm_evidence_route_outcome(route: vllm_evidence_route_server_info, response: EvidenceRouteAnsweredWithoutParse),
+  ]) {
+    ResolvedParallelConfigurationNotObserved => true
+    JoinedRankPopulationNotObserved => false
+  }
 }

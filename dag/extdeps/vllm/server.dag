@@ -36,15 +36,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // exact build the facts were established against is what stops a later reader applying them to a
 // different one, and it is what makes them falsifiable: a claim about "vLLM" cannot be checked, and a
 // claim about this build can.
-type VllmBuildIdentity sole_constructor {
+// SELF-REPORTED, AND THE NAME NOW SAYS SO. /version returns what the process says about itself. That
+// is not a build identity: it is not a digest of the executed image, nothing cross-checks it, and a
+// process can report a version string it was not built from. It is adequate for what this module
+// uses it for -- distinguishing incarnations and scoping version-sensitive facts -- and inadequate
+// for any claim about what code is running, so the type refuses to be called an identity.
+type VllmSelfReportedVersion sole_constructor {
   version_string: NonEmptyStr
 }
 
-fn vllm_build_identity(version_string: NonEmptyStr) -> VllmBuildIdentity {
-  VllmBuildIdentity { version_string: version_string }
+fn vllm_self_reported_version(version_string: NonEmptyStr) -> VllmSelfReportedVersion {
+  VllmSelfReportedVersion { version_string: version_string }
 }
 
-data vllm_build_observed_2026_09_03: VllmBuildIdentity = vllm_build_identity(version_string: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr)
+data vllm_version_reported_2026_09_03: VllmSelfReportedVersion = vllm_self_reported_version(version_string: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr)
 
 // THE ROUTE SPLIT IS THE LOAD-BEARING FACT IN THIS MODULE, not the route list.
 //
@@ -64,11 +69,11 @@ type VllmRoutePopulation
 type VllmRoute sole_constructor {
   path: NonEmptyStr
   population: VllmRoutePopulation
-  established_against: VllmBuildIdentity
+  established_against: VllmSelfReportedVersion
 }
 
 fn vllm_route(path: NonEmptyStr, population: VllmRoutePopulation) -> VllmRoute {
-  VllmRoute { path: path, population: population, established_against: vllm_build_observed_2026_09_03 }
+  VllmRoute { path: path, population: population, established_against: vllm_version_reported_2026_09_03 }
 }
 
 data vllm_route_models: VllmRoute = vllm_route(path: "/v1/models" as NonEmptyStr, population: OrdinarilyRegistered)
@@ -104,6 +109,47 @@ type VllmEvidenceKind
 // the path literal, which makes a semantic fact depend on a spelling: rename the route upstream and
 // the kind silently becomes the fallback arm, with nothing red. Pairing them at construction means a
 // route cannot exist in the evidence population without its kind being stated.
+// WHAT AN EVIDENCE ROUTE ACTUALLY RETURNED, WHICH A BOOL CANNOT CARRY.
+//
+// `answered: Bool` conflates three different states and lets the most important one be inferred: a
+// route that 404'd, a route that returned something nobody parsed, and a route that returned a
+// resolved configuration are not one bit. The middle case is the dangerous one -- a 200 whose body
+// was never read is not knowledge, and a Bool records it identically to a parsed answer.
+//
+// Only the third arm can move the refusal stage, so an unparsed 200 leaves the refusal exactly where
+// a 404 does. That makes the later stage unreachable from production today, which is correct: no
+// parser for this payload exists yet, and pretending otherwise is what the Bool allowed.
+type VllmResolvedParallelConfigurationCapture sole_constructor {
+  tensor_parallel_degree: NonEmptyStr
+  pipeline_parallel_degree: NonEmptyStr
+  data_parallel_degree: NonEmptyStr
+}
+
+fn vllm_resolved_parallel_configuration_capture(
+  tensor_parallel_degree: NonEmptyStr,
+  pipeline_parallel_degree: NonEmptyStr,
+  data_parallel_degree: NonEmptyStr,
+) -> VllmResolvedParallelConfigurationCapture {
+  VllmResolvedParallelConfigurationCapture {
+    tensor_parallel_degree: tensor_parallel_degree,
+    pipeline_parallel_degree: pipeline_parallel_degree,
+    data_parallel_degree: data_parallel_degree,
+  }
+}
+
+type VllmEvidenceRouteResponse
+  = EvidenceRouteNotServed { http_status: NonEmptyStr }
+  | EvidenceRouteAnsweredWithoutParse
+  | EvidenceRouteResolvedConfiguration { capture: VllmResolvedParallelConfigurationCapture }
+
+fn vllm_response_establishes_configuration(response: VllmEvidenceRouteResponse) -> Bool {
+  match response {
+    EvidenceRouteResolvedConfiguration { capture: _ } => true
+    EvidenceRouteAnsweredWithoutParse => false
+    EvidenceRouteNotServed { http_status: _ } => false
+  }
+}
+
 type VllmEvidenceRoute sole_constructor {
   route: VllmRoute
   kind: VllmEvidenceKind
@@ -160,13 +206,13 @@ type VllmHealthWorkerCoverage
 type VllmHealthCoverageFact sole_constructor {
   backend: VllmExecutorBackend
   coverage: VllmHealthWorkerCoverage
-  established_against: VllmBuildIdentity
+  established_against: VllmSelfReportedVersion
 }
 
 data vllm_ray_health_coverage: VllmHealthCoverageFact = VllmHealthCoverageFact {
   backend: RayDistributedExecutor,
   coverage: HealthDoesNotProbeDistributedWorkers,
-  established_against: vllm_build_observed_2026_09_03,
+  established_against: vllm_version_reported_2026_09_03,
 }
 
 // WHICH EVIDENCE MAY ESTABLISH KV CAPACITY -- AS A DECISION OVER PROPOSED EVIDENCE, NOT AS A CHOICE
@@ -185,17 +231,35 @@ data vllm_ray_health_coverage: VllmHealthCoverageFact = VllmHealthCoverageFact {
 // coincidence. What is universally true is that those two cache-config fields are not a GENERALLY
 // SUFFICIENT authority, because a multi-group layout can carry per-group block sizes the gauge's
 // resolved minimum does not represent.
+// THE ADMISSION CARRIES THE CAPTURE IT ADMITS, WHICH IS WHAT STOPS IT BEING VACUOUS.
+//
+// An earlier version admitted a bare GroupAwareStartupLogCapture arm with no payload. That is an
+// admission of nothing: it says a KIND of evidence would be acceptable, which no capacity claim can
+// ever be built from, so the positive direction was permanently unreachable and the decision was a
+// refusal wearing two arms. Carrying the parsed capture means admitting requires having one.
+type VllmGroupAwareCapacityCapture sole_constructor {
+  pool_tokens: NonEmptyStr
+  per_request_tokens: NonEmptyStr
+}
+
+fn vllm_group_aware_capacity_capture(
+  pool_tokens: NonEmptyStr,
+  per_request_tokens: NonEmptyStr,
+) -> VllmGroupAwareCapacityCapture {
+  VllmGroupAwareCapacityCapture { pool_tokens: pool_tokens, per_request_tokens: per_request_tokens }
+}
+
 type VllmCapacityEvidenceProposal
-  = GroupAwareStartupLogCapture
+  = GroupAwareStartupLogCapture { capture: VllmGroupAwareCapacityCapture }
   | CacheConfigBlockFields
 
 type VllmCapacityEvidenceVerdict
-  = CapacityEvidenceAdmitted
+  = CapacityEvidenceAdmitted { capture: VllmGroupAwareCapacityCapture }
   | CapacityEvidenceRefused { cause: String }
 
 fn decide_vllm_capacity_evidence(proposal: VllmCapacityEvidenceProposal) -> VllmCapacityEvidenceVerdict {
   match proposal {
-    GroupAwareStartupLogCapture => CapacityEvidenceAdmitted
+    GroupAwareStartupLogCapture { capture: c } => CapacityEvidenceAdmitted { capture: c }
     CacheConfigBlockFields =>
       CapacityEvidenceRefused {
         cause: "cache-config block fields are not a generally sufficient KV capacity authority: the gauge reports a resolved MINIMUM block size across ranks, and a multi-group cache layout can carry per-group block sizes and windows that minimum does not represent, so the product is not the engine's group-aware capacity even where it coincides with it",

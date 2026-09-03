@@ -4,15 +4,20 @@ import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv6 }
 import extdeps.vllm.server {
-  vllm_build_identity,
+  vllm_self_reported_version,
   VllmRoute,
   VllmRoutePopulation,
   OrdinarilyRegistered,
   RegisteredOnlyUnderDevelopmentMode,
-  VllmBuildIdentity,
+  VllmSelfReportedVersion,
   vllm_parallel_evidence_routes,
   VllmEvidenceKind,
   VllmEvidenceRoute,
+  VllmEvidenceRouteResponse,
+  EvidenceRouteNotServed,
+  EvidenceRouteAnsweredWithoutParse,
+  EvidenceRouteResolvedConfiguration,
+  vllm_response_establishes_configuration,
   vllm_evidence_kind_establishes_configuration,
   VllmCapacityEvidenceProposal,
   CacheConfigBlockFields,
@@ -74,10 +79,16 @@ type VllmCacheConfigGaugeReadback sole_constructor {
 // it and inherit its standing. That is not hypothetical here -- the 1,048,576-context launch that
 // was measured earlier is a different incarnation of the same pair, and treating its numbers as
 // current is the precise error this module exists downstream of.
+// THE ACQUISITION'S VERSION IS DERIVED FROM THE VERSION ROUTE, NOT SUPPLIED BESIDE IT.
+//
+// Previously the acquisition carried a version AND the version route carried one, so a transaction
+// could be built whose two halves named different builds -- a mixed-incarnation record that looks
+// like one read. The constructor now takes the version route and derives the acquisition's version
+// from it, so disagreement has no constructor rather than a witness watching for it.
 type VllmReadbackAcquisition sole_constructor {
   front_door_host: HostIdentity
   observed_on: NonEmptyStr
-  build: VllmBuildIdentity
+  reported_version: VllmSelfReportedVersion
 }
 
 // THE REFUSAL IS NOT A VERDICT, AND MODELLING IT AS ONE WOULD BE THE LIE. A verdict type implies a
@@ -107,7 +118,7 @@ type VllmTpRealizationRefusal sole_constructor {
 // The refusal rests on that and not on the inferred cause, so it survives the inference being wrong.
 type VllmEvidenceRouteOutcome sole_constructor {
   route: VllmEvidenceRoute
-  answered: Bool
+  response: VllmEvidenceRouteResponse
 }
 
 // THE TRANSACTION IS WHY THESE CANNOT DISAGREE.
@@ -152,9 +163,13 @@ fn vllm_readback_transaction(
 fn vllm_readback_acquisition(
   front_door_host: HostIdentity,
   observed_on: NonEmptyStr,
-  build: VllmBuildIdentity,
+  version_route: VllmVersionRouteReadback,
 ) -> VllmReadbackAcquisition {
-  VllmReadbackAcquisition { front_door_host: front_door_host, observed_on: observed_on, build: build }
+  VllmReadbackAcquisition {
+    front_door_host: front_door_host,
+    observed_on: observed_on,
+    reported_version: vllm_self_reported_version(version_string: version_route.server_version),
+  }
 }
 
 fn vllm_models_route_readback(
@@ -185,8 +200,11 @@ fn vllm_cache_config_gauge_readback(
   }
 }
 
-fn vllm_evidence_route_outcome(route: VllmEvidenceRoute, answered: Bool) -> VllmEvidenceRouteOutcome {
-  VllmEvidenceRouteOutcome { route: route, answered: answered }
+fn vllm_evidence_route_outcome(
+  route: VllmEvidenceRoute,
+  response: VllmEvidenceRouteResponse,
+) -> VllmEvidenceRouteOutcome {
+  VllmEvidenceRouteOutcome { route: route, response: response }
 }
 
 // THE STAGE IS DERIVED FROM THE OUTCOMES RATHER THAN ASSERTED, which is what makes the earlier arm a
@@ -207,7 +225,7 @@ fn vllm_missing_evidence_for(
   outcomes: List<VllmEvidenceRouteOutcome>,
 ) -> VllmTpRealizationMissingEvidence {
   if any(outcomes, o =>
-       o.answered
+       vllm_response_establishes_configuration(response: o.response)
          && vllm_evidence_kind_establishes_configuration(kind: o.route.kind)) {
     JoinedRankPopulationNotObserved
   } else {
@@ -236,10 +254,13 @@ fn vllm_tp_realization_refusal_cause(refusal: VllmTpRealizationRefusal) -> Strin
   ], "")
 }
 
+data vllm_version_route_2026_09_03: VllmVersionRouteReadback = vllm_version_route_readback(
+  server_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr)
+
 data vllm_readback_acquisition_2026_09_03: VllmReadbackAcquisition = vllm_readback_acquisition(
   front_door_host: operator_host_srv6,
   observed_on: "2026-09-03" as NonEmptyStr,
-  build: vllm_build_identity(version_string: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr))
+  version_route: vllm_version_route_2026_09_03)
 
 data vllm_readback_2026_09_03: VllmReadbackTransaction = vllm_readback_transaction(
   acquisition: vllm_readback_acquisition_2026_09_03,
@@ -247,15 +268,15 @@ data vllm_readback_2026_09_03: VllmReadbackTransaction = vllm_readback_transacti
     served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
     configured_model_path: "models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
     max_model_len: "262144" as NonEmptyStr),
-  version_route: vllm_version_route_readback(
-    server_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr),
+  version_route: vllm_version_route_2026_09_03,
   cache_config_gauge: vllm_cache_config_gauge_readback(
     kv_cache_dtype: "fp8_ds_mla" as NonEmptyStr,
     gpu_memory_utilization: "0.86" as NonEmptyStr,
     prefix_caching_enabled: true),
   parallel_evidence_outcomes: map(
     vllm_parallel_evidence_routes,
-    r => vllm_evidence_route_outcome(route: r, answered: false)),
+    r => vllm_evidence_route_outcome(
+           route: r, response: EvidenceRouteNotServed { http_status: "404" as NonEmptyStr })),
 )
 
 // CAPACITY IS ABSENT FROM THIS TRANSACTION, AND THE LAW SAYING WHY IS EXECUTABLE.
@@ -270,4 +291,19 @@ data vllm_readback_2026_09_03: VllmReadbackTransaction = vllm_readback_transacti
 // serving-capacity carrier will be multiplied again by the next person who finds it.
 fn vllm_capacity_from_cache_config_fields() -> VllmCapacityEvidenceVerdict {
   decide_vllm_capacity_evidence(proposal: CacheConfigBlockFields)
+}
+
+// WHAT THE ALIAS DISAGREEMENT ACTUALLY ESTABLISHES, NARROWED.
+//
+// This module claimed the served id and the configured path CONTRADICT each other. A substring test
+// does not establish a contradiction: the path not containing a quantisation token is not evidence
+// that the id's token is false, because a path need not name the quantisation at all. What is
+// established is weaker and sufficient -- the id carries a token the path does not, so the id is not
+// derivable from the path and must not be read as an artifact identity. The refusal of the id as an
+// artifact claim stands; the contradiction claim does not.
+fn vllm_served_id_is_not_derivable_from_configured_path(
+  readback: VllmModelsRouteReadback,
+) -> Bool {
+  contains(readback.served_model_id as String, "iq3s")
+    && !contains(readback.configured_model_path as String, "iq3s")
 }
