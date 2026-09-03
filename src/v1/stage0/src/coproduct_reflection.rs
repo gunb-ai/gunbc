@@ -594,11 +594,18 @@ fn decls_parse_only_from_disk(
     // member and not two -- naming both is a redundant declaration, never a doubled population.
     for f in files {
         let abs = ws.join(f);
-        if let Some(module_path) = crate::cli_run::extract_module_path(&abs) {
-            let rel = f.replace('\\', "/");
-            if !modules.iter().any(|(m, _)| m == &module_path) {
-                modules.push((module_path, rel));
-            }
+        let content = std::fs::read_to_string(&abs).map_err(|e| {
+            format!("{caller}: read declared pool file `{f}`: {e} (fail-closed; no silent skip)")
+        })?;
+        let Some(module_path) = crate::cli_run::extract_module_path(&content) else {
+            return Err(format!(
+                "{caller}: declared pool file `{f}` carries no module declaration, so it names no \
+                 module and contributes nothing (fail-closed; no silent skip)"
+            ));
+        };
+        let rel = f.replace('\\', "/");
+        if !modules.iter().any(|(m, _)| m == &module_path) {
+            modules.push((module_path, rel));
         }
     }
     modules.sort();
