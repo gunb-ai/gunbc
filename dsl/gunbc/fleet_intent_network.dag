@@ -14,12 +14,19 @@ import product.network_topology {
   Lan,
   DockerBridge,
   TailscaleOverlay,
+  DirectAttachFabric,
 }
 import product.placement_supply { HostIdentity }
+import std.types { List, Int, Bool, NonEmptyStr }
 
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
 data operator_host_srv3: HostIdentity = "srv3"
+
+data operator_host_spark_3bd5: HostIdentity = "spark-3bd5"
+data operator_host_spark_a3ee: HostIdentity = "spark-a3ee"
+data operator_host_spark_c2b1: HostIdentity = "spark-c2b1"
+data operator_host_spark_ac79: HostIdentity = "spark-ac79"
 
 data operator_lan_segment: NetworkSegment = NetworkSegment {
   cidr: "192.168.1.0/24",
@@ -103,12 +110,104 @@ data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data spark_pair_a_fabric_0_segment: NetworkSegment = NetworkSegment {
+  cidr: "192.168.102.0/24",
+  gateway: none,
+  locality: DirectAttachFabric,
+}
+
+data spark_pair_a_fabric_1_segment: NetworkSegment = NetworkSegment {
+  cidr: "192.168.103.0/24",
+  gateway: none,
+  locality: DirectAttachFabric,
+}
+
+data spark_pair_b_fabric_0_segment: NetworkSegment = NetworkSegment {
+  cidr: "192.168.100.0/24",
+  gateway: none,
+  locality: DirectAttachFabric,
+}
+
+data spark_pair_b_fabric_1_segment: NetworkSegment = NetworkSegment {
+  cidr: "192.168.101.0/24",
+  gateway: none,
+  locality: DirectAttachFabric,
+}
+
+data spark_3bd5_fabric_0_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-3bd5-fabric-0",
+  host: Present { value: operator_host_spark_3bd5 },
+  address: "192.168.102.10",
+  role: HostOperatingSystem,
+  locality: DirectAttachFabric,
+}
+
+data spark_a3ee_fabric_0_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-a3ee-fabric-0",
+  host: Present { value: operator_host_spark_a3ee },
+  address: "192.168.102.11",
+  role: HostOperatingSystem,
+  locality: DirectAttachFabric,
+}
+
+data spark_c2b1_fabric_0_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-c2b1-fabric-0",
+  host: Present { value: operator_host_spark_c2b1 },
+  address: "192.168.100.10",
+  role: HostOperatingSystem,
+  locality: DirectAttachFabric,
+}
+
+data spark_ac79_fabric_0_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-ac79-fabric-0",
+  host: Present { value: operator_host_spark_ac79 },
+  address: "192.168.100.11",
+  role: HostOperatingSystem,
+  locality: DirectAttachFabric,
+}
+
+data spark_3bd5_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-3bd5-host-lan",
+  host: Present { value: operator_host_spark_3bd5 },
+  address: "192.168.1.225",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data spark_a3ee_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-a3ee-host-lan",
+  host: Present { value: operator_host_spark_a3ee },
+  address: "192.168.1.226",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data spark_c2b1_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-c2b1-host-lan",
+  host: Present { value: operator_host_spark_c2b1 },
+  address: "192.168.1.232",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data spark_ac79_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "spark-ac79-host-lan",
+  host: Present { value: operator_host_spark_ac79 },
+  address: "192.168.1.233",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
 data fleet_intent_network: NetworkTopology = NetworkTopology {
   tailnet_domain: Present { value: "tailecbe08.ts.net" },
   segments: [
     operator_lan_segment,
     operator_docker_bridge_default_segment,
     operator_docker_bridge_secondary_srv1_segment,
+    spark_pair_a_fabric_0_segment,
+    spark_pair_a_fabric_1_segment,
+    spark_pair_b_fabric_0_segment,
+    spark_pair_b_fabric_1_segment,
   ],
   endpoints: [
     operator_lan_gateway_endpoint,
@@ -119,9 +218,84 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv3_bmc_endpoint,
     srv1_tailscale_endpoint,
     srv2_tailscale_endpoint,
+    spark_3bd5_fabric_0_endpoint,
+    spark_a3ee_fabric_0_endpoint,
+    spark_c2b1_fabric_0_endpoint,
+    spark_ac79_fabric_0_endpoint,
+    spark_3bd5_lan_endpoint,
+    spark_a3ee_lan_endpoint,
+    spark_c2b1_lan_endpoint,
+    spark_ac79_lan_endpoint,
   ],
 }
 
 fn fleet_intent_network_topology() -> NetworkTopology {
   fleet_intent_network
+}
+
+type CollectiveFabricGroup = NoCollectiveFabric | SparkPairA | SparkPairB
+
+fn host_collective_fabric_group(host: HostIdentity) -> CollectiveFabricGroup {
+  if host == operator_host_spark_3bd5 {
+    SparkPairA
+  } else {
+    if host == operator_host_spark_a3ee {
+      SparkPairA
+    } else {
+      if host == operator_host_spark_c2b1 {
+        SparkPairB
+      } else {
+        if host == operator_host_spark_ac79 {
+          SparkPairB
+        } else {
+          NoCollectiveFabric
+        }
+      }
+    }
+  }
+}
+
+type CollectivePlacement =
+    CollectiveAdmissible { fabric: CollectiveFabricGroup }
+  | CollectiveRefused { reason: NonEmptyStr }
+
+fn collective_fabric_groups_agree(a: CollectiveFabricGroup, b: CollectiveFabricGroup) -> Bool {
+  match a {
+    NoCollectiveFabric => match b { NoCollectiveFabric => true  _ => false }
+    SparkPairA => match b { SparkPairA => true  _ => false }
+    SparkPairB => match b { SparkPairB => true  _ => false }
+  }
+}
+
+fn collective_placement(ranks: List<HostIdentity>) -> CollectivePlacement {
+  let head_group = fold(
+    ranks,
+    init: NoCollectiveFabric,
+    f: (acc, host) => match acc {
+      NoCollectiveFabric => host_collective_fabric_group(host: host)
+      _ => acc
+    }
+  )
+  let all_agree = fold(
+    ranks,
+    init: true,
+    f: (acc, host) => acc && collective_fabric_groups_agree(
+      a: host_collective_fabric_group(host: host),
+      b: head_group
+    )
+  )
+  match head_group {
+    NoCollectiveFabric =>
+      CollectiveRefused {
+        reason: "collective_placement: no rank sits on a DirectAttachFabric. Tensor-parallel ranks exchange an all-reduce per layer, so they must share a point-to-point RDMA fabric; the operator LAN is WiFi and is latency-disqualified. Typed refusal via total fold, DESIGN section 5."
+      }
+    _ =>
+      if all_agree {
+        CollectiveAdmissible { fabric: head_group }
+      } else {
+        CollectiveRefused {
+          reason: "collective_placement: ranks span more than one DirectAttachFabric. Each Spark pair is cabled point-to-point to its partner and the pairs share only the WiFi LAN, so a cross-pair collective has no route at UltraLow latency. Widening tensor parallelism across pairs requires one fabric (switch or re-cable), not a larger degree. Typed refusal via total fold, DESIGN section 5."
+        }
+      }
+  }
 }
