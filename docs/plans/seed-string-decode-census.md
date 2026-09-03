@@ -385,12 +385,30 @@ HEAD-time subjects (a synthetic site's authority and consumer are the same expre
 decoder at all).
 
 **The scope of THIS argument, stated because the document's whole subject is unstated scope.** The
-closure rests on there being no third route by which history becomes source text. The two routes above
-are exhaustive over the *mechanism* — a context is fed from disk paths or from in-memory `SourceFile`
-content, and there is no third input — which is a stronger claim than "I grepped for `git show`". What
-it does not cover is source text reaching a context through a route that is neither, e.g. a network
-fetch or an archive extraction; none exists in this tree today, and that is an observation, not a
-guarantee.
+closure rests on a context having exactly two inputs — disk paths under a source root, or in-memory
+`SourceFile` content. That is a claim about the MECHANISM, not about a search string, which is what
+makes it stronger than "I grepped for `git show`".
+
+**ORIGIN IS IRRELEVANT, and that is the whole strength of the argument.** It does not matter whether
+text comes from git, a network fetch, an archive, or synthesis: to be decoded it must become a
+context's source, and every origin must enter through one of the two enumerated routes. There is no
+third input. A fetch composed with a write is not a third route — it is route A with a different
+upstream, and route A is already enumerated.
+
+*An earlier revision of this section bounded the claim with an observation instead: "no network fetch
+or archive extraction exists in this tree". That was FALSE — `v1_interpreter` carries a live `ureq`
+REST transport, dispatched by method — and it is the kind of false a reader trusts precisely because
+it was labelled an observation, and observations read as checked. It was deleted rather than repaired,
+because it was doing no work the mechanism claim needed: a sentence that can rot, guarding a claim
+that cannot. Recorded here rather than silently removed, because the failure is instructive — the
+weaker sentence was written to bound the stronger one and ended up being the only part that could be
+wrong.*
+
+**What remains genuinely unknown**, and is stated as unknown rather than closed: whether any `.dag`
+program in this tree actually composes a fetch with a write into a directory later passed as a
+`--source-root`. No such composition was found and no exhaustive search was made. It does not affect
+the closure — such a composition is route A — but it would matter to anyone reasoning about where a
+context's bytes originate.
 
 **Why the HEAD-vs-synthetic split within the 68 was NOT then enumerated.** It does not change any
 answer: both are HEAD-time, both are typed by the trigger identically, and neither can drift against a
@@ -488,8 +506,10 @@ deferred, and then as a declared §4b(3) row, not as the climb.
   the trigger lands, and completing the inventory of a population scheduled to stop existing is
   completeness priced as completeness.
 - **The HEAD-vs-synthetic split within the 68**, for the same reason — it changes no answer.
-- Whether source text could reach an `InterpContext` by a route that is neither a source-root path nor
-  in-memory `SourceFile` content. None exists in this tree; that is an observation, not a guarantee.
+- Whether any `.dag` program composes a fetch (the live `ureq` REST transport in `v1_interpreter`)
+  with a write into a directory later passed as a `--source-root`. Not found, not exhaustively
+  searched, and stated as unknown. It does not affect the closure — that composition is route A with a
+  different upstream — but it matters to anyone reasoning about where a context's bytes originate.
 - **P3, P5, P6, P7 re-derivation with the argument parser.** P1, P2 and P4 were done; the others carry
   line-keyed counts and are floors with an unmeasured gap.
 - P6's fail-open arm is described but not sized beyond its 5 substitutions in 2 producers;
