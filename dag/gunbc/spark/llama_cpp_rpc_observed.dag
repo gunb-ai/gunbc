@@ -1,4 +1,4 @@
-module gunbc.spark.serving_unit_observed
+module gunbc.spark.llama_cpp_rpc_observed
 
 import std.types { String, Bool, List, Int, NonEmptyStr, Port }
 import std.measure {
@@ -18,7 +18,7 @@ import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoi
 //
 // Every serving structure in gunbc.spark is keyed on ONE HostIdentity: a release, an occurrence, a
 // launch profile, a readiness probe, all per host. That shape carries an assumption it never states
-// -- that a host is a serving unit -- and the assumption is FALSE for the deployment the operator
+// -- that a host is a llama.cpp RPC deployment -- and the assumption is FALSE for the deployment the operator
 // specified. Two Sparks hold one model split by layer, and the operator's first sentence is the
 // whole modeling problem: "the two hosts are ONE SERVING UNIT, not two endpoints."
 //
@@ -47,15 +47,15 @@ import gunbc.spark.fabric_link_desired { FabricLink, fabric_rail0, fabric_endpoi
 // THE FIELD IS THE CONNECT ADDRESS, NOT THE LISTEN ADDRESS, AND THE DISTINCTION IS A MEANING FORK
 // THIS MODULE ALREADY PAID FOR ONCE. The measured llama-server binds 0.0.0.0; 192.168.1.232 is the
 // address a client dials. This carrier first named the field `bind_address` while
-// serving_unit_client_endpoint handed that same value to clients -- operationally correct, and the
+// llama_cpp_rpc_client_endpoint handed that same value to clients -- operationally correct, and the
 // name asserted the wrong fact, which is exactly the listen-versus-connect fork the ollama path
 // learned earlier. A listen address is a fact about the process's socket and belongs with the
-// runtime realization if it is ever needed; what a serving unit owes a caller is where to dial.
+// runtime realization if it is ever needed; what a llama.cpp RPC deployment owes a caller is where to dial.
 //
 // It is an Ipv4Address rather than a NonEmptyStr because the fourth constructor condition below has
 // to be able to ASK whether two endpoints are the same address, and a string cannot answer that
 // without a second parser.
-type ServingUnitFrontDoor sole_constructor {
+type LlamaCppRpcFrontDoor sole_constructor {
   host: HostIdentity
   client_address: Ipv4Address
   port: Port
@@ -75,25 +75,25 @@ type ServingUnitFrontDoor sole_constructor {
 // of 121 GiB already committed to weights and swap DISABLED, a model load accepted there is an
 // immediate OOM kill that takes the front door down with it, because the front door cannot serve
 // without the layers this host holds. So the failure is not "a request went to the wrong port"; it
-// is the loss of the whole serving unit.
+// is the loss of the whole llama.cpp RPC deployment.
 //
 // The peer is addressed on the FABRIC, never on the LAN, and the constructor below enforces it.
-type ServingUnitWeightsPeer sole_constructor {
+type LlamaCppRpcWeightsPeer sole_constructor {
   host: HostIdentity
   fabric_address: Ipv4Address
   port: Port
 }
 
-fn serving_unit_front_door(host: HostIdentity, client_address: Ipv4Address, port: Port) -> ServingUnitFrontDoor {
-  ServingUnitFrontDoor { host: host, client_address: client_address, port: port }
+fn llama_cpp_rpc_front_door(host: HostIdentity, client_address: Ipv4Address, port: Port) -> LlamaCppRpcFrontDoor {
+  LlamaCppRpcFrontDoor { host: host, client_address: client_address, port: port }
 }
 
-fn serving_unit_weights_peer(host: HostIdentity, fabric_address: Ipv4Address, port: Port) -> ServingUnitWeightsPeer {
-  ServingUnitWeightsPeer { host: host, fabric_address: fabric_address, port: port }
+fn llama_cpp_rpc_weights_peer(host: HostIdentity, fabric_address: Ipv4Address, port: Port) -> LlamaCppRpcWeightsPeer {
+  LlamaCppRpcWeightsPeer { host: host, fabric_address: fabric_address, port: port }
 }
 
-fn serving_unit_slot_plan(per_slot_context: TokenCount, slots: PositiveSlotCount) -> ServingUnitSlotPlan {
-  ServingUnitSlotPlan { per_slot_context: per_slot_context, slots: slots }
+fn llama_cpp_rpc_slot_plan(per_slot_context: TokenCount, slots: PositiveSlotCount) -> LlamaCppRpcSlotPlan {
+  LlamaCppRpcSlotPlan { per_slot_context: per_slot_context, slots: slots }
 }
 
 // PER-SLOT CONTEXT IS THE AUTHORED FACT AND THE TOTAL BUDGET IS DERIVED, WHICH IS THE WHOLE REPAIR
@@ -116,7 +116,7 @@ fn serving_unit_slot_plan(per_slot_context: TokenCount, slots: PositiveSlotCount
 // context. That is true, and it is true OF OLLAMA, where the context length is a per-slot server
 // default. The same sentence is false here. One row spanning both engines is a meaning fork whose
 // realization is precisely the 2,048-per-slot line above.
-type ServingUnitSlotPlan sole_constructor {
+type LlamaCppRpcSlotPlan sole_constructor {
   per_slot_context: TokenCount
   slots: PositiveSlotCount
 }
@@ -125,14 +125,14 @@ type ServingUnitSlotPlan sole_constructor {
 // them. A convergence check must NOT assert on this value: `/props` reports
 // `default_generation_settings.n_ctx` as the ALREADY-DIVIDED per-slot figure, so the unit file's
 // number and the served reality are different quantities, and comparing the wrong one is how the
-// silent shrink stays invisible. This exists to RENDER the unit, and serving_unit_slot_plan_per_slot below
+// silent shrink stays invisible. This exists to RENDER the unit, and llama_cpp_rpc_slot_plan_per_slot below
 // is what a readback is compared against.
-fn serving_unit_slot_plan_total_kv(plan: ServingUnitSlotPlan) -> TokenCount {
+fn llama_cpp_rpc_slot_plan_total_kv(plan: LlamaCppRpcSlotPlan) -> TokenCount {
   token_count(
     count: token_count_value(t: plan.per_slot_context) * positive_slot_count_value(slots: plan.slots))
 }
 
-fn serving_unit_slot_plan_per_slot(plan: ServingUnitSlotPlan) -> TokenCount {
+fn llama_cpp_rpc_slot_plan_per_slot(plan: LlamaCppRpcSlotPlan) -> TokenCount {
   plan.per_slot_context
 }
 
@@ -158,21 +158,21 @@ fn serving_unit_slot_plan_per_slot(plan: ServingUnitSlotPlan) -> TokenCount {
 //     front door carries an Ipv4Address rather than a string, and it has its own discriminating RED.
 //
 // A deployment that fails any of them has no constructor. It is not reported later.
-type ServingUnit sole_constructor {
+type LlamaCppRpcDeployment sole_constructor {
   alias: NonEmptyStr
-  front_door: ServingUnitFrontDoor
-  weights_peer: ServingUnitWeightsPeer
+  front_door: LlamaCppRpcFrontDoor
+  weights_peer: LlamaCppRpcWeightsPeer
   fabric: FabricLink
-  slot_plan: ServingUnitSlotPlan
+  slot_plan: LlamaCppRpcSlotPlan
 }
 
-fn serving_unit_construct(
+fn llama_cpp_rpc_construct(
   alias: NonEmptyStr,
-  front_door: ServingUnitFrontDoor,
-  weights_peer: ServingUnitWeightsPeer,
+  front_door: LlamaCppRpcFrontDoor,
+  weights_peer: LlamaCppRpcWeightsPeer,
   fabric: FabricLink,
-  slot_plan: ServingUnitSlotPlan,
-) -> ServingUnit? {
+  slot_plan: LlamaCppRpcSlotPlan,
+) -> LlamaCppRpcDeployment? {
   if host_identity_eq(a: front_door.host, b: weights_peer.host) {
     none
   } else if ipv4_address_eq(a: front_door.client_address, b: weights_peer.fabric_address)
@@ -188,7 +188,7 @@ fn serving_unit_construct(
             if !ipv4_address_eq(a: peer_end.address, b: weights_peer.fabric_address) {
               none
             } else {
-              Present { value: ServingUnit {
+              Present { value: LlamaCppRpcDeployment {
                 alias: alias,
                 front_door: front_door,
                 weights_peer: weights_peer,
@@ -203,12 +203,12 @@ fn serving_unit_construct(
 
 // THE ONE ADDRESS A CLIENT MAY HOLD. There is deliberately no sibling returning the weights peer as
 // an endpoint: C1 is enforced by there being nothing to call, rather than by a rule saying not to.
-fn serving_unit_client_endpoint(d: ServingUnit) -> String {
+fn llama_cpp_rpc_client_endpoint(d: LlamaCppRpcDeployment) -> String {
   join(["http://", render_ipv4_address(addr: d.front_door.client_address), ":",
     to_string(d.front_door.port)], "")
 }
 
-fn serving_unit_rpc_peer_wire(d: ServingUnit) -> String {
+fn llama_cpp_rpc_peer_wire(d: LlamaCppRpcDeployment) -> String {
   join([render_ipv4_address(addr: d.weights_peer.fabric_address), ":", to_string(d.weights_peer.port)], "")
 }
 
@@ -219,15 +219,15 @@ fn serving_unit_rpc_peer_wire(d: ServingUnit) -> String {
 // cell. That is the actual hazard on .233, which runs an unrelated ollama on :11434 alongside its
 // weights role, and it is how the host would come to accept a load: not through this deployment,
 // but through another one that never knew this one existed.
-fn serving_unit_weights_peer_hosts(deployments: List<ServingUnit>) -> List<HostIdentity> {
+fn llama_cpp_rpc_weights_peer_hosts(deployments: List<LlamaCppRpcDeployment>) -> List<HostIdentity> {
   map(deployments, d => d.weights_peer.host)
 }
 
-fn serving_unit_host_is_weights_peer(
-  deployments: List<ServingUnit>,
+fn llama_cpp_rpc_host_is_weights_peer(
+  deployments: List<LlamaCppRpcDeployment>,
   host: HostIdentity,
 ) -> Bool {
-  any(serving_unit_weights_peer_hosts(deployments: deployments), h => host_identity_eq(a: h, b: host))
+  any(llama_cpp_rpc_weights_peer_hosts(deployments: deployments), h => host_identity_eq(a: h, b: host))
 }
 
 // ================= THE OBSERVED DEPLOYMENT, 2026-09-02 18:23 UTC =================
@@ -242,7 +242,18 @@ fn serving_unit_host_is_weights_peer(
 // rather than restating its addresses is what keeps one fabric fact in one place -- and it means the
 // constructor's fabric conditions above are checked against the measured fabric, not against a
 // second copy of it authored to agree.
-data serving_unit_observed_alias: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
+//
+// THAT CITATION CROSSES A TEMPORAL BOUNDARY, AND THE BOUNDARY IS PINNED RATHER THAN ASSUMED.
+// `fabric_rail0` is CURRENT DESIRED STATE and may legitimately be re-addressed; this module is a
+// DATED OBSERVATION of what the deployment used on 2026-09-02. Their equality today is an AGREEMENT
+// between two different subjects, not one fact with one authority, so an edit to the desired row
+// would otherwise rewrite this history silently and with no diagnostic. The whole-value agreement is
+// asserted by test.claim.spark_llama_cpp_rpc_witness
+// the_dated_observation_still_agrees_with_the_fabric_row_it_cites, which pins interface, prefix and
+// MTU as well as the octets because the constructor above refuses on each of them. If it goes red
+// the desired fabric has moved, and the repair is to snapshot the observed rail here as its own
+// dated value -- not to update the literals.
+data llama_cpp_rpc_observed_alias: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
 
 // THE FRONT DOOR'S LAN ADDRESS IS CARRIED HERE AS AN OBSERVATION, AND DELIBERATELY NOT CITED FROM
 // gunbc.fleet_intent_network, WHICH WOULD BE THE OBVIOUS §3 MOVE AND WOULD BE WRONG.
@@ -260,25 +271,25 @@ data serving_unit_observed_alias: NonEmptyStr = "deepseek-v4-flash:iq3s-split" a
 // THE FABRIC IS THE OPPOSITE CASE AND IS HANDLED THE OPPOSITE WAY. Its addresses, interface names
 // and MTU ARE owned -- by gunbc.spark.fabric_link_desired, merged -- so this module references that
 // link BY IDENTITY and derives the peer's address from it. No fabric field is restated here.
-data serving_unit_observed_front_door: ServingUnitFrontDoor = ServingUnitFrontDoor {
+data llama_cpp_rpc_observed_front_door: LlamaCppRpcFrontDoor = LlamaCppRpcFrontDoor {
   host: operator_host_srv7,
   client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 232),
   port: 30000,
 }
 
-data serving_unit_observed_slot_plan: ServingUnitSlotPlan = ServingUnitSlotPlan {
+data llama_cpp_rpc_observed_slot_plan: LlamaCppRpcSlotPlan = LlamaCppRpcSlotPlan {
   per_slot_context: token_count(count: 1048576),
   slots: positive_slot_count(count: positive_measure_count(predecessor: 9)),
 }
 
-fn serving_unit_observed_weights_peer() -> ServingUnitWeightsPeer? {
+fn llama_cpp_rpc_observed_weights_peer() -> LlamaCppRpcWeightsPeer? {
   match fabric_rail0 {
     Absent => none
     Present { value: link } =>
       match fabric_endpoint_on(link: link, host: operator_host_srv8) {
         Absent => none
         Present { value: e } =>
-          Present { value: ServingUnitWeightsPeer {
+          Present { value: LlamaCppRpcWeightsPeer {
             host: operator_host_srv8,
             fabric_address: e.address,
             port: 50052,
@@ -287,29 +298,29 @@ fn serving_unit_observed_weights_peer() -> ServingUnitWeightsPeer? {
   }
 }
 
-// The observed deployment, or Absent when any condition that makes it ONE serving unit fails to
+// The observed deployment, or Absent when any condition that makes it ONE llama.cpp RPC deployment fails to
 // hold. An Absent here is not a deployment with a problem to report later -- it never existed, so
 // nothing downstream can plan from it.
-fn serving_unit_observed() -> ServingUnit? {
+fn llama_cpp_rpc_observed() -> LlamaCppRpcDeployment? {
   match fabric_rail0 {
     Absent => none
     Present { value: link } =>
-      match serving_unit_observed_weights_peer() {
+      match llama_cpp_rpc_observed_weights_peer() {
         Absent => none
         Present { value: peer } =>
-          serving_unit_construct(
-            alias: serving_unit_observed_alias,
-            front_door: serving_unit_observed_front_door,
+          llama_cpp_rpc_construct(
+            alias: llama_cpp_rpc_observed_alias,
+            front_door: llama_cpp_rpc_observed_front_door,
             weights_peer: peer,
             fabric: link,
-            slot_plan: serving_unit_observed_slot_plan,
+            slot_plan: llama_cpp_rpc_observed_slot_plan,
           )
       }
   }
 }
 
-fn serving_unit_observed_units() -> List<ServingUnit> {
-  match serving_unit_observed() {
+fn llama_cpp_rpc_observed_units() -> List<LlamaCppRpcDeployment> {
+  match llama_cpp_rpc_observed() {
     Present { value: d } => [d]
     Absent => []
   }
@@ -355,52 +366,28 @@ fn serving_unit_observed_units() -> List<ServingUnit> {
 // token is not memory bandwidth on this hardware. The two GPUs ALTERNATE -- sampled means of roughly
 // 28% on the front door and 42% on the peer, with repeated 0% samples on both -- because an RPC
 // layer split runs one host's layers, ships activations, then idles while the other host runs its
-// half. A token cannot be faster than one full trip through that pipeline, and that serialization is
-// independent of batch size, which is why per-stream rate is PINNED rather than falling under load:
-// measured flat across a concurrency sweep while aggregate scaled linearly. The earlier claim that
-// per-stream falls with concurrency described contention that this configuration does not have.
+// half. A token cannot be faster than one full trip through that pipeline.
 //
-// THE CONSEQUENCE FOR DESIRED STATE, since this module feeds one: the box is running at roughly a
-// third of its aggregate capacity and more concurrent sessions are close to free, while per-session
-// speed cannot improve without removing the alternation. Tensor parallelism is what removes it --
-// both GPUs computing each layer simultaneously instead of taking turns -- and that is a REALIZATION
-// choice, not a tuning knob on this one.
+// WHAT THE SWEEP DID AND DID NOT SHOW, stated narrowly because the wide version was wrong. Within
+// one concurrency sweep, completed-probe rates did not decline monotonically as probes were added.
+// That is the whole finding. It does NOT establish that an additional active stream is cheap: the
+// sweep never observed how many probes were SIMULTANEOUSLY ACTIVE against ten slots, never observed
+// queue waiting, and never measured the six existing sessions before and during. With --parallel 10
+// and six sessions already decoding, at most four probes could be active at once, and an
+// eight-probe row reporting 3.29 per stream against a 12.8 aggregate reconciles as four active and
+// four queued rather than eight concurrent -- the two figures do not share a denominator.
 //
-// WHAT IS KNOWN ABOUT THAT ALTERNATIVE, recorded here because it bounds what a desired state may
-// assert and NOT because this module selects it. A tensor-parallel vLLM attempt exists on the front
-// door and is not running: it crashed in the block-scaled fp8 cutlass dispatch, on the 26.08 image
-// rather than an older one, so "retry a newer container" is not the repair. The kernel is not
-// missing on this GPU -- per-tensor, per-token and 128-block scaled matmuls all return correct
-// results there.
+// THREE CLAIMS ARE THEREFORE REFUSED HERE RATHER THAN RECORDED: that this box runs at roughly a
+// third of its aggregate capacity, that more concurrent sessions are close to free, and that a
+// restart doubles throughput or occupancy halves it. The observations ORDER future measurements;
+// they do not establish a capacity policy, and a desired state must not be sized from them.
 //
-// A TRITON LINEAR BACKEND WAS THE FIX CANDIDATE AND A LIVE WINDOW FALSIFIED IT. Triton refuses the
-// same model with `KeyError: 'float8_e8m0fnu'` -- that build does not know the UE8M0 scale dtype the
-// checkpoint carries, which the server names itself at startup as quantization_config.scale_fmt
-// ue8m0. The third backend, deep_gemm, is the one UE8M0 was designed for and is the one this image
-// ships without. So all three block-scaled fp8 paths fail for this checkpoint in this container,
-// and the earlier reading -- a dimension ceasing to be a 128-multiple once the weight is sliced --
-// was a plausible diagnosis the evidence did not support.
-//
-// THE CLASS MATTERS MORE THAN THE FLAG. This is not a misconfiguration with a working setting beside
-// it; it is a missing capability at the intersection of a checkpoint SCALE FORMAT and an image
-// KERNEL INVENTORY. That makes it a realization ADMISSION question -- whether this runtime can serve
-// this artifact at all -- rather than a tuning axis, and reaching it costs building DeepGEMM for this
-// GPU or obtaining a non-UE8M0 checkpoint.
-//
-// ONE OBSTACLE DID CLEAR AND IS WORTH KEEPING BECAUSE IT IS CHEAP TO LOSE: distributed init bound
-// its rendezvous to 127.0.0.1 and needed the fabric interface named explicitly through
-// GLOO_SOCKET_IFNAME and NCCL_SOCKET_IFNAME. That is the lesson gunbc.spark.fabric_link_desired
-// already carries -- a rail is selected by INTERFACE, not by reachability -- surfacing at a second
-// layer, which is evidence the rule generalizes rather than being an ip-address quirk.
-//
-// A SECOND BLOCKER IS UNTESTED AND STILL STANDS, because the run never reached serving: that attempt
-// was configured at max_model_len 32768 while live sessions run at 65k and 157k, so even a working
-// kernel would refuse the traffic this unit exists to serve. Whether the alternative can hold the
-// context this unit already holds remains answerable from the model configuration and the memory
-// budget rather than by taking the unit down, and it is still unanswered.
-//
-// NONE OF THIS IS A MEASUREMENT OF A RUNNING vLLM, and no row here may be read as one. It is what is
-// known about a realization that has never served on this pair.
+// WHAT REMAINS TRUE AND LOAD-BEARING is the structural half: an RPC layer split serializes the two
+// hosts by construction, so per-session speed cannot improve without removing the alternation.
+// Tensor parallelism is what removes it -- both GPUs computing each layer simultaneously instead of
+// taking turns -- and that is a REALIZATION choice, not a tuning knob on this one. Whether it is
+// FASTER here is unmeasured: it introduces per-layer collectives over the fabric, so it trades a
+// serialization for a synchronization and the trade needs its own instrument.
 //
 // HONEST LIMIT ON ALL OF IT: measured on short completions against a near-empty context. Real
 // sessions at 90k+ decode slower, so these figures bound an idle deployment and are not a service
@@ -410,23 +397,23 @@ fn serving_unit_observed_units() -> List<ServingUnit> {
 // PREFILL AND DECODE ARE SEPARATE FIELDS BECAUSE THEY ARE SEPARATE QUANTITIES. Collapsing them to
 // one "throughput" number is what produced the retracted 13-16 figure, and a carrier that cannot
 // hold both invites the same collapse from the next author.
-type ServingUnitThroughputBand sole_constructor {
+type LlamaCppRpcDecodeEnvelope sole_constructor {
   slots: PositiveSlotCount
   decode_low: TokensPerSecond
   decode_high: TokensPerSecond
   prefill: TokensPerSecond
 }
 
-fn serving_unit_throughput_band(
+fn llama_cpp_rpc_throughput_band(
   slots: PositiveSlotCount,
   decode_low: TokensPerSecond,
   decode_high: TokensPerSecond,
   prefill: TokensPerSecond,
-) -> ServingUnitThroughputBand? {
+) -> LlamaCppRpcDecodeEnvelope? {
   if tokens_per_second_count(r: decode_low) > tokens_per_second_count(r: decode_high) {
     none
   } else {
-    Present { value: ServingUnitThroughputBand {
+    Present { value: LlamaCppRpcDecodeEnvelope {
       slots: slots,
       decode_low: decode_low,
       decode_high: decode_high,
@@ -464,9 +451,12 @@ fn serving_unit_throughput_band(
 // unit understates a fresh one by as much.
 //
 // This is also why a concurrency sweep run entirely on top of an already-loaded unit cannot see the
-// effect: every sample sits at one occupancy, per-stream rate looks flat across added probes, and
-// the honest conclusion from that shape is that ADDING STREAMS AT FIXED OCCUPANCY is cheap -- not
-// that occupancy is free. The two questions have different answers here.
+// effect at all: every sample sits at ONE occupancy, so occupancy is held constant by the
+// experiment's own shape and cannot appear in its output. A flat per-stream rate across added probes
+// is therefore evidence about ADDED PROBES AT FIXED OCCUPANCY and evidence about nothing else -- and
+// since that sweep did not observe how many probes were simultaneously active, it does not settle
+// even that. It certainly does not license "occupancy is free", which is the reading the 2.3x above
+// contradicts.
 //
 // THE ROUNDING IS DIRECTIONAL, and what it does and does not buy is now the whole point. The low end
 // rounds DOWN and the high end UP, so the recorded pair is a SUPERSET of the measured one and no
@@ -484,9 +474,9 @@ fn serving_unit_throughput_band(
 // rows do not reconcile (eight streams at 3.29 per stream is 26, reported as 12.8), so transcribing
 // them would import an unexplained inconsistency as a modeled fact. An aggregate claim needs its own
 // instrument, and until one exists the honest state is that this module does not carry one.
-fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
-  serving_unit_throughput_band(
-    slots: serving_unit_observed_slot_plan.slots,
+fn llama_cpp_rpc_observed_throughput() -> LlamaCppRpcDecodeEnvelope? {
+  llama_cpp_rpc_throughput_band(
+    slots: llama_cpp_rpc_observed_slot_plan.slots,
     decode_low: tokens_per_second(count: 2),
     decode_high: tokens_per_second(count: 7),
     prefill: tokens_per_second(count: 12),
@@ -553,16 +543,16 @@ fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
 // 64 lower-hex characters has no constructor rather than being caught later; and the ordinal binds
 // each digest to the shard it was read from, because a GGUF shard set is an ordered chain the loader
 // follows from the index and the same four digests in a different order name a different artifact.
-type ServingUnitShardDigest sole_constructor {
+type LlamaCppRpcShardDigest sole_constructor {
   ordinal: PositiveMeasureCount
   digest: Sha256Digest
 }
 
-fn serving_unit_shard_digest(ordinal: PositiveMeasureCount, hex: String) -> ServingUnitShardDigest? {
+fn llama_cpp_rpc_shard_digest(ordinal: PositiveMeasureCount, hex: String) -> LlamaCppRpcShardDigest? {
   match sha256_hex_digest(hex: hex) {
     Absent => none
     Present { value: d } =>
-      Present { value: ServingUnitShardDigest { ordinal: ordinal, digest: d } }
+      Present { value: LlamaCppRpcShardDigest { ordinal: ordinal, digest: d } }
   }
 }
 
@@ -573,8 +563,8 @@ fn serving_unit_shard_digest(ordinal: PositiveMeasureCount, hex: String) -> Serv
 // consumer remembering to run the second rule -- validation standing exactly where construction was
 // available. A one-shard closure for a four-shard artifact, and a 1,1,2,3 chain, must fail while the
 // Bound value is being made, so that no inexact Bound value exists to be asked about.
-type ServingUnitBoundArtifactIdentity sole_constructor {
-  shards: List<ServingUnitShardDigest>
+type LlamaCppRpcBoundArtifactIdentity sole_constructor {
+  shards: List<LlamaCppRpcShardDigest>
   shard_count: PositiveShardCount
 }
 
@@ -583,10 +573,10 @@ type ServingUnitBoundArtifactIdentity sole_constructor {
 // that does not exist. The fold walks the expected ordinal forward and sinks to 0 on the first
 // disagreement; 0 matches no ordinal, because an ordinal is a PositiveMeasureCount and cannot be
 // zero, so the sink is absorbing and a later coincidence cannot restore it.
-fn serving_unit_bound_artifact_identity(
-  shards: List<ServingUnitShardDigest>,
+fn llama_cpp_rpc_bound_artifact_identity(
+  shards: List<LlamaCppRpcShardDigest>,
   shard_count: PositiveShardCount,
-) -> ServingUnitBoundArtifactIdentity? {
+) -> LlamaCppRpcBoundArtifactIdentity? {
   if length(shards) != positive_shard_count_value(shards: shard_count) {
     none
   } else if fold(shards, init: 1, f: fn(next, s) {
@@ -594,19 +584,19 @@ fn serving_unit_bound_artifact_identity(
     }) != positive_shard_count_value(shards: shard_count) + 1 {
     none
   } else {
-    Present { value: ServingUnitBoundArtifactIdentity {
+    Present { value: LlamaCppRpcBoundArtifactIdentity {
       shards: shards, shard_count: shard_count } }
   }
 }
 
-type ServingUnitArtifactIdentity
-  = ArtifactIdentityBound { identity: ServingUnitBoundArtifactIdentity }
+type LlamaCppRpcArtifactIdentity
+  = ArtifactIdentityBound { identity: LlamaCppRpcBoundArtifactIdentity }
   | ArtifactIdentityUnobserved { cause: NonEmptyStr }
 
-type ServingUnitArtifact sole_constructor {
+type LlamaCppRpcOnDiskArtifact sole_constructor {
   primary_shard_path: NonEmptyStr
   shard_count: PositiveShardCount
-  identity: ServingUnitArtifactIdentity
+  identity: LlamaCppRpcArtifactIdentity
 }
 
 // THE ORDER IS PART OF THE FACT. These are shards 00001 through 00004 in sequence, because a GGUF
@@ -616,14 +606,14 @@ type ServingUnitArtifact sole_constructor {
 // against a shard count; if the artifact then declares a different one, the record carries two
 // answers to one question and the identity's guarantee is silently void. There is exactly one place
 // that could happen, so it refuses here rather than being asked about later.
-fn serving_unit_artifact(
+fn llama_cpp_rpc_artifact(
   primary_shard_path: NonEmptyStr,
   shard_count: PositiveShardCount,
-  identity: ServingUnitArtifactIdentity,
-) -> ServingUnitArtifact? {
+  identity: LlamaCppRpcArtifactIdentity,
+) -> LlamaCppRpcOnDiskArtifact? {
   match identity {
     ArtifactIdentityUnobserved { cause: _ } =>
-      Present { value: ServingUnitArtifact {
+      Present { value: LlamaCppRpcOnDiskArtifact {
         primary_shard_path: primary_shard_path,
         shard_count: shard_count,
         identity: identity,
@@ -633,7 +623,7 @@ fn serving_unit_artifact(
         != positive_shard_count_value(shards: shard_count) {
         none
       } else {
-        Present { value: ServingUnitArtifact {
+        Present { value: LlamaCppRpcOnDiskArtifact {
           primary_shard_path: primary_shard_path,
           shard_count: shard_count,
           identity: identity,
@@ -644,18 +634,18 @@ fn serving_unit_artifact(
 
 // Shards 00001 through 00004, hashed in place on the front-door host. A hex string that does not
 // parse yields no ShardDigest, so the identity below refuses rather than binding a short chain.
-fn serving_unit_observed_shard_digests() -> List<ServingUnitShardDigest> {
+fn llama_cpp_rpc_observed_shard_digests() -> List<LlamaCppRpcShardDigest> {
   flat_map(
-    [ serving_unit_shard_digest(
+    [ llama_cpp_rpc_shard_digest(
         ordinal: positive_measure_count(predecessor: 0),
         hex: "2baab0767d2630cb1633495ff6ccf10bdc5b83de7d66a0d3728a1a0f38e96220"),
-      serving_unit_shard_digest(
+      llama_cpp_rpc_shard_digest(
         ordinal: positive_measure_count(predecessor: 1),
         hex: "3495d0e8218c5a526d66a4901114a7ee4c5e25f84fe1f4bc632b5cbfdac57ac7"),
-      serving_unit_shard_digest(
+      llama_cpp_rpc_shard_digest(
         ordinal: positive_measure_count(predecessor: 2),
         hex: "57ad22e505204245020644de9143accfe3be91951efaa809bf59fa640ec278ea"),
-      serving_unit_shard_digest(
+      llama_cpp_rpc_shard_digest(
         ordinal: positive_measure_count(predecessor: 3),
         hex: "87b2e7956b08954dd0d9ba71801f623fdcd1762f252ea3d18018798a1718bfc9") ],
     o => match o {
@@ -664,20 +654,20 @@ fn serving_unit_observed_shard_digests() -> List<ServingUnitShardDigest> {
     })
 }
 
-data serving_unit_observed_shard_count: PositiveShardCount = positive_shard_count(count: positive_measure_count(predecessor: 3))
+data llama_cpp_rpc_observed_shard_count: PositiveShardCount = positive_shard_count(count: positive_measure_count(predecessor: 3))
 
 // THIS ROW GOES THROUGH THE CONSTRUCTOR RATHER THAN AROUND IT. A direct record literal is writable
 // inside the defining module, and using one here would have bypassed both refusals above in the one
 // place that actually mints production's artifact -- the constructor would then guard only fixtures.
-fn serving_unit_observed_artifact() -> ServingUnitArtifact? {
-  match serving_unit_bound_artifact_identity(
-    shards: serving_unit_observed_shard_digests(),
-    shard_count: serving_unit_observed_shard_count) {
+fn llama_cpp_rpc_observed_artifact() -> LlamaCppRpcOnDiskArtifact? {
+  match llama_cpp_rpc_bound_artifact_identity(
+    shards: llama_cpp_rpc_observed_shard_digests(),
+    shard_count: llama_cpp_rpc_observed_shard_count) {
     Absent => none
     Present { value: bound } =>
-      serving_unit_artifact(
+      llama_cpp_rpc_artifact(
         primary_shard_path: "/home/briansrls/models/dsv4-iq3s/DeepSeek-V4-Flash-0731-UD-IQ3_S-00001-of-00004.gguf" as NonEmptyStr,
-        shard_count: serving_unit_observed_shard_count,
+        shard_count: llama_cpp_rpc_observed_shard_count,
         identity: ArtifactIdentityBound { identity: bound })
   }
 }
@@ -686,7 +676,7 @@ fn serving_unit_observed_artifact() -> ServingUnitArtifact? {
 // the whole reason to type the distinction. Convergence actuates bytes; a plan that cannot name
 // which bytes it is asserting is asserting a path and hoping. This is the predicate a publication
 // step consults, and it is now a TRIVIAL ELIMINATOR: every exactness condition was moved into
-// serving_unit_bound_artifact_identity, so a Bound value is exact by construction and there is no
+// llama_cpp_rpc_bound_artifact_identity, so a Bound value is exact by construction and there is no
 // second rule for a consumer to forget. It answers true for the observed artifact.
 //
 // READ WHAT IT SAYS AND NOT MORE: true here means THE PATHS HELD THESE BYTES WHEN THEY WERE READ. A
@@ -702,12 +692,12 @@ fn serving_unit_observed_artifact() -> ServingUnitArtifact? {
 // The precedent it invokes is gunbc.spark.cell_role, where a hand-rolled predicate matched a
 // coproduct against ITSELF for equality while a canonical wire projection of the same variants
 // already existed beside it. Deriving equality from that projection REMOVED a second enumeration.
-// Here there is no such projection: ServingUnitArtifactIdentity has no canonical surface anywhere in
+// Here there is no such projection: LlamaCppRpcArtifactIdentity has no canonical surface anywhere in
 // the corpus, so routing through one means MINTING one -- creating a construct in order to satisfy a
 // rule about not creating constructs, which is the re-invention §2 warns closes nothing.
 //
 // The two production matches on this type ask DIFFERENT questions, not one question twice.
-// serving_unit_artifact asks the bound arm for its shard count in order to refuse a contradiction;
+// llama_cpp_rpc_artifact asks the bound arm for its shard count in order to refuse a contradiction;
 // this function asks which arm is present. Neither restates the other, so §5's "a check that
 // re-states a constraint the model already carries" does not describe them.
 //
@@ -723,7 +713,7 @@ fn serving_unit_observed_artifact() -> ServingUnitArtifact? {
 // both on main and both load-bearing. A rule that condemns this two-arm eliminator condemns those,
 // and the fix for them would be the same minting. If that vocabulary is genuinely wanted it is a
 // corpus-wide replacement migration with its own root, not a condition on this module.
-fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
+fn llama_cpp_rpc_artifact_is_bound(a: LlamaCppRpcOnDiskArtifact) -> Bool {
   match a.identity {
     ArtifactIdentityBound { identity: _ } => true
     ArtifactIdentityUnobserved { cause: _ } => false
@@ -744,18 +734,18 @@ fn serving_unit_artifact_is_bound(a: ServingUnitArtifact) -> Bool {
 // it the right thing to compare against and the unit file's `-c` the wrong thing: the two are
 // different quantities, and the silent-shrink failure is invisible to anything that checks the
 // second one.
-type ServingUnitApiSurface = OpenAiCompatibleSurface | OllamaSurface
+type LlamaCppRpcApiSurface = OpenAiCompatibleSurface | OllamaSurface
 
-data serving_unit_observed_api_surface: ServingUnitApiSurface = OpenAiCompatibleSurface
+data llama_cpp_rpc_observed_api_surface: LlamaCppRpcApiSurface = OpenAiCompatibleSurface
 
-fn serving_unit_context_authority_route(surface: ServingUnitApiSurface) -> NonEmptyStr {
+fn llama_cpp_rpc_context_authority_route(surface: LlamaCppRpcApiSurface) -> NonEmptyStr {
   match surface {
     OpenAiCompatibleSurface => "/props" as NonEmptyStr
     OllamaSurface => "/api/show" as NonEmptyStr
   }
 }
 
-fn serving_unit_model_listing_route(surface: ServingUnitApiSurface) -> NonEmptyStr {
+fn llama_cpp_rpc_model_listing_route(surface: LlamaCppRpcApiSurface) -> NonEmptyStr {
   match surface {
     OpenAiCompatibleSurface => "/v1/models" as NonEmptyStr
     OllamaSurface => "/api/tags" as NonEmptyStr
@@ -770,7 +760,7 @@ fn serving_unit_model_listing_route(surface: ServingUnitApiSurface) -> NonEmptyS
 // structural said they described the same executed realization either.
 //
 // THERE IS DELIBERATELY NO GENERAL MIXER, AND THAT IS THE HONEST RUNG RATHER THAN THE TIDY ONE. A
-// public serving_unit_observation(unit, artifact, api_surface, throughput) was written first and
+// public llama_cpp_rpc_observation(unit, artifact, api_surface, throughput) was written first and
 // removed: whatever condition it checked, it still ADMITTED `unit A + artifact B + surface D +
 // throughput C` drawn from different realizations, which is precisely the failure this type claims
 // to close. A slot-count agreement does not fix that -- a band measured at ten slots on a DIFFERENT
@@ -789,36 +779,36 @@ fn serving_unit_model_listing_route(surface: ServingUnitApiSurface) -> NonEmptyS
 // evidence supports.
 //
 // THE UNIT STAYS IMPLEMENTATION-NEUTRAL AND THIS TYPE IS WHERE THAT IS PAID FOR. No llama.cpp, no
-// IQ3_S, no engine anywhere in ServingUnit: it is the stable structural subject -- a front door, a
-// weights peer, a fabric and a slot plan -- while ServingUnitObservation is ONE MEASURED
+// IQ3_S, no engine anywhere in LlamaCppRpcDeployment: it is the stable structural subject -- a front door, a
+// weights peer, a fabric and a slot plan -- while LlamaCppRpcObservedDeployment is ONE MEASURED
 // REALIZATION of that subject.
 // THE ARTIFACT FIELD IS NAMED FOR WHAT IT IS. `on_disk_artifact` rather than `artifact`, because
 // this record otherwise reads as four facts about one running process and one of them is a fact
 // about a filesystem. The name is the only thing that travels to every consumer.
-type ServingUnitObservation sole_constructor {
-  unit: ServingUnit
-  on_disk_artifact: ServingUnitArtifact
-  api_surface: ServingUnitApiSurface
-  throughput: ServingUnitThroughputBand
+type LlamaCppRpcObservedDeployment sole_constructor {
+  unit: LlamaCppRpcDeployment
+  on_disk_artifact: LlamaCppRpcOnDiskArtifact
+  api_surface: LlamaCppRpcApiSurface
+  throughput: LlamaCppRpcDecodeEnvelope
 }
 
 // The observation of 2026-09-02, or Absent when any part of it failed to construct. There is no arm
 // that reports a partial observation: a join missing one of its arms is not a weaker observation of
 // the same realization, it is a claim about a realization nobody fully measured.
-fn serving_unit_observed_observation() -> ServingUnitObservation? {
-  match serving_unit_observed() {
+fn llama_cpp_rpc_observed_observation() -> LlamaCppRpcObservedDeployment? {
+  match llama_cpp_rpc_observed() {
     Absent => none
     Present { value: u } =>
-      match serving_unit_observed_throughput() {
+      match llama_cpp_rpc_observed_throughput() {
         Absent => none
         Present { value: band } =>
-          match serving_unit_observed_artifact() {
+          match llama_cpp_rpc_observed_artifact() {
             Absent => none
             Present { value: art } =>
-              Present { value: ServingUnitObservation {
+              Present { value: LlamaCppRpcObservedDeployment {
                 unit: u,
                 on_disk_artifact: art,
-                api_surface: serving_unit_observed_api_surface,
+                api_surface: llama_cpp_rpc_observed_api_surface,
                 throughput: band,
               } }
           }

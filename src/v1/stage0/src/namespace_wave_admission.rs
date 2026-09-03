@@ -695,6 +695,34 @@ pub struct TransitionAdmission {
 const LEDGER_SAFETY_VOCABULARY_LABEL: &str =
     "ledger safety vocabulary relocation gunbc#10077 2026-09-02";
 
+/// THE 13 ROWS BELOW ADMIT ONE FACT SEEN THIRTEEN TIMES: `PositiveShardCount` and its two
+/// constructors are NEW IN `std.measure` in the same change, so every reference to them denoted
+/// nothing at the base and denotes `std.measure` at the head.
+///
+/// WHY THEY REPORT AS POOL COINCIDENCE RATHER THAN AUTHORED RESOLUTION, which is worth writing down
+/// because the label reads wrong and is not. `binding_disposition` splits `{} -> {x}` on whether the
+/// reference was authored locally in this diff, and the discriminator is the module's own source as
+/// the BASE INDEX reconstructs it. The base index is the head index with the diff applied in reverse
+/// AT FILE GRAIN, so a MODIFIED file is reversed to its base text -- and the import line would be
+/// absent there, making the key absent and the delta never raised. These two files were RENAMED,
+/// which presents as an ADD, and an added file has no base text to reverse to, so the base index
+/// keeps the head content while `std.measure` around it IS reversed. The wall therefore sees a
+/// module that already contained the import, next to a `std.measure` that does not yet declare the
+/// name -- which is precisely the shape of a coincidence caused elsewhere, and it cannot see the
+/// authorship because in its reconstruction the authorship was never added.
+///
+/// SO THE DISPOSITION IS AN ARTEFACT OF THE RENAME, NOT A DIFFERENT FACT, and the rows are still
+/// exact: each names one module, one enclosing declaration, one spelling and one target. None of
+/// them is a predicate, and none admits a class -- an unenumerated fourteenth reference would still
+/// refuse by name, which is the property that makes this roster a wall rather than a switch.
+///
+/// THEY ARE BORN CONSUMED. `std.measure` carries the declaration in this same change, so once it is
+/// in main every later run satisfies the relocation at its base and reports these as consumed rather
+/// than stale. The deletion is owed to whoever next touches this roster, by the convention the
+/// cohorts above establish.
+const SHARD_COUNT_LABEL: &str =
+    "llama.cpp RPC observation recut + PositiveShardCount gunbc#10111 2026-09-03";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: LEDGER_SAFETY_VOCABULARY_LABEL,
@@ -1270,6 +1298,136 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             target: "v2.workflow.floor_terminal_ledger",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "llama_cpp_rpc_artifact",
+            spelling: "PositiveShardCount",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "llama_cpp_rpc_artifact",
+            spelling: "positive_shard_count_value",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "llama_cpp_rpc_bound_artifact_identity",
+            spelling: "PositiveShardCount",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "LlamaCppRpcBoundArtifactIdentity",
+            spelling: "PositiveShardCount",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "llama_cpp_rpc_bound_artifact_identity",
+            spelling: "positive_shard_count_value",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "llama_cpp_rpc_observed_shard_count",
+            spelling: "positive_shard_count",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "llama_cpp_rpc_observed_shard_count",
+            spelling: "PositiveShardCount",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.llama_cpp_rpc_observed",
+            in_declaration: "LlamaCppRpcOnDiskArtifact",
+            spelling: "PositiveShardCount",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_llama_cpp_rpc_witness",
+            in_declaration: "an_artifact_refuses_a_count_its_identity_contradicts",
+            spelling: "positive_shard_count",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_llama_cpp_rpc_witness",
+            in_declaration: "an_unobserved_artifact_identity_is_not_bound",
+            spelling: "positive_shard_count",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_llama_cpp_rpc_witness",
+            in_declaration: "a_repeated_ordinal_chain_mints_no_bound_identity",
+            spelling: "positive_shard_count",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_llama_cpp_rpc_witness",
+            in_declaration: "a_short_chain_mints_no_bound_identity",
+            spelling: "positive_shard_count",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: SHARD_COUNT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_llama_cpp_rpc_witness",
+            in_declaration: "a_well_formed_four_shard_chain_mints_a_bound_identity",
+            spelling: "positive_shard_count",
+            target: "std.measure",
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
     },
 ];
 

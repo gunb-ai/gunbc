@@ -1,4 +1,4 @@
-module test.claim.spark_serving_unit_witness
+module test.claim.spark_llama_cpp_rpc_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.measure {
@@ -6,49 +6,49 @@ import std.measure {
   positive_shard_count,
   PositiveSlotCount, positive_slot_count, positive_measure_count,
   positive_measure_count_value,
+  byte_size_count,
 }
-import extdeps.network.ipv4 { ipv4_address }
+import extdeps.network.ipv4 { ipv4_address, render_ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_link_desired { fabric_rail0, fabric_endpoint_on }
-import gunbc.spark.cell_role { spark_serving_cell_hosts }
-import gunbc.spark.serving_unit_observed {
-  serving_unit_front_door,
-  serving_unit_weights_peer,
-  serving_unit_slot_plan,
-  serving_unit_construct,
-  serving_unit_client_endpoint,
-  serving_unit_rpc_peer_wire,
-  serving_unit_slot_plan_total_kv,
-  serving_unit_slot_plan_per_slot,
-  serving_unit_observed,
-  serving_unit_observed_units,
-  serving_unit_observed_slot_plan,
-  serving_unit_host_is_weights_peer,
+import gunbc.spark.llama_cpp_rpc_observed {
+  llama_cpp_rpc_front_door,
+  llama_cpp_rpc_weights_peer,
+  llama_cpp_rpc_slot_plan,
+  llama_cpp_rpc_construct,
+  llama_cpp_rpc_client_endpoint,
+  llama_cpp_rpc_peer_wire,
+  llama_cpp_rpc_slot_plan_total_kv,
+  llama_cpp_rpc_slot_plan_per_slot,
+  llama_cpp_rpc_observed,
+  llama_cpp_rpc_observed_units,
+  llama_cpp_rpc_observed_slot_plan,
+  llama_cpp_rpc_host_is_weights_peer,
   ArtifactIdentityBound,
   ArtifactIdentityUnobserved,
-  serving_unit_observed_artifact,
-  serving_unit_observed_shard_digests,
-  ServingUnitShardDigest,
-  serving_unit_shard_digest,
-  serving_unit_bound_artifact_identity,
-  serving_unit_observed_shard_count,
-  serving_unit_observed_observation,
-  serving_unit_observed_api_surface,
-  serving_unit_artifact_is_bound,
-  serving_unit_artifact,
-  serving_unit_throughput_band,
-  serving_unit_observed_throughput,
+  llama_cpp_rpc_observed_artifact,
+  llama_cpp_rpc_observed_shard_digests,
+  LlamaCppRpcShardDigest,
+  llama_cpp_rpc_shard_digest,
+  llama_cpp_rpc_bound_artifact_identity,
+  llama_cpp_rpc_observed_shard_count,
+  llama_cpp_rpc_observed_observation,
+  llama_cpp_rpc_observed_api_surface,
+  llama_cpp_rpc_artifact_is_bound,
+  llama_cpp_rpc_artifact,
+  llama_cpp_rpc_throughput_band,
+  llama_cpp_rpc_observed_throughput,
 }
 
 // THE POSITIVE CONTROL THAT EVERYTHING ELSE IN THIS FILE DEPENDS ON.
 //
-// serving_unit_observed returns an Optional, and every claim below that matches on it would be
+// llama_cpp_rpc_observed returns an Optional, and every claim below that matches on it would be
 // satisfied VACUOUSLY by Absent -- a file full of green claims about a deployment that never
 // constructed. That is the shape this corpus keeps finding and it is worth one claim of its own:
 // the observed deployment EXISTS, so the conditions in its constructor were all met by the measured
 // facts rather than merely not contradicted.
-test fn the_observed_serving_unit_constructs() -> Bool {
-  match serving_unit_observed() {
+test fn the_observed_llama_cpp_rpc_constructs() -> Bool {
+  match llama_cpp_rpc_observed() {
     Present { value: _ } => true
     Absent => false
   }
@@ -57,10 +57,10 @@ test fn the_observed_serving_unit_constructs() -> Bool {
 // ONE ADDRESS A CLIENT MAY HOLD, and it is the front door. The peer has no sibling accessor, so
 // this is the only endpoint the model can hand anyone.
 test fn the_client_endpoint_is_the_front_door_only() -> Bool {
-  match serving_unit_observed() {
+  match llama_cpp_rpc_observed() {
     Absent => false
     Present { value: d } =>
-      serving_unit_client_endpoint(d: d) == "http://192.168.1.232:30000"
+      llama_cpp_rpc_client_endpoint(d: d) == "http://192.168.1.232:30000"
   }
 }
 
@@ -68,10 +68,10 @@ test fn the_client_endpoint_is_the_front_door_only() -> Bool {
 // 144 GB/min -- 34x -- and nothing in the served behaviour distinguishes them, so this claim is the
 // only thing standing between the specified deployment and a working one that is silently slow.
 test fn the_rpc_peer_is_addressed_on_the_fabric() -> Bool {
-  match serving_unit_observed() {
+  match llama_cpp_rpc_observed() {
     Absent => false
     Present { value: d } =>
-      serving_unit_rpc_peer_wire(d: d) == "192.168.100.11:50052"
+      llama_cpp_rpc_peer_wire(d: d) == "192.168.100.11:50052"
   }
 }
 
@@ -79,19 +79,19 @@ test fn the_rpc_peer_is_addressed_on_the_fabric() -> Bool {
 // each get 1048576 -- not because someone typed 10485760 next to a 10. The operator's table records
 // what the authored-pair version costs: -c 6291456 with --parallel 16 silently yields 2048 per slot.
 test fn the_total_kv_budget_is_derived_from_per_slot_and_slot_count() -> Bool {
-  token_count_value(t: serving_unit_slot_plan_total_kv(plan: serving_unit_observed_slot_plan)) == 10485760
-    && token_count_value(t: serving_unit_slot_plan_per_slot(plan: serving_unit_observed_slot_plan)) == 1048576
+  token_count_value(t: llama_cpp_rpc_slot_plan_total_kv(plan: llama_cpp_rpc_observed_slot_plan)) == 10485760
+    && token_count_value(t: llama_cpp_rpc_slot_plan_per_slot(plan: llama_cpp_rpc_observed_slot_plan)) == 1048576
 }
 
 // A DISCRIMINATING RED: the silent shrink is now unwritable, because there is no second number to
 // disagree. Sixteen slots at the same per-slot window derives a LARGER total, never a smaller
 // per-slot window -- which is the exact inversion of the failure the operator recorded.
 test fn raising_the_slot_count_cannot_shrink_the_per_slot_window() -> Bool {
-  let wider = serving_unit_slot_plan(
+  let wider = llama_cpp_rpc_slot_plan(
     per_slot_context: token_count(count: 1048576),
     slots: positive_slot_count(count: positive_measure_count(predecessor: 15)))
-  token_count_value(t: serving_unit_slot_plan_per_slot(plan: wider)) == 1048576
-    && token_count_value(t: serving_unit_slot_plan_total_kv(plan: wider)) == 16777216
+  token_count_value(t: llama_cpp_rpc_slot_plan_per_slot(plan: wider)) == 1048576
+    && token_count_value(t: llama_cpp_rpc_slot_plan_total_kv(plan: wider)) == 16777216
 }
 
 // ================= DISCRIMINATING REDS ON THE CONSTRUCTOR =================
@@ -105,16 +105,16 @@ test fn a_deployment_whose_two_ends_are_one_host_refuses() -> Bool {
       match fabric_endpoint_on(link: link, host: operator_host_srv8) {
         Absent => false
         Present { value: e } =>
-          match serving_unit_construct(
+          match llama_cpp_rpc_construct(
             alias: "x" as NonEmptyStr,
-            front_door: serving_unit_front_door(
+            front_door: llama_cpp_rpc_front_door(
               host: operator_host_srv8,
               client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 233),
               port: 30000),
-            weights_peer: serving_unit_weights_peer(
+            weights_peer: llama_cpp_rpc_weights_peer(
               host: operator_host_srv8, fabric_address: e.address, port: 50052),
             fabric: link,
-            slot_plan: serving_unit_observed_slot_plan,
+            slot_plan: llama_cpp_rpc_observed_slot_plan,
           ) {
             Absent => true
             Present { value: _ } => false
@@ -129,18 +129,18 @@ test fn a_peer_addressed_off_the_fabric_refuses() -> Bool {
   match fabric_rail0 {
     Absent => false
     Present { value: link } =>
-      match serving_unit_construct(
+      match llama_cpp_rpc_construct(
         alias: "x" as NonEmptyStr,
-        front_door: serving_unit_front_door(
+        front_door: llama_cpp_rpc_front_door(
           host: operator_host_srv7,
           client_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 232),
           port: 30000),
-        weights_peer: serving_unit_weights_peer(
+        weights_peer: llama_cpp_rpc_weights_peer(
           host: operator_host_srv8,
           fabric_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 233),
           port: 50052),
         fabric: link,
-        slot_plan: serving_unit_observed_slot_plan,
+        slot_plan: llama_cpp_rpc_observed_slot_plan,
       ) {
         Absent => true
         Present { value: _ } => false
@@ -153,10 +153,10 @@ test fn a_peer_addressed_off_the_fabric_refuses() -> Bool {
 // exactly how .233 would come to accept a load, given it also runs an unrelated ollama on :11434
 // with roughly 105 of 121 GiB already committed and swap disabled.
 test fn the_weights_peer_host_is_identifiable_as_one() -> Bool {
-  serving_unit_host_is_weights_peer(
-    deployments: serving_unit_observed_units(), host: operator_host_srv8)
-    && !serving_unit_host_is_weights_peer(
-         deployments: serving_unit_observed_units(), host: operator_host_srv7)
+  llama_cpp_rpc_host_is_weights_peer(
+    deployments: llama_cpp_rpc_observed_units(), host: operator_host_srv8)
+    && !llama_cpp_rpc_host_is_weights_peer(
+         deployments: llama_cpp_rpc_observed_units(), host: operator_host_srv7)
 }
 
 
@@ -182,8 +182,8 @@ test fn the_weights_peer_host_is_identifiable_as_one() -> Bool {
 // A DISCRIMINATING RED: an inverted band has no constructor, so "low 59, high 50" -- the transcription
 // error that would silently invert every threshold comparison above -- cannot be authored.
 test fn an_inverted_throughput_band_refuses() -> Bool {
-  match serving_unit_throughput_band(
-    slots: serving_unit_observed_slot_plan.slots,
+  match llama_cpp_rpc_throughput_band(
+    slots: llama_cpp_rpc_observed_slot_plan.slots,
     decode_low: tokens_per_second(count: 3),
     decode_high: tokens_per_second(count: 2),
     prefill: tokens_per_second(count: 14),
@@ -194,45 +194,46 @@ test fn an_inverted_throughput_band_refuses() -> Bool {
 }
 
 
-// THE CROSS-ROSTER REFUSAL, WHICH IS THE ONLY PLACE C1 CAN ACTUALLY BE CHECKED.
+// THE CROSS-ROSTER WALL IS DELIBERATELY ABSENT HERE, AND ITS ABSENCE IS THE POINT.
 //
-// The unit's own constructor makes the weights peer unaddressable WITHIN the unit -- there is no
-// accessor returning it as an endpoint. What that cannot see is a SEPARATE roster naming the same
-// host as a single-host serving cell, and that is the real path by which the peer would accept work.
+// A claim stood here asserting that no host in the CURRENT serving-cell roster is a weights peer of
+// llama_cpp_rpc_observed_units(). It was a good wall against the right hazard: the peer's host
+// answers 200 on :11434/api/tags and offers deepseek-v4-gguf:no-h3-stop, which is exactly what the
+// serving-cell roster selects, so two locally-correct rosters would together commit about 105 of
+// 121 GiB with swap disabled and no spill -- the OOM takes the front door down with it, because the
+// front door cannot serve without these layers.
 //
-// The measurement makes this concrete rather than theoretical: the peer's host answers 200 on
-// :11434/api/tags and offers deepseek-v4-gguf:no-h3-stop, which is precisely what the serving cell
-// roster selects. Each roster would be locally correct; the load would be fatal, because with about
-// 105 of 121 GiB already committed to weights and swap disabled there is no spill -- the OOM kill
-// takes the front door down with it, since the front door cannot serve without these layers.
+// IT CANNOT LIVE IN THIS MODULE ANY MORE, because this module's subject changed underneath it. Once
+// llama_cpp_rpc_observed_units() means "the llama.cpp RPC deployment observed on 2026-09-02", a
+// wall built on it forbids CURRENT enrollment on the authority of a deployment that is NO LONGER
+// RUNNING -- the service has since been cut over to a different realization. A dead deployment
+// cannot be the present authority for a live roster: that is a past observation impersonating
+// current desired state, and it would go on refusing correct enrollments long after its subject
+// stopped existing, or pass them for the equally wrong reason.
 //
-// This claim goes RED the moment a weights-peer host is added to the serving roster, which is the
-// regression control the constructor cannot provide.
-// THE NON-EMPTINESS CONJUNCT IS NOT DECORATION. `any` over an empty list is false and its negation
-// is true, so the disjointness half alone goes GREEN when no unit constructs -- a wall reporting
-// that nothing collides because nothing exists. This claim would then be carried as C1 coverage
-// while establishing nothing, which is the vacuity failure the positive control above exists to
-// catch for the module and which this claim has to catch for itself.
+// WHAT SURVIVES IS THE HISTORICAL HALF, and it is asserted above: in the observed realization srv8
+// WAS an internal participant and srv7 was not. That is a fact about a dated deployment and stays
+// true forever.
 //
-// THE RULE IS DISJOINTNESS BETWEEN TWO ROSTERS, NOT A NAMED HOST. Nothing here says "srv8 may never
-// serve" -- that would transcribe today's assignment and go stale the moment the fleet is
-// repartitioned. It says an internal participant of a constructed unit is not simultaneously a
-// client-routable serving cell, which stays the right rule under any partition.
-test fn no_serving_cell_is_also_a_weights_peer() -> Bool {
-  length(serving_unit_observed_units()) > 0
-    && !any(spark_serving_cell_hosts(), h =>
-         serving_unit_host_is_weights_peer(deployments: serving_unit_observed_units(), host: h))
-}
+// WHAT DOES NOT SURVIVE is the current-roster conclusion. The live C1 wall belongs against the
+// CURRENT internal-participant population, which needs a fresh whole-unit readback of the running
+// deployment to establish -- worker population, front door, supervisors, and which hosts are
+// internal participants NOW. It returns with the runtime-neutral carrier, not here.
+//
+// THIS IS NOT AN UNGUARDED GAP IN THE MEANTIME. The standing operational ruling is that there is no
+// enrollment or serving actuation on srv7/srv8 at all until that readback exists, so removing a
+// stale assertion authorises no write. Recording that honestly is better than retaining a wall whose
+// subject has died, which would be carried as C1 coverage while checking a deployment nobody runs.
 
 
 // THE ARTIFACT IDENTITY IS BOUND, established by hashing the four shards in place on the front-door
 // host. This is also the positive control for every refusal below: without it they could all be
 // satisfied by a constructor that refuses everything.
 test fn the_observed_artifact_identity_is_bound() -> Bool {
-  match serving_unit_observed_artifact() {
+  match llama_cpp_rpc_observed_artifact() {
     Absent => false
     Present { value: a } =>
-      serving_unit_artifact_is_bound(a: a) && length(serving_unit_observed_shard_digests()) == 4
+      llama_cpp_rpc_artifact_is_bound(a: a) && length(llama_cpp_rpc_observed_shard_digests()) == 4
   }
 }
 
@@ -243,7 +244,7 @@ test fn the_observed_artifact_identity_is_bound() -> Bool {
 // THE REFUSAL NOW HAPPENS AT CONSTRUCTION, which is what this claim actually asserts: there is no
 // inexact Bound value to hand to a predicate, because minting one from a short chain yields Absent.
 test fn a_short_chain_mints_no_bound_identity() -> Bool {
-  match serving_unit_bound_artifact_identity(
+  match llama_cpp_rpc_bound_artifact_identity(
     shards: fx_shard_chain(n: 1),
     shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
     Present { value: _ } => false
@@ -253,10 +254,10 @@ test fn a_short_chain_mints_no_bound_identity() -> Bool {
 
 // One well-formed shard digest per ordinal 1..n, so a fixture can vary the CHAIN without varying
 // digest validity -- the two conditions the bound arm now carries are then independently testable.
-fn fx_shard_chain(n: Int) -> List<ServingUnitShardDigest> {
+fn fx_shard_chain(n: Int) -> List<LlamaCppRpcShardDigest> {
   flat_map([1, 2, 3, 4], i =>
     if i <= n {
-      match serving_unit_shard_digest(
+      match llama_cpp_rpc_shard_digest(
         ordinal: positive_measure_count(predecessor: i - 1), hex: fx_digest_hex) {
         Present { value: v } => [v]
         Absent => []
@@ -273,7 +274,7 @@ data fx_digest_hex: String = "11111111111111111111111111111111111111111111111111
 // them as a fully bound artifact. This is the claim that would go green if the ordinal walk were
 // removed and the count check left standing.
 test fn a_repeated_ordinal_chain_mints_no_bound_identity() -> Bool {
-  match serving_unit_bound_artifact_identity(
+  match llama_cpp_rpc_bound_artifact_identity(
     shards: fx_repeated_chain(),
     shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
     Present { value: _ } => false
@@ -281,9 +282,9 @@ test fn a_repeated_ordinal_chain_mints_no_bound_identity() -> Bool {
   }
 }
 
-fn fx_repeated_chain() -> List<ServingUnitShardDigest> {
+fn fx_repeated_chain() -> List<LlamaCppRpcShardDigest> {
   flat_map([0, 0, 1, 2], pred =>
-    match serving_unit_shard_digest(
+    match llama_cpp_rpc_shard_digest(
       ordinal: positive_measure_count(predecessor: pred), hex: fx_digest_hex) {
       Present { value: v } => [v]
       Absent => []
@@ -294,7 +295,7 @@ fn fx_repeated_chain() -> List<ServingUnitShardDigest> {
 // NonEmptyStr carrier accepted as a shard identity; it now yields no ShardDigest at all, which is
 // why the chain above cannot be assembled from it in the first place.
 test fn a_shard_digest_refuses_a_value_that_is_not_a_sha256_hex() -> Bool {
-  match serving_unit_shard_digest(
+  match llama_cpp_rpc_shard_digest(
     ordinal: positive_measure_count(predecessor: 0), hex: "banana") {
     Present { value: _ } => false
     Absent => true
@@ -304,7 +305,7 @@ test fn a_shard_digest_refuses_a_value_that_is_not_a_sha256_hex() -> Bool {
 // POSITIVE CONTROL FOR THE TWO REDS ABOVE: the well-formed four-shard chain DOES mint an identity,
 // so the refusals discriminate rather than being a constructor that refuses everything.
 test fn a_well_formed_four_shard_chain_mints_a_bound_identity() -> Bool {
-  match serving_unit_bound_artifact_identity(
+  match llama_cpp_rpc_bound_artifact_identity(
     shards: fx_shard_chain(n: 4),
     shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
     Present { value: _ } => true
@@ -316,12 +317,12 @@ test fn a_well_formed_four_shard_chain_mints_a_bound_identity() -> Bool {
 // could carry an exact four-shard identity beside a declared count of two, and the identity's
 // guarantee would be silently void while every part looked individually valid.
 test fn an_artifact_refuses_a_count_its_identity_contradicts() -> Bool {
-  match serving_unit_bound_artifact_identity(
+  match llama_cpp_rpc_bound_artifact_identity(
     shards: fx_shard_chain(n: 4),
     shard_count: positive_shard_count(count: positive_measure_count(predecessor: 3))) {
     Absent => false
     Present { value: bound } =>
-      match serving_unit_artifact(
+      match llama_cpp_rpc_artifact(
         primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
         shard_count: positive_shard_count(count: positive_measure_count(predecessor: 1)),
         identity: ArtifactIdentityBound { identity: bound }) {
@@ -342,14 +343,14 @@ test fn a_unit_whose_ends_share_an_address_and_port_has_no_constructor() -> Bool
       match fabric_endpoint_on(link: link, host: operator_host_srv8) {
         Absent => false
         Present { value: e } =>
-          match serving_unit_construct(
+          match llama_cpp_rpc_construct(
             alias: "fixture" as NonEmptyStr,
-            front_door: serving_unit_front_door(
+            front_door: llama_cpp_rpc_front_door(
               host: operator_host_srv7, client_address: e.address, port: 50052),
-            weights_peer: serving_unit_weights_peer(
+            weights_peer: llama_cpp_rpc_weights_peer(
               host: operator_host_srv8, fabric_address: e.address, port: 50052),
             fabric: link,
-            slot_plan: serving_unit_observed_slot_plan,
+            slot_plan: llama_cpp_rpc_observed_slot_plan,
           ) {
             Present { value: _ } => false
             Absent => true
@@ -369,7 +370,7 @@ test fn a_unit_whose_ends_share_an_address_and_port_has_no_constructor() -> Bool
 // POSITIVE CONTROL FOR THE JOIN: the observation of 2026-09-02 constructs, so the refusal above is
 // discriminating and every claim reading the join is non-vacuous.
 test fn the_observed_realization_joins_into_one_observation() -> Bool {
-  match serving_unit_observed_observation() {
+  match llama_cpp_rpc_observed_observation() {
     Present { value: _ } => true
     Absent => false
   }
@@ -379,11 +380,61 @@ test fn the_observed_realization_joins_into_one_observation() -> Bool {
 // CONSTRUCTS -- observation standing permits an artifact whose bytes were never hashed; what it does
 // not permit is calling that artifact identified.
 test fn an_unobserved_artifact_identity_is_not_bound() -> Bool {
-  match serving_unit_artifact(
+  match llama_cpp_rpc_artifact(
     primary_shard_path: "/fixture/shard-00001.gguf" as NonEmptyStr,
     shard_count: positive_shard_count(count: positive_measure_count(predecessor: 0)),
     identity: ArtifactIdentityUnobserved { cause: "fixture" as NonEmptyStr }) {
     Absent => false
-    Present { value: a } => !serving_unit_artifact_is_bound(a: a)
+    Present { value: a } => !llama_cpp_rpc_artifact_is_bound(a: a)
+  }
+}
+
+
+// THE HISTORICAL OBSERVATION DEPENDS ON A ROW THAT IS ALLOWED TO CHANGE, AND THIS PINS IT.
+//
+// gunbc.spark.llama_cpp_rpc_observed does not restate the fabric addresses. It cites `fabric_rail0`
+// and derives the weights peer's address from it, which is the right §3 move -- one fabric fact, one
+// authority, and the deployment's constructor conditions then check against the MEASURED fabric
+// rather than a second copy authored to agree.
+//
+// BUT THE TWO ARE DIFFERENT SUBJECTS AND ONLY ONE OF THEM IS FROZEN. `fabric_rail0` is CURRENT
+// DESIRED STATE over srv7/srv8; this module is a DATED OBSERVATION of what the llama.cpp RPC
+// deployment used on 2026-09-02. Their present equality is an AGREEMENT, not identity of authority.
+// Nothing stops the desired row being re-addressed tomorrow -- that is what desired state is for --
+// and if it moves, a historical observation that derives its peer address from it silently becomes a
+// record of something that never happened. History would be rewritten by an edit to a different
+// module, with no diagnostic anywhere.
+//
+// So this claim pins every field the historical observation leans on. It is deliberately a
+// WHOLE-VALUE agreement rather than a spot check of the address: interface name, prefix and MTU are
+// all load-bearing -- the module's own constructor refuses on each of them -- so pinning only the
+// octets would let a rail move from enp1s0f0np0 to another NIC, or from MTU 9000 to 1500, without
+// this going red.
+//
+// WHEN IT FIRES, THE FIX IS NOT TO UPDATE THE LITERALS. A red here means the desired fabric has
+// moved away from what the dated observation used, and the correct response is to snapshot the
+// observed rail into this module as its own dated value -- the side of the fork that stops being
+// derivable is the historical side, and it is the side that must stop deriving.
+test fn the_dated_observation_still_agrees_with_the_fabric_row_it_cites() -> Bool {
+  match fabric_rail0 {
+    Absent => false
+    Present { value: link } =>
+      match fabric_endpoint_on(link: link, host: operator_host_srv8) {
+        Absent => false
+        Present { value: peer } =>
+          match fabric_endpoint_on(link: link, host: operator_host_srv7) {
+            Absent => false
+            Present { value: door } =>
+              (link.name as String) == "cx7-rail0"
+                && render_ipv4_address(a: peer.address) == "192.168.100.11"
+                && render_ipv4_address(a: door.address) == "192.168.100.10"
+                && (peer.interface as String) == "enp1s0f0np0"
+                && (door.interface as String) == "enp1s0f0np0"
+                && peer.prefix == 24
+                && door.prefix == 24
+                && byte_size_count(b: peer.mtu) == 9000
+                && byte_size_count(b: door.mtu) == 9000
+          }
+      }
   }
 }
