@@ -325,7 +325,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: CorpusWitnessKind,
     budget: SubstrateLongLaneEvalBudget,
     reason: "Admitted RED (review 48255): retired 0==0 policy-oracle equality — live FixtureDerived mint sites not discoverable until G2 marshal exposes callee atoms. Owner: witness-evidence-lifecycle / marshal frontier.",
-    dissolution: unbound_dissolution(description: "G2 fn-arrow marshal exposes live fixture mint callees in the fn_arrow_decl_facts_live population over the roots the witness names (gunbc#10156 clause 2 replaced the entry closure this once read with a caller-named pool_roots subject; the marshal frontier this row waits on is unchanged), known_fixture_origin_mint_surface_count_in_scope(pool_roots:) > 0, witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds greens, and this row deletes — re-enroll with closed-subject expected population or monotone debt contract, never a tree-copied literal")
+    dissolution: unbound_dissolution(description: "G2 fn-arrow marshal exposes live fixture mint callees in the fn_arrow_decl_facts_live population over the roots the witness names (gunbc#10156 clause 2 replaced the entry closure this once read with a caller-named pool_roots subject; the marshal frontier this row waits on is unchanged), known_fixture_origin_mint_surface_count_in_scope over the witness declared subject roots > 0, witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds greens, and this row deletes — re-enroll with closed-subject expected population or monotone debt contract, never a tree-copied literal")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",

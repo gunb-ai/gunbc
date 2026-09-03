@@ -143,8 +143,23 @@ test fn wiring_corpus_fixture_surface_holds() -> Bool {
     && wiring_corpus_probe_lambda(flag: true, items: std.algebra.Empty)
 }
 
+// THE SUBJECT IS THIS MODULE'S OWN DIRECTORY, AND SAYING SO NARROWS A NAME THAT WAS ALREADY
+// WIDER THAN THE CHECK. Every assertion below names a probe declared in THIS file; the only clause
+// that ranges over whatever `decls` contains is corpus_clean_excluding_deadlet_fixtures, and its
+// range was never the corpus despite this module's name -- fn_arrow_decl_facts_live answered from
+// this witness's own resolved import closure until gunbc#10245 gave it a declared subject.
+//
+// SO THE CHOICE HERE IS BETWEEN TWO HONEST SUBJECTS, NOT BETWEEN HONEST AND CONVENIENT. Naming
+// witness_layer_roots would make the cleanliness clause genuinely corpus-grain for the first time,
+// and it was measured doing exactly that: the row exceeded the floor's wall budget and returned NO
+// VERDICT, which buys corpus range at the cost of the check existing. Naming this directory keeps a
+// verdict and states the range in one place instead of leaving it to be inferred from a filename.
+// A corpus-grain wiring judgment is a cost decision against the per-subject floor line and is not
+// this row's to take.
+data wiring_liveness_subject_roots: List<String> = ["src/v2/test/lens_wiring_liveness"]
+
 test fn wiring_liveness_corpus_witnesses() -> Bool {
-  let decls = fn_arrow_decl_facts_live(pool_roots: witness_layer_roots)
+  let decls = fn_arrow_decl_facts_live(pool_roots: wiring_liveness_subject_roots)
   return witness_dead_wire_detected()
     && (length(xs: decls) > 0)
     && probe_present_with_params(decls: decls)
