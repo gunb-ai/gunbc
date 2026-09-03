@@ -2,7 +2,8 @@ module gunbc.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_binary_path }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import gunbc.fleet_main_revision { fleet_desired_ref_name }
@@ -463,18 +464,35 @@ type DashboardToolchain {
 // system /bin/ln would fail that probe BEFORE it could fail the flag at spawn time. That is the
 // difference between a typed preflight refusal naming the capability and a dispatch that dies
 // mid-attempt on an illegal option.
-// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY, declared as a policy budget rather than measured
-// off whatever the machine happens to have free. It exists because the worker this bounds is
-// `gunbc run`, which REFUSES to plan without an enforceable cgroup limit (HostBudgetUnreadable):
-// the value is not a guess at what the process needs, it is the bound the executor is obliged to
-// expose so the process can size its typed-module cache against something real.
+// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY, DERIVED FROM THE SLOT AUTHORITY RATHER THAN
+// AUTHORED HERE. The first cut of this row was `byte_size(count: 17179869184)` with a hand
+// justification about observed peaks, and that was the section 3 violation in its purest form: the
+// number is EXACTLY gunbc_runner_slot_desired().memory_max, which is not a coincidence to be
+// noted but an authority to be consumed. That row carries an operator ruling derived from 186
+// floor-job cgroup peaks, a superseded prior derivation retained as method, and its own dissolve-on
+// -- none of which a literal here inherits, and all of which a literal here would silently
+// contradict the moment the ruling moves.
 //
-// 16 GiB is chosen against measured peaks on this corpus -- a serve graph compile peaked near
-// 5.5 GiB and a harness worker near 4.5 GiB -- so it is roughly 3x headroom over the largest
-// observed resolve. It is deliberately ONE value for every instance today: no host has been shown
-// to need a different one, and inventing per-host rows before a host disagrees would be modelling
-// a distinction nothing has yet made.
-data dispatch_worker_memory_ceiling: ByteSize = byte_size(count: 17179869184)
+// THE REUSE IS ON PROVEN COINCIDENCE, NOT ON A MATCHING NUMBER. What the slot row measured is
+// floor-job cgroup peaks, and a floor job is a gunbc process resolving this corpus. A dispatched
+// harness worker is the same workload shape -- one `gunbc run` resolving the same corpus -- so the
+// distribution the ruling derived from is the distribution this ceiling faces. Two concepts that
+// merely happened to share a number would have to stay separate; these share the measurement.
+//
+// WHERE THIS IS POINTED, and it is deliberately NOT built yet. A per-attempt ceiling is one half of
+// a concurrency question whose other half already exists: gunbc.runner_slot_allocation derives
+// host_memory_admitted_width, host_cpu_admitted_width and host_disk_admitted_width and commits the
+// MINIMUM over those axes, which is exactly "the most concurrent fraction this host admits", and
+// gunbc.fleet_host_budget already expresses shares as fractions over a measure
+// (measure_scale_fraction_floor) and charges control-plane residency against what a host may
+// commit. Dispatch consumes none of it: nothing today asks how many attempts this host admits
+// before starting one, so concurrency is bounded by whoever is clicking rather than by the budget.
+//
+// DISSOLUTION TRIGGER: dispatch admission takes a width from the same minimum-over-axes derivation
+// the runner slots use, at which point this row stops being a per-attempt ceiling standing alone
+// and becomes one term in an allocation the fabric can express. Until then it is honest about being
+// a ceiling with no width beside it.
+data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memory_max
 
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,

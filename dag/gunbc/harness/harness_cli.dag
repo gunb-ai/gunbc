@@ -111,13 +111,30 @@ fn harness_probe_cli() -> ProcessExit {
 // point of taking it as an argument: an attempt edits its own checkout, and a harness that ran its
 // commands in the shared repo root would write outside the attempt's boundary while every receipt
 // said otherwise.
-fn harness_worker_config(worktree: FilePath, timeout_program: FilePath) -> HarnessTurnConfig {
+// THE REQUEST BODY'S SCRATCH PATH IS PER ATTEMPT, NOT PER HOST, and it arrives as an argument for
+// the same reason the worktree and the timeout program do: it is a fact about WHERE this attempt
+// keeps its bytes, which the controller knows and the worker cannot derive.
+//
+// harness_request_scratch_path is a single fixed /tmp file, and every worker on a host writes it
+// once per turn. That is invisible while exactly one worker runs and is silent corruption the
+// moment two do -- one worker's request body overwritten by another's between the write and the
+// POST that reads it back. Nothing would refuse; the model would simply answer the wrong prompt.
+//
+// Deriving it from the attempt's own state directory rather than from a host-global temp root also
+// makes the location a PARAMETER rather than an assumption, which is the property a distributed
+// harness needs: an attempt that runs elsewhere carries its scratch with it instead of contending
+// for one host's /tmp.
+fn harness_worker_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: harness_router_backend_url(),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     system_prompt: harness_worker_system_prompt,
-    request_scratch_path: harness_request_scratch_path,
+    request_scratch_path: request_scratch_path,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
       timeout_program: timeout_program,
@@ -134,11 +151,17 @@ data harness_worker_step_budget: Int = 24
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
 // is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
-fn harness_worker_cli(worktree: String, brief: String, timeout_program: String) -> ProcessExit {
+fn harness_worker_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+) -> ProcessExit {
   let outcome = harness_run_turn(
     config: harness_worker_config(
       worktree: worktree as FilePath,
       timeout_program: timeout_program as FilePath,
+      request_scratch_path: request_scratch_path as FilePath,
     ),
     prompt: brief,
     step_budget: harness_worker_step_budget,
