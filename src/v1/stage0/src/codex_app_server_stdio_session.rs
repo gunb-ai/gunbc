@@ -22,6 +22,8 @@ use std::time::{Duration, Instant};
 const THREAD_START_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TERMINAL_TIMEOUT: Duration = Duration::from_secs(600);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+const NATURAL_EXIT_GRACE: Duration = Duration::from_secs(5);
+const PROCESS_GROUP_TERMINATION_GRACE: Duration = Duration::from_secs(10);
 
 pub const EXIT_THREAD_START_TIMEOUT: i32 = 97;
 pub const EXIT_TURN_TERMINAL_TIMEOUT: i32 = 98;
@@ -116,6 +118,17 @@ pub fn run_codex_app_server_stdio_session(
     .join()
     .map_err(|_| "stdin writer panicked".to_string())?;
 
+    // Give Codex its existing clean-EOF exit path, but observe it without reaping: the unreaped
+    // leader pins the process-group identity until teardown has finished signalling and observing
+    // every descendant. A bounded window also prevents an inherited pipe from blocking teardown.
+    let natural_exit =
+        crate::process_group::wait_for_leader_exit_without_reaping(pid, NATURAL_EXIT_GRACE);
+    let termination = crate::process_group::terminate_process_group(
+        &mut child,
+        pid,
+        PROCESS_GROUP_TERMINATION_GRACE,
+    );
+
     if let Some(h) = stdout_reader {
         let _ = h.join();
     }
@@ -123,13 +136,29 @@ pub fn run_codex_app_server_stdio_session(
         let _ = h.join();
     }
 
-    let mut exit_code = child
-        .wait()
-        .map_err(|e| format!("wait codex child: {e}"))?
-        .code()
-        .unwrap_or(1);
-
-    kill_process_group(pid);
+    if let crate::process_group::ProcessGroupNaturalExit::ObservationFailed { detail } =
+        natural_exit
+    {
+        return Err(format!("observe codex natural exit: {detail}"));
+    }
+    if !termination.group_is_gone() {
+        return Err(format!(
+            "codex process-group teardown left residue: {:?}",
+            termination.residue
+        ));
+    }
+    let mut exit_code = match termination.leader {
+        crate::process_group::ProcessGroupWait::Exited { code } => code,
+        crate::process_group::ProcessGroupWait::Signaled { signal } => 128 + signal,
+        crate::process_group::ProcessGroupWait::TimedOut => {
+            return Err("timed out reaping codex child after process-group teardown".to_string())
+        }
+        crate::process_group::ProcessGroupWait::WaitFailed { detail } => {
+            return Err(format!(
+                "reap codex child after process-group teardown: {detail}"
+            ))
+        }
+    };
 
     let stdout = stdout_buf.lock().unwrap().clone();
     let stderr = stderr_buf.lock().unwrap().clone();
@@ -207,10 +236,6 @@ fn spawn_codex_child(req: &CodexStdioSessionRequest<'_>, stdin_rx: File) -> Resu
     // became a second consumer of them; the protocol above and below stays here.
     crate::process_group::spawn_in_new_process_group(&mut cmd)
         .map_err(|e| format!("spawn codex app-server: {e}"))
-}
-
-fn kill_process_group(pid: u32) {
-    crate::process_group::signal_process_group(pid, libc::SIGTERM);
 }
 
 fn poll_thread_start_id(
