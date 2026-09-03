@@ -163,3 +163,100 @@ drift is frozen in `v2.workflow.floor_cost_debt` precisely so it is not granted 
 
 Which of the two remedies fits the emit and execution families — and whether a `bind_outcome` repair
 buys real margin or only a rank change — is a decision this measurement informs and does not make.
+
+## 6. The margin of §3 is a two-run point estimate; the between-run envelope is wider
+
+*Commissioned after `v2.test.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates`
+passed at 406ms against the 500ms ceiling on green `main` and refused at `cpu_at_least=516ms` on an
+unchanged tree — a required-floor refusal with `claims_failed=0`.*
+
+**§3's figures index over rows inside one pair of runs, not over runs — and its prose says
+otherwise.** §3 reads "run-to-run variation on the same identity across the sample", but the
+producer behind it, `identity_inflation_permille`, takes a `base` and an `other` and is driven with
+exactly two named runs (`floor_cost_baseline_run`, `floor_cost_contended_run`). Its percentiles are
+therefore computed across ROWS inside one pair, and describe how unevenly one host-pair ratio lands
+over different rows. Two runs are one sample of the between-run quantity and one sample has no
+spread, so the pairwise median is a point estimate wearing a distribution's clothes. The instrument
+was right and the sentence over it was not, which is the failure the "name the producer" rule exists
+to make detectable. If the admitted execution envelope set is wider than the
+pair sampled, it is a **lower bound**, and a budget set from it moves the cliff rather than closing
+it. §3 is not withdrawn — it measures what it measures — but it may not be used as a budget input.
+
+**The producer for this section is `gunbc.floor_cost_distribution` `identity_envelopes` /
+`complete_envelopes` / `work_invariant_envelopes` / `worst_envelope_permille` /
+`run_extreme_census`, driven by `tools.floor_cost_distribution_instrument`
+`floor_cost_envelope_report`.** The sample is twelve green `main` runs of `witnesses.yml` on twelve
+distinct runner registrations across three hosts, named with their runners in
+`floor_cost_envelope_sampled_runs` — the runner is not in the artifact and is acquired from the
+run's `required-witnesses-floor` job. Re-derive rather than trust this page; where the two disagree
+the instrument is right.
+
+`floor_cost_envelope_check` is the exit-code actuator and refuses an incomplete sample by name;
+`floor_cost_envelope_report` returns the lines, and `gunbc run` renders them through its
+entry-point refusal because the host requires a `ProcessExit` from an entry function — the sibling
+report in §1 has the same shape.
+
+One row's envelope is its max over the twelve runs against its min over the same twelve, computed
+only over identities present in every run with a verdict and a baseline at or above 50ms, and
+restricted to rows whose `eval_steps` were identical in all twelve so the remaining movement is
+inflation rather than a tree change.
+
+**Between-run envelope, work-invariant population (n=398 of 400 complete rows, 3,628 identities
+observed across the twelve runs):** median **1.367x**, p90 **1.653x**, p95 **1.819x**, p99
+**2.046x**, worst observed **2.280x** — the instrument's own order statistics, which select an
+observed member and never interpolate. §3's pairwise median of 1.16x understates the median by a
+fifth and the worst case by more than half.
+
+That the step counts are identical for 398 of the 400 rows — across twelve *different* trees — is
+itself the corpus-grain observation the rung-drop row's missing item (b) asks for in a narrower
+form: the cpu column moves by up to 2.28x while the evaluator-step column does not move at all.
+
+**No cost trend.** Restricting the population by baseline leaves the envelope essentially flat —
+p50 1.37 / p90 1.65 at ≥50ms, 1.35 / 1.58 at ≥100ms, 1.36 / 1.64 at ≥200ms, 1.47 / 1.51 at ≥300ms
+— which confirms §3's refutation of "expensive rows inflate more" over runs rather than over one
+pair, and is what makes a single global margin defensible.
+
+## 7. The verdict IS a property of which runner picks up the job
+
+A median run factor cannot answer this: it is robust exactly where the envelope is driven. The
+discriminator is `run_extreme_census`, which counts how often each run holds a row's maximum and its
+minimum. Under per-row jitter each of twelve runs is the extreme for about a twelfth of the
+population.
+
+It is not close to that. Over the 398 work-invariant rows, run `33766436293` (**srv4-09**) holds the
+minimum for **367**; run `33775106554` (**srv1-19**) holds the maximum for **160**. At host grain
+srv1 holds the maximum for **279 of 398 rows from 3 of 12 runs**, against 83 for srv3 (5 runs) and 36
+for srv4 (4 runs). The extremes are concentrated on particular machines, so a row near the line is
+adjudicated by which host dequeued the job.
+
+**An earlier reading of this measurement said the opposite and is corrected here rather than
+deleted.** Per-run *median* factors span only 0.878–1.118 and per-host medians are nearly identical
+(srv1 1.069, srv3 0.985, srv4 0.992), which reads as "the host does not matter". It is the wrong
+statistic for the question: a ceiling is crossed by the extreme, not by the median, and the extreme
+census shows the concentration the median averages away.
+
+## 8. What this bounds, and what it does not
+
+**The subject row.** `rust_produced_decl_name_discriminates` measured **313–444ms across the twelve
+runs** (envelope 1.42x, `eval_steps` 169,297 in every one — the work never changed). Its minimum,
+313ms, is above the clean-run budget the measured p90 implies (500 / 1.653 = **302ms**) and well above
+the worst-case budget (500 / 2.28 = **219ms**). The row is inside the variance cliff by measurement,
+not by anecdote, and the 516ms refusal is an ordinary member of this distribution.
+
+**The bound is a floor, not a bound.** Twelve runs on three hosts are a subset of the admitted
+execution envelopes. A wider sample can only find a larger worst case, so 2.28x may only rise and the
+implied budget may only fall.
+
+**Raising the ceiling remains not an option** for the reasons §5 gives. What this measurement
+supplies is a re-derivation the authority already asked for: `docs/design-rung-drops.md`, *Per-claim
+cost qualification is unavailable at the subject grain the gate consumes*, sizes its attention
+constant as the ceiling over the largest inflation floor observed to date and states that the
+constant **must be re-derived the moment a larger floor is measured**. The floor it was sized against
+was 1.777 from a single 501→282 pair. This sample measures **2.28**, so the constant falls from 280ms
+to **219ms**, and the row is updated accordingly. Restricting the derivation to rows at or above
+200ms — where whole-millisecond quantisation cannot dominate — gives 1.874 and a constant of 266ms,
+so the direction of the re-derivation does not depend on the small-baseline tail.
+
+**Which of the sanctioned remedies the subject family takes is not decided here.** Reducing what the
+witness reaches for, or rehoming it in a lane declaring its own dated ceiling and naming it as an
+executing consumer, are both open; this section supplies the margin either decision needs.
