@@ -125,6 +125,22 @@ module gunbc.recurring_failure_mode
 // field 'evidence' in literal of type 'RecurringFailureMode'`). Nothing silent was found in that
 // set. A brace-balance or declared-versus-rostered check would be the DESIGN section 4b decoration:
 // permanently green, because the only corpus it could fire on never reaches it.
+//
+// A THIRD CONSEQUENCE NOBODY ARGUED FOR IN ADVANCE, appended by a later lane rather than authored
+// here: THE SPLIT MADE A QUESTION DECIDABLE THAT WAS PREVIOUSLY ONLY SEARCHABLE. This cut was
+// justified on merge geometry, and then on making a duplicate declaration unwritable because two
+// files cannot share a name. But the question a lane most often needs to answer about a contended
+// carrier is "which identities do I add?" -- and under the blob that was a substring search inside
+// an 11,751-character line, which is how two duplicate declarations hid in plain sight for two hours
+// on 2026-09-03 while three separate instruments read the file and reported clean. After the split
+// it is a set difference over filenames against the roster directory, and it returns an EMPTY RESULT
+// A READER CAN TRUST. A SET DIFFERENCE OVER FILENAMES HAS A MEANING; A GREP INSIDE A MEGA-LINE HAS A
+// HIT COUNT. The occasion was a parked branch carrying 83 stale declarations of this shape: the
+// emptiness of its own contribution was decidable in one command, and that is what made the
+// resolution safe to perform without its author.
+//
+// AN UNPREDICTED BENEFIT IS WORTH MORE IN THIS RECORD THAN A PREDICTED ONE, because it is evidence
+// the cut fell at a real joint rather than at a convenient one.
 
 import std.types { String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
