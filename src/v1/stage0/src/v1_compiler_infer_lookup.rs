@@ -716,7 +716,23 @@ pub fn census_declaration_bound_formals(
         };
         let declaration_generic_names = v1_rt::concat(
             tp_names.clone(),
-            declaration_unbound_leaf_names(return_type.clone(), declaration_env.clone()),
+            v1_rt::concat(
+                declaration_unbound_leaf_names(return_type.clone(), declaration_env.clone()),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in node.params.clone().iter().cloned() {
+                        __result.extend(
+                            (*declaration_unbound_leaf_names(
+                                crate::v1_std_core::param_node_type_expr(p.clone()),
+                                declaration_env.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
         );
         Rc::new({
             let mut __result = Vec::new();

@@ -3964,7 +3964,7 @@ fn build_call_application_plan(
           parameter_identity: carried.parameter_identity,
           declared_type: substitute_generics(n: carried.declared_type, subst: call_subst, source_indices: source_indices),
           declaration_bound_conformance: substitute_generics(n: carried.declaration_bound_conformance, subst: call_subst, source_indices: source_indices),
-          substitution_basis: substitute_generics(n: carried.substitution_basis, subst: call_subst, source_indices: source_indices)
+          substitution_basis: carried.substitution_basis
         },
         matched_argument_index: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
           Present { value: bound } => Present { value: bound.first }
@@ -4091,17 +4091,20 @@ fn container_element_nominal_brand_mismatch(
 // Same seed-walker disposition as carried_structural_type_name above: bounded to the finite Node
 // value, retained only in the bootstrap seed, and dissolved by the v2 self-host fold cut.
 fn direct_call_formal_has_unbound_type_variable(n: Node) -> Bool {
+  direct_call_formal_has_unbound_type_variable_at(n: n, depth: 0)
+}
+
+fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool {
+  if depth >= 16 { false } else {
   let here = match n.inferred {
     Present { value: TypeVariable { id: _ } } => true
-    Present { value: Resolved { node: resolved } } => match resolved.inferred {
-      Present { value: TypeVariable { id: _ } } => true
-      _ => false
-    }
+    Present { value: Resolved { node: resolved } } => direct_call_formal_has_unbound_type_variable_at(n: resolved, depth: depth + 1)
     _ => false
   }
   here
-    || (n.children |> any(ch => direct_call_formal_has_unbound_type_variable(n: child_type_node(ch: ch))))
-    || (n.params |> any(p => direct_call_formal_has_unbound_type_variable(n: param_node_type_expr(n: p))))
+    || (n.children |> any(ch => direct_call_formal_has_unbound_type_variable_at(n: child_type_node(ch: ch), depth: depth + 1)))
+    || (n.params |> any(p => direct_call_formal_has_unbound_type_variable_at(n: param_node_type_expr(n: p), depth: depth + 1)))
+  }
 }
 
 fn direct_call_arg_type_mismatch(
@@ -5310,8 +5313,12 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       }
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
+    let formal_declared_context = match formal_selection {
+      CallArgumentFormalSelected { formal_index: _, formal: p } => param_node_type_expr(n: p)
+      CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+    }
     let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
-    let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
+    let formal_param_type = substitute_generics(n: formal_declared_context, subst: st.subst, source_indices: scope.type_env.source_indices)
     let formal_conformance_type = match formal_selection {
       CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
         Present { value: carried } => substitute_generics(n: carried.declaration_bound_conformance, subst: st.subst, source_indices: scope.type_env.source_indices)
@@ -5321,13 +5328,10 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     }
     let contextual_expected = match arg_value(n: a).expr_data {
       ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_type }
-      ExprRecordLit { parent_enum: _ } => formal_conformance_type
+      ExprRecordLit { parent_enum: _ } => formal_param_type
       _ => formal_param_type
     }
-    let expected = if has_formal && (type_node_is_callable(n: formal_param_type)
-      || !direct_call_formal_has_unbound_type_variable(n: formal_param_type)) {
-      Present { value: contextual_expected }
-    } else { none }
+    let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
     let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
       st.subst
@@ -7726,10 +7730,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   }
   let si_presence = scope.type_env.source_indices
   let presence_variant_owner = variant_owner_node(scope: scope, name: tn_str)
-  let field_serving_decl = match presence_variant_owner {
-    Present { value: owner } => Present { value: owner }
-    Absent => lookup_type_by_name(env: scope.type_env, name: tn_str)
-  }
   let presence_fields = if tn_str == "" {
     []
   } else {
@@ -7813,22 +7813,26 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let field_declared_type = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
-        let ft_raw = match sf.inferred {
+        let ft = match sf.inferred {
           Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
           _ => field_node_type_expr(n: sf)
-        }
-        let ft = match field_serving_decl {
-          Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft_raw, serving_decl: owner, source_indices: scope.type_env.source_indices)
-          Absent => ft_raw
         }
         Present { value: ft }
       Absent => none
     }
+    let field_conformance_type = match field_declared_type {
+      Present { value: ft } => match presence_variant_owner {
+        Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
+        Absent => match lookup_type_by_name(env: scope.type_env, name: tn_str) {
+          Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
+          Absent => ft
+        }
+      }
+      Absent => error_type
+    }
     let field_expected = match field_declared_type {
       Present { value: ft } =>
-        if direct_call_formal_has_unbound_type_variable(n: ft) {
-          none
-        } else if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
+        if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
           Present { value: ft }
         } else { none }
       Absent => none
@@ -7839,7 +7843,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        if direct_call_formal_has_unbound_type_variable(n: expected_node) {
+        if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
           []
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices) {
