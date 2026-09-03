@@ -406,9 +406,31 @@ fn variant_pattern_coverage_key(name: String) -> String {
 // GENUINELY OPEN, and refused nowhere: Int and String columns, whose inhabitants are not a
 // declared roster. Rows covering such a column with literals alone are not refused. That is the
 // PRE-EXISTING top-level behaviour (a non-coproduct scrutinee was never checked at all) carried
-// unchanged to nested depth, not a new failure arm. NEXT-RUNG TRIGGER: a closed constructor
-// roster for those two, sufficient that a finite literal set is decided the way a coproduct's
-// declared arms are.
+// unchanged to nested depth, not a new failure arm.
+//
+// AND THAT SENTENCE UNDERSTATED ITS OWN SCOPE, WHICH BY THE PARAGRAPH ABOVE IS THE SAME DEFECT
+// AGAIN, POINTING THE SAME WAY. `ConstructorsOpen` is an ELSE branch, so it is not the set {Int,
+// String}: it is EVERYTHING that is not optional, not a witness, and carries no Disj connective.
+// That is THREE states with three different correct answers, measured (gunbc#10028, review 59399):
+//   - a genuine open scalar -- a finite literal set cannot cover it, so a witness is owed;
+//   - a SINGLE-CONSTRUCTOR PRODUCT -- a record type, no `|`, hence no Disj -- which is CLOSED with
+//     exactly one constructor and whose total destructure is total. `v2.std.grammar`
+//     `derive_grammar_relation_token_edges_recursive_step` is the live specimen: it matches a
+//     `Witness` with both arms present and its nested `DeriveGrammarRelationTokensProgress` column
+//     is a three-field record;
+//   - a type whose lookup FAILED, where `resolve_scrutinee_type` returns the node unchanged. That
+//     is IGNORANCE, NOT AN ANSWER, and it is the reason the arm cannot simply be flipped to refuse.
+//
+// WHY THE ARM IS NOT FLIPPED HERE, MEASURED RATHER THAN ARGUED. Deleting the guard so the arm
+// yields a witness was implemented and reverted: the corpus reports NINETEEN sites, sampled rather
+// than counted, and they are false positives of the second kind. A widening arm and a
+// false-refusal arm can be THE SAME LINE READ IN TWO DIRECTIONS, and flipping it trades a
+// fail-open for a fail-closed-on-valid-input while the modelling deficit underneath is untouched.
+// NEXT-RUNG TRIGGER: split this roster into those three states, SUFFICIENT FOR a closed
+// single-constructor product to be adjudicated as closed and an unresolved type to refuse as
+// unresolved rather than either being answered as open. The nineteen sites are that trigger's
+// acceptance corpus, not its debt. Rostered as a third instance of
+// `accepted_source_emits_uncompilable_target` in `gunbc.recurring_failure_mode`.
 
 type ConstructorRoster
   = ConstructorsClosed { names: List<String> }
