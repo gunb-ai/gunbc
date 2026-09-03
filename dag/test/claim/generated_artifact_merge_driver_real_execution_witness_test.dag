@@ -12,6 +12,7 @@ import gunbc.generated_artifact_merge_driver {
 }
 import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
+import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -59,7 +60,10 @@ fn seed_witness_repository(repo: FilePath, driver_value: String) -> Bool {
   ).success
   let script = Filesystem.Write(
     path: witness_repo_file(repo: repo, name: witness_driver_script_name),
-    content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command),
+    content: expected_generated_artifact_merge_driver_sh(
+      regen_command: ci_heal_author_commit_regen_command,
+      heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+    ),
   ).success
   let attributes = Filesystem.Write(
     path: witness_repo_file(repo: repo, name: ".gitattributes"),

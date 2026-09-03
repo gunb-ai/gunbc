@@ -1,6 +1,6 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, artifact_path, artifact_directory, artifact_name }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, ConcurrentDivergenceRepair, AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge, concurrent_divergence_repair, heal_regenerated_after_provisional_merge_paths, artifact_path, artifact_directory, artifact_name }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -20,6 +20,27 @@ import gunbc.generated_artifact_assessment {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EXCEPTION IS EXACTLY THE TWO LEDGER PROJECTIONS, not all documentation and not a copied
+// path roster in the driver. Both directions make widening or silently dropping either ledger red.
+test fn only_design_ledgers_delegate_concurrent_regeneration_to_heal() -> Bool {
+  let paths = heal_regenerated_after_provisional_merge_paths()
+  count(paths) == 2
+    && any(paths, p => p == "docs/design-failure-modes.md")
+    && any(paths, p => p == "docs/design-rung-drops.md")
+    && match concurrent_divergence_repair(a: DesignFailureModesArtifact) {
+         HealRegeneratesAfterProvisionalMerge => true
+         AuthorRegeneratesBeforeMerge => false
+       }
+    && match concurrent_divergence_repair(a: DesignRungDropsArtifact) {
+         HealRegeneratesAfterProvisionalMerge => true
+         AuthorRegeneratesBeforeMerge => false
+       }
+    && match concurrent_divergence_repair(a: DesignArtifact) {
+         AuthorRegeneratesBeforeMerge => true
+         HealRegeneratesAfterProvisionalMerge => false
+       }
+}
 
 // EVERY FIXTURE HERE IS AUTHORED, INPUT AND EXPECTATION BOTH. The production population is never
 // the oracle: folding the live committed roster and asserting what it returns would be
@@ -357,6 +378,27 @@ test fn clean_population_agrees_over_a_nonempty_roster() -> Bool {
     && (expected |> count) > 0
     && assess_generated_artifact_population(expected: expected, observations: observations)
     && generated_artifact_population_findings_rendered(f: f) == ""
+}
+
+// HEAL'S SECOND PASS USES THIS SAME ASSESSMENT. This is the discriminating RED for its fixed-point
+// assertion: the first pass wrote "first-pass", the second generation produced "second-pass",
+// and the comparison must refuse with the affected path rather than warn or collapse to clean.
+test fn heal_second_generation_divergence_refuses_and_locates() -> Bool {
+  let findings = generated_artifact_population_findings(
+    expected: [DesignFailureModesArtifact],
+    observations: [artifact_observation_fixture(
+      a: DesignFailureModesArtifact,
+      path: "docs/design-failure-modes.md",
+      gen: "second-pass",
+      com: "first-pass",
+      valid: true
+    )]
+  )
+  !generated_artifact_population_findings_empty(f: findings)
+    && string_contains(
+         s: generated_artifact_population_findings_rendered(f: findings),
+         pattern: "docs/design-failure-modes.md"
+       )
 }
 
 // THE BOOLEAN IS A PROJECTION AND NOT A SECOND OPINION. If the two ever disagreed, the fork this

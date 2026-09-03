@@ -240,3 +240,23 @@ func main_wet() -> ProcessExit {
     }
   })
 }
+
+// HEAL MAY COMMIT ONLY A FIXED POINT. The first pass is the actuator: it overwrites every
+// committed projection from this checkout's authorities. The second pass is the same independent
+// observation used by the required drift gate: it reads those bytes, generates every expected
+// body again, and returns the typed, located finding population on any disagreement. A warning is
+// not an arm here; any non-idempotent artifact returns ExitFailure before the workflow reaches its
+// commit step.
+//
+// This is deliberately a separate entry from main_wet. Authors regenerating an ordinary
+// concurrent projection retain the one-pass command, while heal-generated-artifacts binds the
+// stronger actuator-plus-proof because it is about to write a commit without a human inspecting
+// the bytes. Both passes preserve committed_generated_artifacts() source order; there is no sort.
+func main_wet_verified() -> ProcessExit {
+  let first = main_wet()
+  if exit_ok(e: first) {
+    run_generated_artifact_drift_gate_body()
+  } else {
+    first
+  }
+}
