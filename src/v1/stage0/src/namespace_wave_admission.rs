@@ -342,6 +342,21 @@ pub struct TransitionAdmission {
     pub disposition: NamespaceDeltaDisposition,
 }
 
+/// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
+/// deltas, a file, environment state, or any runtime input: its permission set is exactly what an
+/// author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str` patterns
+/// distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject admitted
+/// only the all-empty shape in a const: it refused loudly as stale, but no const row could name a
+/// real module.
+///
+/// EVERY ROW BELOW IS `TargetChanged`, AND THAT IS THE WHOLE CLAIM: a spelling authored on both
+/// sides now resolves to a different module. NONE of them changes WHICH DECLARATION the spelling
+/// denotes -- the wall reports the module-membership half of the same motion as
+/// `SameDeclarationIdentityRebind` and auto-admits it, and a binding whose meaning had actually
+/// moved would refuse on its own row rather than be covered by these. The rows are enumerated by
+/// exact identity, never by a pattern over the renamed modules, because a pattern would admit a
+/// genuine rebind that happened to land in the same module pair.
+
 /// EMPTY IS THE RESTING STATE between transitions.
 ///
 /// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
@@ -791,7 +806,258 @@ pub struct TransitionAdmission {
 /// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
 /// deletion -- the specification record's field type, and the standing row's declared type and
 /// constructor. Their transition is still open for the reason stated above.
+/// TWENTIETH DISSOLUTION (2026-09-03, gunbc#10156). The 47 `rung drop authority consolidation
+/// gunbc#10106` rows are deleted, by their own trigger: #10106 merged as 78e022c51e4, so main
+/// carries the consolidation and no run after it can produce those deltas. Required run 33772725454
+/// on 646058e82c reported `FAILED PHASE namespace-wave-admission (0 unadjudicated delta(s),
+/// 0 stale admission(s), 47 consumed admission(s) due for deletion on this roster-touching
+/// change)`, with the floor CLEAN in that same run -- so the phase failure was this and nothing
+/// else. The resting state returns to this branch's own 17 rows.
+///
+/// THIS IS THE SAME EVENT FOR THE THIRD TIME, AND THE SECOND TIME ON THIS ONE BRANCH. At 57 rows
+/// (main and a branch, independently), at 3 rows (this branch and #10106, independently, both
+/// authoring the same NINETEENTH DISSOLUTION), and now at 47. The trigger is working exactly as
+/// designed each time -- it reaches every concurrent roster-touching change and is honoured by
+/// whichever observes it first. What recurs is the COST of honouring it: a branch that touches this
+/// roster for its own reasons inherits the obligation to delete someone else's consumed rows, and
+/// must author or yield a record for an event it did not cause. This branch has now done that twice
+/// in one PR, for two different upstream transitions.
+///
+/// NO YIELD THIS TIME, AND THE ASYMMETRY IS THE POINT. The gunbc#10011 deletion was yielded to
+/// #10106 because that branch was live and had authored the same record concurrently; two records
+/// of one event would have been a §3 violation that merged silently. #10106 has now MERGED, so
+/// nothing else is going to delete its consumed rows and no competing record exists. Deleting
+/// without recording would leave 47 admissions vanishing from main with nothing describing why,
+/// which is the failure the roster's history exists to prevent. So this branch records it.
+///
+/// THE THREE `gunbc#10011` ROWS ARE DELETED HERE AND THE RECORD OF THAT DISSOLUTION IS NOT HERE.
+/// It is gunbc#10106's NINETEENTH DISSOLUTION, and this branch deliberately authors no second one.
+///
+/// Both branches discovered the same three consumed admissions independently, both concluded the
+/// deletion was owed by the first roster-touching change to observe it, and both were right -- the
+/// trigger obliges EVERY concurrent roster-touching branch, so concurrent discovery is the
+/// mechanism working, not a race. What does not follow is two records. One event with two
+/// ordinal-bearing writeups is a §3 single-authority violation whichever ordinals they wear, and
+/// it would survive the git conflict rather than being caught by it. #10106 pushed first and is
+/// mid-CI, so it carries the record and this branch carries only the deletion the gate requires.
+///
+/// THIS IS THE THIRD ORDINAL COLLISION ON THIS FILE FROM ONE BRANCH, AND THE SECOND TIME THIS
+/// EXACT EVENT HAS BEEN DOUBLE-RECORDED. #10106's own SEVENTEENTH TRANSITION documents the same
+/// thing happening one round earlier with 57 rows -- "main deleted the 57 consumed rows on one
+/// side while this branch deleted the same 57 on the other, neither aware of the other" -- and
+/// wrote it up as the trigger working. It is now twice, at 57 rows and at 3, which makes it a
+/// property of the carrier rather than an accident: an author-assigned ordinal, in prose, in a
+/// file every lane must write by construction, cannot be made safe by diligence. Recorded here as
+/// the observation; choosing the replacement carrier is not this cut's to make.
+///
+/// EIGHTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
+/// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
+/// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
+/// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
+/// head is `v2.std.fn_index` -- verified as the only `TargetChanged` shape in the report, so no row
+/// here adjudicates a delta this transition did not cause. Measured from required run 33700978133
+/// on cdd31b664a, which reported exactly `17 unadjudicated delta(s)`.
+///
+/// THE BASES ARE NOT ALL ONE MODULE, and that is the transition's shape rather than an error: the
+/// concept had FOUR authorities, so the spellings move from four different bases -- the two lenses
+/// that carried the walk, plus `v2.lens.production_qualification_origin_probe` and
+/// `v2.lens.affected_set.entry_selection`, which each held a copy of one helper. One row names a
+/// consumer outside `src/v2` entirely: `test.claim.bmc_onboarding_quarantine_witness_test` bound
+/// `atom_identities_in_node` by name. Nothing broke -- the name still resolves -- but a cross-root
+/// binding whose target moved is exactly the delta a reader must be shown.
+///
+/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Seventeen deltas, seventeen rows, each naming
+/// its module, its declaration and the exact spelling whose target moved. A wildcard over
+/// "anything that moved to v2.std.fn_index" would also admit the next relocation nobody reviewed.
+///
+/// TRIGGER: #10156 MERGING. After that, main carries the grounding, so a later run's base and head
+/// both have it and no run can produce these deltas.
+///
+/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established and the
+/// eighteenth dissolution then confirmed: rows authored in the same PR that performs their own move
+/// are satisfied at the BASE of every later run, never merely unmatched. Born consumed, like the
+/// SJT-1, DCH-1 and #10077 cohorts. Their deletion is therefore owed by whoever next touches this
+/// roster, on the convention the entry above honoured rather than delegated.
+///
+/// THE ORDINAL IS THE NEXT UNUSED ONE, NOT THE NEXT IN SEQUENCE, because this ledger's transition
+/// ordinals already collide: FOURTH and FIFTH each name two different transitions (gunbc#9665 and
+/// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
+/// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
+/// have made the entry uncitable by its own name -- which is what an ordinal is for.
+const CALL_REACHABILITY_GROUNDING_LABEL: &str =
+    "call-reachability grounding gunbc#10156 2026-09-03";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.bmc_onboarding_quarantine_witness_test",
+            in_declaration: "onboarding_quarantine_lexemes",
+            spelling: "atom_identities_in_node",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.affected_set.entry_selection",
+            in_declaration: "edit_locus_nodes_for_module",
+            spelling: "decl_belongs_to_module",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.affected_set.entry_selection",
+            in_declaration: "module_path_for_decl",
+            spelling: "decl_belongs_to_module",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "effect_reach_classification_from_facts",
+            spelling: "call_reachable_decls",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "flow_scan_step",
+            spelling: "atom_identities_in_node",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "flows_in_node",
+            spelling: "atom_identities_in_node",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "path_literal_from_lexeme",
+            spelling: "is_path_like_lexeme",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "bind_g2_root",
+            spelling: "tail_decls",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carrier_home_decls_present",
+            spelling: "decls_in_module",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carrier_scan_step",
+            spelling: "atom_identities_in_node",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carriers_in_node",
+            spelling: "atom_identities_in_node",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "literal_path_carriers_from_atoms",
+            spelling: "is_path_like_lexeme",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "live_read_classification_g2_from_edges",
+            spelling: "call_reachable_decls_from_root",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "live_read_classification_g2_from_facts",
+            spelling: "call_reachable_decls",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "path_pattern_from_lexeme",
+            spelling: "is_path_like_lexeme",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "callees_from_atom_scan",
+            spelling: "atom_identities_in_node",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "node_contains_atom_text",
+            spelling: "atom_identities_in_node",
+            target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
         subject: AdmissionSubject::Binding {

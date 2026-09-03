@@ -1,0 +1,144 @@
+module v2.workflow.floor_purpose_standing
+
+// Bool ONLY -- NOT True/False. `v2.std.logic` Bool is realized NATIVELY as a machine scalar, so a
+// function returning the `True`/`False` VARIANTS produces a value the interpreter's `match_pattern`
+// has no arm for, and `&&`/`!` over it straddle two representations. This module therefore returns
+// the native `true`/`false` literals and reserves variant matching for its OWN coproducts, which
+// are genuine variants. `required_floor` records the same straddle from the pattern side: an
+// earlier revision matching True {} / False {} errored 11 of 19 witnesses, several of which never
+// called the function.
+import v2.std.logic { Bool }
+import std.decl_ref { DeclarationRef }
+import std.witness_purpose {
+  WitnessPurpose,
+  BehavioralDiscriminator,
+  BoundaryCrossing,
+  PopulationTotality,
+  ExternalFidelity,
+  ResourceContract,
+  DiscriminatedOutcome,
+  RefusalRequired,
+  AcceptanceRequired,
+}
+
+// WHAT ONE DISCOVERED WITNESS IDENTITY HAS DECLARED ABOUT ITS OWN PURPOSE.
+//
+// TWO ARMS, AND THERE IS DELIBERATELY NO GRANDFATHERED THIRD. An earlier revision carried
+// `PurposeUndeclaredGrandfathered` beside `PurposeUndeclared`, backed by an enumerated roster of the
+// identities predating the requirement. That roster is DERIVABLE and therefore redundant (DESIGN
+// §2): the subject universe is every discovered witness, so enumerating it means a ~3500-entry
+// authored blob that is a second copy of the discovery output -- and the kind of redundancy that
+// ROTS, since it goes stale against every witness rename.
+//
+// THE CHANGE STANDING ALREADY CARRIES THE WHOLE DISTINCTION, which is what made the third arm
+// unreachable BY CONSTRUCTION rather than merely unused. Nothing can tell "new" from "predating"
+// without a roster; with the roster gone, no producer can ever reach a grandfathered arm, and 4b
+// calls an arm no producer reaches a decoration -- permanently unconstructed, and worse than absent
+// once it is cited as covering the new-row case.
+//
+// SO THE DEBT IS IMPLICIT AND HAS NOTHING TO MAINTAIN. `purpose_admission_refuses` reads the change
+// standing for the undeclared arm: an untouched row that predates the requirement is admitted with
+// no roster entry, a row someone edits must declare, and a NEW row is changed by construction so it
+// must declare too. That is the mandatory-at-admission wall reached without enumerating anything,
+// and the debt discharges whenever anyone touches a row -- cost landing on whoever is already there,
+// with no quota and no judgement call. There is no roster that could sit unshrinking, because there
+// is no roster.
+type WitnessPurposeStanding
+  = PurposeDeclared { purpose: WitnessPurpose }
+  | PurposeUndeclared
+
+// WHETHER THIS IDENTITY'S SOURCE CHANGED IN THE SUBJECT UNDER JUDGEMENT. Named as its own type
+// rather than a `Bool` so the admission fold below reads as a decision over two facts, and so a
+// caller cannot pass the wrong boolean.
+type WitnessChangeStanding
+  = WitnessChanged
+  | WitnessUnchanged
+
+// WHAT IT COSTS THAT THIS ROW DID NOT RUN -- the ranking key itself, and the reason this module
+// exists. `gunbc.recurring_failure_mode` `non_execution_undifferentiated_by_what_it_silenced`
+// records the invalid state this replaces: every non-execution reported alike, so a silenced wall
+// and an open question were indistinguishable.
+//
+// `ConsequenceUndeclared` IS NOT `OpenQuestion`, and collapsing them is the one change that would
+// make this whole model fail open. A row with no declared purpose has an UNKNOWN consequence, and
+// reporting unknown as the benign arm would let the undeclared population -- the entire grandfather
+// roster on day one -- read as carrying no walls at all. Unknown is its own arm, counted, and never
+// summed into either of the other two.
+type NonExecutionConsequence
+  = SilencedWall { refuser: DeclarationRef }
+  | OpenQuestion
+  | ConsequenceUndeclared
+
+// TOTAL OVER `WitnessPurpose`, so a sixth purpose arm fails to compile here rather than falling to
+// whichever consequence is cheapest. Only a BehavioralDiscriminator requiring a refusal silences a
+// wall; every other purpose leaves a question open when it does not run.
+fn purpose_non_execution_consequence(purpose: WitnessPurpose) -> NonExecutionConsequence {
+  match purpose {
+    BehavioralDiscriminator { discriminates: d } =>
+      match d {
+        RefusalRequired { refuser: r } => SilencedWall { refuser: r }
+        AcceptanceRequired { acceptor: _ } => OpenQuestion {}
+      }
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => OpenQuestion {}
+    PopulationTotality { population: _ } => OpenQuestion {}
+    ExternalFidelity { effect: _ } => OpenQuestion {}
+    ResourceContract { bound: _ } => OpenQuestion {}
+  }
+}
+
+// THE JOIN THE FLOOR PERFORMS FOR A ROW THAT REACHED NO VERDICT. Total over the standing, so the
+// undeclared arms cannot silently borrow the declared arm's answer.
+fn non_execution_consequence(standing: WitnessPurposeStanding) -> NonExecutionConsequence {
+  match standing {
+    PurposeDeclared { purpose: p } => purpose_non_execution_consequence(purpose: p)
+    PurposeUndeclared => ConsequenceUndeclared {}
+  }
+}
+
+// WHETHER A NON-EXECUTION OF THIS ROW IS KNOWN TO HAVE SILENCED A WALL. Deliberately NOT the
+// negation of "is an open question": the undeclared arm answers false here AND false to the
+// open-question reading, because unknown is not evidence of absence. A consumer wanting the
+// undeclared population asks for it by name.
+fn non_execution_silenced_a_wall(consequence: NonExecutionConsequence) -> Bool {
+  match consequence {
+    SilencedWall { refuser: _ } => true
+    OpenQuestion => false
+    ConsequenceUndeclared => false
+  }
+}
+
+fn non_execution_consequence_is_undeclared(consequence: NonExecutionConsequence) -> Bool {
+  match consequence {
+    SilencedWall { refuser: _ } => false
+    OpenQuestion => false
+    ConsequenceUndeclared => true
+  }
+}
+
+// ADMISSION: MAY THIS IDENTITY BE ENROLLED AT ALL?
+//
+// This is the structural half. Once a purpose declaration is mandatory, "an enrolled witness with
+// no declared purpose" stops being writable going forward -- rung 3 on new rows -- while the
+// untouched existing corpus carries its debt implicitly rather than as silence, and discharges it
+// on contact.
+//
+// THE CHANGED ARM IS THE SHRINK MECHANISM, and with no roster it is the ONLY thing the shrink
+// needs. An undeclared identity whose source changed must declare before it is admitted again, so
+// the undeclared population can only lose members, and it loses them exactly when someone is
+// already editing the row. An undeclared identity nobody touched is admitted: it carries the same
+// debt it carried yesterday and no new risk, and refusing it would stop the line over a row nobody
+// edited. A NEW row reaches the refusing arm without a special case, because a new row is changed
+// by construction -- which is the whole of the mandatory-at-admission wall.
+fn purpose_admission_refuses(
+  standing: WitnessPurposeStanding,
+  change: WitnessChangeStanding,
+) -> Bool {
+  match standing {
+    PurposeDeclared { purpose: _ } => false
+    PurposeUndeclared =>
+      match change {
+        WitnessChanged => true
+        WitnessUnchanged => false
+      }
+  }
+}
