@@ -1,6 +1,7 @@
 module gunbc.harness.harness_turn
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.measure { TokenCount, token_count_value }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit {
   JsonValue, json_kv, json_string, json_int, json_array, json_object, serialize_json,
@@ -39,7 +40,31 @@ type HarnessTurnConfig {
   system_prompt: String
   request_scratch_path: FilePath
   events_path: FilePath
+  context_budget: TokenCount
   environment: HarnessToolEnvironment
+}
+
+// THE WINDOW THE HARNESS WORKS IN AND THE WINDOW THE ENGINE ADMITS ARE ONE NUMBER, and this field
+// is how the second reaches the first. gunbc.spark.serving_desired declares the roster ceiling the
+// serving units are launched with; a harness that carried its own literal would be a second
+// spelling of that ceiling, free to drift the moment the serving row moves -- and the drift would
+// be silent in the worst direction, because a harness budget ABOVE the engine cap does not refuse,
+// it produces a request the engine rejects mid-run with the turn's work already spent.
+//
+// THE MEASUREMENT IS THE RUNTIME'S OWN, NOT AN ESTIMATE. gunbc.model.choice already rules on this
+// for the serving side -- an observation's point is derived from an execution receipt, the prompt
+// token count the runtime reported back -- and the same rule applies here: the response carries
+// usage.input_tokens, so the check compares a counted fact against a declared budget rather than
+// dividing bytes by an assumed characters-per-token. A chars-per-token factor would be exactly the
+// heuristic DESIGN section 4 says is never necessary when the richer source exists, and here the
+// richer source is already parsed and already discarded.
+//
+// The check fires AFTER a response rather than before a request because that is when a counted
+// input size exists. It bounds the NEXT turn: this turn's input plus its tool results is a lower
+// bound on what the next request carries, so a turn that already sits at the budget cannot make
+// another one.
+fn harness_context_exhausted(input_tokens: Int, budget: TokenCount) -> Bool {
+  input_tokens >= token_count_value(t: budget)
 }
 
 // THE HARNESS EMITS THE PROVIDER EVENT SCHEMA ITSELF, rather than having its liveness reconstructed
@@ -145,6 +170,7 @@ type HarnessTurnOutcome
   | TurnTransportRefused { detail: String }
   | TurnResponseUnreadable { cause: String }
   | TurnRequestUnwritable { path: String, detail: String }
+  | TurnContextWindowExhausted { input_tokens: Int, budget: Int, steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -154,6 +180,8 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnTransportRefused { detail: _ } => "transport-refused"
     TurnResponseUnreadable { cause: _ } => "response-unreadable"
     TurnRequestUnwritable { path: _, detail: _ } => "request-unwritable"
+    TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } =>
+      "context-window-exhausted"
   }
 }
 
@@ -173,6 +201,13 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       join([
         "the turn used its whole step budget of ", to_string(value: n),
         " tool rounds without the provider reaching a terminal stop reason",
+      ], "")
+    TurnContextWindowExhausted { input_tokens: i, budget: b, steps_taken: n } =>
+      join([
+        "the backend counted ", to_string(value: i),
+        " input tokens after ", to_string(value: n),
+        " tool rounds, against a declared budget of ", to_string(value: b),
+        "; the turn stopped rather than issuing a request the engine would refuse mid-run",
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
@@ -382,6 +417,29 @@ fn harness_turn_loop(
                 steps_taken: steps_taken + 1,
                 input_tokens: input_tokens,
                 output_tokens: output_tokens,
+              }
+          }
+        } else if harness_context_exhausted(
+          input_tokens: input_tokens,
+          budget: config.context_budget,
+        ) {
+          let exhausted = concat(events, [
+            harness_event_turn_failed(
+              message: join([
+                "context window exhausted: the backend counted ", to_string(value: input_tokens),
+                " input tokens against a declared budget of ",
+                to_string(value: token_count_value(t: config.context_budget)),
+                "; this turn cannot make another request",
+              ], ""),
+            ),
+          ])
+          match harness_write_events(config: config, events: exhausted) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnContextWindowExhausted {
+                input_tokens: input_tokens,
+                budget: token_count_value(t: config.context_budget),
+                steps_taken: steps_taken + 1,
               }
           }
         } else {

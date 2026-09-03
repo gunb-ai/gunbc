@@ -1,6 +1,7 @@
 module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.measure { TokenCount }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
@@ -9,7 +10,9 @@ import gunbc.harness.harness_turn {
   TurnResponseUnreadable, TurnRequestUnwritable,
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
-import gunbc.harness.harness_wire { harness_router_backend_url, harness_router_model }
+import gunbc.harness.harness_wire {
+  harness_router_backend_url, harness_router_model, harness_router_context_window,
+}
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
@@ -57,6 +60,23 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
   }
 }
 
+// THE WINDOW COMES FROM THE SURFACE THE HARNESS ACTUALLY POSTS TO. The first cut of this row read
+// spark_serving_desired_context_length, which is the OLLAMA roster ceiling -- and the harness does
+// not post to the Ollama units, it posts to the llama-server pair behind the router. That is the
+// meaning fork gunbc.harness.harness_wire already refused for the MODEL ("one name over two serving
+// stacks"), written again one field over.
+//
+// It was invisible because both rows read 1048576. A derivation from the wrong authority is exactly
+// this cheap to write and this expensive to find: correct-looking while the values agree, silently
+// wrong the moment an engine restart moves one of them. The engine's cap is being changed
+// independently of the Ollama roster, so they are free to diverge on any boot.
+//
+// The binding stays at the CLI rather than inside the turn. harness_turn takes the budget as a
+// field the way it takes the worktree, the timeout program and its two paths -- so the same loop
+// runs against a different serving surface by being handed a different number, not by importing a
+// different authority.
+data harness_context_budget: TokenCount = harness_router_context_window
+
 fn harness_macbook_config() -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: harness_router_backend_url(),
@@ -65,6 +85,7 @@ fn harness_macbook_config() -> HarnessTurnConfig {
     system_prompt: harness_default_system_prompt,
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
+    context_budget: harness_context_budget,
     environment: harness_macbook_environment(),
   }
 }
@@ -140,6 +161,7 @@ fn harness_worker_config(
     system_prompt: harness_worker_system_prompt,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
+    context_budget: harness_context_budget,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
       timeout_program: timeout_program,

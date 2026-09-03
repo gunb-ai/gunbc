@@ -1,5 +1,6 @@
 module gunbc.harness.harness_wire
 
+import std.measure { TokenCount, token_count }
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -418,6 +419,30 @@ data harness_router_address: String = "192.168.1.188"
 data harness_router_port: Int = 3738
 
 data harness_router_model: String = "deepseek-v4-flash:iq3s-split"
+
+// THE ROUTER'S WINDOW IS DECLARED BESIDE THE ROUTER, for the reason the model directly above it is.
+// gunbc.spark.serving_desired owns spark_serving_desired_context_length, and that row is the OLLAMA
+// roster ceiling -- the value the Ollama serving units are launched with. The harness does not talk
+// to those units; it talks to the llama-server pair behind this router. Binding the harness window
+// to the Ollama row would be the same meaning fork this module already refused for the model: one
+// name over two serving stacks.
+//
+// THE TWO NUMBERS ARE EQUAL TODAY AND THAT IS NOT A REASON TO SHARE A ROW. Both read 1048576, which
+// is exactly what makes the fork cheap to write and expensive to find -- a derivation from the
+// wrong authority is invisible while the values agree and silently wrong the moment they do not.
+// The engine's cap is being changed independently of the Ollama roster, so they are free to diverge
+// on any restart.
+//
+// WHAT THIS IS NOT: a claim that 1M is verified on this router. It is the admission ceiling the
+// harness will not exceed, which is a different fact from a window a request has completed at. The
+// harness refuses at this bound rather than letting the engine reject a request mid-run with the
+// turn's work already spent.
+//
+// DISSOLVES ON: fabric serving. When the pair is served through the compute fabric rather than a
+// hand-run router, the window becomes a property of the served work contract and this row's
+// consumer moves with it -- the sparks are not stable enough for that today, which is why the
+// router exists at all.
+data harness_router_context_window: TokenCount = token_count(count: 1048576)
 
 fn harness_router_backend_url() -> String {
   harness_backend_url_on_port(address: harness_router_address, port: harness_router_port)
