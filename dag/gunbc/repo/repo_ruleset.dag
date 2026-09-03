@@ -229,10 +229,22 @@ type MergeQueueDesire
 // the row that owns it -- and the witness asserts the ordering rather than the value, so raising
 // the floor's timeout cannot silently invert it.
 //
-// The entry counts are the conservative end of the documented ranges: build ahead of the head so a
-// candidate exists when the head merges, and merge one at a time so a failure names one pull
-// request rather than a batch. min_entries_to_merge_wait_minutes 5 bounds how long a lone entry
-// waits for a batch that is not coming, which is the starvation shape this proposal targets.
+// THE ENTRY COUNTS ARE COMMISSIONING VALUES, NOT THROUGHPUT VALUES, and the difference is the
+// whole reason they are 1. Merging one at a time means a failure names one pull request rather
+// than a batch. Building one at a time means that at any moment ONE composition is in flight, so a
+// failed commissioning run says which protocol step failed rather than which of five candidates
+// was involved. A queue is adopted to make landings deterministic; starting it at its throughput
+// setting rather than its legible one inverts that, and the throughput is recoverable later while
+// a muddled first receipt is not.
+//
+// max_entries_to_build IS EXPECTED TO RISE, and it is a trigger rather than a note so it is
+// retired by evidence and not by someone remembering. Building ahead of the head is what makes a
+// candidate already validated when the head merges, which is real throughput and does not weaken
+// ALLGREEN -- it is withheld only until the one-entry protocol is observed converging.
+//
+// min_entries_to_merge_wait 5 bounds how long a lone entry waits for a batch that is not coming,
+// which is the starvation shape this proposal targets.
+data merge_queue_build_concurrency_increase: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: receipts from the commissioned queue show the ONE-ENTRY protocol converging -- entries composed, the required aggregate executing on each composition, and successful candidates advancing -- across enough landings to characterise a failure. max_entries_to_build then rises from 1 (5 is the intended value: it builds candidates ahead of the head so one is already validated when the head merges). Until those receipts exist, raising it puts several compositions in flight at once and a failure stops naming which protocol step produced it. This is a legibility bound on commissioning, not a claim that 1 is the right steady-state value.")
 // The margin covers queue-side scheduling either side of the check itself -- the composition being
 // built and the result being reported -- which is time the floor's own job timeout does not bound.
 data merge_queue_response_margin_minutes: Int = 30
@@ -245,7 +257,7 @@ data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
   grouping_strategy: AllGreenGrouping,
   merge_method: QueueSquash,
   check_response_timeout: merge_queue_check_response_timeout(),
-  max_entries_to_build: merge_queue_entry_count(count: 5),
+  max_entries_to_build: merge_queue_entry_count(count: 1),
   max_entries_to_merge: merge_queue_entry_count(count: 1),
   min_entries_to_merge: merge_queue_entry_count(count: 1),
   min_entries_to_merge_wait: minute(count: 5),

@@ -319,6 +319,13 @@ test fn w_the_held_proposal_is_the_allgreen_squash_one() -> Bool {
     && merge_queue_entry_count_value(gunbc_merge_queue_proposal.max_entries_to_merge) == 1
 }
 
+// THE COMMISSIONING BOUND, ASSERTED SO IT CANNOT BE RAISED SILENTLY. One composition in flight is
+// what makes a failed commissioning run name which protocol step failed rather than which of
+// several candidates was involved. The row it guards carries the trigger that retires it.
+test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
+  merge_queue_entry_count_value(gunbc_merge_queue_proposal.max_entries_to_build) == 1
+}
+
 // THE TIMEOUT IS AN ORDERING, NOT A NUMBER, and this is the trap the assertion exists for. A queue
 // whose check response timeout sits BELOW the repository's own execution envelope dequeues runs
 // that were going to pass -- it manufactures queue failures out of slow greens. Asserting the
@@ -350,7 +357,7 @@ fn live_queue(grouping: MergeQueueGroupingStrategy) -> MergeQueueStanding {
     grouping_strategy: grouping,
     merge_method: QueueSquash,
     check_response_timeout: merge_queue_check_response_timeout(),
-    max_entries_to_build: merge_queue_entry_count(count: 5),
+    max_entries_to_build: merge_queue_entry_count(count: 1),
     max_entries_to_merge: merge_queue_entry_count(count: 1),
     min_entries_to_merge: merge_queue_entry_count(count: 1),
     min_entries_to_merge_wait: minute(count: 5),

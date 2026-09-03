@@ -251,7 +251,7 @@ fn configured_standing() -> MergeQueueStanding {
     grouping_strategy: AllGreenGrouping,
     merge_method: QueueSquash,
     check_response_timeout: minute(count: 210),
-    max_entries_to_build: merge_queue_entry_count(count: 5),
+    max_entries_to_build: merge_queue_entry_count(count: 1),
     max_entries_to_merge: merge_queue_entry_count(count: 1),
     min_entries_to_merge: merge_queue_entry_count(count: 1),
     min_entries_to_merge_wait: minute(count: 5),
