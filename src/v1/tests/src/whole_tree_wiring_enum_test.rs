@@ -35,7 +35,7 @@ use std::rc::Rc;
 use v1_compiler::cli_run::{self, whole_tree_resolved_ctx, WholeTreeCtx};
 use v1_compiler::coproduct_reflection::eval_fn_arrow_decl_facts_live;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -50,11 +50,8 @@ fn fixture_root() -> String {
 }
 
 fn pool_roots_arg(roots: &[&str]) -> Vec<(Option<String>, Value)> {
-    let items: Vec<Value> = roots.iter().map(|r| Value::Str(Rc::from(*r))).collect();
-    vec![(
-        Some("pool_roots".to_string()),
-        Value::List(Rc::new(items.into())),
-    )]
+    let items: im::Vector<Value> = roots.iter().map(|r| str_value(r)).collect();
+    vec![(Some("pool_roots".to_string()), Value::List(Rc::new(items)))]
 }
 
 /// The `qualified_name` of every `FnArrowDecl` row the accessor yields for `roots`.
