@@ -7,6 +7,12 @@ NO COMPILE-TIME LINK to the decoder that depends on it. gunbc#9975 discovered th
 migration renamed what `local_repo_wet_schedule` reads. This document reports the population, the
 mechanism, and the §4b ceiling. It repairs nothing and enrols nothing.
 
+**What this document turned out to be.** It began as a census of a seed defect. The P6 incident below
+— the class reproducing in a different language, against a different file, within the hour, on the
+author repairing it — shows that it is not seam-specific: the class needs only a substitution whose
+failure arm widens, and not the seed/authority seam at all. So what is measured here is ONE SEAM of a
+primitive that is not seam-specific, and the population below is a FLOOR rather than a ceiling.
+
 Per DESIGN §7 the finding is not "the seed is wrong" — a realization lagging its authority is the
 expected state. The finding is that the COUPLING is spelling-keyed, which is a safety property
 independent of how much seed remains.
@@ -315,7 +321,11 @@ deferred, and then as a declared §4b(3) row, not as the climb.
 - **The identifier-preserving shape axis, in full.** Named above, deliberately not measured in this
   pass. It is the largest single gap between this document and a closed answer.
 - P6's fail-open arm is described but not sized beyond its 6 call sites; `str::replace` against `.dag`
-  text elsewhere in the tree was not swept.
+  text elsewhere in the tree was not swept. Given the reframing above, the wider sweep is the
+  substitution-whose-failure-arm-widens class, not the `.dag`-text subset.
+- Two findings about the REVIEW instrument surfaced while this census was in flight and are recorded
+  separately, in [review-instrument-observations.md](review-instrument-observations.md), because they
+  are facts about the tooling rather than about the seed.
 - The `.dag` FILE-PATH axis: 420 distinct `"*.dag"` string literals in hand `.rs`, most synthetic
   fixture paths. A path rename is the same spelling-keyed coupling in a different alphabet; I did not
   separate the live paths from the synthetic ones.
