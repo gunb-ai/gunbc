@@ -99,6 +99,7 @@ pub(crate) fn wait_for_exit(child: &mut Child, budget: Duration) -> ProcessGroup
 /// ONE PROCESS AS /proc REPORTS IT. The pid and its process-group id are read from
 /// `/proc/<pid>/stat`, which is what makes group membership decidable at all: a signal cannot ask
 /// "who is in this group", it can only act on everyone who is.
+#[derive(Debug)]
 struct ProcEntry {
     pid: i32,
     state: char,
@@ -111,12 +112,36 @@ struct ProcEntry {
 /// process whose name contains a space, which is precisely the kind of quiet misparse that would
 /// make this instrument report an empty group.
 fn process_group_members(pgid: u32) -> Result<Vec<ProcEntry>, String> {
+    process_group_members_under(std::path::Path::new("/proc"), pgid)
+}
+
+/// The same scan against an arbitrary root, so the refusal arms below have an AUTHORABLE red.
+///
+/// Production passes `/proc`. A test cannot make the real `/proc` return a malformed `stat`, so
+/// without this parameter the refusals here could only be asserted by reading the source -- and a
+/// wall whose red cannot be written anywhere the check could run is a decoration (DESIGN §4b). The
+/// parameter exists for the fixture; it is not a policy knob and no production path chooses a
+/// different root.
+fn process_group_members_under(
+    root: &std::path::Path,
+    pgid: u32,
+) -> Result<Vec<ProcEntry>, String> {
     let mut found = Vec::new();
-    let entries = std::fs::read_dir("/proc").map_err(|e| format!("reading /proc: {e}"))?;
+    let entries =
+        std::fs::read_dir(root).map_err(|e| format!("reading {}: {e}", root.display()))?;
     for entry in entries {
+        // AN UNREADABLE DIRECTORY ENTRY IS NOT AN ABSENT PROCESS. Skipping it let an incomplete
+        // enumeration produce an empty vector and then `GroupAbsent` -- certifying teardown from a
+        // scan that never completed. This is the same class as the stat failure below; I repaired
+        // that one and left this one, and review 59209 caught it.
         let entry = match entry {
             Ok(entry) => entry,
-            Err(_) => continue,
+            Err(e) => {
+                return Err(format!(
+                    "enumerating {}: {e} -- the scan is incomplete, so absence is not established",
+                    root.display()
+                ))
+            }
         };
         let name = entry.file_name();
         let pid: i32 = match name.to_string_lossy().parse() {
@@ -443,5 +468,86 @@ mod termination_terminal {
                 escalated_to_kill: false
             }
         );
+    }
+}
+
+/// THE /proc SCAN'S REFUSAL ARMS, made authorable by the fixture root.
+///
+/// I told the reviewing authority this RED could not be written, because the real `/proc` cannot be
+/// made to return a malformed `stat`. That was a statement about the FUNCTION'S SIGNATURE, not about
+/// the class -- the missing harness was the next-rung trigger, and adding a root parameter is what
+/// discharges it (DESIGN §4b: ask whether the check's red is authorable BEFORE concluding it is not).
+#[cfg(test)]
+mod proc_scan_refusals {
+    use super::*;
+
+    fn fixture(entries: &[(&str, &str)]) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-proc-fixture-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&root).expect("fixture root");
+        for (pid, stat) in entries {
+            let dir = root.join(pid);
+            std::fs::create_dir_all(&dir).expect("fixture pid dir");
+            std::fs::write(dir.join("stat"), stat).expect("fixture stat");
+        }
+        root
+    }
+
+    /// The positive control. Without it every refusal below would also pass on a scan that refused
+    /// everything, and the fixture's own shape would go unverified.
+    #[test]
+    fn a_well_formed_fixture_scan_finds_its_members() {
+        let root = fixture(&[
+            ("41", "41 (a name with spaces) S 1 41 41 0 -1 0"),
+            ("42", "42 (other) Z 1 41 41 0 -1 0"),
+            ("43", "43 (elsewhere) S 1 99 99 0 -1 0"),
+        ]);
+        let mut found = process_group_members_under(&root, 41).expect("a clean scan");
+        found.sort_by_key(|entry| entry.pid);
+        assert_eq!(found.len(), 2, "expected pids 41 and 42, got {found:?}");
+        assert_eq!(found[0].pid, 41);
+        assert_eq!(found[0].state, 'S');
+        assert_eq!(found[1].pid, 42);
+        // The zombie is what `observe_leader_without_reaping` reads as an unreaped exit.
+        assert_eq!(found[1].state, 'Z');
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A process we could not parse MIGHT be in the target group, so every malformed form refuses
+    /// rather than being skipped into an empty -- and therefore "absent" -- result.
+    #[test]
+    fn an_unparsable_entry_refuses_rather_than_reporting_absence() {
+        for (label, stat) in [
+            ("no comm terminator", "41 unterminated S 1 41 41"),
+            ("too few fields", "41 (name) S"),
+            ("unparsable pgrp", "41 (name) S 1 not-a-number 41"),
+        ] {
+            let root = fixture(&[("41", stat)]);
+            let scanned = process_group_members_under(&root, 41);
+            assert!(
+                scanned.is_err(),
+                "{label}: an unparsable entry was skipped, so the scan could report absence"
+            );
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// The ONE arm that may still be skipped: a process that genuinely vanished mid-scan. Its stat
+    /// is NotFound, which is exactly how "it exited between the readdir and the read" is spelled.
+    #[test]
+    fn a_vanished_process_is_skipped_rather_than_refusing() {
+        let root = fixture(&[("41", "41 (name) S 1 41 41 0 -1 0")]);
+        std::fs::create_dir_all(root.join("42")).expect("a pid dir with no stat at all");
+        let found =
+            process_group_members_under(&root, 41).expect("a vanished entry is not an error");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].pid, 41);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
