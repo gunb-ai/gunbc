@@ -1,0 +1,80 @@
+module gunbc.world_converge
+
+import std.types { List }
+
+// The one subject-agnostic convergence shape. Concrete modules bind their own observations,
+// differences, actuation and receipts to these stages; this module neither enumerates subjects nor
+// selects a realization. Adding a third subject therefore adds a binding at that subject and does
+// not widen this authority.
+type WorldObservation<Observed, Refusal>
+  = WorldObserved { value: Observed }
+  | WorldAbsent { value: Observed }
+  | WorldUnobservable { cause: Refusal }
+
+type WorldDifference<Difference>
+  = WorldInAgreement
+  | WorldDiverged { differences: List<Difference> }
+
+type WorldActuation<Applied, Refusal>
+  = WorldApplied { value: Applied }
+  | WorldActuationRefused { cause: Refusal }
+
+type WorldConvergenceHandler<Subject, Context, Observed, Difference, Receipt, Refusal> {
+  observe: fn(Subject, Context) -> WorldObservation<Observed, Refusal>
+  differences: fn(Subject, Context, Observed) -> WorldDifference<Difference>
+  apply: fn(Subject, Context, Observed, List<Difference>) -> WorldActuation<Receipt, Refusal>
+  unchanged_receipt: fn(Subject, Context, Observed) -> Receipt
+}
+
+type WorldConvergenceResult<Subject, Observed, Receipt, Refusal>
+  = WorldConverged { subject: Subject, observed: Observed, receipt: Receipt }
+  | WorldNotConverged { subject: Subject, refusal: Refusal }
+
+fn world_converge_observed<Subject, Context, Observed, Difference, Receipt, Refusal>(
+  subject: Subject,
+  context: Context,
+  handler: WorldConvergenceHandler<Subject, Context, Observed, Difference, Receipt, Refusal>,
+  observed: Observed,
+) -> WorldConvergenceResult<Subject, Observed, Receipt, Refusal> {
+  let differences_of = handler.differences
+  let apply = handler.apply
+  let unchanged_receipt = handler.unchanged_receipt
+  match differences_of(subject, context, observed) {
+    WorldInAgreement => WorldConverged {
+      subject: subject,
+      observed: observed,
+      receipt: unchanged_receipt(subject, context, observed),
+    }
+    WorldDiverged { differences: differences } =>
+      match apply(subject, context, observed, differences) {
+        WorldActuationRefused { cause: cause } =>
+          WorldNotConverged { subject: subject, refusal: cause }
+        WorldApplied { value: receipt } => WorldConverged {
+          subject: subject,
+          observed: observed,
+          receipt: receipt,
+        }
+      }
+  }
+}
+
+// This fold is the root answer. Unobservable is deliberately first: an unreadable subject has no
+// differences to invent and can never become the empty, apparently-converged population. Absent is
+// distinct but established, so it proceeds through the same subject-owned difference operation.
+fn world_converge<Subject, Context, Observed, Difference, Receipt, Refusal>(
+  subject: Subject,
+  context: Context,
+  handler: WorldConvergenceHandler<Subject, Context, Observed, Difference, Receipt, Refusal>,
+) -> WorldConvergenceResult<Subject, Observed, Receipt, Refusal> {
+  let observe = handler.observe
+  match observe(subject, context) {
+    WorldUnobservable { cause: cause } =>
+      WorldNotConverged { subject: subject, refusal: cause }
+    WorldAbsent { value: observed } => world_converge_observed(
+      subject: subject, context: context, handler: handler, observed: observed,
+    )
+    WorldObserved { value: observed } => world_converge_observed(
+      subject: subject, context: context, handler: handler, observed: observed,
+    )
+  }
+}

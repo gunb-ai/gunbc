@@ -1,0 +1,19 @@
+module test.claim.repo_ruleset_world_converge_witness
+
+import std.types { NonEmptyStr }
+import gunbc.world_converge { WorldUnobservable }
+import gunbc.repo_ruleset {
+  RulesetUnreadable,
+  RulesetReadTransportRefused,
+  RepositoryRulesetObservationRefused,
+  world_repo_ruleset_observation,
+}
+
+test fn unreadable_ruleset_maps_to_world_unobservable() -> Bool {
+  match world_repo_ruleset_observation(observed: RulesetUnreadable {
+    cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
+  }) {
+    WorldUnobservable { cause: RepositoryRulesetObservationRefused { cause: _ } } => true
+    _ => false
+  }
+}

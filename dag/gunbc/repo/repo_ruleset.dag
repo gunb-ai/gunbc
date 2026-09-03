@@ -60,6 +60,15 @@ import extdeps.transports.rest {
   RestBodyUndecodable,
 }
 import v2.std.collection { Absent, Present }
+import extdeps.github.github { Repository }
+import gunbc.world_converge {
+  WorldObservation, WorldObserved, WorldUnobservable,
+  WorldDifference, WorldInAgreement, WorldDiverged,
+  WorldActuation, WorldActuationRefused,
+  WorldConvergenceHandler,
+  WorldConverged, WorldNotConverged,
+  world_converge,
+}
 
 // WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A DOCUMENTATION FIX.
 //
@@ -78,12 +87,11 @@ import v2.std.collection { Absent, Present }
 // gates, flips enforcement to `evaluate`, or grants a bypass role, every gate inside this
 // repository stays green while nothing it produces can block a merge any more.
 //
-// So this module is the ordinary converged-authority treatment, following gunbc.repo_local_git_config
-// exactly: DESIRED state is declared, the live state is OBSERVED, the two are RECONCILED, drift is
-// APPLIED, and the result is READ BACK and verified against desired again -- convergence is claimed
-// only from the post-apply read, never from the apply's own success. The read-back is what makes it
-// a converged authority rather than a fire-and-hope actuator, and it is the half a hand-run `gh api`
-// command has never had.
+// This module binds the repository subject to gunbc.world_converge: DESIRED state is declared, the
+// live state is OBSERVED, and the two are RECONCILED through the one global convergence shape. Live
+// drift currently reaches a typed actuation hold because the API read cannot carry the bypass-actor
+// roster that a whole-ruleset PUT would overwrite. The separately signed #10204 change owns closing
+// that boundary and the post-apply read-back; until then this binding is read-only by construction.
 //
 // THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
 // gunbc.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
@@ -555,145 +563,128 @@ fn converged_evidence_of(
   }
 }
 
-// THE CONVERGENCE CLAIM COMES FROM THE POST-APPLY READ AND FROM NOTHING ELSE. A 200 on the PUT says
-// GitHub accepted a request; it does not say the ruleset now denies a merge that lacks the required
-// context. So the apply's own success is never the evidence -- the second observation is, and it is
-// judged by the same divergence fold the pre-apply read went through. That is the whole difference
-// between this module and the `gh api` command it replaces.
-fn repo_ruleset_converge_actuate_at(
-  owner: String,
-  repo: String,
-  ruleset_id: Int,
-) -> Reconciliation<RulesetObservation, RepoRulesetConvergedEvidence> {
-  let before = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
-  match before {
-    RulesetUnreadable { cause: c } =>
-      NotConverged { reason: render_read_refusal(cause: c), applied: before }
-    RulesetObserved {
-      name: _,
-      enforcement: _,
-      target: _,
-      bypass: _,
-      include: _,
-      exclude: _,
-      rule_types: _,
-      standing: st,
-    } => {
-      let plan = required_context_reconcile(observed: observed_required_checks(standing: st))
-      let refusals = membership_refusal_count(plan: plan)
-      if refusals > 0 {
-        NotConverged {
-          reason: render_divergence(d: RequiredContextUnactionable { count: refusals }),
-          applied: before,
-        }
-      } else {
-        let writes = membership_write_count(plan: plan)
-        let removals = membership_removal_count(plan: plan)
-        let divergences_before = observation_divergences(observation: before)
-        if length(divergences_before) == 0 {
-          Converged {
-            evidence: converged_evidence_of(writes: 0, removals: 0, observation: before),
-            applied: before,
-          }
-        } else {
-          match apply_desired_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id) {
-            Present { value: c } =>
-              NotConverged {
-                reason: concat("ruleset apply refused: ", render_read_refusal(cause: c)),
-                applied: before,
-              }
-            Absent => {
-              let after = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
-              match after {
-                RulesetUnreadable { cause: rc } =>
-                  NotConverged {
-                    reason: concat("ruleset read-back after apply: ", render_read_refusal(cause: rc)),
-                    applied: after,
-                  }
-                _ => {
-                  let remaining = observation_divergences(observation: after)
-                  if length(remaining) == 0 {
-                    Converged {
-                      evidence: converged_evidence_of(
-                        writes: writes,
-                        removals: removals,
-                        observation: after,
-                      ),
-                      applied: after,
-                    }
-                  } else {
-                    NotConverged {
-                      reason: concat(
-                        "ruleset read-back after apply still diverges: ",
-                        render_divergences(ds: remaining),
-                      ),
-                      applied: after,
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+type RepositoryRulesetConvergenceSubject {
+  repository: Repository
+  ruleset_id: Int
+}
+
+type RepositoryRulesetConvergenceRefusal
+  = RepositoryRulesetObservationRefused { cause: RulesetReadRefusal }
+  | RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: Int }
+  | RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: Int }
+  | RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: Int }
+
+type RepositoryRulesetActuationAdmission
+  = RepositoryRulesetActuationAdmitted
+  | RepositoryRulesetActuationRefused { cause: RepositoryRulesetConvergenceRefusal }
+
+// This is the permanent gate in front of the bare whole-ruleset PUT, not a handler binding that a
+// later change swaps out. The current observation cannot carry the live bypass-actor roster, so no
+// observed value can authorize an update. #10204 extends this admission when that roster and the
+// signed desire are modeled; it does not replace the guarded handler.
+fn repo_ruleset_actuation_admission(
+  subject: RepositoryRulesetConvergenceSubject,
+  _: RulesetObservation,
+) -> RepositoryRulesetActuationAdmission {
+  RepositoryRulesetActuationRefused {
+    cause: RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: subject.ruleset_id },
   }
 }
 
-fn repo_ruleset_verify_at(
-  owner: String,
-  repo: String,
-  ruleset_id: Int,
-) -> Reconciliation<RulesetObservation, RepoRulesetConvergedEvidence> {
-  let observed = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
+fn world_repo_ruleset_observation(
+  observed: RulesetObservation,
+) -> WorldObservation<RulesetObservation, RepositoryRulesetConvergenceRefusal> {
   match observed {
-    RulesetUnreadable { cause: c } =>
-      NotConverged { reason: render_read_refusal(cause: c), applied: observed }
-    _ => {
-      let divergences = observation_divergences(observation: observed)
-      if length(divergences) == 0 {
-        Converged {
-          evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
-          applied: observed,
-        }
-      } else {
-        NotConverged { reason: render_divergences(ds: divergences), applied: observed }
-      }
+    RulesetUnreadable { cause: cause } => WorldUnobservable {
+      cause: RepositoryRulesetObservationRefused { cause: cause },
     }
+    RulesetObserved { name: _, enforcement: _, target: _, bypass: _, include: _, exclude: _, rule_types: _, standing: _ } =>
+      WorldObserved { value: observed }
   }
+}
+
+fn world_observe_repo_ruleset(
+  subject: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+) -> WorldObservation<RulesetObservation, RepositoryRulesetConvergenceRefusal> {
+  let observed = observe_repo_ruleset(
+    owner: subject.repository.owner,
+    repo: subject.repository.name,
+    ruleset_id: subject.ruleset_id,
+  )
+  world_repo_ruleset_observation(observed: observed)
+}
+
+fn world_repo_ruleset_differences(
+  _: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+  observed: RulesetObservation,
+) -> WorldDifference<RulesetDivergence> {
+  let divergences = observation_divergences(observation: observed)
+  if length(divergences) == 0 {
+    WorldInAgreement
+  } else {
+    WorldDiverged { differences: divergences }
+  }
+}
+
+fn world_repo_ruleset_apply(
+  subject: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+  observed: RulesetObservation,
+  _: List<RulesetDivergence>,
+) -> WorldActuation<RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal> {
+  match repo_ruleset_actuation_admission(subject: subject, observed: observed) {
+    RepositoryRulesetActuationRefused { cause: cause } => WorldActuationRefused { cause: cause }
+    RepositoryRulesetActuationAdmitted =>
+      // The admitted realization remains deliberately unbound on this tree. #10204 owns the
+      // read-back transaction after operator sign-off; admission cannot silently become a write.
+      WorldActuationRefused {
+        cause: RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: subject.ruleset_id },
+      }
+  }
+}
+
+fn world_repo_ruleset_unchanged_receipt(
+  _: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+  observed: RulesetObservation,
+) -> RepoRulesetConvergedEvidence {
+  converged_evidence_of(writes: 0, removals: 0, observation: observed)
+}
+
+type RepoRulesetWorldConvergenceHandler = WorldConvergenceHandler<RepositoryRulesetConvergenceSubject, Bool, RulesetObservation, RulesetDivergence, RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal>
+
+data repo_ruleset_world_convergence_handler: RepoRulesetWorldConvergenceHandler = WorldConvergenceHandler {
+  observe: world_observe_repo_ruleset,
+  differences: world_repo_ruleset_differences,
+  apply: world_repo_ruleset_apply,
+  unchanged_receipt: world_repo_ruleset_unchanged_receipt,
 }
 
 data repo_ruleset_converge_entry: String = "dag/gunbc/repo/repo_ruleset.dag"
-data repo_ruleset_converge_function: String = "converge"
 data repo_ruleset_verify_function: String = "verify"
 
-// VERIFY IS READ-ONLY AND CONVERGE WRITES, AND THEY ARE TWO ENTRY POINTS RATHER THAN ONE WITH A
-// FLAG. A flag whose effect is "do not actuate" is a mode on one operation; two entry points make
-// the read-only path unable to write by construction, which is what a verifier enrolled in an
-// automated run needs. NEITHER IS ENROLLED IN CI BY THIS CHANGE, and that is stated so the module
-// is not read as wider than it is: what lands here is the authority, the read-back and the typed
-// verdict. Enrolling `verify` as a required phase is a separate change with its own operator
-// agreement, and until it happens the wall is a route somebody runs, not a gate.
+// The repository binding is read-only until the separately signed ruleset proposal can preserve
+// every live bypass actor. Drift reaches RepositoryRulesetActuationHeld; there is no mutating entry
+// point beside the world-convergence root.
 func verify() -> ProcessExit {
-  match repo_ruleset_verify_at(
-    owner: gunbc_repository.owner,
-    repo: gunbc_repository.name,
-    ruleset_id: gunbc_passing_ci_ruleset_id,
+  match world_converge(
+    subject: RepositoryRulesetConvergenceSubject {
+      repository: gunbc_repository,
+      ruleset_id: gunbc_passing_ci_ruleset_id,
+    },
+    context: false,
+    handler: repo_ruleset_world_convergence_handler,
   ) {
-    Converged { evidence: _, applied: _ } => ExitSuccess
-    NotConverged { reason: r, applied: _ } =>
-      exit_failure(reason: concat("repo ruleset verify refused: ", r))
-  }
-}
-
-func converge() -> ProcessExit {
-  match repo_ruleset_converge_actuate_at(
-    owner: gunbc_repository.owner,
-    repo: gunbc_repository.name,
-    ruleset_id: gunbc_passing_ci_ruleset_id,
-  ) {
-    Converged { evidence: _, applied: _ } => ExitSuccess
-    NotConverged { reason: r, applied: _ } =>
-      exit_failure(reason: concat("repo ruleset converge refused: ", r))
+    WorldConverged { subject: _, observed: _, receipt: _ } => ExitSuccess
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetObservationRefused { cause: cause } } =>
+      exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: id } } =>
+      exit_failure(reason: concat("repo ruleset verify refused: live rule cannot be projected for ruleset ", to_string(id)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: id } } =>
+      exit_failure(reason: concat("repo ruleset verify refused: live bypass actor cannot be projected for ruleset ", to_string(id)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: id } } =>
+      exit_failure(reason: concat("repo ruleset verify refused: desired ruleset is not signed for actuation ", to_string(id)))
   }
 }

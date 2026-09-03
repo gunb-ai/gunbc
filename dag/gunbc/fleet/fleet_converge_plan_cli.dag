@@ -13,6 +13,12 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
+  filesystem_file_observation,
+  filesystem_read_outcome,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
 }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
@@ -23,6 +29,7 @@ import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
+import gunbc.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner_slot_provision {
   RunnerSlotMember,
   RunnerSlotsObserved,
@@ -281,17 +288,71 @@ func observe_timer_members_wet() -> List<TimerRetirementMember>
   )
 }
 
-func observe_cap_members_wet() -> List<CapMember>
-  uses net: Network
-{
-  flat_map(caps_managed_dropin_paths, path => {
-    let read = Filesystem.Read(path: path as String)
-    if read.success {
-      [CapMember { dropin_path: path, content: read.content }]
-    } else {
-      []
+type CapMembersObservation
+  = CapMembersObserved { members: List<CapMember> }
+  | CapMembersAbsent
+  | CapMembersUnobservable { path: NonEmptyStr, cause: String }
+
+type CapMemberRead
+  = CapMemberReadObserved { member: CapMember }
+  | CapMemberReadAbsent
+  | CapMemberReadUnobservable { path: NonEmptyStr, cause: String }
+
+fn cap_members_observation(reads: List<CapMemberRead>) -> CapMembersObservation {
+  fold(reads, init: CapMembersAbsent, f: fn(acc, read) {
+    match acc {
+      CapMembersUnobservable { path: _, cause: _ } => acc
+      CapMembersAbsent =>
+        match read {
+          CapMemberReadObserved { member: member } => CapMembersObserved { members: [member] }
+          CapMemberReadAbsent => CapMembersAbsent
+          CapMemberReadUnobservable { path: path, cause: cause } =>
+            CapMembersUnobservable { path: path, cause: cause }
+        }
+      CapMembersObserved { members: members } =>
+        match read {
+          CapMemberReadObserved { member: member } => CapMembersObserved {
+            members: append(members, items: [member]),
+          }
+          CapMemberReadAbsent => acc
+          CapMemberReadUnobservable { path: path, cause: cause } =>
+            CapMembersUnobservable { path: path, cause: cause }
+        }
     }
   })
+}
+
+func observe_cap_members_wet() -> CapMembersObservation
+  uses net: Network
+{
+  let listed = Filesystem.List(path: runner_unit_dropin_dir as String)
+  let listing = filesystem_listing_observation(
+    directory: runner_unit_dropin_dir as String,
+    success: listed.success,
+    entries: listed.entries,
+    error: listed.error,
+  )
+  cap_members_observation(reads: map(caps_managed_dropin_paths, path => {
+    let read = Filesystem.Read(path: path as String)
+    let name = match split(s: path as String, delimiter: "/").last() {
+      Present { value: value } => value
+      Absent => ""
+    }
+    match filesystem_file_observation(
+      listing: listing,
+      name: name,
+      path: path as String,
+      read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+    ) {
+      FilesystemFileAbsent(_) => CapMemberReadAbsent
+      FilesystemFileRead { path: _, content: content } =>
+        CapMemberReadObserved { member: CapMember { dropin_path: path, content: content } }
+      FilesystemFileIndeterminate { cause: cause } =>
+        CapMemberReadUnobservable { path: path, cause: cause }
+      FilesystemFileObservationsDisagree { path: _, cause: cause } =>
+        CapMemberReadUnobservable { path: path, cause: cause }
+    }
+  }))
 }
 
 type FleetConvergeRequestObservation
@@ -346,17 +407,34 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
         ApplySparkAxisAdmitted =>
           match observe_runner_slot_members_wet() {
             RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }
-            RunnerSlotsObserved { members: observed_slots } => FleetConvergeRequestObserved {
-              request: FullHostConverge {
-                host: host,
-                observed_timers: observe_timer_members_wet(),
-                observed_caps: observe_cap_members_wet(),
-                observed_spark: [],
-                observed_slots: observed_slots,
-                observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
-                observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-              },
-            }
+            RunnerSlotsObserved { members: observed_slots } =>
+              match observe_cap_members_wet() {
+                CapMembersUnobservable { path: path, cause: cause } => FleetConvergeRequestUnobserved {
+                  reason: join(["CapMemberUnobservable path=", path as String, " — ", cause], ""),
+                }
+                CapMembersAbsent => FleetConvergeRequestObserved {
+                  request: FullHostConverge {
+                    host: host,
+                    observed_timers: observe_timer_members_wet(),
+                    observed_caps: [],
+                    observed_spark: [],
+                    observed_slots: observed_slots,
+                    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
+                    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+                  },
+                }
+                CapMembersObserved { members: observed_caps } => FleetConvergeRequestObserved {
+                  request: FullHostConverge {
+                    host: host,
+                    observed_timers: observe_timer_members_wet(),
+                    observed_caps: observed_caps,
+                    observed_spark: [],
+                    observed_slots: observed_slots,
+                    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
+                    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+                  },
+                }
+              }
           }
       }
   }
