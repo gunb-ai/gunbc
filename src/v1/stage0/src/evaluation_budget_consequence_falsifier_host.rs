@@ -202,6 +202,22 @@ pub(crate) enum EvaluationBudgetConsequenceRefusal {
     WorktreeCleanupFailed {
         observation: CommandObservation,
     },
+    /// A GIT OBSERVATION THAT DID NOT COMPLETE, kept apart from every verdict derived from git's
+    /// output. `stdout_of` used to answer `String::new()` for a timed-out or signalled command, so
+    /// a git that never ran produced an empty HEAD which then compared unequal and was reported as
+    /// ParentCheckoutChanged -- a located, confident, WRONG subject. The instrument must not name a
+    /// culprit on evidence it failed to collect.
+    GitObservationFailed {
+        what: &'static str,
+        observation: CommandObservation,
+    },
+    /// A MEMBER THE RESPONSE DID NOT CARRY. Absent is not empty: defaulting a missing `code` to ""
+    /// and then comparing it merely reports a disagreement about the wrong thing, and defaulting a
+    /// missing `limit_ms` to 0 invents a number the server never sent.
+    ResponseMemberAbsent {
+        member: &'static str,
+        body: String,
+    },
     ParentCheckoutChanged {
         detail: String,
     },
@@ -392,6 +408,24 @@ fn stdout_of(observation: &CommandObservation) -> String {
     match observation {
         CommandObservation::Completed { stdout, .. } => stdout.text().to_string(),
         _ => String::new(),
+    }
+}
+
+/// READ GIT'S OUTPUT, OR REFUSE -- never both silently. Every caller that DERIVES a verdict from
+/// git's stdout goes through here, so a command that timed out, was signalled, or could not be
+/// waited on becomes `GitObservationFailed` naming what was being read, instead of an empty string
+/// that the next comparison confidently misattributes. `stdout_of` survives only where the
+/// observation has ALREADY been adjudicated by `completed_zero` on the line above.
+fn git_stdout(
+    workdir: &Path,
+    args: &[&str],
+    budget: Duration,
+    what: &'static str,
+) -> Result<String, EvaluationBudgetConsequenceRefusal> {
+    let observation = git(workdir, args, budget);
+    match &observation {
+        CommandObservation::Completed { stdout, .. } => Ok(stdout.text().to_string()),
+        _ => Err(EvaluationBudgetConsequenceRefusal::GitObservationFailed { what, observation }),
     }
 }
 
@@ -838,12 +872,23 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
             },
         );
     }
-    let head = stdout_of(&git(repo_root, &["rev-parse", "HEAD"], short))
-        .trim()
-        .to_string();
-    let tree = stdout_of(&git(repo_root, &["rev-parse", "HEAD^{tree}"], short))
-        .trim()
-        .to_string();
+    let head = match git_stdout(repo_root, &["rev-parse", "HEAD"], short, "parent HEAD") {
+        Ok(v) => v,
+        Err(refusal) => return EvaluationBudgetConsequenceFalsifierOutcome::Refused(refusal),
+    }
+    .trim()
+    .to_string();
+    let tree = match git_stdout(
+        repo_root,
+        &["rev-parse", "HEAD^{tree}"],
+        short,
+        "parent tree",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return EvaluationBudgetConsequenceFalsifierOutcome::Refused(refusal),
+    }
+    .trim()
+    .to_string();
     // DELIBERATELY NOT A WHOLE-INVENTORY SNAPSHOT. The first run of this instrument compared
     // `git worktree list` before and after and refused ParentCheckoutChanged -- correctly by its
     // own rule and wrongly as a fact, because this repository is shared: other sessions add and
@@ -964,13 +1009,37 @@ fn finalize(
     }
     // THE PARENT IS RE-VERIFIED, not assumed. An instrument that mutates a copy must prove it did
     // not mutate the original, and "we intended not to" is not that proof.
-    let head_after = stdout_of(&git(repo_root, &["rev-parse", "HEAD"], short))
-        .trim()
-        .to_string();
-    let tree_after = stdout_of(&git(repo_root, &["rev-parse", "HEAD^{tree}"], short))
-        .trim()
-        .to_string();
-    let status_after = stdout_of(&git(repo_root, &["status", "--porcelain"], short));
+    let head_after = match git_stdout(
+        repo_root,
+        &["rev-parse", "HEAD"],
+        short,
+        "parent HEAD after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    }
+    .trim()
+    .to_string();
+    let tree_after = match git_stdout(
+        repo_root,
+        &["rev-parse", "HEAD^{tree}"],
+        short,
+        "parent tree after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    }
+    .trim()
+    .to_string();
+    let status_after = match git_stdout(
+        repo_root,
+        &["status", "--porcelain"],
+        short,
+        "parent status after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    };
     if head_after != head || tree_after != tree || !status_after.trim().is_empty() {
         return Some(EvaluationBudgetConsequenceRefusal::ParentCheckoutChanged {
             detail: format!(
@@ -981,7 +1050,15 @@ fn finalize(
     }
     // ITS OWN ROW, AND ONLY ITS OWN. A surviving registration for this instrument's worktree is a
     // leak it caused; every other row in that list belongs to somebody else.
-    let inventory_after = stdout_of(&git(repo_root, &["worktree", "list"], short));
+    let inventory_after = match git_stdout(
+        repo_root,
+        &["worktree", "list"],
+        short,
+        "worktree inventory after",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Some(refusal),
+    };
     if inventory_after.contains(worktree_str) {
         return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
             observation: CommandObservation::Completed {
@@ -1004,7 +1081,22 @@ fn cargo_in(
     args: &[&str],
     budget: Duration,
 ) -> CommandObservation {
-    let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
+    // THE CARGO THAT INVOKED THIS TEST, NEVER WHATEVER PATH OFFERS. This instrument's whole claim
+    // is same-identity evidence -- that the binary it judges was produced from the source it
+    // perturbed -- so silently building with a DIFFERENT toolchain than the one running the test is
+    // precisely the substitution it exists to detect. Cargo always sets CARGO for a test process;
+    // its absence means this is not being run the way the receipt assumes, and that is a refusal
+    // rather than a default.
+    let cargo = match std::env::var("CARGO") {
+        Ok(path) => path,
+        Err(_) => {
+            return CommandObservation::SpawnRefused {
+                detail: "CARGO is unset: refusing to PATH-search a cargo whose identity is unknown"
+                    .to_string(),
+            }
+        }
+    };
+    let mut command = Command::new(cargo);
     command
         .args(args)
         .current_dir(worktree)
@@ -1116,7 +1208,15 @@ fn run_bound_transaction(
             detail: format!("writing perturbed {AUTHORITY_REL}: {e}"),
         });
     }
-    let changed = stdout_of(&git(worktree, &["status", "--porcelain"], short));
+    let changed = match git_stdout(
+        worktree,
+        &["status", "--porcelain"],
+        short,
+        "perturbed worktree status",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Outcome::Refused(refusal),
+    };
     let changed_paths: Vec<String> = changed
         .lines()
         .map(|line| {
@@ -1461,11 +1561,27 @@ fn serve_and_judge(
             } = response;
             let moved_occurrences = body.matches(&format!("\"{moved_value}\"")).count();
             let former_occurrences = body.matches(&format!("\"{original_value}\"")).count();
-            let code = fields.string("code").unwrap_or_default().to_string();
-            let entry = fields.string("entry").unwrap_or_default().to_string();
-            let clock = fields.string("clock").unwrap_or_default().to_string();
-            let limit_ms = fields.number("limit_ms").unwrap_or_default();
-            let elapsed_nanos = fields.number("elapsed_ns").unwrap_or_default();
+            // ABSENT IS NOT EMPTY. Defaulting a missing member and comparing it downstream reports
+            // a disagreement about the WRONG thing -- "code " rather than "the body carried no
+            // code" -- and a defaulted `limit_ms` of 0 invents a number the server never sent.
+            macro_rules! member {
+                ($getter:expr, $name:literal) => {
+                    match $getter {
+                        Some(value) => value,
+                        None => {
+                            return Outcome::Refused(Refusal::ResponseMemberAbsent {
+                                member: $name,
+                                body: body.clone(),
+                            })
+                        }
+                    }
+                };
+            }
+            let code = member!(fields.string("code"), "code").to_string();
+            let entry = member!(fields.string("entry"), "entry").to_string();
+            let clock = member!(fields.string("clock"), "clock").to_string();
+            let limit_ms = member!(fields.number("limit_ms"), "limit_ms");
+            let elapsed_nanos = member!(fields.number("elapsed_ns"), "elapsed_ns");
 
             // The diagnostic the subject printed for THIS breach, reconstructed from the body's own
             // fields. If the two disagree, the body is not an account of what the server did.
@@ -1556,7 +1672,15 @@ fn serve_and_judge(
             detail: format!("regeneration after restore did not complete: {restored:?}"),
         });
     }
-    let residue = stdout_of(&git(worktree, &["status", "--porcelain"], short));
+    let residue = match git_stdout(
+        worktree,
+        &["status", "--porcelain"],
+        short,
+        "restored worktree status",
+    ) {
+        Ok(v) => v,
+        Err(refusal) => return Outcome::Refused(refusal),
+    };
     let residual_paths: Vec<&str> = residue
         .lines()
         .map(|line| line.split_whitespace().last().unwrap_or_default())
