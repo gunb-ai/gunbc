@@ -1205,8 +1205,8 @@ test/manual/process_argv_expansion_receipt       case 4 pass -- real jq, exit 0 
 - The other three `openbmc.JsonProjection` operations were unmigrated, and two of them
   (`ObjectMapperServiceCount`, `ObjectMapperServiceAt`) needed `--argjson` lowering, which was
   unbuilt. Both are now landed — see §17 (Wave 1A cutover receipt). The remaining unmigrated
-  operation is `ProjectFanConfig`, which additionally needs file-input lowering (the remote
-  population, Wave 2).
+  operation is `ProjectFanConfig`, whose sole consumer is dead code; file-input lowering has since
+  landed with the remote population (Wave 2, §18), so its migration is unblocked but not yet cut.
 - No negative falsifier exists yet proving a REST path reaches none of these carriers.
 - **The wet receipt does not execute in CI — a declared gap, not an enrollment.** The hermetic
   floor refuses `jq.Process.RunWithStdin` (no `mock_response`) and mocking would defeat the
@@ -1331,9 +1331,63 @@ whole-corpus regen                           first_generation_equal=true
 
 **What this receipt does NOT establish** — the table reads stronger than the lane's position:
 
-- Wave 1A lands the **local** `--argjson` vertical. `ProjectFanConfig` still carries a raw argv and
-  needs file-input lowering (`JqFileInputLoweringUnwired`) plus the SSH realization — the remote
-  population is Wave 2, and `sshpass -d 0` still holds fd 0 for stdin-fed remote jq.
+- Wave 1A lands the **local** `--argjson` vertical. File-input lowering and the first SSH
+  migration have since landed — see §18 (Wave 2 cutover receipt). `ProjectFanConfig` still carries
+  a raw argv (its sole consumer is dead code), and `JqFileInputLoweringUnwired` dissolved with the
+  file-input lowering.
 - `JqTextBinding` deliberately refuses: no live consumer this wave, so it must not emit a plausible
   guess (DESIGN §5). It lowers when a caller needs `--arg name value`.
 - The ObjectMapper callers were verified against the bmc witness mocks; no live BMC was exercised.
+
+## 18. Wave 2 cutover receipt — the first SSH migration
+
+Executed on the session tree against `origin/main` (PR #10148). Counts are from enumerating
+`^test fn` in each file, not from a chosen subset (§14).
+
+```
+extdeps.tools.jq                    jq_invocation_lower now lowers JqInputFile instead of refusing it
+  file-input argv                     the path is ONE bound operand AFTER the program operand
+  process input                       JqProcessNoStdin -- the file's bytes never enter a process channel
+  JqFileInputLoweringUnwired          DELETED (dissolution on climb)
+
+extdeps.bmc.openbmc_password_ssh_transport
+  FanStepwiseCount operation          DELETED at the root (raw sshpass/ssh argv: jq -er <program> {config_path})
+  RunCommand operation                ADDED -- the RFC 4254 command-string carrier, fixed sshpass/ssh argv
+  note                                one command-string row declared; the caller never authors argv
+
+extdeps.bmc.openbmc_fan_control      openbmc_fan_config_stepwise_count (semantic JqInvocation -> remote realization)
+  remote realization                  openbmc_remote_jq_command / openbmc_remote_jq_execute
+  stdin-fed remote jq                 TYPED refusal (OpenBmcRemoteJqStdinUnwired): sshpass -d 0 holds fd 0
+  command string                      grammar-owned single-quote encoding (remote_exec_command_string),
+                                      never append(ssh_prefix, inner.argv)
+  interpretation                      openbmc_dropbear_interpretation, load-bearing (Unknown refuses)
+  decode                              openbmc_fan_config_stepwise_count_result reads JqOutcome,
+                                      never success/stdout/stderr
+
+test/claim/jq_invocation_lowering_witness   16 / 16 pass  (file-input lowering + refusal-cause split)
+  of which flipped from refusal to positive   2 (unlowered_file_input_refuses ->
+                                                file_input_lowers_to_exact_argv; and the file-cause
+                                                test became file_input_reaches_the_plan_as_no_stdin)
+test/claim/remote_jq_ssh_migration_witness   10 / 10 pass  (decode + words + command string +
+                                                stdin refusal + interpretation + review pin)
+test/claim/bmc_typed_operations_witness      object_mapper/threshold/sensor tests still pass
+whole-corpus regen                           first_generation_equal=true
+```
+
+**What this receipt does NOT establish** — the table reads stronger than the lane's position:
+
+- Wave 2 migrates the FIRST remote jq population (`OpenBmcStepwiseCount`). The other remote jq
+  operations (`FanMinimumDuty` … `FanInputAt`, `FanConfigValidate`, `FanConfigVerify`) still carry
+  raw sshpass/ssh argv; each is the same mechanical shape now proven — a semantic JqInvocation,
+  the remote realization, a JqOutcome decode — but the cutover is deliberately one site.
+- The REMOTE half of the command-string path is UNEXECUTED against a live target. The hermetic
+  witnesses prove `emit_remote_shell` matches the cited IEEE 1003.1-2017 §2.2.2 single-quote
+  encoding exactly; they never prove the far side agrees. That is the declared, unexecuted
+  `remote_exec_command_live_confirmation` receipt in `gunbc.remote_shell_command` — run it against
+  a live OpenBMC/Dropbear target before the remaining remote population is cut over.
+- `ProjectFanConfig` still carries a raw argv (its sole consumer `openbmc_fan_config_project_local`
+  is dead code). It needs file-input lowering (now landed) plus its own consumer migration; it is
+  not part of this wave's first SSH migration.
+- `JqTextBinding` still deliberately refuses: no live consumer, so it must not emit a plausible
+  guess (DESIGN §5). It lowers when a caller needs `--arg name value`.
+- The migrated decode was verified against witness fixtures; no live BMC was exercised.
