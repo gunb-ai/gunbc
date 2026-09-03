@@ -1,0 +1,12 @@
+module gunbc.rung_drop.floor_cut_merge_admission_stamping
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing }
+
+data floor_cut_merge_admission_stamping: RungDrop = RungDrop {
+  identity: "floor_cut_merge_admission_stamping" as NonEmptyStr,
+  subject: "Merge-admission stamping: the receipt has no producer",
+  declared: "2026-09-01",
+  standing: Standing,
+  authored: "**THE MERGE-ADMISSION RECEIPT HAS A CONSUMER AND NO PRODUCER, AND THIS ROW DECLARES THAT RUNG (2026-09-01).** Split out of `floor_cut`. PREVIOUS RUNG: 2 (mechanically preventable) -- the floor run STAMPED a receipt and `tools.merge_admission_gate` read it, so admission was a fact a machine produced and a machine checked. TEMPORARY RUNG: 0 -- with no producer the gate cannot answer, so what it once decided is now decided by nobody. A consumer whose input never arrives is not a weakened check; it is an absent one wearing a check's name, which is the `diagnostic_name_mechanism_silent` shape this repository already files. REASON: the 2026-08-15 floor cut deleted `tools.merge_admission_gate.dag` together with the floor plan that stamped its receipt. BOUNDED POPULATION: one capability -- a machine-produced admission receipt joined to the merge decision. MEASURED FROM THE TREE (2026-09-01): `gunbc.commit_workflow` records, in two separate removal dispositions, that this receipt is deleted and on the unguarded list -- and that from 2026-08-15 one of those dispositions justified a removed check by naming two authorities that no longer existed, with nothing able to say so because a citation inside a String resolves against nothing. That is the cost of this gap already realized once. RESTORATION TRIGGER, A CAPABILITY: a required run that PRODUCES an admission receipt bound to the head under judgment, and a consumer that refuses a merge whose head has no such receipt -- both executing, with a red on a head that lacks one. WHAT DOES NOT RETIRE THIS ROW: re-adding a `merge_admission_gate` module that reads a receipt nobody writes, which reproduces exactly today's state with more code; nor a human check-list step, which is not a producer. **`floor_cut` CANNOT RETIRE WHILE THIS ROW STANDS**, and this sentence is on every one of the five so the constraint is readable from either end: that row's trigger is the conjunction of these five, so retiring it on a reading of any single sibling -- including this one -- is the reading its own trigger forbids."
+}

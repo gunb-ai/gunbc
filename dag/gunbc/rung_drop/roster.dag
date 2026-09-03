@@ -1,0 +1,70 @@
+module gunbc.rung_drop.roster
+
+// THE ROSTER IS THE ENUMERATION AND NOTHING ELSE, held apart from `gunbc.rung_drop` because the
+// import graph's one structural law is acyclicity: every row module imports the `RungDrop` type
+// from that module, so the module carrying the type cannot import the rows back. The type is the
+// shape, the files are the facts, and this module is the list -- three layers, one direction.
+
+import std.types { List }
+import gunbc.rung_drop { RungDrop, Standing, Retired }
+import gunbc.rung_drop.floor_cut { floor_cut }
+import gunbc.rung_drop.measurement_bankruptcy { measurement_bankruptcy }
+import gunbc.rung_drop.regen_producer { regen_producer }
+import gunbc.rung_drop.cited_symbol_census { cited_symbol_census }
+import gunbc.rung_drop.emit_stage_blocking { emit_stage_blocking }
+import gunbc.rung_drop.lens_enforcement_censuses { lens_enforcement_censuses }
+import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
+import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
+import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
+import gunbc.rung_drop.emitted_bytes_witness_required_lane { emitted_bytes_witness_required_lane }
+import gunbc.rung_drop.direct_call_arg_seam_v2_exemption { direct_call_arg_seam_v2_exemption }
+import gunbc.rung_drop.floor_cost_claim_qualification_unavailable { floor_cost_claim_qualification_unavailable }
+import gunbc.rung_drop.spark_role_scoped_retirement_production_root { spark_role_scoped_retirement_production_root }
+import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
+import gunbc.rung_drop.floor_cut_effect_gates { floor_cut_effect_gates }
+import gunbc.rung_drop.floor_cut_fmt_gate { floor_cut_fmt_gate }
+import gunbc.rung_drop.floor_cut_merge_admission_stamping { floor_cut_merge_admission_stamping }
+import gunbc.rung_drop.floor_cut_falsifier_cadence { floor_cut_falsifier_cadence }
+import gunbc.rung_drop.builtin_signature_arity_pairing_fabricates { builtin_signature_arity_pairing_fabricates }
+import gunbc.rung_drop.concat_binary_signature_exempt_from_arg_binding { concat_binary_signature_exempt_from_arg_binding }
+import gunbc.rung_drop.dashboard_merge_ready_semantic_admissibility { dashboard_merge_ready_semantic_admissibility }
+import gunbc.rung_drop.namespace_admission_consumed_row_deletion { namespace_admission_consumed_row_deletion }
+import gunbc.rung_drop.spark_serving_local_artifact_not_reproducible { spark_serving_local_artifact_not_reproducible }
+
+data rung_drop_roster: List<RungDrop> = [
+  floor_cut_heal,
+  floor_cut_effect_gates,
+  floor_cut_fmt_gate,
+  floor_cut_merge_admission_stamping,
+  floor_cut_falsifier_cadence,
+  floor_cost_claim_qualification_unavailable,
+  emitted_bytes_witness_required_lane,
+  direct_call_arg_seam_v2_exemption,
+  floor_cut,
+  measurement_bankruptcy,
+  regen_producer,
+  cited_symbol_census,
+  emit_stage_blocking,
+  lens_enforcement_censuses,
+  required_gate_bankruptcy,
+  text_boundary_identity_wall,
+  fabric_evidence_gating,
+  spark_role_scoped_retirement_production_root,
+  builtin_signature_arity_pairing_fabricates,
+  concat_binary_signature_exempt_from_arg_binding,
+  dashboard_merge_ready_semantic_admissibility,
+  namespace_admission_consumed_row_deletion,
+  spark_serving_local_artifact_not_reproducible,
+]
+
+// THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
+// standing arm is read AT THE ONE SITE THAT CONSUMES IT rather than through a reusable
+// RungDropStanding -> Bool accessor: a named predicate beside a coproduct is a second, weaker
+// spelling of the variant the row already carries, and every later caller reaches for the Bool
+// instead of the arm it came from.
+fn standing_rung_drops() -> List<RungDrop> {
+  filter(rung_drop_roster, d => match d.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => false
+  })
+}

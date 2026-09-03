@@ -1,10 +1,7 @@
 module test.claim.rung_drop_standing_partition_witness_test
 
-import gunbc.rung_drop {
-  rung_drop_roster,
-  standing_rung_drops,
-  cited_symbol_census,
-}
+import gunbc.rung_drop.roster { rung_drop_roster, standing_rung_drops }
+import gunbc.rung_drop.cited_symbol_census { cited_symbol_census }
 
 // THE DEFECT THIS WITNESS EXISTS FOR, stated as the state that must stay unwritable: DESIGN.md's
 // "The ones standing today" list carried a drop whose restoration trigger had already fired.
