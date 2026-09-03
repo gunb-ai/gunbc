@@ -2,6 +2,7 @@ module test.claim.spark.spark_vllm_observed_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
+import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadback,
@@ -83,7 +84,7 @@ fn w_models_route() -> VllmModelsRouteReadback {
   vllm_models_route_readback(
     served_model_id: "w-model:iq3s-alias" as NonEmptyStr,
     configured_model_path: "w/path/to/checkpoint" as NonEmptyStr,
-    max_model_len: "1024" as NonEmptyStr)
+    max_model_len: token_count(count: 1024))
 }
 
 fn w_not_served() -> VllmEvidenceRouteResponse {
@@ -110,7 +111,7 @@ fn w_transaction(host: HostIdentity, response: VllmEvidenceRouteResponse) -> Vll
     version_route: vllm_version_route_readback(server_version: "w-fixture-build" as NonEmptyStr),
     cache_config_gauge: vllm_cache_config_gauge_readback(
       kv_cache_dtype: "w-dtype" as NonEmptyStr,
-      gpu_memory_utilization: "0.5" as NonEmptyStr,
+      gpu_memory_utilization: basis_point(count: 5000),
       prefix_caching_enabled: true),
     parallel_evidence_outcomes: w_outcomes(response: response),
   )
@@ -290,4 +291,15 @@ test fn w_an_unparsed_answer_does_not_advance_the_refusal_stage() -> Bool {
     ResolvedParallelConfigurationNotObserved => true
     JoinedRankPopulationNotObserved => false
   }
+}
+
+// THE NUMERIC READBACKS ARE COMPARABLE, WHICH IS THE WHOLE POINT OF TYPING THEM.
+//
+// As captured strings these were blobs: nothing could ask whether the context length was large, or
+// whether utilization sat below unity. Both questions are now answerable, and this claim asks them --
+// so a regression back to text does not merely change a type, it stops this witness compiling.
+test fn w_the_numeric_readbacks_are_measures_that_can_be_compared() -> Bool {
+  token_count_value(vllm_readback_2026_09_03.models_route.max_model_len) == 262144
+    && basis_point_count(vllm_readback_2026_09_03.cache_config_gauge.gpu_memory_utilization)
+         < basis_point_unity_count()
 }

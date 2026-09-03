@@ -2,6 +2,7 @@ module gunbc.spark.vllm_observed
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
+import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
 import gunbc.fleet_intent_network { operator_host_srv6 }
 import extdeps.vllm.server {
   vllm_self_reported_version,
@@ -45,10 +46,25 @@ import extdeps.vllm.server {
 // gauge. It came from /v1/models; the gauge never reported it. One record with a prose sentence
 // about provenance is exactly the shape that lets provenance drift from the value, so provenance is
 // now structural: a field cannot be described as coming from a route it does not sit under.
+// THE NUMERIC READBACKS ARE MEASURES, NOT CAPTURED DIGITS, and the absence of a parser is what
+// settles it rather than a preference.
+//
+// These arrived as text on the wire, and an earlier version kept them as text on the grounds that a
+// capture module should hold what it captured. That defence does not survive §2: a stream of digits
+// is not a different concept from the number it spells, so holding both would be one concept in two
+// representations, and holding only the text loses ordering and arithmetic on top of the unit. It
+// also defeated the module's own consumers -- a context length nothing can compare with is a blob
+// with a helpful name.
+//
+// The tempting middle -- carry the wire text AND a typed value -- is worse than either end here,
+// because nothing in this repository parses one into the other. The two fields would be independently
+// authored and free to drift, which is the validation shape this module keeps replacing with
+// construction. So the measure is the fact, and when a parser exists it can produce it from a capture
+// rather than beside one.
 type VllmModelsRouteReadback sole_constructor {
   served_model_id: NonEmptyStr
   configured_model_path: NonEmptyStr
-  max_model_len: NonEmptyStr
+  max_model_len: TokenCount
 }
 
 // THE PATH IS A CONFIGURED PATH, NOT A CONTENT IDENTITY, AND THE FIELD NAME NOW SAYS SO.
@@ -66,9 +82,13 @@ type VllmVersionRouteReadback sole_constructor {
   server_version: NonEmptyStr
 }
 
+// UTILIZATION IS A DIMENSIONLESS RATIO IN BASIS POINTS, not "0.86". Percent would have to round a
+// two-decimal fraction into a Nat and lose the distinction between 0.86 and 0.855; basis points carry
+// it exactly at the precision vLLM accepts, against std.measure's existing dimensionless authority
+// rather than a fresh one.
 type VllmCacheConfigGaugeReadback sole_constructor {
   kv_cache_dtype: NonEmptyStr
-  gpu_memory_utilization: NonEmptyStr
+  gpu_memory_utilization: BasisPoint
   prefix_caching_enabled: Bool
 }
 
@@ -175,7 +195,7 @@ fn vllm_readback_acquisition(
 fn vllm_models_route_readback(
   served_model_id: NonEmptyStr,
   configured_model_path: NonEmptyStr,
-  max_model_len: NonEmptyStr,
+  max_model_len: TokenCount,
 ) -> VllmModelsRouteReadback {
   VllmModelsRouteReadback {
     served_model_id: served_model_id,
@@ -190,7 +210,7 @@ fn vllm_version_route_readback(server_version: NonEmptyStr) -> VllmVersionRouteR
 
 fn vllm_cache_config_gauge_readback(
   kv_cache_dtype: NonEmptyStr,
-  gpu_memory_utilization: NonEmptyStr,
+  gpu_memory_utilization: BasisPoint,
   prefix_caching_enabled: Bool,
 ) -> VllmCacheConfigGaugeReadback {
   VllmCacheConfigGaugeReadback {
@@ -267,11 +287,11 @@ data vllm_readback_2026_09_03: VllmReadbackTransaction = vllm_readback_transacti
   models_route: vllm_models_route_readback(
     served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
     configured_model_path: "models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
-    max_model_len: "262144" as NonEmptyStr),
+    max_model_len: token_count(count: 262144)),
   version_route: vllm_version_route_2026_09_03,
   cache_config_gauge: vllm_cache_config_gauge_readback(
     kv_cache_dtype: "fp8_ds_mla" as NonEmptyStr,
-    gpu_memory_utilization: "0.86" as NonEmptyStr,
+    gpu_memory_utilization: basis_point(count: 8600),
     prefix_caching_enabled: true),
   parallel_evidence_outcomes: map(
     vllm_parallel_evidence_routes,
