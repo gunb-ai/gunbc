@@ -1,7 +1,7 @@
 module gunbc.hermetic_mock_fidelity
 
 import std.types { String, List, Bool, Int }
-import gunbc.guarantee_rung_drop { GuaranteeRung, Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_rung { GuaranteeRung, Mitigatable, StructurallyGuaranteed }
 import v2.std.algebra { fold_list }
 
 // A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES, AND SINCE REPAIRED: an

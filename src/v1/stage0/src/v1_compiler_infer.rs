@@ -8394,55 +8394,39 @@ pub fn expression_is_uppercase_constructor_reference(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let name = crate::v1_std_core::expr_var_name_at(n.clone(), source_indices.clone());
-        if (v1_rt::string_length(&name) == 0) {
-            false
-        } else {
-            {
-                let first = v1_rt::substring(&name, 0, 1);
-                {
-                    let mut __found = false;
-                    for letter in Rc::new(vec![
-                        "A".to_string(),
-                        "B".to_string(),
-                        "C".to_string(),
-                        "D".to_string(),
-                        "E".to_string(),
-                        "F".to_string(),
-                        "G".to_string(),
-                        "H".to_string(),
-                        "I".to_string(),
-                        "J".to_string(),
-                        "K".to_string(),
-                        "L".to_string(),
-                        "M".to_string(),
-                        "N".to_string(),
-                        "O".to_string(),
-                        "P".to_string(),
-                        "Q".to_string(),
-                        "R".to_string(),
-                        "S".to_string(),
-                        "T".to_string(),
-                        "U".to_string(),
-                        "V".to_string(),
-                        "W".to_string(),
-                        "X".to_string(),
-                        "Y".to_string(),
-                        "Z".to_string(),
-                    ])
-                    .iter()
-                    .cloned()
-                    {
-                        if (letter.clone() == first.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-            }
-        }
+    let name = crate::v1_std_core::expr_var_name_at(n.clone(), source_indices.clone());
+    if v1_rt::string_length(&name) == 0 {
+        false
+    } else {
+        let first = v1_rt::substring(&name, 0, 1);
+        matches!(
+            first.as_str(),
+            "A" | "B"
+                | "C"
+                | "D"
+                | "E"
+                | "F"
+                | "G"
+                | "H"
+                | "I"
+                | "J"
+                | "K"
+                | "L"
+                | "M"
+                | "N"
+                | "O"
+                | "P"
+                | "Q"
+                | "R"
+                | "S"
+                | "T"
+                | "U"
+                | "V"
+                | "W"
+                | "X"
+                | "Y"
+                | "Z"
+        )
     }
 }
 
@@ -24021,7 +24005,7 @@ pub fn build_module_context(
             env.source_indices.clone(),
             module_name.clone(),
             Rc::new(VariantFoldState {
-                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                locals: v1_rt::rc_empty_map::<_, _>(),
                 collision_errors: Rc::new(vec![]),
             }),
         );
