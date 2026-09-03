@@ -52,9 +52,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fixture that imports gunbc.fleet_converge_plan to compile. With that, a probe whose subject is
 // PlannedEffectExecution itself becomes writable and the type-level argument becomes an executed red.
 //
-// It greens the moment anyone re-widens the sum -- including the moment DCH-0r-c lands, whose
-// settled shape is PlannedBoundReactivationExecution { plan, steps } with steps DERIVED from the
-// bound plan, precisely so that widening this sum is never the way reactivation becomes executable.
+// It greens the moment anyone re-widens the sum, and the condition is stated against the CONSTRUCTION
+// rather than against any merge: for as long as gunbc.spark.serving_admission_fence
+// PlannedBoundReactivationExecution carries the bound plan alone and derives its steps from it,
+// reactivation is executable WITHOUT membership here and this wall stays load-bearing rather than
+// superseded. Widening this sum was never the route, so a widening is a regression whatever else has
+// landed beside it.
 fn reactivation_not_executable_fixture_source() -> String {
   "module srne.probe\n\nimport gunbc.spark.serving_realization { SparkServingExecutablePlannedEffect, RestartUserUnitForChangedDefinition }\n\ntype SrneExecutionHolder {\n  effect: SparkServingExecutablePlannedEffect\n}\n\nfn srne_restart_in_the_executable_field() -> SrneExecutionHolder {\n  SrneExecutionHolder { effect: RestartUserUnitForChangedDefinition }\n}\n"
 }
