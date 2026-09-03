@@ -850,211 +850,221 @@ pub struct TransitionAdmission {
 /// file every lane must write by construction, cannot be made safe by diligence. Recorded here as
 /// the observation; choosing the replacement carrier is not this cut's to make.
 ///
-/// EIGHTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
-/// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
-/// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
-/// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
-/// head is `v2.std.fn_index` -- verified as the only `TargetChanged` shape in the report, so no row
-/// here adjudicates a delta this transition did not cause. Measured from required run 33700978133
-/// on cdd31b664a, which reported exactly `17 unadjudicated delta(s)`.
+/// TWENTY-FIRST DISSOLUTION (2026-09-03, gunbc#10197). The 17 `call-reachability grounding
+/// gunbc#10156` rows are deleted, by their own trigger, which they stated in advance: #10156 merged
+/// (54b13232458), so main carries the grounding and no run's base and head can differ on it. The
+/// required run on this branch reported them exactly as that entry predicted -- `17 consumed
+/// admission(s) due for deletion on this roster-touching change)` -- and this change is the
+/// roster's next touch, so the obligation lands here. Nothing about them was re-derived: the
+/// trigger fired, the rows go.
 ///
-/// THE BASES ARE NOT ALL ONE MODULE, and that is the transition's shape rather than an error: the
-/// concept had FOUR authorities, so the spellings move from four different bases -- the two lenses
-/// that carried the walk, plus `v2.lens.production_qualification_origin_probe` and
-/// `v2.lens.affected_set.entry_selection`, which each held a copy of one helper. One row names a
-/// consumer outside `src/v2` entirely: `test.claim.bmc_onboarding_quarantine_witness_test` bound
-/// `atom_identities_in_node` by name. Nothing broke -- the name still resolves -- but a cross-root
-/// binding whose target moved is exactly the delta a reader must be shown.
+/// THE COST THE EIGHTEENTH ENTRY NAMED IS NOW OBSERVED FROM THE OTHER SIDE, and it is worth one
+/// sentence because that entry predicted it about a future branch and this is that branch. A change
+/// that touches this roster for its OWN reason inherits the deletion of someone else's consumed
+/// rows, so this cut -- a per-row file split of an unrelated authority -- must also author a record
+/// for a call-reachability transition it did not cause. The mechanism is working as designed; what
+/// it costs is that the two events are permanently coupled in one commit.
 ///
-/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Seventeen deltas, seventeen rows, each naming
-/// its module, its declaration and the exact spelling whose target moved. A wildcard over
-/// "anything that moved to v2.std.fn_index" would also admit the next relocation nobody reviewed.
+/// NINETEENTH TRANSITION (2026-09-03). Per-row file split of the declared rung-drop rows,
+/// gunbc#10197: `gunbc.rung_drop`'s 30 rows move out of the monolith into one module each under
+/// `gunbc.rung_drop.<row>`, with the enumeration in `gunbc.rung_drop.roster`. The type, the
+/// renderings and the folds stay in `gunbc.rung_drop`, so a consumer that binds a TYPE is
+/// unaffected and only a consumer that binds a ROW or the roster retargets.
 ///
-/// TRIGGER: #10156 MERGING. After that, main carries the grounding, so a later run's base and head
-/// both have it and no run can produce these deltas.
+/// A FILE SPLIT IS A NAMESPACE RELOCATION OF EVERY CONSUMER BINDING, WHICH IS WHY THESE ROWS EXIST
+/// AT ALL. The split is deliberately mechanical -- its whole virtue is that it is re-derivable --
+/// and that is exactly the property that makes it invisible to a reader: 30 identical-looking
+/// moves, none of which changes what any spelling DENOTES. This gate is what turns that from silent
+/// into adjudicated, and the rows below are the adjudication.
 ///
-/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established and the
-/// eighteenth dissolution then confirmed: rows authored in the same PR that performs their own move
-/// are satisfied at the BASE of every later run, never merely unmatched. Born consumed, like the
-/// SJT-1, DCH-1 and #10077 cohorts. Their deletion is therefore owed by whoever next touches this
-/// roster, on the convention the entry above honoured rather than delegated.
+/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Sixteen deltas, sixteen rows, each naming its
+/// module, its declaration and the exact spelling whose target moved. A wildcard over "anything
+/// that moved from gunbc.rung_drop into gunbc.rung_drop.*" would admit the next row relocation
+/// nobody reviewed -- and this carrier's growth surface is precisely that a new drop adds a new
+/// module, so the pattern would go on admitting forever.
 ///
-/// THE ORDINAL IS THE NEXT UNUSED ONE, NOT THE NEXT IN SEQUENCE, because this ledger's transition
-/// ordinals already collide: FOURTH and FIFTH each name two different transitions (gunbc#9665 and
-/// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
-/// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
-/// have made the entry uncitable by its own name -- which is what an ordinal is for.
-const CALL_REACHABILITY_GROUNDING_LABEL: &str =
-    "call-reachability grounding gunbc#10156 2026-09-03";
+/// EVERY ROW IS `TargetChanged` AND NONE IS A REBIND. The same motion also produced 9
+/// `ExplicitlyEvaluatedZeroDelta` membership deltas and 1 `SameDeclarationIdentityRebind`, both of
+/// which self-adjudicate; the 16 below are the only class that needs admission, and 16 is the
+/// unadjudicated count the run reported. The join is by identity and not by the number agreeing --
+/// a count that matched while the identities did not would be the coincidence this roster's rule
+/// exists to refuse.
+///
+/// MEASURED, NOT PREDICTED: required run 33789531276 on 694cebad90c, base da71b057882, which
+/// reported `16 unadjudicated delta(s)` with the floor CLEAN in the same run
+/// (`verdict=FloorClean unexpected_failures=0`), so the phase failure was these rows and nothing
+/// else. The 16 were read off that run's own per-delta lines rather than re-derived by hand.
+///
+/// TRIGGER: #10197 MERGING. After that, main carries the split, so a later run's base and head both
+/// have it and no run can produce these deltas.
+///
+/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established: rows
+/// authored in the same PR that performs their own move are satisfied at the BASE of every later
+/// run, never merely unmatched. Born consumed. Their deletion is owed by whoever next touches this
+/// roster.
+///
+/// THE ORDINAL IS THE NEXT UNUSED ONE. EIGHTEENTH is the highest TRANSITION in use and TWENTIETH
+/// the highest DISSOLUTION, so this entry is NINETEENTH and TWENTY-FIRST respectively.
+const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.bmc_onboarding_quarantine_witness_test",
-            in_declaration: "onboarding_quarantine_lexemes",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "gunbc.design_ledgers",
+            in_declaration: "rung_drop_blocks",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "edit_locus_nodes_for_module",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "green_drop_on_dark_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "module_path_for_decl",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "red_drop_on_live_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "effect_reach_classification_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "a_prose_declaration_refuses_the_off_ladder_question",
+            spelling: "floor_cut_heal",
+            target: "gunbc.rung_drop.floor_cut_heal",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "a_prose_declaration_renders_as_its_paragraph",
+            spelling: "floor_cut_heal",
+            target: "gunbc.rung_drop.floor_cut_heal",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "rung_drop_message_discriminates_between_rows",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "rung_drop_message_names_subject_and_trigger",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "bind_g2_root",
-            spelling: "tail_decls",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "source_root_ingest_gate_drop_is_off_ladder",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_home_decls_present",
-            spelling: "decls_in_module",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "every_consolidated_typed_row_is_still_rostered",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "every_prose_declaration_agrees_with_its_closed_arm",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "cited_symbol_census",
+            target: "gunbc.rung_drop.cited_symbol_census",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "literal_path_carriers_from_atoms",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_edges",
-            spelling: "call_reachable_decls_from_root",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "standing_rung_drops",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "the_roster_carries_both_declaration_arms",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "the_roster_carries_both_declaration_arms",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "callees_from_atom_scan",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "tools.ci_gates",
+            in_declaration: "run_spec_gate",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

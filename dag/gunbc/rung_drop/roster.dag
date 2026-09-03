@@ -11,11 +11,7 @@ module gunbc.rung_drop.roster
 // that regenerated this list from the files would reorder the whole projection while every
 // identity-grain check stayed green, because a set join cannot see an ordering. The line-grain
 // oracle for that is the regenerated projection diffed against main's, stated as an exact line
-// delta: a pure relocation must be 0/0. Diff it against a PINNED SHA and not against `origin/main`:
-// that ref is shared by every worktree of a clone and any concurrent session's fetch moves it
-// mid-check, which reports the interval's inbound rows as rows this relocation lost. Measured on this
-// change; the class is gunbc.recurring_failure_mode
-// `denominator_moved_between_measurement_and_comparison`.
+// delta: a pure relocation must be 0/0.
 //
 // `standing_rung_drops` lives here rather than beside the type because it reads this list. It is the
 // one derivation over the roster; everything else in `gunbc.rung_drop` takes the rows as a parameter,
