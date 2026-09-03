@@ -10,6 +10,7 @@ import std.import {
   ModuleDeclarationPathMalformed,
   ImportStatementMalformed,
   ImportParseInstrumentAnomaly,
+  ImportStripCoordinateSegment,
   import_statement_parse_cause_label
 }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
@@ -173,26 +174,27 @@ fn step0_excluded_population_identity(excluded: List<Step0V2ExcludedSource>) -> 
 // absorbing -- a later source cannot repair an earlier one, and continuing would compile a subject
 // already known to be unstripped.
 type Step0CandidateStrip
-  = Step0CandidateStripping { sources: List<FixtureSource>, removed: Int }
+  = Step0CandidateStripping { sources: List<FixtureSource>, removed: Int, coordinate_map: List<ImportStripCoordinateSegment> }
   | Step0CandidateStripHalted { file: NonEmptyStr }
 
 fn step0_candidate_strip_step(fold_state: Step0CandidateStrip, source: FixtureSource) -> Step0CandidateStrip {
   match fold_state {
     Step0CandidateStripHalted { file: file } => Step0CandidateStripHalted { file: file }
-    Step0CandidateStripping { sources: sources, removed: removed } =>
+    Step0CandidateStripping { sources: sources, removed: removed, coordinate_map: coordinate_map } =>
       match namespace_step0_strip_source(source: source) {
         Step0SourceStripRefused { cause: _ } => Step0CandidateStripHalted { file: source.path }
-        Step0SourceStripped { source: stripped, removed_statements: removed_statements } =>
+        Step0SourceStripped { source: stripped, removed_statements: removed_statements, coordinate_map: source_coordinate_map } =>
           Step0CandidateStripping {
             sources: sources |> list_push(stripped),
-            removed: removed + count(removed_statements)
+            removed: removed + count(removed_statements),
+            coordinate_map: concat(coordinate_map, source_coordinate_map)
           }
       }
   }
 }
 
 fn step0_candidate_strip(sources: List<FixtureSource>) -> Step0CandidateStrip {
-  fold(sources, init: Step0CandidateStripping { sources: [], removed: 0 }, f: fn(acc, source) {
+  fold(sources, init: Step0CandidateStripping { sources: [], removed: 0, coordinate_map: [] }, f: fn(acc, source) {
     step0_candidate_strip_step(fold_state: acc, source: source)
   })
 }
@@ -513,6 +515,7 @@ type Step0PairArms {
   post_strip: Step0V2CompileStanding
   order_invariance: Step0OrderInvariance
   stripped: List<FixtureSource>
+  coordinate_map: List<ImportStripCoordinateSegment>
   removed: Int
 }
 
@@ -537,7 +540,7 @@ fn step0_derive_pair(admitted: List<FixtureSource>) -> Step0PairDerivation {
           blocked_at: ApplyTypedImportStrip,
           cause: concat("the typed rewrite refused at ", file as String) as NonEmptyStr
         }
-        Step0CandidateStripping { sources: stripped, removed: removed } =>
+        Step0CandidateStripping { sources: stripped, removed: removed, coordinate_map: coordinate_map } =>
           if removed == 0 {
             Step0PairNotDerived {
               blocked_at: ApplyTypedImportStrip,
@@ -565,6 +568,7 @@ fn step0_derive_pair(admitted: List<FixtureSource>) -> Step0PairDerivation {
                   post_second: post_second
                 ),
                 stripped: stripped,
+                coordinate_map: coordinate_map,
                 removed: removed
               }
             }
