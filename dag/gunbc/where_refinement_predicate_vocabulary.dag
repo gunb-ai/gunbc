@@ -1,0 +1,239 @@
+module gunbc.where_refinement_predicate_vocabulary
+
+import std.types { String, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE SUBJECT IS PREDICATE IDENTITY, NOT PREDICATE COUNT. A where-refinement predicate
+// (`type NonEmptyStr = String where non_empty`) is a BARE IDENTIFIER with no declaration binding
+// anywhere in the pipeline. v1.compiler.parse parse_single_predicate accepts any identifier in its
+// unparenthesised arm, and v1.compiler.infer then decides what the identifier MEANS by matching the
+// string against three hand-written name-keyed tables (where_refinement_is_int_literal_predicate,
+// where_refinement_is_string_literal_predicate, where_refinement_is_deferred_predicate). Predicate
+// identity for subsumption -- where_refinement_predicates_equivalent -- is bare string equality on
+// that same unresolved name. So the tables are a SECOND AUTHORITY for what a predicate means,
+// forked from the declaration that already states it wherever one exists (DESIGN section 3).
+//
+// THIS MODULE IS THE JOIN THAT DID NOT EXIST: one row per predicate spelling authored anywhere in
+// the corpus, carrying the compiler's enforcement class and whether a real declaration grounds it.
+// It exists because those two facts were UNCORRELATED and nothing said so. Seven of the fifteen
+// spellings are grounded by a declared total Bool function and eight are not, and the compiler's
+// treatment does not track that split in either direction: two grounded String->Bool predicates are
+// enrolled and WALL at literal construction sites, three structurally identical ones -- two of them
+// declared in the SAME FILE as an enrolled pair -- are in no table at all and are therefore
+// permanently advisory. The discriminator is not decidability, grounding, or any property of the
+// predicate. It is whether a human added a table row.
+//
+// WHAT THE ROWS ARE NOT. They carry no occurrence counts and no site lists. A count copied into a
+// row here would be a transcribed measurement rotting away from the tree that produced it
+// (DESIGN section 6); the instrument that re-derives corpus membership is named under the ceiling
+// below. Identity -- which spellings exist and what each one means -- is the fact this roster owns,
+// because identity is what the compiler gets wrong.
+
+type WherePredicateEnforcement
+  = IntLiteralDecidable
+  | StringLiteralDecidable
+  | DeferredAtCompileTime
+  | UnenrolledNoTableRow
+
+// GROUNDING IS A COPRODUCT AND NOT AN OPTIONAL DECLARATION REF, because the two states owe
+// different things. A grounded predicate has an authority the compiler is DECLINING to consult; an
+// ungrounded one has no authority anywhere and its meaning exists only inside 04_infer. Collapsing
+// them into `DeclarationRef?` would make "nobody wrote this down" and "somebody wrote it down and
+// we ignore it" the same absent value, which is exactly the distinction this roster was built to
+// surface.
+type WherePredicateGrounding
+  = GroundedByDeclaration { declaration: DeclarationRef }
+  | NoDeclarationCompilerInternal
+
+type WherePredicateRow {
+  spelling: String
+  enforcement: WherePredicateEnforcement
+  grounding: WherePredicateGrounding
+}
+
+fn where_predicate_decl(module_path: String, decl_name: String) -> WherePredicateGrounding {
+  GroundedByDeclaration {
+    declaration: DeclarationRef {
+      module_path: module_path as NonEmptyStr,
+      decl_name: decl_name as NonEmptyStr,
+      field: WholeDeclaration
+    }
+  }
+}
+
+// SPELLING IS THE KEY, and it is the spelling as AUTHORED in the where clause rather than the name
+// the compiler compares. The two differ for exactly one row: `where brand("...")` is folded by
+// v1.compiler.parse into a predicate node named "Brand", and where_predicate_canonical_name then
+// maps "brand" onto "Brand" so the two spellings meet. The authored form is the key here because
+// this roster's population is what an author can write, not what the parser rewrites it into.
+
+data where_refinement_predicate_vocabulary: List<WherePredicateRow> = [
+  WherePredicateRow {
+    spelling: "brand",
+    enforcement: DeferredAtCompileTime,
+    grounding: NoDeclarationCompilerInternal
+  },
+  WherePredicateRow {
+    spelling: "range",
+    enforcement: IntLiteralDecidable,
+    grounding: NoDeclarationCompilerInternal
+  },
+  WherePredicateRow {
+    spelling: "gt_zero",
+    enforcement: IntLiteralDecidable,
+    grounding: NoDeclarationCompilerInternal
+  },
+  // THE FORK, AND IT IS THE ONE A GREP FOR THE SPELLING CANNOT FIND. `non_empty` is recorded here
+  // as NoDeclarationCompilerInternal even though `fn non_empty` EXISTS in the corpus, because the
+  // declaration that exists is v2.std.algebra non_empty<T>(xs: FreeMonoid<T>) -> Bool -- a
+  // different predicate over a different domain. The where-predicate `non_empty` means String
+  // length > 0 and that meaning is hand-written inside 04_infer
+  // decidable_where_string_predicate_holds. Claiming the algebra declaration as this row's
+  // grounding would be the fabrication DESIGN section 5 forbids: it would assert an authority that
+  // does not answer for this predicate. A THIRD carrier of the same concept exists at
+  // v2.lens.enforcement.gate non_empty_string(s: String) -> Bool. One concept, three authorities,
+  // and the load-bearing one is not a declaration at all.
+  WherePredicateRow {
+    spelling: "non_empty",
+    enforcement: StringLiteralDecidable,
+    grounding: NoDeclarationCompilerInternal
+  },
+  WherePredicateRow {
+    spelling: "lower_hex_16",
+    enforcement: StringLiteralDecidable,
+    grounding: NoDeclarationCompilerInternal
+  },
+  WherePredicateRow {
+    spelling: "lower_hex_40",
+    enforcement: StringLiteralDecidable,
+    grounding: NoDeclarationCompilerInternal
+  },
+  WherePredicateRow {
+    spelling: "lower_hex_64",
+    enforcement: StringLiteralDecidable,
+    grounding: NoDeclarationCompilerInternal
+  },
+  WherePredicateRow {
+    spelling: "lower_hex_128",
+    enforcement: StringLiteralDecidable,
+    grounding: NoDeclarationCompilerInternal
+  },
+  WherePredicateRow {
+    spelling: "oci_other_digest_algorithm",
+    enforcement: StringLiteralDecidable,
+    grounding: where_predicate_decl(
+      module_path: "extdeps.container.oci.digest",
+      decl_name: "oci_other_digest_algorithm"
+    )
+  },
+  WherePredicateRow {
+    spelling: "oci_other_digest_encoded",
+    enforcement: StringLiteralDecidable,
+    grounding: where_predicate_decl(
+      module_path: "extdeps.container.oci.digest",
+      decl_name: "oci_other_digest_encoded"
+    )
+  },
+  WherePredicateRow {
+    spelling: "unicode_scalar",
+    enforcement: DeferredAtCompileTime,
+    grounding: where_predicate_decl(
+      module_path: "std.unicode.types",
+      decl_name: "unicode_scalar"
+    )
+  },
+  WherePredicateRow {
+    spelling: "is_text_readable",
+    enforcement: DeferredAtCompileTime,
+    grounding: where_predicate_decl(
+      module_path: "std.filesystem",
+      decl_name: "is_text_readable"
+    )
+  },
+  WherePredicateRow {
+    spelling: "oci_path_component_syntax",
+    enforcement: UnenrolledNoTableRow,
+    grounding: where_predicate_decl(
+      module_path: "extdeps.container.oci.reference",
+      decl_name: "oci_path_component_syntax"
+    )
+  },
+  WherePredicateRow {
+    spelling: "oci_tag_syntax",
+    enforcement: UnenrolledNoTableRow,
+    grounding: where_predicate_decl(
+      module_path: "extdeps.container.oci.reference",
+      decl_name: "oci_tag_syntax"
+    )
+  },
+  WherePredicateRow {
+    spelling: "c_translation_unit_basename_safe",
+    enforcement: UnenrolledNoTableRow,
+    grounding: where_predicate_decl(
+      module_path: "v2.extdeps.languages.c",
+      decl_name: "c_translation_unit_basename_safe"
+    )
+  }
+]
+
+fn where_predicate_spellings(rows: List<WherePredicateRow>) -> List<String> {
+  rows |> map(r => r.spelling)
+}
+
+fn where_predicate_rows_of_enforcement(
+  rows: List<WherePredicateRow>,
+  wanted: WherePredicateEnforcement
+) -> List<WherePredicateRow> {
+  rows |> filter(r => r.enforcement == wanted)
+}
+
+fn where_predicate_grounded_rows(rows: List<WherePredicateRow>) -> List<WherePredicateRow> {
+  rows |> filter(r =>
+    match r.grounding {
+      GroundedByDeclaration { declaration: _ } => true
+      NoDeclarationCompilerInternal => false
+    }
+  )
+}
+
+// THE UNENROLLED THREE ARE DEBT, NOT A DESIGN. Each is a declared, total, decidable String -> Bool
+// function that the compiler could evaluate at a literal construction site exactly as it already
+// evaluates oci_other_digest_algorithm and oci_other_digest_encoded, which are declared in the same
+// file as two of them. They are DESIGN section 5's wall after grounding: decidable, grounded, and
+// unbuilt. Until then every construction at these three refined positions -- valid and invalid
+// alike -- produces one WhereRefinementUnenforced advisory and no refusal.
+//
+// THE ROW IS NOT A LICENCE. Nothing here admits a fourth member. The witness beside this module
+// executes the roster against the compiler's real behaviour name by name, so a new unenrolled
+// predicate reds rather than joining a list.
+
+data where_refinement_unenrolled_predicate_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "TRIGGER, one and checkable: a where-refinement predicate spelling is RESOLVED to its declaration rather than matched against a name-keyed table, so that the declaration is the predicate's single authority for both its meaning and its identity under subsumption. SUFFICIENT FOR: (a) deleting where_refinement_is_int_literal_predicate, where_refinement_is_string_literal_predicate, where_refinement_is_deferred_predicate and decidable_where_string_predicate_holds rather than adding rows to them, since a resolved declaration states its own semantics; (b) refusing an unresolvable predicate spelling at acceptance, which retires the 'predicate not enforced at compile time' arm of is_where_refinement_unenforced_advisory_reason; and (c) keying where_refinement_predicates_equivalent on the resolved declaration rather than on the spelling. A CHANGE THAT DELIVERS ONLY ONE OF THE THREE DOES NOT RETIRE THIS ROW, and the reason is stated because the grain mismatch is the review tell DESIGN 4b(3) names: the loss here is a CORPUS-GRAIN loss over every predicate spelling, so a trigger naming one predicate's enrolment, or one table's replacement, would be satisfied while the capability stays dead. ENROLLING THESE THREE NAMES IN THE EXISTING TABLES IS EXPLICITLY NOT THE TRIGGER AND WOULD NOT DISCHARGE THIS ROW: it would grow the forked authority this row exists to record, which DESIGN section 2 calls a failed decomposition. There is a STANDING declared trigger in the tree naming a DIFFERENT end-state for the same subject -- feature:where-refinement-predicate-coproduct, a closed WhereRefinementPredicateKind coproduct replacing the string classifiers, cited by where_refinement_deferral_reason_scaffold_note in v1.std.core and by the predicate min-length tables in v1.compiler.infer. THIS ROW DOES NOT SUPERSEDE IT AND MUST NOT BE READ AS DOING SO. DESIGN 4b(3) is categorical that a declared drop is retired by its trigger and by nothing else, so the choice between a resolved declaration and a closed coproduct is a trigger CHANGE owed in the open as its own decision, not something a better answer may outrun. Whichever wins, this roster's rows are the population that change has to cover.")
+
+// CEILING AND WHAT THIS ROSTER CANNOT DO, stated because a roster read as a census is worse than
+// no roster (DESIGN 4b meta-obligation 1: the reported rung must equal the rung executed evidence
+// establishes).
+//
+// RUNG: 2, MECHANICALLY PREVENTABLE. The invalid state stays fully writable -- nothing prevents an
+// author adding `type T = String where whatever_i_typed` tomorrow, and nothing prevents a second
+// declaration claiming a spelling this roster already carries. Safety here depends entirely on the
+// witness beside this module executing and staying enrolled on the required floor. It is not a
+// wall and must not be cited as one.
+//
+// THE HALF THAT IS EXECUTED: every spelling in this roster is driven through the real v1 compile
+// path by the witness, and its declared enforcement class is asserted against the compiler's
+// observed behaviour on a synthetic source. That join is an identity join over all fifteen rows,
+// not a count, and it reds if a row's class and the compiler's tables ever disagree in either
+// direction -- a table row added without a roster row, or a roster row whose class was wrong.
+//
+// THE HALF THAT IS NOT: whether these fifteen spellings are ALL the spellings authored in the live
+// tree. No substrate reader exposes where-clause predicates today. concept_decl_facts_live marshals
+// only Disj and Conj type items and drops the refinement annotation, so the population cannot be
+// re-derived inside a .dag lens without a new host reader -- and adding one would be new
+// hand-maintained Rust, which the v1 exit lane closes rather than grows. The membership claim is
+// therefore AUTHOR-VOUCHED, re-derivable only out of band, and that is this roster's real ceiling.
+// NEXT-RUNG TRIGGER for the membership half, named as the capability rather than an artifact: a
+// substrate reader that projects where-clause refinement predicates from type declarations over the
+// live tree, SUFFICIENT FOR a .dag lens to assert checked == total over the corpus population
+// without the roster being consulted. Until that exists, a new predicate spelling that never
+// reaches this file is invisible to every mechanism in this repository.
