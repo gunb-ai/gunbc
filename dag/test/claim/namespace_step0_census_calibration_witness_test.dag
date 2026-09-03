@@ -35,7 +35,8 @@ import gunbc.namespace_step0_census_calibration {
   step0_calibration_standing,
   step0_occurrence_category_label,
   step0_unclaimed_producer_branches,
-  step0_uncalibrated_families
+  step0_uncalibrated_families,
+  step0_unit_mapping_disagreements
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -52,6 +53,30 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data cal_provider: String = "module cal.provider\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalMiddle\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
 
 data cal_entry: String = "module cal.entry\n\nimport cal.provider { CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+// THE PERTURBED SUBJECT, AND IT IS WHAT TURNS "I FOUND NO ROW" INTO "THERE IS NO ROW". It is the
+// same fixture with CalMiddle removed from the coproduct, from the import list and from the match --
+// every appearance of one variant, deleted. If a variant in pattern position produced an occurrence,
+// or if a name in an import list did, this subject MUST observe fewer of them than the one above.
+// The two counts are compared by the control below. An absence read off a single run is an
+// observation; an absence that survives a perturbation which had to move it is a control.
+data cal_provider_without_middle: String = "module cal.provider\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
+
+data cal_entry_without_middle: String = "module cal.entry\n\nimport cal.provider { CalPayload, CalChoice, CalLeft, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+fn cal_manifest_without_middle() -> List<FixtureSource> {
+  [
+    fixture_source("cal/provider.dag", cal_provider_without_middle),
+    fixture_source("cal/entry.dag", cal_entry_without_middle)
+  ]
+}
+
+fn cal_denominator_size_without_middle() -> Int {
+  match reference_occurrence_binding_census(sources: cal_manifest_without_middle(), entry: "cal/entry.dag" as NonEmptyStr) {
+    ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
+  }
+}
 
 fn cal_manifest() -> List<FixtureSource> {
   [
@@ -226,4 +251,22 @@ test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Boo
     CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _ } => false
     CalibrationRosterIncomplete { unclaimed_branches: _, uncalibrated_families: _ } => false
   }
+}
+
+// THE PERTURBATION CONTROL. Removing every appearance of one variant -- its declaration, its
+// import-list entry and its match arm -- changes the observed occurrence count by ZERO. A variant in
+// pattern position and a name in an import list therefore produce no occurrence, established by a
+// change that HAD to move the number if they did, rather than by not finding them in one listing.
+// Both counts are nonzero, so this is not two silences agreeing.
+test fn removing_a_variant_entirely_does_not_change_the_occurrence_count() -> Bool {
+  cal_denominator_size() > 0
+    && cal_denominator_size_without_middle() > 0
+    && cal_denominator_size() == cal_denominator_size_without_middle()
+}
+
+// THE TWO AUTHORED TABLES ABOUT ONE INSTRUMENT MUST AGREE. A family the observation table calls
+// blind must map to zero occurrences per authored reference, and a family it calls observed must map
+// to at least one. Without this join they are a meaning fork waiting to drift.
+test fn the_observation_table_and_the_unit_mapping_agree() -> Bool {
+  count(step0_unit_mapping_disagreements()) == 0
 }

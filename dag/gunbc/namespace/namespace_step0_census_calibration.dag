@@ -244,6 +244,68 @@ fn step0_family_discrimination(family: Step0ReferenceFamily) -> Step0FamilyDiscr
   }
 }
 
+// THE CENSUS UNIT IS DECLARED, BECAUSE THE CONSERVATION LAWS CANNOT DETECT ANSWERING THE WRONG
+// QUESTION. The contract's denominator is the reference OCCURRENCE. A reader hears "reference", and
+// for one family those are not the same number: an authored container.member reference becomes TWO
+// occurrences. "Every occurrence receives exactly one outcome" can hold perfectly while the census
+// answers a different question than "every authored reference is accounted for" -- the laws balance
+// and the figure is still wrong. So the mapping between the two units is carried explicitly rather
+// than assumed to be the identity.
+//
+// AND THE SAME NUMBER CARRIES BOTH FINDINGS AT ONCE, which is why it is one function and not two: a
+// family the instrument is blind to has ZERO occurrences per authored reference, a family it
+// observes once has one, and a family it splits has two. Blindness and splitting are the two ways
+// this mapping fails to be the identity, in opposite directions.
+type Step0CensusUnit
+  = ReferenceOccurrenceUnit
+  | AuthoredReferenceUnit
+
+data step0_census_declared_unit: Step0CensusUnit = ReferenceOccurrenceUnit
+
+fn step0_occurrences_per_authored_reference(family: Step0ReferenceFamily) -> Int {
+  match family {
+    TypeAnnotationReference => 1
+    GenericTypeArgumentReference => 1
+    TopLevelValueReference => 1
+    FunctionValueReference => 1
+    OrdinaryCallReference => 1
+    NullaryConstructorReference => 1
+    PayloadConstructorReference => 0
+    VariantExpressionReference => 1
+    VariantPatternReference => 0
+    QualifiedContainmentReference => 2
+  }
+}
+
+// THE TWO TABLES MUST AGREE, and this fold is the join that makes disagreement loud. A family the
+// observation table calls blind must map to zero occurrences, and a family it calls observed must
+// map to at least one. Two authored tables about one instrument is exactly the meaning fork DESIGN
+// section 3 forbids unless something checks them against each other.
+fn step0_unit_mapping_disagreements() -> List<Step0ReferenceFamily> {
+  step0_reference_family_roster |> filter(family =>
+    match step0_family_observation(family: family) {
+      FamilyEmitsNoOccurrence { detail: _ } => step0_occurrences_per_authored_reference(family: family) != 0
+      FamilyObservedAsCategory { category: _ } => step0_occurrences_per_authored_reference(family: family) == 0
+    }
+  )
+}
+
+// WHERE THE REMOVED-EDGE ROSTER COMES FROM, SETTLED BY MEASUREMENT RATHER THAN BY ARGUMENT. A name
+// inside an import statement's brace list produces NO reference occurrence: adding one to the
+// fixture's import list moved the observed count by zero. So the imported-binding grain -- one row
+// per imported NAME inside a statement -- cannot be sourced from the occurrence walk, and a roster
+// that tried would have come back silently empty, which is the same vacuity one layer further out.
+//
+// It is owned by the STRIP, which parses the statements and their brace lists and is the only thing
+// that knows what it removed. The census therefore has two producers by construction, joined on
+// identity: the strip owns the imported-binding roster, the occurrence authority owns the reference
+// denominator. That is a consequence of this measurement, not a complication of it.
+type Step0ImportedBindingRosterSource
+  = ImportedBindingRosterFromStrip
+  | ImportedBindingRosterFromOccurrenceWalk
+
+data step0_imported_binding_roster_source: Step0ImportedBindingRosterSource = ImportedBindingRosterFromStrip
+
 // A DEFECT THE FAMILY AXIS CANNOT EXPRESS, KEPT BESIDE IT RATHER THAN FOLDED IN. The denominator is
 // wrong in BOTH directions at once, and the second direction has no family: the label of a named
 // argument is emitted as a reference occurrence and stamped CallableOccurrence, though it references
