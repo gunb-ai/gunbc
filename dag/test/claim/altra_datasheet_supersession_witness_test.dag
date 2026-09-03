@@ -1,0 +1,132 @@
+module test.claim.altra_datasheet_supersession_witness_test
+
+import std.types { Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.publication {
+  HeldSpecificationSupersessionStanding,
+  HeldRevisionIsCurrentPublicCopy, NewerRevisionExistsUnretrieved, NewerRevisionPubliclyServed,
+}
+import extdeps.cpu.ampere {
+  ampere_altra_max_rev_a1_datasheet_supersession_standing,
+  ampere_altra_classic_rev_a1_datasheet_supersession_standing,
+  ampere_altra_device_documentation_authority,
+  ampere_altra_max_rev_a1_v1_30_authority,
+}
+
+// EXECUTING EVIDENCE that both datasheet citations declare which revision they hold and name a
+// retrieved successor. An earlier version of this file asserted the two standings DISAGREED, which
+// was a discrimination control built on a fact that turned out to be wrong: the non-Max citation
+// was recorded as current only because Issue 1.55 was absent from the family product brief, and
+// that brief is a stale index. Both are superseded, so the control below no longer leans on them
+// differing -- it constructs the current arm itself.
+
+test fn w_the_non_max_altra_citation_is_superseded_by_1_55() -> Bool {
+  match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: v, newer_authority: _, index_authority: _, held_version_label: h, detail: _ } =>
+      v == "v1.55" && h == "v1.50"
+  }
+}
+
+test fn w_the_altra_max_citation_is_superseded() -> Bool {
+  match ampere_altra_max_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: v, newer_authority: _, index_authority: _, held_version_label: h, detail: _ } =>
+      v == "v1.30" && h == "v1.15"
+  }
+}
+
+// BOTH ARE THE PUBLICLY-SERVED ARM, which is the distinction that carries the obligation: a
+// revision we retrieved is a live citation debt, while one merely listed is not.
+//
+// THERE IS NO NAMED PREDICATE OVER THIS COPRODUCT, HERE OR IN THE SUBSTRATE, and the witnesses
+// below match it inline instead. An earlier revision of this file kept a local
+// `standing_is_the_current_arm` helper and defended it on SCOPE -- private to one file, one
+// reader, so it could not become a surface anybody builds on. Review 58859 rejected that defence
+// and was right to: the 2026-07-12 dissolution criterion recorded in `std.execution_mode` keys on
+// the helper's SHAPE, not on where it lives. What survives there is a two-variant semantic
+// PARTITION whose host branches on it at two production dispatch sites; what was deleted is the
+// single-variant VARIANT TEST. One arm true and two false, with no production consumer, is the
+// deleted shape, and a file-local copy of a dissolved concept is still the concept re-invented --
+// DESIGN section 2, net concepts must not grow by re-invention.
+//
+// WHAT THE INLINING PRESERVES, which is the whole reason the helper looked worth having: each
+// match below is exhaustive, so a fourth arm still reds this file. That property belongs to the
+// match, never to the name in front of it -- collapsing three arms behind a Bool is precisely what
+// would let a new arm slip past its readers unnoticed.
+
+test fn w_neither_citation_claims_to_be_current() -> Bool {
+  let classic_is_superseded = match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => true
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => true
+  }
+  let max_is_superseded = match ampere_altra_max_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => true
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => true
+  }
+  classic_is_superseded && max_is_superseded
+}
+
+// THE POSITIVE CONTROL STAYS ENROLLED. Dissolving the production predicate does not retire the
+// evidence that the current arm is reachable and distinguishable from the superseded ones --
+// section 4b(4) deletes the obsoleted production machinery, never the discriminating control.
+test fn w_RED_the_current_arm_is_reachable_and_separates_from_superseded() -> Bool {
+  let current: HeldSpecificationSupersessionStanding = HeldRevisionIsCurrentPublicCopy
+  let current_reads_current = match current {
+    HeldRevisionIsCurrentPublicCopy => true
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => false
+  }
+  let held_reads_superseded = match ampere_altra_classic_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => true
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => true
+  }
+  current_reads_current && held_reads_superseded
+}
+
+// THE INDEX IS PART OF THE FACT. Both standings must name the surface that actually serves the
+// newer revision, not the stale product brief that produced the original wrong conclusion, and not
+// the login redirect an earlier revision recorded.
+//
+// AN EARLIER VERSION OF THIS WITNESS READ ONLY THE NON-MAX STANDING while being named for both. A
+// name asserting a conjunction its body never constructs is worse than a missing test: dropping or
+// swapping the Max index edge would have left it green. It now folds over both, and the control
+// below proves that reading both is load-bearing.
+fn standing_index_authority_is(s: HeldSpecificationSupersessionStanding, a: ExternalAuthority) -> Bool {
+  match s {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: i, held_version_label: _, detail: _ } => i == a
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: i, held_version_label: _, detail: _ } => i == a
+  }
+}
+
+test fn w_both_standings_cite_the_device_documentation_surface() -> Bool {
+  standing_index_authority_is(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing, a: ampere_altra_device_documentation_authority)
+    && standing_index_authority_is(s: ampere_altra_max_rev_a1_datasheet_supersession_standing, a: ampere_altra_device_documentation_authority)
+}
+
+// EITHER EDGE MATTERS. The conjunction above is only meaningful if a wrong authority on EITHER
+// side is refused, so this constructs a different authority and asserts both standings reject it.
+test fn w_RED_a_wrong_index_authority_is_refused_on_either_standing() -> Bool {
+  let other = ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/not-the-index" } }
+  !standing_index_authority_is(s: ampere_altra_classic_rev_a1_datasheet_supersession_standing, a: other)
+    && !standing_index_authority_is(s: ampere_altra_max_rev_a1_datasheet_supersession_standing, a: other)
+}
+
+// AND THE SUCCESSOR IS A TYPED AUTHORITY, not prose. An earlier revision carried the served
+// locator as a bare string, which admits any text at all beside the ExternalAuthority system this
+// vocabulary already owns.
+test fn w_the_served_successor_is_a_typed_authority() -> Bool {
+  match ampere_altra_max_rev_a1_datasheet_supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => false
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: n, index_authority: _, held_version_label: _, detail: _ } =>
+      n == ampere_altra_max_rev_a1_v1_30_authority
+  }
+}
