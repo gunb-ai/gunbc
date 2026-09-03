@@ -418,36 +418,62 @@ data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 // workflow, and a dispatch that cannot say WHICH head it got would report a verdict about a head
 // it cannot name: a fabricated revalidation, worse than the honest gap.
 //
-// THE JUSTIFICATION IS UNRELIABILITY, NOT IMPOSSIBILITY, AND THE STRONGER SENTENCE WAS REFUTED
-// BEFORE IT LANDED. The first draft of this paragraph said GitHub starts NO run for that push, so
-// the ordinary route was closed and the dispatch rescued a guaranteed block. MEASURED ON THIS
-// REPOSITORY, that is false: bot-authored `pull_request` runs exist on heal-pushed heads and most
-// of them execute. Runs 33686753487 (head bc704687540, gunbc#10118's OWN healed head,
-// created_at == run_started_at, so it ran with zero approval delay), 33705120607 and 33703032560
-// all started; run 33711005806 (head 958f743f9e) came back `action_required` and did not. Three of
-// four. So the ordinary route is UNRELIABLE on a heal-pushed head, not closed -- and a remediator
-// whose revalidation depends on a gate nobody can attribute should not depend on it. That is why
-// the dispatch is the DECLARED path. The weaker claim is the one that survives observation; the
-// stronger one already died to it.
+// CREATED-AND-HELD IS NOT NEVER-CREATED, AND THAT DISTINCTION IS AT TOP BILLING BECAUSE EVERY
+// WORDING ERROR THIS CARRIER WENT THROUGH -- IN BOTH DIRECTIONS -- FOLLOWED FROM NOT HAVING THE TWO
+// AS SEPARATE STATES. They have different remedies: a held run has a release path,
+// POST /actions/runs/<id>/approve on THAT run, and a nonexistent one has none. A justification for
+// the dispatch route that cannot say which state it is in cannot say what the dispatch buys.
 //
-// THE ONE CONTROL THAT DISCRIMINATES, kept next to the bound so it cannot be lifted without it. On
-// the single sha 958f743f9e, identity and token are held CONSTANT -- actor and triggering_actor
-// are github-actions[bot] on both -- and only the EVENT varies: run 33711005806 (pull_request) was
-// `action_required` while run 33711101968 (workflow_dispatch) started normally and bound that head
-// in this very preflight. Check runs from either event attach to the sha, so the dispatch route
-// supplies the required contexts. What the pair shows is that the dispatch route was NOT blocked on
-// a head where the ordinary route happened to be. It does not generalize past that one sha, which
-// is exactly what the four-run count above bounds.
+// GITHUB WITHHOLDS EXECUTION, NOT CREATION, AND THE HOLD KEYS ON THE EVENT. A `pull_request` run IS
+// created for the healed head and executes nothing; the dispatched run on the same head executes.
+// So nothing judges H1 automatically by the ordinary route, and the dispatch is the DECLARED path
+// because it is the only route to a healed head that runs without a human -- not because no run
+// appears. THE MEASURED POPULATIONS LIVE ONCE, IN gunbc.rung_drop floor_cut_heal, whose subject is
+// this actuation boundary; they are cited here and deliberately not restated, so one count has one
+// authority.
 //
-// BOUNDARY OBLIGATION, UNDETERMINED BECAUSE UNREADABLE FROM HERE RATHER THAN UNEXAMINED. Whether
-// `action_required` on that one head follows from a repository setting, from the token, or from a
-// per-run condition is NOT decided here: repos/<owner>/<repo>/actions/permissions and
-// .../permissions/workflow both answer 403 `Resource not accessible by integration` to the
-// credential this repository's sessions carry, so the setting cannot be read. Naming the 403 is the
-// point -- undetermined-because-unreadable names its own remedy (a credential that can read the
-// Actions permissions surface), and undetermined-because-unexamined names nothing. Until then this
-// is an observation about the actuation boundary, not a modeled property of it.
+// THE INSTRUMENT FAILURE IS KEPT AS A ROW, NOT DELETED WITH THE CONCLUSION IT PRODUCED, because it
+// is the sharpest specimen in this repository of a proxy that fails toward the reading its reader
+// wants. An earlier draft read this table and concluded that most such runs execute:
 //
+//   run           conclusion        created  -> run_started_at   attempt 1 jobs
+//   33686753487   failure           21:44:15 -> 21:44:15         0
+//   33705120607   cancelled         01:48:15 -> 01:58:31         0
+//   33703032560   action_required   01:17:18 -> 03:04:23         0   (attempt 2 ran, 1h47m later)
+//   33711005806   action_required   03:20:33 -> 03:20:33         0
+//
+// TWO PROXIES, BOTH BROKEN, BOTH IN THE SAME DIRECTION. `conclusion != action_required` cannot
+// report "held", because a held run still concludes something -- `failure` and `cancelled` above.
+// `created_at == run_started_at` cannot report "held" either, because equal timestamps are exactly
+// what a run that never ran looks like. Neither proxy has a state in which it says "this executed
+// nothing", so neither was ever evidence about executing. THE TEST THAT WOULD HAVE CAUGHT BOTH,
+// and the one worth carrying past this subject: ask what input would make the instrument report the
+// other way. Only ATTEMPT 1's JOB COUNT has that state, because zero is a value it can return.
+// Read attempt 1, never the latest -- a human approving a held run leaves attempt 2 looking like an
+// ordinary execution, which is what hid the class for 1h47m on 33703032560.
+//
+// SO THE BEHAVIOUR IS RELIABLE HOLDING, NOT INTERMITTENT FAILURE, and the carrier says the stronger
+// simpler thing rather than the hedge the broken table once forced: 0 of 4 heal pushes started a
+// job on attempt 1, and the single run that ever executed did so on attempt 2 after a release.
+//
+// THE ONE CONTROL THIS ROUTE RESTS ON. On sha 958f743f9e, identity and token are held CONSTANT --
+// actor and triggering_actor are github-actions[bot] on both -- and only the EVENT varies: run
+// 33711005806 (pull_request) executed nothing, while run 33711101968 (workflow_dispatch) started
+// and bound that head in this very preflight.
+//
+// THE COST THE LOOSE PREMISE CONCEALED: the dispatched run is a SECOND run on that head, so each
+// heal buys a whole additional required-CI run, and its check runs land beside the held run's on
+// one commit, where a reader keyed by check NAME cannot tell them apart.
+//
+// BOUNDARY OBLIGATION, UNDETERMINED BECAUSE UNREADABLE FROM HERE RATHER THAN UNEXAMINED, AND IT
+// DECIDES A CLAIM THIS CARRIER THEREFORE DOES NOT MAKE. Releasing a held run is
+// POST /actions/runs/<id>/approve on THAT run, so whether a dispatched run's green clears the PR
+// depends on which contexts branch protection requires -- and branches/main/protection answers 403
+// `Resource not accessible by integration` to the credential these sessions carry, as does the
+// Actions permissions surface. So: the dispatch closes the REVALIDATION gap, measured -- the healed
+// head is bound and judged. It says NOTHING about the MERGE gate, and the held run is what
+// protection was waiting on. Naming the 403 is the point: unreadable names its own remedy, a
+// credential that can read those two surfaces; unexamined names nothing.
 // So the input is the binding, not a label. The dispatch ref is necessarily a moving branch
 // pointer (GitHub's endpoint accepts nothing else); this input carries the immutable subject
 // beside it, and every ordinary lane binds BOTH its run subject (github.sha, which is what the
