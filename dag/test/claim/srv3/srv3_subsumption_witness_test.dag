@@ -96,6 +96,14 @@ test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool {
     && any(upsert_materials, m => m == fleet_automation_ssh_key.material as String)
 }
 
+// THE THIRD REFUSAL CAUSE CONTRIBUTES NO MATERIAL, AND `tally.refusals == 2` IS WHAT KEEPS
+// THAT FROM HIDING ONE. This list collects the materials of OWNERSHIP-UNKNOWN refusals only;
+// every other action and every other cause already answers with the empty list, so
+// RosterDuplicateKey answers the same way for the same reason -- it is a different fact about
+// the roster, not a key this host declined to tear down. What stops the empty arm from
+// silently absorbing a surprise is the conjunct below it: a roster-duplicate refusal would
+// still be counted, so refusals would read 3 and this witness would fail rather than pass with
+// a shorter list.
 test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
   let plan = srv3_plan()
   let tally = membership_tally(plan: plan)
@@ -103,6 +111,7 @@ test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
     match a {
       MemberRemovalRefused { from: m, cause: OwnershipUnknown } => [m.material as String]
       MemberRemovalRefused { from: _, cause: MemberNotOwned } => []
+      MemberRemovalRefused { from: _, cause: RosterDuplicateKey { roster: _ } } => []
       MemberAdded { at: _, to: _ } => []
       MemberChanged { at: _, from: _, to: _ } => []
       MemberRemoved { at: _, from: _ } => []

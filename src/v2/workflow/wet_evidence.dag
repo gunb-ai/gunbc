@@ -1,0 +1,443 @@
+module v2.workflow.wet_evidence
+
+import v2.std.algebra { any, contains, filter, fold_list, length, list_append }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger {
+  ClaimAttemptTerminal, ClaimExpectation, ClaimTerminalRow, ClaimDisposition,
+  ExpectedToHold, ExpectedRed,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
+  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  claim_disposition
+}
+
+// THE ONE WET-ADMISSION INTERFACE, AND THE REASON IT IS NOT A THIRD VOCABULARY.
+//
+// Two routes produce wet evidence for the required floor's changed-witness fold, and until this
+// module they each answered "did the wet evidence hold" with their own types:
+// `v2.workflow.local_repo_wet_terminal` for a co-resident execution the floor runs itself, and
+// `v2.workflow.floor_wet_route` for a receipt transported from a lane that ran elsewhere. One
+// question, two authorities, both imported by one fold -- the meaning fork DESIGN section 3
+// forbids, and the reason its consumer could not state which relation admitted a row.
+//
+// THE TERMINAL VOCABULARY IS NOT MINTED HERE AND MUST NEVER BE. `v2.workflow.floor_terminal_ledger`
+// already owns the raw attempt terminal, the observed-verdict versus unreadable-observation split,
+// the expectation, and the thirteen derived dispositions -- and `v2.workflow.floor_changed_witness`,
+// the fold both routes feed, already imports it. Replacing two parallel terminal types with a third
+// would be the same fork wearing a new name, so this module IMPORTS that vocabulary and adds only
+// what is genuinely absent from it: which evidential relation bound the terminal to this tree.
+//
+// THE COINCIDENCE THAT ESTABLISHED THE SHARED VOCABULARY WAS PROVEN, NOT ARGUED. Four independent
+// arrivals at one distinction: the ledger derives `PassedOverBudget` and `KnownRedNowPassing` from
+// a completed-past-limit terminal by expectation; the floor's own seed keeps
+// `completed_over_cost_requirement` apart from `interrupted_before_verdict`;
+// `local_repo_wet_terminal` un-collapsed `LocalRepoWetCompletedOverBudget` out of its nonterminal
+// arm; and `floor_wet_route` separated cost debt from no-verdict the same week, each without
+// reading the others. DESIGN section 6 asks for proven coincidence before unifying vocabulary, and
+// four arrivals is that proof -- a far better argument than reasoning about elegance.
+
+// WHICH ROUTE PRODUCED A ROW. Not decoration: the two routes have DIFFERENT DRY ANTECEDENTS (see
+// `WetRouteAntecedent`) and different bindings, so a row that cannot say which route it came from cannot
+// be validated against the right relation. It is also what makes the cross-route disjointness wall
+// below expressible at all.
+type WetRoute
+  = LocalRepoCoResidentRoute
+  | SelfHostTransportedRoute
+
+// WHAT THE DRY SIDE OF THIS IDENTITY ACTUALLY DID -- FUSED WITH THE ROUTE, because the two facts
+// are not independent and a type that lets them vary separately admits states that cannot exist.
+//
+// The co-resident route SUPPLEMENTS a real hermetic attempt: the identity was planned, executed,
+// reached a host effect the hermetic route has no arm for, and produced a genuine
+// route-gap-before-verdict terminal. The transported route REPLACES a deliberate non-execution:
+// the identity was declined and routed to the wet lane, so no hermetic attempt was ever made.
+//
+// Same evidence, different antecedent. A content-free "wet passed" arm would erase that difference
+// and let a deliberate decline read exactly like an observed route gap -- the state-space
+// conflation that makes "this witness executed nowhere" indistinguishable from "this witness tried
+// and could not reach its subject".
+//
+// THIS WAS TWO INDEPENDENT FIELDS FOR ONE COMMIT AND THAT WAS A DEFECT. `route: WetRoute` beside
+// `dry_source: WetDrySource` admitted two pairings with no referent -- a co-resident execution
+// after a deliberate decline, and a transported receipt after an observed hermetic route gap --
+// and nothing read the second field, so the distinction was COMMENTARY a realization could
+// contradict. An ordinary data row whose only function is to say something is what DESIGN section
+// 4c forbids, and a check standing where construction was available is what section 5 forbids.
+//
+// The repair is structural rather than a validator: the invalid combinations have NO CONSTRUCTOR.
+// The route is DERIVED from the antecedent below, so the two can no longer disagree -- rung 4
+// rather than the rung 2 an exhaustive mismatch refusal would have bought, and it costs no witness
+// because there is no invalid state left to witness.
+type WetRouteAntecedent
+  = LocalRepoAfterHermeticRouteGap
+  | SelfHostAfterDirectWetDecline
+
+// THE ROUTE IS A PROJECTION OF THE ANTECEDENT, never a field beside it. Total, so a new antecedent
+// arm must decide its route here rather than defaulting to one.
+fn wet_route_of_antecedent(antecedent: WetRouteAntecedent) -> WetRoute {
+  match antecedent {
+    LocalRepoAfterHermeticRouteGap => LocalRepoCoResidentRoute {}
+    SelfHostAfterDirectWetDecline => SelfHostTransportedRoute {}
+  }
+}
+
+// WHAT BINDS A TERMINAL TO THIS TREE, TYPED BY WHICH RELATION PRODUCED IT.
+//
+// This is the load-bearing decision of the convergence. `local_repo_wet_terminal` had a
+// `candidate: String` compared with `==`, which DID decide admission -- so it was a validity key
+// and not provenance -- but a bare String cannot say WHICH validity relation produced it, so a
+// consumer could not tell a prepared-subject identity from a transported receipt's subject digest,
+// and the two are not interchangeable facts.
+//
+// The arms are asymmetric ON PURPOSE, and pushing either side's fields onto the other would be a
+// modeling error rather than a generalization:
+//
+//   CO-RESIDENT. The execution ran inside the floor, against the subject the floor prepared. The
+//   binding is that prepared subject and nothing else. Executor-contract identity and receipt
+//   freshness are MEANINGLESS here -- there is no second executor and no elapsed time between
+//   production and consumption, so carrying them would be fields no arm can populate honestly.
+//
+//   TRANSPORTED. The receipt was produced by another process, at another time, possibly by another
+//   build of the executor. The semantic subject says the TREE agreed; the executor contract says
+//   the PRODUCER agreed. Both are required, because a receipt produced by a different executor over
+//   the same tree is a different evidential fact -- which is exactly the hole an absent executor
+//   contract re-opens.
+//
+// So `executor_contract` is a required field of the transported arm and NOT an optional one. An
+// absent executor contract has no constructor here; it cannot be defaulted permissively, and a
+// producer that has not got one refuses rather than binding.
+type WetEvidenceBinding
+  = CoResidentPreparedSubject { prepared_subject: String }
+  | TransportedReceiptSubject { semantic_subject: String, executor_contract: String }
+
+// THE BATCH-LEVEL REQUIREMENT, AND WHY THE BINDING IS NO LONGER A FREE PARAMETER.
+//
+// THIS IS THE SAME DEFECT AS `dry_source`, ONE LEVEL UP, AND IT SURVIVED THE FIRST REPAIR FOR A
+// REASON WORTH WRITING DOWN: that fix fused the two facts that were adjacent IN THE TYPE, while the
+// third fact entered through a different door -- as an ARGUMENT. Fusing a coproduct closes the
+// pairings inside it; it does not close a parameter supplied beside it.
+//
+// Concretely, the batch below was constructible and ADMITTED: a schedule whose antecedent is
+// `LocalRepoAfterHermeticRouteGap`, a required binding of `TransportedReceiptSubject`, and
+// terminals carrying that same transported binding. Every pairwise check passed -- the terminal's
+// route matched the schedule's antecedent, and the observed binding matched the required binding --
+// so nothing refused, and a co-resident schedule was satisfied by transported evidence. The inverse
+// was equally writable. `WetBindingRelationMismatch` never fired, because it compares OBSERVED
+// against REQUIRED and both agreed; what disagreed was ROUTE against REQUIRED RELATION, and those
+// two never met.
+//
+// The repair is structural for the third time rather than a fourth validator: ONE authority per
+// batch, from which route, antecedent and required binding are ALL derived totally. There is no
+// longer a way to say "local schedule, transported requirement", because the requirement IS the
+// route. The arms carry exactly the fields their relation needs, which is why they are not a
+// re-spelling of `WetEvidenceBinding`: the binding says what a terminal must match, the requirement
+// says which relation the whole batch is being validated under.
+type WetEvidenceRequirement
+  = LocalRepoCoResidentRequirement { prepared_subject: String }
+  | SelfHostTransportedRequirement { semantic_subject: String, executor_contract: String }
+
+fn wet_antecedent_of_requirement(requirement: WetEvidenceRequirement) -> WetRouteAntecedent {
+  match requirement {
+    LocalRepoCoResidentRequirement { prepared_subject: _ } => LocalRepoAfterHermeticRouteGap {}
+    SelfHostTransportedRequirement { semantic_subject: _, executor_contract: _ } => SelfHostAfterDirectWetDecline {}
+  }
+}
+
+fn wet_binding_of_requirement(requirement: WetEvidenceRequirement) -> WetEvidenceBinding {
+  match requirement {
+    LocalRepoCoResidentRequirement { prepared_subject: p } =>
+      CoResidentPreparedSubject { prepared_subject: p }
+    SelfHostTransportedRequirement { semantic_subject: s, executor_contract: x } =>
+      TransportedReceiptSubject { semantic_subject: s, executor_contract: x }
+  }
+}
+
+fn wet_route_of_requirement(requirement: WetEvidenceRequirement) -> WetRoute {
+  wet_route_of_antecedent(antecedent: wet_antecedent_of_requirement(requirement: requirement))
+}
+
+// ONE SCHEDULED CLAIM. Expectation is the LEDGER's, carrying both arms, and the width is deliberate:
+// a shared type being ABLE to represent expected-red does not assert that any given route schedules
+// one. The co-resident roster constructs only `ExpectedToHold` -- that narrowness is ROSTER POLICY
+// and survives this convergence untouched -- while the transported route derives `ExpectedRed` from
+// the canonical enrollment authority. Narrowing the shared type to the narrower roster would make
+// the wider route unrepresentable; widening the narrow roster would be rung inflation. Neither
+// happens, because policy lives in the roster and not in the type.
+type WetScheduledClaim {
+  identity: WitnessIdentity
+  entry: String
+  function: String
+  expectation: ClaimExpectation
+}
+
+// ONE TERMINAL ROW. `observed_entry` and `observed_function` are what the executor ACTUALLY
+// resolved and invoked, never the scheduled row echoed back -- recopying them makes the foreign-
+// resolution join below tautological, so the producer must record what it resolved.
+// `route` STAYS AN INDEPENDENT FIELD HERE, and deliberately so -- it is not the same fact as the
+// requirement's derived route. The requirement says which route this batch is being validated
+// UNDER; this field says which route the executor reports it ACTUALLY ran. Deriving it away would
+// make the foreign-route refusal below unreachable by construction, which is the decoration DESIGN
+// section 4b warns about: a check whose RED cannot be authored. So the schedule's route is derived
+// and the observation's route is carried, and the join between them is load-bearing.
+type WetTerminalRow {
+  route: WetRoute
+  identity: WitnessIdentity
+  observed_entry: String
+  observed_function: String
+  terminal: ClaimAttemptTerminal
+  binding: WetEvidenceBinding
+}
+
+// THE REFUSALS, SEPARATED BY REMEDY. Each names a different thing to go and fix, and collapsing any
+// two of them into a generic "evidence invalid" cause -- or into a detail string, which is not a
+// typed cause and cannot be joined on -- erases a correctness distinction. The three binding
+// mismatches in particular stay three: a prepared-subject difference, a semantic-subject difference
+// and an executor-contract difference send a reader to three different places.
+type WetEvidenceRefusal
+  = WetTerminalMissing { identity: String }
+  | WetTerminalDuplicated { identity: String, occurrences: Int }
+  | WetTerminalUnscheduled { identity: String }
+  | WetTerminalForeignEntry { identity: String, observed: String, required: String }
+  | WetTerminalForeignFunction { identity: String, observed: String, required: String }
+  | WetTerminalVerdictNotExpected { identity: String, disposition: ClaimDisposition }
+  | WetTerminalForeignRoute { identity: String }
+  | WetBindingPreparedSubjectDiffers { identity: String, observed: String, required: String }
+  | WetBindingSemanticSubjectDiffers { identity: String, observed: String, required: String }
+  | WetBindingExecutorContractDiffers { identity: String, observed: String, required: String }
+  | WetBindingRelationMismatch { identity: String }
+  | WetCrossRouteIdentityOverlap { identity: String }
+
+type WetEvidenceValidation
+  = WetEvidenceAdmitted { binding: WetEvidenceBinding, terminals: List<WetTerminalRow> }
+  | WetEvidenceRefused { causes: List<WetEvidenceRefusal> }
+
+// THE BINDING COMPARISON IS AN EXHAUSTIVE MATCH ON BOTH SIDES, which is the whole reason the
+// binding is typed. The off-diagonal cells are `WetBindingRelationMismatch`: a transported receipt
+// offered where a co-resident execution was required is not a digest that happens to differ, it is
+// evidence of the wrong KIND, and a String comparison could only ever have reported "not equal".
+fn wet_binding_causes(identity: String, observed: WetEvidenceBinding, required: WetEvidenceBinding) -> List<WetEvidenceRefusal> {
+  match required {
+    CoResidentPreparedSubject { prepared_subject: r } =>
+      match observed {
+        CoResidentPreparedSubject { prepared_subject: o } =>
+          if o == r { [] } else { [WetBindingPreparedSubjectDiffers { identity: identity, observed: o, required: r }] }
+        TransportedReceiptSubject { semantic_subject: _, executor_contract: _ } =>
+          [WetBindingRelationMismatch { identity: identity }]
+      }
+    TransportedReceiptSubject { semantic_subject: rs, executor_contract: rx } =>
+      match observed {
+        CoResidentPreparedSubject { prepared_subject: _ } =>
+          [WetBindingRelationMismatch { identity: identity }]
+        TransportedReceiptSubject { semantic_subject: os, executor_contract: ox } =>
+          if os != rs {
+            [WetBindingSemanticSubjectDiffers { identity: identity, observed: os, required: rs }]
+          } else {
+            if ox != rx {
+              [WetBindingExecutorContractDiffers { identity: identity, observed: ox, required: rx }]
+            } else {
+              []
+            }
+          }
+      }
+  }
+}
+
+// WHETHER THE OBSERVED TERMINAL MEETS THE SCHEDULED EXPECTATION IS THE LEDGER'S DERIVATION, NOT A
+// SECOND ONE. `claim_disposition` already folds terminal and expectation into thirteen
+// dispositions, including the completed-past-limit split this convergence was partly about, so
+// asking it here is what keeps the cost-versus-defect distinction from being re-implemented for a
+// third time. Exactly two dispositions are agreement: the claim held as expected, or it is an
+// enrolled red observed red. Every other disposition is a refusal that names WHICH one it was,
+// which is what a Bool could never carry.
+fn wet_disposition_is_agreement(d: ClaimDisposition) -> Bool {
+  match d {
+    Passed => true
+    KnownRedHeld => true
+    Failed => false
+    KnownRedNowPassing => false
+    BudgetRefusedBeforeVerdict => false
+    PassedOverBudget => false
+    BudgetTerminalWithoutSafetyCause => false
+    HostToolUnresolvedBeforeVerdict => false
+    RouteGapBeforeVerdict => false
+    RuntimeErroredBeforeVerdict => false
+    PanickedBeforeVerdict => false
+    NotAttemptedAfterAbort => false
+    ObservationUnreadableBeforeVerdict => false
+  }
+}
+
+fn wet_route_eq(a: WetRoute, b: WetRoute) -> Bool {
+  match a {
+    LocalRepoCoResidentRoute =>
+      match b { LocalRepoCoResidentRoute => true  SelfHostTransportedRoute => false }
+    SelfHostTransportedRoute =>
+      match b { LocalRepoCoResidentRoute => false SelfHostTransportedRoute => true }
+  }
+}
+
+fn wet_identity_name(identity: WitnessIdentity) -> String {
+  witness_identity_qualified_name(identity: identity)
+}
+
+fn wet_terminals_for(name: String, terminals: List<WetTerminalRow>) -> List<WetTerminalRow> {
+  filter(xs: terminals, predicate: fn(t) { wet_identity_name(identity: t.identity) == name })
+}
+
+// THE FORWARD JOIN: every scheduled claim has exactly one terminal, produced by the route that
+// scheduled it, bound to this tree by the required relation, naming the entry and function that
+// were actually resolved, with a disposition the expectation admits.
+fn wet_forward_causes(
+  scheduled: List<WetScheduledClaim>,
+  terminals: List<WetTerminalRow>,
+  requirement: WetEvidenceRequirement
+) -> List<WetEvidenceRefusal> {
+  let required = wet_binding_of_requirement(requirement: requirement)
+  let required_route = wet_route_of_requirement(requirement: requirement)
+  fold_list(
+    xs: scheduled,
+    empty: [],
+    cons: fn(acc, s) {
+      let name = wet_identity_name(identity: s.identity)
+      let hits = wet_terminals_for(name: name, terminals: terminals)
+      let n = length(xs: hits)
+      if n == 0 {
+        list_append(left: acc, right: [WetTerminalMissing { identity: name }])
+      } else {
+        if n > 1 {
+          list_append(left: acc, right: [WetTerminalDuplicated { identity: name, occurrences: n }])
+        } else {
+          fold_list(
+            xs: hits,
+            empty: acc,
+            cons: fn(inner, t) {
+              if !wet_route_eq(a: t.route, b: required_route) {
+                list_append(left: inner, right: [WetTerminalForeignRoute { identity: name }])
+              } else {
+                let binding_causes = wet_binding_causes(identity: name, observed: t.binding, required: required)
+                if length(xs: binding_causes) != 0 {
+                  list_append(left: inner, right: binding_causes)
+                } else {
+                  if t.observed_entry != s.entry {
+                    list_append(left: inner, right: [WetTerminalForeignEntry { identity: name, observed: t.observed_entry, required: s.entry }])
+                  } else {
+                    if t.observed_function != s.function {
+                      list_append(left: inner, right: [WetTerminalForeignFunction { identity: name, observed: t.observed_function, required: s.function }])
+                    } else {
+                      let disposition = claim_disposition(
+                        row: ClaimTerminalRow { identity: s.identity, expectation: s.expectation, terminal: t.terminal }
+                      )
+                      if wet_disposition_is_agreement(d: disposition) {
+                        inner
+                      } else {
+                        list_append(left: inner, right: [WetTerminalVerdictNotExpected { identity: name, disposition: disposition }])
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          )
+        }
+      }
+    }
+  )
+}
+
+// THE REVERSE JOIN, which is what makes this a SET EQUALITY and not a coverage count. A terminal for
+// an identity nobody scheduled means the executor ran something no roster describes, and admitting
+// it would let an unscheduled row supply evidence for itself.
+fn wet_reverse_causes(
+  scheduled: List<WetScheduledClaim>,
+  terminals: List<WetTerminalRow>
+) -> List<WetEvidenceRefusal> {
+  let scheduled_names = fold_list(
+    xs: scheduled,
+    empty: [],
+    cons: fn(acc, s) { list_append(left: acc, right: [wet_identity_name(identity: s.identity)]) }
+  )
+  fold_list(
+    xs: terminals,
+    empty: [],
+    cons: fn(acc, t) {
+      let name = wet_identity_name(identity: t.identity)
+      if contains(xs: scheduled_names, item: name, eq: wet_string_eq) {
+        acc
+      } else {
+        list_append(left: acc, right: [WetTerminalUnscheduled { identity: name }])
+      }
+    }
+  )
+}
+
+fn wet_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+// THE CROSS-ROUTE WALL, DERIVED FROM THE TWO ROSTERS AND NEVER TRANSCRIBED AS A THIRD.
+//
+// An identity evidenced by both routes would be admitted twice by two different relations, and the
+// weaker admission would silently carry the stronger one's obligation. The union is DERIVED here
+// rather than maintained as its own roster, because a transcribed union is a second authority that
+// drifts from the two it summarizes. If an identity ever genuinely needs both routes it gets one
+// explicit route-selection authority, not two independent evidences.
+fn wet_cross_route_overlap_causes(
+  local_identities: List<String>,
+  transported_identities: List<String>
+) -> List<WetEvidenceRefusal> {
+  fold_list(
+    xs: local_identities,
+    empty: [],
+    cons: fn(acc, id) {
+      if contains(xs: transported_identities, item: id, eq: wet_string_eq) {
+        list_append(left: acc, right: [WetCrossRouteIdentityOverlap { identity: id }])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// ONE BATCH PER REQUIREMENT, NEVER BOTH ROUTES CONCATENATED INTO ONE CALL. The two routes require
+// different binding relations, so a merged call would have to WEAKEN the requirement to admit both
+// -- widening instead of refusing, which is the absorbing-fallback arm DESIGN section 5 forbids.
+// Callers validate once per requirement and aggregate the typed results afterward.
+//
+// AND A CONSEQUENCE FOR CONSUMERS: `WetEvidenceRefused` must NOT be read wholesale as "the receipt
+// is invalid". Binding, identity, route, entry and function mismatches mean the EVIDENCE itself is
+// invalid, and those are never waivable. `WetTerminalVerdictNotExpected` means the opposite -- the
+// evidence is VALID and the semantic outcome is known, whether that is an unexpected failure, a
+// now-passing enrolled red, completed-over-budget cost debt, or no verdict. A valid FAILING attempt
+// must still be publishable, or latest-attempt silently degrades into latest-SUCCESS, which is the
+// exact failure the freshness algebra exists to prevent.
+//
+// THE WHOLE VALIDATION, both directions plus the binding. Empty scheduled and empty terminals is the
+// positive control: no rows in, no causes out, and the lane holds with nothing claimed -- which is
+// why a route whose roster is empty proves nothing and must be walled elsewhere, not here.
+fn wet_evidence_validate(
+  scheduled: List<WetScheduledClaim>,
+  terminals: List<WetTerminalRow>,
+  requirement: WetEvidenceRequirement
+) -> WetEvidenceValidation {
+  let causes = list_append(
+    left: wet_forward_causes(scheduled: scheduled, terminals: terminals, requirement: requirement),
+    right: wet_reverse_causes(scheduled: scheduled, terminals: terminals)
+  )
+  if length(xs: causes) == 0 {
+    WetEvidenceAdmitted { binding: wet_binding_of_requirement(requirement: requirement), terminals: terminals }
+  } else {
+    WetEvidenceRefused { causes: causes }
+  }
+}
+
+fn wet_evidence_admits(v: WetEvidenceValidation) -> Bool {
+  match v {
+    WetEvidenceAdmitted { binding: _, terminals: _ } => true
+    WetEvidenceRefused { causes: _ } => false
+  }
+}

@@ -197,6 +197,9 @@ test fn w_network_standing_ready_when_all_observations_and_isolation_present() -
     } => true
     PxeNetworkGapped { gaps: _ } => false
     PxeNetworkUnobserved => false
+    PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: IsolatedProvisioningSegment } => false
+    PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: DedicatedNicDirectCable } => false
+    PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: AdmittedRouterDhcpChange } => false
   }
 }
 
