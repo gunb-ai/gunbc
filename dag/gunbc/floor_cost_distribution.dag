@@ -455,7 +455,14 @@ type SameHeadAttemptPair {
 // independently: attempt 3 is LOWER for five drifting identities and HIGHER for ten, whereas a warm
 // cache skipping work predicts one direction. The cross-attempt sum is nearly, but not exactly,
 // conserved, so attribution movement remains live beside genuine work drift. CAUSE IS NOT
-// ESTABLISHED. This detector names the first divergent
+// ESTABLISHED. THE FIXED-COMPONENT OWNERSHIP FORK IS OPEN: it may be work each claim must genuinely
+// perform, in which case a declared per-claim complexity envelope is the next question; or the same
+// setup may be recomputed per claim, in which case the remedy is compute-once rather than a budget.
+// `v2.workflow.floor_pure_producer_share` makes the second arm non-obvious rather than hypothetical:
+// the Rust target-model producers were measured and WITHDRAWN because serving them made the
+// produced-declaration consumers worse. That arithmetic predates this fixed-component observation
+// and is a load-bearing prior to re-derive, not permission to re-enrol them by inference.
+// This detector names the first divergent
 // ROW available in the cost artifact (identity, module, attempts and both counts). The artifact carries no expression trace,
 // so claiming a first divergent evaluator point here would fabricate precision the producer does
 // not expose.
