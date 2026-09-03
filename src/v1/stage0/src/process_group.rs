@@ -18,27 +18,15 @@
 //! of one that does. Its dissolution trigger is in `gunbc.seed_growth_admission`.
 
 use std::process::{Child, Command};
-#[cfg(test)]
 use std::time::{Duration, Instant};
 
 /// WHAT A WAIT ACTUALLY OBSERVED, kept as three states because collapsing them is the exact defect
 /// this repository keeps paying for: a timed-out wait and a process that exited nonzero are
 /// different facts, and a classifier that returns a bare code for both cannot tell "the subject
 /// refused" from "the instrument gave up".
-// GATED TO MATCH THE ONLY CONSUMER, not to hide dead code. Everything from here down is reached
-// solely by `evaluation_budget_consequence_falsifier_host`, which `cli_run` declares `#[cfg(test)]`
-// because it exists to be driven by one `#[ignore]` test and has no production caller. This module
-// is declared unconditionally through `lib.rs`, so an ungated item here is genuinely uninhabited in
-// a release build and `-D warnings` says so correctly. The two items ABOVE this line --
-// `spawn_in_new_process_group` and `signal_process_group` -- stay ungated: they have a production
-// consumer in `codex_app_server_stdio_session`.
-//
-// The gate is therefore about REACHABILITY, and it is not a judgement that the teardown discipline
-// below belongs only to a test. `codex_app_server_stdio_session` still tears its group down by
-// signalling AFTER it has reaped the leader, which is the pid-reuse hazard `terminate_process_group`
-// was written to remove; wiring that call site to this function changes production teardown
-// semantics and is filed as its own change rather than smuggled in beneath a floor PR.
-#[cfg(test)]
+// This teardown vocabulary is production-reachable through `codex_app_server_stdio_session`. It
+// was originally gated with its falsifier-only consumer; the production wiring deliberately
+// removes that gate rather than duplicating a weaker session-specific teardown path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessGroupWait {
     Exited { code: i32 },
@@ -74,7 +62,6 @@ pub(crate) fn signal_process_group(pid: u32, signal: i32) {
 /// Poll for termination up to a deadline WITHOUT blocking forever. `try_wait` is used rather than
 /// `wait` precisely so a server that ignores the signal produces `TimedOut` -- an adjudicable
 /// state -- instead of hanging the instrument that was supposed to judge it.
-#[cfg(test)]
 pub(crate) fn wait_for_exit(child: &mut Child, budget: Duration) -> ProcessGroupWait {
     let deadline = Instant::now() + budget;
     loop {
@@ -112,7 +99,6 @@ pub(crate) fn wait_for_exit(child: &mut Child, budget: Duration) -> ProcessGroup
 /// ONE PROCESS AS /proc REPORTS IT. The pid and its process-group id are read from
 /// `/proc/<pid>/stat`, which is what makes group membership decidable at all: a signal cannot ask
 /// "who is in this group", it can only act on everyone who is.
-#[cfg(test)]
 #[derive(Debug)]
 struct ProcEntry {
     pid: i32,
@@ -125,13 +111,11 @@ struct ProcEntry {
 /// from the LAST ')' rather than by splitting the whole line -- splitting naively misreads any
 /// process whose name contains a space, which is precisely the kind of quiet misparse that would
 /// make this instrument report an empty group.
-#[cfg(test)]
 fn process_group_members(pgid: u32) -> Result<Vec<ProcEntry>, String> {
     process_group_members_at(std::path::Path::new("/proc"), pgid)
 }
 
 /// The production wrapper's scan, against an arbitrary root.
-#[cfg(test)]
 fn process_group_members_at(root: &std::path::Path, pgid: u32) -> Result<Vec<ProcEntry>, String> {
     let entries = std::fs::read_dir(root)
         .map_err(|e| format!("reading {}: {e}", root.display()))?
@@ -154,7 +138,6 @@ fn process_group_members_at(root: &std::path::Path, pgid: u32) -> Result<Vec<Pro
 /// yield an iterator error on demand, so with the iterator hard-wired the fix could only be asserted
 /// by reading the source. DESIGN §4b: where no harness can express the subject, the missing harness
 /// is the next-rung trigger -- so the harness is what gets built.
-#[cfg(test)]
 fn scan_process_group_members(
     entries: impl Iterator<Item = std::io::Result<(String, std::path::PathBuf)>>,
     pgid: u32,
@@ -196,7 +179,6 @@ fn scan_process_group_members(
 /// Separated so the malformed forms have one place to be stated and one place to be tested. It is
 /// strict about the fields it uses and about the identity it was handed: a line whose own pid prefix
 /// disagrees with the directory it came from is not a record this scan may interpret.
-#[cfg(test)]
 fn parse_proc_stat(pid: i32, stat: &str, pgid: u32) -> Result<Option<ProcEntry>, String> {
     // The comm field is parenthesised and may itself contain spaces and parentheses, so the fields
     // after it are located from the LAST ')' rather than by splitting the whole line.
@@ -260,7 +242,6 @@ fn parse_proc_stat(pid: i32, stat: &str, pgid: u32) -> Result<Option<ProcEntry>,
 /// the leader died therefore cannot use it. /proc can be read as often as we like and reaps nothing,
 /// and a zombie is the positive observation -- exited, but still owning the pid, so the group
 /// identity stays pinned for the teardown that follows.
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LeaderObservation {
     Running,
@@ -287,12 +268,10 @@ pub(crate) enum LeaderObservation {
 /// So the check moves into the type. This value can only be produced by an observation that found
 /// the process still present and unreaped, and `terminate_process_group` cannot be called without
 /// one. Losing the identity now fails to COMPILE into a signal rather than being a rule to follow.
-#[cfg(test)]
 pub(crate) struct PinnedProcessGroupIdentity {
     pid: u32,
 }
 
-#[cfg(test)]
 impl PinnedProcessGroupIdentity {
     pub(crate) fn pid(&self) -> u32 {
         self.pid
@@ -304,7 +283,6 @@ impl PinnedProcessGroupIdentity {
 /// `Err` carries what was observed instead, so a caller can report WHY it may not signal. It never
 /// returns a proof for a vanished or unobservable process: those are exactly the states in which a
 /// signal would be aimed at a number that may belong to somebody else.
-#[cfg(test)]
 pub(crate) fn pin_process_group_identity(
     pid: u32,
 ) -> Result<PinnedProcessGroupIdentity, LeaderObservation> {
@@ -316,7 +294,6 @@ pub(crate) fn pin_process_group_identity(
     }
 }
 
-#[cfg(test)]
 pub(crate) fn observe_leader_without_reaping(pid: u32) -> LeaderObservation {
     let members = match process_group_members(pid) {
         Ok(members) => members,
@@ -333,7 +310,6 @@ pub(crate) fn observe_leader_without_reaping(pid: u32) -> LeaderObservation {
 /// separately, by its exit status; this answers the different question of whether the server's
 /// HELPERS outlived it -- the ones that would otherwise still hold the port when the next run of
 /// this instrument tries to bind.
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProcessGroupResidue {
     /// No process other than the leader remains in the group.
@@ -353,13 +329,11 @@ pub(crate) enum ProcessGroupResidue {
 /// `pub(crate)`: the builder's join could simply be bypassed, and my own positive test did exactly
 /// that. `Settled` is now reachable ONLY through `build`, which requires both an adjudicated leader
 /// and a completely observed absence.
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProcessGroupTermination {
     state: ProcessGroupTerminationState,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ProcessGroupTerminationState {
     /// EVERY REQUIRED FACT IS PRESENT, and this arm cannot be built without them. The leader is
@@ -379,14 +353,12 @@ enum ProcessGroupTerminationState {
 
 /// The leader outcomes that can appear in a SETTLED teardown. `TimedOut` and `WaitFailed` are
 /// deliberately absent: they are the states in which we do not know what the leader is doing.
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SettledLeader {
     Exited { code: i32 },
     Signaled { signal: i32 },
 }
 
-#[cfg(test)]
 impl ProcessGroupTermination {
     /// THE SUCCESS QUESTION HAS ONE ANSWER AND IT IS THE CONSTRUCTOR. The previous shape was a
     /// struct plus a `group_is_gone()` predicate that consulted only `residue`, so a leader that had
@@ -403,9 +375,18 @@ impl ProcessGroupTermination {
         format!("{:?}", self.state)
     }
 
+    /// The adjudicated leader outcome, available only when the sealed terminal settled.
+    pub(crate) fn settled_leader(&self) -> Option<&SettledLeader> {
+        match &self.state {
+            ProcessGroupTerminationState::Settled { leader, .. } => Some(leader),
+            ProcessGroupTerminationState::Unsettled { .. } => None,
+        }
+    }
+
     /// THE TEARDOWN THAT DID NOT HAPPEN, because the identity could not be proved still ours. It is
     /// an ordinary UNSETTLED verdict: nothing was signalled, nothing was observed, and no caller may
     /// read it as a clean group.
+    #[cfg(test)]
     pub(crate) fn identity_lost() -> ProcessGroupTermination {
         ProcessGroupTermination {
             state: ProcessGroupTerminationState::Unsettled {
@@ -462,7 +443,6 @@ impl ProcessGroupTermination {
 /// An unreaped leader -- running or zombie -- keeps its pid allocated, and therefore keeps the
 /// group identity pinned. So every signal this function sends happens before the reap, and after
 /// the reap it neither signals nor observes: a surviving group is REFUSED to the caller instead.
-#[cfg(test)]
 pub(crate) fn terminate_process_group(
     child: &mut Child,
     identity: &PinnedProcessGroupIdentity,
