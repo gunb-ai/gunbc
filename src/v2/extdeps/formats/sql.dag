@@ -1,19 +1,43 @@
 module v2.extdeps.formats.sql
 
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.dag { dag_named_edge }
 import v2.std.grammar { GrammarSchema }
-import v2.std.algebra { fold_list, list_append }
-import v2.std.collection { List, Map, Optional }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.collection {
+  List,
+  Map,
+  empty_map,
+  map_insert
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  ShortCircuit,
+  StageDiagnosticPolicy,
+  Unavailable,
+  append_outcome_value,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
 import v2.std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic
+  ModelCoreFactAxisSurfaceSpelling
 }
-import v2.std.witness { Holds, Violates }
 
 type SqlDialect
   = SqlDialectIso9075
@@ -32,7 +56,7 @@ type SqlDataType
   | SqlTypeBigInt
   | SqlTypeReal
   | SqlTypeDoublePrecision
-  | SqlTypeNumeric { precision: NonZeroNat, scale: Nat }
+  | SqlTypeNumeric { precision: NonZeroNat, scale: v2.std.nat.Nat }
   | SqlTypeCharacter { length: NonZeroNat }
   | SqlTypeCharacterVarying { length: NonZeroNat }
   | SqlTypeCharacterLargeObject
@@ -192,24 +216,20 @@ fn sql_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
-}
-
-fn sql_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
 }
 
 fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -217,12 +237,12 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -230,63 +250,49 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
-      sql_named_edge(
+      dag_named_edge(
         name: discriminant(v: ModelCoreFactAxisEncoding {}),
         target: sql_inhabitant_atom(id: facts.representation),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
 fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      sql_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisSignedness {}),
+    sql_inhabitant_atom(id: ^sql_tag_signed)
+  )
 }
 
 fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  map_insert(
+    empty_map(),
+    discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+    sql_inhabitant_atom(id: facts.surface_spelling)
+  )
 }
 
 fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: sql_inhabitant_atom(id: facts.representation) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      sql_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    sql_inhabitant_atom(id: facts.representation)
+  )
 }
 
 fn sql_primitive_bundle_from_integer_facts(facts: SqlIntegerPrimitiveFacts) -> PrimitiveFactBundle {
@@ -355,7 +361,7 @@ fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> 
   )
 }
 
-fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+fn sql_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   list_append(
     left: list_append(
       left: sql_primitive_bundles_from_integer_catalog(),
@@ -363,4 +369,179 @@ fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     ),
     right: sql_primitive_bundles_from_nonnumeric_catalog()
   )
+}
+
+fn sql_serialize_identifier(id: SqlIdentifier) -> String {
+  match id {
+    SqlRegularIdentifier { name: n } => n
+    SqlDelimitedIdentifier { name: n } =>
+      concat("\"", concat(replace(n, "\"", "\"\""), "\""))
+  }
+}
+
+fn sql_join_strings(separator: String, parts: List<String>) -> String {
+  fold(parts, init: "", f: (acc, part) => {
+    if acc == "" { part } else { concat(acc, concat(separator, part)) }
+  })
+}
+
+data sql_serialize_diagnostic_anchor: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sql_serialize_unsupported_data_type_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data sql_serialize_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+  accumulation: ShortCircuit
+}
+
+fn sql_serialize_data_type(dt: SqlDataType) -> Outcome<String> {
+  match dt {
+    SqlTypeBoolean => outcome_accepted(value: "BOOLEAN")
+    SqlTypeSmallInt => outcome_accepted(value: "SMALLINT")
+    SqlTypeInteger => outcome_accepted(value: "INTEGER")
+    SqlTypeBigInt => outcome_accepted(value: "BIGINT")
+    SqlTypeReal => outcome_accepted(value: "REAL")
+    SqlTypeDoublePrecision => outcome_accepted(value: "DOUBLE PRECISION")
+    SqlTypeNumeric { precision: _, scale: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_numeric))
+    SqlTypeCharacter { length: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character))
+    SqlTypeCharacterVarying { length: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character_varying))
+    SqlTypeCharacterLargeObject => outcome_accepted(value: "TEXT")
+    SqlTypeDate => outcome_accepted(value: "DATE")
+    SqlTypeTime => outcome_accepted(value: "TIME")
+    SqlTypeTimestamp => outcome_accepted(value: "TIMESTAMP")
+    SqlTypeTimestampWithTimeZone => outcome_accepted(value: "TIMESTAMP WITH TIME ZONE")
+  }
+}
+
+fn sql_serialize_column_definition(col: SqlColumnDefinition) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_data_type(dt: col.data_type),
+    f: fn(type_spelling) {
+      outcome_accepted(value: concat(
+        sql_serialize_identifier(id: col.name),
+        concat(
+          " ",
+          concat(
+            type_spelling,
+            sql_serialize_column_constraints(c: col.constraints)
+          )
+        )
+      ))
+    }
+  )
+}
+
+fn sql_serialize_column_definition_strings(cols: List<SqlColumnDefinition>) -> Outcome<List<String>> {
+  fold(
+    cols,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, col) {
+      append_outcome_value(
+        acc: acc,
+        child: sql_serialize_column_definition(col: col),
+        policy: sql_serialize_policy
+      )
+    }
+  )
+}
+
+fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_column_definition_strings(cols: cols),
+    f: fn(parts) {
+      outcome_accepted(value: sql_join_strings(separator: ", ", parts: parts))
+    }
+  )
+}
+
+fn sql_serialize_column_constraints(c: SqlColumnConstraints) -> String {
+  if c.not_null { " NOT NULL" } else { "" }
+}
+
+fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
+  sql_join_strings(
+    separator: ", ",
+    parts: sql_list_map(xs: ids, f: sql_serialize_identifier)
+  )
+}
+
+fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
+  match pk {
+    Absent => ""
+    v2.std.optional.Present { value: cols } =>
+      concat(
+        ", PRIMARY KEY (",
+        concat(
+          sql_serialize_identifier_list(ids: cols),
+          ")"
+        )
+      )
+  }
+}
+
+fn sql_serialize_table_definition(table: SqlTableDefinition) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_column_definitions(cols: table.columns),
+    f: fn(column_defs) {
+      outcome_accepted(value: concat(
+        "CREATE TABLE ",
+        concat(
+          sql_serialize_identifier(id: table.name),
+          concat(
+            " (",
+            concat(
+              column_defs,
+              concat(
+                sql_serialize_primary_key_clause(pk: table.primary_key),
+                ");"
+              )
+            )
+          )
+        )
+      ))
+    }
+  )
+}
+
+fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> Outcome<String> {
+  match op {
+    SqlCreateTable { table: t } =>
+      sql_serialize_table_definition(table: t)
+    SqlRawStep { statement: s } =>
+      outcome_accepted(value: s)
+    SqlDropTable { table_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_table))
+    SqlAddColumn { table_name: _, column: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_add_column))
+    SqlDropColumn { table_name: _, column_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_column))
+    SqlAlterTableConstraint { table_name: _, constraint: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_constraint))
+    SqlCreateIndex { index_name: _, table_name: _, columns: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_create_index))
+    SqlDropIndex { index_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_index))
+    SqlAlterTableRaw { table_name: _, alteration: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_raw))
+  }
 }

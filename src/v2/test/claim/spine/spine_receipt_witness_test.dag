@@ -1,0 +1,71 @@
+module v2.test.spine.spine_receipt_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+}
+
+fn chain1(child: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: ^only }, target: child }]
+  )
+}
+
+fn star3(a: Node, b: Node, c: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^first }, target: a },
+      Edge { label: Named { name: ^second }, target: b },
+      Edge { label: Named { name: ^third }, target: c }
+    ]
+  )
+}
+
+fn chain_fixture() -> Node { chain1(child: chain1(child: atom(sym: ^x))) }
+
+fn star_fixture() -> Node { star3(a: atom(sym: ^x), b: atom(sym: ^y), c: atom(sym: ^z)) }
+
+test fn serial_chain_has_depth_three() -> Bool {
+  critical_path_depth(root: chain_fixture()) == 3
+}
+
+test fn serial_chain_has_width_one() -> Bool {
+  independence_width(root: chain_fixture()) == 1
+}
+
+test fn serial_chain_flagged_serial() -> Bool {
+  spine_is_serial_chain(root: chain_fixture())
+}
+
+test fn serial_chain_no_recoverable_parallelism() -> Bool {
+  !spine_has_recoverable_parallelism(root: chain_fixture())
+}
+
+test fn independent_star_has_depth_two() -> Bool {
+  critical_path_depth(root: star_fixture()) == 2
+}
+
+test fn independent_star_has_width_three() -> Bool {
+  independence_width(root: star_fixture()) == 3
+}
+
+test fn independent_star_has_recoverable_parallelism() -> Bool {
+  spine_has_recoverable_parallelism(root: star_fixture())
+}
+
+test fn independent_star_not_serial() -> Bool {
+  !spine_is_serial_chain(root: star_fixture())
+}
+
+test fn star_receipt_reports_all_axes() -> Bool {
+  let r = spine_receipt(root: star_fixture())
+  (r.node_count == 4)
+    && (r.distinct_computation_count == 4)
+    && (r.redundant_computation_count == 0)
+    && (r.critical_path_depth == 2)
+    && (r.independence_width == 3)
+}

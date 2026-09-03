@@ -1,0 +1,498 @@
+module test.claim.srv3_os_install_actuate_workflow
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_before_expiry: Timestamp = "2026-09-15T00:00:00Z"
+data witness_after_expiry: Timestamp = "2026-11-01T00:00:00Z"
+
+// The one granted specimen, read out of the module rather than rebuilt here: a hand-built copy
+// would keep passing after the declaration it is supposed to be about had changed.
+fn witness_srv3_grant() -> OperatorGrant<Srv3BootOverrideSubject> {
+  match srv3_boot_once_cd_operator_granted_approval {
+    AuthorizationGranted { grant: g, claim: _ } => g
+    AuthorizationPending { request: _ } => witness_unreachable_grant()
+  }
+}
+
+fn witness_grant_claimed(claim: AuthorizationClaimState) -> ScopedAuthorization<Srv3BootOverrideSubject> {
+  AuthorizationGranted { grant: witness_srv3_grant(), claim: claim }
+}
+
+// Deliberately WRONG on every binding field, so if either non-granted arm were ever reached the
+// tests below would go red rather than quietly passing on a plausible substitute.
+fn witness_unreachable_grant() -> OperatorGrant<Srv3BootOverrideSubject> {
+  OperatorGrant {
+    escalation_id: "not-the-srv3-grant" as NonEmptyStr,
+    subject: Srv3BootOverrideSubject {
+      target: BootTargetHdd,
+      enabled: BootOverrideOnce,
+      mode: BootOverrideModeLegacy,
+      reset: ResetForceRestart,
+    },
+    scopes: [
+      AuthorizationScope {
+        verb: Read,
+        resource: NamespacePosition { tree: CodeNameTree, path: ["nowhere"] },
+        action: "none" as AuthorizedAction,
+      },
+    ],
+    purpose: "unreachable" as NonEmptyStr,
+    attempt: "no-attempt" as AttemptIdentity,
+    intent_hash: content_hash_of_value(value: "no-intent" as NonEmptyStr),
+    granted_by: "nobody" as NonEmptyStr,
+    granted_at: "1970-01-01T00:00:00Z",
+    expires_at: "1970-01-01T00:00:00Z",
+  }
+}
+
+test fn srv3_boot_once_cd_default_approval_is_pending() -> Bool {
+  match srv3_boot_once_cd_default_approval {
+    AuthorizationPending { request: r } =>
+      r.escalation_id == srv3_boot_once_cd_authorization_request.escalation_id
+        && r.destructive == true
+    _ => false
+  }
+}
+
+test fn srv3_boot_once_cd_default_approval_blocks_execution() -> Bool {
+  srv3_boot_once_cd_is_runnable_with_approval(
+    approval: srv3_boot_once_cd_default_approval,
+    observed_at: witness_before_expiry,
+  ) == false
+    && match srv3_boot_once_cd_workflow_disposition(
+      approval: srv3_boot_once_cd_default_approval,
+      observed_at: witness_before_expiry,
+    ) {
+      StepAwaitingApproval { request: r } =>
+        r.escalation_id == srv3_boot_once_cd_authorization_request.escalation_id
+      _ => false
+    }
+}
+
+test fn srv3_boot_once_cd_operator_granted_approval_is_runnable() -> Bool {
+  srv3_boot_once_cd_is_runnable_with_approval(
+    approval: srv3_boot_once_cd_operator_granted_approval,
+    observed_at: witness_before_expiry,
+  )
+}
+
+// THE GRANT NAMES A SCOPE AND A RESOURCE. The specimen must reach exactly the srv3 Boot position
+// with the boot-source-override action, and nothing wider.
+test fn srv3_grant_scope_names_the_boot_override_resource() -> Bool {
+  let g = witness_srv3_grant()
+  let boot = AuthorizationScope {
+    verb: Write,
+    resource: srv3_boot_override_resource,
+    action: "redfish.boot-source-override.set" as AuthorizedAction,
+  }
+  let reset = AuthorizationScope {
+    verb: Write,
+    resource: srv3_system_reset_resource,
+    action: "redfish.computer-system.reset" as AuthorizedAction,
+  }
+  scope_covered_by_any(granted: g.scopes, required: boot)
+    && scope_covered_by_any(granted: g.scopes, required: reset)
+    && namespace_tree_eq(a: srv3_system_reset_resource.tree, b: ServiceOpTree { service: "redfish" })
+    && !position_under(target: srv3_system_reset_resource, root: srv3_boot_override_resource)
+}
+
+// A GRANT COVERING ONLY THE BOOT OVERRIDE REFUSES THE STEP, because the step also resets the
+// machine. This is the discriminating RED for the required-set shape: under the single-scope
+// grant this replaces, the identical authorization was PERMITTED and the reset rode along
+// unnamed. The refusal must name the missing capability, not merely fail.
+test fn srv3_grant_missing_the_reset_scope_refuses() -> Bool {
+  let boot_only = AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+      scopes: [srv3_boot_override_scope],
+      subject: srv3_boot_once_cd_subject,
+      purpose: srv3_boot_once_cd_authorization_request.purpose,
+      attempt: srv3_boot_once_cd_attempt,
+      intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
+      granted_by: "witness-operator" as NonEmptyStr,
+      granted_at: "2026-09-02T00:00:00Z",
+      expires_at: "2026-10-02T00:00:00Z",
+    },
+    claim: Unclaimed,
+  }
+  match authorize(
+    authorization: boot_only,
+    request: srv3_boot_once_cd_authorization_request,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationScopeNotGranted { required: missing, granted: _ } } =>
+      missing.action == "redfish.computer-system.reset" as AuthorizedAction
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ABOVE: the same authorization with BOTH scopes is permitted, so the
+// refusal is about the missing capability rather than about the required-set check refusing
+// everything.
+test fn srv3_grant_covering_both_capabilities_is_permitted() -> Bool {
+  match authorize(
+    authorization: srv3_boot_once_cd_operator_granted_approval,
+    request: srv3_boot_once_cd_authorization_request,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationPermitted { grant: _ } => true
+    AuthorizationRefused { cause: _ } => false
+  }
+}
+
+// A REQUEST STATING NO SCOPES REFUSES rather than passing vacuously. "Every member of the empty
+// set is covered" is true, which would make the least specific request the most authorized one.
+test fn srv3_request_with_no_scopes_refuses() -> Bool {
+  let unstated = AuthorizationRequest {
+    escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+    scopes: [],
+    subject: srv3_boot_once_cd_subject,
+    purpose: srv3_boot_once_cd_authorization_request.purpose,
+    attempt: srv3_boot_once_cd_attempt,
+    intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
+    destructive: true,
+  }
+  match authorize(
+    authorization: srv3_boot_once_cd_operator_granted_approval,
+    request: unstated,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationScopesUnstated { escalation_id: _ } } => true
+    _ => false
+  }
+}
+
+// EXPIRY IS REAL. The identical grant that runs before expires_at refuses after it, and the
+// refusal is the expiry cause -- not a widened block that any later fix would also satisfy.
+test fn srv3_grant_expires() -> Bool {
+  srv3_boot_once_cd_is_runnable_with_approval(
+    approval: srv3_boot_once_cd_operator_granted_approval,
+    observed_at: witness_after_expiry,
+  ) == false
+    && match authorize(
+      authorization: srv3_boot_once_cd_operator_granted_approval,
+      request: srv3_boot_once_cd_authorization_request,
+      observed_at: witness_after_expiry,
+    ) {
+      AuthorizationRefused { cause: AuthorizationExpired { expires_at: _, observed_at: _ } } => true
+      _ => false
+    }
+}
+
+// A SECOND RUN CANNOT REUSE THE GRANT. Same escalation, same scope, same intent, different
+// attempt -- and it must refuse with the attempt cause, because the operator reading that refusal
+// needs to know a REPLAY was stopped, not that they should approve again.
+test fn srv3_grant_refuses_a_different_attempt() -> Bool {
+  let second_run = AuthorizationRequest {
+    escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+    scopes: srv3_boot_once_cd_authorization_request.scopes,
+    subject: srv3_boot_once_cd_subject,
+    purpose: srv3_boot_once_cd_authorization_request.purpose,
+    attempt: "srv3-os-install-actuate-2" as AttemptIdentity,
+    intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
+    destructive: true,
+  }
+  match authorize(
+    authorization: srv3_boot_once_cd_operator_granted_approval,
+    request: second_run,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationAttemptMismatch { requested: req, granted: got } } =>
+      req == "srv3-os-install-actuate-2" as AttemptIdentity && got == srv3_boot_once_cd_attempt
+    _ => false
+  }
+}
+
+// PRIVILEGE WIDENING IS REFUSED. The grant reaches the Boot position; a request against the BMC's
+// Manager actions under the same service is a different resource and must not ride on it.
+test fn srv3_grant_refuses_a_wider_resource() -> Bool {
+  let elsewhere = AuthorizationRequest {
+    escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+    subject: srv3_boot_once_cd_subject,
+    scopes: [
+      AuthorizationScope {
+        verb: Write,
+        resource: NamespacePosition {
+          tree: ServiceOpTree { service: "redfish" },
+          path: ["redfish", "v1", "Managers", "bmc", "Actions", "Manager.Reset"],
+        },
+        action: "redfish.boot-source-override.set" as AuthorizedAction,
+      },
+    ],
+    purpose: srv3_boot_once_cd_authorization_request.purpose,
+    attempt: srv3_boot_once_cd_attempt,
+    intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
+    destructive: true,
+  }
+  match authorize(
+    authorization: srv3_boot_once_cd_operator_granted_approval,
+    request: elsewhere,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationScopeNotGranted { required: _, granted: _ } } => true
+    _ => false
+  }
+}
+
+// A CHANGED PLANNED ACTION IS REFUSED. Everything else agrees; only the intent hash moved.
+test fn srv3_grant_refuses_a_changed_planned_action() -> Bool {
+  let changed = AuthorizationRequest {
+    escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+    scopes: srv3_boot_once_cd_authorization_request.scopes,
+    subject: srv3_boot_once_cd_subject,
+    purpose: srv3_boot_once_cd_authorization_request.purpose,
+    attempt: srv3_boot_once_cd_attempt,
+    intent_hash: content_hash_of_value(value: "srv3-boot-source-override-hdd-permanent" as NonEmptyStr),
+    destructive: true,
+  }
+  match authorize(
+    authorization: srv3_boot_once_cd_operator_granted_approval,
+    request: changed,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationIntentMismatch { requested: _, granted: _ } } => true
+    _ => false
+  }
+}
+
+// SINGLE USE, AT THE CLAIM STATE. A completed claim no longer authorizes anything, and it BLOCKS
+// rather than awaits, because "it already ran" is not answered by asking for approval again.
+test fn srv3_grant_is_single_use() -> Bool {
+  let spent = witness_grant_claimed(
+    claim: claim_transition_completed(
+      attempt: srv3_boot_once_cd_attempt,
+      at: witness_before_expiry,
+    ),
+  )
+  srv3_boot_once_cd_is_runnable_with_approval(
+    approval: spent,
+    observed_at: witness_before_expiry,
+  ) == false
+    && match srv3_boot_once_cd_workflow_disposition(
+      approval: spent,
+      observed_at: witness_before_expiry,
+    ) {
+      StepBlocked { reason: r } => string_contains(s: r, pattern: "already completed by attempt")
+      _ => false
+    }
+}
+
+// THE RACE, WHICH A CAUSE ALONE CANNOT CLOSE. A grant held by a DIFFERENT attempt refuses this one
+// even though every field of the grant is valid, and the holder's own attempt still proceeds --
+// the pair is the proof, because a check that refused everyone would pass the first half alone.
+test fn srv3_grant_excludes_a_concurrent_attempt() -> Bool {
+  let held_by_other = witness_grant_claimed(
+    claim: claim_transition_claimed(
+      attempt: "srv3-os-install-actuate-99" as AttemptIdentity,
+      at: witness_before_expiry,
+    ),
+  )
+  let held_by_us = witness_grant_claimed(
+    claim: claim_transition_claimed(
+      attempt: srv3_boot_once_cd_attempt,
+      at: witness_before_expiry,
+    ),
+  )
+  match authorize(
+    authorization: held_by_other,
+    request: srv3_boot_once_cd_authorization_request,
+    observed_at: witness_before_expiry,
+  ) {
+    AuthorizationRefused { cause: AuthorizationClaimedByOtherAttempt { requested: r, holder: h } } =>
+      r == srv3_boot_once_cd_attempt && h == "srv3-os-install-actuate-99" as AttemptIdentity
+    _ => false
+  }
+    && srv3_boot_once_cd_is_runnable_with_approval(
+      approval: held_by_us,
+      observed_at: witness_before_expiry,
+    )
+}
+
+// THE CLAIM IS DECIDED BY THE STORE, NOT THE READER. Two attempts each proposing a claim against
+// the SAME expected generation cannot both commit: the loser's outcome carries the winner's state,
+// which is what lets it distinguish "someone beat me" from "I addressed the wrong slot".
+test fn srv3_claim_loser_learns_who_holds_it() -> Bool {
+  let proposed = claim_transition_claimed(
+    attempt: srv3_boot_once_cd_attempt,
+    at: witness_before_expiry,
+  )
+  let winner = claim_transition_claimed(
+    attempt: "srv3-os-install-actuate-99" as AttemptIdentity,
+    at: witness_before_expiry,
+  )
+  let attempt = claim_authorization(
+    escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+    expected: ExpectSlotAbsent,
+    proposed: proposed,
+  )
+  let lost = authorization_claim_outcome(
+    proposed: proposed,
+    outcome: cas_decide(
+      attempt: attempt,
+      observed: CasObservedReadable {
+        readable: CasReadablePresent {
+          version: CasSlotVersion {
+            generation: 1,
+            content: content_hash_of_value(value: "claim-winner" as NonEmptyStr),
+            value: serialize_authorization_claim_state(state: winner),
+          },
+        },
+      },
+    ),
+  )
+  let won = authorization_claim_outcome(
+    proposed: proposed,
+    outcome: cas_decide(
+      attempt: attempt,
+      observed: CasObservedReadable { readable: CasReadableAbsent },
+    ),
+  )
+  match lost {
+    ClaimLost { holder: h } =>
+      h == serialize_authorization_claim_state(state: winner)
+    _ => false
+  }
+    && match won {
+      ClaimHeld { state: _, generation: g } => g == 1
+      _ => false
+    }
+}
+
+// AN UNREADABLE CLAIM STORE REFUSES. "We could not tell whether anyone holds this" is not evidence
+// that nobody does, and the widening arm would sit on the exact operation whose purpose is
+// exclusion.
+test fn srv3_unreadable_claim_store_refuses() -> Bool {
+  match authorization_claim_outcome(
+    proposed: claim_transition_claimed(attempt: srv3_boot_once_cd_attempt, at: witness_before_expiry),
+    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "witness: claim slot read refused" as NonEmptyStr } },
+  ) {
+    ClaimUndecided { reason: _ } => true
+    ClaimHeld { state: _, generation: _ } => false
+    ClaimLost { holder: _ } => false
+  }
+}
+
+// EVERY REFUSAL REACHES THE OPERATOR. The disposition renderer must never hand back "" for a
+// refused step -- "" is the runnable arm's value and every caller reads it as "no refusal".
+test fn srv3_every_refused_disposition_renders_a_reason() -> Bool {
+  workflow_destructive_step_refusal_reason(
+    disposition: srv3_boot_once_cd_workflow_disposition(
+      approval: srv3_boot_once_cd_default_approval,
+      observed_at: witness_before_expiry,
+    ),
+  ) != ""
+    && workflow_destructive_step_refusal_reason(
+      disposition: srv3_boot_once_cd_workflow_disposition(
+        approval: srv3_boot_once_cd_operator_granted_approval,
+        observed_at: witness_after_expiry,
+      ),
+    ) != ""
+    && workflow_destructive_step_refusal_reason(
+      disposition: srv3_boot_once_cd_workflow_disposition(
+        approval: srv3_boot_once_cd_operator_granted_approval,
+        observed_at: witness_before_expiry,
+      ),
+    ) == ""
+}
+
+// A REFUSAL MUST DISTINGUISH THE TWO SIDES IT JUST REFUSED. scope_covers judges verb, resource
+// and action, so the render has to carry all three plus the resource's TREE: two positions with
+// identical path segments in different trees are different resources, and a render that drops
+// either field prints one string for both sides of a scope mismatch it refused.
+fn witness_render_scope(verb: Verb, tree: NamespaceTree) -> AuthorizationScope {
+  AuthorizationScope {
+    verb: verb,
+    resource: NamespacePosition { tree: tree, path: ["redfish", "v1", "Systems"] },
+    action: "redfish.boot-source-override.set" as AuthorizedAction,
+  }
+}
+
+test fn srv3_scope_render_separates_verb_and_tree() -> Bool {
+  authorization_scope_render(scope: witness_render_scope(verb: Read, tree: FilesystemPathTree))
+    != authorization_scope_render(scope: witness_render_scope(verb: Write, tree: FilesystemPathTree))
+    && authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: FilesystemPathTree),
+    ) != authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: ServiceOpTree { service: "redfish" }),
+    )
+    && authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: ServiceOpTree { service: "redfish" }),
+    ) != authorization_scope_render(
+      scope: witness_render_scope(verb: Write, tree: ServiceOpTree { service: "ipmi" }),
+    )
+    && authorization_scope_render(scope: witness_render_scope(verb: Write, tree: UriTree))
+      == authorization_scope_render(scope: witness_render_scope(verb: Write, tree: UriTree))
+}
+
+test fn srv3_os_install_actuate_workflow_orders_approval_before_boot() -> Bool {
+  srv3_os_install_actuate_workflow_includes_operator_approval_before_boot()
+    && srv3_os_install_actuate_workflow_credential_intent_is_declared()
+}
+
+// THE HASH ACTUALLY MOVES WITH THE SUBJECT, asserted per field rather than in aggregate. An
+// aggregate check ("some mutation changes it") is satisfied by a hash that reads only ONE field,
+// which is the shape the previous hand-authored literal degenerated to. Each pair below differs in
+// exactly one field from the declared subject, so a field dropped out of the derivation reds here
+// and nowhere else. The final conjunct is the POSITIVE CONTROL: the same subject must hash the
+// same, or every "differs" above would be satisfied by a hash that simply never agrees with
+// itself.
+test fn srv3_intent_hash_moves_with_every_subject_field() -> Bool {
+  let base = srv3_boot_override_intent_hash(subject: srv3_boot_once_cd_subject)
+  srv3_intent_hashes_differ(
+    a: base,
+    b: srv3_boot_override_intent_hash(
+      subject: Srv3BootOverrideSubject {
+        target: BootTargetHdd,
+        enabled: srv3_boot_cd_enabled,
+        mode: srv3_boot_cd_mode,
+        reset: srv3_boot_cd_reset_type,
+      },
+    ),
+  )
+    && srv3_intent_hashes_differ(
+      a: base,
+      b: srv3_boot_override_intent_hash(
+        subject: Srv3BootOverrideSubject {
+          target: srv3_boot_cd_target,
+          enabled: BootOverrideContinuous,
+          mode: srv3_boot_cd_mode,
+          reset: srv3_boot_cd_reset_type,
+        },
+      ),
+    )
+    && srv3_intent_hashes_differ(
+      a: base,
+      b: srv3_boot_override_intent_hash(
+        subject: Srv3BootOverrideSubject {
+          target: srv3_boot_cd_target,
+          enabled: srv3_boot_cd_enabled,
+          mode: BootOverrideModeLegacy,
+          reset: srv3_boot_cd_reset_type,
+        },
+      ),
+    )
+    && srv3_intent_hashes_differ(
+      a: base,
+      b: srv3_boot_override_intent_hash(
+        subject: Srv3BootOverrideSubject {
+          target: srv3_boot_cd_target,
+          enabled: srv3_boot_cd_enabled,
+          mode: srv3_boot_cd_mode,
+          reset: ResetGracefulRestart,
+        },
+      ),
+    )
+    && match compare_content_hash(left: base, right: srv3_boot_once_cd_intent_hash) {
+      ContentHashEqual => true
+      _ => false
+    }
+}
+
+fn srv3_intent_hashes_differ(a: ContentHash, b: ContentHash) -> Bool {
+  match compare_content_hash(left: a, right: b) {
+    ContentHashDifferent => true
+    ContentHashEqual => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}

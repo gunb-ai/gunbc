@@ -1,0 +1,184 @@
+module std.markup
+
+import std.string_type { String }
+
+type EscapeContext = TextContext | AttributeContext | UrlContext
+
+type Attribute {
+  name: String
+  ctx: EscapeContext
+  value: String
+}
+
+type Fragment
+  = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
+  | FragmentText { content: String }
+  | RawNode { content: String }
+
+fn escape_text(s: String) -> String {
+  replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+}
+
+fn unescape_text(s: String) -> String {
+  replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&amp;", "&")
+}
+
+fn escape_attribute(s: String) -> String {
+  replace(replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;")
+}
+
+fn unescape_attribute(s: String) -> String {
+  replace(replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&quot;", "\""), "&amp;", "&")
+}
+
+fn escape_url(s: String) -> String {
+  replace(replace(replace(replace(replace(s, "%", "%25"), "&", "&amp;"), "\"", "%22"), " ", "%20"), "<", "%3C")
+}
+
+fn unescape_url(s: String) -> String {
+  replace(replace(replace(replace(replace(s, "%22", "\""), "%20", " "), "%3C", "<"), "&amp;", "&"), "%25", "%")
+}
+
+fn escape_in(ctx: EscapeContext, s: String) -> String {
+  match ctx {
+    TextContext => escape_text(s)
+    AttributeContext => escape_attribute(s)
+    UrlContext => escape_url(s)
+  }
+}
+
+fn unescape_in(ctx: EscapeContext, s: String) -> String {
+  match ctx {
+    TextContext => unescape_text(s)
+    AttributeContext => unescape_attribute(s)
+    UrlContext => unescape_url(s)
+  }
+}
+
+type EscapeMode = EscapeHtml | EscapeRaw
+
+type MarkupBracket {
+  tag_open: String
+  end_tag_open: String
+  tag_close: String
+  attr_sep: String
+  attr_assign: String
+  attr_quote: String
+}
+
+type TagDelimiter {
+  tag: String
+  open: String
+  close: String
+}
+
+type VoidTagRendering = OmitClose | SelfClose
+
+type MarkupMedium {
+  tag_overrides: List<TagDelimiter>
+  bracket: MarkupBracket
+  text_escape: EscapeMode
+  void_tags: List<String>
+  void_rendering: VoidTagRendering
+  raw_text_tags: List<String>
+}
+
+fn tag_in_set(tag: String, tags: List<String>) -> Bool {
+  fold(tags, init: false, f: (acc, t) => acc || t == tag)
+}
+
+fn is_void_tag(tag: String, void_tags: List<String>) -> Bool {
+  tag_in_set(tag: tag, tags: void_tags)
+}
+
+fn escape_text_for(mode: EscapeMode, s: String) -> String {
+  match mode {
+    EscapeHtml => escape_text(s: s)
+    EscapeRaw => s
+  }
+}
+
+type TagLookup
+  = FoundTag { delim: TagDelimiter }
+  | NoTag
+
+fn lookup_tag_delimiter(overrides: List<TagDelimiter>, tag: String) -> TagLookup {
+  fold(overrides, init: NoTag, f: (acc, d) =>
+    match acc {
+      FoundTag { delim: r } => FoundTag { delim: r }
+      NoTag => if d.tag == tag { FoundTag { delim: d } } else { NoTag }
+    }
+  )
+}
+
+fn serialize_attribute_with(a: Attribute, bracket: MarkupBracket) -> String {
+  join([bracket.attr_sep, a.name, bracket.attr_assign, bracket.attr_quote, escape_in(ctx: a.ctx, s: a.value), bracket.attr_quote], "")
+}
+
+fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> String {
+  fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute_with(a: a, bracket: bracket)))
+}
+
+fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
+  match frag {
+    FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
+    RawNode { content: c } => c
+    Element { tag: t, attributes: attrs, children: kids } => {
+      let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
+      if is_void_tag(tag: t, void_tags: medium.void_tags) {
+        match medium.void_rendering {
+          OmitClose =>
+            join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close], "")
+          SelfClose =>
+            join([medium.bracket.tag_open, t, attrs_str, " /", medium.bracket.tag_close], "")
+        }
+      } else {
+        let child_medium = if tag_in_set(tag: t, tags: medium.raw_text_tags) {
+          MarkupMedium { tag_overrides: medium.tag_overrides, bracket: medium.bracket, text_escape: EscapeRaw, void_tags: medium.void_tags, void_rendering: medium.void_rendering, raw_text_tags: medium.raw_text_tags }
+        } else {
+          medium
+        }
+        let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: child_medium)))
+        match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
+          FoundTag { delim: d } =>
+            join([d.open, inner, d.close], "")
+          NoTag =>
+            join([
+              medium.bracket.tag_open,
+              t,
+              attrs_str,
+              medium.bracket.tag_close,
+              inner,
+              medium.bracket.end_tag_open,
+              t,
+              medium.bracket.tag_close
+            ], "")
+        }
+      }
+    }
+  }
+}
+
+fn attr_is_url_attr(name: String) -> Bool {
+  name == "href" || name == "src"
+}
+
+fn attribute_escape_context(name: String) -> EscapeContext {
+  if attr_is_url_attr(name: name) {
+    UrlContext
+  } else {
+    AttributeContext
+  }
+}
+
+fn attr(name: String, value: String) -> Attribute {
+  Attribute {
+    name: name,
+    ctx: attribute_escape_context(name: name),
+    value: value,
+  }
+}
+
+type MarkupSerializeResult
+  = Serialized { html: String }
+  | Rejected { reason: String }

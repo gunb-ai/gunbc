@@ -1,0 +1,26 @@
+module std.os.invocation
+
+
+type SyscallEntry {
+  number: Int
+  name: NonEmptyStr
+  arg_count: Int
+}
+
+type SyscallAbi {
+  table: List<SyscallEntry>
+  convention: CallingConvention
+}
+
+type ApiEntry {
+  symbol: NonEmptyStr
+  module: NonEmptyStr
+}
+
+type LibraryApiBoundary {
+  exports: List<ApiEntry>
+}
+
+type StableInvocationSurface
+  = SyscallAbiSurface { abi: SyscallAbi }
+  | LibraryApiBoundarySurface { boundary: LibraryApiBoundary }

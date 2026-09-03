@@ -1,0 +1,57 @@
+module extdeps.cron.schedule_model
+
+import std.integer { NonNegativeInt, PositiveInt }
+import std.types { List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html"
+  }
+}
+
+type CronField
+  = Wildcard
+  | Exact { value: NonNegativeInt }
+  | Listed { values: List<NonNegativeInt> }
+  | Ranged { start: NonNegativeInt, end: NonNegativeInt }
+  | Step { start: NonNegativeInt, step: PositiveInt }
+
+type CronSchedule {
+  minute: CronField
+  hour: CronField
+  day_of_month: CronField
+  month: CronField
+  day_of_week: CronField
+}
+
+type CronEntry {
+  tag: String
+  schedule: CronSchedule
+  command: String
+}
+
+fn render_cron_field(f: CronField) -> String {
+  match f {
+    Wildcard => "*"
+    Exact { value: v } => "{v}"
+    Listed { values } => values |> map(v => "{v}") |> join(separator: ",")
+    Ranged { start: s, end: e } => "{s}-{e}"
+    Step { start: st, step: sp } =>
+      match st {
+        0 => "*/{sp}"
+        _ => "{st}/{sp}"
+      }
+  }
+}
+
+fn render_cron_schedule(s: CronSchedule) -> String {
+  let m = render_cron_field(s.minute)
+  let h = render_cron_field(s.hour)
+  let dom = render_cron_field(s.day_of_month)
+  let mon = render_cron_field(s.month)
+  let dow = render_cron_field(s.day_of_week)
+  "{m} {h} {dom} {mon} {dow}"
+}

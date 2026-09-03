@@ -1,0 +1,230 @@
+module test.claim.typed_remote_file_converge_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWrite,
+  TypedRemoteFileWriteAdmission,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileMode,
+  RemoteFileModeOwnerReadWrite,
+  RemoteFileModeOwnerReadWriteWorldRead,
+  TypedRemoteFileConvergence,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
+  remote_file_mode_octal,
+  typed_remote_file_staging_path,
+  typed_remote_file_stage_argv,
+  typed_remote_file_chmod_argv,
+  typed_remote_file_rename_argv,
+  typed_remote_file_compare_argv,
+  classify_typed_remote_file_comparison,
+  typed_remote_file_write_seal,
+}
+
+data unit_dir_scope: FileTreeScope = FileTreeScope { root_path: "/home/gunbc/.config/systemd/user" as NonEmptyStr }
+
+data subject_path: FilePath = "/home/gunbc/.config/systemd/user/gunbc-serving.service" as FilePath
+
+data subject_content: String = "[Unit]\nDescription=gunbc serving\n\n[Service]\nExecStart=/usr/bin/true\n"
+
+fn subject_write() -> TypedRemoteFileWrite? {
+  match typed_remote_file_write_seal(
+    path: subject_path,
+    content: subject_content,
+    allowed_scope: unit_dir_scope,
+  ) {
+    TypedRemoteFileWriteAdmitted { write: w } => Present { value: w }
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+  }
+}
+
+fn converged(c: TypedRemoteFileConvergence) -> Bool {
+  match c {
+    TypedRemoteFileConverged { path: _, mode: _ } => true
+    TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+  }
+}
+
+fn refusal_step(c: TypedRemoteFileConvergence) -> String {
+  match c {
+    TypedRemoteFileConverged { path: _, mode: _ } => "converged"
+    TypedRemoteFileConvergenceRefused { step: s, reason: _ } => s
+  }
+}
+
+// ── The staging discipline ──────────────────────────────────────────────────────────────────────
+
+// Atomic rename requires one directory. The staging path is the destination plus a suffix, so it is
+// a sibling by construction rather than by a convention someone must maintain.
+test fn the_staging_path_is_a_sibling_of_the_destination() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      typed_remote_file_staging_path(write: w)
+        == concat(subject_path as String, ".gunbc-staging")
+  }
+}
+
+// Nothing is ever written directly to the destination: the write step names the STAGING path.
+test fn the_stage_step_writes_to_staging_never_the_destination() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } => {
+      let argv = typed_remote_file_stage_argv(write: w)
+      argv == ["dd", "status=none", concat("of=", typed_remote_file_staging_path(write: w))]
+    }
+  }
+}
+
+// `dd status=none`, not `tee`: tee echoes every written byte back over the channel, putting file
+// content in the log. The absence of tee here is the claim.
+test fn the_stage_step_does_not_echo_content_back() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } => {
+      let argv = typed_remote_file_stage_argv(write: w)
+      !string_list_contains(xs: argv, wanted: "tee")
+        && string_list_contains(xs: argv, wanted: "dd")
+        && string_list_contains(xs: argv, wanted: "status=none")
+    }
+  }
+}
+
+// The mode is applied to the STAGED file, before it is published under the destination name.
+test fn the_mode_is_set_on_staging_before_the_rename() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      typed_remote_file_chmod_argv(write: w, mode: RemoteFileModeOwnerReadWriteWorldRead)
+        == ["chmod", "644", typed_remote_file_staging_path(write: w)]
+  }
+}
+
+test fn the_rename_moves_staging_onto_the_destination() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      typed_remote_file_rename_argv(write: w)
+        == ["mv", "-f", typed_remote_file_staging_path(write: w), subject_path as String]
+  }
+}
+
+// The comparison interrogates the DESTINATION, not the staging file. Comparing against what we just
+// staged would prove the rename moved something, not that the destination holds it.
+test fn the_comparison_reads_the_destination_not_the_staging_file() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } => {
+      let argv = typed_remote_file_compare_argv(write: w)
+      argv == ["cmp", "-s", "-", subject_path as String]
+        && !string_list_contains(xs: argv, wanted: typed_remote_file_staging_path(write: w))
+    }
+  }
+}
+
+// THE DECLARED BYTES NEVER COME BACK. The comparison names stdin as one side, so the payload travels
+// outward only; nothing in this argv would carry file content home through a channel that trims it.
+test fn the_comparison_takes_the_declared_side_from_stdin() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "-")
+        && !string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "cat")
+  }
+}
+
+test fn the_two_modes_render_their_octals() -> Bool {
+  remote_file_mode_octal(mode: RemoteFileModeOwnerReadWrite) == "600"
+    && remote_file_mode_octal(mode: RemoteFileModeOwnerReadWriteWorldRead) == "644"
+}
+
+// ── The convergence judgment ────────────────────────────────────────────────────────────────────
+
+fn classify(exit_code: Int, stderr: String) -> TypedRemoteFileConvergence {
+  match subject_write() {
+    Absent =>
+      TypedRemoteFileConvergenceRefused { step: "fixture", reason: "seal refused" }
+    Present { value: w } =>
+      classify_typed_remote_file_comparison(
+        write: w,
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        compare_exit_code: exit_code,
+        compare_stderr: stderr,
+      )
+  }
+}
+
+// WHAT THESE CLAIMS NOW COVER, AND WHAT THEY GAVE UP.
+//
+// They used to drive a near-side comparison with stdout fixtures, so they could show a truncated
+// destination, a wrong body, an empty file, and a trailing-byte difference each refusing on their own
+// evidence. That comparison is gone: the bytes are compared far-side by cmp and only an exit code
+// comes home, because the stdout channel trims and cannot carry arbitrary bytes faithfully.
+//
+// So the byte-level discrimination now rests on cmp, a POSIX tool with a specified exit vocabulary --
+// a stronger authority than a comparison written here, and one these claims cannot demonstrate with
+// fixtures. What remains testable is the classification of its verdict, which is what the arms below
+// assert. The loss is real and is recorded rather than papered over by claims that would restate the
+// exit code they were handed.
+// The positive control. Without it every refusal below would pass on a function that never converges.
+test fn a_destination_cmp_calls_identical_converges() -> Bool {
+  converged(c: classify(exit_code: 0, stderr: ""))
+}
+
+// THE CLAIM THIS ARM EXISTS FOR: a successful write whose destination holds something else. This is
+// exactly what a zero exit from the writing process cannot distinguish, and why RemoteExecAccepted
+// was never convergence.
+test fn a_destination_cmp_calls_different_refuses() -> Bool {
+  let c = classify(exit_code: 1, stderr: "")
+  !converged(c: c) && refusal_step(c: c) == "compare"
+}
+
+// A FAILURE TO LOOK IS NOT A DIFFERENCE. cmp exits 2 when it could not read a side at all -- a
+// missing destination, an unreadable one, no cmp on the host. Reporting that as a content difference
+// would blame the bytes for a failure to compare them, and would send a reader to the wrong fix.
+test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -> Bool {
+  let c = classify(exit_code: 2, stderr: "cmp: No such file or directory")
+  !converged(c: c) && refusal_step(c: c) == "compare"
+    && string_contains(
+      match c { TypedRemoteFileConverged { path: _, mode: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
+      "No such file or directory",
+    )
+    && string_contains(
+      match c { TypedRemoteFileConverged { path: _, mode: _ } => "" TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
+      "could not compare",
+    )
+}
+
+// The two refusals are DISTINGUISHABLE, which is the whole point of keeping cmp's vocabulary. A
+// reader who cannot tell "the file is wrong" from "I could not read the file" has one word for two
+// situations whose remedies differ.
+test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
+  let differ = match classify(exit_code: 1, stderr: "") {
+    TypedRemoteFileConverged { path: _, mode: _ } => ""
+    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
+  }
+  let errored = match classify(exit_code: 2, stderr: "boom") {
+    TypedRemoteFileConverged { path: _, mode: _ } => ""
+    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
+  }
+  differ != errored
+    && string_contains(differ, "are not the declared content")
+    && !string_contains(errored, "are not the declared content")
+}
+
+// ── Path containment still governs ──────────────────────────────────────────────────────────────
+
+// Convergence does not weaken admission: a path outside the declared scope has no admitted write, so
+// no staging path and no steps are ever produced for it.
+test fn a_path_outside_the_scope_is_never_admitted() -> Bool {
+  match typed_remote_file_write_seal(
+    path: "/etc/systemd/system/evil.service" as FilePath,
+    content: subject_content,
+    allowed_scope: unit_dir_scope,
+  ) {
+    TypedRemoteFileWriteAdmitted { write: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+  }
+}

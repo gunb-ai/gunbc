@@ -1,0 +1,38 @@
+module extdeps.cron
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, List }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html"
+  }
+}
+
+service cron.Tab {
+  operation List {
+    input {}
+    output { entries: String from "stdout" }
+    readonly
+    transport shell { argv: ["crontab", "-l"] }
+    exit {
+      0 => Unit
+      1 => Unit "No crontab for user"
+    }
+  }
+
+  operation Replace {
+    input { entries: String }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    transport shell {
+      argv: ["crontab", "-"]
+      stdin: entries
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Crontab install failed"
+    }
+  }
+}

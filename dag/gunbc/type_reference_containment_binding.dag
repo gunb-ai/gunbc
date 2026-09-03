@@ -1,0 +1,172 @@
+module gunbc.type_reference_containment_binding
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+
+data type_reference_containment_binding_authority_note: String = "N2 slice 1 (quiet-hawk-219 / smart-eagle-409): THE substrate entry for cross-module type-reference containment binding. TypeOccurrence references resolve ONLY through std.occurrence_binding_candidates.resolve_type_reference_containment_binding — P2a candidate population (DeclarationExposure authority, authored-order gating, declarations_by_name index) handed to std.occurrence_binding_resolve.resolve_reference_occurrence_binding's single occurrence_binding_from_candidates fold. Flat symbol_index_lookup / lookup_type_by_name are NOT binding selectors on this path. Authority: docs/plans/containment-binding-cross-module-type-references-design.md Phase B; operational plan section 4 namespace-reference-derived-closure + namespace-binding-kernel."
+
+data type_reference_containment_binding_slice1_scope_note: String = "Slice 1 scope: substrate authority + executing fixture witnesses for TypeOccurrence through the structural kernel. IN: hand-built OccurrenceTransport fixtures proving cross-module bare containment bind, module-sibling visibility, unbound when not exposed, and category inadmissibility. OUT OF SLICE: v1 production lookup_type_by_name changeover (slice 2+), qualified namespace-segment projection (std.types.ContentHash terminal path), N1a measure-arm removal, resolution_divergence_census type-site generalization — each carries its own dissolution trigger and must not be smuggled in here."
+
+// The count is not representable without the refusal that forced its two-stage production.
+// emission_entry_instrument emitted the subject successfully, then its nested cargo arm refused
+// after fifteen EAGAIN spawn failures. The exact emitted bytes were preserved and only cargo was
+// replayed with two jobs. This is one historical observation, not a live census or a gate.
+type EmittedRustSplitCensusReceipt {
+  source_revision: NonEmptyStr
+  compiler_digest: NonEmptyStr
+  assembler_digest: NonEmptyStr
+  emitted_module_count: Int
+  instrument_cargo_job_count: Int
+  instrument_eagain_count: Int
+  replay_cargo_job_count: Int
+  coded_count: Int
+  codeless_count: Int
+}
+
+fn emitted_rust_split_census_total(r: EmittedRustSplitCensusReceipt) -> Int {
+  r.coded_count + r.codeless_count
+}
+
+data type_reference_containment_binding_emitted_rust_split_census: EmittedRustSplitCensusReceipt = EmittedRustSplitCensusReceipt {
+  source_revision: "cd3cf69bda06ace6692da0e1e72e16465e59adb9" as NonEmptyStr,
+  compiler_digest: "5fc8b334f010bfbd0e5ef6b620be4a89278f0b4b17521441c6abbe364628f024" as NonEmptyStr,
+  assembler_digest: "f82cf3b96f64b3c892b716b0e0cf041b4ca3c52d8bfb70678d933f9e3d8fdc37" as NonEmptyStr,
+  emitted_module_count: 166,
+  instrument_cargo_job_count: 15,
+  instrument_eagain_count: 15,
+  replay_cargo_job_count: 2,
+  coded_count: 64,
+  codeless_count: 1
+}
+
+type StructuralTextOccurrencePopulation {
+  module_path: NonEmptyStr
+  occurrence_count: Int
+  in_measured_compiler_closure: Bool
+}
+
+data type_reference_containment_binding_structural_text_positive_subset: List<StructuralTextOccurrencePopulation> = [
+  StructuralTextOccurrencePopulation { module_path: "v2.compiler.tokenize" as NonEmptyStr, occurrence_count: 25, in_measured_compiler_closure: true },
+  StructuralTextOccurrencePopulation { module_path: "v2.std.compilers.lexing" as NonEmptyStr, occurrence_count: 4, in_measured_compiler_closure: true },
+  StructuralTextOccurrencePopulation { module_path: "v2.test.tokenize.source_text_ingress" as NonEmptyStr, occurrence_count: 1, in_measured_compiler_closure: false }
+]
+
+type NewlyExposedRustDiagnosticIdentity {
+  declaration: DeclarationRef
+  diagnostic_code: NonEmptyStr
+  multiplicity: Int
+}
+
+data type_reference_containment_binding_newly_exposed_string_identities: List<NewlyExposedRustDiagnosticIdentity> = [
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.tokenize" as NonEmptyStr, decl_name: "lex_rule_thunk" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 2 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.tokenize" as NonEmptyStr, decl_name: "lex_walk_step" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 2 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.tokenize" as NonEmptyStr, decl_name: "tokenize" as NonEmptyStr), diagnostic_code: "E0599" as NonEmptyStr, multiplicity: 1 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.tokenize" as NonEmptyStr, decl_name: "tokenize_module_authority_note" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.compile" as NonEmptyStr, decl_name: "compile_ingest_with_admission" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.compile" as NonEmptyStr, decl_name: "stage_tokenize" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.program_assembly" as NonEmptyStr, decl_name: "program_assembly_read_to_normalized_root_prepared" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.source_authority" as NonEmptyStr, decl_name: "parse_dag_source_ast_with_model" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.source_authority" as NonEmptyStr, decl_name: "source_ir_artifact_provenance_from_model" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 },
+  NewlyExposedRustDiagnosticIdentity { declaration: decl_ref(module_path: "v2.compiler.source_authority" as NonEmptyStr, decl_name: "module_storage_binding_from_read_prepared" as NonEmptyStr), diagnostic_code: "E0308" as NonEmptyStr, multiplicity: 1 }
+]
+
+type StringRootCutPerturbation
+  = TokenizeUseLine
+  | TokenizeOccurrenceQualification
+  | TargetModelUseLine
+  | TargetModelOccurrenceQualification
+
+type StringRootCutProbeReading {
+  perturbation: StringRootCutPerturbation
+  vanished_count: Int
+  persisted_count: Int
+  newly_appeared_count: Int
+}
+
+data type_reference_containment_binding_string_root_cut_probes: List<StringRootCutProbeReading> = [
+  StringRootCutProbeReading { perturbation: TokenizeUseLine, vanished_count: 41, persisted_count: 0, newly_appeared_count: 12 },
+  StringRootCutProbeReading { perturbation: TokenizeOccurrenceQualification, vanished_count: 41, persisted_count: 0, newly_appeared_count: 11 },
+  StringRootCutProbeReading { perturbation: TargetModelUseLine, vanished_count: 6, persisted_count: 1, newly_appeared_count: 17 },
+  StringRootCutProbeReading { perturbation: TargetModelOccurrenceQualification, vanished_count: 6, persisted_count: 1, newly_appeared_count: 28 }
+]
+
+type OccurrenceBindingReplacementPartition
+  = OldAndNewAgree
+  | OldAndNewDisagree
+  | OldBindsNewUnresolved
+  | OldBindsNewAmbiguous
+  | OldUnresolvedNewBinds
+
+type CodelessRepairAuthority = DirectCallDeclarationBoundFormalCarrier {}
+
+type CodelessEmissionConsumerReceipt {
+  declaration: DeclarationRef
+  diagnostic_message: NonEmptyStr
+  substituted_formal_producer: DeclarationRef
+  transient_formal_holder: DeclarationRef
+  downstream_consumer: DeclarationRef
+  repair_authority: CodelessRepairAuthority
+}
+
+data type_reference_containment_binding_codeless_emission_consumer: CodelessEmissionConsumerReceipt = CodelessEmissionConsumerReceipt {
+  declaration: decl_ref(module_path: "v2.compiler.compile" as NonEmptyStr, decl_name: "apply_compile_lens_introspect" as NonEmptyStr),
+  diagnostic_message: "witness carrier type arg unresolved for variant Violates" as NonEmptyStr,
+  substituted_formal_producer: decl_ref(module_path: "v1.compiler.infer" as NonEmptyStr, decl_name: "infer_call_arguments_generic_pass" as NonEmptyStr),
+  transient_formal_holder: decl_ref(module_path: "v1.compiler.emit_rust" as NonEmptyStr, decl_name: "build_call_application_plan" as NonEmptyStr),
+  downstream_consumer: decl_ref(module_path: "v1.compiler.emit_rust" as NonEmptyStr, decl_name: "rust_witness_type_arg_for_variant" as NonEmptyStr),
+  repair_authority: DirectCallDeclarationBoundFormalCarrier {}
+}
+
+// ROOT-CUT RECEIPT, attached to this authority rather than minted as a second migration ledger.
+// The four perturbations were made only in copies of one preserved emitted artifact; none is a
+// proposed per-module repair. Their successor identities show that changing one consumer merely
+// moves the carrier boundary. The production X named here is therefore #9813's module-wide flat
+// TypeEnv binding (import union -> kernel overlay -> direct-selected overlay with kernel names
+// skipped). The replacement Y is the authority above: one exact declaration binding per
+// TypeOccurrence, derived from containment/qualification and carried through typecheck and emit.
+// MEASURED with gunbc.instruments.emission_entry_instrument over
+// src/v2/compiler/00_compile.dag. The run identity, producer digests, refusal, split replay, and
+// coded/codeless counts are carried together above; the combined instrument produced no cargo
+// population after its EAGAIN failures, so its output is not the source of the count. String is the
+// only v2.std top-level declaration colliding with the Rust prelude; 18 closure modules import it,
+// and all 18 emit zero exact v2_std_text::String use-lines with nonzero bare String spellings.
+// The typed probe readings keep vanished, persisted, and newly appeared populations separate.
+// Both tokenize perturbations expose the same six downstream identities; both target_model
+// perturbations move E0277, E0282, E0599, and three E0308 identities together, but expose different
+// successor populations. No local repair establishes one representation through the dependency
+// chain. Production X being retired is #9813's module-wide flat TypeEnv precedence; replacement Y
+// is one exact declaration binding per TypeOccurrence through resolve_type_reference_containment_binding.
+
+// Positive evidence, not the missing-guarantee denominator. These occurrences already spell the
+// intended Y identity explicitly; counting them as residue would read a selection view as the
+// population authority. The future denominator is every production TypeOccurrence currently
+// bound through X, partitioned by OccurrenceBindingReplacementPartition. This instrument did not
+// enumerate that denominator. The typed subset has 30 hand-authored occurrences: 29 inside the
+// measured compiler closure and one outside it.
+
+// The tokenizer root-cut probe's twelve successors remain named so the migration cannot net them
+// off against the 41 incumbents. Multiplicity is part of identity where one source symbol contains
+// more than one distinct failing occurrence; emitted line numbers are deliberately absent because
+// they decay on regeneration. These are fix-forward population behind the root cut, not regressions.
+
+// CODELESS IS A FIRST-CLASS PARTITION. A code-keyed census reports 64 and silently loses this
+// row. infer_call_arguments_generic_pass computes the substituted formal and
+// build_call_application_plan retains formal_subst transiently, but the emitted argument carries
+// neither; rust_witness_type_arg_for_variant cannot recover Witness<Node>. Emission is the third
+// consumer of the single declaration-bound formal authority and requires its substitution basis.
+// The direct-call formal-carrier lane owns that repair; this authority retains only the typed
+// downstream receipt and must not mint a parallel carrier.
+
+data type_reference_containment_binding_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.occurrence_binding_candidates" as NonEmptyStr,
+    decl_name: "resolve_type_reference_containment_binding" as NonEmptyStr,
+    field: WholeDeclaration
+  }
+}
+
+data type_reference_containment_binding_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: v1 type positions consume std.occurrence_binding_candidates.resolve_type_reference_containment_binding by execution (not a parallel lookup), N1a measure predicate deletes per gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger, and flat lookup-as-binding paths retain only migration-oracle status until census parity. This authority module deletes when the d")

@@ -1,0 +1,75 @@
+module test.claim.arity_zero_import_refusal_witness
+
+import std.types { String, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+// AN IMPORT WHOSE MEMBER LIST HAS ARITY ZERO REFUSES AT PARSE, AND THE SAME IMPORT WITH ONE
+// MEMBER IS ACCEPTED.
+//
+// WHY THIS FILE EXISTS, and the reason is a defect in the PR that installed the wall rather than
+// a defect in the wall. The refusal was proven by execution against a throwaway fixture written
+// outside the tree and deleted afterwards, and the corpus's one live specimen -- an
+// `import std.realization_schedule { }` in gunbc.floor_component_receipt (that module itself was
+// later deleted, 2026-09-01, as unreachable residue of the 2026-08-15 CI cut) -- was deleted in the
+// same diff, because a wall is not installable over a corpus that violates it. Those two facts
+// together removed the only authored instance of the state the wall refuses. THE WALL EXECUTED
+// AND NOTHING WENT RED IF IT WERE DELETED: a live corpus specimen had been doing double duty as
+// the discriminating red without anyone electing it, and the deletion that made the wall
+// shippable converted "one red exists" into "no red exists" in one motion. No check sees that --
+// three green lanes and an on-head approval all passed over it.
+//
+// THIS IS THE SPECIFICATION-WITHOUT-EXECUTION CASE, NOT THE DECORATION CASE, and the distinction
+// decides whether declining the red is a saving. DESIGN section 4b judges reachability against
+// what a FIXTURE MAY AUTHOR, never against what the accepted corpus contains. `import M { }` is a
+// SINGLE-MODULE source string, so it needs no multi-module harness -- which is the one thing this
+// boundary genuinely cannot express, and the reason other classes stop here. The red can flip; it
+// simply was not enrolled.
+//
+// WHAT THE PAIR DISCRIMINATES. Both sources are compiled through the real acceptance path and
+// differ in EXACTLY the fact the wall decides -- whether the member list is empty. Asserting
+// `ParseError >= 1` alone would be satisfied by any malformed source, so the red carries no
+// information without the control: the control is what says the refusal is ABOUT ARITY and not
+// about the source being unparseable for some unrelated reason.
+//
+// The positive control at corpus scale is free and is not restated here: the rest of the tree
+// still parses, which is what the floor's parse phase measures on every run.
+//
+// PROVEN DISCRIMINATING BY MUTATION, NOT ASSERTED. The eleven-line refusal was removed from the
+// EXECUTING binary -- the emitted mirror, rebuilt -- and re-measured:
+//
+//   wall present : red TRUE   control TRUE
+//   wall removed : red FALSE  control TRUE
+//   wall restored: red TRUE   control TRUE
+//
+// So this red is a function of the wall and of nothing else in the harness, and the control is
+// insensitive to it in the same run. Asserting that a red "would flip" without flipping it is
+// the specification-without-execution failure applied to the evidence rather than to the code.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// NOT-RUNNABLE IS NOT ZERO. A census that could not run has observed nothing, and answering 0
+// would let a broken harness satisfy the green while making the red unsatisfiable -- the
+// empty-observation narrow. 0 - 1 is neither verdict, so a harness that stops working fails in
+// both directions instead of passing by silence.
+fn blocking_parse_error_count(source: String) -> Int {
+  match census_blocking_count_for_class(census: census_of(source: source), wanted: "ParseError") {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+data red_arity_zero_member_list_source: String = "module probe_arity_zero_import\nimport std.types {\n}\nfn answers() -> Int { 7 }\n"
+
+data green_one_member_source: String = "module probe_arity_one_import\nimport std.types { Int }\nfn answers() -> Int { 7 }\n"
+
+test fn an_arity_zero_import_member_list_refuses_at_parse() -> Bool {
+  blocking_parse_error_count(source: red_arity_zero_member_list_source) >= 1
+}
+
+test fn the_same_import_carrying_one_member_is_accepted() -> Bool {
+  blocking_parse_error_count(source: green_one_member_source) == 0
+}

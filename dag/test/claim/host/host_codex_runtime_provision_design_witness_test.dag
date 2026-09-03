@@ -1,0 +1,88 @@
+module test.claim.host_codex_runtime_provision_design
+
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef }
+import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
+import gunbc.host_layout { srv1_codex_bundled_executable }
+import gunbc.host_toolchain_ensure { host_toolchain_ensure_effect, CodexRuntime }
+import gunbc.host_effect { ProvisionCodexRuntime }
+import gunbc.host_codex_runtime_provision {
+  provision_codex_runtime_effect,
+  provision_codex_runtime_routes_through_host_effect_apply,
+  host_codex_runtime_provision_realize_scaffold,
+}
+import gunbc.host_codex_runtime_provision_verdict {
+  codex_runtime_identity_mismatch_refuses_fail_closed,
+  codex_runtime_identity_ok_converges,
+  codex_runtime_materialization_failed_refuses_fail_closed,
+  codex_runtime_transport_refused_refuses_fail_closed,
+  codex_runtime_host_unsupported_refuses_fail_closed,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn design_witness_realize_carries_scaffold() -> Bool {
+  match host_codex_runtime_provision_realize_scaffold {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
+    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+  }
+}
+
+test fn design_witness_identity_mismatch_refuses_fail_closed() -> Bool {
+  codex_runtime_identity_mismatch_refuses_fail_closed()
+}
+
+test fn design_witness_identity_ok_converges() -> Bool {
+  codex_runtime_identity_ok_converges()
+}
+
+test fn design_witness_materialization_failed_refuses_fail_closed() -> Bool {
+  codex_runtime_materialization_failed_refuses_fail_closed()
+}
+
+test fn design_witness_transport_refused_refuses_fail_closed() -> Bool {
+  codex_runtime_transport_refused_refuses_fail_closed()
+}
+
+test fn design_witness_host_unsupported_refuses_fail_closed() -> Bool {
+  codex_runtime_host_unsupported_refuses_fail_closed()
+}
+
+test fn design_witness_routes_through_host_effect_apply() -> Bool {
+  provision_codex_runtime_routes_through_host_effect_apply()
+}
+
+test fn design_witness_default_effect_is_codex_runtime() -> Bool {
+  match provision_codex_runtime_effect() {
+    ProvisionCodexRuntime {} => true
+    _ => false
+  }
+}
+
+test fn design_witness_toolchain_kind_maps_to_effect() -> Bool {
+  match host_toolchain_ensure_effect(kind: CodexRuntime, host: "srv1" as HostIdentity) {
+    ProvisionCodexRuntime {} => true
+    _ => false
+  }
+}
+
+test fn design_witness_srv1_bundled_executable_under_release_root() -> Bool {
+  match srv1_codex_bundled_executable() {
+    Present { value: p } =>
+      string_contains(
+        s: p as String,
+        pattern: srv1_codex_runtime_release_root as String,
+      )
+        && string_contains(
+          s: p as String,
+          pattern: "/current/",
+        )
+    Absent => false
+  }
+}

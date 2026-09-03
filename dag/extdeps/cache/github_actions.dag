@@ -1,0 +1,96 @@
+module extdeps.cache.github_actions
+
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  HandAuthored,
+  UpsertSubject,
+  FilePaths,
+  CatalogOpaqueStringEncoding,
+}
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  PrefixFallback,
+  OverwriteAllowed,
+  WriteThenCommit,
+  MissThenCreate,
+  TarArchive,
+  CrossHostNetwork,
+  ApiKey,
+  WanTensMs,
+  Eventual,
+  VendorCitation,
+  ManualPurge,
+  ToolchainChange,
+  DependencyChange,
+  Repo,
+  ByteCapacity,
+  CapacityBounded,
+  EffectiveLimitUnobserved,
+  LeastRecentlyUsed,
+  ReleasedNever,
+  ReplaceExisting,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
+  }
+}
+
+data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
+
+data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
+  identity: gha_actions_cache_id
+  backing_surface: "github-actions-cache-api"
+  transport_encoding: CatalogOpaqueStringEncoding
+  key_derivation: {
+
+    key_inputs: HandAuthored { cited_inputs: [UpsertSubject, FilePaths] }
+    overwritable: true
+    prefix_fallback_allowed: true
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge, ToolchainChange, DependencyChange]
+  }
+  io: {
+    lookup_semantics: PrefixFallback {
+      ordered_prefixes: [
+        "exact-subject-digest",
+        "toolchain-pinned",
+        "lockfile-pinned",
+        "runner-scoped",
+      ]
+    }
+    write_semantics: OverwriteAllowed
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: TarArchive
+    locality: CrossHostNetwork
+    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
+    atomicity: WriteThenCommit
+    auth: ApiKey
+    read_latency: WanTensMs
+    consistency: Eventual
+  }
+  evidence: [
+    {
+      field: "lookup_semantics"
+      evidence: VendorCitation {
+        source: "GitHub Actions cache restore-key behavior"
+        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
+      }
+    },
+    {
+      field: "key_derivation"
+      evidence: VendorCitation {
+        source: "GitHub Actions cache key input"
+        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy"
+      }
+    },
+  ]
+}

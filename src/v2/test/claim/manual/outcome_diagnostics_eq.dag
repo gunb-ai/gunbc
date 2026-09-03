@@ -17,6 +17,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node, Symbol }
 import v2.test.manual.connective_anchors { stub_empty_conj }
+
 fn diag_eq_x() -> Diagnostic {
   Diagnostic {
     reason: ^diag_eq_reason_x,

@@ -1,0 +1,16 @@
+module extdeps.procps.pgrep
+
+import std.types { String, Int }
+
+// pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this
+// repository reads are modelled.
+
+// PGREP EXITS 1 WHEN NOTHING MATCHED, AND THAT IS A SUCCESSFUL ANSWER WEARING A FAILURE STATUS.
+//
+// pgrep(1) EXIT STATUS: 0 one or more processes matched; 1 no processes matched; 2 syntax error in
+// the command line; 3 fatal error. So 1 is the observation "this process is not running" and is
+// exactly the evidence a retirement wants -- while 2 and 3 mean the question was never answered.
+// Reading any nonzero as absence would let a malformed pattern or an internal failure prove that a
+// server had stopped. Only 1 is minted: the other three are documented here because they are the
+// reason this row is narrow, not because anything consumes them.
+data pgrep_exit_no_match: Int = 1

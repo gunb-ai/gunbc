@@ -1,0 +1,21 @@
+module v2.extdeps.cache.key_completeness_verdict
+
+import extdeps.cache.key_completeness { cache_key_derivation_complete }
+import extdeps.cache.types { CatalogKeyDerivationFacts }
+import v2.std.lens_verdict {
+  Holds,
+  LensVerdict,
+  lens_verdict_module_violation,
+}
+import v2.std.text { String }
+
+fn cache_key_completeness_verdict(facts: CatalogKeyDerivationFacts, module_name: String) -> LensVerdict {
+  if cache_key_derivation_complete(facts: facts) {
+    Holds
+  } else {
+    lens_verdict_module_violation(
+      reason: ^cache_key_completeness_native_internal_toolchain_axis,
+      module_name: module_name
+    )
+  }
+}

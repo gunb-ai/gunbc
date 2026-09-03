@@ -1,0 +1,87 @@
+module test.claim.ssh_client_options_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.measure { second }
+import extdeps.ssh.client_options {
+  SshClientOption,
+  StrictHostKeyChecking,
+  UserKnownHostsFile,
+  BatchMode,
+  ConnectTimeout,
+  StrictHostKeyCheckingValue,
+  StrictYes,
+  StrictNo,
+  StrictAcceptNew,
+  serialize_ssh_client_option,
+  serialize_ssh_client_options,
+  openssh_exclusive_known_hosts_trust_options,
+}
+
+// Serialization is asserted by EXECUTION against exact argv, not by reading the function. The
+// whole argument for this module is that options inside a transport literal are unreachable by any
+// test; a module that could not itself be pinned would reproduce that defect one layer over.
+
+test fn w_strict_yes_serializes_to_exact_pair() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes }) == ["-o", "StrictHostKeyChecking=yes"]
+}
+
+test fn w_known_hosts_path_serializes_to_exact_pair() -> Bool {
+  serialize_ssh_client_option(option: UserKnownHostsFile { path: "/home/ghrunner/.ssh/anchor" as NonEmptyStr }) == ["-o", "UserKnownHostsFile=/home/ghrunner/.ssh/anchor"]
+}
+
+// THE DISCRIMINATING PAIR. This is the divergence the corpus carried unnoticed -- one site
+// requiring host-key verification and another disabling it, spelled as indistinguishable strings.
+// As variants they serialize differently AND are matchable, so the difference is now reachable by
+// a consumer rather than only by a human reading prose.
+test fn w_strict_no_is_a_different_value_not_a_different_spelling() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictNo }) == ["-o", "StrictHostKeyChecking=no"] && serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictNo }) != serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes })
+}
+
+// accept-new carries a hyphen, so it would survive a naive same-shape assumption that every value
+// is its variant name lowercased. Pinned because that assumption is exactly how a wire spelling
+// silently drifts from its authority.
+test fn w_accept_new_keeps_its_upstream_hyphenated_spelling() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictAcceptNew }) == ["-o", "StrictHostKeyChecking=accept-new"]
+}
+
+test fn w_bool_and_int_domains_serialize_without_a_second_enum() -> Bool {
+  serialize_ssh_client_option(option: BatchMode { enabled: true }) == ["-o", "BatchMode=yes"] && serialize_ssh_client_option(option: ConnectTimeout { seconds: second(count: 5) }) == ["-o", "ConnectTimeout=5"]
+}
+
+// The list serializer must FLATTEN, not nest: a transport splices a flat argv, so a List<List>
+// would produce a shell invocation with a list where a word belongs.
+test fn w_options_flatten_into_one_argv_run() -> Bool {
+  serialize_ssh_client_options(options: [
+    StrictHostKeyChecking { value: StrictYes },
+    UserKnownHostsFile { path: "/tmp/anchor" as NonEmptyStr },
+  ]) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/anchor"]
+}
+
+// THE EXCLUSIVITY CLAIM, and the reason it is worth pinning as exact argv rather than as a count.
+// OpenSSH has FIVE independent routes to accepting a host key, and an earlier revision of this
+// builder set two of them -- which pins the file ssh reads without excluding the system-wide
+// known_hosts beside it, a KnownHostsCommand, an SSHFP record, or the server ADDING keys mid-session
+// via UpdateHostKeys. On hosts we did not build, any of those can be preconfigured, so the two-option
+// form was anchored to the registry plus whatever the machine already believed. This asserts all six
+// words in order, so removing any disabler reds here rather than silently widening what is trusted.
+test fn w_trust_posture_excludes_every_other_host_key_source() -> Bool {
+  serialize_ssh_client_options(options: openssh_exclusive_known_hosts_trust_options(known_hosts: "/tmp/a" as NonEmptyStr)) == [
+    "-o", "StrictHostKeyChecking=yes",
+    "-o", "UserKnownHostsFile=/tmp/a",
+    "-o", "GlobalKnownHostsFile=/dev/null",
+    "-o", "KnownHostsCommand=none",
+    "-o", "VerifyHostKeyDNS=no",
+    "-o", "UpdateHostKeys=no",
+  ]
+}
+
+// RED CONTROL. An earlier revision of this declaration asserted the WRONG argv directly and
+// therefore returned false -- an enrolled `test fn` that FAILS, presented in the PR body as
+// evidence of rigor. Every red_control in this corpus asserts something TRUE: it names the wrong
+// outcome and asserts the mechanism does not produce it (see heal_author_commit_witness_test
+// red_control_gitignore_is_not_author_commit_required). Stated as a rejection, this passes when
+// serialization is correct and fails the moment `yes` and `no` collapse to the same argv, which is
+// the property the other claims depend on for their comparisons to mean anything.
+test fn red_control_wrong_serialization_is_rejected() -> Bool {
+  serialize_ssh_client_option(option: StrictHostKeyChecking { value: StrictYes }) != ["-o", "StrictHostKeyChecking=no"]
+}

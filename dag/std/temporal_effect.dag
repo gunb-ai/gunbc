@@ -1,0 +1,336 @@
+module std.temporal_effect
+
+import std.types { String, NonEmptyStr, Int, Bool, Timestamp, List }
+import std.content_hash { ContentHash }
+import std.scoped_authorization {
+  AttemptIdentity,
+  AuthorizationScope,
+  AuthorizationRequest,
+  ScopedAuthorization,
+  authorize,
+}
+import std.measure { Millisecond, measure_le, millisecond_count }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UnknownRefused,
+  UpsertDecision,
+  Noop,
+  Apply,
+  Refuse,
+}
+
+type EffectAttemptIntent {
+  attempt_id: NonEmptyStr
+  intent_hash: ContentHash
+  target: NonEmptyStr
+  created_at: Timestamp
+}
+
+type AppliedEffectRef
+  = NoEffectApplied
+  | EffectApplied { effect_id: NonEmptyStr }
+
+type EffectStepReceipt {
+  attempt_id: NonEmptyStr
+  step_id: NonEmptyStr
+  observation_digest: ContentHash
+  verdict_label: NonEmptyStr
+  plan_label: NonEmptyStr
+  applied: AppliedEffectRef
+  read_back_ok: Bool
+  recorded_at: Timestamp
+}
+
+type HeldLeaseObservedState
+  = LeaseAbsent
+  | LeaseRunningExpected
+  | LeaseRunningStale
+  | LeasePortForeign
+  | LeaseInaccessible
+
+type LeaseEpoch {
+  lease_key: NonEmptyStr
+  resource_fingerprint: ContentHash
+  owner_fingerprint: ContentHash
+  generation: Int
+}
+
+type HeldLease {
+  epoch: LeaseEpoch
+  observed: HeldLeaseObservedState
+}
+
+fn held_lease(epoch: LeaseEpoch, observed: HeldLeaseObservedState) -> HeldLease {
+  HeldLease { epoch: epoch, observed: observed }
+}
+
+fn held_lease_epoch(lease: HeldLease) -> LeaseEpoch {
+  lease.epoch
+}
+
+fn held_lease_with_observed(lease: HeldLease, observed: HeldLeaseObservedState) -> HeldLease {
+  HeldLease { epoch: lease.epoch, observed: observed }
+}
+
+
+// DurableApprovalGrant USED TO BE DECLARED HERE -- GrantAbsent | GrantActive { escalation_id,
+// intent_hash, granted_by, granted_at, expires_at } | GrantConsumed { ..., consumed_by_step }.
+// It was the §3 meaning fork of gunbc.workflow_escalation's WorkflowApprovalState: one act
+// (an operator authorizing one destructive step) carried under two names, with expiry and
+// single-use modeled HERE and zero production consumers, and the production consumer over THERE
+// carrying neither. Both are dissolved into std.scoped_authorization.ScopedAuthorization, which
+// is a strict superset -- it adds the scope and resource the pair never named, and it decides the
+// intent-hash agreement through compare_content_hash instead of `==`, closing the cross-family
+// silent-false this module's check carried.
+
+type BaseSnapshotRow {
+  row_key: NonEmptyStr
+  value_hash: ContentHash
+}
+
+type BaseSnapshot {
+  generation: Int
+  observed_at: Timestamp
+  rows: List<BaseSnapshotRow>
+}
+
+type TemporalEffectPolicy
+  = PureRead
+  | CreateIfAbsent { content_key: ContentHash }
+  | ReplaceIfStale { content_key: ContentHash }
+  | UpsertScope { scope_key: NonEmptyStr }
+  | HeldSessionLease { lease_key: NonEmptyStr }
+  | DestructiveOnce { approval_id: NonEmptyStr, idempotency_key: ContentHash }
+
+type NextStepPlan
+  = PlanNoop { step_id: NonEmptyStr }
+  | PlanApply { step_id: NonEmptyStr }
+  | PlanRefuse { step_id: NonEmptyStr, reason: NonEmptyStr }
+  | PlanAwaitApproval { escalation_id: NonEmptyStr }
+  | PlanDrainThenStart { step_id: NonEmptyStr, lease_key: NonEmptyStr }
+
+type PriorStepReceipt
+  = NoPriorReceipt
+  | PriorReceipt { receipt: EffectStepReceipt }
+
+// The join between a planned effect attempt and the operator authorization that may cover it.
+// The attempt's OWN identity and content hash become the grant-binding fields, so a grant issued
+// for one attempt cannot cover another and a grant issued for one planned action cannot cover a
+// changed one. scope and purpose come from the caller because they are facts about the SUBJECT of
+// the approval, which this module -- a generic effect spine -- does not know.
+fn authorization_request_for_attempt<Subject>(
+  intent: EffectAttemptIntent,
+  escalation_id: NonEmptyStr,
+  scopes: List<AuthorizationScope>,
+  subject: Subject,
+  purpose: NonEmptyStr,
+  destructive: Bool,
+) -> AuthorizationRequest<Subject> {
+  AuthorizationRequest {
+    escalation_id: escalation_id,
+    scopes: scopes,
+    subject: subject,
+    purpose: purpose,
+    attempt: intent.attempt_id as AttemptIdentity,
+    intent_hash: intent.intent_hash,
+    destructive: destructive,
+  }
+}
+
+type NextStepApplyPlan
+  = ApplyAtStep { step_id: NonEmptyStr }
+  | DrainThenStartAtStep { step_id: NonEmptyStr, lease_key: NonEmptyStr }
+
+fn held_lease_observed_verdict(observed: HeldLeaseObservedState) -> ObservationVerdict {
+  match observed {
+    LeaseAbsent => Absent
+    LeaseRunningExpected => Converged
+    LeaseRunningStale => Drifted
+    LeasePortForeign => Conflict
+    LeaseInaccessible => Inaccessible
+  }
+}
+
+fn decision_for_held_lease_verdict(
+  verdict: ObservationVerdict,
+  lease: HeldLease,
+  pending_step_id: NonEmptyStr,
+) -> UpsertDecision<NextStepApplyPlan> {
+  match verdict {
+    Converged => Noop
+    Absent => Apply { plan: ApplyAtStep { step_id: pending_step_id } }
+    Drifted => Apply {
+      plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.epoch.lease_key },
+    }
+    Conflict => Refuse { reason: "foreign lease holder on scoped resource" as NonEmptyStr }
+    Inaccessible => Refuse { reason: "lease observation inaccessible" as NonEmptyStr }
+    UnknownRefused => Refuse { reason: "lease observation classification unknown" as NonEmptyStr }
+  }
+}
+
+fn next_step_plan_from_apply_decision(
+  decision: UpsertDecision<NextStepApplyPlan>,
+  pending_step_id: NonEmptyStr,
+) -> NextStepPlan {
+  match decision {
+    Noop => PlanNoop { step_id: pending_step_id }
+    Refuse { reason: r } => PlanRefuse { step_id: pending_step_id, reason: r }
+    Apply { plan: p } => match p {
+      ApplyAtStep { step_id: s } => PlanApply { step_id: s }
+      DrainThenStartAtStep { step_id: s, lease_key: k } => PlanDrainThenStart {
+        step_id: s,
+        lease_key: k,
+      }
+    }
+  }
+}
+
+fn plan_for_held_lease_observation(
+  lease: HeldLease,
+  pending_step_id: NonEmptyStr,
+) -> NextStepPlan {
+  let verdict = held_lease_observed_verdict(observed: lease.observed)
+  next_step_plan_from_apply_decision(
+    decision: decision_for_held_lease_verdict(
+      verdict: verdict,
+      lease: lease,
+      pending_step_id: pending_step_id,
+    ),
+    pending_step_id: pending_step_id,
+  )
+}
+
+fn plan_next_step_from_prior_receipt_and_lease<Subject>(
+  request: AuthorizationRequest<Subject>,
+  pending_step_id: NonEmptyStr,
+  requires_destructive_approval: Bool,
+  authorization: ScopedAuthorization<Subject>,
+  lease: HeldLease,
+  prior: PriorStepReceipt,
+  observed_at: Timestamp,
+) -> NextStepPlan {
+  if requires_destructive_approval
+    && match authorize(
+      authorization: authorization,
+      request: request,
+      observed_at: observed_at,
+    ) {
+      AuthorizationPermitted { grant: _ } => false
+      AuthorizationRefused { cause: _ } => true
+    } {
+    PlanAwaitApproval { escalation_id: request.escalation_id }
+  } else {
+    match prior {
+      PriorReceipt { receipt: r } =>
+        if r.read_back_ok && r.step_id == pending_step_id {
+          plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+        } else {
+          match r.applied {
+            EffectApplied { effect_id: _ } =>
+              if !r.read_back_ok {
+                PlanRefuse {
+                  step_id: pending_step_id,
+                  reason: "applied without read-back convergence",
+                }
+              } else {
+                plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+              }
+            NoEffectApplied =>
+              plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+          }
+        }
+      NoPriorReceipt =>
+        plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+    }
+  }
+}
+
+data cursor_unset_step: NonEmptyStr = "cursor-unset" as NonEmptyStr
+
+fn receipt_log_last_step_id(receipts: List<EffectStepReceipt>) -> NonEmptyStr {
+  fold(
+    receipts,
+    init: cursor_unset_step,
+    f: (acc, r) => r.step_id,
+  )
+}
+
+fn derived_pending_step_id(
+  receipts: List<EffectStepReceipt>,
+  default_step: NonEmptyStr,
+) -> NonEmptyStr {
+  let last = receipt_log_last_step_id(receipts: receipts)
+  if last == cursor_unset_step {
+    default_step
+  } else {
+    last
+  }
+}
+
+fn prior_receipt_for_step(
+  receipts: List<EffectStepReceipt>,
+  step_id: NonEmptyStr,
+) -> PriorStepReceipt {
+  fold(
+    receipts,
+    init: NoPriorReceipt,
+    f: (acc, r) => {
+      if r.step_id == step_id {
+        PriorReceipt { receipt: r }
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+type EffectStallBudget {
+  step_id: NonEmptyStr
+  limit_ms: Millisecond
+  elapsed_ms: Millisecond
+}
+
+type StallBudgetVerdict
+  = StallWithinBudget
+  | StallBudgetExceeded {
+      step_id: NonEmptyStr
+      elapsed_ms: Millisecond
+      limit_ms: Millisecond
+    }
+
+fn stall_budget_verdict(budget: EffectStallBudget) -> StallBudgetVerdict {
+  if measure_le(a: budget.elapsed_ms, b: budget.limit_ms) {
+    StallWithinBudget
+  } else {
+    StallBudgetExceeded {
+      step_id: budget.step_id,
+      elapsed_ms: budget.elapsed_ms,
+      limit_ms: budget.limit_ms,
+    }
+  }
+}
+
+fn next_step_plan_on_stall_budget(
+  pending_plan: NextStepPlan,
+  budget: EffectStallBudget,
+) -> NextStepPlan {
+  match stall_budget_verdict(budget: budget) {
+    StallWithinBudget => pending_plan
+    StallBudgetExceeded { step_id: sid, elapsed_ms: e, limit_ms: l } =>
+      PlanRefuse {
+        step_id: sid,
+        reason: concat(
+          concat(
+            concat("stall budget exceeded elapsed_ms=", to_string(millisecond_count(m: e))),
+            concat(" limit_ms=", to_string(millisecond_count(m: l)))
+          ),
+          concat(" step=", sid)
+        ),
+      }
+  }
+}

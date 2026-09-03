@@ -1,0 +1,25 @@
+module extdeps.formats.elf.relocation
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Int }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.reloc.html"
+  }
+}
+
+data r_x86_64_none: Int = 0
+data r_x86_64_64: Int = 1
+data r_x86_64_pc32: Int = 2
+data r_x86_64_glob_dat: Int = 6
+data r_x86_64_jump_slot: Int = 7
+data r_x86_64_relative: Int = 8
+
+type Elf64Rela {
+  offset: Int
+  info: Int
+  addend: Int
+}

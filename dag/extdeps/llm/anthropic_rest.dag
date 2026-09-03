@@ -1,0 +1,93 @@
+module extdeps.llm.anthropic_rest
+
+import extdeps.llm.anthropic_messages_api {
+  AnthropicChatMessage,
+  AnthropicMessages200Body,
+  AnthropicStopReason,
+  current_api_version
+}
+import extdeps.llm.anthropic_errors { AnthropicErrorShape }
+import std.credentials { EnvVar }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.anthropic.com/en/docs/claude-code"
+  }
+}
+
+service llm.Anthropic {
+  config {
+    endpoint: "https://api.anthropic.com"
+    auth: Header("x-api-key")
+    auth_input: api_key
+    auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
+
+    rate_limit: { requests: 1000, per: minute, scope: messages }
+  }
+
+  operation Messages {
+    input {
+      api_key: Secret
+      model: String
+      messages: List<AnthropicChatMessage>
+      max_tokens: Int = 4096
+      temperature: Float?
+      system: String?
+    }
+    output {
+      content: String from "content/0/text"
+      model: String from "model"
+      stop_reason: AnthropicStopReason from "stop_reason"
+      input_tokens: Int from "usage/input_tokens"
+      output_tokens: Int from "usage/output_tokens"
+    }
+    transport rest {
+      method: POST,
+      path: "/v1/messages",
+      body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system },
+      headers: { "anthropic-version": current_api_version.version }
+    }
+    response {
+      200 => AnthropicMessages200Body
+      400 => AnthropicErrorShape
+      401 => AnthropicErrorShape
+      403 => AnthropicErrorShape
+      404 => AnthropicErrorShape
+      429 => AnthropicErrorShape
+      529 => AnthropicErrorShape
+      5xx => AnthropicErrorShape
+    }
+  }
+
+  operation CliPrompt {
+    input {
+      prompt: String
+      model: String = "opus"
+      effort: String = "max"
+      output_format: String = "text"
+      permission_mode: String = "plan"
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "claude", "-p",
+        "--output-format", "{output_format}",
+        "--permission-mode", "{permission_mode}",
+        "--model", "{model}",
+        "--effort", "{effort}",
+        "{prompt}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Claude CLI failed"
+    }
+  }
+}

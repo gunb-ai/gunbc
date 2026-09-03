@@ -9,9 +9,9 @@ use self::SizeBound::*;
 pub use crate::std_algebra::kernel_algebra_profile;
 pub use crate::std_algebra::AlgebraProfile;
 use crate::std_algebra::AlgebraProfile::{
-    ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
-    FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
-    PartialFunctionProfile,
+    ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
+    FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
+    OrderedRingProfile, PartialFunctionProfile, PointwisePowerCollectionProfile,
 };
 pub use crate::std_termination::positive_descent_count;
 use crate::std_termination::DescentEvidence::DescentUnknown;
@@ -22,12 +22,10 @@ pub use crate::std_termination::{
     DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -36,7 +34,7 @@ pub enum SizeBound {
     CollectionSize { param: String },
     ParserStreamSize { witness: String },
     WorklistDrainSize { element: String },
-    TreeSize { param: String },
+    SubtreeSize { param: String },
     ArithmeticParam { param: String },
     ExplicitCountZero,
     ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
@@ -44,7 +42,9 @@ pub enum SizeBound {
 }
 
 pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
-    Rc::new(SizeBound::TreeSize { param: param })
+    Rc::new(SizeBound::SubtreeSize {
+        param: param.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -104,12 +104,12 @@ pub enum IterationPrimitive {
 }
 
 pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
-    match (*pattern).clone() {
+    match (*pattern.clone()).clone() {
         CallPattern::ChildAccessorCall { accessor: a, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Descend,
-            bound: Rc::new(SizeBound::TreeSize { param: a.clone() }),
+            bound: Rc::new(SizeBound::SubtreeSize { param: a.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::CollectionShrinkCall {
             amount: p,
@@ -147,13 +147,13 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::ParserStreamSize { witness: w.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::WorklistDrainSize { element: e.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::FoldBodyCall {
             outer_collection: oc,
@@ -162,32 +162,32 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::CollectionSize { param: oc.clone() }),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::SameArgumentCall => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         }),
     }
 }
 
 pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
-    match (*bound).clone() {
-        SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
+    match (*bound.clone()).clone() {
+        SizeBound::SubtreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
         SizeBound::ParserStreamSize { witness: w, .. } => Some(w.clone()),
         SizeBound::WorklistDrainSize { element: e, .. } => Some(e.clone()),
         SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
-        SizeBound::ExplicitCountZero => None,
-        SizeBound::ExplicitCountPositive { steps: _, .. } => None,
-        SizeBound::Forever => None,
+        SizeBound::ExplicitCountZero => std::option::Option::None,
+        SizeBound::ExplicitCountPositive { steps: _, .. } => std::option::Option::None,
+        SizeBound::Forever => std::option::Option::None,
     }
 }
 
 pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
-    match (*bound).clone() {
+    match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => true,
         SizeBound::ExplicitCountPositive { steps: _, .. } => true,
         SizeBound::Forever => true,
@@ -200,13 +200,13 @@ pub fn forever_iteration_bound() -> i64 {
 }
 
 pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
-    match (*bound).clone() {
+    match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => Some(0),
         SizeBound::ExplicitCountPositive { steps: s, .. } => {
-            Some(positive_descent_count(s.clone()))
+            Some(crate::std_termination::positive_descent_count(s.clone()))
         }
         SizeBound::Forever => Some(forever_iteration_bound()),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -221,14 +221,18 @@ pub enum IterationDimension {
 }
 
 pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<IterationDimension> {
-    match profile {
+    match profile.clone() {
         AlgebraProfile::FreeMonoidCollectionProfile => Some(IterationDimension::CollectionFold),
         AlgebraProfile::FreeMonoidScalarProfile => Some(IterationDimension::CollectionFold),
-        AlgebraProfile::BooleanAlgebraCollectionProfile => Some(IterationDimension::CollectionFold),
-        AlgebraProfile::PartialFunctionProfile => Some(IterationDimension::CollectionFold),
+        AlgebraProfile::FinitePowerSetProfile => Some(IterationDimension::CollectionFold),
+        AlgebraProfile::FinitelySupportedFunctionProfile => {
+            Some(IterationDimension::CollectionFold)
+        }
+        AlgebraProfile::PointwisePowerCollectionProfile => std::option::Option::None,
+        AlgebraProfile::PartialFunctionProfile => std::option::Option::None,
         AlgebraProfile::OrderedRingProfile => Some(IterationDimension::ArithmeticRepeat),
         AlgebraProfile::ApproximateFieldProfile => Some(IterationDimension::ArithmeticRepeat),
-        AlgebraProfile::BooleanAlgebraProfile => None,
+        AlgebraProfile::BooleanAlgebraProfile => std::option::Option::None,
     }
 }
 
@@ -238,7 +242,7 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
             Some(p) => algebra_profile_to_dimension(p.clone()),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }

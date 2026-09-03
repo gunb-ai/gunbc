@@ -5,12 +5,10 @@ pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -19,7 +17,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
                 Rc::new(ExternalAuthority {
         uri: Rc::new(Uri {
         scheme: UriScheme::Https,
-        locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag".to_string(),
+        locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md#4-the-closed-grounded-substrate".to_string(),
     }),
     })
             };

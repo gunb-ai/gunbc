@@ -1,0 +1,31 @@
+module extdeps.dpkg
+
+import std.types { NonEmptyStr, String, Bool, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/testing/dpkg/dpkg.1.en.html"
+  }
+}
+
+fn dpkg_status_argv(package: NonEmptyStr) -> List<String> {
+  ["dpkg", "-s", package as String]
+}
+
+service dpkg.Package {
+  operation Status {
+    input { package: NonEmptyStr }
+    output { installed: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["dpkg", "-s", "{package}"] }
+    exit {
+      0 => Unit
+      1 => Unit "package not installed"
+      nonzero => String "dpkg -s failed"
+    }
+  }
+}

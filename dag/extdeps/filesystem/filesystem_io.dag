@@ -1,0 +1,458 @@
+module extdeps.filesystem.filesystem_io
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, Int, List, String }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/write.html"
+  }
+}
+
+// v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts
+// refuse rather than degrading to unmodeled write.
+
+// The operation below carries the transport observation as independent channels: the read
+// either supplied content or supplied an error, but the wire itself does not make those states
+// exclusive. Consumers that need the modeled result fold those channels through this coproduct.
+// Keeping the fold here makes the interface authority own the meaning while the file transport
+// remains only a realization of its scalar channels.
+type FilesystemReadOutcome
+  = FilesystemReadSucceeded { content: String }
+  | FilesystemReadRefused { error: String }
+
+fn filesystem_read_outcome(
+  content: String,
+  success: Bool,
+  error: String,
+) -> FilesystemReadOutcome {
+  if success {
+    FilesystemReadSucceeded { content: content }
+  } else {
+    FilesystemReadRefused { error: error }
+  }
+}
+
+data filesystem_read_outcome_adoption_standing: String = "RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba: 92 unconverted consumption sites across 48 .dag files. REMAINDER after the first conversion: 91 unconverted consumption sites across 47 files. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
+
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ. `Read` answers
+// success=false both for a path that does not exist and for one that exists and cannot be read, and
+// those two worlds have opposite correct actions -- proceed, versus stop and preserve. Any consumer
+// that concludes "not there" from a read failure has conflated them, and it fails toward good news.
+//
+// `List` returns entry names joined by newlines, so a plain substring test answers yes for a name
+// that is merely a prefix or suffix of a real entry -- `abc.json` is found inside `abc.json.tmp`.
+// Wrapping both sides in newlines makes the test line-exact without needing a split the interpreter
+// does not offer, so every conclusion drawn from it is a membership fact rather than a coincidence
+// of spelling.
+//
+// This predicate lives beside the operation whose output encoding defines it. Two consumers had
+// spelled it independently over one wire format, which is the second representation section 3
+// forbids: the encoding is `List`'s fact, so the membership question over it is too.
+fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
+  string_contains(
+    s: join(["\n", listing, "\n"], ""),
+    pattern: join(["\n", name, "\n"], ""),
+  )
+}
+
+// A NAME IS NOT A PATH COMPONENT UNTIL SOMETHING SAYS SO. `filesystem_listing_names_entry` above
+// answers a membership question over a NEWLINE-DELIMITED wire format, and every consumer that has an
+// entry name also builds a path from it by joining a directory to it. Those are two uses of one
+// value, and an ordinary `String` guarantees neither: `""`, `.`, `..`, `subdir/repo.json` and
+// `../victim` do not denote one direct child of the listed directory, so the listing is asked about
+// one subject while the path names another. The newline case is the sharpest and belongs to THIS
+// module rather than to any caller, because the delimiter is `List`'s own encoding: a name
+// containing a newline can make the membership test answer yes for an entry that is not there.
+//
+// So the component is admitted once and carried. `FilesystemEntryName` is `sole_constructor`, which
+// is what makes the admission unavoidable rather than advisory -- a caller cannot mint one by
+// writing a literal, and the refusal arm names which rule rejected the spelling instead of returning
+// a bare false.
+//
+// SCOPE, STATED RATHER THAN IMPLIED. This carrier is ADOPTED AT ITS FIRST CONSUMER and is not yet
+// the type of `filesystem_entry_presence`'s `name` parameter, which is still `String` and still
+// reachable by every existing caller. Widening it is a replacement migration over that whole
+// population and belongs with `filesystem_absence_establishment_adoption_standing` above, not
+// smuggled into the change that introduces the carrier. What is true today: a consumer that admits
+// the name and then uses the SAME admitted value for both the membership test and the path
+// construction cannot put those two out of step. A consumer that does not adopt it is exactly as
+// exposed as before. RUNG: mitigatable, and structurally guaranteed only for adopting consumers.
+// NEXT-RUNG TRIGGER: `filesystem_entry_presence` and the path-joining sites take
+// `FilesystemEntryName` rather than `String`, at which point a raw name cannot reach either.
+type FilesystemEntryName sole_constructor {
+  name: String
+}
+
+type FilesystemEntryNameAdmission
+  = FilesystemEntryNameAdmitted(FilesystemEntryName)
+  | FilesystemEntryNameRefused { name: String, cause: String }
+
+fn filesystem_entry_name_text(component: FilesystemEntryName) -> String {
+  component.name
+}
+
+// THE RULES ARE SEPARATE ARMS BECAUSE THE REMEDIES DIFFER. An empty name is a caller that forgot to
+// supply one; `.` and `..` are directory references that resolve somewhere other than a child;
+// a separator means the caller passed a PATH where a component was asked for, which is the case that
+// escapes the listed directory entirely; and a newline or carriage return is the one that corrupts
+// the membership test itself.
+fn admit_filesystem_entry_name(name: String) -> FilesystemEntryNameAdmission {
+  if name == "" {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: "an entry name is empty, so it names no child of any directory",
+    }
+  } else if name == "." {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: "`.` is the directory itself rather than an entry within it",
+    }
+  } else if name == ".." {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: "`..` is the parent directory rather than an entry within it",
+    }
+  } else if string_contains(s: name, pattern: "/") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a path separator, so it is a PATH and not one direct ",
+        "child of the listed directory -- the listing would be asked about a different subject ",
+        "than the one the joined path names",
+      ], ""),
+    }
+  } else if string_contains(s: name, pattern: "\\") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a backslash, which is a path separator on some hosts ",
+        "this operation is implemented for -- so `..\\victim` is a parent traversal there while ",
+        "passing a check that rejects only `/`, which is the exact defect this carrier exists to ",
+        "make impossible. The grammar is the UNION over supported targets, not the one the author ",
+        "happens to be running on: a carrier that admits on Linux what it must refuse on Windows ",
+        "answers about a different subject depending on where it runs",
+      ], ""),
+    }
+  } else if string_contains(s: name, pattern: "\0") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a NUL, which terminates a C string -- so the name the ",
+        "host syscall sees is a PREFIX of the name the listing was asked about, and the two ",
+        "describe different subjects with no diagnostic between them",
+      ], ""),
+    }
+  } else if string_contains(s: name, pattern: "\n") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a newline, which is the delimiter Filesystem.List uses ",
+        "between entries, so a membership test over the listing could answer yes for an entry that ",
+        "is not present",
+      ], ""),
+    }
+  } else if string_contains(s: name, pattern: "\r") {
+    FilesystemEntryNameRefused {
+      name: name,
+      cause: join([
+        "the entry name ", name, " contains a carriage return, which can terminate a line in the ",
+        "listing wire format and make the membership test answer about a different spelling",
+      ], ""),
+    }
+  } else {
+    FilesystemEntryNameAdmitted(FilesystemEntryName { name: name })
+  }
+}
+
+// THE RULE ABOVE WAS PROSE FOR AS LONG AS IT EXISTED, AND PROSE REPRODUCED THE DEFECT IT FORBIDS.
+// It was ruled on review 46148, written into `gunbc.roadmap_belt_actuate` as a `data ... : String`
+// note, and then violated in `gunbc.deploy_transition` -- authored by the same hand, in the same
+// sitting, while editing the module that carries the note -- where a marker that was present and
+// unreadable rendered as absent, which rendered as PERMITTED at the belt seam. Section 4c is exact
+// about why: a note is commentary no `Accepted` program can read, so it propagates only by someone
+// happening to scroll past it. The next module to observe a file reproduces it again for the same
+// reason. A note is not a mechanism.
+//
+// SO ABSENCE GETS A CARRIER WITH ONE MINT. `FilesystemEstablishedAbsence` is `sole_constructor`, so
+// no other module can write one; the only function that mints it takes a `FilesystemDirectoryListing`,
+// which is itself `sole_constructor` and is minted only from a listing whose `success` channel was
+// true. A module that tries to decide absence from a read alone therefore does not typecheck -- it
+// has no value to return and no way to build one. Absence stops being the residue of a failure and
+// becomes a positive observation, and every way of NOT establishing it -- the listing refused, the
+// entry listed but unreadable -- lands in one indeterminate arm the consumer must handle.
+//
+// RUNG HONESTY (section 4b). On the source-to-.dag acceptance path this is *structurally
+// guaranteed*: a record literal for either type outside this module is refused, so the invalid state
+// has no constructor here. It is NOT structural on the emitted-Rust path, where section 4b records
+// that a `sole_constructor` type's emitted mirror is a public struct with public fields and is
+// forgeable. Next-rung trigger: the emitted mirror carrying the construction confinement, which is
+// that section's open item and not this module's to close. And it is a wall over the consumers that
+// ROUTE THROUGH IT, not over the corpus: the raw operations remain callable, so adoption is the
+// separate obligation recorded in `filesystem_absence_establishment_adoption_standing`.
+// THE WALL ABOVE IS MEASURED RATHER THAN ASSERTED, and it is recorded here because no enrolled
+// witness can hold it: the claim is about what the COMPILER REFUSES, its subject is source text
+// rather than a value, and a hermetic witness that asserted it would be a permanently-green arm
+// over a state it cannot express -- the decoration section 4b calls worse than absent. MEASURED BY
+// EXECUTION: a fixture module importing FilesystemEstablishedAbsence and writing the record literal
+// `FilesystemEstablishedAbsence { directory: "/nowhere", name: "marker.json" }` in a function body,
+// resolved by `claim_batch --source-root dag --source-root src/v2 --source-root <fixture root>
+// --entry <fixture>`, is REFUSED at the literal's own position with `sole_constructor type
+// 'FilesystemEstablishedAbsence' cannot be constructed outside its defining module`. THE POSITIVE
+// CONTROL IS ENROLLED AND IS NOT A SECOND FIXTURE:
+// test.claim.filesystem_absence_establishment_witness_test
+// an_established_absence_names_its_directory_and_its_entry obtains an absence FROM THE MINT,
+// cross-module, and reads its fields -- so the refusal above is the construction being confined and
+// not the type being unusable. WHAT THIS DOES NOT ESTABLISH: the mechanism's general coverage,
+// which is gunbc.guarantee_probe_corpus sole_constructor_cross_module_class and its probes --
+// DESIGN records that family as discovered and declined by the floor, so this measurement is one
+// execution of a wall whose corpus-wide arms nothing currently re-runs. It is the fixture-boundary
+// red section 4b asks for, taken once, not a standing gate.
+
+type FilesystemDirectoryListing sole_constructor {
+  directory: String
+  entries: String
+}
+
+type FilesystemEstablishedAbsence sole_constructor {
+  directory: String
+  name: String
+}
+
+type FilesystemListingObservation
+  = FilesystemDirectoryListed(FilesystemDirectoryListing)
+  | FilesystemDirectoryListingRefused { directory: String, error: String }
+
+fn filesystem_listing_observation(
+  directory: String,
+  success: Bool,
+  entries: String,
+  error: String,
+) -> FilesystemListingObservation {
+  if success {
+    FilesystemDirectoryListed(
+      FilesystemDirectoryListing { directory: directory, entries: entries },
+    )
+  } else {
+    FilesystemDirectoryListingRefused { directory: directory, error: error }
+  }
+}
+
+// A REFUSED LISTING IS NOT AN EMPTY ONE, WHICH IS THE HALF A `Bool` CANNOT HOLD. The refusal arm
+// carries the directory and the host error rather than a name-not-found, so a consumer that widens
+// on it has to write the widening down -- it cannot inherit it from a false.
+type FilesystemEntryPresence
+  = FilesystemEntryAbsent(FilesystemEstablishedAbsence)
+  | FilesystemEntryListed { directory: String, name: String }
+  | FilesystemEntryPresenceIndeterminate { cause: String }
+
+fn filesystem_entry_presence(
+  listing: FilesystemListingObservation,
+  name: String,
+) -> FilesystemEntryPresence {
+  match listing {
+    FilesystemDirectoryListingRefused { directory: d, error: e } =>
+      FilesystemEntryPresenceIndeterminate {
+        cause: join([
+          "the directory ", d, " could not be listed, so the absence of ", name,
+          " is not established -- ", e,
+        ], ""),
+      }
+    FilesystemDirectoryListed(listed) =>
+      if filesystem_listing_names_entry(listing: listed.entries, name: name) {
+        FilesystemEntryListed { directory: listed.directory, name: name }
+      } else {
+        FilesystemEntryAbsent(
+          FilesystemEstablishedAbsence { directory: listed.directory, name: name },
+        )
+      }
+  }
+}
+
+// THE WHOLE OBSERVATION IS ONE FOLD SO THAT NO CALLER HAS TO SEQUENCE IT CORRECTLY. Presence is
+// decided by the listing; the read is consulted only for an entry the listing named, so a read that
+// then fails is unambiguously a fault -- the entry was just observed to exist -- and it lands
+// indeterminate rather than absent.
+//
+// AND THE FOURTH ARM IS THE ONE A THREE-STATE FOLD GOT WRONG. The listing and the read are two
+// observations at two instants, so they can DISAGREE: the directory did not name the entry, and the
+// read of that same entry then succeeded. The first cut returned the established absence and never
+// looked at the read, which discards a positive observation -- bytes were held while the answer said
+// nothing is there -- and that is fail-open at the seam this module exists to close. Found in review
+// 57099 on gunbc#9564, and MEASURED rather than argued: with the absent arm restored to its
+// three-state form -- return the established absence, never consult the read -- the witness
+// a_successful_read_of_an_unlisted_entry_is_not_an_absence goes RED and the other seven stay green,
+// so the arm below is load-bearing for exactly one case and the evidence discriminates it.
+//
+// WHAT WAS NOT DONE, and the reason is the whole point of the module: the review's remedy was to
+// PRIORITIZE THE SUCCESSFUL READ. That would let the read decide the listing's question, which is
+// this file's own conflation turned around -- a read answers "these bytes existed at instant T2" and
+// never "this directory holds this entry", and Read's success channel is exactly the one that cannot
+// separate absent from unreadable. Picking either winner fabricates one consistent world out of two
+// observations that describe different instants, which is the plausible output section 5 forbids.
+// A disagreement is a THIRD FACT with its own remedy -- re-observe the pair atomically, or hold the
+// directory still -- so it gets its own arm rather than being resolved by precedence. It is not
+// folded into the indeterminate arm either: "I could not look" and "I looked twice and got two
+// answers" have different remedies, and collapsing them is the state-space conflation this
+// repository keeps finding.
+//
+// THE ARMS ARE THE ACTIONS: proceed as if nothing is there, consume the bytes, stop because the
+// observation could not be made, or stop because the subject moved while it was being made.
+type FilesystemFileObservation
+  = FilesystemFileAbsent(FilesystemEstablishedAbsence)
+  | FilesystemFileRead { path: String, content: String }
+  | FilesystemFileIndeterminate { cause: String }
+  | FilesystemFileObservationsDisagree { path: String, cause: String }
+
+fn filesystem_file_observation(
+  listing: FilesystemListingObservation,
+  name: String,
+  path: String,
+  read: FilesystemReadOutcome,
+) -> FilesystemFileObservation {
+  match filesystem_entry_presence(listing: listing, name: name) {
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
+      FilesystemFileIndeterminate { cause: join([c, " (at ", path, ")"], "") }
+    FilesystemEntryAbsent(established) =>
+      match read {
+        FilesystemReadRefused { error: _ } => FilesystemFileAbsent(established)
+        FilesystemReadSucceeded { content: _ } =>
+          FilesystemFileObservationsDisagree {
+            path: path,
+            cause: join([
+              filesystem_established_absence_detail(absence: established),
+              ", and a read of ", path,
+              " then succeeded -- the two observations describe different instants and neither is",
+              " discarded, so the subject moved while it was being observed",
+            ], ""),
+          }
+      }
+    FilesystemEntryListed { directory: _, name: _ } =>
+      match read {
+        FilesystemReadRefused { error: e } =>
+          FilesystemFileIndeterminate {
+            cause: join([
+              path, " is listed and could not be read, so it exists and its content is unavailable -- ", e,
+            ], ""),
+          }
+        FilesystemReadSucceeded { content: c } =>
+          FilesystemFileRead { path: path, content: c }
+      }
+  }
+}
+
+// THE ABSENCE ITSELF IS RENDERABLE WITHOUT BEING FORGEABLE. A consumer needs to say what it did not
+// find; reading the two fields off an established absence is exactly that, and it is the reason the
+// carrier holds them rather than being a token.
+fn filesystem_established_absence_detail(absence: FilesystemEstablishedAbsence) -> String {
+  join(["no ", absence.name, " is listed in ", absence.directory], "")
+}
+
+// AND THE SUBJECT IT ESTABLISHED IS THE ONLY PATH IT CAN AUTHORIZE. A consumer that takes an
+// established absence AND a separately supplied target has not been authorized by the token at all:
+// the absence is about `directory + name`, the actuation is about whatever String arrived beside it,
+// and nothing joins them. That is a real defect and it was found in review on gunbc#10026 --
+// `ScmInitMayCreate(_)` discarded the token and wrote to an independent `path`, so an absence
+// established for one subject could coexist with a write to another. Deriving the path HERE, from
+// the carrier's own fields, is what makes consuming the token mean something: there is no second
+// target to disagree with.
+fn filesystem_established_absence_path(absence: FilesystemEstablishedAbsence) -> String {
+  join([absence.directory, "/", absence.name], "")
+}
+
+data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched, on origin/main at the head this row lands against, with the two converted by the change that lands this row already removed (gunbc.roadmap_verification_receipt current_verification_selection_observe and exact_verification_receipt_source_read, and gunbc.devboot.build read_text_file): gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token (read refusal answers Absent, and an empty content does too); gunbc.fleet_converge_plan_cli observe_cap_members_wet (a cap member whose dropin could not be read is DROPPED from the observed list, so the converge plan is computed over a silently narrowed population); v2.workflow.product_receipt_stage run_product_receipt_stage (an unreadable manifest answers ArtifactIdentityAbsent { ProducerReportedNoArtifact }, attributing to the producer a report it never made); tools.merge_admission_walk read_tested_subject and read_floor_receipt (a read refusal answers the Optional's absent arm); gunbc.codex_supervised_turn codex_supervised_turn_generation_observation (GenerationAbsent is concluded from shell.Test.IsFile answering false. THIS ROW IS CLASSIFIED FROM THE PRODUCER RATHER THAN FROM THE CALL SITE, on a caution from the lane that shipped this defect today: a predicate whose job is to answer the presence question would not belong here. extdeps.shell Test.IsFile is `test -f` with its own declared exit table reading `1 => Path is missing or not a regular file`, so ONE exit code carries missing, wrong-kind, and -- since `test -f` is false when the parent directory cannot be searched -- could-not-look. It answers false on an unreadable-but-present path, so it is the same defect with a different producer, and it is the construction gunbc.fabric_cell_acquire retired for exactly this reason); tools.opaque_realization_census declaration_body_standing (a file that could not be read leaves the fold state unchanged, so it is indistinguishable from a file that did not hold the declaration). WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in belt_read_or_empty_scope_note -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."
+
+// WriteCreateNew: CREATE-ONLY IS A DIFFERENT FACT FROM OWNER-ONLY, and this annotation sits here
+// rather than above the operation because only module-item grain is modeled (DESIGN section 4c) --
+// an operation lives inside this service's body, so the rationale for one attaches to the
+// declaration that contains it.
+//
+// WriteOwnerOnly's realization happens to use create_new(true), because a mode set at creation is
+// meaningless on a path that already exists. That is a property of ITS realization, not a contract
+// anyone may depend on: owner-only MODE and create-only EXISTENCE are independent facts, and reusing
+// one to obtain the other is a realization detail standing where a modeled fact belongs (section 3).
+// A caller that wanted create-only and took it from WriteOwnerOnly would also silently get 0600, and
+// would break the day owner-only stopped needing O_EXCL.
+//
+// WHAT IT CLOSES, AND WHY A CHECK COULD NOT. Observing that a path is absent and then writing to it
+// is two operations with a gap: an actor creating the file in the gap makes the write truncate
+// exactly the bytes the observation was taken to protect. No amount of re-observing removes the gap,
+// because the check and the write are still not one act. O_CREAT|O_EXCL makes the EXISTENCE TEST AND
+// THE CREATION the same syscall, so the race has no window rather than a narrow one. Construction
+// over validation (section 5) at a boundary where validation cannot win.
+//
+// THE REFUSAL DOES NOT CLASSIFY ITSELF, ON PURPOSE. `error` carries the host's message verbatim and
+// the operation does NOT report whether the refusal was "already existed" or "permission denied":
+// the channels available here cannot separate them, and deciding it by matching on the error TEXT
+// would be a heuristic standing in for an observation -- the smuggled-confidence shape section 5
+// names. A caller learns that the create did not happen and why the host said so, which is what it
+// needs in order to refuse; it does not learn a classification nothing measured.
+// NEXT-RUNG TRIGGER: a modeled already-exists channel on the file transport, at which point the race
+// and the permission failure become separate arms and this paragraph is deleted.
+service Filesystem {
+
+  operation Write {
+    input { path: String, content: String }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}" }
+  }
+
+  operation WriteOwnerOnly {
+    input { path: String, content: String }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "write_owner_only" }
+  }
+
+  operation WriteCreateNew {
+    input { path: String, content: String }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "write_create_new" }
+  }
+
+  operation Read {
+    input { path: String }
+    output {
+      content: String from "content"
+      success: Bool from "read_success"
+      error: String from "error"
+    }
+    readonly
+    transport file { path: "{path}" }
+  }
+
+  operation Delete {
+    input { path: String }
+    output {
+      success: Bool from "delete_success"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "delete" }
+  }
+
+  operation List {
+    input { path: String }
+    output {
+      entries: String from "entries"
+      success: Bool from "list_success"
+      error: String from "error"
+    }
+    readonly
+    transport file { path: "{path}", verb: "list" }
+  }
+}

@@ -1,0 +1,1294 @@
+module test.claim.scm_repository_envelope_witness
+
+// The repository envelope, executed. What is under test is the layer commit_closure_json_v2 deliberately is not:
+// an empty initialized repository with NO root, several commits over ONE shared node population, and
+// a checked-out selection that may be absent but may never dangle.
+//
+// The identity claims matter most. Commit identity is never stored -- it is the root object's
+// identity, re-derived from structure on load -- so the round-trip claims assert on the derived
+// commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
+
+import std.types { Bool, Int, List, String }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, JsonObject, JsonArray, JsonNull,
+  json_kv, json_array, json_object, json_string, json_int, serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
+
+import v2.std.node {
+  Node, Edge, Named, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
+}
+
+import gunbc.scm.object_store {
+  ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
+  SourceStored, SourceLocatorCollision,
+  SemanticNodeTarget, node_target_locator,
+  empty_store, object_id_eq, store_node, store_object_count,
+  CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
+  store_authored_source,
+}
+import gunbc.scm.commit_closure { table_unresolved_identities }
+import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom, RepositoryCommitRef }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope, RepositoryCommit,
+  RepositoryDecodeOutcome, RepositoryDecoded, RepositoryDecodeRefused,
+  empty_repository, encode_repository, decode_repository,
+  repository_envelope_format_tag, repository_object_identity_rule_tag,
+  RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
+  RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget, RepositoryEncodeTargetIsAuthoredSource,
+  RepositoryEncodeCommitRootIsAuthoredSource,
+  RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
+  RepositoryCommitParentNotInCommits,
+  RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
+  RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
+  RepositoryCommitParentNotPreviouslyAdmitted,
+  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
+  RepositoryIdentityRuleUnrecognized,
+  RepositoryTargetReferenceRefused,
+  RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
+  RepositoryCommitRootNotInObjectTable, RepositoryCommitRootIsAuthoredSource,
+  RepositoryUnexpectedMember, RepositoryMemberContext,
+  RepositoryEnvelopeMembers, RepositoryCommitMembers,
+  encode_repository_checked,
+  RepositoryCommitMint, RepositoryCommitMinted, RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintParentMissing,
+  RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootMissing, mint_repository_commit,
+  commit_at_reference,
+}
+
+// THIS DECLARATION DOES NOT CHANGE WHETHER THESE CLAIMS EXECUTE, AND TWO EARLIER REVISIONS OF THIS
+// ANNOTATION SAID IT DID. Both are retracted here against the source rather than against a rerun.
+//
+// THE FLOOR'S AUTOMATIC ROUTE WAS A COLUMN-ZERO TEXT SCAN (former v1 seed scanner):
+// a line must `starts_with("data ")` AND contain BOTH `LiveTreeDisposition` AND `ReadsLiveTree`.
+// An undeclared module matches nothing, so `reads_live_tree` is false and the module is ROUTED.
+// A module declaring SubstrateInputsOnly also matches nothing -- the second token is absent -- so it
+// is likewise ROUTED. Before this row and after it, the floor's answer for this module is the same.
+// The 37 claims below were executing already.
+//
+// WHERE THE ROW DOES CHANGE SOMETHING: the SELECTION path. `parse_entry_live_tree_disposition` ends
+// `Ok(declared.unwrap_or(true))`, so silence there reads as "reads the live tree" and the module is
+// not selection-eligible; declaring SubstrateInputsOnly is what makes it eligible. That is a real
+// effect on affected-set work, and it is not the effect the earlier revisions claimed.
+//
+// SO THE REASON TO DECLARE IS AMBIGUITY, NOT EXECUTION. Three routes read this one fact and two of
+// them disagree about silence. `cli_run.rs` says so in its own words at the scan -- "ONE FACT, TWO
+// COMPUTATIONS, IN ONE BINARY -- a section 3 defect, recorded here rather than silently carried" --
+// and records that the floor's copy is deleted rather than reconciled, because the two consumers ask
+// different questions. An authored answer removes this module from that disagreement; it does not
+// resolve the disagreement, which is not this module's to resolve.
+//
+// SubstrateInputsOnly IS A TRUE STATEMENT ABOUT THIS MODULE, verified before declaring: the entire
+// import surface is std.types, the json emit/parse grammars, v2.std.node and three gunbc.scm
+// carriers, and nothing here opens a file, shells out, or reads the tree. Had the closure genuinely
+// reached the tree the honest act would have been to leave it undeclared and say so, not to author
+// the value that produces a green number.
+//
+// ONE AUTHORING HAZARD, since this row is now parsed by two scanners: the selection parser REFUSES a
+// second matching row ("declared more than once in one entry"), and the floor scan keys on tokens a
+// prose line could carry. Comments are safe from both -- the selection parser trims then requires the
+// `data` prefix, the floor scan requires column zero -- but a SECOND `data live_tree_disposition` row
+// anywhere in this file is a refusal, not a duplicate.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn scm_env_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn scm_env_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+// Two programs SHARING a subtree. The shared-population claim is meaningless without real sharing.
+fn scm_env_program_one() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [scm_env_named(name: ^shared, target: scm_env_atom(identity: ^SHARED))],
+  )
+}
+
+fn scm_env_program_two() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_env_named(name: ^shared, target: scm_env_atom(identity: ^SHARED)),
+      scm_env_named(name: ^extra, target: scm_env_atom(identity: ^EXTRA)),
+    ],
+  )
+}
+
+type ScmEnvPut { store: ObjectStore, identity: SemanticNodeTarget }
+
+fn scm_env_put(store: ObjectStore, n: Node) -> ScmEnvPut {
+  match store_node(store: store, n: n) {
+    Stored { store: s, node: n } => ScmEnvPut { store: s, identity: node_target_of(reference: n) }
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmEnvPut { store: store, identity: SemanticNodeTarget { locator: i } }
+  }
+}
+
+fn scm_env_ref(ordinal: Int) -> RepositoryCommitRef {
+  RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
+}
+
+fn scm_env_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+}
+
+fn scm_env_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
+    RepositoryCommitMinted { repository: minted, reference: _ } => minted
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
+    RepositoryCommitMintParentMissing { parent: _ } => repo
+    RepositoryCommitMintRootMissing { root: _ } => repo
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
+  }
+}
+
+fn scm_env_two_commit_repository() -> RepositoryEnvelope {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  let first_commit = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: second.store),
+    root: first.identity,
+    message: "first",
+    parent: none,
+  )
+  let second_commit = scm_env_minted_or(
+    repo: first_commit,
+    root: second.identity,
+    message: "second",
+    parent: Present { value: scm_env_ref(ordinal: 0) },
+  )
+  RepositoryEnvelope {
+    store: second_commit.store,
+    commits: second_commit.commits,
+    commit_allocator: second_commit.commit_allocator,
+    checked_out: Present { value: scm_env_ref(ordinal: 1) },
+  }
+}
+
+fn scm_env_reloaded(repo: RepositoryEnvelope) -> RepositoryDecodeOutcome {
+  decode_repository(v: encode_repository(repo: repo))
+}
+
+fn scm_env_refused(outcome: RepositoryDecodeOutcome) -> Bool {
+  match outcome {
+    RepositoryDecodeRefused { cause: _ } => true
+    RepositoryDecoded { envelope: _ } => false
+  }
+}
+
+fn scm_env_commit_count(outcome: RepositoryDecodeOutcome) -> Int {
+  match outcome {
+    RepositoryDecodeRefused { cause: _ } => 0 - 1
+    RepositoryDecoded { envelope: e } => count(e.commits)
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+
+// AN EMPTY REPOSITORY IS A LEGITIMATE STATE, NOT AN ERROR. This is the claim that keeps `init` from
+// having to invent a phantom commit merely because a carrier demands a root.
+test fn scm_env_an_empty_repository_round_trips() -> Bool {
+  match scm_env_reloaded(repo: empty_repository()) {
+    RepositoryDecodeRefused { cause: _ } => false
+    RepositoryDecoded { envelope: e } =>
+      count(e.commits) == 0 &&
+      store_object_count(store: e.store) == 0 &&
+      match e.checked_out { Absent => true, Present { value: _ } => false }
+  }
+}
+
+// THE PHANTOM-COMMIT CONTROL. An empty repository must reload with EXACTLY zero commits: a decoder
+// that materialized an initial commit would satisfy the round trip above while putting an entry in
+// the user's log that they never made.
+test fn scm_env_an_empty_repository_has_no_phantom_commit() -> Bool {
+  scm_env_commit_count(outcome: scm_env_reloaded(repo: empty_repository())) == 0
+}
+
+// CONTROL for the counter: it must be able to report something other than zero.
+test fn scm_env_the_commit_counter_distinguishes_a_populated_repository() -> Bool {
+  scm_env_commit_count(outcome: scm_env_reloaded(repo: scm_env_two_commit_repository())) == 2
+}
+
+// COMMIT IDENTITY SURVIVES RECONSTRUCTION. Nothing stores it -- it is re-derived from structure --
+// so this asserts that re-derivation lands on the same identities IN THE SAME ORDER.
+//
+// The comparison is an ordered signature rather than a pairwise walk, and that is a consequence of
+// the substrate rather than a preference: there is no `zip` and no indexed list access, so folding
+// the roots into one string in order is how order is compared at all. A membership check would have
+// passed for a decoder that reversed the log.
+fn scm_env_root_signature(commits: List<RepositoryCommit>) -> String {
+  fold(commits, init: "", f: fn(acc, c) { concat(acc, concat("|", c.root.locator.digest as String)) })
+}
+
+test fn scm_env_commit_identities_survive_reconstruction() -> Bool {
+  let original = scm_env_two_commit_repository()
+  match scm_env_reloaded(repo: original) {
+    RepositoryDecodeRefused { cause: _ } => false
+    RepositoryDecoded { envelope: e } =>
+      scm_env_root_signature(commits: e.commits) == scm_env_root_signature(commits: original.commits)
+  }
+}
+
+// CONTROL for the signature: it must distinguish ORDER, not merely membership. Reversing the two
+// commits of an otherwise identical repository must change the signature, or the claim above would
+// hold for a decoder that shuffled the log.
+test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
+  let original = scm_env_two_commit_repository()
+  let reversed = RepositoryEnvelope {
+    store: original.store,
+    commits: reverse(original.commits),
+    commit_allocator: original.commit_allocator,
+    checked_out: original.checked_out,
+  }
+  scm_env_root_signature(commits: reversed.commits) != scm_env_root_signature(commits: original.commits)
+}
+
+// ONE SHARED NODE POPULATION, MEASURED ON THE WIRE -- AND THE FIRST VERSION OF THIS CLAIM COULD NOT
+// FAIL.
+//
+// It counted objects in the DECODED store and asserted 4. That observation cannot distinguish one
+// shared table of 4 entries from two complete per-commit closures of 6 entries, because
+// decode_object_table routes every entry through insert_from_structure and insert_derived answers
+// the idempotent arm for a record already held. Both encodings decode to 4. The claim measured the
+// deduplicator, not the encoding it names.
+//
+// This is the THIRD time this stack has shipped an observation structurally incapable of producing
+// its own negative, and the second time the identical defect was fixed one layer down and then
+// reintroduced one layer up -- commit_closure_json_v2's sharing claim had exactly this shape and exactly this
+// repair. Recorded here rather than silently corrected, because the pattern is the finding: a claim
+// whose subject is an encoding must observe the ENCODED form, and deduplicating consumers make any
+// downstream count agree with itself.
+fn scm_env_encoded_object_count(v: JsonValue) -> Int {
+  scm_env_count_named_array(members: scm_env_members(v: v), key: "objects")
+}
+
+fn scm_env_count_named_array(members: List<JsonKeyValue>, key: String) -> Int {
+  fold(members, init: 0, f: fn(acc, m) { scm_env_array_len_if_key(acc: acc, m: m, key: key) })
+}
+
+fn scm_env_array_len_if_key(acc: Int, m: JsonKeyValue, key: String) -> Int {
+  if m.key == key {
+    match m.value {
+      JsonArray { elements: es } => count(es)
+      _ => acc
+    }
+  } else {
+    acc
+  }
+}
+
+test fn scm_env_two_commits_share_one_object_population() -> Bool {
+  scm_env_encoded_object_count(v: encode_repository(repo: scm_env_two_commit_repository())) == 4
+}
+
+// CONTROL: the encoded counter must report something other than 4, or the claim above is satisfied
+// by a function that always answers 4. A one-commit repository over program_one has two objects --
+// the shared atom and its root.
+test fn scm_env_the_encoded_counter_distinguishes_a_smaller_repository() -> Bool {
+  let only = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  scm_env_encoded_object_count(
+    v: encode_repository(
+      repo: scm_env_minted_or(
+        repo: scm_env_repository_with_store(store: only.store),
+        root: only.identity,
+        message: "only",
+        parent: none,
+      )
+    )
+  ) == 2
+}
+
+// ------------------------------------------------------------------------------------------------
+// Refusals. Each mutates ONE thing about an otherwise-valid document.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_members(v: JsonValue) -> List<JsonKeyValue> {
+  match v { JsonObject { members: ms } => ms, _ => [] }
+}
+
+fn scm_env_key_differs(m: JsonKeyValue, key: String) -> Bool {
+  m.key != key
+}
+
+fn scm_env_drop_key(members: List<JsonKeyValue>, key: String) -> List<JsonKeyValue> {
+  filter(members, m => scm_env_key_differs(m: m, key: key))
+}
+
+fn scm_env_with(v: JsonValue, key: String, value: JsonValue) -> JsonValue {
+  json_object(
+    members: concat(scm_env_drop_key(members: scm_env_members(v: v), key: key), [json_kv(key: key, value: value)])
+  )
+}
+
+// THE FORMAT AND IDENTITY-RULE TAGS REFUSE INDEPENDENTLY. They are different axes: a document can be
+// this schema under a different identity rule, which would decode cleanly and reconstruct DIFFERENT
+// commit identities. Two separate claims, because one check passing must not stand in for the other.
+test fn scm_env_an_unrecognized_format_refuses() -> Bool {
+  scm_env_refused(
+    outcome: decode_repository(
+      v: scm_env_with(
+        v: encode_repository(repo: scm_env_two_commit_repository()),
+        key: "format",
+        value: json_string(s: "gunbc-scm-repository-v99")
+      )
+    )
+  )
+}
+
+test fn scm_env_an_unrecognized_identity_rule_refuses() -> Bool {
+  scm_env_refused(
+    outcome: decode_repository(
+      v: scm_env_with(
+        v: encode_repository(repo: scm_env_two_commit_repository()),
+        key: "identity_rule",
+        value: json_string(s: "sha256-structural-v1")
+      )
+    )
+  )
+}
+
+// A DANGLING CHECKOUT REFUSES rather than degrading to "nothing checked out". Those are different
+// states and the second silently discards the user's position.
+test fn scm_env_a_dangling_checked_out_reference_refuses() -> Bool {
+  scm_env_refused(
+    outcome: decode_repository(
+      v: scm_env_with(
+        v: encode_repository(repo: scm_env_two_commit_repository()),
+        key: "checked_out",
+        value: json_int(n: 9999)
+      )
+    )
+  )
+}
+
+// A COMMIT ROOT NAMING NO OBJECT REFUSES.
+test fn scm_env_a_dangling_commit_root_refuses() -> Bool {
+  scm_env_refused(
+    outcome: decode_repository(
+      v: scm_env_with(
+        v: encode_repository(repo: scm_env_two_commit_repository()),
+        key: "commits",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "id", value: json_int(n: 0)),
+                json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "4242"))])),
+                json_kv(key: "message", value: json_string(s: "dangling")),
+                json_kv(key: "ancestry", value: JsonNull),
+              ]
+            )
+          ]
+        )
+      )
+    )
+  )
+}
+
+// CONTROL FOR EVERY REFUSAL ABOVE. An absent checkout is VALID -- JsonNull, not a dangling
+// reference -- so this proves the refusals measure malformed-ness and not merely "was edited".
+test fn scm_env_an_absent_checkout_is_valid_not_a_refusal() -> Bool {
+  match decode_repository(
+    v: scm_env_with(
+      v: encode_repository(repo: scm_env_two_commit_repository()),
+      key: "checked_out",
+      value: JsonNull
+    )
+  ) {
+    RepositoryDecodeRefused { cause: _ } => false
+    RepositoryDecoded { envelope: e } =>
+      count(e.commits) == 2 && match e.checked_out { Absent => true, Present { value: _ } => false }
+  }
+}
+
+// The durable bytes, not just the value tree.
+test fn scm_env_survives_serialization_to_text_and_back() -> Bool {
+  let text = serialize_json(v: encode_repository(repo: scm_env_two_commit_repository()))
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: reparsed } => scm_env_commit_count(outcome: decode_repository(v: reparsed)) == 2
+  }
+}
+
+// RE-ENCODING IS STABLE: encode(decode(encode(x))) is byte-identical to encode(x).
+//
+// This is not a tautology, and what it actually establishes is that DECODE PRESERVES ORDER. Every
+// image-local reference is a position in the objects array, so if decode rebuilt the store in any
+// other order the re-encoded positions would shift and every reference would silently point at a
+// different object. The bytes are the observable that catches it.
+test fn scm_env_re_encoding_is_stable() -> Bool {
+  let once = encode_repository(repo: scm_env_two_commit_repository())
+  match decode_repository(v: once) {
+    RepositoryDecodeRefused { cause: _ } => false
+    RepositoryDecoded { envelope: e } => serialize_json(v: encode_repository(repo: e)) == serialize_json(v: once)
+  }
+}
+
+// CONTROL for the claim above: byte comparison must be able to say no. Two repositories differing
+// only in a commit MESSAGE -- a log fact that participates in no identity -- must still serialize
+// differently, or the stability claim would hold for a comparison that ignored content.
+fn scm_env_relabel_commit_json(c: JsonValue) -> JsonValue {
+  scm_env_with(v: c, key: "message", value: json_string(s: "changed"))
+}
+
+test fn scm_env_the_byte_comparison_distinguishes_a_message_change() -> Bool {
+  let original = scm_env_two_commit_repository()
+  let encoded = encode_repository(repo: original)
+  let relabelled = scm_env_commit_members_mapped(v: encoded, f: c => scm_env_relabel_commit_json(c: c))
+  serialize_json(v: relabelled) != serialize_json(v: encoded)
+}
+
+// A CHECKOUT NAMING A VALID OBJECT THAT IS NOT A COMMIT REFUSES.
+//
+// This is the claim that pins the construction change, and it is worth stating what it caught: the
+// first version resolved checked_out against the OBJECT TABLE, so "0" -- a perfectly real object,
+// the first entry in the table -- was accepted as a checkout even though no commit has it as a root.
+// The repository loaded cleanly and positioned the user at an interior node. Resolving against the
+// COMMIT LIST instead means that document cannot be built, and this claim goes red if anyone
+// resolves it against the table again.
+//
+// The two-commit fixture has FOUR objects and TWO commits, so "3" is a valid object position and an
+// out-of-range commit reference -- which is exactly the discriminating input.
+test fn scm_env_a_checkout_naming_a_non_commit_object_refuses() -> Bool {
+  scm_env_refused(
+    outcome: decode_repository(
+      v: scm_env_with(
+        v: encode_repository(repo: scm_env_two_commit_repository()),
+        key: "checked_out",
+        value: json_int(n: 3)
+      )
+    )
+  )
+}
+
+// CONTROL: a valid commit reference must still load, or the claim above would hold for a decoder
+// that refused every checkout. "1" is the second commit.
+//
+// ASSERTED AS THE REFERENCE THE DOCUMENT STATED, not as a resolved root. Resolving and comparing
+// roots is exactly the comparison that could not distinguish two commits sharing one -- the defect
+// review 56230 found -- so a root-level assertion here would pass on a decoder that had lost which
+// row was selected.
+test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
+  match decode_repository(
+    v: scm_env_with(
+      v: encode_repository(repo: scm_env_two_commit_repository()),
+      key: "checked_out",
+      value: json_int(n: 1)
+    )
+  ) {
+    RepositoryDecodeRefused { cause: _ } => false
+    RepositoryDecoded { envelope: e } =>
+      match e.checked_out {
+        Absent => false
+        Present { value: reference } => reference == scm_env_ref(ordinal: 1)
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE CHECKED ENCODER, one claim per cause for every cause but one, WHICH IS NAMED BELOW. The header
+// used to open by asserting one-claim-per-cause outright and then retract it two lines later; the
+// heading now carries the exception rather than standing false above its own correction.
+//
+// The roster is per cause rather than one claim that "it refuses" because the causes have different
+// remedies -- an incomplete object table, a table target occupied by a file, a commit naming a
+// missing object, a commit root occupied by a file, a checkout naming a non-commit -- so a single
+// boolean would let any of them regress silently while another kept the claim green.
+//
+// THE ONE CAUSE WITHOUT A CLAIM, DECLARED RATHER THAN LEFT TO INFERENCE.
+// RepositoryEncodeCommitRootIsAuthoredSource has NO claim, because reaching it needs a store where an
+// honestly minted SemanticNodeObjectRef's locator holds a file -- a 64-bit digest collision. No
+// fixture can build that without a chosen-locator forge, and exporting one to redden this arm would
+// weaken the construction authority the arm exists to defend. It is declared in the module as
+// mitigatable-with-unauthorable-RED; this header says so too, so a reader counting claims against
+// causes finds the gap named rather than discovering it.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
+  match outcome {
+    RepositoryEncoded { value: _ } => "encoded"
+    RepositoryEncodeRefused { cause: cause } =>
+      match cause {
+        RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
+        RepositoryEncodeTargetIsAuthoredSource { target: _ } => "target_is_authored_source"
+        RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => "commit_root_is_authored_source"
+        RepositoryCommitRootNotInStore { root: _ } => "commit_root"
+        RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
+        RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
+        RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
+        RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
+      }
+  }
+}
+
+// A commit whose root is not in the store at all.
+// A COMMIT WHOSE ROOT THE STORE DOES NOT HOLD, BUILT BY SWAPPING THE STORE RATHER THAN THE DOCUMENT.
+//
+// It used to be built by rewriting the encoded root to an uncontained digest and decoding that back.
+// That route is closed: decode now RESOLVES a commit root against the object table and refuses when
+// the table does not carry it, so the rewritten document no longer produces a repository at all --
+// it produces a refusal, which is asserted on its own below.
+//
+// The state is still reachable, and this is what reaches it. A commit is minted against a store that
+// DOES hold its root, so the reference is honestly branded; the envelope is then rebuilt around a
+// different store that does not hold it. A SemanticNodeObjectRef says its object was a node in SOME
+// store, never in THIS one, so this is exactly the residual the brand leaves open and exactly what
+// the encode-side check is for.
+fn scm_env_absent_root_repository() -> RepositoryEnvelope {
+  let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let minted = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: orphan.store),
+    root: orphan.identity,
+    message: "dangling",
+    parent: none,
+  )
+  RepositoryEnvelope {
+    store: held.store,
+    commits: minted.commits,
+    commit_allocator: minted.commit_allocator,
+    checked_out: none,
+  }
+}
+
+// THE DOCUMENT ROUTE, NOW A DECODE REFUSAL AND CARRYING ITS OWN CAUSE. An envelope whose commit root
+// names an object the table does not carry is refused when it is read, not admitted and noticed at
+// the next write -- and "the table does not carry it" is a different cause, with a different remedy,
+// from "the table carries a FILE there".
+fn scm_env_rewritten_root_document() -> JsonValue {
+  let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let valid = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: held.store),
+    root: held.identity,
+    message: "dangling",
+    parent: none,
+  )
+  scm_env_commit_members_mapped(
+    v: encode_repository(repo: valid),
+    f: c => scm_env_with(
+      v: c,
+      key: "root",
+      value: json_object(members: [
+        json_kv(
+          key: "uncontained",
+          value: json_string(s: node_target_locator(target: orphan.identity).digest as String),
+        ),
+      ]),
+    ),
+  )
+}
+
+test fn scm_env_a_commit_root_absent_from_the_object_table_refuses_to_decode() -> Bool {
+  scm_env_decode_cause_tag(outcome: decode_repository(v: scm_env_rewritten_root_document()))
+    == "commit_root_absent"
+}
+
+// CONTROL, one fact apart: the same document with its root left alone decodes.
+test fn scm_env_the_same_document_with_its_own_root_decodes() -> Bool {
+  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let valid = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: held.store),
+    root: held.identity,
+    message: "dangling",
+    parent: none,
+  )
+  scm_env_decode_cause_tag(outcome: decode_repository(v: encode_repository(repo: valid))) == "decoded"
+}
+
+// A checkout naming an object that IS in the store but is NOT any commit's root.
+fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  let valid = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: second.store),
+    root: first.identity,
+    message: "first",
+    parent: none,
+  )
+  RepositoryEnvelope {
+    store: second.store,
+    commits: valid.commits,
+    commit_allocator: MintedIdAllocator { next_ordinal: 2 },
+    checked_out: Present { value: scm_env_ref(ordinal: 1) },
+  }
+}
+
+// AN UNCONTAINED TARGET REFUSES TO ENCODE, AND THE REFUSAL NAMES IT.
+//
+// This claim exists because the arm it drives had no witness at all: the encode-cause helper
+// enumerated it, and every test asserted one of the OTHER two tags. The arm was reachable -- a
+// grafted store whose root's children were never copied produces it -- and simply unoccupied, so
+// changing its payload from a rendered String to an ObjectId would have compiled green with nothing
+// establishing that the identity survives.
+//
+// So the tag is not the whole assertion. It also checks the CARRIED target against the store's own
+// uncontained population, which is the property the type change was for: an identity left as text is
+// one nobody can resolve back, and a tag-only claim could not tell the two apart.
+test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
+  let full = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let grafted = match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.identity),
+  ) {
+    Copied { store: s, reference: _ } => s
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+  let repo = RepositoryEnvelope {
+    store: grafted,
+    commits: scm_env_minted_or(
+      repo: scm_env_repository_with_store(store: full.store),
+      root: full.identity,
+      message: "grafted",
+      parent: none,
+    ).commits,
+    commit_allocator: MintedIdAllocator { next_ordinal: 1 },
+    checked_out: none,
+  }
+  let outcome = encode_repository_checked(repo: repo)
+  (scm_env_encode_cause_tag(outcome: outcome) == "uncontained_target")
+    && scm_env_named_target_is_uncontained(outcome: outcome, store: grafted)
+}
+
+fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: ObjectStore) -> Bool {
+  match outcome {
+    RepositoryEncoded { value: _ } => false
+    RepositoryEncodeRefused { cause: c } =>
+      match c {
+        RepositoryEncodeUncontainedTarget { target: t } =>
+          fold(table_unresolved_identities(store: store), init: false, f: fn(acc, id) {
+            acc || object_id_eq(left: id, right: t)
+          })
+        RepositoryEncodeTargetIsAuthoredSource { target: _ } => false
+        RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => false
+        RepositoryCommitRootNotInStore { root: _ } => false
+        RepositoryCheckoutNotInCommits { selected: _ } => false
+        RepositoryCommitParentNotInCommits { parent: _ } => false
+        RepositoryCommitReferenceDuplicated { reference: _ } => false
+        RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false
+      }
+  }
+}
+
+test fn scm_env_a_commit_root_absent_from_the_store_refuses_to_encode() -> Bool {
+  scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: scm_env_absent_root_repository())) == "commit_root"
+}
+
+test fn scm_env_a_checkout_naming_a_non_commit_refuses_to_encode() -> Bool {
+  scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: scm_env_non_commit_checkout_repository())) == "checked_out"
+}
+
+// THE POSITIVE CONTROL, and it asserts the encoded VALUE rather than only the arm: an encoder that
+// accepted the right repositories while emitting something else would satisfy an arm-only claim.
+test fn scm_env_a_complete_repository_encodes() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncoded { value: v } => serialize_json(v: v) == serialize_json(v: encode_repository(repo: repo))
+    RepositoryEncodeRefused { cause: _ } => false
+  }
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CLOSED MEMBER SET AT THE ENVELOPE LAYER. Same rule, this layer's vocabulary.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_wire_of(repo: RepositoryEnvelope) -> List<JsonKeyValue> {
+  scm_env_members(v: encode_repository(repo: repo))
+}
+
+fn scm_env_decode_members(members: List<JsonKeyValue>) -> RepositoryDecodeOutcome {
+  decode_repository(v: json_object(members: members))
+}
+
+// The claims below assert the CAUSE, not merely that something refused: a document that refused for
+// an unrelated reason would satisfy a bare refusal claim and prove nothing about the member set.
+fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
+  match outcome {
+    RepositoryDecoded { envelope: _ } => "decoded"
+    RepositoryDecodeRefused { cause: cause } =>
+      match cause {
+        RepositoryDecodeClosureDocRefusal { cause: _ } => "closure_document"
+        RepositoryMemberReadRefused { cause: _ } => "member_read"
+        RepositoryFormatUnrecognized { found: _ } => "format"
+        RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
+        RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
+        RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
+        RepositoryCommitRootIsAuthoredSource { root: _ } => "commit_root_source"
+        RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
+        RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => "commit_duplicate"
+        RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => "commit_parent"
+        RepositoryDecodedCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
+        RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
+        RepositoryTargetReferenceRefused { cause: _ } => "target_reference"
+      }
+  }
+}
+
+// An extra member is added to the ENCODER'S OWN OUTPUT, so the document is otherwise exactly what
+// this decoder emits -- the refusal can only be the extra member, not some unrelated defect in a
+// hand-authored envelope.
+test fn scm_env_an_unknown_envelope_member_refuses() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        [json_kv(key: "future_field", value: json_string(s: "x"))]
+      )
+    )
+  ) == "unexpected_member"
+}
+
+// THE DENOMINATOR CONTROL. The same wire without the extra member must load, or the claim above is
+// satisfied by a decoder that refuses its own output.
+test fn scm_env_the_unmodified_wire_still_loads() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(members: scm_env_wire_of(repo: scm_env_two_commit_repository()))
+  ) == "decoded"
+}
+
+fn scm_env_commit_with_extra(m: JsonKeyValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } =>
+        json_kv(key: "commits", value: json_array(elements: map(es, e => scm_env_widen_commit(v: e))))
+      _ => m
+    }
+  } else {
+    m
+  }
+}
+
+fn scm_env_widen_commit(v: JsonValue) -> JsonValue {
+  match v {
+    JsonObject { members: ms } =>
+      json_object(members: concat(ms, [json_kv(key: "author", value: json_string(s: "unmodeled"))]))
+    _ => v
+  }
+}
+
+test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: map(
+        scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        m => scm_env_commit_with_extra(m: m)
+      )
+    )
+  ) == "unexpected_member"
+}
+
+// THE MISATTRIBUTION THIS CLAIM EXISTS FOR, and it went uncovered until the member-read refusal got
+// its own authority. Dropping the envelope's OWN identity_rule member refused as
+// RepositoryDecodeClosureDocRefusal -- reported to an operator as "the closure document is
+// malformed" -- for a document whose closure was never reached, because the shared member reader
+// was homed in the closure-document module and carried that module's vocabulary. Nothing asserted
+// was false in either half; the arrow between them was invented, which is why review reads past it.
+//
+// The claim is written against the tag rather than the arm so it stays red for the right reason: a
+// decoder that refused for some unrelated cause reports that cause's own tag, not this one.
+test fn scm_env_a_missing_envelope_member_is_not_blamed_on_the_closure_document() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: scm_env_drop_key(
+        members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        key: "identity_rule"
+      )
+    )
+  ) == "member_read"
+}
+
+// THE SAME BORROWING, ONE CONCEPT OVER. The repository envelope's own format tag was refused as
+// ClosureDocFormatUnrecognized, so a repository written by a FUTURE VERSION OF THIS TOOL reported
+// that the closure document was in an unrecognized format. That is the misattribution above with a
+// worse blast radius: unsupported-protocol is the standing that tells an operator to upgrade, and
+// pointing it at the wrong document points the upgrade at the wrong thing.
+test fn scm_env_an_unrecognized_repository_format_is_the_repositorys_own_refusal() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_drop_key(
+          members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+          key: "format"
+        ),
+        [json_kv(key: "format", value: json_string(s: "gunbc.repository.v2"))]
+      )
+    )
+  ) == "format"
+}
+
+// A COMMIT ROOT NAMING NO POSITION IS THE REPOSITORY'S OWN REFUSAL, and this is the third of the
+// three claims that hold the owners apart. The same target-reference syntax is decoded by an edge
+// inside an object record, by a closure document's root, and by a commit root here -- and until the
+// resolution moved out of the shared decoder, all three reported ObjectTableEdgeTargetUnresolved. The
+// repository hid that by translating it back with an adapter, which worked only because it happened
+// to make exactly one such call and would have answered "this repository does not hold that commit
+// root" for any genuine edge failure that ever reached it.
+//
+// The adapter is deleted, so this claim is what establishes the repository still names its own cause
+// -- and it is asserted at the CAUSE, because a refusal-only claim is satisfied by any of the three.
+test fn scm_env_a_commit_root_naming_no_position_is_the_repositorys_own_refusal() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_drop_key(
+          members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+          key: "commits"
+        ),
+        [
+          json_kv(
+            key: "commits",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(key: "id", value: json_int(n: 0)),
+                    json_kv(
+                      key: "root",
+                      value: json_object(members: [json_kv(key: "at", value: json_string(s: "9999"))])
+                    ),
+                    json_kv(key: "message", value: json_string(s: "orphaned")),
+                    json_kv(key: "ancestry", value: JsonNull),
+                  ]
+                )
+              ]
+            )
+          )
+        ]
+      )
+    )
+  ) == "commit_root"
+}
+
+// THE SHARED-SYNTAX CONTROL. A commit root that is malformed as a REFERENCE -- neither arm present --
+// is not the repository's business and must not be reported as an unresolved commit root. This is the
+// claim that keeps the arm above honest: without it, routing every target failure to "commit_root"
+// would satisfy the claim above while erasing the distinction the split exists for.
+test fn scm_env_a_commit_root_with_no_arms_is_a_target_reference_refusal() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_drop_key(
+          members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+          key: "commits"
+        ),
+        [
+          json_kv(
+            key: "commits",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(key: "id", value: json_int(n: 0)),
+                    json_kv(key: "root", value: json_object(members: [])),
+                    json_kv(key: "message", value: json_string(s: "armless")),
+                    json_kv(key: "ancestry", value: JsonNull),
+                  ]
+                )
+              ]
+            )
+          )
+        ]
+      )
+    )
+  ) == "target_reference"
+}
+
+// ------------------------------------------------------------------------------------------------
+// Ancestry on the wire
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_commit_ancestry_at(v: JsonValue, reference: RepositoryCommitRef) -> CommitAncestry? {
+  match decode_repository(v: v) {
+    RepositoryDecodeRefused { cause: _ } => none
+    RepositoryDecoded { envelope: e } =>
+      match commit_at_reference(commits: e.commits, reference: reference) {
+        Absent => none
+        Present { value: c } => Present { value: c.ancestry }
+      }
+  }
+}
+
+// THE CLAIM THE WIDENING EXISTS FOR: a parent stated by the writer is the parent recovered by the
+// reader, at the identity grain rather than merely "some ancestry survived". A codec that dropped the
+// member and rebuilt every commit as a root would still round-trip a well-formed repository -- which
+// is exactly the silent reinterpretation this asserts against.
+test fn scm_env_a_stated_parent_survives_the_round_trip() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  let encoded = encode_repository(repo: repo)
+  match scm_env_commit_ancestry_at(v: encoded, reference: scm_env_ref(ordinal: 1)) {
+    Absent => false
+    Present { value: ancestry } =>
+      match ancestry {
+        RootCommit => false
+        DescendsFrom { parent: parent } => parent == scm_env_ref(ordinal: 0)
+      }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE CLAIM ABOVE, and it is not decoration: without it, a codec that
+// answered DescendsFrom for EVERY commit would satisfy the assertion above while destroying the
+// distinction the coproduct exists to carry. The first commit must come back a root.
+test fn scm_env_a_root_commit_survives_as_a_root() -> Bool {
+  match scm_env_commit_ancestry_at(
+    v: encode_repository(repo: scm_env_two_commit_repository()),
+    reference: scm_env_ref(ordinal: 0),
+  ) {
+    Absent => false
+    Present { value: ancestry } =>
+      match ancestry {
+        RootCommit => true
+        DescendsFrom { parent: _ } => false
+      }
+  }
+}
+
+// A COMMIT CARRYING NO `ancestry` MEMBER REFUSES RATHER THAN READING AS A ROOT. This is the arm a
+// default would have swallowed, and it is the reason the member is required: a document written
+// before the member existed must not load as a history whose every commit begins it.
+test fn scm_env_a_commit_without_ancestry_refuses() -> Bool {
+  match decode_repository(v: scm_env_commit_without_ancestry()) {
+    RepositoryDecoded { envelope: _ } => false
+    RepositoryDecodeRefused { cause: _ } => true
+  }
+}
+
+// A DANGLING PARENT REFUSES RATHER THAN DEGRADING TO A ROOT COMMIT -- the wire half of the
+// structural-root claim in gunbc.scm.ancestry.
+test fn scm_env_a_dangling_parent_reference_refuses() -> Bool {
+  match decode_repository(v: scm_env_commit_with_parent_reference(reference: 7)) {
+    RepositoryDecoded { envelope: _ } => false
+    RepositoryDecodeRefused { cause: c } =>
+      match c {
+        RepositoryCommitParentNotPreviouslyAdmitted { parent: p } => p == scm_env_ref(ordinal: 7)
+        _ => false
+      }
+  }
+}
+
+// A forward edge has no construction order and is refused at the external boundary. This one-pass
+// rule is what makes cycles unwritable internally and cheap to reject on decoded bytes.
+test fn scm_env_a_forward_parent_reference_refuses() -> Bool {
+  scm_env_decode_cause_tag(outcome: decode_repository(v: scm_env_forward_reference_document()))
+    == "commit_parent"
+}
+
+// Three fixtures, each rewriting the `ancestry` member of every commit in an encoded document. They
+// are separate small functions rather than one higher-order mapper because only the forward-reference
+// case needs the index at all, and threading an index through the other two would be machinery in
+// service of a generality nothing here asks for.
+fn scm_env_commit_members_mapped(v: JsonValue, f: fn(JsonValue) -> JsonValue) -> JsonValue {
+  json_object(members: map(scm_env_members(v: v), m => scm_env_commits_member_mapped(m: m, f: f)))
+}
+
+fn scm_env_commits_member_mapped(m: JsonKeyValue, f: fn(JsonValue) -> JsonValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } => json_kv(key: "commits", value: json_array(elements: map(es, e => f(e))))
+      _ => m
+    }
+  } else {
+    m
+  }
+}
+
+fn scm_env_commit_without_ancestry() -> JsonValue {
+  scm_env_commit_members_mapped(
+    v: encode_repository(repo: scm_env_two_commit_repository()),
+    f: c => json_object(members: scm_env_drop_key(members: scm_env_members(v: c), key: "ancestry"))
+  )
+}
+
+fn scm_env_commit_with_parent_reference(reference: Int) -> JsonValue {
+  scm_env_commit_members_mapped(
+    v: encode_repository(repo: scm_env_two_commit_repository()),
+    f: c => scm_env_with(v: c, key: "ancestry", value: json_int(n: reference))
+  )
+}
+
+type ScmEnvForwardAcc {
+  index: Int
+  out: List<JsonValue>
+}
+
+// Commit 0 names commit 1 as its parent and commit 1 is a root -- the reverse of the storage order
+// the encoder produces, which is the whole point: the document is legal, and a single-pass decoder
+// that resolved parents as it read them would refuse it, imposing a storage-order rule on a relation
+// that has none.
+fn scm_env_forward_reference_document() -> JsonValue {
+  json_object(
+    members: map(
+      scm_env_members(v: encode_repository(repo: scm_env_two_commit_repository())),
+      m => scm_env_forward_member(m: m)
+    )
+  )
+}
+
+fn scm_env_forward_member(m: JsonKeyValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } =>
+        json_kv(
+          key: "commits",
+          value: json_array(
+            elements: match fold(
+              es,
+              init: ScmEnvForwardAcc { index: 0, out: [] },
+              f: fn(acc, e) {
+                ScmEnvForwardAcc {
+                  index: acc.index + 1,
+                  out: concat([scm_env_forward_commit(c: e, index: acc.index)], acc.out),
+                }
+              }
+            ) {
+              ScmEnvForwardAcc { index: _, out: out } => reverse(out)
+            }
+          )
+        )
+      _ => m
+    }
+  } else {
+    m
+  }
+}
+
+fn scm_env_forward_commit(c: JsonValue, index: Int) -> JsonValue {
+  if index == 0 {
+    scm_env_with(v: c, key: "ancestry", value: json_int(n: 1))
+  } else {
+    scm_env_with(v: c, key: "ancestry", value: JsonNull)
+  }
+}
+
+// The internal constructor cannot author a dangling or forward parent: it accepts only a key already
+// held by the repository. That same construction order makes an internal cycle have no spelling.
+test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Bool {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let base = RepositoryEnvelope {
+    store: first.store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+  match mint_repository_commit(
+    repository: base,
+    root: first.identity,
+    message: "child",
+    parent: Present { value: scm_env_ref(ordinal: 7) },
+  ) {
+    RepositoryCommitMintParentMissing { parent: p } => p == scm_env_ref(ordinal: 7)
+    RepositoryCommitMinted { repository: _, reference: _ } => false
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+    RepositoryCommitMintRootMissing { root: _ } => false
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+  }
+}
+
+fn scm_env_cycle_document() -> JsonValue {
+  json_object(members: map(
+    scm_env_members(v: encode_repository(repo: scm_env_two_commit_repository())),
+    m => scm_env_cycle_member(m: m),
+  ))
+}
+
+fn scm_env_cycle_member(m: JsonKeyValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } => json_kv(
+        key: "commits",
+        value: json_array(elements: match fold(
+          es,
+          init: ScmEnvForwardAcc { index: 0, out: [] },
+          f: fn(acc, e) { ScmEnvForwardAcc {
+            index: acc.index + 1,
+            out: concat([
+              scm_env_with(v: e, key: "ancestry", value: json_int(n: if acc.index == 0 { 1 } else { 0 }))
+            ], acc.out),
+          } },
+        ) {
+          ScmEnvForwardAcc { index: _, out: out } => reverse(out)
+        }),
+      )
+      _ => m
+    }
+  } else { m }
+}
+
+// External bytes can still assert a cycle no sanctioned constructor produced. The permanent decode
+// admission wall rejects it at the first parent whose key has not already been admitted.
+test fn scm_env_a_cyclic_document_refuses_at_the_external_boundary() -> Bool {
+  scm_env_decode_cause_tag(outcome: decode_repository(v: scm_env_cycle_document())) == "commit_parent"
+}
+
+fn scm_env_all_commit_ids(v: JsonValue, ordinal: Int) -> JsonValue {
+  scm_env_commit_members_mapped(
+    v: v,
+    f: c => scm_env_with(v: c, key: "id", value: json_int(n: ordinal)),
+  )
+}
+
+test fn scm_env_duplicate_commit_keys_refuse_on_decode() -> Bool {
+  scm_env_decode_cause_tag(outcome: decode_repository(v: scm_env_all_commit_ids(
+    v: encode_repository(repo: scm_env_two_commit_repository()),
+    ordinal: 0,
+  ))) == "commit_duplicate"
+}
+
+test fn scm_env_a_commit_key_outside_the_persisted_watermark_refuses() -> Bool {
+  scm_env_decode_cause_tag(outcome: decode_repository(v: scm_env_all_commit_ids(
+    v: encode_repository(repo: scm_env_two_commit_repository()),
+    ordinal: 9,
+  ))) == "commit_outside_allocator"
+}
+
+// Deleting the highest row never rewinds the allocator. Reconstructing max+1 would reuse key 1
+// here and silently retarget a reference retained outside this value; threading the watermark mints 2.
+test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  let first_only = RepositoryEnvelope {
+    store: repo.store,
+    commits: filter(repo.commits, c => c.reference == scm_env_ref(ordinal: 0)),
+    commit_allocator: repo.commit_allocator,
+    checked_out: none,
+  }
+  let second_root = scm_env_put(store: first_only.store, n: scm_env_program_two()).identity
+  match mint_repository_commit(
+    repository: first_only,
+    root: second_root,
+    message: "after deletion",
+    parent: Present { value: scm_env_ref(ordinal: 0) },
+  ) {
+    RepositoryCommitMinted { repository: _, reference: r } => r == scm_env_ref(ordinal: 2)
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+    RepositoryCommitMintParentMissing { parent: _ } => false
+    RepositoryCommitMintRootMissing { root: _ } => false
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+  }
+}
+
+// Reordering rows cannot retarget their intrinsic identities. It can make a child appear before its
+// parent, which refuses explicitly instead of resolving the same ordinal to a different row.
+test fn scm_env_reordering_does_not_silently_retarget_a_parent() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  let reordered = RepositoryEnvelope {
+    store: repo.store,
+    commits: reverse(repo.commits),
+    commit_allocator: repo.commit_allocator,
+    checked_out: repo.checked_out,
+  }
+  scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: reordered)) == "commit_parent"
+}
+
+test fn scm_env_reordering_rows_does_not_change_which_commit_a_key_names() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  let reordered = reverse(repo.commits)
+  match commit_at_reference(commits: reordered, reference: scm_env_ref(ordinal: 0)) {
+    Absent => false
+    Present { value: first } =>
+      match commit_at_reference(commits: reordered, reference: scm_env_ref(ordinal: 1)) {
+        Absent => false
+        Present { value: second } => first.message == "first" && second.message == "second"
+      }
+  }
+}
+
+// THE ROOT ADMISSION DISCRIMINATES ON KIND, NOT ON PRESENCE, and this pair is what establishes that
+// rather than the signature. The subject store holds exactly one object -- an authored source file --
+// so its locator is PRESENT: the `RootMissing` arm is not reachable here, and a kind-agnostic
+// `store_contains` returns true and mints a commit. The claim asserts the file's own identity comes
+// back in the refusal, so a refusal naming some other locator does not satisfy it.
+test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> Bool {
+  match store_authored_source(store: empty_store(), text: "not a program") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: store, source: file } =>
+      match mint_repository_commit(
+        repository: scm_env_repository_with_store(store: store),
+        root: SemanticNodeTarget { locator: file.locator },
+        message: "root is a file",
+        parent: none,
+      ) {
+        RepositoryCommitMintRootIsAuthoredSource { root: r } =>
+          object_id_eq(left: r, right: file.locator)
+        RepositoryCommitMinted { repository: _, reference: _ } => false
+        RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+        RepositoryCommitMintParentMissing { parent: _ } => false
+        RepositoryCommitMintRootMissing { root: _ } => false
+      }
+  }
+}
+
+// THE CONTROL, ONE FACT APART. Same shape, same store construction, same message; the root is a
+// stored NODE instead of a stored file. It must mint. Without this, a mint that refused everything
+// would satisfy the claim above.
+test fn env_a_commit_root_that_is_a_node_mints() -> Bool {
+  let put = scm_env_put(store: empty_store(), n: scm_env_atom(identity: "program"))
+  match mint_repository_commit(
+    repository: scm_env_repository_with_store(store: put.store),
+    root: put.identity,
+    message: "root is a program",
+    parent: none,
+  ) {
+    RepositoryCommitMinted { repository: _, reference: _ } => true
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+    RepositoryCommitMintParentMissing { parent: _ } => false
+    RepositoryCommitMintRootMissing { root: _ } => false
+  }
+}
+
+// A SOURCE-OCCUPIED TARGET REFUSES TO ENCODE, AND IT IS ITS OWN REFUSAL.
+//
+// The guard beside this one, an_uncontained_target, reads the ABSENT population -- correctly, for what
+// it names. It was the ONLY guard here, so a requirement whose locator is occupied by an authored
+// source walked straight through and got PUBLISHED. External review found it: the object model split
+// the census into two populations precisely so both would be read, and wiring only the absent half
+// re-created the conflation one layer up, in the repository encoder.
+//
+// The two refusals stay separate because their remedies are: one says fetch an object that is not
+// here, the other says something is here and it is the wrong kind, which no fetch repairs.
+test fn scm_env_a_source_occupied_target_refuses_to_encode_as_its_own_cause() -> Bool {
+  let occupied = match store_authored_source(store: empty_store(), text: "not a program\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+    SourceStored { store: with_file, source: file } =>
+      match insert_from_structure(
+        store: with_file,
+        kind: TypeNode { connective: Conj },
+        children: [
+          StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
+        ],
+      ) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+        Stored { store: assembled, node: _ } => assembled
+      }
+  }
+  (store_object_count(store: occupied) == 2)
+    && (scm_env_encode_cause_tag(
+      outcome: encode_repository_checked(
+        repo: RepositoryEnvelope {
+          store: occupied,
+          commits: [],
+          commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+          checked_out: none,
+        }
+      )
+    ) == "target_is_authored_source")
+}

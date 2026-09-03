@@ -1,0 +1,292 @@
+module v2.lens.determinism
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.primitive_identity {
+  CanonicalOrder,
+  HostUnspecifiedOrder,
+  OrderFreeResult,
+  PrimitiveDefinition,
+  SourcePreservingOrder,
+  TraversalOrder,
+  TraversalOrderUnclassified,
+  primitive_definitions_missing_traversal_fact,
+  primitive_identity_for_canonical_name,
+  primitive_traversal_order_for_identity,
+}
+import std.determinism { Determinism, Deterministic, NonDeterministic, determinism_compose }
+import std.algebra { Cons, Empty }
+import v2.std.determinism { DeterminismFact }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, invariant_port_locus, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node_query { node_is_call, node_positional_child_targets }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.algebra { fold_list, length }
+import v2.std.fn_index { FnArrowDecl, call_reachable_decls }
+import v2.std.text { String }
+
+// The determinism roots are DERIVED from std.primitive_identity traversal facts, not enumerated
+// here. The deleted form was a two-row DeterminismRoot registry keyed on a raw authored Symbol, and
+// its own compile_gate_law recorded the defect this replaces: nothing related that roster to the
+// declared primitive population, so absence from it was not evidence of determinism and a newly
+// registered order-exposing primitive was silently Deterministic until somebody remembered to add a
+// row. Registry and gate are now one authority read in one direction -- a call joins a
+// PrimitiveIdentity by canonical name, the identity carries exactly one
+// PrimitiveTraversalOrderFact, and the ORDER decides. The keys/values false-positive the old law
+// called undetectable is gone by construction rather than by care: those symbols are not declared
+// canonical names of any primitive, so they never join an identity and can never classify.
+
+// One source ref for every root, and it names the CLASSIFYING authority rather than a leaking
+// realization. The deleted registry pointed each root at v1.runtime_rust map_keys -- one target's
+// Rust text, which is neither where the claim is decided nor true of the interpreter or of any
+// future target. What makes a call a leak is its PrimitiveTraversalOrderFact, so that is what the
+// refusal cites; WHICH root was reached is already carried by the diagnostic locus, which names the
+// call node itself.
+
+fn determinism_leak_source() -> DeclarationRef {
+  decl_ref(module_path: "std.primitive_identity", decl_name: "primitive_declared_traversal_facts")
+}
+
+// Two orders leak and three do not, and the two that leak leak for DIFFERENT reasons that share one
+// remedy. HostUnspecifiedOrder is the real hazard, and the hazard is stated at the grain that is
+// actually established: the host iterates a hash map on a per-process seed, so the ORDER THE
+// PRIMITIVE RETURNS is not a function of its input alone. That is a confirmed property of the
+// realization (v1_rt map_keys over im::HashMap on std RandomState). WHAT IS NOT CLAIMED, because it
+// was searched for and not found: that any such call currently reaches emitted bytes. A corpus-wide
+// sweep found exactly one fold building a LIST from unsorted map iteration and its consumer refuses
+// on ambiguity; the rest initialise maps or feed debug dumps, interning and lens output. The gate
+// does not rest on that join and does not need it -- an unsorted iteration is a defect only where
+// its result reaches output as an ORDERED LIST, which is a per-site question, while the reason to
+// refuse the CALL is that the primitive's contract does not promise an order at all and nothing at
+// the call site says the caller does not need one. TraversalOrderUnclassified is ignorance, and it
+// refuses for the fail-closed reason DESIGN gives -- an unanswered question is not a negative
+// answer, and treating it as one is exactly the absorbing fallback in the direction that reads as
+// safe. CanonicalOrder and SourcePreservingOrder are answered and stable. OrderFreeResult is
+// answered and vacuous: the result exposes no traversal, so the order question belongs to whatever
+// later traverses it.
+
+fn traversal_order_leaks(order: TraversalOrder) -> Bool {
+  match order {
+    HostUnspecifiedOrder => true
+    TraversalOrderUnclassified => true
+    CanonicalOrder => false
+    SourcePreservingOrder => false
+    OrderFreeResult => false
+  }
+}
+
+fn node_callee_symbol(n: Node) -> Optional<Symbol> {
+  if node_is_call(node: n) {
+    match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+      Present { value: callee } => match callee.kind {
+        TypeNode { connective: Atom { identity: sym } } => optional_present(value: sym)
+        _ => optional_absent()
+      }
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
+  match node_callee_symbol(n: n) {
+    Present { value: sym } => match primitive_identity_for_canonical_name(authored_symbol: symbol_lexeme(sym: sym)) {
+      Present { value: identity } => match primitive_traversal_order_for_identity(identity: identity) {
+        Present { value: order } =>
+          if traversal_order_leaks(order: order) {
+            std.determinism.NonDeterministic { source: determinism_leak_source() }
+          } else {
+            std.determinism.Deterministic
+          }
+        Absent => std.determinism.NonDeterministic { source: determinism_leak_source() }
+      }
+      Absent => std.determinism.Deterministic
+    }
+    Absent => std.determinism.Deterministic
+  }
+}
+
+fn determinism_axis_fold_step(acc: std.determinism.Determinism, _e: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
+  std.determinism.determinism_compose(outer: acc, inner: child)
+}
+
+fn determinism_axis_for_node(n: Node) -> std.determinism.Determinism {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { local_determinism_axis(n: n0) },
+      step: fn(acc, e, child) { determinism_axis_fold_step(acc: acc, e: e, child: child) }
+    }
+  )
+}
+
+fn determinism_fact_for_node(signature: Symbol, n: Node) -> v2.std.determinism.DeterminismFact {
+  v2.std.determinism.DeterminismFact {
+    signature: signature,
+    classification: determinism_axis_for_node(n: n)
+  }
+}
+
+fn determinism_leak_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^determinism_nondeterministic_root_reach,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<v2.std.determinism.DeterminismFact> {
+  let fact = determinism_fact_for_node(signature: signature, n: n)
+  match fact.classification {
+    std.determinism.NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+    std.determinism.Deterministic => Holds { value: fact }
+  }
+}
+
+data compile_gate_law: String = "MECHANICALLY PREVENTIVE over a CLOSED declared-primitive denominator, and the word closed is bounded by what it ranges over: every PrimitiveDefinition std.primitive_identity DECLARES carries exactly one PrimitiveTraversalOrderFact, and the gate refuses on any tree while that is false. It is NOT the claim that every operation reaching a compiled tree is a declared primitive, and the shape of that gap is worth stating because it is a DOOR BESIDE THIS WALL: the declared population is a hand-authored roster in std.primitive_identity, not the runtime's registration, so a symbol that is registered and callable but declared nowhere joins no identity, carries no traversal fact, and is classified Deterministic BY NON-MEMBERSHIP -- silently, with no diagnostic, exactly the shape whose frequency is zero by construction. The count is deliberately not transcribed here (it would rot); primitive_undisposed_surface_symbol_count is the standing symbol-grain measure and this gate inherits it, and closing it is the parent primitive-identity-join node. What IS claimed is the narrower thing: within the declared roster, no member can lack a classification. What changed against the interim two-row form is the direction of the reasoning. THEN: a hand roster of authored symbols, where a root existed because somebody wrote a row, absence was not evidence of determinism, and adding a new order-exposing primitive silently classified Deterministic. NOW: a call joins a PrimitiveIdentity by canonical name, the identity carries a traversal order, and the ORDER decides -- so declaring a primitive without classifying it does not produce a silent hole, it reds the gate on the next compile of any tree, before any caller exists. The keys/values false positive the interim law recorded as undetectable is closed by construction rather than by care: neither is a declared canonical name, so neither joins an identity and neither can classify an unrelated same-named function. TWO ORDERS REFUSE AND THEY ARE DIFFERENT ANSWERS SHARING A REMEDY: HostUnspecifiedOrder is a confirmed property of the REALIZATION (per-process hash seed, so the returned order is not a function of the input); it is NOT a claim that any present call site reaches emitted bytes, and no such path is established -- see determinism_traversal_order_classification_note. TraversalOrderUnclassified is ignorance and refuses fail-closed because an unanswered question is not a negative answer. WHAT IS STILL OPEN, so absence of a diagnostic is still not proof: method-call lowering erases the receiver domain, so a MethodCall invocation surface whose authored symbol is not the primitive canonical name does not join; and the gate reads the tree the v2 compile door is given, so a corpus never pushed through validate_then_compile is never asked. Grain: root -- one rooted whole-tree findings walk, one located diagnostic per leaking call node, batched, never absorbed."
+
+// The enrollment half of the wall, and the reason it is checked HERE rather than by a census
+// somewhere: a gate that classifies by looking a fact up must refuse when the fact could be
+// missing, or its Absent arm is a fail-open wearing the shape of a lookup. So the door asks the
+// closure question before it asks anything about the tree, and a factless declared primitive stops
+// the line with a typed diagnostic located at THAT PRIMITIVE'S canonical name rather than at any
+// call site -- there is no call site to name, and one diagnostic per hole keeps the deficit counted
+// instead of collapsed to a single anonymous refusal. This is a pure fold over static declarations
+// in the imported closure, not a live-tree read: it never touches the filesystem or a module
+// registry, so it does not re-open the lying-SubstrateInputsOnly class that de-enrolled
+// lens_module_gate from this same roster.
+
+fn determinism_denominator_diagnostic(d: PrimitiveDefinition) -> Diagnostic {
+  Diagnostic {
+    reason: ^determinism_primitive_missing_traversal_fact,
+    at: invariant_port_locus(
+      port: symbol_intern_lexeme(lexeme: d.semantic_contract.canonical_name as String),
+      invariant: ^determinism_primitive_missing_traversal_fact
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn determinism_denominator_findings() -> List<Diagnostic> {
+  primitive_definitions_missing_traversal_fact()
+    |> map(fn(d) { determinism_denominator_diagnostic(d: d) })
+}
+
+fn local_determinism_findings(n: Node) -> List<Diagnostic> {
+  match local_determinism_axis(n: n) {
+    std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
+    std.determinism.Deterministic => []
+  }
+}
+
+fn determinism_findings(root: Node) -> List<Diagnostic> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) { local_determinism_findings(n: n0) },
+      step: fn(acc, _edge, child) { concat(acc, child) }
+    }
+  )
+}
+
+fn determinism_compile_gate(node: Node) -> Outcome<Witness<Node>> {
+  match concat(determinism_denominator_findings(), determinism_findings(root: node)) {
+    Cons { head: first, tail: rest } =>
+      Rejected {
+        diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+      }
+    Empty => outcome_accepted(value: Holds { value: node })
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+// TRANSITIVE DETERMINISM: THE PER-TREE DOOR CANNOT ASK THIS QUESTION, AND MUST NOT BE MADE TO.
+//
+// determinism_compile_gate folds the InferredTree it is handed. A call to a DECLARED function
+// whose body reaches an order-leaking primitive is therefore invisible to it: the leak is real,
+// the tree is clean, and the gate accepts. Closing that requires the call graph, which is a fact
+// about the CORPUS rather than about the supplied tree.
+//
+// WHY THIS PRODUCER IS PURE AND PARAMETERIZED, and why no live read is here. v2.compiler.compile
+// imports THIS module, so anything reachable from here is reachable from every compile-importing
+// entry. always_required_root_lenses records what happened the last time a corpus scan was
+// reachable from the door: lens_module_gate was DE-ENROLLED after its wrapper ran a nullary live
+// walk on every compile, putting 31 SubstrateInputsOnly stamps in the lying-stamp census. Calling
+// this judgment "determinism" would not have made that live read tree-grain. So the facts arrive as
+// PARAMETERS and no live producer is imported here.
+//
+// THERE IS NO LIVE CONSUMER OF THIS PRODUCER TODAY, AND THIS PARAGRAPH SAID OTHERWISE UNTIL
+// REVIEW 59343 CAUGHT IT. It named v2.test.claim.enforcement.determinism_transitive_witness as a
+// corpus-cadence consumer "stamped ReadsLiveTree, whose failure reaches the required PR floor", and
+// claimed that wording satisfied the amended clause 2. That consumer was WITHDRAWN in this same
+// change; the stamp is gone with it, and the only consumers left are the three fixture rows in that
+// module. Leaving the sentence standing was rung inflation in the precise §4b(1) sense -- a module
+// describing a guarantee that its own sibling file says was removed -- and the reviewer was right
+// that the two files contradicted each other.
+//
+// WHAT IS TRUE: this producer is pure, parameterized, and exercised by fixture rows that
+// discriminate. What clause 2 asks for is a consumer whose declared substrate and cadence match its
+// inputs, whose failure reaches the required PR floor, and which cannot predict-skip. That
+// capability DOES NOT EXIST on this branch, the trigger has therefore not fired, and the obligation
+// is carried at work item node://adhoc-ac804155-cdd -- see the withdrawal annotation in
+// v2.test.claim.enforcement.determinism_transitive_witness for the blocker and the measurements.
+//
+// The clause deliberately does not say "corpus cadence forever": if a later compiler representation
+// carries transitive declaration reachability on the InferredTree itself, a pure tree-grain
+// consumer satisfies the same capability unchanged.
+
+data determinism_transitive_terminal_callees: List<String> = []
+
+data determinism_no_findings: List<Diagnostic> = []
+
+// NOTHING TERMINATES THE WALK. The reachability authority takes a roster of callee spellings whose
+// bodies are not entered, because its other two consumers stop at host effect sinks and at
+// live-read carriers respectively. Determinism has no such frontier: an order-leaking primitive is
+// exactly as disqualifying eight calls deep as it is in the entry body, so the roster is EMPTY and
+// empty here is a modeled answer rather than an unset parameter.
+fn determinism_transitive_findings(
+  entry_module: String,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>
+) -> List<Diagnostic> {
+  fold_list(
+    xs: call_reachable_decls(
+      entry_module: entry_module,
+      terminal_callee_symbols: determinism_transitive_terminal_callees,
+      closure_modules: closure_modules,
+      decls: decls
+    ),
+    empty: determinism_no_findings,
+    cons: fn(acc, decl) { concat(acc, determinism_findings(root: decl.output)) }
+  )
+}
+
+fn determinism_transitive_holds(
+  entry_module: String,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>
+) -> Bool {
+  length(xs: determinism_transitive_findings(
+    entry_module: entry_module,
+    closure_modules: closure_modules,
+    decls: decls
+  )) == 0
+}

@@ -1,0 +1,352 @@
+module extdeps.languages.html
+
+import std.algebra { trim }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Medium, Lossless }
+import std.markup {
+  Fragment, Element, FragmentText, RawNode, Attribute, attr,
+  MarkupBracket, MarkupMedium, EscapeHtml,
+  VoidTagRendering, OmitClose,
+  serialize_fragment_with, tag_in_set,
+  unescape_text, unescape_attribute, unescape_url,
+  attr_is_url_attr,
+}
+import extdeps.uri_validation {
+  validate_href, SafeHref, RejectedHref,
+  find_first_rejected_url,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "html.spec.whatwg.org/"
+  }
+}
+
+data canonical_html_spellings: MarkupBracket = MarkupBracket {
+  tag_open: "<",
+  end_tag_open: "</",
+  tag_close: ">",
+  attr_sep: " ",
+  attr_assign: "=",
+  attr_quote: "\"",
+}
+
+type HtmlIngestResult
+  = IngestedNode { node: Fragment }
+  | IngestRejected { reason: String }
+
+type HtmlSplitResult {
+  children: String
+  rest: String
+}
+
+type HtmlCloseState {
+  depth: Int
+  found: Bool
+  child_chunks: List<String>
+  rest_chunks: List<String>
+  idx: Int
+  total: Int
+}
+
+type HtmlAttrFoldState {
+  attributes: List<Attribute>
+  pending_name: String
+  is_value: Bool
+  rejected: Bool
+  reject_reason: String
+}
+
+type HtmlParseOneResult
+  = ParsedOne { node: Fragment, rest: String }
+  | ParseOneRejected { reason: String }
+
+type HtmlChildrenResult
+  = ParsedChildren { nodes: List<Fragment> }
+  | ChildrenRejected { reason: String }
+
+fn html_count_str(s: String, pattern: String) -> Int {
+  split(s: s, delimiter: pattern).length() - 1
+}
+
+fn html_strip_prefix(s: String, prefix: String) -> String {
+  if starts_with(s: s, prefix: prefix) {
+    substring(s: s, start: prefix.length(), end: s.length())
+  } else {
+    s
+  }
+}
+
+fn html_strip_suffix(s: String, suffix: String) -> String {
+  if ends_with(s: s, suffix: suffix) {
+    substring(s: s, start: 0, end: s.length() - suffix.length())
+  } else {
+    s
+  }
+}
+
+fn find_matching_close_with(s: String, tag: String, sp: MarkupBracket) -> HtmlSplitResult {
+  let close_tag = join([sp.end_tag_open, tag, sp.tag_close], "")
+  let open_pat = join([sp.tag_open, tag], "")
+  let chunks = split(s: s, delimiter: close_tag)
+  let n = chunks.length()
+  let state = fold(chunks, init: HtmlCloseState {
+    depth: 1,
+    found: false,
+    child_chunks: [],
+    rest_chunks: [],
+    idx: 0,
+    total: n,
+  }, f: (acc, chunk) => {
+    if acc.found {
+      HtmlCloseState {
+        depth: acc.depth,
+        found: true,
+        child_chunks: acc.child_chunks,
+        rest_chunks: concat(acc.rest_chunks, [chunk]),
+        idx: acc.idx + 1,
+        total: acc.total,
+      }
+    } else {
+      let opens = html_count_str(s: chunk, pattern: open_pat)
+      let has_delim = acc.idx < acc.total - 1
+      let post_depth = if has_delim { acc.depth + opens - 1 } else { acc.depth + opens }
+      let found_now = has_delim && (post_depth == 0)
+      HtmlCloseState {
+        depth: post_depth,
+        found: found_now,
+        child_chunks: concat(acc.child_chunks, [chunk]),
+        rest_chunks: [],
+        idx: acc.idx + 1,
+        total: acc.total,
+      }
+    }
+  })
+  HtmlSplitResult {
+    children: join(state.child_chunks, close_tag),
+    rest: join(state.rest_chunks, close_tag),
+  }
+}
+
+fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
+  let pieces = split(s: attrs_str, delimiter: sp.attr_quote)
+  fold(pieces, init: HtmlAttrFoldState {
+    attributes: [],
+    pending_name: "",
+    is_value: false,
+    rejected: false,
+    reject_reason: "",
+  }, f: (acc, piece) => {
+    if acc.rejected {
+      acc
+    } else if acc.is_value {
+      let name = acc.pending_name
+      let raw_val = piece
+      let is_url = attr_is_url_attr(name: name)
+      let unescaped = if is_url { unescape_url(s: raw_val) } else { unescape_attribute(s: raw_val) }
+      if is_url {
+        match validate_href(url: unescaped) {
+          RejectedHref { reason: _ } =>
+            HtmlAttrFoldState {
+              attributes: acc.attributes,
+              pending_name: "",
+              is_value: false,
+              rejected: true,
+              reject_reason: join(["rejected href: ", unescaped], ""),
+            }
+          SafeHref { url: safe } =>
+            HtmlAttrFoldState {
+              attributes: concat(acc.attributes, [attr(name: name, value: safe )]),
+              pending_name: "",
+              is_value: false,
+              rejected: false,
+              reject_reason: "",
+            }
+        }
+      } else {
+        HtmlAttrFoldState {
+          attributes: concat(acc.attributes, [attr(name: name, value: unescaped )]),
+          pending_name: "",
+          is_value: false,
+          rejected: false,
+          reject_reason: "",
+        }
+      }
+    } else {
+      let stripped = html_strip_suffix(
+        s: html_strip_prefix(s: piece, prefix: sp.attr_sep),
+        suffix: sp.attr_assign
+      )
+      if stripped == "" {
+        acc
+      } else {
+        HtmlAttrFoldState {
+          attributes: acc.attributes,
+          pending_name: stripped,
+          is_value: true,
+          rejected: false,
+          reject_reason: "",
+        }
+      }
+    }
+  })
+}
+
+fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
+  if starts_with(s: s, prefix: sp.end_tag_open) {
+    ParseOneRejected { reason: "unexpected end tag" }
+  } else if starts_with(s: s, prefix: sp.tag_open) {
+    let open_chunks = split(s: s, delimiter: sp.tag_close)
+    let open_content = open_chunks.first()
+    let after_open_tag = html_strip_prefix(s: s, prefix: join([open_content, sp.tag_close], ""))
+    let tag_and_attrs = html_strip_prefix(s: open_content, prefix: sp.tag_open)
+    let tag_parts = split(s: tag_and_attrs, delimiter: sp.attr_sep)
+    let tag = tag_parts.first()
+    let attrs_raw = join(tag_parts.skip(n: 1), sp.attr_sep)
+    let attr_result = parse_attrs_with(attrs_str: attrs_raw, sp: sp)
+    if attr_result.rejected {
+      ParseOneRejected { reason: attr_result.reject_reason }
+    } else {
+      let split_result = find_matching_close_with(s: after_open_tag, tag: tag, sp: sp)
+      let children_result = parse_children_with(s: split_result.children, sp: sp)
+      match children_result {
+        ChildrenRejected { reason } => ParseOneRejected { reason: reason }
+        ParsedChildren { nodes } =>
+          ParsedOne {
+            node: Element { tag: tag, attributes: attr_result.attributes, children: nodes },
+            rest: split_result.rest,
+          }
+      }
+    }
+  } else {
+    let text_raw = split(s: s, delimiter: sp.tag_open).first()
+    let rest = html_strip_prefix(s: s, prefix: text_raw)
+    ParsedOne { node: FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
+  }
+}
+
+fn parse_children_with(s: String, sp: MarkupBracket) -> HtmlChildrenResult {
+  if s == "" {
+    ParsedChildren { nodes: [] }
+  } else if starts_with(s: s, prefix: sp.end_tag_open) {
+    ParsedChildren { nodes: [] }
+  } else {
+    let one = parse_one_with(s: s, sp: sp)
+    match one {
+      ParseOneRejected { reason } => ChildrenRejected { reason: reason }
+      ParsedOne { node, rest } =>
+        let tail = parse_children_with(s: rest, sp: sp)
+        match tail {
+          ChildrenRejected { reason } => ChildrenRejected { reason: reason }
+          ParsedChildren { nodes } => ParsedChildren { nodes: concat([node], nodes) }
+        }
+    }
+  }
+}
+
+data html5_void_tags: List<String> = [
+  "area", "base", "br", "col", "embed", "hr", "img",
+  "input", "link", "meta", "param", "source", "track", "wbr",
+]
+
+// The HTML spec's raw-text elements (HTML Standard section 13.1.2, 'Raw text elements'): script and
+// style. Their text content is NOT entity-decoded by browsers, so entity-ESCAPING it at
+// serialization corrupts it — a CSS child combinator '>' emitted as '&gt;' silently kills the rule
+// in every browser (the roadmap strikethrough incident, 2026-07-24; same escape class as the
+// dispatch-button inline-script incident). Serialization emits their text raw; the one hazard —
+// content containing the element's own close sequence — REFUSES at try_serialize_html_source
+// (typed, located), never emits corrupted output. textarea/title are the spec's escapable-raw-text
+// class (entities ARE decoded there) and deliberately stay in the escaping default.
+
+data html5_raw_text_tags: List<String> = ["script", "style"]
+
+fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [],
+    bracket: sp,
+    text_escape: EscapeHtml,
+    void_tags: html5_void_tags,
+    void_rendering: OmitClose,
+    raw_text_tags: html5_raw_text_tags,
+  }
+}
+
+fn serialize_html_source_with(node: Fragment, sp: MarkupBracket) -> String {
+  serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp))
+}
+
+fn serialize_html_source(node: Fragment) -> String {
+  serialize_html_source_with(node: node, sp: canonical_html_spellings)
+}
+
+fn ingest_html_source_with(src: String, sp: MarkupBracket) -> HtmlIngestResult {
+  let s = trim(src)
+  let one = parse_one_with(s: s, sp: sp)
+  match one {
+    ParseOneRejected { reason } => IngestRejected { reason: reason }
+    ParsedOne { node, rest: _ } => IngestedNode { node: node }
+  }
+}
+
+fn ingest_html_source(src: String) -> HtmlIngestResult {
+  ingest_html_source_with(src: src, sp: canonical_html_spellings)
+}
+
+fn html_medium_lossless(node: Fragment) -> Medium<Fragment> {
+  Medium { carried: node, fidelity: Lossless }
+}
+
+type HtmlEmitResult
+  = EmitOk { html: String }
+  | EmitRejected { reason: String }
+
+fn raw_text_children_text(children: List<Fragment>) -> String {
+  fold(children, init: "", f: (acc, c) => match c {
+    FragmentText { content: t } => concat(acc, t)
+    RawNode { content: t } => concat(acc, t)
+    Element { tag: _, attributes: _, children: _ } => acc
+  })
+}
+
+fn raw_text_hazard(node: Fragment) -> String {
+  match node {
+    FragmentText { content: _ } => ""
+    RawNode { content: _ } => ""
+    Element { tag: t, attributes: _, children: kids } =>
+      if tag_in_set(tag: t, tags: html5_raw_text_tags) {
+        if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
+          join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "")
+        } else {
+          raw_text_children_hazard(children: kids)
+        }
+      } else {
+        raw_text_children_hazard(children: kids)
+      }
+  }
+}
+
+fn raw_text_children_hazard(children: List<Fragment>) -> String {
+  fold(children, init: "", f: (acc, c) => if acc == "" { raw_text_hazard(node: c) } else { acc })
+}
+
+fn try_serialize_html_source(node: Fragment) -> HtmlEmitResult {
+  match find_first_rejected_url(node: node) {
+    Present { value: r } =>
+      EmitRejected { reason: r.url }
+    Absent => {
+      let hazard = raw_text_hazard(node: node)
+      if hazard == "" {
+        EmitOk { html: serialize_html_source(node: node) }
+      } else {
+        EmitRejected { reason: hazard }
+      }
+    }
+  }
+}
+
+fn html_markup_medium() -> MarkupMedium {
+  html_medium_with(sp: canonical_html_spellings)
+}

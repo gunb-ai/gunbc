@@ -1,0 +1,211 @@
+module std.coercion
+
+type TypeCheckpoint {
+  dag_name: String
+  target_type: String
+  grounding_type: String
+  default_expr: String?
+  is_copy: Bool?
+  literal_suffix: String?
+}
+
+// WHY A CHECKPOINT CARRIES TWO SPELLINGS, AND WHY THE SECOND IS NOT A REFINEMENT OF THE FIRST.
+//
+// A checkpoint is asked two different questions by two different consumers, and one field could
+// only answer one of them:
+//
+//   target_type    -- REFERENCE position. What does the target render where a program MENTIONS this
+//                     type? In Rust, the dag name String renders as the bare `String`, correct and
+//                     idiomatic wherever a type is mentioned.
+//   grounding_type -- DECLARATION right-hand side. What host type is a declaration of this name
+//                     GROUNDED IN? Here the bare spelling is wrong, not merely unidiomatic:
+//                     `pub type String = String;` is self-referential, and the alias being defined
+//                     shadows the very name its right-hand side reaches for. The grounding
+//                     spelling is `std::string::String`, which no alias can shadow.
+//
+// The two coincide for most rows -- i64, bool and () are unshadowable spellings -- and where they
+// coincide the row says so explicitly rather than defaulting, because a default is a rule and a
+// rule is what this split exists to remove.
+//
+// WHAT THIS REPLACES, so the shape is not re-collapsed later. One field answering both questions is
+// a TWO-ROLE defect, not a wrong value: whichever spelling it carries, one consumer is wrong. (The
+// word ARITY is deliberately avoided: here it already means type-parameter count --
+// v1.compiler.emit_rust carries AliasDeclArityVerdict and a scalar declared-arity guard -- so
+// naming this defect that way would collide with a live, different meaning a few declarations
+// away.) The cost while it stood was a compensating fork at the consumer -- v1.compiler.emit_rust's
+// type alias arm special-cased `item_text == "String"` and emitted the grounded line by hand,
+// ahead of and bypassing the identity-keyed authority every other consumer routed through. So the
+// declaration site could not honour declaration identity even after the reference side did, and
+// one emitted file disagreed with itself. Splitting the field deletes that arm rather than guarding
+// it: the next name whose reference spelling collides with its own declaration cannot reach the
+// ambiguity, because there is no longer a single field to be ambiguous in (DESIGN section 4b --
+// construction, not a wall over a state that stays writable).
+//
+// ON THE NAME `target_type`, WHICH IS NARROWER THAN IT READS. It means the REFERENCE-position
+// spelling and nothing broader -- not the general answer to "what is this type in the target",
+// because that question no longer has a single answer here. The name survives only because
+// renaming it to reference_type reaches every target table; it is the one-name-two-meanings shape
+// this split removed from the field's VALUE, still standing in its NAME. A reader must not take
+// target_type for the universal spelling, and a new consumer must decide which of the two
+// questions it is asking rather than reaching for the familiar name.
+
+// TypeCheckpoint (above) is cited to the target LANGUAGE reference and states how a spelling
+// renders. TypeRealizationDecision is the gunbc-corpus fact answering which of a named
+// declaration's possible renderings applies at a given reference, keyed on declaration identity
+// (dag_name, decl_file) rather than bare spelling -- the corpus-side half of the two-authority
+// shape v1.compiler.emit_rust checkpoint_table_bypasses_identity_note names as this class's
+// terminal shape. Unrealized is not merely 'no row' -- it is the DERIVED conclusion that the
+// emitter must render the declaration's own structure because no checkpoint governs THIS
+// declaration (a same-spelling sibling elsewhere may still be Realized). RealizationRefused is reserved for a
+// reference whose declaration identity the caller could not supply -- never a guess standing in
+// for Unrealized, because a silently-assumed Unrealized is exactly the false negative this
+// decision keeps out of the render path (DESIGN section 5). Named Unrealized rather than
+// Structural because gunbc.ci_failure_class already declares a fielded Structural { reason:
+// String } resolved as an unqualified global name (imports do not bind it), so a second,
+// differently-shaped Structural here would collide corpus-wide.
+//
+// This decision's identity key is sound ONLY while v2.compiler.source_authority
+// module_storage_binding_authority_note's file<->module binding stays 1:1 -- that note is the sole
+// owner of this scope and names many-to-many (fragment identity/order, several-modules-one-file)
+// as a deferral until a consumer prices it (DESIGN section 6), never a silent assumption. If
+// many-to-many lands, decl_file stops discriminating declarations and BOTH Unrealized and Realized
+// remain reachable on an input that no longer identifies one declaration -- RealizationRefused covers
+// decl_file == "" (identity ABSENT), not identity AMBIGUOUS, so a many-to-many regression here
+// would not refuse but answer confidently and wrongly. Whoever prices many-to-many in
+// source_authority must revisit this type first.
+// WHY THE REFUSAL CAUSE IS A TYPE AND NOT A SENTENCE. The cause was a String, and one of its
+// inhabitants -- "declaration identity unknown: empty decl_file" -- was the empty-string sentinel
+// PROMOTED ONE LEVEL rather than removed: a caller that could not name a declaration produced a
+// value whose only reading was prose. A consumer wanting to act differently on `identity absent`
+// than on `this declaration is bound to a representation with no realization row` had to compare
+// sentences, and a witness that wanted to pin the behaviour asserted the sentence itself.
+//
+// The variants are ordered by who must act: the first two are the ASKING side's defect (a caller
+// reached a declaration-keyed authority without a declaration), the last two are the CORPUS's (a
+// binding roster that is silent or contradictory). BareRowMigratedToExactBinding sits between them
+// deliberately -- the caller did supply identity and the corpus does have an answer, but the
+// spelling-keyed route is closed for that name, so the remedy is to ask the exact path instead.
+//
+// GroundedByUnidentifiedBareRow is the declared safety regression made VISIBLE. A caller that
+// supplies no declaration identity is still answered from the bare table today; that is a bounded
+// rung drop with a restoration trigger, and while it was spelled as a String comparison against ""
+// no consumer could tell such an answer apart from one keyed on a real declaration. As a ground it
+// is countable, and a consumer that must not accept it can now refuse it -- which is the whole
+// difference between a documented drop and a silent one.
+// THE IDENTITY OF A DECLARATION, AS A STATE SPACE RATHER THAN AS A PATH. The value threaded to
+// every realization gate used to be a file path carrying three disjoint inhabitants in one String:
+// a real corpus file, the synthetic pseudo-file a compiler mints for a node that has no
+// declaration, and the empty string meaning identity is unknown. Consumers discriminated only empty
+// from non-empty, so the other two were told apart -- where they were told apart at all -- by
+// separate spelling tests scattered across the emitter, and each such test was a second authority
+// for a state the type could not express.
+//
+// It is homed here rather than in the seed because it is the SUBJECT of the decision below and the
+// two are one fact: a decision keyed on an identity that cannot say `there is no declaration` is
+// exactly the shape whose absent case gets guessed. CorpusDeclared still carries a path, and that
+// is honest residue with a named successor rather than a resting place -- the declared module path
+// is the containment tree's key, and re-keying this arm on it is a separate change with its own
+// prerequisite.
+type TypeDeclarationProvenance
+  = CorpusDeclared { decl_file: String }
+  | KernelMinted { minted_name: String }
+  | DeclarationIdentityAbsent
+
+type RealizationRefusalCause
+  = DeclarationIdentityUnavailable
+  | ExactSourceIdentityAbsent { detail: String }
+  | BareRowMigratedToExactBinding { dag_name: String }
+  | BoundRepresentationHasNoRealizationRow { decl_name: String }
+  | ExactBindingAmbiguousForOneDeclaration
+
+// The human rendering of a refusal, homed with the cause so a consumer never re-spells one. Each
+// arm says what the ASKER must do differently, which is the distinction the String form could only
+// gesture at.
+fn realization_refusal_label(cause: RealizationRefusalCause) -> String {
+  match cause {
+    DeclarationIdentityUnavailable => "no declaration identity was supplied"
+    ExactSourceIdentityAbsent { detail: d } => d
+    BareRowMigratedToExactBinding { dag_name: n } => concat("declaration-keyed name `", n, "` reached the spelling-keyed arm without a declaration: its bare row is migrated, answer from the exact binding")
+    BoundRepresentationHasNoRealizationRow { decl_name: n } => concat("declaration `", n, "` is bound to a target representation with no realization row")
+    ExactBindingAmbiguousForOneDeclaration => "ambiguous exact binding: more than one row for one declaration"
+  }
+}
+
+// HOW A REALIZATION WAS GROUNDED, carried because two consumers ask different questions of one
+// Realized. A checkpoint row and a host numeric alias both produce a TypeCheckpoint, and until this
+// field existed they were indistinguishable at the periphery -- so a site asking `is this the host
+// numeric` could not read the decision and had to re-derive the answer from a name and a file. That
+// re-derivation is the identity channel this field exists to close: the question is answered where
+// the decision is made, and the answer travels instead of the key.
+type RealizationGround
+  = GroundedByCheckpointRow
+  | GroundedByHostNumericAlias
+  | GroundedByUnidentifiedBareRow
+
+type TypeRealizationDecision
+  = Realized { checkpoint: TypeCheckpoint, ground: RealizationGround }
+  | Unrealized
+  | RealizationRefused { cause: RealizationRefusalCause }
+
+type InhabitantDecl {
+  algebra: String
+  template: String
+  arity: Int
+  identity_expr: String?
+  import_path: String?
+  is_copy: Bool?
+}
+
+type CallableRepr {
+  template: String
+  param_separator: String
+  return_separator: String
+  import_path: String?
+}
+
+type CastRule {
+  from_type: String
+  to_type: String
+}
+
+type CastSyntax {
+  template: String
+  cast_rules: List<CastRule>
+}
+
+// The Int->Nat and String->FreeMonoid identities are GROUNDED, not hollow casts (operator Ruling 3,
+// 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428,
+// Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char>
+// (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid).
+// They live in their OWN list, NOT in dag_cast_rules, on purpose: dag_can_cast consults BOTH lists
+// so the wall's kernel_value_declared_type_mismatch stops flagging an Int literal where a Nat is
+// expected (and a String where a FreeMonoid is expected); but is_dag_cast_domain_type reads ONLY
+// dag_cast_rules, so grounding a primitive to a coproduct does NOT drag that coproduct into the
+// explicit-`as`-cast validation domain. Folding them into dag_cast_rules would make Nat/String
+// cast-domain types and newly REJECT pre-existing well-typed casts whose reverse rule is absent
+// (`Nat as Int` in bmc_onboard, `Int as String` in srv3/host_effect were skipped before because
+// their far type was not a domain type) — a regression, not the intent. NON-grounded
+// primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake),
+// String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity.
+
+data dag_cast_rules: List<CastRule> = [
+  { from_type: "Int",   to_type: "Int" },
+  { from_type: "Int",   to_type: "Float" },
+  { from_type: "Float", to_type: "Int" },
+  { from_type: "Float", to_type: "Float" },
+  { from_type: "Bool",  to_type: "Int" },
+]
+
+data grounded_primitive_coproduct_identities: List<CastRule> = [
+  { from_type: "Int",    to_type: "Nat" },
+  { from_type: "String", to_type: "FreeMonoid" },
+]
+
+fn dag_can_cast(source_type: String, target_type: String) -> Bool {
+  (dag_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type))
+    || (grounded_primitive_coproduct_identities |> any(r => r.from_type == source_type && r.to_type == target_type))
+}
+
+fn is_dag_cast_domain_type(name: String) -> Bool {
+  dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
+}

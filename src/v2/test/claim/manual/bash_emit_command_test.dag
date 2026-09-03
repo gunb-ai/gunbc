@@ -1,17 +1,19 @@
 module v2.test.manual.bash_emit_command
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.extdeps.languages.bash {
   bash_lhs_exact_relation_row_witness,
-  bash_mvp1_concrete_tokens,
-  bash_mvp1_emitted_command,
-  bash_mvp1_source_text,
-  bash_mvp1_lex,
-  bash_mvp1_target_model,
+  bash_concrete_tokens,
+  bash_emitted_command,
+  bash_source_text,
+  bash_lex,
+  bash_target_model,
   bash_bound_words_target_model,
   bash_embedded_quote_target_model,
   bash_bound_words_emitted_command,
@@ -55,7 +57,17 @@ import v2.extdeps.languages.bash {
   bash_pipe_and_or_flat_wrong_source_text,
   bash_pipe_and_or_flat_wrong_target_model
 }
-import v2.std.collection { Map, empty_map }
+import v2.std.collection {
+  Map,
+  empty_map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.diagnostic {
   Accepted,
@@ -67,17 +79,14 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-fn bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^bash_emit_facts_unexpected_consultation,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn bash_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_absent()
 }
 
 fn bash_arrow_emitted_red_fixture() -> Node {
@@ -89,7 +98,7 @@ fn bash_arrow_emitted_red_fixture() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_git } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -97,7 +106,7 @@ fn bash_arrow_emitted_red_fixture() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_rev_parse } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -105,18 +114,18 @@ fn bash_arrow_emitted_red_fixture() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_show_toplevel } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
 fn bash_lhs_exact_arrow_emitted_rejects() -> Bool {
   match bash_lhs_exact_relation_row_witness(
     lhs: ^bash_production_command,
-    tokens: bash_mvp1_concrete_tokens(),
+    tokens: bash_concrete_tokens(),
     emitted: bash_arrow_emitted_red_fixture()
   ) {
     Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
@@ -129,14 +138,14 @@ test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool {
 }
 
 data bash_emit_inferred_tree: InferredTree = InferredTree {
-  root: bash_mvp1_emitted_command,
-  facts: Map {
+  root: bash_emitted_command,
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
 
 fn anchor_bash_emit_accepts() -> Outcome<Medium<String>> {
-  emit(tree: bash_emit_inferred_tree, target: bash_mvp1_target_model())
+  emit(tree: bash_emit_inferred_tree, target: bash_target_model())
 }
 
 data bash_emit_receipt: Outcome<Medium<String>> = anchor_bash_emit_accepts()
@@ -144,7 +153,7 @@ data bash_emit_receipt: Outcome<Medium<String>> = anchor_bash_emit_accepts()
 test fn bash_emit_command_accepts_holds() -> Bool {
   match bash_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_mvp1_source_text) && (d == None)
+      (source.carried == bash_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -152,12 +161,13 @@ test fn bash_emit_command_accepts_holds() -> Bool {
 data bash_empty_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data bash_missing_rules_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: bash_empty_bundle,
-  lex: bash_mvp1_lex(),
+  lex: bash_lex(),
   binding_spellings: empty_map(),
   token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: "",
@@ -167,7 +177,7 @@ data bash_missing_rules_target: TargetModel = TargetModel {
 fn anchor_bash_serialize_rejects_missing_rules() -> Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: bash_missing_rules_target,
-    emitted: bash_mvp1_emitted_command
+    emitted: bash_emitted_command
   )
 }
 
@@ -182,7 +192,7 @@ test fn bash_emit_missing_rules_rejects_holds() -> Bool {
 
 data bash_bound_words_emit_inferred_tree: InferredTree = InferredTree {
   root: bash_bound_words_emitted_command,
-  facts: Map {
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
@@ -203,7 +213,7 @@ test fn bash_emit_bound_words_holds() -> Bool {
 
 data bash_embedded_quote_emit_inferred_tree: InferredTree = InferredTree {
   root: bash_embedded_quote_emitted_command,
-  facts: Map {
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
@@ -224,7 +234,7 @@ test fn bash_emit_embedded_quote_holds() -> Bool {
 
 data bash_source_root_ingest_gate_emit_inferred_tree: InferredTree = InferredTree {
   root: bash_source_root_ingest_gate_emitted_command,
-  facts: Map {
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
@@ -253,7 +263,7 @@ fn bash_emit_slice4_holds(
 ) -> Bool {
   let tree = InferredTree {
     root: emitted,
-    facts: Map { lookup: bash_facts_lookup }
+    facts: PartialFunction { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == None)
@@ -356,7 +366,7 @@ test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
 fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
   let tree = InferredTree {
     root: bash_pipe_and_or_brace_grouped_emitted,
-    facts: Map { lookup: bash_facts_lookup }
+    facts: PartialFunction { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
     Accepted { value: source, diagnostics: d } =>

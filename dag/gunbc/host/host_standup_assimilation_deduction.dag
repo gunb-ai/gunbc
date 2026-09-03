@@ -1,0 +1,344 @@
+module gunbc.host_standup_assimilation_deduction
+
+
+data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. Verdict authority is std.upsert_decision.ObservationVerdict (no parallel level enum). Happy path = lease read only; unreadable lease table → UnknownRefused, never Absent/Pending. Converged → UpsertDecision Noop. KVM/BMC weak surfaces consulted ONLY inside stall cause-fold."
+}
+
+type DhcpLeaseTableObservation
+  = LeaseTableObserved { table: Cr1000aDhcpLeaseTable }
+  | LeaseTableUnreadable { reason: NonEmptyStr }
+
+type OsInstallActuationAssertPlan
+  = AssertOsInstallActuationPending
+  | AssertOsInstallActuationConvergedMarker
+
+type StallTransitionProbe {
+  boot_override_mode: RedfishBootSourceOverrideMode?
+  nbd_serve_session_active: Bool
+  kvm_screen: KvmObservedScreen?
+  host_logger_nonempty: Bool
+  boot_progress_none: Bool
+}
+
+type StallTransitionCause
+  = StallCauseBootModeLegacyUefiRequired
+  | StallCauseMediaNeverAttached
+  | StallCauseSeedNotFoundAwaitingStorage
+  | StallCauseConsoleRedirectOff
+  | StallCauseNoBootableDevice
+
+type StallRemediation
+  = RemediationSetBootOverrideModeUefi
+  | RemediationStartNbdServeSession
+  | RemediationRemasterSeedOrDeclareStoragePolicy
+  | RemediationEnableHostLoggerConsoleRedirect
+  | RemediationInspectBootProgressAndSel
+
+type StallCauseFoldAcc {
+  dominant: StallTransitionCause
+  priority: Int
+}
+
+data srv3_pre_install_lease_observation: DhcpLeaseTableObservation = LeaseTableObserved {
+  table: srv3_pre_install_lease_table,
+}
+
+data srv3_post_install_lease_observation: DhcpLeaseTableObservation = LeaseTableObserved {
+  table: srv3_post_install_lease_table_fixture,
+}
+
+data srv3_unreadable_lease_observation: DhcpLeaseTableObservation = LeaseTableUnreadable {
+  reason: "router dhcp lease table unreachable" as NonEmptyStr,
+}
+
+data srv3_os_install_to_host_identity_transition: NonEmptyStr = "os-install-actuated-to-host-identity-converge" as NonEmptyStr
+
+fn hang_budget_millisecond(ms: Milliseconds) -> Millisecond {
+  millisecond(count: ms)
+}
+
+fn srv3_os_install_to_host_identity_budget(elapsed: Millisecond) -> EffectStallBudget {
+  EffectStallBudget {
+    step_id: srv3_os_install_to_host_identity_transition,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+    elapsed_ms: elapsed,
+  }
+}
+
+fn stall_transition_cause_priority(cause: StallTransitionCause) -> Int {
+  match cause {
+    StallCauseConsoleRedirectOff => 0
+    StallCauseMediaNeverAttached => 1
+    StallCauseBootModeLegacyUefiRequired => 2
+    StallCauseSeedNotFoundAwaitingStorage => 3
+    StallCauseNoBootableDevice => 4
+  }
+}
+
+fn stall_failure_reason(stall: StallBudgetVerdict) -> NonEmptyStr? {
+  match stall {
+    StallWithinBudget => none
+    StallBudgetExceeded { step_id: sid, elapsed_ms: e, limit_ms: l } =>
+      Present {
+        value: concat(
+          concat(
+            concat("transition stalled: ", sid),
+            concat(" elapsed_ms=", to_string(millisecond_count(m: e)))
+          ),
+          concat(" limit_ms=", to_string(millisecond_count(m: l)))
+        ) as NonEmptyStr,
+      }
+  }
+}
+
+fn deduce_os_install_actuation_verdict(
+  obs: DhcpLeaseTableObservation,
+  fleet_slot: HostIdentity,
+  stall: StallBudgetVerdict,
+) -> ObservationVerdict {
+  match obs {
+    LeaseTableUnreadable { reason: _ } => UnknownRefused
+    LeaseTableObserved { table: t } =>
+      if lease_table_has_os_up_subsumption(table: t, fleet_slot: fleet_slot) {
+        Converged
+      } else {
+        match stall {
+          StallWithinBudget => std.upsert_decision.Absent
+          StallBudgetExceeded { step_id: _, elapsed_ms: _, limit_ms: _ } => Drifted
+        }
+      }
+  }
+}
+
+fn refusal_reason_for_os_install_actuation_verdict(
+  obs: DhcpLeaseTableObservation,
+  stall: StallBudgetVerdict,
+) -> NonEmptyStr? {
+  match obs {
+    LeaseTableUnreadable { reason: r } => Present { value: r }
+    LeaseTableObserved { table: _ } => stall_failure_reason(stall: stall)
+  }
+}
+
+fn decision_for_os_install_actuation_verdict(
+  verdict: ObservationVerdict,
+  obs: DhcpLeaseTableObservation,
+  stall: StallBudgetVerdict,
+) -> UpsertDecision<OsInstallActuationAssertPlan> {
+  match verdict {
+    Converged => Noop
+    Absent => Apply { plan: AssertOsInstallActuationPending }
+    Drifted =>
+      match refusal_reason_for_os_install_actuation_verdict(obs: obs, stall: stall) {
+        Present { value: r } => Refuse { reason: r }
+        Absent =>
+          Refuse {
+            reason: "os-install actuation drifted without located refusal reason" as NonEmptyStr,
+          }
+      }
+    UnknownRefused =>
+      match obs {
+        LeaseTableUnreadable { reason: r } => Refuse { reason: r }
+        LeaseTableObserved { table: _ } =>
+          Refuse {
+            reason: "dhcp lease table observation refused" as NonEmptyStr,
+          }
+      }
+    Conflict =>
+      Refuse { reason: "os-install actuation observation conflict" as NonEmptyStr }
+    Inaccessible =>
+      Refuse { reason: "os-install actuation observation inaccessible" as NonEmptyStr }
+  }
+}
+
+fn classify_os_install_actuation_upsert(
+  obs: DhcpLeaseTableObservation,
+  fleet_slot: HostIdentity,
+  stall: StallBudgetVerdict,
+) -> std.upsert_decision.UpsertClassification<OsInstallActuationAssertPlan> {
+  let verdict = deduce_os_install_actuation_verdict(
+    obs: obs,
+    fleet_slot: fleet_slot,
+    stall: stall,
+  )
+  UpsertClassification {
+    verdict: verdict,
+    decision: decision_for_os_install_actuation_verdict(
+      verdict: verdict,
+      obs: obs,
+      stall: stall,
+    ),
+  }
+}
+
+fn srv3_deduce_os_install_to_host_identity_verdict(
+  obs: DhcpLeaseTableObservation,
+  elapsed: Millisecond,
+) -> ObservationVerdict {
+  deduce_os_install_actuation_verdict(
+    obs: obs,
+    fleet_slot: operator_host_srv3,
+    stall: stall_budget_verdict(
+      budget: srv3_os_install_to_host_identity_budget(elapsed: elapsed),
+    ),
+  )
+}
+
+fn srv3_pre_install_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
+  srv3_deduce_os_install_to_host_identity_verdict(
+    obs: srv3_pre_install_lease_observation,
+    elapsed: elapsed,
+  )
+}
+
+fn srv3_post_install_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
+  srv3_deduce_os_install_to_host_identity_verdict(
+    obs: srv3_post_install_lease_observation,
+    elapsed: elapsed,
+  )
+}
+
+fn srv3_unreadable_lease_actuation_verdict(elapsed: Millisecond) -> ObservationVerdict {
+  srv3_deduce_os_install_to_host_identity_verdict(
+    obs: srv3_unreadable_lease_observation,
+    elapsed: elapsed,
+  )
+}
+
+fn deduce_os_install_actuated_satisfied(verdict: ObservationVerdict) -> Bool {
+  match verdict {
+    Converged => true
+    Absent => false
+    Drifted => false
+    UnknownRefused => false
+    Conflict => false
+    Inaccessible => false
+  }
+}
+
+fn stall_cause_boot_mode_legacy_probe(
+  mode: RedfishBootSourceOverrideMode?,
+) -> StallTransitionCause? {
+  match mode {
+    Present { value: BootOverrideModeLegacy } =>
+      Present { value: StallCauseBootModeLegacyUefiRequired }
+    Present { value: BootOverrideModeUefi } => none
+    Absent => none
+  }
+}
+
+fn stall_cause_media_probe(nbd_serve_session_active: Bool) -> StallTransitionCause? {
+  if nbd_serve_session_active {
+    none
+  } else {
+    Present { value: StallCauseMediaNeverAttached }
+  }
+}
+
+fn stall_cause_kvm_probe(screen: KvmObservedScreen?) -> StallTransitionCause? {
+  match screen {
+    Present { value: SubiquityStorageScreen } =>
+      Present { value: StallCauseSeedNotFoundAwaitingStorage }
+    Present { value: _ } => none
+    Absent => none
+  }
+}
+
+fn stall_cause_host_logger_probe(host_logger_nonempty: Bool) -> StallTransitionCause? {
+  if host_logger_nonempty {
+    none
+  } else {
+    Present { value: StallCauseConsoleRedirectOff }
+  }
+}
+
+fn stall_cause_boot_progress_probe(boot_progress_none: Bool) -> StallTransitionCause? {
+  if boot_progress_none {
+    Present { value: StallCauseNoBootableDevice }
+  } else {
+    none
+  }
+}
+
+fn stall_causes_from_probe(probe: StallTransitionProbe) -> List<StallTransitionCause> {
+  let causes = []
+  let causes = match stall_cause_boot_mode_legacy_probe(mode: probe.boot_override_mode) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  let causes = match stall_cause_media_probe(nbd_serve_session_active: probe.nbd_serve_session_active) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  let causes = match stall_cause_kvm_probe(screen: probe.kvm_screen) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  let causes = match stall_cause_host_logger_probe(host_logger_nonempty: probe.host_logger_nonempty) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+  match stall_cause_boot_progress_probe(boot_progress_none: probe.boot_progress_none) {
+    Present { value: c } => concat(causes, [c])
+    Absent => causes
+  }
+}
+
+fn cause_fold_primary_stall_remediation(
+  causes: List<StallTransitionCause>,
+) -> StallRemediation? {
+  match fold(
+    causes,
+    init: StallCauseFoldAcc {
+      dominant: StallCauseConsoleRedirectOff,
+      priority: -1,
+    },
+    f: (acc, c) => {
+      let p = stall_transition_cause_priority(cause: c)
+      if p > acc.priority {
+        StallCauseFoldAcc { dominant: c, priority: p }
+      } else {
+        acc
+      }
+    },
+  ) {
+    StallCauseFoldAcc { dominant: d, priority: p } =>
+      if p < 0 {
+        none
+      } else {
+        match d {
+          StallCauseBootModeLegacyUefiRequired =>
+            Present { value: RemediationSetBootOverrideModeUefi }
+          StallCauseMediaNeverAttached =>
+            Present { value: RemediationStartNbdServeSession }
+          StallCauseSeedNotFoundAwaitingStorage =>
+            Present { value: RemediationRemasterSeedOrDeclareStoragePolicy }
+          StallCauseConsoleRedirectOff =>
+            Present { value: RemediationEnableHostLoggerConsoleRedirect }
+          StallCauseNoBootableDevice =>
+            Present { value: RemediationInspectBootProgressAndSel }
+        }
+      }
+  }
+}
+
+fn stall_remediation_label(remediation: StallRemediation) -> String {
+  match remediation {
+    RemediationSetBootOverrideModeUefi => "set BootSourceOverrideMode=UEFI on boot-once-cd"
+    RemediationStartNbdServeSession => "start nbd serve session and hold lease"
+    RemediationRemasterSeedOrDeclareStoragePolicy => "remaster seeded ISO or declare storage policy"
+    RemediationEnableHostLoggerConsoleRedirect => "enable HostLogger console redirect"
+    RemediationInspectBootProgressAndSel => "inspect BootProgress and SEL for no-bootable-device"
+  }
+}
+
+fn stall_transition_cause_label(cause: StallTransitionCause) -> String {
+  match cause {
+    StallCauseBootModeLegacyUefiRequired => "boot-mode-legacy-uefi-required"
+    StallCauseMediaNeverAttached => "media-never-attached"
+    StallCauseSeedNotFoundAwaitingStorage => "seed-not-found-awaiting-storage"
+    StallCauseConsoleRedirectOff => "console-redirect-off"
+    StallCauseNoBootableDevice => "no-bootable-device"
+  }
+}

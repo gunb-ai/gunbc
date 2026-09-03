@@ -1,0 +1,287 @@
+module gunbc.srv3_boot_once_cd
+
+import std.measure { Second, second }
+import extdeps.bmc.http
+import std.scoped_authorization { ScopedAuthorization }
+import std.types { Timestamp }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.workflow_escalation {
+  workflow_destructive_step_refusal_reason
+}
+import gunbc.srv3_os_install_actuate_workflow {
+  srv3_boot_once_cd_default_approval,
+  srv3_boot_once_cd_operator_granted_approval,
+  srv3_boot_once_cd_workflow_disposition,
+  srv3_boot_cd_target,
+  srv3_boot_cd_enabled,
+  srv3_boot_cd_mode,
+  srv3_boot_cd_reset_type,
+  Srv3BootOverrideSubject,
+}
+import gunbc.srv3_bmc_credential_resolve {
+  BmcCredentialAccessUpsertRequired,
+  BmcCredentialFetchRefused,
+  BmcCredentialMaterialized,
+  BmcCredentialResolution,
+  materialize_bmc_login_password,
+  observe_and_resolve_srv3_bmc_credential,
+}
+import gunbc.auth.access_token_source { access_token_upsert_required_reason }
+import gunbc.bmc_onboarding { srv3_onboarding_plan }
+import gunbc.tools.bmc_onboard {
+  bmc_onboard_netrc_path,
+  netrc_content,
+  boot_override_body,
+  reset_body
+}
+
+data srv3_boot_once_apply_read_back_sleep: Second = second(count: 45)
+
+data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.filesystem.filesystem_io",
+    decl_name: "Filesystem",
+    field: WholeDeclaration
+  }
+}
+
+data srv3_boot_cd_body_path: String = "/tmp/srv3_boot_cd_body.json"
+data srv3_reset_body_path: String = "/tmp/srv3_reset_body.json"
+
+
+fn srv3_boot_cd_override_mode_valid_for_arm64(mode: RedfishBootSourceOverrideMode) -> Bool {
+  match mode {
+    BootOverrideModeUefi => true
+    BootOverrideModeLegacy => false
+  }
+}
+
+fn srv3_boot_cd_override_mode_refusal(mode: RedfishBootSourceOverrideMode) -> String? {
+  if srv3_boot_cd_override_mode_valid_for_arm64(mode: mode) {
+    none
+  } else {
+    Present {
+      value: "boot-once-cd: arm64 UEFI-only — BootSourceOverrideMode=Legacy refused (CD override is a no-op)"
+    }
+  }
+}
+
+func srv3_boot_once_cd() -> ProcessExit
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
+}
+
+func srv3_boot_once_cd_operator_approved() -> ProcessExit
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
+}
+
+// The expiry check needs an instant, and the only honest source of one is the clock -- a
+// caller-supplied observed_at would let the grant be revalidated against whatever time made it
+// pass. An unreadable clock REFUSES: "we could not tell whether the grant had expired" is not
+// evidence that it had not (§5 -- a failure arm refuses, never widens).
+// THE CLAIM IS TAKEN BEFORE ANY MUTATION AND IT IS THE STORE THAT DECIDES. Evaluating the grant
+// and then executing is a check, and the check races: two runs, or one run restarted after a
+// crash, each read the same valid grant and each proceed. The durable compare-and-set on the
+// escalation's slot is what excludes the second one, so it runs BEFORE the credential is resolved
+// and long before the first Redfish write. Losing refuses; an unreadable store refuses -- "we
+// could not tell whether another attempt holds this grant" is not evidence that none does, and
+// widening there would fail open on the exact operation whose purpose is exclusion.
+//
+// The claim is then TERMINATED either way, and the two terminals are different facts: a completed
+// grant is spent and must never re-run, an aborted one may warrant the operator re-issuing.
+// Leaving the slot at ClaimedBy on a failure would make a crashed attempt indistinguishable from
+// a running one and block the retry forever.
+func srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject>) -> ProcessExit
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  let observed_at = match clock_now_probed_at() {
+    Present { value: ts } => ts as Timestamp
+    Absent =>
+      return exit_failure(
+        reason: "boot-once-cd: clock unreadable, cannot decide whether the operator grant has expired",
+      )
+  }
+  let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval, observed_at: observed_at)
+  let refusal = workflow_destructive_step_refusal_reason(disposition: disposition)
+  if refusal != "" {
+    return exit_failure(reason: concat("boot-once-cd: ", refusal))
+  }
+
+  match srv3_claim_boot_once_cd_authorization(at: observed_at) {
+    ClaimLost { holder: who } =>
+      return exit_failure(
+        reason: concat("boot-once-cd: operator grant already claimed by another attempt: ", who as String),
+      )
+    ClaimUndecided { reason: why } =>
+      return exit_failure(reason: concat("boot-once-cd: ", why as String))
+    ClaimHeld { state: _, generation: held_at } =>
+      let resolution = observe_and_resolve_srv3_bmc_credential()
+      let outcome = match resolution {
+        CredentialResolutionRefused { reason: r } =>
+          exit_failure(reason: concat("boot-once-cd: credential resolution refused: ", r))
+        _ => srv3_boot_once_cd_resolved(resolution: resolution)
+      }
+      return srv3_settle_boot_once_cd_claim(outcome: outcome, held_at: held_at, at: observed_at)
+  }
+}
+
+func srv3_claim_boot_once_cd_authorization(at: Timestamp) -> AuthorizationClaimOutcome
+  uses fs: std.resources.Filesystem
+{
+  let proposed = claim_transition_claimed(attempt: srv3_boot_once_cd_attempt, at: at)
+  match admit_cas_attempt(
+    attempt: claim_authorization(
+      escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+      expected: ExpectSlotAbsent,
+      proposed: proposed,
+    ),
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      authorization_claim_outcome(
+        proposed: proposed,
+        outcome: file_compare_and_set(root: srv3_authorization_claim_root, verified: v),
+      )
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      ClaimUndecided { reason: "claim payload and its digest disagree" as NonEmptyStr }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      ClaimUndecided { reason: "claim digest families are incomparable" as NonEmptyStr }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      ClaimUndecided { reason: "authorization claim key is not slot-addressable" as NonEmptyStr }
+  }
+}
+
+// The terminal transition rides the SAME compare-and-set, expecting the generation we hold. If it
+// does not land, the step's own result still stands -- the mutation already happened, and lying
+// about it to keep the ledger tidy would be the worse failure -- but the exit carries the fact
+// that the claim was left unterminated, because an operator reading a bare success would not know
+// a manual slot inspection is owed.
+func srv3_settle_boot_once_cd_claim(
+  outcome: ProcessExit,
+  held_at: CasGeneration,
+  at: Timestamp,
+) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  let terminal = match outcome {
+    ExitSuccess => claim_transition_completed(attempt: srv3_boot_once_cd_attempt, at: at)
+    ExitFailure { code: _, reason: r } =>
+      claim_transition_aborted(attempt: srv3_boot_once_cd_attempt, at: at, cause: r as NonEmptyStr)
+  }
+  match admit_cas_attempt(
+    attempt: claim_authorization(
+      escalation_id: srv3_boot_once_cd_authorization_request.escalation_id,
+      expected: ExpectSlotGeneration { generation: held_at },
+      proposed: terminal,
+    ),
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: srv3_authorization_claim_root, verified: v) {
+        CasCommitted { committed: _ } => outcome
+        CasPreconditionFailed { expected: _, observed: _ } =>
+          srv3_unterminated_claim_exit(outcome: outcome, detail: "claim slot moved under us")
+        CasStoreRefused { cause: _ } =>
+          srv3_unterminated_claim_exit(outcome: outcome, detail: "claim store refused the terminal write")
+      }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      srv3_unterminated_claim_exit(outcome: outcome, detail: "terminal payload and its digest disagree")
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      srv3_unterminated_claim_exit(outcome: outcome, detail: "terminal digest families are incomparable")
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      srv3_unterminated_claim_exit(outcome: outcome, detail: "authorization claim key is not slot-addressable")
+  }
+}
+
+fn srv3_unterminated_claim_exit(outcome: ProcessExit, detail: String) -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "boot-once-cd: the step finished but its authorization claim was left unterminated (",
+      concat(
+        detail,
+        concat("); step outcome was: ", srv3_process_exit_render(exit: outcome)),
+      ),
+    ),
+  )
+}
+
+fn srv3_process_exit_render(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => "success"
+    ExitFailure { code: _, reason: r } => concat("failure: ", r)
+  }
+}
+
+func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
+  uses net: std.resources.Network
+{
+  let plan = srv3_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  let materialization = materialize_bmc_login_password(resolution: resolution)
+  let password = match materialization {
+    BmcCredentialMaterialized { password: password } => password
+    BmcCredentialAccessUpsertRequired { plan: plan } =>
+      return exit_failure(
+        reason: concat(
+          "boot-once-cd: ",
+          access_token_upsert_required_reason(plan: plan),
+        ),
+      )
+    BmcCredentialFetchRefused { reason: reason } =>
+      return exit_failure(reason: concat("boot-once-cd: ", reason as String))
+  }
+
+  let netrc_write = Filesystem.Write(
+    path: bmc_onboard_netrc_path,
+    content: netrc_content(host: host, account: account, password: password)
+  )
+  if netrc_write.success == false {
+    return exit_failure(reason: concat("boot-once-cd: netrc stage failed: ", netrc_write.error))
+  }
+
+  match srv3_boot_cd_override_mode_refusal(mode: srv3_boot_cd_mode) {
+    Present { value: r } =>
+      return exit_failure(reason: r)
+    Absent =>
+      let boot_body = boot_override_body(
+        target: redfish_boot_target_wire(t: srv3_boot_cd_target),
+        enabled: redfish_boot_override_enabled_wire(e: srv3_boot_cd_enabled),
+        mode: redfish_boot_override_mode_wire(m: srv3_boot_cd_mode),
+      )
+      let boot_write = Filesystem.Write(path: srv3_boot_cd_body_path, content: boot_body)
+      if boot_write.success == false {
+        return exit_failure(reason: concat("boot-once-cd: boot body write failed: ", boot_write.error))
+      }
+      let patch = redfish.Http.SetBootSourceOverride(
+        bmc_host: host,
+        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        system_id: asrock_altrad8ud_redfish_system_id,
+        request_body_file: srv3_boot_cd_body_path as NonEmptyStr
+      )
+      if patch.success == false {
+        return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch.body))
+      }
+
+      let rst_body = reset_body(reset_type: redfish_reset_type_wire(r: srv3_boot_cd_reset_type))
+      let rst_write = Filesystem.Write(path: srv3_reset_body_path, content: rst_body)
+      if rst_write.success == false {
+        return exit_failure(reason: concat("boot-once-cd: reset body write failed: ", rst_write.error))
+      }
+
+      let rst = redfish.Http.ResetSystem(
+        bmc_host: host,
+        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        system_id: asrock_altrad8ud_redfish_system_id,
+        request_body_file: srv3_reset_body_path as NonEmptyStr
+      )
+      return if rst.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("boot-once-cd: reset POST failed: ", rst.body))
+      }
+  }
+}

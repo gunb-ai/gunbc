@@ -1,42 +1,5 @@
 module v2.test.fixture.task_manager_demo
 
-import v2.extdeps.formats.sql {
-  SqlColumnConstraints,
-  SqlColumnDefault,
-  SqlColumnDefaultAbsent,
-  SqlColumnDefinition,
-  SqlCreateTable,
-  SqlDataType,
-  SqlIdentifier,
-  SqlRegularIdentifier,
-  SqlSchemaOperation,
-  SqlTableDefinition,
-  SqlTypeCharacterLargeObject
-}
-import v2.std.algebra { FreeMonoid, Empty }
-import v2.std.collection { Absent, optional_present }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  ShortCircuit,
-  StageDiagnosticPolicy,
-  Unavailable,
-  append_outcome_value,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.network { NetworkAddress, UriAuthority, UriHost, rfc3986_host_abnf }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.extdeps.coordination {
-  Endpoint, EndpointRef, LanguageRef, FrameworkRef, HostedByFramework, NoFramework,
-  WireContract, WireContractFacts, CoordinationBind, BindRef,
-  Http, RequestReply, ImmediateSettlement, NoReplicaConvergence,
-  DeploymentUnit
-}
 
 type TaskId {
   identity: Symbol
@@ -121,7 +84,7 @@ data create_task_facts: WireContractFacts = WireContractFacts {
   consistency: NoReplicaConvergence
 }
 
-data create_task_contract: WireContract = WireContract {
+data create_task_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: create_task_facts,
   bind: CoordinationBind {
     bind: BindRef { identity: create_task },
@@ -137,7 +100,7 @@ data update_status_facts: WireContractFacts = WireContractFacts {
   consistency: NoReplicaConvergence
 }
 
-data update_status_contract: WireContract = WireContract {
+data update_status_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: update_status_facts,
   bind: CoordinationBind {
     bind: BindRef { identity: update_status },
@@ -153,7 +116,7 @@ data list_tasks_facts: WireContractFacts = WireContractFacts {
   consistency: NoReplicaConvergence
 }
 
-data list_tasks_contract: WireContract = WireContract {
+data list_tasks_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: list_tasks_facts,
   bind: CoordinationBind {
     bind: BindRef { identity: list_tasks },
@@ -197,7 +160,7 @@ fn task_manager_task_fields_to_sql_columns(
 ) -> Outcome<List<SqlColumnDefinition>> {
   fold(
     fields,
-    init: outcome_accepted(value: Empty),
+    init: outcome_accepted(value: std.algebra.Empty),
     f: fn(acc, field) {
       append_outcome_value(
         acc: acc,

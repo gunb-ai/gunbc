@@ -1,0 +1,19 @@
+module v2.test.lens_testgen.shadow_ci_receipt
+
+import v2.lens.testgen {
+  testgen_run_receipt_outcome,
+  testgen_run_receipt_carries_profile_roster
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
+  match testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      testgen_run_receipt_carries_profile_roster(receipt: receipt)
+    Rejected { diagnostics: _ } => false
+  }
+}

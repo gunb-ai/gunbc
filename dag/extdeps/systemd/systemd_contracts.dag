@@ -1,0 +1,18 @@
+module extdeps.systemd.systemd_contracts
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/systemctl.1.html#is-active"
+  }
+}
+
+data systemd_unit_active_state_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.systemd", decl_name: "SystemdUnitActiveState", field: WholeDeclaration },
+  encoding: StringVariant { naming: SnakeCase }
+}

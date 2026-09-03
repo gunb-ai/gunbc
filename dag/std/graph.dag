@@ -1,0 +1,211 @@
+module std.graph
+
+import std.termination {
+  ProofEdge,
+  DescentEvidence, Strict, NonIncreasing, DescentUnknown,
+  TerminationProof
+}
+
+type GraphEdge {
+  caller: String
+  callee: String
+}
+
+type CallGraph {
+  edges: List<GraphEdge>
+}
+
+type CallGraphAdjacencyViews {
+  forward: Map<String, List<String>>
+  reverse: Map<String, List<String>>
+}
+
+type DfsFinishAcc {
+  visited: Set<String>
+  order: List<String>
+}
+
+type SccComponentAcc {
+  visited: Set<String>
+  members: List<String>
+}
+
+type SccMembersAcc {
+  visited: Set<String>
+  members: List<String>
+}
+
+fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
+  names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
+  )
+}
+
+fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
+  CallGraph {
+    edges: edges
+      |> filter(e => e.caller != e.callee)
+      |> map(e => GraphEdge { caller: e.caller, callee: e.callee })
+  }
+}
+
+fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdjacencyViews {
+  let initial_forward = seed_adjacency_map(names: names)
+  let initial_reverse = seed_adjacency_map(names: names)
+  graph.edges |> fold(init: CallGraphAdjacencyViews { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+    let forward_neighbors = match map_get(acc.forward, edge.caller) {
+      Present { value: ns } => concat(ns, [edge.callee])
+      Absent => [edge.callee]
+    }
+    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
+      Present { value: ns } => concat(ns, [edge.caller])
+      Absent => [edge.caller]
+    }
+    CallGraphAdjacencyViews {
+      forward: map_insert(acc.forward, edge.caller, forward_neighbors),
+      reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)
+    }
+  )
+}
+
+fn forward_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
+  build_adjacency_views(names: names, graph: graph).forward
+}
+
+fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
+  build_adjacency_views(names: names, graph: graph).reverse
+}
+
+fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
+  if set_contains(acc.visited, node) {
+    acc
+  } else {
+    let next_visited = set_insert(acc.visited, node)
+    let neighbors = match map_get(adjacency, node) {
+      Present { value: ns } => ns
+      Absent => []
+    }
+    let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
+      dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
+    )
+    DfsFinishAcc { visited: explored.visited, order: explored.order |> list_push(node) }
+  }
+}
+
+fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
+  if set_contains(acc.visited, node) {
+    acc
+  } else {
+    let next_visited = set_insert(acc.visited, node)
+    let next_members = acc.members |> list_push(node)
+    let neighbors = match map_get(adjacency, node) {
+      Present { value: ns } => ns
+      Absent => []
+    }
+    neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
+      dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
+    )
+  }
+}
+
+fn graph_multi_node_scc_members(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<String> {
+  let adjacency = build_adjacency_views(names: names, graph: graph)
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
+    dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
+  )
+  let result = finish.order |> reverse |> fold(init: SccMembersAcc { visited: empty_set(), members: [] }, f: (acc, name) =>
+    if set_contains(acc.visited, name) {
+      acc
+    } else {
+      let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
+      let members = if (component.members |> count) > 1 {
+        concat(acc.members, component.members)
+      } else {
+        acc.members
+      }
+      SccMembersAcc {
+        visited: component.visited,
+        members: members
+      }
+    }
+  )
+  result.members
+}
+
+fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
+  count(graph_multi_node_scc_members(names: names, graph: graph)) > 0
+}
+
+fn graph_cycle_members(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<String> {
+  let self_scan = graph.edges
+    |> filter(edge => edge.caller == edge.callee)
+    |> fold(
+      init: DfsFinishAcc { visited: empty_set(), order: [] },
+      f: fn(acc, edge) {
+        if set_contains(acc.visited, edge.caller) {
+          acc
+        } else {
+          DfsFinishAcc {
+            visited: set_insert(acc.visited, edge.caller),
+            order: list_push(acc.order, edge.caller),
+          }
+        }
+      },
+    )
+  let self_cycles = self_scan.order
+  concat(
+    self_cycles,
+    graph_multi_node_scc_members(names: names, graph: graph)
+      |> filter(member =>
+        !any(self_cycles, self_cycle => self_cycle == member)
+      ),
+  )
+}
+
+fn graph_reverse_reachable_members(
+  names: List<String>,
+  graph: CallGraph,
+  start: String,
+) -> List<String> {
+  let reached = dfs_collect_component(
+    node: start,
+    adjacency: reverse_adjacency(names: names, graph: graph),
+    acc: SccComponentAcc {
+      visited: empty_set(),
+      members: [],
+    },
+  )
+  reached.members |> filter(member => member != start)
+}
+
+fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
+  match evidence |> first {
+    Absent => false
+    Present { value: e } =>
+      match e {
+        Strict => true
+        NonIncreasing => is_lexicographic_descent(evidence: evidence |> skip(1))
+        DescentUnknown => false
+      }
+  }
+}
+
+fn is_valid_proof(proof: TerminationProof, edges: List<ProofEdge>) -> Bool {
+  let expected_dims = proof.dimensions |> count
+  let non_descending = edges |> filter(e =>
+    (e.evidence |> count != expected_dims) || is_lexicographic_descent(evidence: e.evidence) == false
+  )
+  let has_self_cycle = non_descending |> any(e => e.caller == e.callee)
+  if has_self_cycle { false }
+  else {
+    let members = edges |> flat_map(e => [e.caller, e.callee])
+    let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
+    graph_has_multi_node_scc(names: members, graph: nd_graph) == false
+  }
+}

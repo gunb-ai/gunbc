@@ -1,0 +1,129 @@
+module extdeps.container.oci.image_config
+
+import extdeps.container.oci.digest { OciContentDigest }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.container.oci.types { ContainerExposedPort, ContainerPortProtocol }
+import extdeps.toolchain.types { Architecture, Os }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/config.md"
+  }
+}
+
+type ContainerImageConfig {
+  User: NonEmptyStr?
+  Env: List<String>?
+  Entrypoint: List<String>?
+  Cmd: List<String>?
+  WorkingDir: FilePath?
+  ExposedPorts: List<ContainerExposedPort>?
+}
+
+type ImageRootfs
+  = RootfsLayers { diff_ids: List<OciContentDigest> }
+
+type ImageConfiguration {
+  architecture: Architecture
+  os: Os
+  config: ContainerImageConfig?
+  rootfs: ImageRootfs
+}
+
+type ImageConfigRejectReason
+  = EmptyDiffIds
+  | ImageConfigRejectUnspecified
+
+type ImageConfigOutcome
+  = ImageConfigAccepted { value: ImageConfiguration }
+  | ImageConfigRejected { reason: ImageConfigRejectReason }
+
+fn accept_image_configuration(c: ImageConfiguration) -> ImageConfigOutcome {
+  match c.rootfs {
+    RootfsLayers { diff_ids: ids } =>
+      if count(ids) == 0 {
+        ImageConfigRejected { reason: EmptyDiffIds }
+      } else {
+        ImageConfigAccepted { value: c }
+      }
+  }
+}
+
+fn image_config_layer_count(c: ImageConfiguration) -> Int {
+  match c.rootfs {
+    RootfsLayers { diff_ids: ids } => count(ids)
+  }
+}
+
+// THE BARE-BINDING ARM DID NOT UNWRAP, AND NOTHING NOTICED BECAUSE NOTHING RAN.
+//
+// This read `match c.config { null => [] ; cfg => match cfg.Entrypoint { ... } }`. The bare arm
+// binds the OPTIONAL, not its payload, so the inner field read refused at runtime with
+// `NoSuchField { type_name: "Optional", field: "Entrypoint" }`. It typechecked and had witnesses,
+// and the defect surfaced the first time a consumer actually called it -- which is precisely the
+// specification-without-execution failure DESIGN section 5 names, found the way that section says
+// it is found. Present/Absent binds the payload.
+fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
+  match c.config {
+    Absent => []
+    Present { value: cfg } =>
+      match cfg.Entrypoint {
+        Absent => []
+        Present { value: entrypoint } => entrypoint
+      }
+  }
+}
+
+fn image_config_cmd(c: ImageConfiguration) -> List<String> {
+  match c.config {
+    Absent => []
+    Present { value: cfg } =>
+      match cfg.Cmd {
+        Absent => []
+        Present { value: cmd } => cmd
+      }
+  }
+}
+
+// THE COMMAND A RUNTIME WOULD ACTUALLY EXECUTE, WHICH NEITHER FIELD ANSWERS ALONE.
+//
+// config.md defines the executed command as Entrypoint with Cmd appended as its arguments, so an
+// image with only Cmd starts and an image with only Entrypoint starts, while an image with neither
+// has nothing to run. A consumer reading either field on its own would refuse a startable image or
+// admit an unstartable one; the concatenation is the fact, and it is modelled once here rather
+// than re-derived by every consumer.
+fn image_config_start_command(c: ImageConfiguration) -> List<String> {
+  append(image_config_entrypoint(c: c), items: image_config_cmd(c: c))
+}
+
+// Same defect as image_config_entrypoint above, repaired together rather than left for the next
+// consumer to rediscover: it is one class in one file, and fixing only the arm this change happens
+// to call would leave a known-broken sibling behind.
+fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPort? {
+  match c.config {
+    Absent => none
+    Present { value: cfg } =>
+      match cfg.ExposedPorts {
+        Absent => none
+        Present { value: ports } => ports |> get(0)
+      }
+  }
+}
+
+fn container_exposed_port_is(port: ContainerExposedPort, expected_port: Int, protocol: ContainerPortProtocol) -> Bool {
+  port.port == expected_port && port.protocol == protocol
+}
+
+fn image_config_has_exposed_port(
+  c: ImageConfiguration,
+  expected_port: Int,
+  protocol: ContainerPortProtocol,
+) -> Bool {
+  match image_config_first_exposed_port(c: c) {
+    Absent => false
+    Present { value: port } =>
+      container_exposed_port_is(port: port, expected_port: expected_port, protocol: protocol)
+  }
+}

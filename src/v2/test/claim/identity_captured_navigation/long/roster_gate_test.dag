@@ -1,0 +1,24 @@
+module v2.test.claim.long.identity_captured_navigation_roster_gate
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn roster_dag_language_model_zero_suspects_within_ratchet() -> Bool {
+  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/extdeps/languages/dag.dag", refusal_ceiling: 0)
+}
+
+test fn roster_body_lowering_fold_zero_suspects_within_ratchet() -> Bool {
+  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/compiler/body_lowering_fold.dag", refusal_ceiling: 0)
+}
+
+test fn roster_ingest_stage_zero_suspects_within_ratchet() -> Bool {
+  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/compiler/03_ingest.dag", refusal_ceiling: 0)
+}
+
+test fn roster_parse_stage_zero_suspects_within_ratchet() -> Bool {
+  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/compiler/02_parse.dag", refusal_ceiling: 0)
+}
+
+test fn roster_accumulator_copy_analyze_zero_suspects_within_ratchet() -> Bool {
+  v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/lens/complexity_accumulator_copy/analyze.dag", refusal_ceiling: 0)
+}

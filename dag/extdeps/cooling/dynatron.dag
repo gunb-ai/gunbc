@@ -1,0 +1,42 @@
+module extdeps.cooling.dynatron
+
+import std.types { NonEmptyStr, List }
+import std.measure { watt, rack_unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.cooling.types { CpuCoolerCatalogRow }
+import extdeps.cpu.types {
+  SocketedLandGrid, CpuSocket, LandGridArray }
+import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
+import extdeps.vendor.dynatron { dynatron }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dynatron.co/product-page/w1"
+  }
+}
+
+data dynatron_w1_catalog: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
+  model: "W1",
+  manufacturer: dynatron,
+  socket: CpuSocket { platform_owner: ampere_vendor, termination: SocketedLandGrid, contact_count: 4926, cooling_mount: ampere_lga4926_cooling_mount },
+  active_passive_switchable: true,
+  minimum_rack_units: rack_unit(2),
+  max_design_power: watt(250),
+  supported_motherboards: [AsrockRackAltrad8ud1l2t],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cooling.dynatron",
+      decl_name: "dynatron_w1_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

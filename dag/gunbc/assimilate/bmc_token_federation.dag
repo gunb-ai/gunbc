@@ -1,0 +1,248 @@
+module gunbc.assimilate.bmc_token_federation
+
+import gunbc.repository { gunbc_repository }
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_id, fleet_secrets_project_number,
+  github_wif_pool_id, github_wif_pool_display_name, github_wif_provider_id,
+  github_wif_issuer_uri, github_wif_attribute_mapping, federated_github_repo,
+  github_wif_pool, github_wif_provider,
+  github_wif_provider_resource, github_wif_principal_set, github_wif_attribute_condition,
+  federated_service_account_member
+}
+import extdeps.cloud.gcp.gcp {
+  ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
+  wif_provider_resource, wif_principal_set_for_repo
+}
+import extdeps.cloud.gcp.iam {
+  role_secretmanager_secret_accessor,
+  role_secretmanager_secret_version_adder
+}
+import extdeps.github.actions {
+  Step, RunStep, UsesStep,
+  Workflow, Job,
+  WorkflowTrigger, WorkflowDispatch,
+  WorkflowPermissions, PermRead, PermWrite,
+  google_auth_action, checkout_action,
+  default_job_timeout_minutes
+}
+import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import std.types { NonEmptyStr }
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Do,
+  FailFast,
+  Pipeline,
+  PipelineStep,
+  Run
+}
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+data bmc_token_smoke_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ bmc token-smoke run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell\n"
+
+data gcp_token_smoke_print_token_command: String = "gcloud auth print-access-token >/dev/null"
+
+data gcp_token_smoke_echo_acquired_command: String = "echo \"keyless access token acquired\""
+
+fn gcp_token_smoke_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: Empty,
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn gcp_token_smoke_do(command: String) -> PipelineStep {
+  Do { run: gcp_token_smoke_run(command: command) }
+}
+
+fn gcp_token_smoke_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      gcp_token_smoke_do(command: gcp_token_smoke_print_token_command),
+      gcp_token_smoke_do(command: gcp_token_smoke_echo_acquired_command)
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn gcp_token_smoke_script() -> String {
+  match orch_emit_pipeline(p: gcp_token_smoke_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
+  }
+}
+
+data bmc_secrets_project_id: GcpProjectId = fleet_secrets_project_id
+
+data bmc_secrets_project_number: String = fleet_secrets_project_number
+
+data bmc_srv3_secret_name: String = "bmc-srv3-admin"
+
+data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
+
+data bmc_federated_github_repo: String = federated_github_repo
+
+data bmc_wif_pool_id: NonEmptyStr = github_wif_pool_id
+
+data bmc_wif_pool_display_name: NonEmptyStr = github_wif_pool_display_name
+
+data bmc_wif_provider_id: NonEmptyStr = github_wif_provider_id
+
+data bmc_wif_issuer_uri: NonEmptyStr = github_wif_issuer_uri
+
+data bmc_wif_attribute_mapping: Map<String, String> = github_wif_attribute_mapping
+
+data bmc_assimilator_account_id: NonEmptyStr = "bmc-assimilator"
+
+data bmc_assimilator_display_name: NonEmptyStr = "BMC assimilator (keyless, srv3 secret only)"
+
+data bmc_wif_pool: WifPool = github_wif_pool
+
+data bmc_wif_provider: WifProvider = github_wif_provider
+
+fn bmc_assimilator_sa_member() -> String {
+  federated_service_account_member(email: bmc_assimilator_sa_email)
+}
+
+fn bmc_wif_provider_resource() -> String { github_wif_provider_resource() }
+
+fn bmc_wif_principal_set() -> String { github_wif_principal_set() }
+
+fn bmc_wif_attribute_condition() -> String { github_wif_attribute_condition() }
+
+data bmc_assimilator_allowed_roles: List<String> = [
+  role_secretmanager_secret_accessor,
+  role_secretmanager_secret_version_adder
+]
+
+fn bmc_role_allowed(role: String) -> Bool {
+  fold(bmc_assimilator_allowed_roles, init: false, f: (acc, allowed) => acc || role == allowed)
+}
+
+type SecretAccessBinding {
+  member: String
+  role: String
+  secret: String
+  project: GcpProjectId
+}
+
+fn bmc_secret_binding(role: String) -> SecretAccessBinding {
+  SecretAccessBinding {
+    member: bmc_assimilator_sa_member(),
+    role: role,
+    secret: bmc_srv3_secret_name,
+    project: bmc_secrets_project_id
+  }
+}
+
+data bmc_assimilator_bindings: List<SecretAccessBinding> = [
+  bmc_secret_binding(role: role_secretmanager_secret_accessor),
+  bmc_secret_binding(role: role_secretmanager_secret_version_adder)
+]
+
+fn gcp_wif_auth_step() -> Step {
+  UsesStep {
+    name: Present { value: "Authenticate to GCP (keyless, Workload Identity Federation)" },
+    id: Present { value: "gcp_auth" },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: bmc_wif_provider_resource())),
+        kv(key: "service_account", value: yaml_string(s: bmc_assimilator_sa_email as String))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn gcp_token_smoke_step() -> Step {
+  RunStep {
+    name: Present { value: "Verify gcloud access token resolves (keyless)" },
+    id: none,
+    run: gcp_token_smoke_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn bmc_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn bmc_token_smoke_job() -> Job {
+  Job {
+    id: "bmc_token_smoke",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: [bmc_checkout_step(), gcp_wif_auth_step(), gcp_token_smoke_step()],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: default_job_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+data bmc_token_smoke_workflow: Workflow = {
+  name: "bmc-token-smoke",
+  run_name: none,
+  on: [
+    WorkflowDispatch { inputs: [] }
+  ],
+  concurrency: none,
+  env: none,
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: Present { value: PermWrite }
+    }
+  },
+  jobs: [bmc_token_smoke_job()]
+}
+
+// dissolve-on: the repository-level federation VALUES now have one authority in
+// gunbc.auth.github_gcp_federation, but seven bmc_-prefixed names in this module still stand for
+// concepts that are not BMC facts (the fleet secrets project and number, the pool, provider,
+// issuer, attribute mapping, federated repo). Those names are a residual second naming scheme for
+// one concept -- weaker than the value fork just removed, since no row can now disagree, but still
+// a nickname. DISSOLVES WHEN consumers (bmc_bootstrap_provision, bmc_wif_delegation_chain,
+// bmc_wif_canary_bootstrap and their witnesses) reference the github_gcp_federation symbols
+// directly and these pass-through rows are deleted. Deferred rather than done here because the
+// rename touches BMC production files and their witnesses, and it is separable from the value
+// consolidation this change lands.
+
+fn emit_bmc_token_smoke_workflow_yaml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
+}

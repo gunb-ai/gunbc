@@ -3,14 +3,14 @@
 
 use self::EdgeKind::*;
 use self::OwnershipDecision::*;
-pub use crate::v1_compiler_emit::to_string;
+pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::ExprData::{
-    ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
-    ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprVar, NoExprData,
+    ExprBlock, ExprCall, ExprElaboratedLiteral, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
+    ExprLambda, ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn,
+    ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::VarBindingKind::{FunctionValueBinding, LocalValueBinding};
@@ -25,8 +25,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -143,12 +142,14 @@ pub struct OwnershipProof {
 pub struct UsageAccum {
     pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
     pub fold_call_nodes: Rc<Vec<Rc<Node>>>,
+    pub touched: Rc<Vec<String>>,
 }
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
         bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
         fold_call_nodes: Rc::new(vec![]),
+        touched: Rc::new(vec![]),
     })
 }
 
@@ -162,31 +163,32 @@ pub fn record_use(
 ) -> Rc<UsageAccum> {
     {
         let edge = Rc::new(EdgeClassification {
-            kind: kind,
-            site: site,
-            span_start: span_start,
+            kind: kind.clone(),
+            site: site.clone(),
+            span_start: span_start.clone(),
         });
         let existing = match v1_rt::map_get(&accum.bindings.clone(), name.clone()) {
             Some(usage) => usage.clone(),
-            None => Rc::new(BindingUsage {
+            std::option::Option::None => Rc::new(BindingUsage {
                 name: name.clone(),
-                binding_kind: None,
+                binding_kind: std::option::Option::None,
                 consumers: Rc::new(vec![]),
             }),
         };
-        let effective_kind = if (existing.binding_kind.clone() != None) {
+        let effective_kind = if (existing.binding_kind.clone() != std::option::Option::None) {
             existing.binding_kind.clone()
         } else {
-            binding_kind
+            binding_kind.clone()
         };
         let updated = Rc::new(BindingUsage {
             name: name.clone(),
-            binding_kind: effective_kind,
-            consumers: v1_rt::rc_list_push(existing.consumers.clone(), edge),
+            binding_kind: effective_kind.clone(),
+            consumers: v1_rt::rc_list_push(existing.consumers.clone(), edge.clone()),
         });
         Rc::new(UsageAccum {
-            bindings: v1_rt::rc_map_insert(accum.bindings.clone(), name.clone(), updated),
+            bindings: v1_rt::rc_map_insert(accum.bindings.clone(), name.clone(), updated.clone()),
             fold_call_nodes: accum.fold_call_nodes.clone(),
+            touched: v1_rt::rc_list_push(accum.touched.clone(), name.clone()),
         })
     }
 }
@@ -208,10 +210,20 @@ pub fn map_usage_merge_at(
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
             key.clone(),
-            max_usage_by_fan_out(existing.clone(), new_val),
+            max_usage_by_fan_out(existing.clone(), new_val.clone()),
         ),
-        None => v1_rt::rc_map_insert(base.clone(), key.clone(), new_val),
+        std::option::Option::None => {
+            v1_rt::rc_map_insert(base.clone(), key.clone(), new_val.clone())
+        }
     }
+}
+
+pub fn branch_seed(from: Rc<UsageAccum>) -> Rc<UsageAccum> {
+    Rc::new(UsageAccum {
+        bindings: from.bindings.clone(),
+        fold_call_nodes: from.fold_call_nodes.clone(),
+        touched: Rc::new(vec![]),
+    })
 }
 
 pub fn merge_branch_usages(
@@ -219,24 +231,31 @@ pub fn merge_branch_usages(
     branches: Rc<Vec<Rc<UsageAccum>>>,
 ) -> Rc<UsageAccum> {
     {
-        let binding_merged = branches.clone().iter().cloned().fold(
+        let binding_merged = branches.iter().cloned().fold(
             base.bindings.clone(),
             |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| {
-                Rc::new(v1_rt::map_values(&branch.bindings.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        merged,
-                        |acc: Rc<HashMap<String, Rc<BindingUsage>>>, usage: Rc<BindingUsage>| {
-                            map_usage_merge_at(acc, usage.name.clone(), usage.clone())
-                        },
-                    )
+                branch.touched.clone().iter().cloned().fold(
+                    merged,
+                    |acc: Rc<HashMap<String, Rc<BindingUsage>>>, name: String| match v1_rt::map_get(
+                        &branch.bindings.clone(),
+                        name.clone(),
+                    ) {
+                        Some(usage) => map_usage_merge_at(acc.clone(), name.clone(), usage.clone()),
+                        std::option::Option::None => acc.clone(),
+                    },
+                )
+            },
+        );
+        let touched_merged = branches.iter().cloned().fold(
+            base.touched.clone(),
+            |acc: Rc<Vec<String>>, branch: Rc<UsageAccum>| {
+                v1_rt::concat(acc, branch.touched.clone())
             },
         );
         let base_fold_count = (base.fold_call_nodes.clone().len() as i64);
         let branch_fold_nodes = Rc::new({
             let mut __result = Vec::new();
-            for b in branches.clone().iter().cloned() {
+            for b in branches.iter().cloned() {
                 __result.extend(
                     (*Rc::new(
                         b.fold_call_nodes
@@ -253,8 +272,9 @@ pub fn merge_branch_usages(
             __result
         });
         Rc::new(UsageAccum {
-            bindings: binding_merged,
-            fold_call_nodes: v1_rt::concat(base.fold_call_nodes.clone(), branch_fold_nodes),
+            bindings: binding_merged.clone(),
+            fold_call_nodes: v1_rt::concat(base.fold_call_nodes.clone(), branch_fold_nodes.clone()),
+            touched: touched_merged.clone(),
         })
     }
 }
@@ -270,11 +290,11 @@ pub fn walk_expr(
             ExprData::ExprVar {
                 binding_kind: bk, ..
             } => {
-                let n = expr_var_name_at(texpr.clone(), si.clone());
+                let n = crate::v1_std_core::expr_var_name_at(texpr.clone(), si.clone());
                 if in_tail.clone() {
                     record_use(
-                        accum,
-                        n,
+                        accum.clone(),
+                        n.clone(),
                         EdgeKind::Consumed,
                         "return".to_string(),
                         bk.clone(),
@@ -282,8 +302,8 @@ pub fn walk_expr(
                     )
                 } else {
                     record_use(
-                        accum,
-                        n,
+                        accum.clone(),
+                        n.clone(),
                         EdgeKind::Read,
                         "read".to_string(),
                         bk.clone(),
@@ -291,35 +311,40 @@ pub fn walk_expr(
                     )
                 }
             }
-            ExprData::ExprLiteral { value: _, .. } => accum,
+            ExprData::ExprLiteral { value: _, .. } => accum.clone(),
+            ExprData::ExprElaboratedLiteral { .. } => accum.clone(),
             ExprData::ExprFieldAccess { .. } => {
-                let base_node = field_access_base(texpr.clone());
+                let base_node = crate::v1_std_core::field_access_base(texpr.clone());
                 match (*base_node.expr_data.clone()).clone() {
                     ExprData::ExprVar {
                         binding_kind: bk, ..
                     } => {
-                        let vn = expr_var_name_at(base_node.clone(), si.clone());
-                        let f = field_access_field_at(texpr.clone(), si.clone());
+                        let vn =
+                            crate::v1_std_core::expr_var_name_at(base_node.clone(), si.clone());
+                        let f =
+                            crate::v1_std_core::field_access_field_at(texpr.clone(), si.clone());
                         record_use(
-                            accum,
-                            vn,
+                            accum.clone(),
+                            vn.clone(),
                             EdgeKind::Projected,
-                            v1_rt::concat(".".to_string(), f),
+                            v1_rt::concat(".".to_string(), f.clone()),
                             bk.clone(),
                             texpr.span.clone().start.clone(),
                         )
                     }
-                    _ => walk_expr(accum, base_node.clone(), false, si.clone()),
+                    _ => walk_expr(accum.clone(), base_node.clone(), false, si.clone()),
                 }
             }
             ExprData::ExprCall { .. } => {
-                let fname = expr_call_func_at(texpr.clone(), si.clone());
-                if (fname == "fold".to_string()) {
+                let fname = crate::v1_std_core::expr_call_func_at(texpr.clone(), si.clone());
+                if (fname.clone() == "fold".to_string()) {
                     {
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    == "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -327,32 +352,39 @@ pub fn walk_expr(
                         })
                         .first()
                         .cloned();
-                        let threaded_accum = match init_arg {
+                        let threaded_accum = match init_arg.clone() {
                             Some(ia) => {
-                                let ia_val = arg_value(ia.clone());
+                                let ia_val = crate::v1_std_core::arg_value(ia.clone());
                                 match (*ia_val.expr_data.clone()).clone() {
                                     ExprData::ExprVar {
                                         binding_kind: bk, ..
                                     } => {
-                                        let vn = expr_var_name_at(ia_val.clone(), si.clone());
+                                        let vn = crate::v1_std_core::expr_var_name_at(
+                                            ia_val.clone(),
+                                            si.clone(),
+                                        );
                                         record_use(
-                                            accum,
-                                            vn,
+                                            accum.clone(),
+                                            vn.clone(),
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
                                             ia_val.span.clone().start.clone(),
                                         )
                                     }
-                                    _ => walk_expr(accum, ia_val.clone(), false, si.clone()),
+                                    _ => {
+                                        walk_expr(accum.clone(), ia_val.clone(), false, si.clone())
+                                    }
                                 }
                             }
-                            None => accum,
+                            std::option::Option::None => accum.clone(),
                         };
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    != "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -361,30 +393,42 @@ pub fn walk_expr(
                         non_init.iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    crate::v1_std_core::arg_value(a.clone()),
+                                    false,
+                                    si.clone(),
+                                )
                             },
                         )
                     }
                 } else {
                     texpr.children.clone().iter().cloned().fold(
-                        accum,
+                        accum.clone(),
                         |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                            walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                            walk_expr(
+                                acc,
+                                crate::v1_std_core::arg_value(a.clone()),
+                                false,
+                                si.clone(),
+                            )
                         },
                     )
                 }
             }
             ExprData::ExprMethodCall { .. } => {
-                let recv = method_receiver(texpr.clone());
-                let mc_args = method_arg_nodes(texpr.clone());
-                let mname = expr_method_name_at(texpr.clone(), si.clone());
-                if (mname == "fold".to_string()) {
+                let recv = crate::v1_std_core::method_receiver(texpr.clone());
+                let mc_args = crate::v1_std_core::method_arg_nodes(texpr.clone());
+                let mname = crate::v1_std_core::expr_method_name_at(texpr.clone(), si.clone());
+                if (mname.clone() == "fold".to_string()) {
                     {
-                        let recv_accum = walk_expr(accum, recv, false, si.clone());
+                        let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
-                            for a in mc_args.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
+                            for a in mc_args.iter().cloned() {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    == "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -392,32 +436,42 @@ pub fn walk_expr(
                         })
                         .first()
                         .cloned();
-                        let threaded_accum = match init_arg {
+                        let threaded_accum = match init_arg.clone() {
                             Some(ia) => {
-                                let ia_val = arg_value(ia.clone());
+                                let ia_val = crate::v1_std_core::arg_value(ia.clone());
                                 match (*ia_val.expr_data.clone()).clone() {
                                     ExprData::ExprVar {
                                         binding_kind: bk, ..
                                     } => {
-                                        let vn = expr_var_name_at(ia_val.clone(), si.clone());
+                                        let vn = crate::v1_std_core::expr_var_name_at(
+                                            ia_val.clone(),
+                                            si.clone(),
+                                        );
                                         record_use(
-                                            recv_accum,
-                                            vn,
+                                            recv_accum.clone(),
+                                            vn.clone(),
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
                                             ia_val.span.clone().start.clone(),
                                         )
                                     }
-                                    _ => walk_expr(recv_accum, ia_val.clone(), false, si.clone()),
+                                    _ => walk_expr(
+                                        recv_accum.clone(),
+                                        ia_val.clone(),
+                                        false,
+                                        si.clone(),
+                                    ),
                                 }
                             }
-                            None => recv_accum,
+                            std::option::Option::None => recv_accum.clone(),
                         };
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
-                            for a in mc_args.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
+                            for a in mc_args.iter().cloned() {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    != "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -426,7 +480,12 @@ pub fn walk_expr(
                         let walked = non_init.iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    crate::v1_std_core::arg_value(a.clone()),
+                                    false,
+                                    si.clone(),
+                                )
                             },
                         );
                         Rc::new(UsageAccum {
@@ -435,62 +494,73 @@ pub fn walk_expr(
                                 walked.fold_call_nodes.clone(),
                                 texpr.clone(),
                             ),
+                            touched: walked.touched.clone(),
                         })
                     }
                 } else {
                     {
-                        let recv_accum = walk_expr(accum, recv, false, si.clone());
-                        mc_args.clone().iter().cloned().fold(
-                            recv_accum,
+                        let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
+                        mc_args.iter().cloned().fold(
+                            recv_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    crate::v1_std_core::arg_value(a.clone()),
+                                    false,
+                                    si.clone(),
+                                )
                             },
                         )
                     }
                 }
             }
             ExprData::ExprMatch => {
-                let scrut = match_scrutinee(texpr.clone());
-                let arm_nodes = match_arm_nodes(texpr.clone());
-                let s_accum = walk_expr(accum, scrut, false, si.clone());
+                let scrut = crate::v1_std_core::match_scrutinee(texpr.clone());
+                let arm_nodes = crate::v1_std_core::match_arm_nodes(texpr.clone());
+                let s_accum = walk_expr(accum.clone(), scrut.clone(), false, si.clone());
+                let seed = branch_seed(s_accum.clone());
                 let branch_accums = Rc::new({
                     let mut __result = Vec::new();
                     for arm_node in arm_nodes.iter().cloned() {
                         __result.push(walk_expr(
-                            s_accum.clone(),
-                            arm_body(arm_node.clone()),
+                            seed.clone(),
+                            crate::v1_std_core::arm_body(arm_node.clone()),
                             in_tail.clone(),
                             si.clone(),
                         ));
                     }
                     __result
                 });
-                merge_branch_usages(s_accum.clone(), branch_accums)
+                merge_branch_usages(s_accum.clone(), branch_accums.clone())
             }
             ExprData::ExprIf => {
-                let c = if_condition(texpr.clone());
-                let t = if_then_branch(texpr.clone());
-                let c_accum = walk_expr(accum, c, false, si.clone());
-                let t_accum = walk_expr(c_accum.clone(), t, in_tail.clone(), si.clone());
-                let e_accum = match if_else_branch(texpr.clone()) {
-                    Some(eb) => walk_expr(c_accum.clone(), eb.clone(), in_tail.clone(), si.clone()),
-                    None => c_accum.clone(),
+                let c = crate::v1_std_core::if_condition(texpr.clone());
+                let t = crate::v1_std_core::if_then_branch(texpr.clone());
+                let c_accum = walk_expr(accum.clone(), c.clone(), false, si.clone());
+                let seed = branch_seed(c_accum.clone());
+                let t_accum = walk_expr(seed.clone(), t.clone(), in_tail.clone(), si.clone());
+                let e_accum = match crate::v1_std_core::if_else_branch(texpr.clone()) {
+                    Some(eb) => walk_expr(seed.clone(), eb.clone(), in_tail.clone(), si.clone()),
+                    std::option::Option::None => seed.clone(),
                 };
-                merge_branch_usages(c_accum.clone(), Rc::new(vec![t_accum, e_accum]))
+                merge_branch_usages(
+                    c_accum.clone(),
+                    Rc::new(vec![t_accum.clone(), e_accum.clone()]),
+                )
             }
             ExprData::ExprLet => {
-                let v = let_value(texpr.clone());
-                let v_accum = walk_expr(accum, v, false, si.clone());
-                match let_body(texpr.clone()) {
-                    Some(b) => walk_expr(v_accum, b.clone(), in_tail.clone(), si.clone()),
-                    None => v_accum,
+                let v = crate::v1_std_core::let_value(texpr.clone());
+                let v_accum = walk_expr(accum.clone(), v.clone(), false, si.clone());
+                match crate::v1_std_core::let_body(texpr.clone()) {
+                    Some(b) => walk_expr(v_accum.clone(), b.clone(), in_tail.clone(), si.clone()),
+                    std::option::Option::None => v_accum.clone(),
                 }
             }
             ExprData::ExprBlock => {
                 let ss = texpr.children.clone();
                 let ss_count = (ss.clone().len() as i64);
                 if (ss_count.clone() == 0) {
-                    accum
+                    accum.clone()
                 } else {
                     {
                         let init_accum = Rc::new({
@@ -515,86 +585,44 @@ pub fn walk_expr(
                         .iter()
                         .cloned()
                         .fold(
-                            accum,
+                            accum.clone(),
                             |acc: Rc<UsageAccum>, p: (i64, Rc<Node>)| {
                                 walk_expr(acc, p.1.clone(), false, si.clone())
                             },
                         );
                         match ss.clone().last().cloned() {
                             Some(last_expr) => walk_expr(
-                                init_accum,
+                                init_accum.clone(),
                                 last_expr.clone(),
                                 in_tail.clone(),
                                 si.clone(),
                             ),
-                            None => init_accum,
+                            std::option::Option::None => init_accum.clone(),
                         }
                     }
                 }
             }
             ExprData::ExprReturn => texpr.children.clone().iter().cloned().fold(
-                accum,
+                accum.clone(),
                 |acc: Rc<UsageAccum>, child: Rc<Node>| {
                     walk_expr(acc, child.clone(), true, si.clone())
                 },
             ),
             ExprData::ExprLambda => {
-                let body = lambda_body(texpr.clone());
-                let inner = walk_expr(empty_usage_accum(), body, false, si.clone());
-                let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(accum, |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
-                        let a1 = record_use(
-                            acc,
-                            usage.name.clone(),
-                            EdgeKind::Read,
-                            "lambda-capture".to_string(),
-                            None,
-                            0,
-                        );
-                        record_use(
-                            a1.clone(),
-                            usage.name.clone(),
-                            EdgeKind::Read,
-                            "lambda-capture".to_string(),
-                            None,
-                            0,
-                        )
-                    });
-                Rc::new(UsageAccum {
-                    bindings: binding_merged.bindings.clone(),
-                    fold_call_nodes: v1_rt::concat(
-                        binding_merged.fold_call_nodes.clone(),
-                        inner.fold_call_nodes.clone(),
-                    ),
-                })
-            }
-            ExprData::ExprForEach => {
-                let coll = foreach_collection(texpr.clone());
-                let coll_accum = walk_expr(accum, coll, false, si.clone());
-                let body = foreach_body(texpr.clone());
-                let inner = walk_expr(empty_usage_accum(), body, false, si.clone());
+                let body = crate::v1_std_core::lambda_body(texpr.clone());
+                let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
                 let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
                     .iter()
                     .cloned()
                     .fold(
-                        coll_accum.clone(),
+                        accum.clone(),
                         |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
-                            let a1 = record_use(
+                            record_use(
                                 acc,
                                 usage.name.clone(),
                                 EdgeKind::Read,
-                                "foreach-capture".to_string(),
-                                None,
-                                0,
-                            );
-                            record_use(
-                                a1.clone(),
-                                usage.name.clone(),
-                                EdgeKind::Read,
-                                "foreach-capture".to_string(),
-                                None,
+                                "lambda-capture".to_string(),
+                                std::option::Option::None,
                                 0,
                             )
                         },
@@ -605,10 +633,41 @@ pub fn walk_expr(
                         binding_merged.fold_call_nodes.clone(),
                         inner.fold_call_nodes.clone(),
                     ),
+                    touched: binding_merged.touched.clone(),
+                })
+            }
+            ExprData::ExprForEach => {
+                let coll = crate::v1_std_core::foreach_collection(texpr.clone());
+                let coll_accum = walk_expr(accum.clone(), coll.clone(), false, si.clone());
+                let body = crate::v1_std_core::foreach_body(texpr.clone());
+                let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
+                let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
+                    .iter()
+                    .cloned()
+                    .fold(
+                        coll_accum.clone(),
+                        |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
+                            record_use(
+                                acc,
+                                usage.name.clone(),
+                                EdgeKind::Read,
+                                "foreach-capture".to_string(),
+                                std::option::Option::None,
+                                0,
+                            )
+                        },
+                    );
+                Rc::new(UsageAccum {
+                    bindings: binding_merged.bindings.clone(),
+                    fold_call_nodes: v1_rt::concat(
+                        binding_merged.fold_call_nodes.clone(),
+                        inner.fold_call_nodes.clone(),
+                    ),
+                    touched: binding_merged.touched.clone(),
                 })
             }
             _ => texpr.children.clone().iter().cloned().fold(
-                accum,
+                accum.clone(),
                 |acc: Rc<UsageAccum>, child: Rc<Node>| {
                     walk_expr(acc, child.clone(), false, si.clone())
                 },
@@ -634,13 +693,13 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
                     }
                     __result
                 });
-                let site = match consumed_sites.first().cloned() {
+                let site = match consumed_sites.clone().first().cloned() {
                     Some(c) => c.site.clone(),
-                    None => "unknown".to_string(),
+                    std::option::Option::None => "unknown".to_string(),
                 };
                 Rc::new(OwnershipDecision::SoleOwner {
                     binding: usage.name.clone(),
-                    site: site,
+                    site: site.clone(),
                 })
             }
         } else {
@@ -670,7 +729,7 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
                     Rc::new(OwnershipDecision::SharedError {
                         binding: usage.name.clone(),
                         consumer_count: sc.clone(),
-                        sites: sites,
+                        sites: sites.clone(),
                     })
                 }
             } else {
@@ -684,20 +743,45 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
 }
 
 pub fn is_owned_local(kind: Option<Rc<VarBindingKind>>) -> bool {
-    match kind.as_deref().cloned() {
+    match kind.clone().as_deref().cloned() {
         Some(VarBindingKind::LocalValueBinding) => true,
         _ => false,
     }
 }
 
-pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTreeSet<String>> {
+pub fn whole_value_borrow_count(usage: Rc<BindingUsage>) -> i64 {
+    (Rc::new({
+        let mut __result = Vec::new();
+        for c in usage.consumers.clone().iter().cloned() {
+            if match c.kind.clone() {
+                EdgeKind::Read => true,
+                EdgeKind::Threaded => true,
+                _ => false,
+            } {
+                __result.push(c);
+            }
+        }
+        __result
+    })
+    .len() as i64)
+}
+
+pub fn build_movable_set(
+    proof: Rc<OwnershipProof>,
+    param_names: Rc<BTreeSet<String>>,
+) -> Rc<BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
             .iter()
             .cloned()
         {
-            if ((binding_fan_out(usage.clone()) == 1) && is_owned_local(usage.binding_kind.clone()))
+            if ((match (*make_decision(usage.clone())).clone() {
+                OwnershipDecision::SoleOwner { .. } => true,
+                _ => false,
+            } && (whole_value_borrow_count(usage.clone()) == 0))
+                && (is_owned_local(usage.binding_kind.clone())
+                    || v1_rt::set_contains(&param_names, usage.name.clone())))
             {
                 __result.push(usage);
             }
@@ -708,7 +792,7 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
@@ -716,8 +800,8 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
 
 pub fn build_read_only_params(
     proof: Rc<OwnershipProof>,
-    param_names: Rc<std::collections::BTreeSet<String>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+    param_names: Rc<BTreeSet<String>>,
+) -> Rc<BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
@@ -752,7 +836,7 @@ pub fn build_read_only_params(
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
@@ -761,28 +845,30 @@ pub fn build_read_only_params(
 pub fn collect_callable_refs(
     texpr: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<BTreeSet<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: bk, ..
             } => match bk.clone().as_deref().cloned() {
                 Some(VarBindingKind::FunctionValueBinding) => {
-                    let n = expr_var_name_at(texpr.clone(), si.clone());
-                    v1_rt::rc_set_insert(v1_rt::rc_empty_set::<_>(), n)
+                    let n = crate::v1_std_core::expr_var_name_at(texpr.clone(), si.clone());
+                    v1_rt::rc_set_insert(v1_rt::rc_empty_set::<_>(), n.clone())
                 }
                 _ => v1_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLiteral { value: _, .. } => v1_rt::rc_empty_set::<String>(),
-            ExprData::ExprFieldAccess { .. } => {
-                collect_callable_refs(field_access_base(texpr.clone()), si.clone())
-            }
+            ExprData::ExprElaboratedLiteral { .. } => v1_rt::rc_empty_set::<String>(),
+            ExprData::ExprFieldAccess { .. } => collect_callable_refs(
+                crate::v1_std_core::field_access_base(texpr.clone()),
+                si.clone(),
+            ),
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
+                |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
-                        collect_callable_refs(arg_value(a.clone()), si.clone()),
+                        collect_callable_refs(crate::v1_std_core::arg_value(a.clone()), si.clone()),
                     )
                 },
             ),
@@ -790,71 +876,105 @@ pub fn collect_callable_refs(
                 method_semantics: _,
                 ..
             } => {
-                let recv = collect_callable_refs(method_receiver(texpr.clone()), si.clone());
-                method_arg_nodes(texpr.clone()).iter().cloned().fold(
-                    recv.clone(),
-                    |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
+                let recv = collect_callable_refs(
+                    crate::v1_std_core::method_receiver(texpr.clone()),
+                    si.clone(),
+                );
+                crate::v1_std_core::method_arg_nodes(texpr.clone())
+                    .iter()
+                    .cloned()
+                    .fold(recv.clone(), |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
-                            collect_callable_refs(arg_value(a.clone()), si.clone()),
+                            collect_callable_refs(
+                                crate::v1_std_core::arg_value(a.clone()),
+                                si.clone(),
+                            ),
                         )
-                    },
-                )
+                    })
             }
             ExprData::ExprIf => {
-                let cond = collect_callable_refs(if_condition(texpr.clone()), si.clone());
-                let then_br = collect_callable_refs(if_then_branch(texpr.clone()), si.clone());
-                let else_br = match if_else_branch(texpr.clone()) {
+                let cond = collect_callable_refs(
+                    crate::v1_std_core::if_condition(texpr.clone()),
+                    si.clone(),
+                );
+                let then_br = collect_callable_refs(
+                    crate::v1_std_core::if_then_branch(texpr.clone()),
+                    si.clone(),
+                );
+                let else_br = match crate::v1_std_core::if_else_branch(texpr.clone()) {
                     Some(eb) => collect_callable_refs(eb.clone(), si.clone()),
-                    None => v1_rt::rc_empty_set::<String>(),
+                    std::option::Option::None => v1_rt::rc_empty_set::<String>(),
                 };
-                v1_rt::rc_set_union(v1_rt::rc_set_union(cond, then_br), else_br)
-            }
-            ExprData::ExprMatch => {
-                let scrut = collect_callable_refs(match_scrutinee(texpr.clone()), si.clone());
-                match_arm_nodes(texpr.clone()).iter().cloned().fold(
-                    scrut.clone(),
-                    |acc: Rc<std::collections::BTreeSet<String>>, arm: Rc<Node>| {
-                        v1_rt::rc_set_union(
-                            acc,
-                            collect_callable_refs(arm_body(arm.clone()), si.clone()),
-                        )
-                    },
+                v1_rt::rc_set_union(
+                    v1_rt::rc_set_union(cond.clone(), then_br.clone()),
+                    else_br.clone(),
                 )
             }
+            ExprData::ExprMatch => {
+                let scrut = collect_callable_refs(
+                    crate::v1_std_core::match_scrutinee(texpr.clone()),
+                    si.clone(),
+                );
+                crate::v1_std_core::match_arm_nodes(texpr.clone())
+                    .iter()
+                    .cloned()
+                    .fold(scrut.clone(), |acc: Rc<BTreeSet<String>>, arm: Rc<Node>| {
+                        v1_rt::rc_set_union(
+                            acc,
+                            collect_callable_refs(
+                                crate::v1_std_core::arm_body(arm.clone()),
+                                si.clone(),
+                            ),
+                        )
+                    })
+            }
             ExprData::ExprLet => {
-                let val = collect_callable_refs(let_value(texpr.clone()), si.clone());
-                match let_body(texpr.clone()) {
-                    Some(lb) => {
-                        v1_rt::rc_set_union(val, collect_callable_refs(lb.clone(), si.clone()))
-                    }
-                    None => val,
+                let val =
+                    collect_callable_refs(crate::v1_std_core::let_value(texpr.clone()), si.clone());
+                match crate::v1_std_core::let_body(texpr.clone()) {
+                    Some(lb) => v1_rt::rc_set_union(
+                        val.clone(),
+                        collect_callable_refs(lb.clone(), si.clone()),
+                    ),
+                    std::option::Option::None => val.clone(),
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<std::collections::BTreeSet<String>>, child: Rc<Node>| {
+                |acc: Rc<BTreeSet<String>>, child: Rc<Node>| {
                     v1_rt::rc_set_union(acc, collect_callable_refs(child.clone(), si.clone()))
                 },
             ),
             ExprData::ExprReturn => match texpr.children.clone().first().cloned() {
                 Some(child) => collect_callable_refs(child.clone(), si.clone()),
-                None => v1_rt::rc_empty_set::<String>(),
+                std::option::Option::None => v1_rt::rc_empty_set::<String>(),
             },
-            ExprData::ExprLambda => collect_callable_refs(lambda_body(texpr.clone()), si.clone()),
+            ExprData::ExprLambda => {
+                collect_callable_refs(crate::v1_std_core::lambda_body(texpr.clone()), si.clone())
+            }
             ExprData::ExprForEach => {
-                let col = collect_callable_refs(foreach_collection(texpr.clone()), si.clone());
+                let col = collect_callable_refs(
+                    crate::v1_std_core::foreach_collection(texpr.clone()),
+                    si.clone(),
+                );
                 v1_rt::rc_set_union(
-                    col,
-                    collect_callable_refs(foreach_body(texpr.clone()), si.clone()),
+                    col.clone(),
+                    collect_callable_refs(
+                        crate::v1_std_core::foreach_body(texpr.clone()),
+                        si.clone(),
+                    ),
                 )
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<std::collections::BTreeSet<String>>, field: Rc<Node>| {
+                |acc: Rc<BTreeSet<String>>, field: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
-                        collect_callable_refs(arg_value(field.clone()), si.clone()),
+                        collect_callable_refs(
+                            crate::v1_std_core::arg_value(field.clone()),
+                            si.clone(),
+                        ),
                     )
                 },
             ),
@@ -866,13 +986,13 @@ pub fn collect_callable_refs(
 pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
     loop {
         match (*body.expr_data.clone()).clone() {
-            ExprData::ExprLet => match let_body(body.clone()) {
+            ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(inner) => {
                     let __tco_0 = inner.clone();
                     body = __tco_0;
                     continue;
                 }
-                None => {
+                std::option::Option::None => {
                     break body.clone();
                 }
             },
@@ -882,7 +1002,7 @@ pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
                     body = __tco_0;
                     continue;
                 }
-                None => {
+                std::option::Option::None => {
                     break body.clone();
                 }
             },
@@ -923,7 +1043,9 @@ pub fn summarize_fold_acc_uses(
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => {
-                if (expr_var_name_at(node.clone(), si.clone()) == acc_name.clone()) {
+                if (crate::v1_std_core::expr_var_name_at(node.clone(), si.clone())
+                    == acc_name.clone())
+                {
                     if inside_nested.clone() {
                         Rc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
@@ -942,14 +1064,17 @@ pub fn summarize_fold_acc_uses(
                 }
             }
             ExprData::ExprFieldAccess { summary: _, .. } => {
-                let base = field_access_base(node.clone());
+                let base = crate::v1_std_core::field_access_base(node.clone());
                 let is_direct = match (*base.expr_data.clone()).clone() {
                     ExprData::ExprVar {
                         binding_kind: _, ..
-                    } => (expr_var_name_at(base.clone(), si.clone()) == acc_name.clone()),
+                    } => {
+                        (crate::v1_std_core::expr_var_name_at(base.clone(), si.clone())
+                            == acc_name.clone())
+                    }
                     _ => false,
                 };
-                if is_direct {
+                if is_direct.clone() {
                     if inside_nested.clone() {
                         Rc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
@@ -959,7 +1084,7 @@ pub fn summarize_fold_acc_uses(
                     } else {
                         Rc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![field_access_field_at(
+                            field_moves: Rc::new(vec![crate::v1_std_core::field_access_field_at(
                                 node.clone(),
                                 si.clone(),
                             )]),
@@ -969,7 +1094,7 @@ pub fn summarize_fold_acc_uses(
                 } else {
                     node.children.clone().iter().cloned().fold(
                         empty_fold_acc_use_summary(),
-                        |acc: Rc<FoldAccUseSummary>, child: Rc<Node>| {
+                        |acc: _, child: Rc<Node>| {
                             merge_fold_acc_use_summaries(
                                 acc,
                                 summarize_fold_acc_uses(
@@ -985,7 +1110,7 @@ pub fn summarize_fold_acc_uses(
             }
             ExprData::ExprLambda => {
                 let body_summary = summarize_fold_acc_uses(
-                    lambda_body(node.clone()),
+                    crate::v1_std_core::lambda_body(node.clone()),
                     acc_name.clone(),
                     si.clone(),
                     true,
@@ -1005,13 +1130,13 @@ pub fn summarize_fold_acc_uses(
             }
             ExprData::ExprForEach => {
                 let coll_summary = summarize_fold_acc_uses(
-                    foreach_collection(node.clone()),
+                    crate::v1_std_core::foreach_collection(node.clone()),
                     acc_name.clone(),
                     si.clone(),
                     inside_nested.clone(),
                 );
                 let body_summary = summarize_fold_acc_uses(
-                    foreach_body(node.clone()),
+                    crate::v1_std_core::foreach_body(node.clone()),
                     acc_name.clone(),
                     si.clone(),
                     true,
@@ -1028,11 +1153,11 @@ pub fn summarize_fold_acc_uses(
                 } else {
                     empty_fold_acc_use_summary()
                 };
-                merge_fold_acc_use_summaries(coll_summary, nested_summary)
+                merge_fold_acc_use_summaries(coll_summary.clone(), nested_summary.clone())
             }
             _ => node.children.clone().iter().cloned().fold(
                 empty_fold_acc_use_summary(),
-                |acc: Rc<FoldAccUseSummary>, child: Rc<Node>| {
+                |acc: _, child: Rc<Node>| {
                     merge_fold_acc_use_summaries(
                         acc,
                         summarize_fold_acc_uses(
@@ -1054,9 +1179,12 @@ pub fn fold_lambda_acc_use_summary(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUseSummary> {
     match (*lambda_node.expr_data.clone()).clone() {
-        ExprData::ExprLambda => {
-            summarize_fold_acc_uses(lambda_body(lambda_node.clone()), acc_name, si, false)
-        }
+        ExprData::ExprLambda => summarize_fold_acc_uses(
+            crate::v1_std_core::lambda_body(lambda_node.clone()),
+            acc_name.clone(),
+            si.clone(),
+            false,
+        ),
         _ => empty_fold_acc_use_summary(),
     }
 }
@@ -1068,11 +1196,12 @@ pub fn fold_body_constructs_acc_struct(
 ) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
-            let body = lambda_body(lambda_node.clone());
-            let terminal = fold_terminal_expr(body);
+            let body = crate::v1_std_core::lambda_body(lambda_node.clone());
+            let terminal = fold_terminal_expr(body.clone());
             match (*terminal.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                    (authored_name_at(si, terminal.clone()) == acc_type_name)
+                    (crate::v1_std_core::authored_name_at(si.clone(), terminal.clone())
+                        == acc_type_name.clone())
                 }
                 _ => false,
             }
@@ -1087,7 +1216,8 @@ pub fn fold_body_safe_field_moves(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let summary = fold_lambda_acc_use_summary(lambda_node, acc_name, si);
+        let summary =
+            fold_lambda_acc_use_summary(lambda_node.clone(), acc_name.clone(), si.clone());
         let deduped = summary.field_moves.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |seen: Rc<HashMap<String, bool>>, field: String| {
@@ -1106,7 +1236,8 @@ pub fn fold_body_consumes_acc_once(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let summary = fold_lambda_acc_use_summary(lambda_node, acc_name, si);
+        let summary =
+            fold_lambda_acc_use_summary(lambda_node.clone(), acc_name.clone(), si.clone());
         ((!summary.nested_acc_refs.clone() && (summary.whole_acc_uses.clone() == 1))
             && ((summary.field_moves.clone().len() as i64) == 0))
     }
@@ -1117,31 +1248,32 @@ pub fn analyze_single_fold(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUnwrapProof> {
     {
-        let args = method_arg_nodes(method_call.clone());
+        let args = crate::v1_std_core::method_arg_nodes(method_call.clone());
         let init_arg_node = match args.clone().first().cloned() {
-            Some(a) => arg_value(a.clone()),
-            None => method_call.clone(),
+            Some(a) => crate::v1_std_core::arg_value(a.clone()),
+            std::option::Option::None => method_call.clone(),
         };
-        let fold_lambda_node = match args.clone().get(1 as usize).cloned() {
-            Some(a) => arg_value(a.clone()),
-            None => method_call.clone(),
+        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
+            Some(a) => crate::v1_std_core::arg_value(a.clone()),
+            std::option::Option::None => method_call.clone(),
         };
         let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
-            ExprData::ExprLambda => {
-                match lambda_param_names_at(fold_lambda_node.clone(), si.clone())
-                    .first()
-                    .cloned()
-                {
-                    Some(n) => n.clone(),
-                    None => "".to_string(),
-                }
-            }
+            ExprData::ExprLambda => match crate::v1_std_core::lambda_param_names_at(
+                fold_lambda_node.clone(),
+                si.clone(),
+            )
+            .first()
+            .cloned()
+            {
+                Some(n) => n.clone(),
+                std::option::Option::None => "".to_string(),
+            },
             _ => "".to_string(),
         };
         let acc_type_name = match init_arg_node.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
                 node: type_node, ..
-            }) => authored_name_at(si.clone(), type_node.clone()),
+            }) => crate::v1_std_core::authored_name_at(si.clone(), type_node.clone()),
             _ => "".to_string(),
         };
         let cond_required = match init_arg_node.inferred.clone().as_deref().cloned() {
@@ -1165,16 +1297,18 @@ pub fn analyze_single_fold(
             acc_param_name.clone(),
             si.clone(),
         );
-        let eligible = ((cond_required && (acc_type_name.clone() != "".to_string()))
+        let eligible = ((cond_required.clone() && (acc_type_name.clone() != "".to_string()))
             && ((cond_struct.clone() && cond_safe.clone()) || cond_whole_acc.clone()));
         Rc::new(FoldAccUnwrapProof {
-            site_key: (method_call.span.clone().start.clone()).to_string(),
+            site_key: crate::v1_compiler_emit_core_support::to_string(
+                method_call.span.clone().start.clone(),
+            ),
             acc_param_name: acc_param_name.clone(),
             acc_type_name: acc_type_name.clone(),
             body_constructs_acc: cond_struct.clone(),
             whole_acc_single_use: cond_whole_acc.clone(),
             safe_field_moves: cond_safe.clone(),
-            eligible: eligible,
+            eligible: eligible.clone(),
         })
     }
 }
@@ -1191,24 +1325,25 @@ pub fn analyze_ownership(
                 .iter()
                 .cloned()
                 .fold(empty_usage_accum(), |acc: Rc<UsageAccum>, p: Rc<Node>| {
-                    let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
+                    let acc = v1_rt::take_owned(acc);
                     {
-                        let p_name = authored_name_at(si.clone(), p.clone());
+                        let p_name = crate::v1_std_core::authored_name_at(si.clone(), p.clone());
                         Rc::new(UsageAccum {
                             bindings: v1_rt::rc_map_insert(
                                 acc.bindings,
                                 p_name.clone(),
                                 Rc::new(BindingUsage {
                                     name: p_name.clone(),
-                                    binding_kind: None,
+                                    binding_kind: std::option::Option::None,
                                     consumers: Rc::new(vec![]),
                                 }),
                             ),
                             fold_call_nodes: acc.fold_call_nodes,
+                            touched: acc.touched,
                         })
                     }
                 });
-        let result = walk_expr(initial, body, true, si.clone());
+        let result = walk_expr(initial.clone(), body.clone(), true, si.clone());
         let binding_list = Rc::new(v1_rt::map_values(&result.bindings.clone()));
         let decisions = Rc::new({
             let mut __result = Vec::new();
@@ -1225,10 +1360,10 @@ pub fn analyze_ownership(
             __result
         });
         Rc::new(OwnershipProof {
-            func_name: func_name,
+            func_name: func_name.clone(),
             bindings: result.bindings.clone(),
-            decisions: decisions,
-            fold_acc_unwrap: fold_proofs,
+            decisions: decisions.clone(),
+            fold_acc_unwrap: fold_proofs.clone(),
         })
     }
 }

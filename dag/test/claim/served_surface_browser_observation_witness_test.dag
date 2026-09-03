@@ -1,0 +1,130 @@
+module test.claim.served_surface_browser_observation_witness
+
+import std.types { NonEmptyStr, FilePath }
+import std.measure { byte_size }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.browser.chromium {
+  ChromiumErrConnectionRefused,
+  ChromiumErrHttpResponseCodeFailure,
+  ChromiumWebDataErrorDocument,
+  ChromiumWebDataErrorUrl,
+  ChromiumSourceRevisionUnobserved,
+  chromium_151_0_7922_34,
+}
+import extdeps.automation.playwright {
+  PlaywrightManagedChromiumDownload,
+  playwright_1_62_1,
+}
+import extdeps.os.debian { Debian12Bookworm }
+import gunbc.served_surface_browser_observation {
+  TcpConnectionRefusedStimulus,
+  HttpResponseStimulus,
+  EmptyNavigationResponseBody,
+  Utf8NavigationResponseBody,
+  ContentLengthHeader,
+  TextPlainUtf8ContentTypeHeader,
+  Empty502SpecimenHeader,
+  Sentinel502SpecimenHeader,
+  LocalSyntheticHarness,
+  ChromiumNavigationFailed,
+  NavigationReturnedHttpResponse,
+  ChromiumInternalPresentedDocument,
+  NetworkResponsePresentedDocument,
+  ExplicitReload,
+  HealthyResponseDocumentObserved,
+  PlaywrightDefaultChromiumLaunch,
+  HeadlessPresentation,
+  ContainerVisibleHostKernel,
+  LinuxKernelRelease,
+  playwright_chromium_151_linux_arm64_headless_navigation_run,
+  local_http_url,
+  connection_refused_presentation,
+  empty_body_502_presentation,
+  sentinel_body_502_presentation,
+}
+
+test fn witness_run_owns_one_execution_identity() -> Bool {
+  let run = playwright_chromium_151_linux_arm64_headless_navigation_run
+  let environment = run.environment
+  environment.chromium_build == chromium_151_0_7922_34
+    && environment.chromium_build.source_identity == ChromiumSourceRevisionUnobserved
+    && environment.playwright_build == playwright_1_62_1
+    && environment.browser_binary_provenance == PlaywrightManagedChromiumDownload
+    && environment.container_userland == Debian12Bookworm
+    && environment.container_visible_host_kernel == ContainerVisibleHostKernel {
+      visible_release: "6.8.0-124-generic" as LinuxKernelRelease,
+    }
+    && environment.architecture == Aarch64
+    && environment.presentation_mode == HeadlessPresentation
+    && environment.launch_configuration == PlaywrightDefaultChromiumLaunch {
+      executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as FilePath,
+    }
+    && run.observed_on == "2026-08-01T04:58:15Z" as Rfc3339Timestamp
+}
+
+test fn witness_connection_refusal_is_exact_specimen() -> Bool {
+  let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
+  let presentation = connection_refused_presentation(specimen: observation)
+  match presentation.stimulus {
+    TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == LocalSyntheticHarness
+    _ => false
+  }
+    && presentation.navigation == ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
+    && presentation.document == ChromiumInternalPresentedDocument {
+      document: ChromiumWebDataErrorDocument,
+      final_url: ChromiumWebDataErrorUrl,
+    }
+}
+
+test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
+  let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.empty_502
+  let presentation = empty_body_502_presentation(specimen: observation)
+  match presentation.stimulus {
+    HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
+      origin == LocalSyntheticHarness
+        && status == 502
+        && configured_headers == [
+          ContentLengthHeader { bytes: byte_size(0) },
+          Empty502SpecimenHeader,
+        ]
+        && body == EmptyNavigationResponseBody
+    _ => false
+  }
+    && presentation.navigation == ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
+    && presentation.document == ChromiumInternalPresentedDocument {
+      document: ChromiumWebDataErrorDocument,
+      final_url: ChromiumWebDataErrorUrl,
+    }
+}
+
+test fn witness_bodied_502_retains_network_document() -> Bool {
+  let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.sentinel_502
+  let presentation = sentinel_body_502_presentation(specimen: observation)
+  match presentation.stimulus {
+    HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
+      origin == LocalSyntheticHarness
+        && status == 502
+        && configured_headers == [
+          ContentLengthHeader { bytes: byte_size(26) },
+          TextPlainUtf8ContentTypeHeader,
+          Sentinel502SpecimenHeader,
+        ]
+        && body == Utf8NavigationResponseBody {
+          text: "GUNBC_TYPED_ERROR_SENTINEL",
+          bytes: byte_size(26),
+        }
+    _ => false
+  }
+    && presentation.navigation == NavigationReturnedHttpResponse { status: 502 }
+    && presentation.document == NetworkResponsePresentedDocument {
+      final_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
+    }
+}
+
+test fn witness_reload_trial_claims_sufficiency_not_necessity() -> Bool {
+  let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
+  let trial = observation.recovery_trials.first()
+  trial.action == ExplicitReload
+    && trial.outcome == HealthyResponseDocumentObserved
+}

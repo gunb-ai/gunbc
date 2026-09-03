@@ -1,0 +1,205 @@
+module gunbc.roadmap_site_surface_expect
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import extdeps.languages.json.grammar { json_text_trim_trailing_lf }
+import extdeps.languages.json.parse {
+  json_text_parseable,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import v2.std.collection { Absent, Present }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, serialize_json }
+import extdeps.http.server { media_type_wire_label, application_json_utf8 }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
+
+// PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an
+// already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem,
+// Git, authority, or rendering observation.
+
+fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
+  json_text_parseable(s: json_text_trim_trailing_lf(body: body))
+}
+
+// THE SURFACE COMPARISON PROJECTS MEMBERS BY KEY; IT DOES NOT COMPARE WHOLE BODIES, AND THE CHANGE
+// IS FORCED RATHER THAN STYLISTIC. This was `observed == expected` over the entire document,
+// correct only while the served /healthz body contained nothing but the surface. The running
+// process now also reports its release identity (gunbc.running_release_identity), so whole-body
+// equality would compare surface AND identity in one string and refuse on every deploy — a check
+// that can never pass is broken, not stricter, and precisely the permanently-refusing shape this
+// lane exists to remove.
+//
+// Fusing them is wrong even where it would pass. revision and surface_bundle_identity are separate
+// members because they fail independently with different remedies; one string equality cannot say
+// which half diverged, so the deploy could report 'stale surface' when the fact was 'another
+// candidate won the route'. Projecting the surface keys keeps the surface verdict about the surface
+// and leaves the revision verdict to the comparison that owns it.
+//
+// BOTH SIDES ARE ROUND-TRIPPED THROUGH THE SAME PARSER AND EMITTER, deliberately. Comparing a
+// re-serialized observed document against a locally-emitted expected string would make the check
+// sensitive to any escaping or number-spelling asymmetry between wire and emitter, and the failure
+// would look exactly like a stale surface. Normalizing both through parse-then-serialize makes the
+// comparison a claim about the VALUES — what 'is the surface current' means. An unparseable or
+// structurally-missing projection is Absent and never equals anything — a document that cannot be
+// projected has not proven it is current.
+
+data healthz_surface_status_key: String = "status"
+data healthz_surface_service_key: String = "service"
+data healthz_surface_artifacts_key: String = "artifacts"
+data healthz_surface_projection_member_count: Int = 3
+
+fn healthz_projected_member_or_empty(doc: JsonValue, key: String) -> List<JsonKeyValue> {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } => [json_kv(key: key, value: v)]
+    JsonMemberAbsent => []
+    JsonMemberDuplicated { count: _ } => []
+    JsonMemberNotAnObject => []
+  }
+}
+
+fn healthz_projected_members(doc: JsonValue) -> List<JsonKeyValue> {
+  list_append(
+    list_append(
+      healthz_projected_member_or_empty(doc: doc, key: healthz_surface_status_key),
+      healthz_projected_member_or_empty(doc: doc, key: healthz_surface_service_key),
+    ),
+    healthz_projected_member_or_empty(doc: doc, key: healthz_surface_artifacts_key),
+  )
+}
+
+// AT AN OPTIONAL, A FAILURE IS NOT MERELY UNREPORTED -- IT IS INDISTINGUISHABLE FROM THE ORDINARY
+// NEGATIVE RESULT, strictly worse than the Bool sites this change also repairs. `none` meant BOTH
+// "this body is not JSON" AND "this body is JSON without the surface members", and the consumer
+// below turned both into `false`, rendered as ServedSurfaceStale. So an endpoint answering an HTML
+// error page -- the wrong process on the port, a proxy error, an empty 502 body -- was reported to
+// the deploy operator as A STALE SURFACE: the right process serving the wrong tree. That remedy is
+// to rebind the graph; the actual remedy was to find out what was answering. One inference away is
+// generous; it points at a different machine.
+//
+// HealthzSurfaceMembersIncomplete CARRIES THE COUNT because the surface member count is a constant
+// this module owns, so "2 of 3" locates a renamed or dropped member immediately, where a bare
+// refusal sends the reader back to re-derive which is missing.
+type HealthzSurfaceProjection
+  = HealthzSurfaceProjected { surface: String }
+  | HealthzBodyUnreadable
+  | HealthzSurfaceMembersIncomplete { present: Int }
+
+fn healthz_projection_of_doc(doc: JsonValue) -> HealthzSurfaceProjection {
+  let members = healthz_projected_members(doc: doc)
+  if length(members) == healthz_surface_projection_member_count {
+    HealthzSurfaceProjected { surface: serialize_json(v: json_object(members: members)) }
+  } else {
+    HealthzSurfaceMembersIncomplete { present: length(members) }
+  }
+}
+
+fn healthz_surface_projection(body: String) -> HealthzSurfaceProjection {
+  match parse_json_document(s: json_text_trim_trailing_lf(body: body)) {
+    JsonDocumentUnreadable { gap: _ } => HealthzBodyUnreadable
+    JsonDocumentParsed { value: doc } => healthz_projection_of_doc(doc: doc)
+  }
+}
+
+// THIS CONSUMER STILL ANSWERS Bool, AND THE REASON IS STATED HERE RATHER THAN ONLY IN A PR BODY.
+// Its question is genuinely two-valued -- is the observed surface the expected one -- and the two
+// sides are asymmetric, which makes collapsing honest on ONE side and not the other:
+//
+//   the EXPECTED side is bundle.healthz_body, a document this repository renders itself. Its
+//   refusals are not observations; either would be a defect in our own emitter, with no verdict
+//   about the deployed service to preserve.
+//
+//   the OBSERVED side is a wire body, and its refusals ARE observations with different remedies.
+//   They are NOT discarded here: this predicate is reached only after the readiness check has
+//   already parsed the same body for its release identity and refused on its own cause if it could
+//   not (gunbc.live_deploy.readiness ground_service_ready_from_healthz_body, whose ordering note
+//   states parse-then-identity-then-revision-then-surface). So HealthzBodyUnreadable is unreachable
+//   FROM THAT CALLER -- reachable from this function, which is why it exists, and not occupied
+//   there. Answering false for it is correct, not merely tolerable.
+//
+// A caller that reaches this predicate WITHOUT an upstream parse does not inherit that reasoning
+// and must consume healthz_surface_projection directly.
+fn roadmap_site_healthz_surface_is_current(bundle: RoadmapSiteSurfaceBundle, observed_body: String) -> Bool {
+  match healthz_surface_projection(body: observed_body) {
+    HealthzBodyUnreadable => false
+    HealthzSurfaceMembersIncomplete { present: _ } => false
+    HealthzSurfaceProjected { surface: observed } =>
+      match healthz_surface_projection(body: bundle.healthz_body) {
+        HealthzBodyUnreadable => false
+        HealthzSurfaceMembersIncomplete { present: _ } => false
+        HealthzSurfaceProjected { surface: expected } => observed == expected
+      }
+  }
+}
+
+fn healthz_body_json_well_formed(body: String) -> Bool {
+  starts_with(s: body, prefix: "{")
+    && ends_with(s: body, suffix: "}}")
+    && !ends_with(s: body, suffix: "}}}")
+}
+
+fn site_artifact_digest_from_body(body: String) -> Fnv1a64Structural {
+  content_hash_atom(value: body as NonEmptyStr)
+}
+
+fn artifact_digest_matches_body(artifact: RoadmapSiteSurfaceArtifact) -> Bool {
+  artifact.digest == site_artifact_digest_from_body(body: artifact.body)
+}
+
+fn healthz_round_trip_receipt_holds(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  healthz_body_json_well_formed(body: bundle.healthz_body)
+    && artifact_digest_matches_body(artifact: bundle.roadmap_md)
+    && artifact_digest_matches_body(artifact: bundle.dispatch_json)
+    && artifact_digest_matches_body(artifact: bundle.daily_html)
+    && artifact_digest_matches_body(artifact: bundle.full_html)
+    && artifact_digest_matches_body(artifact: bundle.dispatch_js)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.roadmap_md.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_json.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.daily_html.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.full_html.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_js.digest.digest as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.roadmap_md.url_path as String)
+    && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_json.url_path as String)
+}
+
+fn healthz_read_grounds(bundle: RoadmapSiteSurfaceBundle, read: HealthzEffectiveRead) -> Bool {
+  match read {
+    HealthzProbeRefused { probe_error: _ } => false
+    HealthzBodyRead { body: observed_body } =>
+      roadmap_site_healthz_json_string_parses(body: observed_body)
+        && roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
+  }
+}
+
+fn fresh_surface_read_grounds(bundle: RoadmapSiteSurfaceBundle, read: HealthzEffectiveRead) -> Bool {
+  healthz_read_grounds(bundle: bundle, read: read)
+}
+
+fn stale_surface_read_does_not_ground(bundle: RoadmapSiteSurfaceBundle, stale_body: String) -> Bool {
+  roadmap_site_healthz_json_string_parses(body: stale_body)
+    && !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: stale_body)
+    && !healthz_read_grounds(
+      bundle: bundle,
+      read: HealthzBodyRead { body: stale_body },
+    )
+}
+
+fn healthz_surface_tolerates_transport_trailing_lf(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  roadmap_site_healthz_surface_is_current(
+    bundle: bundle,
+    observed_body: concat(bundle.healthz_body, "\n"),
+  )
+}
+
+fn healthz_route_json_ok(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+  healthz_body_json_well_formed(body: bundle.healthz_body)
+    && !healthz_body_json_well_formed(body: concat(bundle.healthz_body, "}"))
+    && ends_with(s: concat(bundle.healthz_body, "}"), suffix: "}}}")
+    && string_contains(s: bundle.healthz_body, pattern: "\"status\": \"ok\"")
+    && media_type_wire_label(m: application_json_utf8) == "application/json; charset=utf-8"
+}

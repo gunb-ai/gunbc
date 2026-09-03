@@ -14,3 +14,7 @@ A new runbook must be linked from this index in the same PR that adds it — the
   out-of-band Redfish telemetry on the self-hosted CI fleet hosts.
 - [BMC assimilator: keyless GCP token via Workload Identity Federation](bmc-assimilator-wif-setup.md) —
   apply-ready SA + WIF setup so `AuthPrintAccessToken()` resolves on the runner with no pasted token.
+- [srv3 nbd-proxy ws-upgrade dry-run (§6 gate)](srv3-nbd-proxy-ws-upgrade-dry-run.md) — operator
+  procedure to confirm nbd-proxy is compiled into srv3 bmcweb before L2 seed client or capability flip.
+- [srv3 OS install actuation (prefix:os-install-actuated)](srv3-os-install-actuate.md) — runnable
+  gunbc prep + operator-gated NBD-proxy virtual-media serve, boot-once CD, and post-install subsumption checks.

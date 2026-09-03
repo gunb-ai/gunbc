@@ -1,14 +1,5 @@
 module v2.test.generated.witness_validity
 
-import v2.std.diagnostic { Outcome }
-import v2.std.node { Symbol }
-import v2.std.witness { StructuralPropertyWitness }
-import v2.std.find_witness {
-  PreservationPredicate,
-}
-import v2.std.verification { TestClaim }
-import v2.lens.testgen { testgen_emit_witness_validity_claim }
-import v2.test.manual.connective_anchors { stub_empty_conj, stub_empty_disj }
 data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: constraint-satisfaction holds (positive)",
     source_facts: stub_empty_conj,

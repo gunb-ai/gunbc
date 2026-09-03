@@ -1,20 +1,32 @@
 module v2.lens.parallelism
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.common.algebraic_composition {
+  BarrierCoupled,
+  DataDependent,
+  EffectCoupled,
+  KnownParallelismRelation,
+  ParallelismKindPolicy,
+  ParallelismRelation,
+  ReadsParallelismFacts,
+  UnresolvedCoupling,
+  parallelism_classifier
+}
 import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent }
+import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
 import v2.std.algebra { bag_eq, list_snoc_item }
 import v2.std.collection {
   List,
+  optional_present_witness
+}
+import v2.std.optional {
   Optional,
   optional_absent,
   optional_prefer_first_present,
-  optional_present,
-  optional_present_witness
+  optional_present
 }
 import v2.std.dependency {
   ClassifiedDependencyView,
-  DependencyKindClassifier,
   DependencyView,
   classify_dependency_kind,
   classified_dependency_view_eq
@@ -29,40 +41,24 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness }
-
-type ParallelismRelation
-  = DataDependent
-  | EffectCoupled
-  | BarrierCoupled
-  | UnresolvedCoupling { diagnostic: Diagnostic }
-
-type ParallelismKindPolicy
-  = KnownParallelismRelation { relation: ParallelismRelation }
-  | ReadsParallelismFacts
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
 }
 
-fn parallelism_dependency_kind_classifier() -> DependencyKindClassifier<ParallelismKindPolicy> {
-  DependencyKindClassifier {
-    contains: KnownParallelismRelation { relation: DataDependent },
-    binds_to: KnownParallelismRelation { relation: DataDependent },
-    type_depends_on: ReadsParallelismFacts,
-    data_depends_on: KnownParallelismRelation { relation: DataDependent },
-    effect_depends_on: KnownParallelismRelation { relation: EffectCoupled },
-    resource_depends_on: KnownParallelismRelation { relation: EffectCoupled },
-    module_depends_on: ReadsParallelismFacts,
-    barrier_before: KnownParallelismRelation { relation: BarrierCoupled },
-    placement_depends_on: ReadsParallelismFacts,
-    model_depends_on: ReadsParallelismFacts,
-    projection_depends_on: ReadsParallelismFacts,
-    generated_from: ReadsParallelismFacts,
-    verified_by: ReadsParallelismFacts,
-    promoted_by: ReadsParallelismFacts,
-    bootstrap_depends_on: ReadsParallelismFacts
-  }
+fn parallelism_relation_for_view(
+  tree: InferredTree,
+  view: DependencyView
+) -> ParallelismRelation {
+  parallelism_relation_for_policy(
+    tree: tree,
+    view: view,
+    policy: classify_dependency_kind(
+      classifier: parallelism_classifier,
+      kind: view.kind
+    )
+  )
 }
 
 fn parallelism_witness_diagnostic() -> Diagnostic {
@@ -74,13 +70,13 @@ fn parallelism_witness_diagnostic() -> Diagnostic {
 }
 
 fn parallelism_facts_for_source(tree: InferredTree, view: DependencyView) -> Witness<InferredFacts> {
-  tree.facts.lookup(view.source)
+  witness_from_optional(opt: tree.facts.lookup(view.source), absent: infer_facts_lookup_miss_diagnostic(key: view.source))
 }
 
 fn parallelism_coupling_absent_diagnostic(facts: InferredFacts) -> Diagnostic {
   Diagnostic {
     reason: ^parallelism_reason_coupling_carrier_absent,
-    at: node_locus(node: facts.grounding.node),
+    at: node_locus(node: inferred_facts_subject_node(facts: facts)),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -119,20 +115,6 @@ fn parallelism_relation_for_policy(
     KnownParallelismRelation { relation: r } => r
     ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
   }
-}
-
-fn parallelism_relation_for_view(
-  tree: InferredTree,
-  view: DependencyView
-) -> ParallelismRelation {
-  parallelism_relation_for_policy(
-    tree: tree,
-    view: view,
-    policy: classify_dependency_kind(
-      classifier: parallelism_dependency_kind_classifier(),
-      kind: view.kind
-    )
-  )
 }
 
 fn parallelism_classify(
@@ -228,6 +210,5 @@ fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Independence is decidable from dependency-graph structure; the lens is a per-edge ratchet until the coupling carrier lands on InferredFacts. Grounding authority: a substrate parallelism-coupling carrier on InferredFacts (dissolves feature:T-13-parallelism-relation-unresolved). Dissolves on: independence is read from a resolved coupling carrier by construction, not classified per-edge by a lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

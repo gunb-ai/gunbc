@@ -1,0 +1,176 @@
+module gunbc.host_toolchain_ensure
+
+import std.types { Bool }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host_identity_access {
+  host_identity_srv1_access,
+  host_identity_srv2_access,
+  host_identity_srv3_access,
+  host_identity_srv4_access,
+}
+import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_operator_access }
+import gunbc.fleet_intent { ComputeHost }
+import gunbc.host_effect {
+  HostEffect,
+  EnsureBuildCacheInstance,
+  EnsureCompilePoolSlice,
+  ProvisionCodexRuntime,
+  OsInstallActuatorToolchainEnsure,
+  HostOs,
+  host_effect_identity_evidence,
+}
+import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
+import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
+import gunbc.build_cache_instance { ci_cache_instance }
+import std.realization_reconcile { Converged, NotConverged }
+
+type HostToolchainKind = BuildCache | CodexRuntime | OsInstallActuator | CompilePool
+
+// Compatibility specialization, not the Ensure abstraction: HostToolchainKind is the closed
+// selector for the existing HostEffect adapters reachable from this entrypoint. Generic convergence
+// semantics live in gunbc.ensure; dispatch requirements in gunbc.roadmap_execution_contract. Cargo,
+// rustc, provider auth, and future task dependencies must not join this enum merely because their
+// callers say ensure; they need their own typed observation/plan/readback adapters and may then
+// reuse generic Ensure.
+//
+// CompilePool was admitted against that bar, and the three parts are nameable: observation
+// gunbc.compile_pool_observe observe_compile_pool_slice, plan gunbc.compile_pool_ensure
+// admit_ensure_compile_pool_slice, read-back that same admission re-derived from a fresh
+// observation after the install. Listed because the bar was met, not because its caller says
+// ensure.
+data host_toolchain_ensure_srv3_fork_scaffold: Disposition = Terminal {
+  reason: "srv3_os_install_actuator_toolchain_ensure thinned to host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — no behavioral fork remains."
+}
+
+data host_toolchain_ensure_apply_dispatch_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "host_effect_apply_gated",
+    field: WholeDeclaration,
+  }
+}
+
+// Access is DERIVED FROM THE TARGET HOST, never looked up independently from the requested host.
+// Before 2026-07-24 these were two parallel decisions: host_toolchain_ensure_target_host was
+// kind-aware (srv3 + OsInstallActuator resolves to the SELECTED actuator host) while the access
+// lookup keyed on the requested host alone and pinned srv3 to ci_deploy_srv1_operator_access. Two
+// silent defects followed. (1) A BuildCache request for srv3 targeted srv3 but authenticated to
+// srv1, so the provisioning effect would have landed on the WRONG MACHINE and reported success — a
+// §5 fail-open, the exact kind this lane adds. (2) The srv1 pin is correct only in the actuator
+// selector's UNSATISFIABLE FALLBACK arm; whenever ActuatorSelected names a different host the
+// access still pointed at srv1. Pairing target and access in one return value makes the
+// disagreement unwritable (§5 construction over validation) rather than flagged afterwards.
+// Consequence: this module no longer consumes ci_deploy_srv1_operator_access, which is
+// construction-identical to host_identity_srv1_access (same principal, host, transport, privileged
+// commands — witnessed by host_toolchain_srv1_access_rows_are_one_concept); that §3 nickname still
+// has consumers elsewhere and its corpus-wide dissolution is a separate lane, not smuggled in here.
+
+type HostToolchainReach = ResolvedHostToolchainReach {
+  target: ComputeHost,
+  access: DeployAccess,
+}
+
+fn host_toolchain_direct_access(host: HostIdentity) -> DeployAccess? {
+  if host == operator_host_srv1 {
+    Present { value: host_identity_srv1_access }
+  } else { if host == operator_host_srv2 {
+    Present { value: host_identity_srv2_access }
+  } else { if host == operator_host_srv3 {
+    Present { value: host_identity_srv3_access }
+  } else { if host == operator_host_srv4 {
+    Present { value: host_identity_srv4_access }
+  } else { none } } } }
+}
+
+type HostToolchainReachOutcome
+  = ReachResolved { reach: HostToolchainReach }
+  | ReachTargetAbsent
+  | ReachAccessAbsent { target_identity: HostIdentity }
+
+fn host_toolchain_ensure_reach(
+  kind: HostToolchainKind,
+  host: HostIdentity,
+) -> HostToolchainReachOutcome {
+  match host_toolchain_ensure_target_host(kind: kind, host: host) {
+    Present { value: target } =>
+      match host_toolchain_direct_access(host: target.identity) {
+        Present { value: access } =>
+          ReachResolved { reach: ResolvedHostToolchainReach { target: target, access: access } }
+        Absent => ReachAccessAbsent { target_identity: target.identity }
+      }
+    Absent => ReachTargetAbsent {}
+  }
+}
+
+fn host_toolchain_ensure_effect(kind: HostToolchainKind, host: HostIdentity) -> HostEffect {
+  match kind {
+    BuildCache => EnsureBuildCacheInstance { desired: ci_cache_instance(host: host) }
+    CodexRuntime => ProvisionCodexRuntime {}
+    OsInstallActuator => OsInstallActuatorToolchainEnsure {}
+    CompilePool => EnsureCompilePoolSlice {}
+  }
+}
+
+fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: HostIdentity) -> ComputeHost? {
+  match kind {
+    BuildCache => fleet_compute_host_for_identity(identity: host)
+    CodexRuntime => fleet_compute_host_for_identity(identity: host)
+    CompilePool => fleet_compute_host_for_identity(identity: host)
+    OsInstallActuator =>
+      if host == operator_host_srv3 {
+        Present { value: srv3_os_install_actuator_host }
+      } else {
+        fleet_compute_host_for_identity(identity: host)
+      }
+  }
+}
+
+func host_toolchain_ensure(host: HostIdentity, kind: HostToolchainKind) -> ProcessExit
+  uses net: Network
+{
+  match host_toolchain_ensure_reach(kind: kind, host: host) {
+    ReachResolved { reach: reach } =>
+      match host_effect_apply_gated(
+        access: reach.access,
+        target: HostOs { node: reach.target },
+        effect: host_toolchain_ensure_effect(kind: kind, host: reach.target.identity),
+        evidence: host_effect_identity_evidence,
+        transport: reach.access.transport,
+        fixture_actor: none,
+      ) {
+        Converged { evidence: _, applied: _ } => ExitSuccess
+        NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
+      }
+    ReachTargetAbsent =>
+      exit_failure(
+        reason: concat("host_toolchain_ensure: host absent from compute inventory ", host as String)
+      )
+    ReachAccessAbsent { target_identity: target_identity } =>
+      exit_failure(
+        reason: concat(
+          concat("host_toolchain_ensure: no deploy access for target host ", target_identity as String),
+          concat(" (requested host ", concat(host as String, ")"))
+        )
+      )
+  }
+}
+
+fn host_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
+  match host_toolchain_ensure_apply_dispatch_scaffold {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.host_effect_realize" && n == "host_effect_apply_gated"
+    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+  }
+}

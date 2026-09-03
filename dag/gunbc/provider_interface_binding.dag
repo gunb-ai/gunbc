@@ -1,0 +1,107 @@
+module gunbc.provider_interface_binding
+
+import std.types { NonEmptyStr, String, FilePath, Bool }
+import std.content_hash { ContentHash }
+import extdeps.llm.codex_app_server {
+  CodexAppServerTransport,
+  CodexAppServerStdio,
+  CodexAppServerExecutable,
+}
+import gunbc.package_delivery { CodexRuntimeBundle }
+import gunbc.codex_runtime_bundle {
+  codex_bundle_executable_path,
+  codex_bundle_identity,
+}
+import extdeps.shell
+
+// ONE nested ProviderInterfaceBinding. Provider identity is derived from the realization closure
+// (runtime bundle + transport + lifecycle + protocol schema identity), never a writable sibling
+// enum. project_codex_app_server_stdio_binding is hermetic path projection only. Live initialize
+// authority lives in gunbc.codex_app_server_press.observe_codex_account_preflight —
+// observe_bind_codex_app_server_stdio is demoted to projection plus executable presence check only.
+
+type ProviderControlInterface
+  = CodexAppServer {}
+
+// "PROVIDER" IS A HOMONYM, AND THIS CARRIER OWNS ONLY ONE OF THE TWO SENSES. Written here because
+// this is the carrier a search opens first, so it is where the mistake gets made.
+//
+// SENSE ONE, WHICH IS THIS TYPE: the coding-agent RUNTIME WE INSTALL AND CONTROL. Every field below
+// is about how a process is installed and controlled -- which control interface, over which
+// transport, from which executable, at which runtime and protocol-schema identity.
+// gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt is the same subject.
+//
+// SENSE TWO, WHICH THIS CARRIER DOES NOT OWN: the INFERENCE BACKEND that process sends requests to
+// -- upstream codex's own use of the word, as in its `model_providers` config key. An endpoint
+// field here would fuse process-control with model-backend, one carrier answering for another
+// subject, so its absence is deliberate.
+//
+// WHY THAT IS WORTH SAYING: a search for an endpoint or base URL under the word "provider" lands on
+// this type, finds a true zero, AND THAT ZERO IS ABOUT THE WRONG SUBJECT -- so it reads as a zero
+// everywhere. Searches have concluded from it, more than once and independently, that the concept
+// does not exist. This is section 3 read in the direction grep cannot see: the ordinary nicknaming
+// violation is two names for one concept and a name-level search finds it, whereas ONE NAME FOR
+// TWO CONCEPTS makes every search for the second sense match the word and miss the subject -- the
+// failure mode that returns a confident answer.
+//
+// SO SEARCH BY SUBJECT, NOT BY THIS WORD. Whether a sense-two carrier exists is a question for the
+// tree, and this annotation deliberately does not answer it -- a census recorded here would go
+// stale without this file changing, the stale-citation class in its expensive form: a reason that
+// outlives its cause and is taken by the next reader as a live constraint. Two durable pointers
+// instead. extdeps.ollama.api's scope note assigns "which model, which host, which endpoint
+// binding" to gunbc and keeps only the HTTP API surface for itself, so that layer is the one to
+// look in. And gunbc.spark.serving_desired spark_serving_local_endpoint_url already builds a
+// dialled URL on the same OllamaEndpoint grounding from the SERVING side -- same shape, opposite
+// sense, and the seam where the two would silently fuse.
+type ProviderInterfaceBinding {
+  interface: ProviderControlInterface
+  transport: CodexAppServerTransport
+  executable: CodexAppServerExecutable
+  runtime_identity: ContentHash
+  protocol_schema_identity: ContentHash
+}
+
+type ProviderInterfaceResolution
+  = ProviderInterfaceResolved {
+      binding: ProviderInterfaceBinding
+    }
+  | RequiredProviderInterfaceUnavailable {
+      interface: ProviderControlInterface
+      reason: NonEmptyStr
+    }
+
+fn project_codex_app_server_stdio_binding(
+  bundle: CodexRuntimeBundle,
+) -> ProviderInterfaceResolution {
+  ProviderInterfaceResolved {
+    binding: ProviderInterfaceBinding {
+      interface: CodexAppServer {},
+      transport: CodexAppServerStdio,
+      executable: CodexAppServerExecutable {
+        path: codex_bundle_executable_path(bundle: bundle),
+      },
+      runtime_identity: codex_bundle_identity(bundle: bundle),
+      protocol_schema_identity: bundle.receipt.protocol_schema_identity,
+    },
+  }
+}
+
+fn observe_bind_codex_app_server_stdio(
+  bundle: CodexRuntimeBundle,
+) -> ProviderInterfaceResolution {
+  match project_codex_app_server_stdio_binding(bundle: bundle) {
+    ProviderInterfaceResolved { binding } => {
+      let present = shell.Test.IsFile(path: binding.executable.path)
+      if present.is_file == false {
+        RequiredProviderInterfaceUnavailable {
+          interface: CodexAppServer {},
+          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
+        }
+      } else {
+        ProviderInterfaceResolved { binding: binding }
+      }
+    }
+    RequiredProviderInterfaceUnavailable { interface: i, reason: r } =>
+      RequiredProviderInterfaceUnavailable { interface: i, reason: r }
+  }
+}

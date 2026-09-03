@@ -1,0 +1,39 @@
+module test.claim.hetzner_cost_quote_witness
+
+import extdeps.cloud.hetzner { cax41_catalog }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn hetzner_cax41_hourly_micros() -> std.nat.Nat {
+  cost_estimate_unit_price_micros(
+    quote: per_second_billed_cost_quote(
+      unit_price: cax41_catalog.hourly,
+      currency: cax41_catalog.currency,
+    ),
+  )
+}
+
+test fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
+  let quote = per_second_billed_cost_quote(
+    unit_price: cax41_catalog.hourly,
+    currency: cax41_catalog.currency,
+  )
+  match quote.model.cost_class {
+    PerSecondBilled => true
+    OwnedMarginalZero => false
+    Metered => false
+    DeveloperAttention => false
+  }
+}
+
+test fn hetzner_cax41_currency_is_eur() -> Bool {
+  match cax41_catalog.currency {
+    Eur => true
+    _ => false
+  }
+}
+
+test fn hetzner_cax41_unit_price_matches_catalog() -> Bool {
+  hetzner_cax41_hourly_micros() == 50500
+}
+

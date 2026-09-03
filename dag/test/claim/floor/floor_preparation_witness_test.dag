@@ -1,0 +1,277 @@
+module test.claim.floor_preparation_witness
+
+import std.types { Bool, List, String }
+import std.content_hash { Fnv1a64Structural, Sha1Digest, content_hash_atom }
+import std.execution_mode { Hermetic }
+import std.measure { byte_size }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  CorpusWitnessKind,
+  ExecutionWitnessKind,
+}
+import std.materialization_provider {
+  ArtifactPart,
+  MaterializedArtifact,
+  ResolvedGraphArtifact,
+  ProviderProbe,
+  ProbeAbsent,
+  ProbeFound,
+  ProviderMiss,
+  ProviderRefusedWrongArtifact,
+  artifact_content_digest,
+  request_key,
+}
+import v2.workflow.floor_discovery {
+  FloorDiscoverySubject,
+  FloorDiscoveryRequest,
+  floor_discovery_commit_id,
+  floor_discovery_tree_id,
+}
+import v2.workflow.floor_preparation {
+  ResolveSelectedClosuresV1,
+  PreparedFloorEntryRequest,
+  PreparedFloorSubjectRequest,
+  PreparedFloorEntryProbe,
+  PreparedFloorSubjectReady,
+  PreparedFloorSubjectRefused,
+  PreparedFloorDuplicateSelectedIdentities,
+  PreparedFloorDuplicateProbeIdentities,
+  PreparedFloorMissingProbeIdentities,
+  PreparedFloorUnexpectedProbeIdentities,
+  PreparedFloorProviderRefused,
+  prepared_floor_entry_artifact_request,
+  prepared_claim_subject_identity,
+  prepared_floor_subject_serve,
+}
+
+data tested_commit: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+}
+
+data tested_tree: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "1111111111111111111111111111111111111111" }
+}
+
+fn discovery_request() -> FloorDiscoveryRequest {
+  FloorDiscoveryRequest {
+    subject: FloorDiscoverySubject {
+      tested_commit: floor_discovery_commit_id(object_id: tested_commit),
+      tested_tree: floor_discovery_tree_id(object_id: tested_tree),
+      source_roots: ["dag", "src/v2"],
+      execution_authority_source_roots: ["dag", "src/v2"],
+      naming_authority_identity: content_hash_atom(value: "floor-preparation-naming-fixture"),
+      tool_identity: content_hash_atom(value: "floor-preparation-tool-fixture"),
+    },
+    scan_dirs: ["dag/test/claim"],
+    exclude_substrings: [],
+    discovery_scope_dirs: ["dag/test/claim"],
+    execution_mode: Hermetic,
+  }
+}
+
+fn witness_a() -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry {
+    entry: "dag/test/claim/a_test.dag",
+    function: "a",
+    kind: CorpusWitnessKind,
+  }
+}
+
+fn witness_b() -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry {
+    entry: "dag/test/claim/b_test.dag",
+    function: "b",
+    kind: ExecutionWitnessKind,
+  }
+}
+
+fn witness_extra() -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry {
+    entry: "dag/test/claim/extra_test.dag",
+    function: "extra",
+    kind: CorpusWitnessKind,
+  }
+}
+
+fn entry_request(witness: ScheduleWitnessEntry, closure: String) -> PreparedFloorEntryRequest {
+  PreparedFloorEntryRequest {
+    witness: witness,
+    closure_digest: content_hash_atom(value: closure),
+  }
+}
+
+fn entry_a() -> PreparedFloorEntryRequest {
+  entry_request(witness: witness_a(), closure: "closure-a")
+}
+
+fn entry_b() -> PreparedFloorEntryRequest {
+  entry_request(witness: witness_b(), closure: "closure-b")
+}
+
+fn request_with(selected: List<PreparedFloorEntryRequest>) -> PreparedFloorSubjectRequest {
+  PreparedFloorSubjectRequest {
+    discovery: discovery_request(),
+    selected: selected,
+    policy: ResolveSelectedClosuresV1 {},
+  }
+}
+
+fn canonical_request() -> PreparedFloorSubjectRequest {
+  request_with(selected: [entry_a(), entry_b()])
+}
+
+fn artifact_part(label: String) -> ArtifactPart {
+  ArtifactPart {
+    digest: content_hash_atom(value: label),
+    bytes: byte_size(count: 1),
+  }
+}
+
+fn artifact_for(entry: PreparedFloorEntryRequest) -> MaterializedArtifact {
+  ResolvedGraphArtifact {
+    request_key: request_key(
+      req: prepared_floor_entry_artifact_request(
+        discovery: discovery_request(),
+        entry: entry,
+      )
+    ),
+    resolved_graph: artifact_part(label: concat(entry.witness.entry, ".graph")),
+    source_indices: artifact_part(label: concat(entry.witness.entry, ".indices")),
+    compile_clean_diagnostic_union: artifact_part(label: concat(entry.witness.entry, ".union")),
+  }
+}
+
+fn probe_for(entry: PreparedFloorEntryRequest) -> PreparedFloorEntryProbe {
+  let artifact = artifact_for(entry: entry)
+  PreparedFloorEntryProbe {
+    witness: entry.witness,
+    probe: ProbeFound {
+      artifact: artifact,
+      observed_digest: artifact_content_digest(artifact: artifact),
+    }
+  }
+}
+
+test fn exact_prepared_artifact_set_serves() -> Bool {
+  let request = canonical_request()
+  match prepared_floor_subject_serve(
+    request: request,
+    probes: [probe_for(entry: entry_a()), probe_for(entry: entry_b())],
+  ) {
+    PreparedFloorSubjectReady { identity: identity, entries: entries } =>
+      identity == prepared_claim_subject_identity(request: request)
+        && entries.count() == 2
+        && entries.first().witness.entry == witness_a().entry
+    PreparedFloorSubjectRefused { cause: _ } => false
+  }
+}
+
+test fn missing_prepared_identity_refuses() -> Bool {
+  match prepared_floor_subject_serve(
+    request: canonical_request(),
+    probes: [probe_for(entry: entry_a())],
+  ) {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorMissingProbeIdentities { missing: missing }
+    } => missing.count() == 1 && missing.first().entry == witness_b().entry
+    _ => false
+  }
+}
+
+test fn absent_artifact_is_typed_miss_without_cold_fallback() -> Bool {
+  match prepared_floor_subject_serve(
+    request: request_with(selected: [entry_a()]),
+    probes: [PreparedFloorEntryProbe { witness: witness_a(), probe: ProbeAbsent }],
+  ) {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorProviderRefused {
+        witness: witness,
+        lookup: ProviderMiss { key: _ },
+      }
+    } => witness.entry == witness_a().entry
+    _ => false
+  }
+}
+
+test fn wrong_artifact_key_refuses() -> Bool {
+  let wrong = artifact_for(entry: entry_b())
+  match prepared_floor_subject_serve(
+    request: request_with(selected: [entry_a()]),
+    probes: [PreparedFloorEntryProbe {
+      witness: witness_a(),
+      probe: ProbeFound {
+        artifact: wrong,
+        observed_digest: artifact_content_digest(artifact: wrong),
+      }
+    }],
+  ) {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorProviderRefused {
+        witness: _,
+        lookup: ProviderRefusedWrongArtifact { key: _, found_key: _ },
+      }
+    } => true
+    _ => false
+  }
+}
+
+test fn duplicate_selected_identity_refuses() -> Bool {
+  match prepared_floor_subject_serve(
+    request: request_with(selected: [entry_a(), entry_a()]),
+    probes: [probe_for(entry: entry_a())],
+  ) {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorDuplicateSelectedIdentities { duplicates: duplicates }
+    } => duplicates.count() == 2
+    _ => false
+  }
+}
+
+test fn duplicate_probe_identity_refuses() -> Bool {
+  match prepared_floor_subject_serve(
+    request: request_with(selected: [entry_a()]),
+    probes: [probe_for(entry: entry_a()), probe_for(entry: entry_a())],
+  ) {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorDuplicateProbeIdentities { duplicates: duplicates }
+    } => duplicates.count() == 2
+    _ => false
+  }
+}
+
+test fn unexpected_probe_identity_refuses() -> Bool {
+  let extra = entry_request(witness: witness_extra(), closure: "closure-extra")
+  match prepared_floor_subject_serve(
+    request: request_with(selected: [entry_a()]),
+    probes: [probe_for(entry: entry_a()), probe_for(entry: extra)],
+  ) {
+    PreparedFloorSubjectRefused {
+      cause: PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected }
+    } => unexpected.count() == 1 && unexpected.first().entry == witness_extra().entry
+    _ => false
+  }
+}
+
+test fn changed_closure_changes_prepared_artifact_set_identity() -> Bool {
+  let canonical = prepared_claim_subject_identity(
+    request: request_with(selected: [entry_a()])
+  )
+  let changed = prepared_claim_subject_identity(
+    request: request_with(
+      selected: [entry_request(witness: witness_a(), closure: "changed-closure-a")]
+    )
+  )
+  canonical.artifact_set_identity.digest != changed.artifact_set_identity.digest
+}
+
+test fn all_floor_preparation_controls_hold() -> Bool {
+  exact_prepared_artifact_set_serves()
+    && missing_prepared_identity_refuses()
+    && absent_artifact_is_typed_miss_without_cold_fallback()
+    && wrong_artifact_key_refuses()
+    && duplicate_selected_identity_refuses()
+    && duplicate_probe_identity_refuses()
+    && unexpected_probe_identity_refuses()
+    && changed_closure_changes_prepared_artifact_set_identity()
+}

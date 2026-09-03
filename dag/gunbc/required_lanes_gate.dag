@@ -1,0 +1,591 @@
+module gunbc.required_lanes_gate
+
+import v2.extdeps.languages.bash_build {
+  bash_build_assign_lit,
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_or_else,
+  bash_build_test_bracket,
+  bash_build_with_redir,
+  bash_build_word_concat_parts,
+  bash_build_word_lit,
+  bash_build_word_var
+}
+import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_flat_map }
+import gunbc.floor_attempt_standing {
+  floor_attempt_receipt_prefix,
+  floor_attempt_receipt_measured_head_label,
+  floor_attempt_receipt_run_id_label,
+  floor_attempt_receipt_standing_label,
+  floor_lane_result_success,
+  floor_lane_result_failure,
+  floor_mechanism_unestablished_name,
+  floor_attribution_unestablished_name,
+  floor_head_standing_not_applicable,
+  floor_head_standing_pull_request_event_name,
+  floor_head_standing_unobserved,
+  floor_rendered_verdict_green_name,
+  floor_rendered_verdict_red_name,
+  floor_rendered_verdict_unestablished_name
+}
+import v2.std.node { Node }
+import std.types { String, List }
+
+// THE REQUIRED AGGREGATOR'S REFUSAL, CONSTRUCTED AS NODES RATHER THAN SPELLED AS TEXT.
+//
+// WHY THIS MODULE EXISTS, and the reason is a correction rather than a design preference.
+// The first cut of this gate built its shell by nesting `concat` over string literals and
+// handed the result straight to a RunStep. That is the medium-as-string violation DESIGN §2/§3
+// names: a second representation of a language that this repository already models, with no
+// authority, undecidable by any lens.
+//
+// I ARGUED AGAINST THIS AND THE ARGUMENT WAS FALSE. The claim was that there was nothing to
+// render because GitHub has no declarative "this job fails unless those jobs succeeded". The
+// first half is true and the second does not follow: GitHub's lack of a JOB-level construct is
+// exactly why a shell refusal is needed, and the SHELL is fully modeled --
+// `v2.extdeps.languages.bash_build` carries assign, command, test-bracket, or-else, if, exit
+// and redirection builders, and `v2.workflow.bash_command_fold_serialize`
+// `bash_fold_serialize_program` serializes them through the grammar rows. Declaring a
+// language-layer gap without enumerating the language is the failure DESIGN records in its own
+// §6 receipt, and this is that failure repeated. Raised in review 55836.
+//
+// THE SPLIT FOLLOWS THE PRECEDENT ALREADY IN THE TREE: `tools.build_step` constructs Nodes and
+// the workflow layer serializes them through `v2.workflow.bash_command_fold_serialize`
+// `bash_fold_serialize_program` (the serializer module that used to sit beside it,
+// `v2.workflow.build_step_emit`, lost its production consumer to the typed transport flip
+// recorded in `tools.build_step_transport` `bst_typed_transport_doc` and was deleted). Node
+// construction lives here; the workflow authority serializes and REFUSES emission if
+// serialization does not accept, so a gate that cannot be rendered cannot be published as an
+// empty step.
+//
+// WHAT THE SEMANTICS MUST STAY, because they are ruled and measured rather than chosen:
+// the comparison is `!= success` and never an enumeration of bad states. A production run
+// exposed `abandoned` as a reachable `needs` result that no author here knew about; an
+// enumerated guard would have admitted it and published the required context green over two
+// lanes that never ran.
+
+// THE SUCCESS SPELLING IS NOT DECLARED HERE ANY MORE. It is `gunbc.floor_attempt_standing`
+// `floor_lane_result_success`, which is also what that module's lane decode reads, so the shell
+// realization and the modeled composition branch on one authority rather than on two literals
+// that happen to agree today.
+
+fn required_lane_result_word(var_name: String) -> Node {
+  bash_build_word_var(name: var_name)
+}
+
+// `[ "$VAR" != "success" ]` -- one lane's verdict, refused unless it is exactly success.
+fn required_lane_not_success_test(var_name: String) -> Node {
+  bash_build_test_bracket(
+    words: [
+      required_lane_result_word(var_name: var_name),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: floor_lane_result_success)
+    ]
+  )
+}
+
+fn required_lanes_echo(words: List<Node>) -> Node {
+  bash_build_command_with_words(words: words)
+}
+
+// THE TWO AXES, RENDERED AS SHELL.
+//
+// `gunbc.floor_attempt_standing` owns the composition; everything below is its realization at
+// the one boundary GitHub gives us, a `run:` script reading `needs.*.result`. The state names
+// are imported from that module rather than spelled here, so the shell branches on the same
+// literals the modeled decode branches on.
+//
+// WHAT IS REALIZED AND WHAT IS NOT, stated together so neither half is read as the other.
+// REALIZED: the attempt subject -- pull request, measured head, run id, run attempt -- printed on
+// every run; the head axis rendered as `not-applicable` or `unobserved`; the lane axis decoded;
+// and the composed verdict split into `stands-red` and `stands-unestablished`, which is the
+// distinction that decides whether a reader goes looking for a subject defect.
+// NOT REALIZED: the head axis never reaches `superseded`, because acquiring the pull request's
+// CURRENT head requires an authenticated GitHub call that this workflow cannot make -- it holds
+// `contents: read` and carries no token in any job's env. THE SUPERSEDED ARM IS THEREFORE NOT
+// EMITTED AT ALL rather than emitted and unreachable: a branch no input can take is a decoration
+// that reads as coverage (DESIGN 4b), and the receipt saying `unobserved` is the honest form of
+// the same fact. `floor_attempt_standing_acquisition_trigger` carries what would change that.
+
+fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
+  bash_build_test_bracket(
+    words: [
+      bash_build_word_var(name: var_name),
+      bash_build_word_lit(text: "="),
+      bash_build_word_lit(text: text)
+    ]
+  )
+}
+
+// THE ATTEMPT SUBJECT RECEIPT, AND IT IS THE PIECE THAT MAKES THE JOIN POSSIBLE AT ALL.
+//
+// Before this, the aggregator's log said which two lane results it read and nothing about WHICH
+// HEAD it was reading them for. A verdict with no subject cannot be joined to anything after the
+// fact, so a reader looking at a red could not tell -- from the record, at any later time --
+// whether the head it belonged to was still the pull request's head. Printing the subject does
+// not acquire the current head, but it makes the join computable offline by anyone who can, and
+// it is the row a later acquisition fills in rather than replaces.
+fn required_lanes_subject_receipt_stmt(
+  pull_request_var: String,
+  measured_head_var: String,
+  run_id_var: String,
+  standing_var: String
+) -> Node {
+  required_lanes_echo(
+    words: [
+      bash_build_word_lit(text: "echo"),
+      bash_build_word_concat_parts(
+        parts: [
+          bash_build_word_lit(text: floor_attempt_receipt_prefix),
+          bash_build_word_var(name: pull_request_var),
+          bash_build_word_lit(text: floor_attempt_receipt_measured_head_label),
+          bash_build_word_var(name: measured_head_var),
+          bash_build_word_lit(text: floor_attempt_receipt_run_id_label),
+          bash_build_word_var(name: run_id_var),
+          bash_build_word_lit(text: floor_attempt_receipt_standing_label),
+          bash_build_word_var(name: standing_var)
+        ]
+      )
+    ]
+  )
+}
+
+// THE HEAD AXIS. Two reachable states and no third, and the split is by WHO OWNS THE REPAIR:
+// an attempt with no pull request cannot be superseded, so `not-applicable` is not a deficit;
+// an attempt with one, whose current head we cannot read, is `unobserved`, which is.
+// `not-applicable` IS DECIDED BY THE EVENT TYPE AND NEVER BY AN EMPTY PULL-REQUEST NUMBER, and
+// this is a correction rather than a preference (raised by cool-hawk-324 against the first cut).
+//
+// The first cut branched on `[ -n "$PULL_REQUEST" ]`. That reads an ABSENT SUBJECT as an OPT-OUT,
+// and the two are not the same thing. On a `pull_request` event an empty number is malformed
+// input or an unreadable subject -- a deficit someone owns -- while `not-applicable` says there
+// was nothing to observe in the first place. Deriving the second from the first means a
+// misspelled workflow context interpolates to the empty string and SILENTLY CONVERTS A REQUIRED
+// LIVE READ INTO AN OPT-OUT, with the receipt cheerfully reporting `not-applicable` and no
+// mechanism anywhere able to notice.
+//
+// TODAY THE TWO ARMS COMPOSE IDENTICALLY, so this changes no verdict. It is fixed now anyway
+// because it becomes load-bearing the instant head acquisition lands, and because a construction
+// that is only safe by coincidence is the kind this module exists to remove. The event name is a
+// fact about the trigger that no interpolation of the payload can erase.
+//
+// SO THE PULL-REQUEST NUMBER IS STILL BOUND AND STILL PRINTED -- it is the subject the later
+// acquisition will read -- but it no longer DECIDES anything here. On a pull-request event the
+// head axis is `unobserved` whether or not the number interpolated, which is the honest reading:
+// we did not observe the current head, and if the number is also empty that is a second deficit
+// the receipt shows rather than hides.
+fn required_lanes_head_standing_stmts(
+  event_name_var: String,
+  standing_var: String
+) -> List<Node> {
+  [
+    bash_build_assign_lit(name: standing_var, text: floor_head_standing_not_applicable),
+    bash_build_if_from_stmts(
+      cond: required_lane_var_equals_lit_test(
+        var_name: event_name_var,
+        text: floor_head_standing_pull_request_event_name
+      ),
+      then_stmts: [
+        bash_build_assign_lit(name: standing_var, text: floor_head_standing_unobserved)
+      ]
+    )
+  ]
+}
+
+// THE REQUIRED LANE, AS ONE CONCEPT WITH N INSTANCES RATHER THAN N NAMED PARAMETERS.
+//
+// This axis was a HARDCODED PAIR -- `build_var` beside `floor_var`, threaded through four
+// functions and spelled 28 times -- which is one concept given one name per instance, the fork
+// DESIGN section 2 horizontal exists to delete. The tell was mechanical: promoting a third job
+// into the aggregate was described by `gunbc.witness_floor_workflow` as a one-row edit, and was
+// in fact a signature change in four places plus a step-name rewrite, because the gate could not
+// say "a lane" at all -- only "the build one" and "the floor one".
+//
+// A LANE IS THREE FACTS AND NOT ONE, and each is read by a different surface: the JOB ID is what
+// the workflow's `needs.<id>.result` expression names, the VARIABLE is what the emitted shell
+// reads, and the LABEL is what the receipt prints. They are genuinely distinct strings -- the job
+// id is `required-witnesses-build`, the variable `BUILD`, the label `build` -- so collapsing any
+// two would force one surface to derive its spelling from another's, which is a nickname for a
+// fact the caller already holds. Carrying all three is what lets the gate AND the step's `env`
+// block be projections of one roster instead of two hand-kept lists whose agreement nothing
+// checks.
+//
+// NON-EMPTY BY CONSTRUCTION, and that is the whole safety argument for the shape. The verdict is
+// an OR-fold over the lanes, and an or-fold over nothing is FALSE -- so an empty lane list would
+// publish the required context GREEN over a gate that read no lane at all, which is section 5's
+// fail-open in its purest form. `FreeSemigroup` has no empty representation, so that state is
+// UNWRITABLE rather than validated: the structurally-impossible rung of section 4b rather than
+// the mechanically-preventable one, and no refusal arm is owed because there is no arm to write.
+//
+// THE BOUNDARY THAT GUARANTEE HOLDS AT, stated because section 4b says unwritable in the ACCEPTED
+// CORPUS and unwritable as SOURCE HANDED TO THE COMPILER are different claims and only the second
+// decides whether a RED is authorable. MEASURED, not reasoned: a fixture module authoring
+// `FreeSemigroup { tail: [] }` was handed to the compiler on 2026-09-02 and refused with
+// `error: missing required field 'head' in literal of type 'FreeSemigroup'`, located at the
+// literal -- one blocking error. So the empty roster is authorable as fixture source and is
+// refused there, which is the stronger of the two boundaries.
+//
+// WHAT THAT DOES NOT ESTABLISH, AND THE TRIGGER IS OWNED ELSEWHERE. The refusal is the compiler's
+// GENERAL record-completeness wall, not anything this roster authored, and the roadmap node
+// `floor-record-construction-wall` (rn_ILWLG34LVL5SAS6QPN5GZDPMFY) records that wall's own
+// evidence as NOT YET ENROLLED -- in its words, a construction wall "currently rests on
+// record-completeness enforcement that is itself unmeasured" -- the refusal measured here is
+// recorded as that node's executed RED specimen rather than restated. So this roster's rung is section
+// 4b(4) CONDITIONAL ON that wall, and its next-rung trigger is that node's probe-pairing rather
+// than anything in this file. A per-consumer fixture asserting the same refusal is deliberately
+// NOT added here: it would be one more monomorphised copy of a corpus-wide property, the same
+// duplication declining a sixth NonEmpty carrier avoids.
+// It is deliberately not a fresh NonEmptyRequiredLanes carrier -- `free_semigroup_grounding_note`
+// already names five monomorphised copies of that shape as convergence debt, and a sixth would be
+// the re-invention that section 2's own test forbids.
+type RequiredLane {
+  job_id: String,
+  label: String,
+  var_name: String
+}
+
+// THE OR-FOLD OVER THE LANES, left-associated so that the two-lane case is the exact node the
+// hardcoded pair built: `or_else(left: test(first), right: test(second))`.
+fn required_lanes_any_test(lanes: FreeSemigroup<RequiredLane>, mk: fn(String) -> Node) -> Node {
+  fold_list(
+    xs: lanes.tail,
+    empty: mk(lanes.head.var_name),
+    cons: fn(acc, lane) { bash_build_or_else(left: acc, right: mk(lane.var_name)) }
+  )
+}
+
+// THE RECEIPT'S LANE SEGMENT, one `label=$VAR` pair per lane.
+//
+// The head's literal carries the caller's leading text so it stays ONE literal word part rather
+// than two adjacent ones -- the serializer is handed the same node shape it was handed before,
+// not a shape that merely renders the same today.
+fn required_lanes_receipt_parts(lanes: FreeSemigroup<RequiredLane>, head_prefix: String) -> List<Node> {
+  list_append(
+    left: [
+      bash_build_word_lit(text: concat(head_prefix, lanes.head.label, "=")),
+      bash_build_word_var(name: lanes.head.var_name)
+    ],
+    right: list_flat_map(xs: lanes.tail, f: fn(lane) {
+      [
+        bash_build_word_lit(text: concat(" ", lane.label, "=")),
+        bash_build_word_var(name: lane.var_name)
+      ]
+    })
+  )
+}
+
+fn required_lane_is_failure_test(var_name: String) -> Node {
+  required_lane_var_equals_lit_test(var_name: var_name, text: floor_lane_result_failure)
+}
+
+// THE LANE AXIS, AND THE ORDER OF THESE TWO ASSIGNMENTS IS THE WHOLE SAFETY ARGUMENT.
+//
+// The first narrows green to unestablished on `!= success`, which is the closed-vocabulary law
+// this gate has always carried: it admits exactly one spelling and refuses every other, including
+// the ones no author here has heard of. Run 32883390033 produced `abandoned`, a `needs.*.result`
+// value nobody knew was reachable; an enumerated guard would have admitted it and published the
+// required context green over two lanes that never ran.
+//
+// The second promotes unestablished to red on an explicit `= failure`, and it runs SECOND so
+// that promotion can only ever move a blocking verdict to a different blocking verdict. An
+// unknown spelling therefore lands in unestablished and blocks; it can never land in green.
+// Reversing these two would make the enumeration load-bearing and reopen exactly that hole.
+fn required_lanes_verdict_stmts(
+  lanes: FreeSemigroup<RequiredLane>,
+  verdict_var: String
+) -> List<Node> {
+  [
+    bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_green_name),
+    bash_build_if_from_stmts(
+      cond: required_lanes_any_test(lanes: lanes, mk: fn(v) {
+        required_lane_not_success_test(var_name: v)
+      }),
+      then_stmts: [
+        bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_unestablished_name)
+      ]
+    ),
+    bash_build_if_from_stmts(
+      cond: required_lanes_any_test(lanes: lanes, mk: fn(v) {
+        required_lane_is_failure_test(var_name: v)
+      }),
+      then_stmts: [
+        bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_red_name)
+      ]
+    )
+  ]
+}
+
+// THE INTERRUPTION AXES, RENDERED FROM WHAT THE AGGREGATOR HOLDS AND NOTHING MORE.
+//
+// Two `needs.*.result` words establish NEITHER AXIS, and the earlier cut of this function which
+// answered `workflow-cancelled` for a cancelled lane was measured wrong: 27 of 27 never-assigned
+// jobs -- `runner_id=0`, `runner_name=""`, `steps=[]` -- reported cancelled on PUSH events where
+// supersession is impossible by construction. `gunbc.floor_attempt_standing`
+// `floor_lane_interruption` carries the measurement and the assignment-standing trigger that
+// would occupy the established arm.
+//
+// SO BOTH ASSIGNMENTS ARE CONSTANT, AND THAT IS THE POINT RATHER THAN AN OVERSIGHT. This function
+// is the shell realization of a derivation that currently establishes nothing, and it must stay
+// exactly as weak as the model: a mechanism guessed here from a conclusion word is the fabricated
+// plausible output the model exists to refuse, and it is WORSE than the non-answer it overwrites
+// because a confident wrong answer sends the reader to look in the wrong place.
+//
+// THE UNESTABLISHED SPELLING IS PRINTED RATHER THAN OMITTED, and that is the point of the pair.
+// A blocking run that says `mechanism=unestablished attribution=unestablished` is a countable
+// deficit whose population can be read off the runs; a blocking run that says nothing about
+// either is an untyped infra bucket that never ranks for promotion.
+fn required_lanes_interruption_stmts(
+  mechanism_var: String,
+  attribution_var: String
+) -> List<Node> {
+  [
+    bash_build_assign_lit(name: mechanism_var, text: floor_mechanism_unestablished_name),
+    bash_build_assign_lit(name: attribution_var, text: floor_attribution_unestablished_name)
+  ]
+}
+
+fn required_lanes_verdict_receipt_stmt(
+  lanes: FreeSemigroup<RequiredLane>,
+  verdict_var: String,
+  mechanism_var: String,
+  attribution_var: String
+) -> Node {
+  required_lanes_echo(
+    words: [
+      bash_build_word_lit(text: "echo"),
+      bash_build_word_concat_parts(
+        parts: list_append(
+          left: required_lanes_receipt_parts(lanes: lanes, head_prefix: "required lanes: "),
+          right: [
+          bash_build_word_lit(text: " verdict="),
+          bash_build_word_var(name: verdict_var),
+          bash_build_word_lit(text: " mechanism="),
+          bash_build_word_var(name: mechanism_var),
+          bash_build_word_lit(text: " attribution="),
+          bash_build_word_var(name: attribution_var)
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn required_lanes_error_stmt(
+  text: String,
+  lanes: FreeSemigroup<RequiredLane>,
+  mechanism_var: String,
+  attribution_var: String
+) -> Node {
+  bash_build_with_redir(
+    inner: required_lanes_echo(
+      words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_concat_parts(
+          parts: list_append(
+            left: required_lanes_receipt_parts(lanes: lanes, head_prefix: text),
+            right: [
+            bash_build_word_lit(text: " mechanism="),
+            bash_build_word_var(name: mechanism_var),
+            bash_build_word_lit(text: " attribution="),
+            bash_build_word_var(name: attribution_var),
+            bash_build_word_lit(text: ") - open that job's log")
+            ]
+          )
+        )
+      ]
+    ),
+    redir: ^bash_production_fold_redir_stdout_to_stderr
+  )
+}
+
+// BOTH ARMS BLOCK, AND THEY ARE TWO ARMS BECAUSE THEY ROUTE THE READER TO DIFFERENT PLACES.
+//
+// `stands-unestablished` means no lane produced a conclusion of its own, so this head's floor
+// verdict is UNOBSERVABLE from here -- not "certainly not evaluated", because an absent
+// conclusion is evidence about observability and never about the world: a fold can complete and
+// the job be cancelled during reporting. The evidence is missing on a head that is still the
+// merge candidate, and the remedy is a rerun rather than a change to the diff. `stands-red` means a lane concluded
+// failure, and it is the UNCERTAIN middle rather than the author-owned end -- gunbc#9298
+// concluded FAILURE over a one-markdown-file diff because rustfmt vanished mid-run, so the
+// subject was never judged at all. The annotation therefore says the conclusion does not by
+// itself establish that the subject was evaluated, rather than sending the reader to look for a
+// defect that may not exist. Rendering these two identically is what cost lanes hours.
+//
+// THE EXIT STATUS IS THE SAME ON PURPOSE AND THE ANNOTATION IS NOT. Both block; they route the
+// reader to different places, and each carries the mechanism and attribution the aggregator can
+// actually establish, which today is one case and none respectively.
+fn required_lanes_refusal_stmts(
+  lanes: FreeSemigroup<RequiredLane>,
+  verdict_var: String,
+  mechanism_var: String,
+  attribution_var: String
+) -> List<Node> {
+  [
+    bash_build_if_from_stmts(
+      cond: required_lane_var_equals_lit_test(
+        var_name: verdict_var,
+        text: floor_rendered_verdict_red_name
+      ),
+      then_stmts: [
+        required_lanes_error_stmt(
+          text: "::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (",
+          lanes: lanes,
+          mechanism_var: mechanism_var,
+          attribution_var: attribution_var
+        ),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_if_from_stmts(
+      cond: required_lane_var_equals_lit_test(
+        var_name: verdict_var,
+        text: floor_rendered_verdict_unestablished_name
+      ),
+      then_stmts: [
+        required_lanes_error_stmt(
+          text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed; rerun it (",
+          lanes: lanes,
+          mechanism_var: mechanism_var,
+          attribution_var: attribution_var
+        ),
+        bash_build_exit(code: "1")
+      ]
+    )
+  ]
+}
+
+// The whole gate. It takes VARIABLE NAMES and no expressions: the six subject values arrive in
+// the step's ENVIRONMENT, and this program reads them as ordinary shell variables.
+//
+// THEY USED TO ARRIVE AS ASSIGNMENTS HERE -- `BUILD=<expression>` built with
+// `bash_build_assign_lit` -- and that fused two languages in one word. A `${{ }}` expression is
+// not shell text: GitHub substitutes it into the workflow document BEFORE any shell exists, so
+// the expression must survive into the emitted yaml VERBATIM. A bash literal word is the one
+// thing that cannot promise that, because the serializer's job is to quote and escape it.
+//
+// IT WAS LATENT UNTIL A SEGMENT NEEDED QUOTING, and that is why it survived review. Every
+// expression the gate carried happened to contain no character bash escapes, so the escaped
+// rendering and the verbatim one were the same bytes -- and A SERIALIZER FED ONLY INPUTS ON
+// WHICH TWO RENDERINGS AGREE HAS NOT BEEN TESTED AT ALL: its whole green history says nothing
+// about which of the two it implements. The defect was revealed by the first discriminating
+// input, not introduced by it.
+//
+// That input was a job id carrying a `-`, which `extdeps.github.expressions` renders in the
+// cited grammar's INDEX form as this writer's canonical spelling. The index form contains single
+// quotes; passed through a single-quoted shell literal those became `'\''` sequences INSIDE the
+// `${{ }}` delimiters, and a backslash is not a token GitHub's expression grammar admits -- so
+// the whole workflow document would have failed to parse, taking both lane jobs with it.
+//
+// THE HYPHEN IS NOT WHY, AND SAYING SO MATTERS BECAUSE AN EARLIER REVISION IMPLIED IT WAS. The
+// dot form is admitted by the upstream production for a hyphenated name; index notation is our
+// choice, not a repair. Any expression containing a quote would have detonated here, so the
+// defect is the SEAM and the hyphen was merely the first value to reach it.
+//
+// THE FIX IS THE SEAM, NOT THE ESCAPING. Binding through `env:` puts the expression in a yaml
+// scalar, which `extdeps.languages.yaml.emit` emits verbatim for an expression, and leaves the
+// shell reading a variable -- which `bash_build_word_var` already models and every consumer in
+// this gate already used. So the invalid state is not detected, it stops being writable: this
+// function no longer has a parameter through which an expression could be handed to a shell
+// literal (DESIGN 5, construction over validation).
+fn required_lanes_gate_stmts(
+  lanes: FreeSemigroup<RequiredLane>,
+  pull_request_var: String,
+  event_name_var: String,
+  measured_head_var: String,
+  run_id_var: String,
+  standing_var: String,
+  verdict_var: String,
+  mechanism_var: String,
+  attribution_var: String
+) -> List<Node> {
+  let through_head_axis = list_append(
+    left: [],
+    right: required_lanes_head_standing_stmts(
+      event_name_var: event_name_var,
+      standing_var: standing_var
+    )
+  )
+  let through_subject_receipt = list_append(
+    left: through_head_axis,
+    right: [
+      required_lanes_subject_receipt_stmt(
+        pull_request_var: pull_request_var,
+        measured_head_var: measured_head_var,
+        run_id_var: run_id_var,
+        standing_var: standing_var
+      )
+    ]
+  )
+  let through_lane_axis = list_append(
+    left: through_subject_receipt,
+    right: required_lanes_verdict_stmts(
+      lanes: lanes,
+      verdict_var: verdict_var
+    )
+  )
+  let through_interruption_axes = list_append(
+    left: through_lane_axis,
+    right: required_lanes_interruption_stmts(
+      mechanism_var: mechanism_var,
+      attribution_var: attribution_var
+    )
+  )
+  let through_verdict_receipt = list_append(
+    left: through_interruption_axes,
+    right: [
+      required_lanes_verdict_receipt_stmt(
+        lanes: lanes,
+        verdict_var: verdict_var,
+        mechanism_var: mechanism_var,
+        attribution_var: attribution_var
+      )
+    ]
+  )
+  list_append(
+    left: through_verdict_receipt,
+    right: required_lanes_refusal_stmts(
+      lanes: lanes,
+      verdict_var: verdict_var,
+      mechanism_var: mechanism_var,
+      attribution_var: attribution_var
+    )
+  )
+}
+
+// THE UNRENDERABLE-GATE REFUSAL, ALSO CONSTRUCTED AS NODES.
+//
+// It existed as a raw shell String in the workflow authority, and that was the same violation
+// this module was created to remove, surviving in the one arm nobody reads: a second
+// representation of a language this repository models, sitting inside the module whose header
+// argues against exactly that. Raised in review 55923 and correct.
+//
+// WHY A REFUSAL PROGRAM AT ALL, rather than an empty step: an empty `run` EXITS 0, so a gate
+// that could not be serialized would publish the required context GREEN over two lanes it never
+// read -- the fabricated-plausible-output failure at the one place in this repository that
+// decides mergeability. So the fallback refuses every run and says why.
+//
+// AND IF THIS ONE CANNOT BE SERIALIZED EITHER, the workflow EMISSION refuses and no yaml is
+// written at all (`WitnessFloorGenerationRefused`). There is no third fallback, because a third
+// fallback is where a fabricated value would have to live.
+// THE RETURN IS THE RAW LIST, exactly as `required_lanes_gate_stmts` returns its four elements.
+// An earlier revision wrapped it in `bash_build_stmt_list_from_nodes`, which returns a single
+// `Node` -- so a function declared `-> List<Node>` handed one Node to a parameter expecting a
+// list, and the middle rung of the three-state argument above was dead in the very arm the
+// argument is about. Caught in review 55928.
+fn required_lanes_gate_unrenderable_stmts() -> List<Node> {
+  [
+    bash_build_with_redir(
+      inner: required_lanes_echo(
+        words: [
+          bash_build_word_lit(text: "echo"),
+          bash_build_word_lit(
+            text: "::error::the required-lanes gate could not be serialized from gunbc.required_lanes_gate; refusing rather than publishing an empty gate"
+          )
+        ]
+      ),
+      redir: ^bash_production_fold_redir_stdout_to_stderr
+    ),
+    bash_build_exit(code: "1")
+  ]
+}

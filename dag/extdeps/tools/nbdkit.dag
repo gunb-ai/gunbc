@@ -1,0 +1,23 @@
+module extdeps.tools.nbdkit
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_nbdkit }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "libguestfs.org/nbdkit.1.html"
+  }
+}
+
+data nbdkit_pinned_version: VersionConstraint = ">= 1.34"
+
+data nbdkit_cli_tool: CliTool = CliTool {
+  name: "nbdkit",
+  min_version: Present { value: nbdkit_pinned_version },
+  installable_via: [SourceApt { package: package_nbdkit }],
+}

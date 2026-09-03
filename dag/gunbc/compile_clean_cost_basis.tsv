@@ -1,0 +1,29 @@
+kind	subject	wall_ms_basis	run_ref	host_class	clock
+# Dated basis rows for the compile-clean leg's cost drift comparator
+# (gunbc_ci_compile_clean_clamp_note; shares the witness_row_cost model: same 6-col
+# schema, same parser, same srv_fleet_arm64 host-class refusal, same zero-basis
+# refusal, same verdict authority witness_row_cost_verdict — the seed reads the arm
+# the authority names rather than rebuilding the arms itself).
+# The clock column names WHICH clock wall_ms_basis was read from. A row seeded from a
+# receipt on a different clock than the observation refuses (BasisClockMismatch) rather
+# than answering — the 2026-08-05 clock-basis ruling. It is REQUIRED, not defaulted: an
+# unstated clock is exactly the state that made a CPU-vs-wall comparison look correct.
+# Keys are (kind, subject): the pass row is (pass, whole_tree) — scoped passes are
+# diff-denominated and stay BasisAbsent by design; module rows are
+# (module_typecheck, <module path>).
+# UNSEEDED ON PURPOSE (the #7475 discipline): rows may only cite an arm64 srv-fleet
+# run's OWN receipt rows, and no fleet run has produced them yet — run 30602520347's
+# walls predate this receipt and its per-module lines were rounded render text, not
+# receipt rows. Until seeded, every row counts BasisAbsent — loud, never read as
+# no-drift.
+# SEEDING SOURCE, CORRECTED: download the run's floor-receipts artifact and read
+# target/floor-compile-clean-cost-receipt.tsv (pass + module_typecheck rows); the
+# BasisAbsent count is the [receipt] floor compile-clean cost drift summary line, and
+# the full per-row detail is floor-compile-clean-cost-drift-receipt.tsv in the same
+# artifact. These lines previously said to scrape [compile-clean-cost] and
+# [compile-clean-cost-drift] log lines. Those tags have ZERO emit sites now — the
+# receipt bodies were mirrored to stderr only because the files had no way off the
+# runner, and gunbc.ci_workflow ci_floor_receipts_upload_step gave them one. An
+# operator following the old instruction would grep a log and find nothing, so this
+# is corrected rather than left as a second seeding authority beside
+# gunbc.ci_spec gunbc_ci_compile_clean_clamp_note (DESIGN section 3).

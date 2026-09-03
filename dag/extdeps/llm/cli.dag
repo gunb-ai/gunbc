@@ -1,0 +1,528 @@
+module extdeps.llm.cli
+
+import extdeps.tools.env { env_path_resolved_program }
+import std.algebra { trim }
+
+import std.types { List, String, Int, Bool, NonEmptyStr, RenderedTerminalText }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
+  json_text_skip_ws,
+  json_text_starts_with_at,
+  json_text_parse_value,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openai/codex"
+  }
+}
+
+data codex_noninteractive_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "learn.chatgpt.com/docs/non-interactive-mode"
+  }
+}
+
+data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.claude.com/en/docs/claude-code/cli-reference"
+  }
+}
+
+// The one program-token authority for the Codex CLI. Codex dispatch preflight and
+// shape_codex_exec_argv both consume this row. The external non-interactive contract is explicit:
+// codex exec is the automation surface; --json emits JSONL progress; workspace-write is the least
+// sandbox that permits implementation; approval never makes blocked actions return to the agent
+// instead of hanging an unattended worker; CODEX_HOME selects the dedicated persisted
+// auth/config/session state. codex_cli_identity_contains is only a weak codex-cli substring marker
+// — callers that must pin an exact codex-cli version use gunbc.package_delivery
+// codex_runtime_version_identity_marker and codex_runtime_version_identity_satisfied; a bare
+// substring cannot separate the pinned bundled runtime from an ambient PATH shim.
+
+data codex_cli_program: String = "codex"
+
+// Weak substring marker only: extdeps cannot import gunbc.package_delivery. Callers that must pin an exact codex-cli version use gunbc.package_delivery codex_runtime_version_identity_marker and codex_runtime_version_identity_satisfied — a bare codex-cli substring cannot separate the pinned bundled runtime from an ambient PATH shim.
+data codex_cli_identity_contains: String = "codex-cli"
+
+// The one program-token authority for claude code's CLI (DESIGN §3): shape_claude_invoke_argv's argv head and any caller preflighting claude-on-PATH consume THIS row, never a re-minted literal. (The `service claude.Invoke` transport argv below carries its own literal because the service DSL argv rows are self-contained transport realizations — that literal is the shell-transport handler's spelling of the same upstream binary, not a second authority.)
+data claude_cli_program: String = "claude"
+
+// Claude code's per-user config is `~/.claude.json`; its `projects` map keys ABSOLUTE workspace
+// paths to per-project rows, and `hasTrustDialogAccepted: true` on a row is the accepted
+// workspace-trust dialog. Two facts proven by execution (srv1, 2026-07-23, roadmap-dispatch
+// go-live): (1) `--dangerously-skip-permissions` does NOT cover the trust dialog — an unseeded
+// workspace blocks interactively on first launch (same finding as ctrl's container entrypoint trust
+// seed); (2) trust INHERITS from ancestor directories — seeding one parent root covers every child
+// workspace spawned under it, so a dispatcher seeds its worktree ROOT once, not per-worktree.
+// claude_workspace_trust_seeded is the pure classifier over (config text, project path): it locates
+// the quoted path as a projects-map KEY (next non-ws char must be ':' — a path appearing as an
+// array VALUE, e.g. in githubRepoPaths, is not a key; ALL occurrences are tried), delimits the
+// entry with the JSON grammar's string-aware value parser (extdeps.languages.json.grammar — one
+// grammar, both directions, DESIGN §4; a naive first-brace scan lies on entries carrying nested
+// objects or brace-in-string values like mcpServers/lastSessionFirstPrompt), and requires the
+// flag's own value to be the literal `true` (a `false` row or a `true` elsewhere in the entry does
+// not count). Fail-closed: anything unparseable or absent classifies NOT seeded — the consumer
+// refuses loudly instead of spawning a session that hangs on the dialog. Scaffold residue: the
+// slice-and-scan inside the located entry dissolves into a projection over the parsed tree when the
+// JSON grammar grows its forward ingest fold (JsonValue built by ingest, the ingest_yaml_source
+// analogue).
+
+fn claude_trust_store_path(home: String) -> String {
+  concat(home, "/.claude.json")
+}
+
+fn claude_trust_key_token(project_path: String) -> String {
+  concat(concat("\"", project_path), "\"")
+}
+
+fn claude_trust_entry_slice(config_text: String, i_after_key: Int) -> String {
+  let i_colon = json_text_skip_ws(s: config_text, i: i_after_key)
+  if !json_text_starts_with_at(s: config_text, i: i_colon, lit: ":") {
+    ""
+  } else {
+    let v_start = json_text_skip_ws(s: config_text, i: i_colon + 1)
+    match json_text_parse_value(s: config_text, i: v_start) {
+      JsonTextParseOk { end: end } => substring(s: config_text, start: v_start, end: end)
+      JsonTextParseFail { end: _ } => ""
+    }
+  }
+}
+
+fn claude_trust_flag_true_after(rest: String) -> Bool {
+  let j = json_text_skip_ws(s: rest, i: 0)
+  if !json_text_starts_with_at(s: rest, i: j, lit: ":") {
+    false
+  } else {
+    json_text_starts_with_at(s: rest, i: json_text_skip_ws(s: rest, i: j + 1), lit: "true")
+  }
+}
+
+fn claude_trust_entry_accepts(entry_slice: String) -> Bool {
+  let parts = split(s: entry_slice, delimiter: "\"hasTrustDialogAccepted\"")
+  any(parts.skip(n: 1), rest => claude_trust_flag_true_after(rest: rest))
+}
+
+type ClaudeTrustScanAcc {
+  pos: Int
+  boundaries: Int
+  found: Bool
+}
+
+fn claude_workspace_trust_seeded(config_text: String, project_path: String) -> Bool {
+  let key = claude_trust_key_token(project_path: project_path)
+  let out = fold(
+    split(s: config_text, delimiter: key),
+    init: ClaudeTrustScanAcc { pos: 0, boundaries: 0, found: false },
+    f: fn(acc, p) {
+      let hit = if acc.boundaries == 0 {
+        false
+      } else {
+        claude_trust_entry_accepts(
+          entry_slice: claude_trust_entry_slice(config_text: config_text, i_after_key: acc.pos),
+        )
+      }
+      ClaudeTrustScanAcc {
+        pos: acc.pos + string_length(s: p) + string_length(s: key),
+        boundaries: acc.boundaries + 1,
+        found: acc.found || hit,
+      }
+    },
+  )
+  out.found
+}
+
+fn shape_claude_invoke_argv(
+  session_id: String,
+  node_id: String,
+  effort: ReasoningEffort,
+  settings_json: String,
+  append_system_prompt: String,
+  start_prompt: String,
+  permission_args: List<String>,
+) -> List<String> {
+  concat(
+    [claude_cli_program],
+    concat(
+      permission_args,
+      [
+        "--settings", settings_json,
+        "--effort", reasoning_effort_label(effort: effort),
+        "--session-id", session_id,
+        "-n", node_id,
+        "--append-system-prompt", append_system_prompt,
+        start_prompt,
+      ],
+    ),
+  )
+}
+
+type CodexCliSandbox
+  = CodexReadOnly
+  | CodexWorkspaceWrite
+  | CodexDangerFullAccess
+
+type CodexCliApprovalPolicy
+  = CodexApprovalUntrusted
+  | CodexApprovalOnRequest
+  | CodexApprovalNever
+
+// review 44058. Reasoning effort is a CLOSED three-valued axis, not free text. It was a String on
+// both provider surfaces at once — spliced into Codex's `-c model_reasoning_effort="…"` config
+// expression and passed as Claude's `--effort` value — so a typo reached the provider as a value it
+// rejects at run time, a host-side failure standing where a construction refusal was available
+// (DESIGN 5). One type, not two: gunbc.roadmap_dispatch_actuator.dispatch_applied_effort projects
+// the selection kernel's applied_effort to both provider argv builders, which is the proven
+// coincidence that earns a shared carrier rather than a bare alias (DESIGN 6); each provider keeps
+// its own flag spelling in its own argv row, and reasoning_effort_label is the single place the
+// wire word exists. It sits beside CodexCliSandbox and CodexCliApprovalPolicy, which model the
+// sibling closed axes of the same cited surface the same way. If one provider ever admits a value
+// the other does not, that is a new variant plus a per-provider label refusal — never a re-widening
+// to String.
+
+type ReasoningEffort
+  = ReasoningLow
+  | ReasoningMedium
+  | ReasoningHigh
+
+fn reasoning_effort_label(effort: ReasoningEffort) -> String {
+  match effort {
+    ReasoningLow => "low"
+    ReasoningMedium => "medium"
+    ReasoningHigh => "high"
+  }
+}
+
+type CodexExecSpec {
+  sandbox: CodexCliSandbox
+  approval: CodexCliApprovalPolicy
+  json_events: Bool
+  persist_session: Bool
+}
+
+fn codex_cli_sandbox_label(sandbox: CodexCliSandbox) -> String {
+  match sandbox {
+    CodexReadOnly => "read-only"
+    CodexWorkspaceWrite => "workspace-write"
+    CodexDangerFullAccess => "danger-full-access"
+  }
+}
+
+fn codex_cli_approval_label(approval: CodexCliApprovalPolicy) -> String {
+  match approval {
+    CodexApprovalUntrusted => "untrusted"
+    CodexApprovalOnRequest => "on-request"
+    CodexApprovalNever => "never"
+  }
+}
+
+fn codex_json_event_args(enabled: Bool) -> List<String> {
+  if enabled { ["--json"] } else { [] }
+}
+
+fn codex_session_persistence_args(persist: Bool) -> List<String> {
+  if persist { [] } else { ["--ephemeral"] }
+}
+
+fn codex_home_env_assignment(codex_home: String) -> String {
+  concat("CODEX_HOME=", codex_home)
+}
+
+fn shape_codex_login_status_env_args_for_program(
+  program: String,
+  codex_home: String,
+) -> List<String> {
+  [codex_home_env_assignment(codex_home: codex_home), program, "login", "status"]
+}
+
+fn shape_codex_version_env_args_for_program(
+  program: String,
+  codex_home: String,
+) -> List<String> {
+  [codex_home_env_assignment(codex_home: codex_home), program, "--version"]
+}
+
+fn shape_codex_login_status_env_args(codex_home: String) -> List<String> {
+  shape_codex_login_status_env_args_for_program(
+    program: codex_cli_program,
+    codex_home: codex_home,
+  )
+}
+
+// THE ONLY LOGIN FLOW A REMOTE HOST CAN COMPLETE. Plain `codex login` starts a callback server and
+// prints redirect_uri=http://localhost:1455/auth/callback; on a headless machine that redirect can
+// never resolve from the operator's browser, because localhost is the server rather than their
+// laptop. codex states this itself in its own final line: 'On a remote or headless machine? Use
+// codex login --device-auth instead.' The device flow needs no inbound port and no browser on the
+// host — a URL plus a short code, entered from anywhere — so it is the only flow a dashboard on
+// another machine can usefully surface.\n\nCited against codex-cli 0.145.0, whose `login --help`
+// lists exactly -c/--config, --with-api-key and --device-auth, with `status` and `help` as the
+// subcommands. There is NO --json on login or on login status, so the URL and code are readable
+// only from a text surface. A parser over that surface is therefore the honest realization rather
+// than a shortcut: the richer structured source DESIGN would prefer does not exist to be read, and
+// the receipt at dag/test/fixture/codex_device_login records the bytes the tool actually emits so
+// the parser is written against them and not against memory.
+
+fn shape_codex_device_login_env_args_for_program(
+  program: String,
+  codex_home: String,
+) -> List<String> {
+  [
+    codex_home_env_assignment(codex_home: codex_home),
+    program,
+    "login",
+    "--device-auth",
+  ]
+}
+
+// WHAT codex EMITS IS A codex FACT; WHO STRIPS IT IS NOT THIS MODULE'S BUSINESS. Written to a
+// terminal, the device prompt wraps the URL and the one-time code in SGR sequences and the expiry
+// note in a dim attribute. A parser reading that stream directly would extract a code carrying
+// escape bytes, which the operator pastes and OpenAI rejects with no sign that the dashboard
+// mangled it rather than the code being wrong.\n\nSo the parser's input is typed
+// std.types.RenderedTerminalText — text with the control sequences already consumed — and this
+// module names no transport that could provide it. An earlier draft explained here what a terminal
+// multiplexer strips; that was a fact filed under the wrong authority, and it would have gone stale
+// the moment a second capture path existed (operator, 2026-07-30). The brand is the seam: whatever
+// renders a terminal grid produces the type, this parser consumes it, and the composition is
+// admissible because the types line up rather than because either side was written knowing about
+// the other.\n\nThe format itself is cited against codex-cli 0.145.0, whose `login --help` lists
+// exactly -c/--config, --with-api-key and --device-auth with `status` and `help` as subcommands.
+// There is NO --json on login or login status, so a text surface is the only surface: a parser over
+// it is the honest realization rather than a shortcut, because the structured source DESIGN would
+// prefer does not exist to be read. dag/test/fixture/codex_device_login holds the bytes the tool
+// actually emits, in both renderings, so the parser is written against them and not against memory.
+
+type CodexDeviceLoginPrompt
+  = CodexDeviceLoginReady {
+      verification_url: NonEmptyStr,
+      user_code: NonEmptyStr,
+    }
+  | CodexDeviceLoginPromptUnavailable { reason: NonEmptyStr }
+
+data codex_device_prompt_marker_url: String = "https://auth.openai.com/codex/device"
+data codex_device_prompt_marker_code_line: String = "Enter this one-time code"
+
+// THE CODE IS POSITIONAL — the line after the marker — so reading it needs a state machine rather
+// than a filter. codex prints 'Enter this one-time code (expires in 15 minutes)' and then the code
+// on its own following line, so no predicate over a single line identifies it: the code itself is
+// an opaque token with no distinguishing shape a matcher could key on, and keying on one (four
+// characters, a hyphen, five characters) would silently stop finding it the day the format
+// widens.\n\nThree states rather than an Optional accumulator, because 'have not seen the marker'
+// and 'seen the marker, still waiting for a non-empty line' are different situations with different
+// meanings for what comes next — collapsing them loses the ability to say WHICH failure the pane
+// shows. A pane captured mid-render legitimately sits in AfterMarker, and reporting that as 'no
+// code line' would be wrong about a prompt that is merely still arriving.
+
+type CodexCodeScan
+  = CodeScanSeeking
+  | CodeScanAfterMarker
+  | CodeScanFound { code: String }
+
+fn codex_device_prompt_code_scan(lines: List<String>) -> CodexCodeScan {
+  fold(lines, init: CodeScanSeeking, f: fn(acc, l) {
+    match acc {
+      CodeScanSeeking =>
+        if string_contains(s: l, pattern: codex_device_prompt_marker_code_line) {
+          CodeScanAfterMarker
+        } else {
+          CodeScanSeeking
+        }
+      CodeScanAfterMarker =>
+        if l == "" { CodeScanAfterMarker } else { CodeScanFound { code: l } }
+      CodeScanFound { code } => CodeScanFound { code: code }
+    }
+  })
+}
+
+fn codex_device_prompt_parse(pane: RenderedTerminalText) -> CodexDeviceLoginPrompt {
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  let url_hit = lines
+    |> filter(l => string_contains(s: l, pattern: codex_device_prompt_marker_url))
+    |> first
+  match url_hit {
+    Absent => CodexDeviceLoginPromptUnavailable {
+      reason: "no verification url in pane" as NonEmptyStr,
+    }
+    Present { value: url_line } =>
+      match codex_device_prompt_code_scan(lines: lines) {
+        CodeScanSeeking => CodexDeviceLoginPromptUnavailable {
+          reason: "verification url present but no one-time code line" as NonEmptyStr,
+        }
+        CodeScanAfterMarker => CodexDeviceLoginPromptUnavailable {
+          reason: "one-time code line present but code not yet rendered" as NonEmptyStr,
+        }
+        CodeScanFound { code } => CodexDeviceLoginReady {
+          verification_url: url_line as NonEmptyStr,
+          user_code: code as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn shape_codex_exec_argv_for_program(
+  program: String,
+  codex_home: String,
+  cwd: String,
+  prompt: String,
+  reasoning_effort: ReasoningEffort,
+  spec: CodexExecSpec,
+) -> List<String> {
+  shape_codex_exec_argv_for_programs(
+    env_program: env_path_resolved_program as String,
+    program: program,
+    codex_home: codex_home,
+    cwd: cwd,
+    prompt: prompt,
+    reasoning_effort: reasoning_effort,
+    spec: spec,
+  )
+}
+
+fn shape_codex_exec_argv_for_programs(
+  env_program: String,
+  program: String,
+  codex_home: String,
+  cwd: String,
+  prompt: String,
+  reasoning_effort: ReasoningEffort,
+  spec: CodexExecSpec,
+) -> List<String> {
+  concat(
+    [
+      env_program,
+      codex_home_env_assignment(codex_home: codex_home),
+      program,
+      "--ask-for-approval", codex_cli_approval_label(approval: spec.approval),
+      "exec",
+      "--sandbox", codex_cli_sandbox_label(sandbox: spec.sandbox),
+      "--color", "never",
+    ],
+    concat(
+      codex_json_event_args(enabled: spec.json_events),
+      concat(
+        codex_session_persistence_args(persist: spec.persist_session),
+        [
+          "-C", cwd,
+          "-c", concat(
+            concat(
+              "model_reasoning_effort=\"",
+              reasoning_effort_label(effort: reasoning_effort),
+            ),
+            "\"",
+          ),
+          prompt,
+        ],
+      ),
+    ),
+  )
+}
+
+fn shape_codex_exec_argv(
+  codex_home: String,
+  cwd: String,
+  prompt: String,
+  reasoning_effort: ReasoningEffort,
+  spec: CodexExecSpec,
+) -> List<String> {
+  shape_codex_exec_argv_for_program(
+    program: codex_cli_program,
+    codex_home: codex_home,
+    cwd: cwd,
+    prompt: prompt,
+    reasoning_effort: reasoning_effort,
+    spec: spec,
+  )
+}
+
+service llm.Codex {
+  operation Review {
+    input {
+      prompt: String
+      cwd: String
+      model: String = "o4-mini"
+      reasoning_effort: String = "high"
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "codex", "exec",
+        "-m", "{model}",
+        "-c", "model_reasoning_effort=\"{reasoning_effort}\"",
+        "-C", "{cwd}",
+        "-"
+      ]
+      stdin: prompt
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Codex CLI failed"
+    }
+  }
+}
+
+service claude.Invoke {
+  operation Run {
+    input {
+      session_id: String
+      node_id: String
+      effort: String
+      settings_json: String
+      append_system_prompt: String
+      start_prompt: String
+      permission_args: List<String> = []
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "claude", permission_args,
+        "--settings", "{settings_json}",
+        "--effort", "{effort}",
+        "--session-id", "{session_id}",
+        "-n", "{node_id}",
+        "--append-system-prompt", "{append_system_prompt}",
+        "{start_prompt}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Claude CLI invocation failed"
+    }
+  }
+}
+
+service llm.Gemini {
+  operation CliPrompt {
+    input {
+      prompt: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "gemini", "-p", "{prompt}",
+        "--output-format", "text",
+        "--approval-mode", "plan"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Gemini CLI failed"
+    }
+  }
+}

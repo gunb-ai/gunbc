@@ -1,0 +1,328 @@
+module v1.gunbc.namespace_reference_derived_closure_production_observations
+
+import std.occurrence_identity { OccurrenceTransport, OccurrenceId }
+import std.occurrence_binding_candidates {
+  OccurrenceBindingCandidateInputs,
+  ModuleLocalMemberExposure,
+}
+import std.reference_binding_observation {
+  ReferenceBindingObservation,
+  StructuralBindingProductionRefused,
+  ReferenceBindingParserTransportRefused,
+  ReferenceBindingNamedReferenceAbsent,
+  ReferenceBindingNamedDeclarationAbsent,
+  SameFileNeighbourObservation,
+  SameFileNeighbourProductionRefused,
+  SiblingBranchObservation,
+  SiblingBranchProductionRefused,
+  LaterDeclarationObservation,
+  LaterDeclarationProductionRefused,
+  DistinctHomonymObservation,
+  DistinctHomonymProductionRefused,
+  StructuralObservationSubjectModule,
+  SubjectModuleProduced,
+  SubjectModuleProductionRefused,
+  structural_binding_resolution_from_candidates,
+}
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  assess_reference_binding_observation,
+}
+import std.types { List, String, NonEmptyStr }
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSourceReady,
+  ParsedOccurrenceBindingSourceRefused,
+  parse_authored_occurrence_binding_source,
+  occurrence_binding_inputs_from_transport,
+  reference_named,
+  declarations_named,
+  references_named,
+}
+
+// N3-A production observers for namespace-reference-derived-closure clauses (a-d), and the closing
+// production for roadmap node namespace-structural-observations. Every observer takes ONE parsed
+// subject: the four clauses are read out of a single ordinary compiled file, never out of four
+// sources shaped one per clause. Observation production returns neutral
+// std.reference_binding_observation carriers; the capability judgement is delegated, unchanged, to
+// the one assessment authority (gunbc.namespace_reference_derived_closure_admission), and the
+// module path each admission carries is the one THE PARSE DECLARED.
+
+// THE FOUR HARD-CODED FIXTURE SOURCES ARE DELETED, and the deletion is the point rather than
+// tidying. They were four independent strings, one per clause, and their own note recorded that
+// they did NOT satisfy the namespace-structural-observations closing contract because that row asks
+// for ONE ORDINARY COMPILED FILE. Keeping them beside a subject-parameterized producer would have
+// left two ways to answer one question, and the easier one would have been the one that cannot
+// close the row. The per-clause red control the deleted note describes is preserved and
+// strengthened: a caller mutates the ONE subject so that exactly one rule breaks, and the
+// assessment refuses exactly that capability. The subject and its probe spellings are supplied by
+// the caller (gunbc.namespace_structural_observations_contract), so this module knows no fixture
+// text.
+
+type NrdfcParsed
+  = NrdfcParsedReady {
+      transport: OccurrenceTransport,
+      inputs: OccurrenceBindingCandidateInputs,
+      module_path: NonEmptyStr,
+    }
+  | NrdfcParsedRefused
+
+fn nrdfc_parse(file: String, source: String) -> NrdfcParsed {
+  match parse_authored_occurrence_binding_source(file: file, source: source) {
+    ParsedOccurrenceBindingSourceRefused => NrdfcParsedRefused
+    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path } =>
+      NrdfcParsedReady {
+        transport: transport,
+        inputs: occurrence_binding_inputs_from_transport(
+          module_path: module_path,
+          transport: transport,
+          grounding: ModuleLocalMemberExposure,
+        ),
+        module_path: module_path,
+      }
+  }
+}
+
+fn same_file_neighbour_observation(
+  parsed: NrdfcParsed,
+  neighbour_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
+    NrdfcParsedRefused =>
+      SameFileNeighbourProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      match reference_named(transport: transport, name: neighbour_name) {
+        Absent =>
+          SameFileNeighbourProductionRefused {
+            gap: ReferenceBindingNamedReferenceAbsent,
+          }
+        Present { value: reference } =>
+          match declarations_named(transport: transport, name: neighbour_name) |> first {
+            Absent =>
+              SameFileNeighbourProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
+              }
+            Present { value: neighbour } =>
+              SameFileNeighbourObservation {
+                neighbour: neighbour.occurrence,
+                resolution: structural_binding_resolution_from_candidates(
+                  transport: transport,
+                  inputs: inputs,
+                  reference: reference,
+                ),
+              }
+          }
+      }
+  }
+}
+
+fn sibling_branch_observation(
+  parsed: NrdfcParsed,
+  branch_binder_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
+    NrdfcParsedRefused =>
+      SiblingBranchProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      let branch_declarations = declarations_named(transport: transport, name: branch_binder_name)
+      let branch_references = references_named(transport: transport, name: branch_binder_name)
+      match branch_declarations |> first {
+        Absent =>
+          SiblingBranchProductionRefused {
+            gap: ReferenceBindingNamedDeclarationAbsent,
+          }
+        Present { value: then_branch_binder } =>
+          match branch_declarations |> reverse |> first {
+            Absent =>
+              SiblingBranchProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
+              }
+            Present { value: else_branch_binder } =>
+              match branch_references |> reverse |> first {
+                Absent =>
+                  SiblingBranchObservation {
+                    own_branch_declaration: else_branch_binder.occurrence,
+                    sibling_branch_declaration: then_branch_binder.occurrence,
+                    resolution: StructuralBindingProductionRefused {
+                      gap: ReferenceBindingNamedReferenceAbsent,
+                    },
+                  }
+                Present { value: else_branch_ref } =>
+                  SiblingBranchObservation {
+                    own_branch_declaration: else_branch_binder.occurrence,
+                    sibling_branch_declaration: then_branch_binder.occurrence,
+                    resolution: structural_binding_resolution_from_candidates(
+                      transport: transport,
+                      inputs: inputs,
+                      reference: else_branch_ref,
+                    ),
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn later_declaration_observation(
+  parsed: NrdfcParsed,
+  later_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
+    NrdfcParsedRefused =>
+      LaterDeclarationProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      match reference_named(transport: transport, name: later_name) {
+        Absent =>
+          LaterDeclarationProductionRefused {
+            gap: ReferenceBindingNamedReferenceAbsent,
+          }
+        Present { value: reference } =>
+          match declarations_named(transport: transport, name: later_name) |> first {
+            Absent =>
+              LaterDeclarationProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
+              }
+            Present { value: later_declaration } =>
+              LaterDeclarationObservation {
+                later_declaration: later_declaration.occurrence,
+                resolution: structural_binding_resolution_from_candidates(
+                  transport: transport,
+                  inputs: inputs,
+                  reference: reference,
+                ),
+              }
+          }
+      }
+  }
+}
+
+fn distinct_homonym_observation(
+  parsed: NrdfcParsed,
+  homonym_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
+    NrdfcParsedRefused =>
+      DistinctHomonymProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
+      }
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      match references_named(transport: transport, name: homonym_name) |> reverse |> first {
+        Absent =>
+          DistinctHomonymProductionRefused {
+            gap: ReferenceBindingNamedReferenceAbsent,
+          }
+        Present { value: reference } =>
+          let homonyms = declarations_named(transport: transport, name: homonym_name)
+          match homonyms |> first {
+            Absent =>
+              DistinctHomonymProductionRefused {
+                gap: ReferenceBindingNamedDeclarationAbsent,
+              }
+            Present { value: first_homonym } =>
+              match homonyms |> reverse |> first {
+                Absent =>
+                  DistinctHomonymProductionRefused {
+                    gap: ReferenceBindingNamedDeclarationAbsent,
+                  }
+                Present { value: second_homonym } =>
+                  DistinctHomonymObservation {
+                    first_declaration: first_homonym.occurrence,
+                    second_declaration: second_homonym.occurrence,
+                    resolution: structural_binding_resolution_from_candidates(
+                      transport: transport,
+                      inputs: inputs,
+                      reference: reference,
+                    ),
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn namespace_structural_binding_observations_from_parsed(
+  parsed: NrdfcParsed,
+  neighbour_name: String,
+  branch_binder_name: String,
+  later_name: String,
+  homonym_name: String
+) -> List<ReferenceBindingObservation> {
+  [
+    same_file_neighbour_observation(parsed: parsed, neighbour_name: neighbour_name),
+    sibling_branch_observation(parsed: parsed, branch_binder_name: branch_binder_name),
+    later_declaration_observation(parsed: parsed, later_name: later_name),
+    distinct_homonym_observation(parsed: parsed, homonym_name: homonym_name),
+  ]
+}
+
+fn namespace_structural_binding_observations_a_through_d(
+  file: String,
+  source: String,
+  neighbour_name: String,
+  branch_binder_name: String,
+  later_name: String,
+  homonym_name: String
+) -> List<ReferenceBindingObservation> {
+  namespace_structural_binding_observations_from_parsed(
+    parsed: nrdfc_parse(file: file, source: source),
+    neighbour_name: neighbour_name,
+    branch_binder_name: branch_binder_name,
+    later_name: later_name,
+    homonym_name: homonym_name,
+  )
+}
+
+// THE COMPILED MODULE AND THE ADMISSIONS ARE TWO EXPORTS OF ONE SUBJECT, and the split is forced
+// rather than chosen. A single export pairing them needs a record whose field is a
+// ReferenceDerivedClosureAdmission, and that coproduct carries a sole_constructor receipt, which
+// the v1 emitter renders Serialize-only with a private field -- so any record embedding it fails to
+// derive serde::Deserialize and the seed does not compile. Measured, not predicted: E0277 on the
+// emitted OrdinaryCompileStructuralAdmission, E0616 on the receipt's field. Both exports are pure
+// functions of (file, source), so a caller passing one pair of strings to both cannot pair a module
+// path with admissions from a different subject; the join is mechanical, never a decision. The
+// module path itself is READ OUT OF THE PARSE (ParsedOccurrenceBindingSourceReady.module_path),
+// never echoed from the caller's file argument -- which is what makes the closing check's
+// single-subject clause falsifiable, since a source declaring a different module reports that
+// module and a source that does not parse reports no module at all.
+
+fn nrdfc_compiled_module(parsed: NrdfcParsed) -> StructuralObservationSubjectModule {
+  match parsed {
+    NrdfcParsedRefused =>
+      SubjectModuleProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
+      }
+    NrdfcParsedReady { transport: _, inputs: _, module_path: module_path } =>
+      SubjectModuleProduced { module_path: module_path as String }
+  }
+}
+
+fn namespace_structural_observation_compiled_module(
+  file: String,
+  source: String
+) -> StructuralObservationSubjectModule {
+  nrdfc_compiled_module(parsed: nrdfc_parse(file: file, source: source))
+}
+
+fn namespace_structural_observation_admissions(
+  file: String,
+  source: String,
+  neighbour_name: String,
+  branch_binder_name: String,
+  later_name: String,
+  homonym_name: String
+) -> List<ReferenceDerivedClosureAdmission> {
+  namespace_structural_binding_observations_a_through_d(
+    file: file,
+    source: source,
+    neighbour_name: neighbour_name,
+    branch_binder_name: branch_binder_name,
+    later_name: later_name,
+    homonym_name: homonym_name,
+  )
+    |> map(observation => assess_reference_binding_observation(observation: observation))
+}

@@ -2,19 +2,17 @@
 // Source module: extdeps.uri_path
 
 use self::PathSegmentTokensResult::*;
+use self::PathTemplateMatch::*;
 use self::PathTemplateParseResult::*;
+use self::UrlPathToken::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
-pub use crate::std_http_path::{PathTemplate, UrlPathToken};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -29,6 +27,96 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UrlPathToken {
+    LiteralToken { text: String },
+    ParamToken { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathTemplate {
+    pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
+}
+
+pub fn has_path_params(template: Rc<PathTemplate>) -> bool {
+    {
+        let mut __found = false;
+        for t in template.tokens.clone().iter().cloned() {
+            if match (*t.clone()).clone() {
+                UrlPathToken::ParamToken { .. } => true,
+                UrlPathToken::LiteralToken { .. } => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
+    {
+        let params = Rc::new({
+            let mut __result = Vec::new();
+            for t in template.tokens.clone().iter().cloned() {
+                if match (*t.clone()).clone() {
+                    UrlPathToken::ParamToken { .. } => true,
+                    UrlPathToken::LiteralToken { .. } => false,
+                } {
+                    __result.push(t);
+                }
+            }
+            __result
+        });
+        match params.clone().last().cloned() {
+            Some(tok) => match (*tok.clone()).clone() {
+                UrlPathToken::ParamToken { name: n, .. } => Some(n.clone()),
+                UrlPathToken::LiteralToken { .. } => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathParamBinding {
+    pub name: String,
+    pub value: String,
+}
+
+pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> String {
+    params.iter().cloned().fold(
+        "".to_string(),
+        |acc: String, binding: Rc<PathParamBinding>| {
+            if (acc.clone() != "".to_string()) {
+                acc.clone()
+            } else {
+                if (binding.name.clone() == name.clone()) {
+                    binding.value.clone()
+                } else {
+                    acc.clone()
+                }
+            }
+        },
+    )
+}
+
+pub fn render_path_template(
+    template: Rc<PathTemplate>,
+    params: Rc<Vec<Rc<PathParamBinding>>>,
+) -> String {
+    template.tokens.clone().iter().cloned().fold(
+        "".to_string(),
+        |acc: String, tok: Rc<UrlPathToken>| match (*tok.clone()).clone() {
+            UrlPathToken::LiteralToken { text: t, .. } => v1_rt::concat(acc.clone(), t.clone()),
+            UrlPathToken::ParamToken { name: n, .. } => {
+                v1_rt::concat(acc.clone(), path_param_value(params.clone(), n.clone()))
+            }
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -81,16 +169,22 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             }
             let prefix = match before_and_rest.clone().first().cloned() {
                 Some(p) => p.clone(),
-                None => {
+                std::option::Option::None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing prefix after opening-brace split".to_string(),
                     })
                 }
             };
-            let after_open = match before_and_rest.clone().get(1 as usize).cloned() {
+            let after_open = match before_and_rest
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+            {
                 Some(r) => r.clone(),
-                None => {
+                std::option::Option::None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing tail after opening-brace split".to_string(),
@@ -99,6 +193,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             };
             let name_and_suffix = Rc::new(
                 after_open
+                    .clone()
                     .split(&"}".to_string())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
@@ -113,7 +208,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             }
             let param_name = match name_and_suffix.clone().first().cloned() {
                 Some(p) => p.clone(),
-                None => {
+                std::option::Option::None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing parameter name after closing-brace split"
@@ -121,9 +216,15 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                     })
                 }
             };
-            let suffix = match name_and_suffix.clone().get(1 as usize).cloned() {
+            let suffix = match name_and_suffix
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+            {
                 Some(s) => s.clone(),
-                None => {
+                std::option::Option::None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing suffix after closing-brace split".to_string(),
@@ -162,12 +263,149 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             } else {
                 Rc::new(PathSegmentTokensResult::ParsedSegmentTokens {
                     tokens: v1_rt::concat(
-                        v1_rt::concat(prefix_tokens, param_tokens),
-                        suffix_tokens,
+                        v1_rt::concat(prefix_tokens.clone(), param_tokens.clone()),
+                        suffix_tokens.clone(),
                     ),
                 })
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PathTemplateMatch {
+    PathMatched {
+        params: Rc<Vec<Rc<PathParamBinding>>>,
+    },
+    PathNotMatched,
+}
+impl PathTemplateMatch {
+    pub fn params(&self) -> Rc<Vec<Rc<PathParamBinding>>> {
+        match self {
+            PathTemplateMatch::PathMatched { params: __val, .. } => __val.clone(),
+            PathTemplateMatch::PathNotMatched => panic!("no params on unit variant"),
+        }
+    }
+}
+
+pub fn match_path_segments(path_only: String) -> Rc<Vec<String>> {
+    if ((path_only.clone() == "/".to_string()) || (path_only.clone() == "".to_string())) {
+        Rc::new(vec![])
+    } else {
+        {
+            let raw_segs = Rc::new(
+                path_only
+                    .clone()
+                    .split(&"/".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            );
+            match raw_segs.clone().first().cloned() {
+                Some(lead) => {
+                    if (lead.clone() == "".to_string()) {
+                        Rc::new(
+                            raw_segs
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(1 as usize)
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        raw_segs.clone()
+                    }
+                }
+                std::option::Option::None => raw_segs.clone(),
+            }
+        }
+    }
+}
+
+pub fn match_path_tokens(
+    tokens: Rc<Vec<Rc<UrlPathToken>>>,
+    segs: Rc<Vec<String>>,
+) -> Rc<PathTemplateMatch> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match tokens.clone().first().cloned() {
+            std::option::Option::None => match segs.clone().first().cloned() {
+                std::option::Option::None => Rc::new(PathTemplateMatch::PathMatched {
+                    params: Rc::new(vec![]),
+                }),
+                Some(_) => Rc::new(PathTemplateMatch::PathNotMatched),
+            },
+            Some(tok) => match segs.clone().first().cloned() {
+                std::option::Option::None => Rc::new(PathTemplateMatch::PathNotMatched),
+                Some(seg) => match (*match_path_tokens(
+                    Rc::new(
+                        tokens
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    Rc::new(
+                        segs.clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                ))
+                .clone()
+                {
+                    PathTemplateMatch::PathNotMatched => Rc::new(PathTemplateMatch::PathNotMatched),
+                    PathTemplateMatch::PathMatched { params: ps, .. } => {
+                        match (*tok.clone()).clone() {
+                            UrlPathToken::LiteralToken { text: t, .. } => {
+                                if (t.clone() == seg.clone()) {
+                                    Rc::new(PathTemplateMatch::PathMatched { params: ps.clone() })
+                                } else {
+                                    Rc::new(PathTemplateMatch::PathNotMatched)
+                                }
+                            }
+                            UrlPathToken::ParamToken { name: n, .. } => {
+                                if (seg.clone() == "".to_string()) {
+                                    Rc::new(PathTemplateMatch::PathNotMatched)
+                                } else {
+                                    Rc::new(PathTemplateMatch::PathMatched {
+                                        params: v1_rt::concat(
+                                            Rc::new(vec![Rc::new(PathParamBinding {
+                                                name: n.clone(),
+                                                value: seg.clone(),
+                                            })]),
+                                            ps.clone(),
+                                        ),
+                                    })
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+        }
+    })
+}
+
+pub fn match_path_template(template: Rc<PathTemplate>, path: String) -> Rc<PathTemplateMatch> {
+    {
+        let path_only = match Rc::new(
+            path.clone()
+                .split(&"?".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(p) => p.clone(),
+            std::option::Option::None => path.clone(),
+        };
+        match_path_tokens(
+            template.tokens.clone(),
+            match_path_segments(path_only.clone()),
+        )
     }
 }
 
@@ -183,12 +421,13 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
         .cloned()
         {
             Some(p) => p.clone(),
-            None => raw.clone(),
+            std::option::Option::None => raw.clone(),
         };
         let segments = Rc::new({
             let mut __result = Vec::new();
             for s in Rc::new(
                 path_only
+                    .clone()
                     .split(&"/".to_string())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
@@ -203,7 +442,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
             __result
         });
         match segments.clone().first().cloned() {
-            None => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+            std::option::Option::None => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
                 template: Rc::new(PathTemplate {
                     tokens: Rc::new(vec![]),
                 }),
@@ -271,5 +510,69 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                 }
             },
         }
+    }
+}
+
+pub fn uri_query_string(path: String) -> String {
+    match Rc::new(
+        path.clone()
+            .split(&"?".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .iter()
+    .cloned()
+    .skip(1 as usize)
+    .next()
+    {
+        Some(q) => q.clone(),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn uri_query_param(path: String, key: String) -> String {
+    {
+        let pairs = Rc::new(
+            uri_query_string(path.clone())
+                .split(&"&".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        pairs
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, pair: String| {
+                let k = match Rc::new(
+                    pair.clone()
+                        .split(&"=".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .first()
+                .cloned()
+                {
+                    Some(x) => x.clone(),
+                    std::option::Option::None => "".to_string(),
+                };
+                let v = match Rc::new(
+                    pair.clone()
+                        .split(&"=".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+                {
+                    Some(x) => x.clone(),
+                    std::option::Option::None => "".to_string(),
+                };
+                if (k.clone() == key.clone()) {
+                    v.clone()
+                } else {
+                    acc
+                }
+            })
     }
 }

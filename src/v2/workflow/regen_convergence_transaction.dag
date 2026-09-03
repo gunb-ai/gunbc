@@ -1,0 +1,1061 @@
+module v2.workflow.regen_convergence_transaction
+
+import std.types { Bool, Int, List, String }
+
+// A convergence transaction promotes generated surfaces through buildable seed states. The three axes below are deliberately independent: being compiled into the seed does not make a surface a producer of the next generation, and sharing a crate partition does not prove that a compatibility cut is complete.
+type RegenGenerationRole
+  = GenerationInput
+  | BootstrapSourceMirror
+  | GenerationSubject
+  | NonSeedGeneratedOutput
+  | UnresolvedGenerationRole { reason: String }
+
+type RegenSeedMembership
+  = SeedEmbedded
+  | OutsideSeed
+  | UnresolvedSeedMembership { reason: String }
+
+type RegenSurfaceIdentity {
+  declaring_module: String
+  projected_path: String
+}
+
+type RegenCandidateIdentity {
+  producer_generation_id: String
+  candidate_tree_id: String
+  candidate_tree_digest: String
+  surface: RegenSurfaceIdentity
+  candidate_digest: String
+}
+
+type RegenPreStageState
+  = PresentBeforeInstall { digest: String }
+  | AbsentBeforeInstall
+
+type RegenChangedSurface {
+  identity: RegenSurfaceIdentity
+  generation_role: RegenGenerationRole
+  seed_membership: RegenSeedMembership
+  dependency_closure_id: String
+  pre_stage_state: RegenPreStageState
+  candidate: RegenCandidateIdentity
+}
+
+// The affected-set authority answers before stage planning. A whole-population run and a
+// narrowed run are distinct admitted inputs; an unlocatable edit is a refusal, never permission
+// to widen. The narrowed member list names the maximum population staging may observe.
+type RegenAffectedBound
+  = CompleteCandidatePopulation
+  | AffectedCandidatePopulation { projected_paths: List<String> }
+  | AffectedCandidatePopulationRefused { reason: String }
+
+type RegenAffectedBoundAdmission
+  = RegenAffectedBoundAdmitted
+  | RegenAffectedBoundRefused { refusal: RegenConvergenceRefusal }
+
+type RegenAffectedBoundPathDisposition
+  = AffectedBoundPathAdmitted
+  | AffectedBoundPathExcluded
+  | AffectedBoundPathRefused { reason: String }
+
+type RegenStageKind
+  = PromoteGenerationInputs
+  | InstallSeedCompatibilityCut
+  | PublishNonSeedOutputs
+
+type RegenDeferredReason
+  = AwaitingPromotedProducer
+  | AwaitingSeedCompatibilityCut
+  | AwaitingBuildableSeedGeneration
+
+type RegenDeferredSurface {
+  identity: RegenSurfaceIdentity
+  reason: RegenDeferredReason
+}
+
+type RegenStagePlan {
+  ordinal: Int
+  kind: RegenStageKind
+  producer_generation_id: String
+  candidate_tree_id: String
+  candidate_tree_digest: String
+  planned_surfaces: List<RegenChangedSurface>
+  deferred_surfaces: List<RegenDeferredSurface>
+  dependency_closure_id: String
+  build_target: String
+  build_invocation: String
+}
+
+type RegenConvergenceRefusal
+  = SurfaceOwnershipUnresolved { path: String }
+  | SurfaceOwnershipAmbiguous { path: String, modules: List<String> }
+  | GenerationRoleUnresolved { surface: RegenSurfaceIdentity, reason: String }
+  | SeedMembershipUnresolved { surface: RegenSurfaceIdentity, reason: String }
+  | SurfaceInIncompatibleStageRoles { surfaces: List<RegenSurfaceIdentity> }
+  | StageDependencyClosureIncomplete { closure_id: String, missing: List<RegenSurfaceIdentity> }
+  | CandidateFromDifferentSeed { candidate: RegenCandidateIdentity, expected_generation_id: String }
+  | CandidateStaleAfterProducerRebuild {
+      planned_surfaces: List<RegenSurfaceIdentity>
+      observed_generation_id: String
+      current_generation_id: String
+      observed_candidate_digest: String
+    }
+  | PreInstallDigestMismatch { surface: RegenSurfaceIdentity, expected: String, observed: String }
+  | StageExecutionRefused { refusal: RegenStageExecutionRefusal }
+  | UnplannedPathMutated { path: String }
+  | NoBuildableProducerCut { reason: String }
+  | StageOutputExecutableUnbound { ordinal: Int, reason: String }
+  | GenerationMadeNoProgress { generation_id: String }
+  | GenerationCycleDetected { seed_digest: String, candidate_tree_digest: String }
+  | GenerationBoundExceeded { bound: Int }
+  | FinalRegenerationStillDrifts { surfaces: List<RegenSurfaceIdentity> }
+  | FinalRustConsistencyInstrumentRefused { reason: String }
+  | TransactionRestoreRefused { reason: String }
+  | AffectedSetBoundRefused { reason: String }
+  | AffectedSetStagePopulationDisagrees {
+      changed: List<RegenSurfaceIdentity>
+      outside_bound: List<RegenSurfaceIdentity>
+    }
+
+// The one query surface for bound membership. Consumers retain exclusion and refusal as typed
+// answers; no Bool predicate can turn an unlocatable bound into ordinary non-membership.
+fn regen_affected_bound_path_disposition(
+  bound: RegenAffectedBound,
+  path: String
+) -> RegenAffectedBoundPathDisposition {
+  match bound {
+    CompleteCandidatePopulation => AffectedBoundPathAdmitted
+    AffectedCandidatePopulation { projected_paths: paths } => {
+      if paths |> any(p => p == path) {
+        AffectedBoundPathAdmitted
+      } else {
+        AffectedBoundPathExcluded
+      }
+    }
+    AffectedCandidatePopulationRefused { reason: reason } =>
+      AffectedBoundPathRefused { reason: reason }
+  }
+}
+
+fn regen_admit_affected_bound(
+  bound: RegenAffectedBound,
+  changed: List<RegenChangedSurface>
+) -> RegenAffectedBoundAdmission {
+  match bound {
+    AffectedCandidatePopulationRefused { reason: reason } =>
+      RegenAffectedBoundRefused { refusal: AffectedSetBoundRefused { reason: reason } }
+    CompleteCandidatePopulation => RegenAffectedBoundAdmitted
+    AffectedCandidatePopulation { projected_paths: paths } => {
+      let admitted = AffectedCandidatePopulation { projected_paths: paths }
+      let outside = fold(changed, init: [], f: fn(acc, row) {
+        match regen_affected_bound_path_disposition(
+          bound: admitted,
+          path: row.identity.projected_path
+        ) {
+          AffectedBoundPathAdmitted => acc
+          AffectedBoundPathExcluded => list_push(acc, row.identity)
+          AffectedBoundPathRefused { reason: _ } => list_push(acc, row.identity)
+        }
+      })
+      if count(outside) == 0 {
+        RegenAffectedBoundAdmitted
+      } else {
+        RegenAffectedBoundRefused {
+          refusal: AffectedSetStagePopulationDisagrees {
+            changed: changed |> map(row => row.identity),
+            outside_bound: outside
+          }
+        }
+      }
+    }
+  }
+}
+
+fn regen_affected_bound_admission_label(admission: RegenAffectedBoundAdmission) -> String {
+  match admission {
+    RegenAffectedBoundAdmitted => "Admitted"
+    RegenAffectedBoundRefused { refusal: _ } => "Refused"
+  }
+}
+
+type RegenStagePlanOutcome
+  = RegenStagePlanned { stage: RegenStagePlan }
+  | RegenStagePlanningRefused { refusal: RegenConvergenceRefusal }
+  | RegenConvergenceTerminal
+
+fn regen_surface_identity_eq(a: RegenSurfaceIdentity, b: RegenSurfaceIdentity) -> Bool {
+  a.declaring_module == b.declaring_module && a.projected_path == b.projected_path
+}
+
+fn regen_changed_surface_identity(row: RegenChangedSurface) -> RegenSurfaceIdentity {
+  row.identity
+}
+
+fn regen_deferred(row: RegenChangedSurface, reason: RegenDeferredReason) -> RegenDeferredSurface {
+  RegenDeferredSurface { identity: row.identity, reason: reason }
+}
+
+type RegenSurfaceStageDisposition
+  = SurfacePlannedForStage
+  | SurfaceDeferredFromStage { reason: RegenDeferredReason }
+
+type RegenStagePartition {
+  planned: List<RegenChangedSurface>
+  deferred: List<RegenDeferredSurface>
+}
+
+type RegenDependencyClosureDisposition
+  = DependencyClosureAssigned { closure_id: String }
+  | DependencyClosureRefused { reason: String }
+
+// The model owns the join from generation role and seed membership to dependency closure. The
+// host supplies facts and consumes this disposition; it does not maintain a parallel classifier.
+fn regen_dependency_closure_disposition(
+  role: RegenGenerationRole,
+  membership: RegenSeedMembership
+) -> RegenDependencyClosureDisposition {
+  match role {
+    GenerationInput => DependencyClosureAssigned { closure_id: "generation-input-cut" }
+    BootstrapSourceMirror => DependencyClosureAssigned { closure_id: "generation-input-cut" }
+    GenerationSubject => match membership {
+      SeedEmbedded => DependencyClosureAssigned { closure_id: "seed-compatibility-cut" }
+      OutsideSeed => DependencyClosureAssigned { closure_id: "non-seed-publish" }
+      UnresolvedSeedMembership { reason: reason } =>
+        DependencyClosureRefused { reason: reason }
+    }
+    NonSeedGeneratedOutput => match membership {
+      OutsideSeed => DependencyClosureAssigned { closure_id: "non-seed-publish" }
+      SeedEmbedded => DependencyClosureRefused { reason: "non-seed output is seed embedded" }
+      UnresolvedSeedMembership { reason: reason } =>
+        DependencyClosureRefused { reason: reason }
+    }
+    UnresolvedGenerationRole { reason: reason } =>
+      DependencyClosureRefused { reason: reason }
+  }
+}
+
+fn regen_dependency_closure_ids(disposition: RegenDependencyClosureDisposition) -> List<String> {
+  match disposition {
+    DependencyClosureAssigned { closure_id: closure_id } => [closure_id]
+    DependencyClosureRefused { reason: _ } => []
+  }
+}
+
+// One typed classification surface. Planning consumes the arm and retains its reason; no Bool
+// predicate aliases the coproduct membership or walks the same row again for deferral.
+fn regen_surface_stage_disposition(
+  row: RegenChangedSurface,
+  kind: RegenStageKind
+) -> RegenSurfaceStageDisposition {
+  match kind {
+    PromoteGenerationInputs => match row.generation_role {
+      GenerationInput => SurfacePlannedForStage
+      BootstrapSourceMirror => SurfacePlannedForStage
+      GenerationSubject => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
+      NonSeedGeneratedOutput => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
+      UnresolvedGenerationRole { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
+    }
+    InstallSeedCompatibilityCut => match row.generation_role {
+      GenerationInput => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+      BootstrapSourceMirror => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+      GenerationSubject => match row.seed_membership {
+        SeedEmbedded => SurfacePlannedForStage
+        OutsideSeed => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+        UnresolvedSeedMembership { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+      }
+      NonSeedGeneratedOutput => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+      UnresolvedGenerationRole { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+    }
+    PublishNonSeedOutputs => match row.seed_membership {
+      OutsideSeed => SurfacePlannedForStage
+      SeedEmbedded => SurfaceDeferredFromStage { reason: AwaitingBuildableSeedGeneration }
+      UnresolvedSeedMembership { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingBuildableSeedGeneration }
+    }
+  }
+}
+
+fn regen_partition_stage(rows: List<RegenChangedSurface>, kind: RegenStageKind) -> RegenStagePartition {
+  rows |> fold(init: RegenStagePartition { planned: [], deferred: [] }, f: fn(acc, row) {
+    match regen_surface_stage_disposition(row: row, kind: kind) {
+      SurfacePlannedForStage => RegenStagePartition {
+        planned: list_push(acc.planned, row),
+        deferred: acc.deferred
+      }
+      SurfaceDeferredFromStage { reason: reason } => RegenStagePartition {
+        planned: acc.planned,
+        deferred: list_push(acc.deferred, regen_deferred(row: row, reason: reason))
+      }
+    }
+  })
+}
+
+type RegenFirstUnresolved
+  = NoUnresolvedSurface
+  | FirstUnresolvedSurface { refusal: RegenConvergenceRefusal }
+
+fn regen_first_unresolved(rows: List<RegenChangedSurface>) -> RegenFirstUnresolved {
+  fold(rows, init: NoUnresolvedSurface, f: fn(acc, row) {
+    match acc {
+      FirstUnresolvedSurface { refusal: refusal } =>
+        FirstUnresolvedSurface { refusal: refusal }
+      NoUnresolvedSurface =>
+      match row.generation_role {
+        UnresolvedGenerationRole { reason: reason } =>
+          FirstUnresolvedSurface {
+            refusal: GenerationRoleUnresolved { surface: row.identity, reason: reason }
+          }
+        GenerationInput => match row.seed_membership {
+          UnresolvedSeedMembership { reason: reason } =>
+            FirstUnresolvedSurface {
+              refusal: SeedMembershipUnresolved { surface: row.identity, reason: reason }
+            }
+          SeedEmbedded => NoUnresolvedSurface
+          OutsideSeed => NoUnresolvedSurface
+        }
+        BootstrapSourceMirror => NoUnresolvedSurface
+        GenerationSubject => match row.seed_membership {
+          UnresolvedSeedMembership { reason: reason } =>
+            FirstUnresolvedSurface {
+              refusal: SeedMembershipUnresolved { surface: row.identity, reason: reason }
+            }
+          SeedEmbedded => NoUnresolvedSurface
+          OutsideSeed => NoUnresolvedSurface
+        }
+        NonSeedGeneratedOutput => NoUnresolvedSurface
+      }
+    }
+  })
+}
+
+type RegenStageClosureFold
+  = NoStageClosureRows
+  | ConsistentStageClosure { closure_id: String }
+  | InconsistentStageClosure {
+      closure_id: String
+      foreign_surfaces: List<RegenSurfaceIdentity>
+    }
+
+type RegenStageClosureAdmission
+  = RegenStageClosureAdmitted { closure_id: String }
+  | RegenStageClosureRefused { refusal: RegenConvergenceRefusal }
+
+type RegenSurfacePopulationMembership
+  = SurfacePopulationMember
+  | SurfacePopulationAbsent
+
+fn regen_surface_population_membership(
+  identity: RegenSurfaceIdentity,
+  rows: List<RegenChangedSurface>
+) -> RegenSurfacePopulationMembership {
+  if rows |> any(row => regen_surface_identity_eq(a: identity, b: row.identity)) {
+    SurfacePopulationMember
+  } else {
+    SurfacePopulationAbsent
+  }
+}
+
+// A stage receipt names one dependency closure only when every planned surface belongs to that
+// same closure. Taking the first row without validating the remainder would mint a plausible
+// closure receipt over an inconsistent population.
+fn regen_admit_stage_closure(
+  changed: List<RegenChangedSurface>,
+  planned: List<RegenChangedSurface>
+) -> RegenStageClosureAdmission {
+  let folded = fold(planned, init: NoStageClosureRows, f: fn(acc, row) {
+    match acc {
+      NoStageClosureRows => ConsistentStageClosure { closure_id: row.dependency_closure_id }
+      ConsistentStageClosure { closure_id: closure_id } => {
+        if closure_id == row.dependency_closure_id {
+          ConsistentStageClosure { closure_id: closure_id }
+        } else {
+          InconsistentStageClosure {
+            closure_id: closure_id,
+            foreign_surfaces: [row.identity]
+          }
+        }
+      }
+      InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign } => {
+        if closure_id == row.dependency_closure_id {
+          InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign }
+        } else {
+          InconsistentStageClosure {
+            closure_id: closure_id,
+            foreign_surfaces: list_push(foreign, row.identity)
+          }
+        }
+      }
+    }
+  })
+  match folded {
+    NoStageClosureRows => RegenStageClosureRefused {
+      refusal: StageDependencyClosureIncomplete { closure_id: "", missing: [] }
+    }
+    ConsistentStageClosure { closure_id: closure_id } => {
+      let required = changed |> filter(row => row.dependency_closure_id == closure_id)
+      let missing = fold(required, init: [], f: fn(acc, row) {
+        match regen_surface_population_membership(identity: row.identity, rows: planned) {
+          SurfacePopulationMember => acc
+          SurfacePopulationAbsent => list_push(acc, row.identity)
+        }
+      })
+      if closure_id == "" || count(missing) > 0 {
+        RegenStageClosureRefused {
+          refusal: StageDependencyClosureIncomplete {
+            closure_id: closure_id,
+            missing: if closure_id == "" {
+              planned |> map(row => row.identity)
+            } else {
+              missing
+            }
+          }
+        }
+      } else {
+        RegenStageClosureAdmitted { closure_id: closure_id }
+      }
+    }
+    InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign } =>
+      RegenStageClosureRefused {
+        refusal: StageDependencyClosureIncomplete {
+          closure_id: closure_id,
+          missing: foreign
+        }
+      }
+  }
+}
+
+fn regen_plan_stage(
+  ordinal: Int,
+  kind: RegenStageKind,
+  producer_generation_id: String,
+  candidate_tree_id: String,
+  candidate_tree_digest: String,
+  changed: List<RegenChangedSurface>,
+  build_target: String,
+  build_invocation: String
+) -> RegenStagePlanOutcome {
+  match regen_first_unresolved(rows: changed) {
+    FirstUnresolvedSurface { refusal: refusal } =>
+      RegenStagePlanningRefused { refusal: refusal }
+    NoUnresolvedSurface => {
+    let partition = regen_partition_stage(rows: changed, kind: kind)
+    if count(partition.planned) == 0 {
+      if count(partition.deferred) == 0 {
+        RegenConvergenceTerminal
+      } else {
+        RegenStagePlanningRefused {
+          refusal: SurfaceInIncompatibleStageRoles {
+            surfaces: partition.deferred |> map(row => row.identity)
+          }
+        }
+      }
+    } else {
+      match regen_admit_stage_closure(changed: changed, planned: partition.planned) {
+        RegenStageClosureRefused { refusal: refusal } =>
+          RegenStagePlanningRefused { refusal: refusal }
+        RegenStageClosureAdmitted { closure_id: closure_id } => RegenStagePlanned {
+          stage: RegenStagePlan {
+            ordinal: ordinal,
+            kind: kind,
+            producer_generation_id: producer_generation_id,
+            candidate_tree_id: candidate_tree_id,
+            candidate_tree_digest: candidate_tree_digest,
+            planned_surfaces: partition.planned,
+            deferred_surfaces: partition.deferred,
+            dependency_closure_id: closure_id,
+            build_target: build_target,
+            build_invocation: build_invocation
+          }
+        }
+      }
+    }
+    }
+  }
+}
+
+type RegenNextStageNeed
+  = NextStageNeedsProducer
+  | NextStageNeedsSeedCompatibility
+  | NextStageNeedsPublish
+
+fn regen_plan_next_stage(
+  ordinal: Int,
+  producer_generation_id: String,
+  candidate_tree_id: String,
+  candidate_tree_digest: String,
+  changed: List<RegenChangedSurface>,
+  build_target: String,
+  build_invocation: String
+) -> RegenStagePlanOutcome {
+  let need = fold(changed, init: NextStageNeedsPublish, f: fn(acc, row) {
+    match acc {
+      NextStageNeedsProducer => NextStageNeedsProducer
+      NextStageNeedsSeedCompatibility => match row.generation_role {
+        GenerationInput => NextStageNeedsProducer
+        BootstrapSourceMirror => NextStageNeedsProducer
+        GenerationSubject => NextStageNeedsSeedCompatibility
+        NonSeedGeneratedOutput => NextStageNeedsSeedCompatibility
+        UnresolvedGenerationRole { reason: _ } => NextStageNeedsSeedCompatibility
+      }
+      NextStageNeedsPublish => match row.generation_role {
+        GenerationInput => NextStageNeedsProducer
+        BootstrapSourceMirror => NextStageNeedsProducer
+        GenerationSubject => match row.seed_membership {
+          SeedEmbedded => NextStageNeedsSeedCompatibility
+          OutsideSeed => NextStageNeedsPublish
+          UnresolvedSeedMembership { reason: _ } => NextStageNeedsPublish
+        }
+        NonSeedGeneratedOutput => NextStageNeedsPublish
+        UnresolvedGenerationRole { reason: _ } => NextStageNeedsPublish
+      }
+    }
+  })
+  let kind = match need {
+    NextStageNeedsProducer => PromoteGenerationInputs
+    NextStageNeedsSeedCompatibility => InstallSeedCompatibilityCut
+    NextStageNeedsPublish => PublishNonSeedOutputs
+  }
+  regen_plan_stage(
+    ordinal: ordinal,
+    kind: kind,
+    producer_generation_id: producer_generation_id,
+    candidate_tree_id: candidate_tree_id,
+    candidate_tree_digest: candidate_tree_digest,
+    changed: changed,
+    build_target: build_target,
+    build_invocation: build_invocation
+  )
+}
+
+fn regen_stage_plan_surface_paths(outcome: RegenStagePlanOutcome) -> List<String> {
+  match outcome {
+    RegenStagePlanned { stage: stage } => stage.planned_surfaces |> map(row => row.identity.projected_path)
+    RegenStagePlanningRefused { refusal: _ } => []
+    RegenConvergenceTerminal => []
+  }
+}
+
+fn regen_stage_plan_kind_label(outcome: RegenStagePlanOutcome) -> String {
+  match outcome {
+    RegenStagePlanned { stage: stage } => match stage.kind {
+      PromoteGenerationInputs => "PromoteGenerationInputs"
+      InstallSeedCompatibilityCut => "InstallSeedCompatibilityCut"
+      PublishNonSeedOutputs => "PublishNonSeedOutputs"
+    }
+    RegenStagePlanningRefused { refusal: _ } => "Refused"
+    RegenConvergenceTerminal => "Terminal"
+  }
+}
+
+fn regen_stage_plan_dependency_closure_ids(outcome: RegenStagePlanOutcome) -> List<String> {
+  match outcome {
+    RegenStagePlanned { stage: stage } => [stage.dependency_closure_id]
+    RegenStagePlanningRefused { refusal: _ } => []
+    RegenConvergenceTerminal => []
+  }
+}
+
+type RegenSurfaceExecutionReceipt {
+  identity: RegenSurfaceIdentity
+  pre_stage_state: RegenPreStageState
+  candidate_digest: String
+  installed_digest: String
+  standing: RegenSurfaceExecutionStanding
+}
+
+type RegenSurfaceExecutionStanding
+  = SurfacePlanned
+  | SurfaceExecuted
+  | SurfaceTerminalPassed
+
+type RegenStageBuildTerminal
+  = RegenStageBuildPassed
+  | RegenStageBuildFailed { reason: String }
+
+type RegenStageReceipt {
+  receipt_id: String
+  ordinal: Int
+  kind: RegenStageKind
+  input_seed_digest: String
+  input_candidate_tree_id: String
+  input_candidate_tree_digest: String
+  producer_generation_id: String
+  surfaces: List<RegenSurfaceExecutionReceipt>
+  deferred_surfaces: List<RegenDeferredSurface>
+  dependency_closure_id: String
+  build_target: String
+  build_invocation: String
+  build_terminal: RegenStageBuildTerminal
+  build_compiled_crates: Int
+  output_seed_digest: String
+  next_generation_receipt_id: String
+}
+
+type RegenFixedPointVerdict
+  = RegenFixedPointReached
+  | RegenFixedPointRefused { refusal: RegenConvergenceRefusal }
+
+type RegenConvergenceTransactionReceipt {
+  schema_version: String
+  starting_commit: String
+  source_authority_digest: String
+  starting_generated_surface_digest: String
+  stage_plan_authority_digest: String
+  generation_role_authority_digest: String
+  ownership_authority_digest: String
+  initial_seed_digest: String
+  ordered_stage_receipt_ids: List<String>
+  terminal_seed_digest: String
+  terminal_surface_digest: String
+  fixed_point: RegenFixedPointVerdict
+}
+
+fn regen_stage_receipt_all_passed(receipt: RegenStageReceipt) -> Bool {
+  receipt.surfaces |> all(row => match row.standing {
+    SurfaceTerminalPassed => true
+    SurfacePlanned => false
+    SurfaceExecuted => false
+  })
+}
+
+type RegenStageExecutionObservation {
+  planned: List<RegenSurfaceIdentity>
+  executed: List<RegenSurfaceIdentity>
+  expected_candidate_digest: String
+  observed_candidate_digest: String
+  build_terminal: RegenStageBuildTerminal
+}
+
+type RegenCandidateGenerationObservation {
+  planned_surfaces: List<RegenSurfaceIdentity>
+  current_seed_digest: String
+  manifest_producer_seed_digest: String
+  observed_candidate_digest: String
+}
+
+type RegenCandidateGenerationAdmission
+  = RegenCandidateGenerationAdmitted
+  | RegenCandidateGenerationRefused { refusal: RegenConvergenceRefusal }
+
+fn regen_admit_candidate_generation(observation: RegenCandidateGenerationObservation) -> RegenCandidateGenerationAdmission {
+  if observation.current_seed_digest == observation.manifest_producer_seed_digest {
+    RegenCandidateGenerationAdmitted
+  } else {
+    RegenCandidateGenerationRefused {
+      refusal: CandidateStaleAfterProducerRebuild {
+        planned_surfaces: observation.planned_surfaces,
+        observed_generation_id: observation.manifest_producer_seed_digest,
+        current_generation_id: observation.current_seed_digest,
+        observed_candidate_digest: observation.observed_candidate_digest
+      }
+    }
+  }
+}
+
+fn regen_candidate_generation_admission_label(admission: RegenCandidateGenerationAdmission) -> String {
+  match admission {
+    RegenCandidateGenerationAdmitted => "Admitted"
+    RegenCandidateGenerationRefused { refusal: CandidateStaleAfterProducerRebuild { planned_surfaces: _, observed_generation_id: _, current_generation_id: _, observed_candidate_digest: _ } } => "CandidateStaleAfterProducerRebuild"
+    RegenCandidateGenerationRefused { refusal: _ } => "Refused"
+  }
+}
+
+// THE REFUSAL TYPE IS THE PRODUCER'S RANGE, NOT THE TRANSACTION'S WHOLE VOCABULARY. This field
+// used to carry `RegenConvergenceRefusal`, ~25 variants wide, while `regen_admit_stage_execution`
+// can only ever return these three -- so both renderers below needed a `_` arm, and a `_` arm over
+// a coproduct that is free to grow is a silent-degradation surface: a new variant renders a fixed
+// string with no location and nothing refuses. Narrowing the type deletes the arm rather than
+// improving its default, so a fourth stage-execution refusal fails to compile in both renderers
+// until an author writes its name and its detail. §4b(4): unwritable rather than validated.
+type RegenStageExecutionRefusal
+  = StagePlannedExecutedMismatch { planned: List<RegenSurfaceIdentity>, executed: List<RegenSurfaceIdentity> }
+  | InstalledDigestMismatch { surfaces: List<RegenSurfaceIdentity>, expected: String, observed: String }
+  | StageSeedBuildRefused { ordinal: Int, reason: String }
+
+type RegenStageExecutionAdmission
+  = RegenStageExecutionAdmitted
+  | RegenStageExecutionRefused { refusal: RegenStageExecutionRefusal }
+
+fn regen_identity_population_eq(a: List<RegenSurfaceIdentity>, b: List<RegenSurfaceIdentity>) -> Bool {
+  count(a) == count(b)
+    && a |> all(left => b |> any(right => regen_surface_identity_eq(a: left, b: right)))
+    && b |> all(right => a |> any(left => regen_surface_identity_eq(a: left, b: right)))
+}
+
+fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> RegenStageExecutionAdmission {
+  if !regen_identity_population_eq(a: observation.planned, b: observation.executed) {
+    RegenStageExecutionRefused {
+      refusal: StagePlannedExecutedMismatch {
+        planned: observation.planned,
+        executed: observation.executed
+      }
+    }
+  } else if observation.expected_candidate_digest != observation.observed_candidate_digest {
+    RegenStageExecutionRefused {
+      refusal: InstalledDigestMismatch {
+        surfaces: observation.planned,
+        expected: observation.expected_candidate_digest,
+        observed: observation.observed_candidate_digest
+      }
+    }
+  } else {
+    match observation.build_terminal {
+      RegenStageBuildPassed => RegenStageExecutionAdmitted
+      RegenStageBuildFailed { reason: reason } => RegenStageExecutionRefused {
+        refusal: StageSeedBuildRefused { ordinal: 0, reason: reason }
+      }
+    }
+  }
+}
+
+// A LABEL IS A NAME, NOT A DIAGNOSTIC. The host binding used to render a refusal as its label
+// alone, so `StagePlannedExecutedMismatch` and every unlabelled arm collapsed to one word and the
+// populations that caused the refusal -- the whole content of a population verdict -- never
+// reached the caller. That is the `diagnostic_name_mechanism_silent` shape: a typed refusal whose
+// type is announced and whose located detail is discarded, leaving a reader unable to tell WHICH
+// surfaces disagreed or even which arm answered. §5 asks for a typed, LOCATED diagnostic; this
+// renders the located half.
+fn regen_surface_identity_path_list(rows: List<RegenSurfaceIdentity>) -> String {
+  fold(rows, init: "", f: fn(acc, row) {
+    if acc == "" {
+      row.projected_path
+    } else {
+      concat(acc, concat(" ", row.projected_path))
+    }
+  })
+}
+
+fn regen_stage_execution_admission_detail(admission: RegenStageExecutionAdmission) -> String {
+  match admission {
+    RegenStageExecutionAdmitted => ""
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
+      concat(
+        concat("planned=[", concat(regen_surface_identity_path_list(rows: planned), "] ")),
+        concat("executed=[", concat(regen_surface_identity_path_list(rows: executed), "]"))
+      )
+    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: expected, observed: observed } } =>
+      concat("expected=", concat(expected, concat(" observed=", observed)))
+    RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: _, reason: reason } } =>
+      concat("build refused: ", reason)
+  }
+}
+
+fn regen_stage_execution_admission_label(admission: RegenStageExecutionAdmission) -> String {
+  match admission {
+    RegenStageExecutionAdmitted => "Admitted"
+    RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: _, executed: _ } } => "StagePlannedExecutedMismatch"
+    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: _, observed: _ } } => "InstalledDigestMismatch"
+    RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: _, reason: _ } } => "StageSeedBuildRefused"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE INSTALL-BOUNDARY POPULATION JOIN.
+//
+// A stage receipt used to denominate in the population that reached it, so a surface admitted at
+// the boundary and then dropped BEFORE planning appeared in no receipt at all -- not planned, not
+// deferred, not refused. Transaction success therefore proved that the narrowed set was handled
+// and never that the admitted set survived: the denominator was lost before either receipt was
+// taken, and every join below it was self-consistent because both sides inherited one narrowing.
+//
+// EVERY JOIN HERE IS AN IDENTITY JOIN AND NEVER A COUNT. A count accepts a member missing from one
+// side standing against a phantom on the other -- the `compensating_errors_cancel_in_the_aggregate`
+// shape, which goes green exactly when a long-lived roster has accumulated one of each. So each
+// direction is named separately, refuses with its own residue, and neither can pay for the other.
+type RegenSurfaceDisposition
+  = SurfaceApplied { installed_digest: String }
+  | SurfaceDeferred { reason: RegenDeferredReason }
+  | SurfaceSuperseded { by_generation_id: String }
+  | SurfaceDispositionRefused { reason: String }
+
+// DEFERRED IS A PROMISE, NOT AN OUTCOME, and that is the whole reason this is a coproduct rather
+// than a status string. A generic `Excluded` merges "we decided not to, and here is the reason"
+// with "we never saw it", which is the state-space conflation that made the loss invisible: both
+// render as absence. Applied, Superseded and Refused each END a lineage; Deferred does not, so a
+// transaction whose lineage terminates in Deferred is UNFINISHED and refuses rather than reporting
+// a fixed point it never reached.
+type RegenDispositionTerminality
+  = DispositionTerminal
+  | DispositionNonTerminal
+
+fn regen_disposition_terminality(disposition: RegenSurfaceDisposition) -> RegenDispositionTerminality {
+  match disposition {
+    SurfaceApplied { installed_digest: _ } => DispositionTerminal
+    SurfaceSuperseded { by_generation_id: _ } => DispositionTerminal
+    SurfaceDispositionRefused { reason: _ } => DispositionTerminal
+    SurfaceDeferred { reason: _ } => DispositionNonTerminal
+  }
+}
+
+type RegenSurfaceLineage {
+  identity: RegenSurfaceIdentity
+  disposition: RegenSurfaceDisposition
+}
+
+type RegenInstallBoundaryObservation {
+  admitted: List<RegenSurfaceIdentity>
+  planned: List<RegenSurfaceIdentity>
+  deferred: List<RegenSurfaceIdentity>
+}
+
+// SAME NARROWING AS `RegenStageExecutionRefusal`, AND FOR THE SAME REASON -- these three are the
+// whole range of the two joins below, so carrying the transaction-wide vocabulary here would put a
+// `_` arm back in both renderers and rebuild the silent-degradation surface this change exists to
+// remove. A fourth population refusal fails to compile until an author writes its name and its
+// residues. The variants live HERE and nowhere else: no consumer outside these joins produces one,
+// so a copy in `RegenConvergenceRefusal` would be a second authority for one meaning.
+type RegenPopulationRefusal
+  = StagePartitionPopulationDisagrees {
+      admitted_without_partition: List<RegenSurfaceIdentity>
+      partition_without_admitted: List<RegenSurfaceIdentity>
+      planned_and_deferred: List<RegenSurfaceIdentity>
+    }
+  | TransactionLineagePopulationDisagrees {
+      admitted_without_lineage: List<RegenSurfaceIdentity>
+      lineage_without_admitted: List<RegenSurfaceIdentity>
+    }
+  | SurfaceLineageUnfinished { surfaces: List<RegenSurfaceIdentity> }
+
+type RegenPopulationAdmission
+  = RegenPopulationAdmitted
+  | RegenPopulationRefused { refusal: RegenPopulationRefusal }
+
+// The one directed-difference primitive both joins use. Returning the RESIDUE rather than a Bool
+// is what lets each direction refuse with its own members named; a predicate here would collapse
+// the two residues into one bit and reproduce the count.
+fn regen_identity_residue(
+  left: List<RegenSurfaceIdentity>,
+  right: List<RegenSurfaceIdentity>
+) -> List<RegenSurfaceIdentity> {
+  fold(left, init: [], f: fn(acc, one) {
+    match regen_identity_membership(identity: one, rows: right) {
+      IdentityPopulationMember => acc
+      IdentityPopulationAbsent => list_push(acc, one)
+    }
+  })
+}
+
+type RegenIdentityMembership
+  = IdentityPopulationMember
+  | IdentityPopulationAbsent
+
+fn regen_identity_membership(
+  identity: RegenSurfaceIdentity,
+  rows: List<RegenSurfaceIdentity>
+) -> RegenIdentityMembership {
+  if rows |> any(row => regen_surface_identity_eq(a: identity, b: row)) {
+    IdentityPopulationMember
+  } else {
+    IdentityPopulationAbsent
+  }
+}
+
+// JOIN 1 -- the admitted population equals planned UNION deferred, in BOTH directions, plus the
+// disjointness a union cannot see. A surface in both lists is not a harmless duplicate: it is one
+// surface claiming to be handled and postponed at once, and a union would silently absorb it.
+fn regen_admit_install_boundary_population(
+  observation: RegenInstallBoundaryObservation
+) -> RegenPopulationAdmission {
+  let partition = fold(observation.deferred, init: observation.planned, f: fn(acc, row) {
+    list_push(acc, row)
+  })
+  let admitted_without_partition =
+    regen_identity_residue(left: observation.admitted, right: partition)
+  let partition_without_admitted =
+    regen_identity_residue(left: partition, right: observation.admitted)
+  let both = fold(observation.planned, init: [], f: fn(acc, row) {
+    match regen_identity_membership(identity: row, rows: observation.deferred) {
+      IdentityPopulationMember => list_push(acc, row)
+      IdentityPopulationAbsent => acc
+    }
+  })
+  if count(admitted_without_partition) == 0
+    && count(partition_without_admitted) == 0
+    && count(both) == 0 {
+    RegenPopulationAdmitted
+  } else {
+    RegenPopulationRefused {
+      refusal: StagePartitionPopulationDisagrees {
+        admitted_without_partition: admitted_without_partition,
+        partition_without_admitted: partition_without_admitted,
+        planned_and_deferred: both
+      }
+    }
+  }
+}
+
+// JOIN 3 -- the initially admitted population equals the terminal lineage, checked in both
+// directions, and every lineage row must have REACHED a terminal disposition. The second half is
+// what a population equality alone cannot say: a lineage can name every admitted surface and still
+// leave one sitting in Deferred, which is an unfinished transaction wearing a complete receipt.
+fn regen_admit_transaction_lineage(
+  initial_admitted: List<RegenSurfaceIdentity>,
+  lineage: List<RegenSurfaceLineage>
+) -> RegenPopulationAdmission {
+  let named = lineage |> map(row => row.identity)
+  let admitted_without_lineage = regen_identity_residue(left: initial_admitted, right: named)
+  let lineage_without_admitted = regen_identity_residue(left: named, right: initial_admitted)
+  if count(admitted_without_lineage) > 0 || count(lineage_without_admitted) > 0 {
+    RegenPopulationRefused {
+      refusal: TransactionLineagePopulationDisagrees {
+        admitted_without_lineage: admitted_without_lineage,
+        lineage_without_admitted: lineage_without_admitted
+      }
+    }
+  } else {
+    let unfinished = fold(lineage, init: [], f: fn(acc, row) {
+      match regen_disposition_terminality(disposition: row.disposition) {
+        DispositionTerminal => acc
+        DispositionNonTerminal => list_push(acc, row.identity)
+      }
+    })
+    if count(unfinished) == 0 {
+      RegenPopulationAdmitted
+    } else {
+      RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: unfinished } }
+    }
+  }
+}
+
+fn regen_population_admission_label(admission: RegenPopulationAdmission) -> String {
+  match admission {
+    RegenPopulationAdmitted => "Admitted"
+    RegenPopulationRefused { refusal: StagePartitionPopulationDisagrees { admitted_without_partition: _, partition_without_admitted: _, planned_and_deferred: _ } } =>
+      "StagePartitionPopulationDisagrees"
+    RegenPopulationRefused { refusal: TransactionLineagePopulationDisagrees { admitted_without_lineage: _, lineage_without_admitted: _ } } =>
+      "TransactionLineagePopulationDisagrees"
+    RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: _ } } => "SurfaceLineageUnfinished"
+  }
+}
+
+fn regen_population_admission_detail(admission: RegenPopulationAdmission) -> String {
+  match admission {
+    RegenPopulationAdmitted => ""
+    RegenPopulationRefused { refusal: StagePartitionPopulationDisagrees { admitted_without_partition: a, partition_without_admitted: b, planned_and_deferred: c } } =>
+      concat(
+        concat("admitted_without_partition=[", concat(regen_surface_identity_path_list(rows: a), "] ")),
+        concat(
+          concat("partition_without_admitted=[", concat(regen_surface_identity_path_list(rows: b), "] ")),
+          concat("planned_and_deferred=[", concat(regen_surface_identity_path_list(rows: c), "]"))
+        )
+      )
+    RegenPopulationRefused { refusal: TransactionLineagePopulationDisagrees { admitted_without_lineage: a, lineage_without_admitted: b } } =>
+      concat(
+        concat("admitted_without_lineage=[", concat(regen_surface_identity_path_list(rows: a), "] ")),
+        concat("lineage_without_admitted=[", concat(regen_surface_identity_path_list(rows: b), "]"))
+      )
+    RegenPopulationRefused { refusal: SurfaceLineageUnfinished { surfaces: surfaces } } =>
+      concat("unfinished=[", concat(regen_surface_identity_path_list(rows: surfaces), "]"))
+  }
+}
+
+type RegenConvergenceFixture {
+  g0_changed: List<RegenChangedSurface>
+  producer_stage_build: RegenStageBuildTerminal
+  g1_changed: List<RegenChangedSurface>
+  subject_stage_build: RegenStageBuildTerminal
+  g2_changed: List<RegenChangedSurface>
+}
+
+type RegenConvergenceFixtureOutcome
+  = RegenFixtureReachedFixedPoint { stage_kinds: List<RegenStageKind> }
+  | RegenFixtureRefused { refusal: RegenConvergenceRefusal }
+
+type RegenGenerationProgressAdmission
+  = RegenGenerationProgressAdmitted
+  | RegenGenerationProgressRefused { refusal: RegenConvergenceRefusal }
+
+fn regen_admit_generation_progress(
+  seen_state_keys: List<String>,
+  seed_digest: String,
+  candidate_tree_digest: String,
+  ordinal: Int,
+  bound: Int
+) -> RegenGenerationProgressAdmission {
+  let key = concat(seed_digest, concat(":", candidate_tree_digest))
+  if ordinal >= bound {
+    RegenGenerationProgressRefused { refusal: GenerationBoundExceeded { bound: bound } }
+  } else if seen_state_keys |> any(seen => seen == key) {
+    RegenGenerationProgressRefused {
+      refusal: GenerationCycleDetected {
+        seed_digest: seed_digest,
+        candidate_tree_digest: candidate_tree_digest
+      }
+    }
+  } else {
+    RegenGenerationProgressAdmitted
+  }
+}
+
+fn regen_generation_progress_admission_label(admission: RegenGenerationProgressAdmission) -> String {
+  match admission {
+    RegenGenerationProgressAdmitted => "Admitted"
+    RegenGenerationProgressRefused { refusal: GenerationCycleDetected { seed_digest: _, candidate_tree_digest: _ } } => "CycleRefused"
+    RegenGenerationProgressRefused { refusal: GenerationBoundExceeded { bound: _ } } => "BoundRefused"
+    RegenGenerationProgressRefused { refusal: _ } => "Refused"
+  }
+}
+
+fn regen_fixture_build_refusal(ordinal: Int, terminal: RegenStageBuildTerminal) -> List<RegenConvergenceRefusal> {
+  match terminal {
+    RegenStageBuildPassed => []
+    RegenStageBuildFailed { reason: reason } =>
+      [StageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: ordinal, reason: reason } }]
+  }
+}
+
+// The executable fixture producer follows the same P -> rebuilt generation -> S -> rebuilt
+// generation ordering as the host. It is deliberately generic: the fixture supplies identities,
+// roles and build terminals, never repository paths or Measure-specific knowledge.
+fn regen_execute_convergence_fixture(fixture: RegenConvergenceFixture) -> RegenConvergenceFixtureOutcome {
+  let p = regen_plan_next_stage(
+    ordinal: 1,
+    producer_generation_id: "g0",
+    candidate_tree_id: "tree-g0",
+    candidate_tree_digest: "digest-g0",
+    changed: fixture.g0_changed,
+    build_target: "fixture-seed",
+    build_invocation: "fixture-build"
+  )
+  match p {
+    RegenStagePlanningRefused { refusal: refusal } => RegenFixtureRefused { refusal: refusal }
+    RegenConvergenceTerminal => RegenFixtureReachedFixedPoint { stage_kinds: [] }
+    RegenStagePlanned { stage: producer } => {
+      let p_failures = regen_fixture_build_refusal(ordinal: 1, terminal: fixture.producer_stage_build)
+      if count(p_failures) > 0 {
+        RegenFixtureRefused {
+          refusal: fold(p_failures, init: NoBuildableProducerCut { reason: "unreachable" }, f: fn(acc, row) { row })
+        }
+      } else {
+        let s = regen_plan_next_stage(
+          ordinal: 2,
+          producer_generation_id: "g1",
+          candidate_tree_id: "tree-g1",
+          candidate_tree_digest: "digest-g1",
+          changed: fixture.g1_changed,
+          build_target: "fixture-seed",
+          build_invocation: "fixture-build"
+        )
+        match s {
+          RegenStagePlanningRefused { refusal: refusal } => RegenFixtureRefused { refusal: refusal }
+          RegenConvergenceTerminal => RegenFixtureReachedFixedPoint { stage_kinds: [producer.kind] }
+          RegenStagePlanned { stage: subject } => {
+            let s_failures = regen_fixture_build_refusal(ordinal: 2, terminal: fixture.subject_stage_build)
+            if count(s_failures) > 0 {
+              RegenFixtureRefused {
+                refusal: fold(s_failures, init: NoBuildableProducerCut { reason: "unreachable" }, f: fn(acc, row) { row })
+              }
+            } else if count(fixture.g2_changed) > 0 {
+              RegenFixtureRefused {
+                refusal: FinalRegenerationStillDrifts {
+                  surfaces: fixture.g2_changed |> map(row => row.identity)
+                }
+              }
+            } else {
+              RegenFixtureReachedFixedPoint { stage_kinds: [producer.kind, subject.kind] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

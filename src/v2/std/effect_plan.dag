@@ -1,0 +1,47 @@
+module v2.std.effect_plan
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import v2.std.text { String }
+import v2.std.algebra { FreeMonoid }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional
+}
+import v2.std.diagnostic { EmitDirective }
+import v2.std.node { Symbol }
+import v2.std.orchestration {
+  Predicate,
+  FailurePolicy,
+  EscalationLevel,
+  ValueSource,
+  Expr,
+  EnvBinding,
+}
+
+type EffectPlanStep<E>
+  = Do { effect: E }
+  | If { cond: Predicate, then_: EffectPlan<E>, else_: Optional<EffectPlan<E>> }
+  | For { binder: Symbol, over: ValueSource, body: EffectPlan<E> }
+  | While { cond: Predicate, body: EffectPlan<E> }
+  | Retry {
+      body: EffectPlan<E>,
+      escalations: FreeMonoid<EscalationLevel>,
+      on_exhausted: EffectPlan<E>
+    }
+  | Let { name: String, value: Expr }
+  | Call { callee: String, args: List<String> }
+
+type EffectPlan<E> {
+  steps: FreeMonoid<EffectPlanStep<E>>
+  on_failure: FailurePolicy
+}
+
+// std.effect_plan leaves are Do-effect leaves, never a command string. v2.std.orchestration
+// PipelineStep Do-run is the bash-emit scaffold; runtime-present sites compose EffectPlan over
+// HostEffect and interpret via gunbc.host_effect_plan.host_effect_plan_apply routing to
+// host_effect_apply (host-effect-orchestration.md section 1b).
+
+data effect_plan_orchestration_succession_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v2.std.orchestration parallel — Predicate/FailurePolicy/ValueSource/EscalationLevel/Expr neighbor vocab and Pipeline/PipelineStep bash-emit scaffold remain in v2.std.orchestration until host-effect-orchestration.md Phase B rename absorbs them here; effect_plan owns generic EffectPlan<E>/Do-effect composition (#6903 Wave A2 keystone).")

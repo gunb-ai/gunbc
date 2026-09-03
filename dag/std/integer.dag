@@ -1,0 +1,76 @@
+module std.integer
+
+import std.algebra { AbelianGroup, GroupCompletion }
+import std.nat { Nat }
+import std.machine_constraints { Compose, MachineWidth, PointerWidth }
+import std.measure { bit_width, bit_width_count, bits_per_byte }
+import std.induction { int_pow_bounded }
+
+type Int8 = Compose<Int, MachineWidth<8>>
+type Int16 = Compose<Int, MachineWidth<16>>
+type Int32 = Compose<Int, MachineWidth<32>>
+type Int64 = Compose<Int, MachineWidth<64>>
+type Int128 = Compose<Int, MachineWidth<128>>
+
+type UInt8 = Compose<UInt, MachineWidth<8>>
+type UInt16 = Compose<UInt, MachineWidth<16>>
+type UInt32 = Compose<UInt, MachineWidth<32>>
+type UInt64 = Compose<UInt, MachineWidth<64>>
+type UInt128 = Compose<UInt, MachineWidth<128>>
+
+type Int = AbelianGroup<GroupCompletion<Nat>>
+type UInt = Nat
+
+type Signedness
+  = Signed
+  | Unsigned
+
+type OverflowReturnValueRule
+  = ReturnWrapping
+  | ReturnSaturating
+
+type IntegerOverflowSemantics<E>
+  = OverflowReturns { value_rule: OverflowReturnValueRule }
+  | OverflowRaises { effect: E }
+  | OverflowUndefined
+
+// P3b PR2 overflow authority: IntegerOverflowSemantics<E> separates return-value rules (wrapping vs
+// saturating) from raise effects (parameter E — panic and trap are different inhabitants of E, not
+// aliases for one arm) and from undefined overflow (its own arm — not a raise and not a return).
+// Honest rung: accepted refinement with executing refusal at language admission boundaries;
+// carriers are directly constructible until sole_constructor or a construction wall lands on E.
+// v2.std.integer OverflowDisposition is the legacy conflated surface
+// (Wrapping|Saturating|UndefinedBehavior|Trapping) — intentionally not migrated in this bounded PR
+// per operator mandate (no corpus-wide overflow defork); feature:overflow-disposition-defork
+// dissolve-on routes language overflow facts through this type and retires OverflowDisposition.
+// Parallel authority is tracked debt with a named trigger, not permission to drift independently.
+
+// PR1 Signedness lift imports std.nat here, co-resolving std.nat with v2.std.nat in whole-tree
+// compile-clean closures. Known two-std-trees fork: std.nat.Nat = CommutativeSemiring<Magnitude>
+// with std.nat.nat_compare versus v2.std.nat.Nat = Zero|Succ with v2.std.nat.nat_compare — not
+// consolidated in this PR. Per nat-grounding-unification-design (census complete 2026-08-01):
+// DESIGN READY; IMPLEMENTATION LARGE/ATOMIC sequenced with integer+float repoint after bounded P3b
+// PR2 overflow on std.integer (#7511 merged first). Dissolve-on: two-std-trees consolidation lands
+// a single Nat authority and retires the parallel compare fns; until then ambiguous bare references
+// must qualify by containment path (namespace-resolution-design section 13). The bound on the
+// deferral: until the wave lands, a bare reference to Nat or nat_compare in a closure containing
+// both authorities is ambiguous by construction and must be qualified — no consumer may assume a
+// bare name resolves, and the two Nat types are not interchangeable at any call site even where the
+// name matches.
+
+type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
+
+type NonNegativeInt = Nat
+type PositiveInt    = Nat where gt_zero
+
+fn uint8_channel_bit_width_int() -> Int {
+  bit_width_count(b: bit_width(count: bits_per_byte()))
+}
+
+fn uint8_channel_inclusive_max_value_derived() -> Int? {
+  match int_pow_bounded(base: 2, exp: uint8_channel_bit_width_int()) {
+    Present { value: two_pow } => Present { value: two_pow - 1 }
+    Absent => none
+  }
+}

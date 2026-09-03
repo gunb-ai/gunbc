@@ -1,0 +1,67 @@
+module v2.test.claim.self_host.witness_bulk_routing_test
+
+import v2.compiler.self_host.witness_bulk_routing {
+  witness_bulk_routing_sample_roster,
+  native_routed_entry_rows,
+  interpreted_retained_entry_rows,
+  emit_ineligible_entry_rows,
+  routing_row_for_entry,
+  witness_bulk_routing_total_holds,
+  witness_bulk_routing_zero_native_at_landing_holds
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.witness_execution_routing {
+  InterpretedRetained,
+  EmitIneligible
+}
+
+test fn witness_sample_roster_total_holds() -> Bool {
+  witness_bulk_routing_total_holds()
+}
+
+test fn witness_each_sample_entry_has_exactly_one_row() -> Bool {
+  fold(
+    witness_bulk_routing_sample_roster,
+    init: true,
+    f: fn(acc, row) {
+      acc && (length(xs: routing_row_for_entry(entry: row.entry)) == 1)
+    }
+  )
+}
+
+test fn witness_unlisted_entry_has_no_row() -> Bool {
+  length(xs: routing_row_for_entry(entry: "dag/test/claim/synthetic_unlisted_entry.dag")) == 0
+}
+
+test fn witness_zero_native_at_landing_holds() -> Bool {
+  witness_bulk_routing_zero_native_at_landing_holds()
+}
+
+test fn witness_retained_rows_carry_typed_reason_and_trigger() -> Bool {
+  fold(
+    interpreted_retained_entry_rows(),
+    init: true,
+    f: fn(acc, row) {
+      acc && match row.disposition {
+        InterpretedRetained { reason: _, dissolution: _ } => true
+        _ => false
+      }
+    }
+  )
+}
+
+test fn witness_ineligible_rows_carry_typed_cause() -> Bool {
+  fold(
+    emit_ineligible_entry_rows(),
+    init: true,
+    f: fn(acc, row) {
+      acc && match row.disposition {
+        EmitIneligible { cause: _, detail: _ } => true
+        _ => false
+      }
+    }
+  )
+}
+

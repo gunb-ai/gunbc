@@ -1,0 +1,281 @@
+module v2.test.claim.local_binding_shadow
+
+import v2.test.claim.local_binding_shadow_peer { shadow_pred, shadow_sentinel, unshadowed_sentinel }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SILENT FACE LEADS, BECAUSE IT IS WHAT MAKES THIS BELOW FLOOR RATHER THAN A NAMING
+// NUISANCE. A call site that spells a name held by BOTH a local binding and a module-level free
+// function reaches the FREE FUNCTION. Where the two disagree in arity that refuses loudly; where
+// they AGREE it returns a plausible wrong value and no diagnostic at all. Reproduced twice
+// independently on live corpus symbols before this fixture existed: a local bound to a named fn
+// and called as `p` returned a ParagraphBlock from gunbc.plans.md_helpers (visible only because
+// an unrelated cross-representation equality guard tripped on `== 42`), and silent-bear-842's
+// fabric observer consumed the same displacement as a Bool predicate -- constantly true, a fold
+// over three elements returning 3 where the direct fold counts 2, with nothing to see.
+//
+// THE LAW, ESTABLISHED ON A COMPLETE GRID AND NOT INFERRED ACROSS IT. Two lanes measured three
+// binding forms against two bound values independently and agree in all six cells:
+//
+//     binding form   value = named top-level fn   value = lambda
+//     let            reaches the free function    reaches the local
+//     parameter      reaches the free function    reaches the local
+//     pattern        reaches the free function    reaches the local
+//
+// So the BINDING FORM IS NOT THE AXIS. An earlier revision of this finding said it was, from
+// three arms that varied the form while holding the value constant, and was retracted: three
+// arms agreeing on the wrong axis is not a result. The value is the axis, and the lambda column
+// is carried below as a GREEN CONTROL rather than dropped, because without it a reader concludes
+// every local binding is unsafe -- which is exactly what the retracted law said.
+//
+// AND THE COLLISION IS DECIDED AT THE CALL SITE, NOT AT THE BINDING (silent-bear-842, confirmed
+// here independently). The SAME named-fn value is wrong when called as `shadow_pred(0)` and
+// CORRECT when handed to a parameter spelled `pred` and applied there. That is why renaming
+// fixes it, and it narrows the law usefully: a local holding a named function is unsafe only at
+// a call site spelling its own name.
+//
+// PER-PATH QUALIFIER, so a reader running this the other way does not call it flaky
+// (silent-bear-842, measured): under ENTRY-SCOPED resolution the collision depends on the
+// module's import closure, and under WHOLE-CORPUS floor preparation it is UNCONDITIONAL -- the
+// floor folds every witness through one prepared subject, so a module that imports nothing still
+// meets the name. This fixture IMPORTS its shadowing symbol deliberately, so it reds on both
+// paths and needs no whole-corpus pool to reproduce.
+//
+// MEASUREMENT HYGIENE, and it is the reason the qualifier above exists at all
+// (silent-bear-842, from a wrong result they corrected): IMPORTS ARE MODULE-SCOPE, so an arm that
+// adds an import VOIDS EVERY EARLIER ARM'S MEASUREMENT IN THAT FILE. Five arms measured green
+// before the shadowing import was added all failed once it was present -- the arms did not
+// change, the module's name pool did. So an A/B across arms is only valid when the import block
+// is identical at both readings, which is a fact about how this defect is MEASURED rather than
+// about the defect.
+
+fn strictly_positive(n: Int) -> Bool {
+  n > 0
+}
+
+type PredCarrier {
+  shadow_pred: fn(Int) -> Bool
+}
+
+fn shadow_carrier_named() -> PredCarrier {
+  PredCarrier { shadow_pred: strictly_positive }
+}
+
+fn shadow_carrier_lambda() -> PredCarrier {
+  PredCarrier { shadow_pred: fn(n) { n > 0 } }
+}
+
+fn let_named() -> Bool {
+  let shadow_pred = strictly_positive
+  shadow_pred(0)
+}
+
+fn param_named(shadow_pred: fn(Int) -> Bool) -> Bool {
+  shadow_pred(0)
+}
+
+fn pattern_named() -> Bool {
+  match shadow_carrier_named() {
+    PredCarrier { shadow_pred: shadow_pred } => shadow_pred(0)
+  }
+}
+
+fn let_lambda() -> Bool {
+  let shadow_pred = fn(n) { n > 0 }
+  shadow_pred(0)
+}
+
+fn pattern_lambda() -> Bool {
+  match shadow_carrier_lambda() {
+    PredCarrier { shadow_pred: shadow_pred } => shadow_pred(0)
+  }
+}
+
+fn apply_as_pred(pred: fn(Int) -> Bool) -> Bool {
+  pred(0)
+}
+
+fn let_uncollided_named() -> Bool {
+  let uncollided_pred = strictly_positive
+  uncollided_pred(0)
+}
+
+fn let_named_applied_under_another_name() -> Bool {
+  let shadow_pred = strictly_positive
+  apply_as_pred(pred: shadow_pred)
+}
+
+fn pattern_named_applied_under_another_name() -> Bool {
+  match shadow_carrier_named() {
+    PredCarrier { shadow_pred: shadow_pred } => apply_as_pred(pred: shadow_pred)
+  }
+}
+
+// THE ONE ENROLLED ROW. Every conjunct asserts the DESIRED law -- the local binding is what the
+// call reaches -- so this is RED today and GREEN the day it is repaired. The three conjuncts are
+// one identity rather than three because they are one defect measured on one axis, and because
+// each returns a Bool: nothing here throws, so this row is an OBSERVED semantic red and never a
+// no-verdict. That distinction is the whole subject of the lane that authored it.
+//
+// A LOUD FACE EXISTS AND IS DELIBERATELY NOT AN ARM HERE. Against a shadowing symbol of a
+// DIFFERENT arity the call refuses (`call contract mismatch calling 'render': missing required
+// argument 'proto'`, measured against std.layout). A refusal is a thrown claim, which produces no
+// verdict at all, so expressing that face as a witness row would enrol exactly the non-verdict
+// debt this fixture's lane exists to reduce. It is recorded above instead.
+test fn local_named_function_binding_is_what_the_call_reaches() -> Bool {
+  !let_named()
+    && !param_named(shadow_pred: strictly_positive)
+    && !pattern_named()
+}
+
+// GREEN CONTROLS. They pass today and locate the boundary: the defect is the VALUE, not the
+// binding form, and not the act of binding locally at all.
+test fn lambda_binding_is_unaffected_control() -> Bool {
+  !let_lambda()
+    && !param_named(shadow_pred: fn(n) { n > 0 })
+    && !pattern_lambda()
+}
+
+// GREEN CONTROL for the call-site half: the same named-fn value, applied through a parameter
+// spelled differently, reaches the local. This is what makes the law narrow enough to imply its
+// own workaround.
+test fn named_binding_applied_under_another_name_is_unaffected_control() -> Bool {
+  !let_named_applied_under_another_name()
+    && !pattern_named_applied_under_another_name()
+}
+
+// GREEN CONTROL that makes the COLLISION the subject rather than named-function values generally:
+// the same named function, bound to a local whose name NOTHING shadows, called at that local's own
+// spelling -- the exact shape that reds above -- reaches the local. So the wrong arms differ from
+// this one in one variable only, the existence of a same-named free function.
+test fn uncollided_named_binding_is_unaffected_control() -> Bool {
+  !let_uncollided_named()
+}
+
+// ===========================================================================================
+// THE PERMANENT ARMS. Everything above measures the defect on a Bool, which was enough to
+// establish the law and is NOT enough to keep it. A Bool has two inhabitants, so a displaced call
+// and a correct call can agree by coincidence; these arms hold every axis equal except the VALUE
+// RETURNED, so a regression names the producer instead of merely disagreeing with it.
+//
+// EVERY AXIS THE DISPATCH NAMED IS HELD EQUAL between the local and the module function it
+// collides with: same arity, same parameter type, same result type, both total. The only
+// difference is the sentinel, and the local's sentinel is REQUIRED -- an arm asserting 2 cannot
+// be satisfied by the free function, which answers 900 for every input including this one.
+//
+// THE SHADOWING SYMBOL IS FIXTURE-OWNED, which is how the "unrelated global renamed or removed"
+// arm is answered here. That arm exists to catch a repair that works by accident of what else is
+// in scope; the construction that forecloses it is that nothing outside this fixture's own two
+// files can supply, rename or delete `shadow_sentinel`, so there is no unrelated global whose
+// motion could change these results. That is stronger than an A/B over one rename, which only
+// samples the globals someone thought to move.
+
+fn local_sentinel(n: Int) -> Int {
+  n + 1
+}
+
+fn sentinel_carrier_named() -> SentinelCarrier {
+  SentinelCarrier { shadow_sentinel: local_sentinel }
+}
+
+type SentinelCarrier {
+  shadow_sentinel: fn(Int) -> Int
+}
+
+fn let_sentinel_positional() -> Int {
+  let shadow_sentinel = local_sentinel
+  shadow_sentinel(1)
+}
+
+fn param_sentinel(shadow_sentinel: fn(Int) -> Int) -> Int {
+  shadow_sentinel(1)
+}
+
+fn pattern_sentinel() -> Int {
+  match sentinel_carrier_named() {
+    SentinelCarrier { shadow_sentinel: shadow_sentinel } => shadow_sentinel(1)
+  }
+}
+
+fn no_local_binding_reaches_the_module_function() -> Int {
+  unshadowed_sentinel(1)
+}
+
+fn no_local_binding_reaches_the_shadowed_module_function() -> Int {
+  shadow_sentinel(1)
+}
+
+// PERMANENT ARM 1 -- the local callable wins at every binding form. POSITIONAL ONLY, and that is
+// a ruled property of the language rather than a gap in this fixture: a named-argument call
+// through a function VALUE is a blocking refusal (CallNamedArgOnFunctionValue), operator-required,
+// with direct declaration calls keeping named arguments and function-value calls staying
+// positional-only. The named spelling is therefore measured where it lives -- at COMPILE, in
+// test.claim.local_binding_shadow_compile_witness, which pins that the SHAPE tier and this
+// DISPATCH tier consume ONE binding standing: shape sees a function value and refuses the label,
+// dispatch sees the same function value and calls the local. Before the repair those two tiers
+// disagreed about the same binding, which is what let a labeled call be silently accepted by the
+// free function while the shape check was already calling it a function value.
+test fn local_callable_wins_over_the_same_named_module_function() -> Bool {
+  let_sentinel_positional() == 2
+    && param_sentinel(shadow_sentinel: local_sentinel) == 2
+    && pattern_sentinel() == 2
+}
+
+// PERMANENT ARM 2 -- the opposite direction, and the one a repair that simply stopped consulting
+// the free-function table would break. With NO local binding competing for the spelling, the
+// module function is still what the call reaches: 700 from a name nothing shadows, and 900 from
+// the very name the arm above displaces. The second conjunct is the load-bearing one -- it proves
+// the free-function tier was narrowed rather than removed.
+test fn a_module_function_is_still_callable_with_no_local_binding() -> Bool {
+  no_local_binding_reaches_the_module_function() == 700
+    && no_local_binding_reaches_the_shadowed_module_function() == 900
+}
+
+// PERMANENT ARM 3 -- the sentinel is REQUIRED, not merely observed. Stated as its own row because
+// the two arms above would both pass against an interpreter that answered 2 and 900 for reasons
+// unrelated to which function ran: this one asserts the free function's answer is ABSENT from the
+// shadowed positions and the local's answer is ABSENT from the unshadowed one, so each result is
+// evidence about a producer rather than a coincidence of arithmetic.
+test fn each_sentinel_is_absent_from_the_other_positions() -> Bool {
+  let_sentinel_positional() != 900
+    && pattern_sentinel() != 900
+    && no_local_binding_reaches_the_shadowed_module_function() != 2
+}
+
+// ===========================================================================================
+// THE STILL-OPEN HALF, ENROLLED AS AN EXPECTED RED RATHER THAN LEFT IN PROSE. The repair above
+// closed the case where the local binding holds something CALLABLE. Where the local holds a
+// NON-CALLABLE value the call still falls through to the module free function and returns its
+// answer: `let shadow_sentinel = 5` followed by `shadow_sentinel(1)` evaluates to 900, measured by
+// execution. That is the identical below-floor class -- a plausible wrong value, no diagnostic --
+// with the callable half repaired and this half untouched.
+//
+// AND ITS COMPILE-SIDE TWIN IS ALREADY GREEN, which is what makes this worth a row rather than a
+// note. v2.test.claim.local_binding_shadow_compile measures that a labeled call through this exact
+// binding refuses CallNamedArgOnFunctionValue -- the SHAPE tier names the callee a function value
+// even when the bound value is an Int -- while DISPATCH walks past the binding to the peer. Two
+// tiers, one binding, opposite answers. The repair made them agree for callable bindings; they
+// still disagree here.
+//
+// WHY IT IS NOT REPAIRED IN THE SAME CHANGE, stated as a scope decision rather than a discovery
+// order. Refusing on ANY lexical binding rather than a callable one widens the gate over every
+// spelling in the corpus that shadows a builtin with a non-callable value, and that population is
+// not measured. A widening whose blast radius is unmeasured is exactly the shape that swallows its
+// own controls, so it is filed here -- one row, one class, an OBSERVED semantic red that returns a
+// Bool and never throws -- and repaired against a measured population.
+//
+// NEXT-RUNG TRIGGER: a census of lexical bindings whose spelling collides with a builtin or
+// module free function and whose bound value is not callable. The row retires when that population
+// is enumerated and the gate is widened to refuse over it.
+
+fn noncallable_local_shadow() -> Int {
+  let shadow_sentinel = 5
+  shadow_sentinel(1)
+}
+
+test fn a_noncallable_local_binding_does_not_fall_through_to_the_module_function() -> Bool {
+  noncallable_local_shadow() != 900
+}

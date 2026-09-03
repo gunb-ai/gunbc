@@ -1,41 +1,9 @@
 module v2.lens.unit_modeling
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
-import v2.std.node {
-  Node,
-  Edge,
-  Named,
-  Positional,
-  TypeNode,
-  ComputationNode,
-  Symbol,
-  node_subtree_nodes
-}
+import v2.std.witness { Holds }
 import v2.std.node_query { edge_field_type_name }
-import v2.std.collection {
-  List,
-  Map,
-  Optional,
-  Present,
-  Absent,
-  optional_present,
-  optional_absent,
-  optional_prefer_first_present,
-  empty_map,
-  map_insert,
-  map_get
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Accepted,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  node_locus
-}
-import v2.std.witness { Holds, Witness }
+import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
+import v2.std.optional { optional_absent, optional_present, optional_prefer_first_present }
 
 type UnitFieldRow {
   field: Symbol
@@ -87,7 +55,7 @@ fn unit_field_token_map() -> Map<Symbol, Symbol> {
 }
 
 fn field_name_has_known_carrier(name: Symbol) -> Bool {
-  match map_get(m: unit_field_token_map(), key: name) {
+  match v2.std.collection.map_get(m: unit_field_token_map(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
@@ -107,7 +75,7 @@ fn exemption_marker_set() -> Map<Symbol, Symbol> {
 }
 
 fn name_is_exempt(name: Symbol) -> Bool {
-  match map_get(m: exemption_marker_set(), key: name) {
+  match v2.std.collection.map_get(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
@@ -136,17 +104,11 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
 fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
-      fold(carrier.children, init: Absent, f: fn(acc, edge) {
+      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
         optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
       })
     ComputationNode { behavior: _ } => Absent
   }
-}
-
-fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
-  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, n) {
-    optional_prefer_first_present(left: acc, right: carrier_first_unit_violation(carrier: n))
-  })
 }
 
 fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
@@ -165,16 +127,17 @@ fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
   }
 }
 
+// Node-local predicate on the per-subtree-node roster (same grain as fact_density):
+// carrier_first_unit_violation reads only the node's direct children. A subtree walk inside the
+// gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2).
+
 fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
-  match subtree_first_unit_violation(node: node) {
+  match carrier_first_unit_violation(carrier: node) {
     Present { value: d } => outcome_rejected(d)
     Absent => outcome_accepted(value: Holds { value: node })
   }
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "whether a bare scalar DENOTES a modeled quantity needs domain knowledge (is 4926 a contact_count? is count a magnitude?) -- the DESIGN sec 2 leaf-side, undecidable"
-  },
-  rationale: "The Measure<Quantity,Scale> phantom-type wall is the region-1 construction; flagging a scalar NOT yet on Measure requires deciding whether the scalar is a quantity, which is domain knowledge -- so this stays an ADVISORY region-3 lens."
+  class: RatchetForever
 }

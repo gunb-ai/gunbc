@@ -1,0 +1,7 @@
+module test.fixture.import_admission_provider
+
+import std.types { Int }
+
+fn import_admission_listed(value: Int) -> Int { value }
+
+fn import_admission_unlisted(value: Int) -> Int { value + 1 }

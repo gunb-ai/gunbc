@@ -1,0 +1,144 @@
+module gunbc.bmc_virtual_media
+
+import std.types { NonEmptyStr, String, Int, Bool, List, Port }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.storage.nbd {
+  NbdExport,
+  NbdClientAttach,
+  nbd_server_config_text,
+  nbd_server_command,
+  nbd_client_attach_command,
+  nbd_client_disconnect_command,
+}
+import extdeps.linux.usb_gadget {
+  UsbGadget,
+  MassStorageLun,
+  ConfigfsOp,
+  usb_gadget_setup_ops,
+  usb_gadget_setup_script,
+  usb_gadget_teardown_script,
+}
+import extdeps.bmc.virtual_media {
+  VirtualMediaIntent,
+  VirtualMediaSource,
+  VirtualMediaTransport,
+  ConfigfsGadgetParams,
+  ConfigfsGadgetTransport,
+}
+import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
+import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
+
+type BmcVirtualMediaPlan {
+  bmc_host: NonEmptyStr
+  bmc_ssh_target: NonEmptyStr
+  srv1_host: NonEmptyStr
+  iso_path: NonEmptyStr
+  export_name: NonEmptyStr
+  nbd_port: Port
+  nbd_device: NonEmptyStr
+  udc: NonEmptyStr
+  nbd_config_path: NonEmptyStr
+}
+
+data srv4_virtual_media_source: VirtualMediaSource = VirtualMediaSource {
+  iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso",
+}
+
+data srv4_virtual_media_intent: VirtualMediaIntent = VirtualMediaIntent {
+  bmc_host: "192.168.1.195",
+  source: srv4_virtual_media_source,
+  read_only: true,
+}
+
+data srv4_configfs_params: ConfigfsGadgetParams = ConfigfsGadgetParams {
+  nbd_server_host: srv1_host_lan_endpoint.address,
+  nbd_port: srv3_nbd_proxy_local_port,
+  export_name: "srv4iso",
+  nbd_device: "/dev/nbd0",
+  udc: "1e6a0000.usb-vhub:p3",
+}
+
+data srv4_configfs_transport: VirtualMediaTransport = ConfigfsGadgetTransport {
+  params: srv4_configfs_params,
+}
+
+fn bmc_virtual_media_plan_of(intent: VirtualMediaIntent, params: ConfigfsGadgetParams) -> BmcVirtualMediaPlan {
+  BmcVirtualMediaPlan {
+    bmc_host: intent.bmc_host,
+    bmc_ssh_target: join(["root@", intent.bmc_host as String], "") as NonEmptyStr,
+    srv1_host: params.nbd_server_host,
+    iso_path: intent.source.iso_path,
+    export_name: params.export_name,
+    nbd_port: params.nbd_port,
+    nbd_device: params.nbd_device,
+    udc: params.udc,
+    nbd_config_path: "/tmp/gunbc-nbd-srv4.conf",
+  }
+}
+
+data srv4_bmc_virtual_media_plan: BmcVirtualMediaPlan = bmc_virtual_media_plan_of(
+  intent: srv4_virtual_media_intent,
+  params: srv4_configfs_params,
+)
+
+fn plan_nbd_export(plan: BmcVirtualMediaPlan) -> NbdExport {
+  NbdExport {
+    export_name: plan.export_name,
+    backing_path: plan.iso_path,
+    port: plan.nbd_port,
+    read_only: true,
+  }
+}
+
+fn plan_nbd_client_attach(plan: BmcVirtualMediaPlan) -> NbdClientAttach {
+  NbdClientAttach {
+    server: plan.srv1_host,
+    port: plan.nbd_port,
+    export_name: plan.export_name,
+    device: plan.nbd_device,
+  }
+}
+
+fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> UsbGadget {
+  UsbGadget {
+    config_root: "/sys/kernel/config/usb_gadget",
+    name: "gunbcvm",
+    id_vendor: "0x1d6b",
+    id_product: "0x0104",
+    manufacturer: "gunbc",
+    product: "gunbc-virtual-media",
+    serial: "srv4-0001",
+    config_label: "c.1",
+    lun: MassStorageLun {
+      backing_device: plan.nbd_device,
+      cdrom: false,
+      read_only: true,
+      removable: true,
+    },
+    udc: plan.udc,
+  }
+}
+
+fn srv4_nbd_server_config_text() -> String {
+  nbd_server_config_text(export: plan_nbd_export(plan: srv4_bmc_virtual_media_plan))
+}
+
+fn srv4_nbd_server_command_text() -> String {
+  shell_command_render(command: nbd_server_command(config_path: srv4_bmc_virtual_media_plan.nbd_config_path))
+}
+
+fn srv4_nbd_client_attach_command_text() -> String {
+  shell_command_render(command: nbd_client_attach_command(attach: plan_nbd_client_attach(plan: srv4_bmc_virtual_media_plan)))
+}
+
+fn srv4_vm_gadget_setup_ops() -> List<ConfigfsOp> {
+  usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+}
+
+fn srv4_vm_gadget_setup_script() -> String {
+  usb_gadget_setup_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+}
+
+fn srv4_vm_gadget_teardown_script() -> String {
+  usb_gadget_teardown_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+}

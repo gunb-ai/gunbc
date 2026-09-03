@@ -1,0 +1,471 @@
+module gunbc.site.moodboard
+
+import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+import gunbc.site.markup { txt, el, el_class }
+import std.types { NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import extdeps.languages.css.properties { Cursor }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.design.principles {
+  RegisterPrinciple, register_principles, register_thesis, principle_id_key,
+}
+import gunbc.design.theme {
+  Theme, ThemeRole, RoleAssignment, site_themes, theme_roles, night_theme, day_theme,
+  themes_coherent, theme_root_css, assignment_paint, role_key, role_eq, role_var,
+  CanvasRole, role_decl,
+}
+import gunbc.design.material {
+  TimingToken, timing_scale, respond_fast, reveal_deliberate,
+  BuildRule, StaticRule, MotionTrigger, OnHover, SelfResponse,
+  TriggerShape, CssDecl, decl, serialize_rules, reduced_motion_block,
+}
+import gunbc.site.tokens {
+  ResponseRule, WithinSubject, ContainerHas, OnFocusVisible,
+  SurfaceRole, BorderRole, TextRole, TextDimRole,
+  FigureRole, FigureLitRole, FigureEdgeRole, FocusRole, BoundaryRole,
+}
+import gunbc.design.interaction {
+  BehaviorRow, InteractiveElement,
+  Approach, Enter, Receipt, Reveal, Brighten,
+  StarElement, HashElement, SwatchElement, element_id_eq,
+  coverage_gaps, verb_key, response_key,
+}
+import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
+import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
+import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
+
+// Layer 6: the page. Everything visible projects from the layers below — principles (laws) ->
+// tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures)
+// -> this composition. Every color routes through a theme role var: :root carries the night theme,
+// one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows
+// (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes).
+// The stylesheet is DERIVED from the behavior rows via realize_behavior, so a declared behavior
+// with no realization is countable.
+
+data moodboard_elements: List<InteractiveElement> = [
+  InteractiveElement { element: StarElement, verbs: [Approach] },
+  InteractiveElement { element: HashElement, verbs: [Approach] },
+  InteractiveElement { element: SwatchElement, verbs: [Approach] },
+]
+
+data moodboard_behaviors: List<BehaviorRow> = [
+  BehaviorRow { element: StarElement, verb: Approach, response: Brighten, timing: respond_fast },
+  BehaviorRow { element: StarElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
+  BehaviorRow { element: HashElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
+  BehaviorRow { element: SwatchElement, verb: Approach, response: Brighten, timing: respond_fast },
+]
+
+fn approach_triggers() -> List<MotionTrigger> {
+  [OnHover, OnFocusVisible]
+}
+
+fn star_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ClassSelector { name: "star" },
+      shape: SelfResponse,
+      trigger: t,
+      transition_props: "fill",
+      timing: timing,
+      base_decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Cursor, value: "pointer") ],
+      response_decls: [ role_decl(prop: Fill, r: FigureLitRole) ],
+    })
+}
+
+fn star_legend_reveal_rules(timing: TimingToken) -> List<BuildRule> {
+  fold(layer_stars, init: [], f: (acc, s) =>
+    concat(acc, map(approach_triggers(), t =>
+      ResponseRule {
+        subject: RawSelector { text: concat(".star-", s.key) },
+        shape: ContainerHas { container: ".hero", target: concat(".legend-", s.key) },
+        trigger: t,
+        transition_props: "opacity",
+        timing: timing,
+        base_decls: [ decl(prop: Opacity, value: "0.5") ],
+        response_decls: [ decl(prop: Opacity, value: "1") ],
+      })))
+}
+
+fn hash_reveal_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ClassSelector { name: "hash" },
+      shape: WithinSubject { target: ".hash-full" },
+      trigger: t,
+      transition_props: "opacity",
+      timing: timing,
+      base_decls: [ decl(prop: Opacity, value: "0") ],
+      response_decls: [ decl(prop: Opacity, value: "1") ],
+    })
+}
+
+fn swatch_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ClassSelector { name: "swatch" },
+      shape: SelfResponse,
+      trigger: t,
+      transition_props: "border-color",
+      timing: timing,
+      base_decls: [ decl(prop: Border, value: "1px solid var(--border)") ],
+      response_decls: [ role_decl(prop: BorderColor, r: FigureEdgeRole) ],
+    })
+}
+
+type RealizedBehavior
+  = RealizedRules { rules: List<BuildRule> }
+  | UnrealizedBehavior { element: String, verb: String, response: String }
+
+fn realize_behavior(row: BehaviorRow) -> RealizedBehavior {
+  let e = row.element
+  let r = response_key(r: row.response)
+  if element_id_eq(a: e, b: StarElement) && r == "brighten" {
+    RealizedRules { rules: star_brighten_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: StarElement) && r == "reveal" {
+    RealizedRules { rules: star_legend_reveal_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: HashElement) && r == "reveal" {
+    RealizedRules { rules: hash_reveal_rules(timing: row.timing) }
+  } else if element_id_eq(a: e, b: SwatchElement) && r == "brighten" {
+    RealizedRules { rules: swatch_brighten_rules(timing: row.timing) }
+  } else {
+    UnrealizedBehavior { element: element_id_key(id: e), verb: verb_key(v: row.verb), response: r }
+  }
+}
+
+fn unrealized_behaviors(rows: List<BehaviorRow>) -> List<RealizedBehavior> {
+  fold(rows, init: [], f: (acc, row) => match realize_behavior(row: row) {
+    RealizedRules { rules: _ } => acc
+    UnrealizedBehavior { element, verb, response } =>
+      concat(acc, [UnrealizedBehavior { element: element, verb: verb, response: response }])
+  })
+}
+
+fn behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
+  fold(rows, init: [], f: (acc, row) => match realize_behavior(row: row) {
+    RealizedRules { rules } => concat(acc, rules)
+    UnrealizedBehavior { element: _, verb: _, response: _ } => acc
+  })
+}
+
+fn figure_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: "mark-point" }, decls: [ role_decl(prop: Fill, r: FigureRole) ] },
+    StaticRule { selector: ClassSelector { name: "mark-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
+    StaticRule { selector: ClassSelector { name: "mark-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.16") ] },
+    StaticRule { selector: ClassSelector { name: "mark-halo-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
+    StaticRule { selector: ClassSelector { name: "mark-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
+    StaticRule { selector: ClassSelector { name: "sky-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
+    StaticRule { selector: ClassSelector { name: "star-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.1") ] },
+  ]
+}
+
+fn static_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+      role_decl(prop: Background, r: CanvasRole),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: LineHeight, value: "1.55"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+      decl(prop: MaxWidth, value: "54rem"),
+      decl(prop: Margin, value: "0 auto"),
+      decl(prop: Padding, value: "3rem 1.5rem 4rem"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
+      decl(prop: FontSize, value: "1.4rem"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: LetterSpacing, value: "0.01em"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: "0.25rem 0 0"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "section" }, decls: [
+      decl(prop: MarginTop, value: "3rem"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+      decl(prop: FontSize, value: "0.85rem"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: LetterSpacing, value: "0.08em"),
+      decl(prop: TextTransform, value: "lowercase"),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: "1px solid var(--border)"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Padding, value: "1.1rem 1.25rem"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      decl(prop: FontSize, value: "0.82em"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "mark" }, decls: [
+      decl(prop: Height, value: "3rem"),
+      decl(prop: MarginRight, value: "1.5rem"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "auto"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hero" }, decls: [
+      decl(prop: Margin, value: "0"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "legend" }, decls: [
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: FontSize, value: "0.85rem"),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "legend-key" }, decls: [
+      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "swatch" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Padding, value: "0.3rem"),
+      decl(prop: Margin, value: "0 0.5rem 0.25rem 0"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "chip-inline" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: Width, value: "2.4rem"),
+      decl(prop: Height, value: "1.2rem"),
+      decl(prop: BorderRadius, value: "2px"),
+      decl(prop: Border, value: "1px solid var(--border)"),
+      decl(prop: VerticalAlign, value: "middle"),
+      decl(prop: MarginRight, value: "0.5rem"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ledger" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: BorderCollapse, value: "collapse"),
+      decl(prop: FontSize, value: "0.85rem"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".ledger td" }, decls: [
+      decl(prop: Padding, value: "0.45rem 0.75rem 0.45rem 0"),
+      decl(prop: BorderBottom, value: "1px solid var(--border)"),
+      decl(prop: VerticalAlign, value: "top"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "boundary" }, decls: [
+      decl(prop: BorderLeft, value: "2px solid var(--boundary)"),
+      decl(prop: PaddingLeft, value: "1rem"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "foot" }, decls: [
+      decl(prop: MarginTop, value: "4rem"),
+      decl(prop: FontSize, value: "0.78rem"),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+  ]
+}
+
+fn moodboard_rules() -> List<BuildRule> {
+  concat(concat(static_rules(), figure_rules()), behavior_rules(rows: moodboard_behaviors))
+}
+
+fn moodboard_css() -> String {
+  join([
+    theme_root_css(base: night_theme, alternate: day_theme),
+    serialize_rules(rules: moodboard_rules()),
+    reframe_css(rules: moodboard_rules()),
+    reduced_motion_block(rules: behavior_rules(rows: moodboard_behaviors)),
+  ], "\n")
+}
+
+fn moodboard_nav_js() -> String {
+  reframe_watcher_js()
+}
+
+fn theme_paint_of(t: Theme, r: ThemeRole) -> String {
+  fold(t.assignments, init: "", f: (acc, a) =>
+    if role_eq(a: a.role, b: r) { assignment_paint(a: a) } else { acc })
+}
+
+fn themes_serialized() -> String {
+  join(map(site_themes, t =>
+    join(map(t.assignments, a => join([t.name, ".", role_key(r: a.role), "=", assignment_paint(a: a)], "")), ";")), "|")
+}
+
+fn moodboard_digest() -> String {
+  content_hash_atom(value: concat(register_thesis, themes_serialized()) as NonEmptyStr).digest as String
+}
+
+fn short_digest(digest: String) -> String {
+  substring(s: digest, start: 0, end: 8)
+}
+
+fn masthead() -> Fragment {
+  el_class("header", "masthead", [
+    el_class("p", "wordmark", [ txt("gunb.ai") ]),
+    el_class("p", "thesis", [ txt(register_thesis) ]),
+  ])
+}
+
+fn mark_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("the mark — one spec, three depths") ]),
+    el_class("div", "panel", [
+      render_mark(depth: 0),
+      render_mark(depth: 1),
+      render_mark(depth: 3),
+    ]),
+  ])
+}
+
+fn hero_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("the layer dag as an asterism — touch a star") ]),
+    el_class("div", "panel", [ constellation_figure() ]),
+  ])
+}
+
+fn theme_chip(paint_value: String) -> Fragment {
+  Element {
+    tag: "span",
+    attributes: [
+      attr(name: "class", value: "chip-inline" ),
+      attr(name: "style", value: concat("background: ", paint_value) ),
+    ],
+    children: [],
+  }
+}
+
+fn theme_cell(t: Theme, r: ThemeRole) -> Fragment {
+  let p = theme_paint_of(t: t, r: r)
+  Element {
+    tag: "td",
+    attributes: [],
+    children: [
+      Element {
+        tag: "span",
+        attributes: [
+          attr(name: "class", value: "swatch" ),
+          attr(name: "tabindex", value: "0" ),
+        ],
+        children: [ theme_chip(paint_value: p), el_class("span", "mono", [ txt(p) ]) ],
+      },
+    ],
+  }
+}
+
+fn theme_role_row(r: ThemeRole) -> Fragment {
+  el("tr", [
+    el_class("td", "mono", [ txt(role_key(r: r)) ]),
+    theme_cell(t: night_theme, r: r),
+    theme_cell(t: day_theme, r: r),
+  ])
+}
+
+fn themes_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("themes — one role model, night and day projections") ]),
+    el_class("table", "ledger", concat(
+      [ el("tr", [
+          el_class("td", "mono", [ txt("role") ]),
+          el_class("td", "mono", [ txt("night") ]),
+          el_class("td", "mono", [ txt("day") ]),
+        ]) ],
+      map(theme_roles, r => theme_role_row(r: r)))),
+  ])
+}
+
+fn timing_row(t: TimingToken) -> Fragment {
+  el("tr", [
+    el_class("td", "mono", [ txt(t.name) ]),
+    el_class("td", "mono", [ txt(join([to_string(t.duration_ms), "ms ", t.easing], "")) ]),
+  ])
+}
+
+fn timing_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("the timing scale — three tokens, no other durations exist") ]),
+    el_class("table", "ledger", map(timing_scale, t => timing_row(t: t))),
+  ])
+}
+
+fn principle_row(p: RegisterPrinciple) -> Fragment {
+  el("tr", [
+    el_class("td", "mono", [ txt(principle_id_key(id: p.id)) ]),
+    el("td", [ txt(p.law) ]),
+    el_class("td", "mono", [ txt(join([p.enforced_by.module_path, ".", p.enforced_by.decl_name], "")) ]),
+  ])
+}
+
+fn principles_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("base principles — each law names its enforcing carrier") ]),
+    el_class("table", "ledger", map(register_principles, p => principle_row(p: p))),
+  ])
+}
+
+fn boundary_section() -> Fragment {
+  el("section", [
+    el("h2", [ txt("a boundary — refusal does not glow") ]),
+    el_class("div", "panel boundary", [
+      el_class("p", "mono", [
+        txt("invariant — a bright saturated material fails the glare envelope; the row is inadmissible at the theme witness, no artifact emitted"),
+      ]),
+    ]),
+  ])
+}
+
+fn hallmark() -> Fragment {
+  let digest = moodboard_digest()
+  Element {
+    tag: "footer",
+    attributes: [
+      attr(name: "class", value: "foot hash" ),
+      attr(name: "tabindex", value: "0" ),
+    ],
+    children: [
+      el_class("span", "mono", [ txt(concat("emitted from gunbc.site.moodboard · thesis+themes digest ", short_digest(digest: digest))) ]),
+      el_class("span", "mono hash-full", [ txt(concat(" · full ", digest)) ]),
+    ],
+  }
+}
+
+fn moodboard_page() -> Fragment {
+  Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
+    el("head", [
+      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+      Element { tag: "meta", attributes: [
+        attr(name: "name", value: "viewport" ),
+        attr(name: "content", value: "width=device-width, initial-scale=1" ),
+      ], children: [] },
+      el("title", [ txt("gunb.ai — register moodboard (phase 0)") ]),
+      el("style", [ txt(moodboard_css()) ]),
+      Element { tag: "script", attributes: [
+        attr(name: "src", value: "assets/nav.js" ),
+        attr(name: "defer", value: "" ),
+      ], children: [] },
+    ]),
+    el("body", [
+      el("main", [
+        masthead(),
+        mark_section(),
+        hero_section(),
+        themes_section(),
+        timing_section(),
+        principles_section(),
+        boundary_section(),
+        hallmark(),
+      ]),
+    ]),
+  ] }
+}
+
+fn moodboard_html() -> String {
+  match try_serialize_html_source(node: moodboard_page()) {
+    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+    EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
+  }
+}
+
+fn moodboard_preconditions_hold() -> Bool {
+  themes_coherent(themes: site_themes, roles: theme_roles)
+    && coverage_gaps(elements: moodboard_elements, rows: moodboard_behaviors).length() == 0
+    && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
+    && unthemed_color_decls(rules: moodboard_rules()).length() == 0
+    && all_forks_rejoin(nodes: mark_nodes, edges: mark_edges, source: "a")
+}

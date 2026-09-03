@@ -1,0 +1,109 @@
+module test.claim.deploy_access_privilege_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
+
+fn host_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+test fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
+  let d = deploy_access_check(
+    access: ci_deploy_srv1_access,
+    actor: deploy_access_unprivileged_fixture_actor()
+  )
+  match d {
+    Permit => false
+    Deny { refusal: _ } =>
+      string_contains(
+        s: deploy_access_decision_reason(d: d),
+        pattern: "principal mismatch"
+      )
+  }
+}
+
+test fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
+  match host_effect_apply_gated(
+    access: ci_deploy_srv1_access,
+    target: host_os_target(),
+    effect: ShellCommand {
+      script: concat("echo ", privilege_mutation_marker, " && exit 99")
+    },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
+  ) {
+    NotConverged { reason: _, applied: intent } =>
+      match intent.privilege_denial {
+        Present { value: d } =>
+          match d {
+            Deny { refusal: _ } =>
+              !string_contains(s: deploy_access_decision_reason(d: d), pattern: privilege_mutation_marker)
+            Permit => false
+          }
+        Absent => false
+      }
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+test fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
+  let r = host_effect_apply_gated(
+    access: ci_deploy_srv1_access,
+    target: host_os_target(),
+    effect: ShellCommand { script: concat("echo ", privilege_mutation_marker) },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
+  )
+  match host_effect_drive_directive(r: r) {
+    Refused { reason: _ } =>
+      match r {
+        NotConverged { reason: _, applied: intent } =>
+          match intent.privilege_denial {
+            Present { value: Deny { refusal: _ } } => true
+            _ => false
+          }
+        Converged { evidence: _, applied: _ } => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_privileged_fixture_mutation_applies() -> Bool {
+  reconciliation_converged(r: host_effect_apply_gated(
+    access: ci_deploy_srv1_access,
+    target: host_os_target(),
+    effect: ShellCommand { script: "true" },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    fixture_actor: Present {
+      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+    }
+  ))
+}
+
+test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
+  match host_effect_apply_gated(
+    access: ci_deploy_srv1_access,
+    target: host_os_target(),
+    effect: ShellCommand {
+      script: concat("echo ", privilege_mutation_marker)
+    },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    fixture_actor: Present {
+      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+    }
+  ) {
+    Converged { evidence: ev, applied: _ } =>
+      match ev {
+        ShellEffectApplied { exit_code: _, stdout: stdout, stderr: _ } =>
+          string_contains(s: stdout, pattern: privilege_mutation_marker)
+        ConvergePlanApplied { exit_code: _, stdout: _ } => false
+        ToolchainHomeInterferenceDiscriminated => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}

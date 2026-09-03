@@ -1,0 +1,244 @@
+module gunbc.machine_intake_access
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import extdeps.bmc.access_profile {
+  AccessProfileAmbiguous,
+  AccessProfileCatalogRowRefused,
+  AccessProfileKnown,
+  AccessProfileUncatalogued,
+  BmcAccessObservation,
+  BmcAccessObservationStanding,
+  BmcAccessObserved,
+  BmcAccessProfile,
+  BmcAccessProfileCatalogRow,
+  BmcAccessProfileCatalogRowStanding,
+  BmcAccessProfileProvenance,
+  BmcAccessUnobserved,
+  BmcObservedIdentity,
+  ProfileFromExternalAuthority,
+  ProfilePromotedFromObservation,
+  bmc_access_profile_for,
+}
+import gunbc.machine_intake_subject { MachineIntakeSubject, content_hash_equal }
+import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
+
+// THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3
+// §1 and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the
+// external shapes — profile, observation, the catalog lookup. This module owns the WORKFLOW
+// standings around them: whether the lookup ran, whether this controller was observed at all,
+// whether the observation belongs to THIS attempt, whether every raw blob the observation and
+// its nested probe were read from is named in the receipt's evidence manifest, whether a
+// promoted profile's provenance has been verified by a producer that can resolve its receipts,
+// and the one record — BoundBmcAccessContext — that exists only when every one of those joins
+// has held. The solver consumes that record and never the loose inputs, so a capability row
+// for release A can no longer be handed beside a profile and observation for release B: the
+// capability row is read off the profile, and the profile was admitted against the
+// observation's identity. It also owns BootDeliveryTarget — the (subject, controller) pair
+// every transport-local standing must be bound to — because the same join that binds an access
+// context binds every other piece of evidence a delivery may rest on.
+// WHO and WHERE. The intake subject (unit key, manifests, attempt) plus the
+// protocol-neutral controller the plan will drive. The delivery solver, the
+// configfs qualification, the UEFI HTTP standing and the network-boot
+// establishment all carry this pair, and the solver refuses any of them whose
+// pair is not the request's (ruling 4 §1).
+type BootDeliveryTarget {
+  subject: MachineIntakeSubject
+  endpoint: BmcControllerEndpoint
+}
+
+fn same_boot_delivery_target(left: BootDeliveryTarget, right: BootDeliveryTarget) -> Bool {
+  same_intake_subject(left: left.subject, right: right.subject) && left.endpoint == right.endpoint
+}
+
+// A live observation as a receipt of THIS attempt: the subject it was taken
+// for, the standing (observed or not), and the evidence MANIFEST — every raw
+// blob captured during the observation, by digest. The observation's own
+// raw_response and the nested Redfish probe's raw_response must both be named
+// in it; a blob the plan derives a locator or protocol from that no receipt
+// names is not evidence (ruling 4 §5).
+type AccessObservationReceipt {
+  subject: MachineIntakeSubject
+  standing: BmcAccessObservationStanding
+  evidence_manifest: List<EvidenceRef>
+}
+
+// WHETHER A PROMOTED PROFILE'S RECEIPTS WERE RESOLVED (ruling 4 §4). A catalog
+// row promoted from an observation names two receipts by digest; two
+// hash-shaped values can be authored on any row, and nothing here can resolve
+// them, because the evidence store that would is INTAKE-AGENT-0A's producer.
+// Until that producer exists every promoted profile is Unverified and the
+// binder refuses it: the fail-closed control exists today without pretending
+// receipt lookup does. ProfilePromotionVerified carries the resolved evidence
+// and has no producer in this module — the store-backed producer constructs
+// it and is the only thing that may.
+type ProfilePromotionVerificationStanding
+  = ProfilePromotionVerified { observation: EvidenceRef, promotion: EvidenceRef }
+  | ProfilePromotionUnverified { observation_receipt: ContentHash, promotion_receipt: ContentHash }
+
+fn verify_profile_promotion(observation_receipt: ContentHash, promotion_receipt: ContentHash) -> ProfilePromotionVerificationStanding {
+  ProfilePromotionUnverified { observation_receipt: observation_receipt, promotion_receipt: promotion_receipt }
+}
+
+// What the delivery solver is allowed to read. Every field is a consequence of
+// a join that bind_bmc_access_context executed; there is no constructor path
+// that fills it from loose parts.
+type BoundBmcAccessContext {
+  subject: MachineIntakeSubject
+  endpoint: BmcControllerEndpoint
+  identity: BmcObservedIdentity
+  capability_row: BmcFirmwareReleaseCapabilityRow
+  profile: BmcAccessProfile
+  profile_provenance: BmcAccessProfileProvenance
+  observation: BmcAccessObservation
+  evidence_manifest: List<EvidenceRef>
+}
+
+// Workflow progress and refusal, distinct from the external lookup's answer.
+// AccessContextProfileLookupNotRun is the honest standing of a path that never
+// observed the controller or ran a lookup at all (gunbc.os_install_mechanism's
+// frozen projection); it is not an external fact about any BMC.
+type BoundBmcAccessContextStanding
+  = AccessContextBound { context: BoundBmcAccessContext }
+  | AccessContextProfileLookupNotRun { endpoint: BmcControllerEndpoint }
+  | AccessContextUnobserved { endpoint: BmcControllerEndpoint }
+  | AccessContextObservationForOtherAttempt { expected: MachineIntakeSubject, found: MachineIntakeSubject }
+  | AccessContextObservationEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
+  | AccessContextProbeEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
+  | AccessContextControlRouteEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
+  | AccessContextProfileUncatalogued { observed_identity: BmcObservedIdentity }
+  | AccessContextProfileAmbiguous { observed_identity: BmcObservedIdentity, count: Int }
+  | AccessContextCatalogRefused { standing: BmcAccessProfileCatalogRowStanding }
+  | AccessContextPromotedProfileUnverified { observation_receipt: ContentHash, promotion_receipt: ContentHash }
+
+fn bound_access_context(
+  subject: MachineIntakeSubject,
+  receipt: AccessObservationReceipt,
+  observation: BmcAccessObservation,
+  profile: BmcAccessProfile,
+  provenance: BmcAccessProfileProvenance,
+) -> BoundBmcAccessContextStanding {
+  AccessContextBound {
+    context: BoundBmcAccessContext {
+      subject: subject,
+      endpoint: observation.endpoint,
+      identity: observation.identity,
+      capability_row: profile.capability_row,
+      profile: profile,
+      profile_provenance: provenance,
+      observation: observation,
+      evidence_manifest: receipt.evidence_manifest,
+    },
+  }
+}
+
+// A profile grounded in an external authority binds; a promoted profile binds
+// only beside a ProfilePromotionVerified, which no producer here can make.
+fn bind_known_profile(
+  subject: MachineIntakeSubject,
+  receipt: AccessObservationReceipt,
+  observation: BmcAccessObservation,
+  profile: BmcAccessProfile,
+  provenance: BmcAccessProfileProvenance,
+) -> BoundBmcAccessContextStanding {
+  match provenance {
+    ProfileFromExternalAuthority { authority: _ } =>
+      bound_access_context(subject: subject, receipt: receipt, observation: observation, profile: profile, provenance: provenance)
+    ProfilePromotedFromObservation { observation_receipt: o, promotion_receipt: p } =>
+      match verify_profile_promotion(observation_receipt: o, promotion_receipt: p) {
+        ProfilePromotionVerified { observation: _, promotion: _ } =>
+          bound_access_context(subject: subject, receipt: receipt, observation: observation, profile: profile, provenance: provenance)
+        ProfilePromotionUnverified { observation_receipt: uo, promotion_receipt: up } =>
+          AccessContextPromotedProfileUnverified { observation_receipt: uo, promotion_receipt: up }
+      }
+  }
+}
+
+// The probe's bytes when the manifest does not name them, if there is a probe
+// at all: Present is the unnamed digest itself, so the refusal carries the
+// digest that failed and never a stand-in. An absent probe has no bytes to
+// name and is Absent here, as it is for the control routes below.
+fn probe_evidence_unnamed(receipt: AccessObservationReceipt, observation: BmcAccessObservation) -> ContentHash? {
+  match observation.redfish_virtual_media_probe {
+    Absent => none
+    Present { value: probe } =>
+      if receipt.evidence_manifest |> any(ev => content_hash_equal(left: ev.digest, right: probe.raw_response)) {
+        none
+      } else {
+        Present { value: probe.raw_response }
+      }
+  }
+}
+
+// The first boot-control route observation whose bytes the manifest does not
+// name, if any: a route the plan would carry must be evidenced like the probe.
+fn control_route_evidence_unnamed(receipt: AccessObservationReceipt, observation: BmcAccessObservation) -> ContentHash? {
+  fold(
+    observation.boot_control_routes,
+    init: none,
+    f: (acc, r) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if receipt.evidence_manifest |> any(ev => content_hash_equal(left: ev.digest, right: r.raw_response)) { none }
+        else { Present { value: r.raw_response } }
+    },
+  )
+}
+
+fn bind_looked_up_access_context(
+  subject: MachineIntakeSubject,
+  receipt: AccessObservationReceipt,
+  observation: BmcAccessObservation,
+  catalog: List<BmcAccessProfileCatalogRow>,
+) -> BoundBmcAccessContextStanding {
+  match bmc_access_profile_for(identity: observation.identity, catalog: catalog) {
+    AccessProfileKnown { profile: p, provenance: prov } =>
+      bind_known_profile(subject: subject, receipt: receipt, observation: observation, profile: p, provenance: prov)
+    AccessProfileUncatalogued { observed_identity: i } => AccessContextProfileUncatalogued { observed_identity: i }
+    AccessProfileAmbiguous { observed_identity: i, count: n } => AccessContextProfileAmbiguous { observed_identity: i, count: n }
+    AccessProfileCatalogRowRefused { standing: s } => AccessContextCatalogRefused { standing: s }
+  }
+}
+
+fn bind_observed_access_context(
+  subject: MachineIntakeSubject,
+  receipt: AccessObservationReceipt,
+  observation: BmcAccessObservation,
+  catalog: List<BmcAccessProfileCatalogRow>,
+) -> BoundBmcAccessContextStanding {
+  if (receipt.evidence_manifest |> any(ev => content_hash_equal(left: ev.digest, right: observation.raw_response))) == false {
+    AccessContextObservationEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: observation.raw_response }
+  } else {
+    match probe_evidence_unnamed(receipt: receipt, observation: observation) {
+      Present { value: unnamed } => AccessContextProbeEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: unnamed }
+      Absent =>
+        match control_route_evidence_unnamed(receipt: receipt, observation: observation) {
+          Present { value: unnamed } => AccessContextControlRouteEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: unnamed }
+          Absent => bind_looked_up_access_context(subject: subject, receipt: receipt, observation: observation, catalog: catalog)
+        }
+    }
+  }
+}
+
+// THE PRODUCER. Attempt binding first (a reading from another attempt is not
+// evidence about this one, however well its identity fits), then the
+// observation's existence, then its evidence manifest (the observation's own
+// bytes and the nested probe's), then the catalog lookup, then the profile's
+// provenance.
+fn bind_bmc_access_context(
+  subject: MachineIntakeSubject,
+  receipt: AccessObservationReceipt,
+  catalog: List<BmcAccessProfileCatalogRow>,
+) -> BoundBmcAccessContextStanding {
+  if same_intake_subject(left: subject, right: receipt.subject) == false {
+    AccessContextObservationForOtherAttempt { expected: subject, found: receipt.subject }
+  } else {
+    match receipt.standing {
+      BmcAccessUnobserved { endpoint: e } => AccessContextUnobserved { endpoint: e }
+      BmcAccessObserved { observation: o } =>
+        bind_observed_access_context(subject: subject, receipt: receipt, observation: o, catalog: catalog)
+    }
+  }
+}

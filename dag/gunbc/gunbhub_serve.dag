@@ -1,0 +1,441 @@
+module gunbc.gunbhub_serve
+
+import std.types { HttpMethod, HttpStatus, GET }
+import extdeps.uri_path { PathTemplate, UrlPathToken }
+import extdeps.uri_path {
+  PathTemplateParseResult,
+  ParsedPathTemplate,
+  MalformedPathTemplate,
+  parse_path_template,
+}
+import std.markup {
+  Element,
+  FragmentText,
+  Attribute,
+  attr,
+  Fragment,
+}
+import extdeps.languages.html {
+  EmitOk,
+  EmitRejected,
+  try_serialize_html_source,
+}
+import extdeps.http.server {
+  HttpServerRoute,
+  HttpStatusResponse,
+  MediaType,
+  text_html_utf8,
+  NoRequestBody,
+  TextRequestBody,
+  NodeHttpServerRouteBinding,
+  NodeHttpRequestListener,
+  ServedStaticRoute,
+  ServedStaticRouteTable,
+}
+
+type GunbhubServeRequest {
+  method: HttpMethod
+  path: String
+}
+
+type GunbhubHttpResponse {
+  status: HttpStatus
+  body: String
+}
+
+type GunbhubServeResult
+  = Served { response: GunbhubHttpResponse }
+  | RenderRejectedBeforeServe { reason: String }
+  | RouteNotFound
+  | MethodNotAllowed
+
+type GunbhubPageSource = ReactPage { node: Fragment }
+
+type GunbhubRenderResult
+  = RenderedHtml { html: String }
+  | RenderRejected { reason: String }
+
+fn gunbhub_header() -> Fragment {
+  Element {
+    tag: "header",
+    attributes: [],
+    children: [
+      Element {
+        tag: "h1",
+        attributes: [],
+        children: [ FragmentText { content: "gunbc" } ],
+      },
+      Element {
+        tag: "nav",
+        attributes: [],
+        children: [
+          Element {
+            tag: "a",
+            attributes: [ attr(name: "href", value: "/" ) ],
+            children: [ FragmentText { content: "Browse" } ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_browse_entry(name: String, path: String) -> Fragment {
+  Element {
+    tag: "li",
+    attributes: [],
+    children: [
+      Element {
+        tag: "a",
+        attributes: [ attr(name: "href", value: path ) ],
+        children: [ FragmentText { content: name } ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_browse_page() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element {
+        tag: "head",
+        attributes: [],
+        children: [
+          Element {
+            tag: "title",
+            attributes: [],
+            children: [ FragmentText { content: "gunbc" } ],
+          },
+        ],
+      },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          gunbhub_header(),
+          Element {
+            tag: "main",
+            attributes: [],
+            children: [
+              Element {
+                tag: "ul",
+                attributes: [],
+                children: [
+                  gunbhub_browse_entry(name: "dag", path: "/dag"),
+                  gunbhub_browse_entry(name: "src", path: "/src"),
+                  gunbhub_browse_entry(name: "ROADMAP.md", path: "/ROADMAP.md"),
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_hostile_page() -> Fragment {
+  Element {
+    tag: "a",
+    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    children: [ FragmentText { content: "x" } ],
+  }
+}
+
+fn gunbhub_readme_page() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element {
+        tag: "head",
+        attributes: [],
+        children: [
+          Element {
+            tag: "title",
+            attributes: [],
+            children: [ FragmentText { content: "gunbc — README" } ],
+          },
+        ],
+      },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          gunbhub_header(),
+          Element {
+            tag: "main",
+            attributes: [],
+            children: [
+              Element {
+                tag: "article",
+                attributes: [],
+                children: [
+                  Element {
+                    tag: "p",
+                    attributes: [],
+                    children: [
+                      FragmentText { content: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+type GunbhubComposeResult
+  = ComposedOk { html: String }
+  | ComposeRejected { reason: String }
+
+fn gunbhub_compose_body(node: Fragment) -> GunbhubComposeResult {
+  match try_serialize_html_source(node: node) {
+    EmitOk { html: h } => ComposedOk { html: h }
+    EmitRejected { reason: r } => ComposeRejected { reason: r }
+  }
+}
+
+fn gunbhub_html_content_type() -> MediaType {
+  text_html_utf8
+}
+
+fn gunbhub_browse_path_template() -> PathTemplate {
+  match parse_path_template(raw: "/") {
+    ParsedPathTemplate { template: t } => t
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+      PathTemplate { tokens: [] }
+  }
+}
+
+fn gunbhub_repo_path_template() -> PathTemplate {
+  PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
+}
+
+fn normalize_request_path(path: String) -> String {
+  if path == "" {
+    "/"
+  } else {
+    path
+  }
+}
+
+fn request_path_segments(path: String) -> List<String> {
+  let path_only = match split(s: normalize_request_path(path: path), delimiter: "?") |> first {
+    Present { value: p } => p
+    Absent => normalize_request_path(path: path)
+  }
+  if path_only == "/" {
+    []
+  } else {
+    filter(xs: split(s: path_only, delimiter: "/"), f: s => s != "")
+  }
+}
+
+type PathMatchState {
+  seg_idx: Int
+  ok: Bool
+}
+
+fn path_matches_template(template: PathTemplate, path: String) -> Bool {
+  let segs = request_path_segments(path: path)
+  let st = fold(
+    xs: template.tokens,
+    init: PathMatchState { seg_idx: 0, ok: true },
+    f: (acc, tok) =>
+      if !acc.ok {
+        acc
+      } else {
+        match tok {
+          ParamToken { name: _ } =>
+            match segs |> skip(acc.seg_idx) |> first {
+              Present { value: _ } =>
+                PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
+              Absent =>
+                PathMatchState { seg_idx: acc.seg_idx, ok: false }
+            }
+          LiteralToken { text: lit } =>
+            match segs |> skip(acc.seg_idx) |> first {
+              Present { value: seg } =>
+                if seg == lit {
+                  PathMatchState { seg_idx: acc.seg_idx + 1, ok: true }
+                } else {
+                  PathMatchState { seg_idx: acc.seg_idx, ok: false }
+                }
+              Absent =>
+                PathMatchState { seg_idx: acc.seg_idx, ok: false }
+            }
+        }
+      }
+  )
+  st.ok && st.seg_idx == count(xs: segs)
+}
+
+fn render_gunbhub_page(source: GunbhubPageSource) -> GunbhubRenderResult {
+  match source {
+    ReactPage { node } =>
+      match try_serialize_html_source(node: node) {
+        EmitOk { html: h } => RenderedHtml { html: h }
+        EmitRejected { reason: r } => RenderRejected { reason: r }
+      }
+  }
+}
+
+fn serve_gunbhub_page_source(source: GunbhubPageSource) -> GunbhubServeResult {
+  match render_gunbhub_page(source: source) {
+    RenderedHtml { html: h } =>
+      Served {
+        response: GunbhubHttpResponse {
+          status: 200,
+          body: h,
+        }
+      }
+    RenderRejected { reason: r } => RenderRejectedBeforeServe { reason: r }
+  }
+}
+
+type GunbhubRouteRow {
+  route: HttpServerRoute
+  page: GunbhubPageSource
+}
+
+fn gunbhub_browse_route() -> HttpServerRoute {
+  HttpServerRoute {
+    operation_name: "browseRoot",
+    method: GET,
+    path_template: gunbhub_browse_path_template(),
+    request_body: NoRequestBody,
+    parameters: [],
+    responses: [
+      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+    ],
+  }
+}
+
+fn gunbhub_repo_path_route() -> HttpServerRoute {
+  HttpServerRoute {
+    operation_name: "repoPathDoc",
+    method: GET,
+    path_template: gunbhub_repo_path_template(),
+    request_body: NoRequestBody,
+    parameters: [],
+    responses: [
+      HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+    ],
+  }
+}
+
+fn gunbhub_route_table() -> List<GunbhubRouteRow> {
+  [
+    GunbhubRouteRow {
+      route: gunbhub_browse_route(),
+      page: ReactPage { node: gunbhub_browse_page() },
+    },
+    GunbhubRouteRow {
+      route: gunbhub_repo_path_route(),
+      page: ReactPage { node: gunbhub_readme_page() },
+    },
+  ]
+}
+
+fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
+  let routes = fold(
+    xs: gunbhub_route_table(),
+    init: [],
+    f: (acc, row) =>
+      match try_serialize_html_source(
+        node: match row.page { ReactPage { node: n } => n }
+      ) {
+        EmitOk { html: h } =>
+          concat(
+            acc,
+            [
+              ServedStaticRoute {
+                method: row.route.method,
+                path_pattern: row.route.path_template,
+                body: h,
+                content_type: gunbhub_html_content_type(),
+                status_on_hit: 200,
+              },
+            ]
+          )
+        EmitRejected { reason: _ } => acc
+      }
+  )
+  ServedStaticRouteTable { routes: routes }
+}
+
+fn served_row_matches_request(row: ServedStaticRoute, req: GunbhubServeRequest) -> Bool {
+  row.method == req.method
+    && path_matches_template(template: row.path_pattern, path: req.path)
+}
+
+fn path_matches_any_served_pattern(path: String, table: ServedStaticRouteTable) -> Bool {
+  fold(
+    xs: table.routes,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        acc
+      } else {
+        path_matches_template(template: row.path_pattern, path: path)
+      }
+  )
+}
+
+type StaticRouteMatchState {
+  found: Bool
+  body: String
+  status: HttpStatus
+}
+
+fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
+  let table = gunbhub_served_static_route_table()
+  let st = fold(
+    xs: table.routes,
+    init: StaticRouteMatchState { found: false, body: "", status: 404 },
+    f: (acc, row) =>
+      if acc.found {
+        acc
+      } else if served_row_matches_request(row: row, req: req) {
+        StaticRouteMatchState {
+          found: true,
+          body: row.body,
+          status: row.status_on_hit,
+        }
+      } else {
+        acc
+      }
+  )
+  if st.found {
+    Served {
+      response: GunbhubHttpResponse {
+        status: st.status,
+        body: st.body,
+      }
+    }
+  } else if path_matches_any_served_pattern(path: req.path, table: table) {
+    MethodNotAllowed
+  } else {
+    RouteNotFound
+  }
+}
+
+fn gunbhub_node_route_bindings() -> List<NodeHttpServerRouteBinding> {
+  map(
+    xs: gunbhub_route_table(),
+    f: row =>
+      NodeHttpServerRouteBinding {
+        route: row.route,
+        listener: NodeHttpRequestListener {
+          handler_name: concat("gunbhub_handle_", row.route.operation_name),
+        },
+      }
+  )
+}

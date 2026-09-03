@@ -1,0 +1,269 @@
+module extdeps.cargo_build
+
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/commands/cargo-build.html"
+  }
+}
+
+data cargo_compile_env: Map<String, String> = empty_map()
+
+// cargo.Build.TestWithCwdEnv: env composes cwd (-C) and process env vars (leading VAR=val argv
+// words) into ONE argv vector, matching the shell.Find.Files precedent of argv-native env -C
+// workdir substitution — no shell is needed to chain a cd/export prefix onto a cargo invocation
+// (SHELL-DAG dissolution of the interpreter_dispatch_bijection_real_roster_transport
+// retained_foreign multi-line script: set -euo pipefail; cd; export; two cargo test invocations,
+// now two sequential typed calls with caller-side short-circuit).
+
+// PATH-resolved program name, deliberately, for the reason extdeps.exec.command
+// program_spelling_is_an_observation_claim records once: an absolute path is a filesystem
+// observation this repository has not made about the host the command runs on.
+data cargo_program: NonEmptyStr = "cargo"
+
+// THE ONE PLACE THE CLIPPY VERB AND ITS LINT SEPARATOR ARE SPELLED. The Clippy operation below
+// carries the same shape fused to `transport shell`, which is unreachable from any expression --
+// the fork repo_self_build_authority_note measured and named. This builder is the first step of the
+// de-fusion that note declares as its dissolution trigger: the operation's argv shape, expressed
+// once as a value, so a SECOND realization of it (a workflow YAML line) is a projection of this
+// node rather than a second spelling of cargo's vocabulary in a consumer. `--` is part of the
+// operation and not the caller's, because it is what separates cargo's own arguments from the lint
+// levels rustc receives, and a caller free to omit it would hand `-D warnings` to cargo.
+fn cargo_clippy_command(extra_args: List<String>, lint_args: List<String>) -> ArgvCommand {
+  argv_command(
+    program: cargo_program,
+    arguments: append(append(["clippy"], items: extra_args), items: append(["--"], items: lint_args))
+  )
+}
+
+
+fn cargo_build_jobs_flag(count: Int) -> List<String> {
+  ["--jobs", to_string(count)]
+}
+
+fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
+  ["--build-jobs", to_string(count)]
+}
+
+data cargo_check_manifest_messages_note: String = "Cargo's structured check surface is distinct from BuildManifestMessages: check asks rustc for metadata and therefore reaches type checking and borrow checking without codegen."
+
+service cargo.Build {
+  operation Build {
+    input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env, build_jobs_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "build", build_jobs_args, extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
+  operation BuildInheritEnv {
+    input { workdir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "cargo", "build", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
+  operation BuildManifest {
+    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "CARGO_TARGET_DIR={target_dir}", "cargo", "build", "--manifest-path", "{manifest_path}", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
+  operation BuildManifestMessages {
+    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "CARGO_TARGET_DIR={target_dir}", "cargo", "build", "--message-format=json", "--manifest-path", "{manifest_path}", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
+  operation CheckManifestMessages {
+    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "CARGO_TARGET_DIR={target_dir}", "cargo", "check", "--message-format=json", "--manifest-path", "{manifest_path}", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Check failed"
+    }
+  }
+
+  operation Test {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell { argv: ["cargo", "test", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Tests failed"
+    }
+  }
+
+  operation TestWithCwdEnv {
+    input { workdir: FilePath, cargo_bin: NonEmptyStr, env: List<String> = [], extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", env, "{cargo_bin}", "test", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Tests failed"
+      nonzero => String "cargo test error"
+    }
+  }
+
+  operation Nextest {
+    input { extra_args: List<String> = [], build_jobs_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "nextest", "run", build_jobs_args, extra_args] }
+    exit {
+      0 => Unit
+      100 => String "Tests failed"
+      nonzero => String "Nextest run error"
+    }
+  }
+
+  operation Clippy {
+    input {
+      extra_args: List<String> = []
+      lint_args: List<String> = []
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "clippy", extra_args, "--", lint_args] }
+    exit {
+      0 => Unit
+      101 => String "Clippy warnings or errors"
+    }
+  }
+
+  operation Fmt {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "fmt", extra_args] }
+    exit {
+      0 => Unit
+      1 => String "Formatting check failed"
+    }
+  }
+
+  operation Check {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "check", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Check failed"
+    }
+  }
+
+  operation Doc {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["cargo", "doc", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Documentation generation failed"
+    }
+  }
+
+  operation Run {
+    input { package: String, bin: String, args: List<String> }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell { argv: ["cargo", "run", "-p", package, "--bin", bin, "--", args] }
+    exit {
+      0 => Unit
+      101 => String "Run failed"
+      nonzero => String "Binary exited with error"
+    }
+  }
+}
+
+// `cargo --version` prints ONE line naming the release, the short commit hash and the commit date.
+// It lives HERE rather than in extdeps.cargo because this module is where cargo's COMMAND
+// INVOCATIONS are modelled -- cargo.Build binds argv and shell transports -- while extdeps.cargo
+// owns the manifest vocabulary. A self-report is an invocation, not a manifest fact.
+//
+// It is bound separately from the rustc reading beside it in extdeps.rustc: the two binaries are
+// separately versioned, and a toolchain can carry a cargo that a rustc release line does not name.
+service cargo.Identity {
+  operation Version {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+    }
+    transport shell { argv: ["cargo", "--version"] }
+    exit {
+      0 => Unit
+      nonzero => String "cargo did not report its version"
+    }
+  }
+}

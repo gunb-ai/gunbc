@@ -1,0 +1,177 @@
+module gunbc.generated_projection_paths
+
+import gunbc.generated_artifact { committed_generated_artifact_paths }
+import gunbc.stage0_cargo_manifest { stage0_cargo_toml_repo_path }
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  derived_hand_maintained_disposition_repo_paths,
+  stage0_src_repo_prefix
+}
+import std.types { List, String }
+
+// One source remains after the stage0_emit_plan deletion, so a row is its path. The
+// collision refusal still does real work — two committed artifacts claiming one path —
+// but it can no longer name WHICH sources collided, because there is only one.
+type GeneratedProjectionPathRow {
+  path: String
+}
+
+type GeneratedProjectionPathsRefusal = GeneratedProjectionPathCollision {
+  path: String
+}
+
+type GeneratedProjectionPathsOutcome
+  = GeneratedProjectionPathsAccepted { paths: List<String> }
+  | GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathsRefusal }
+
+type GeneratedProjectionPathFoldOutcome
+  = GeneratedProjectionPathRowsAccepted { rows: List<GeneratedProjectionPathRow> }
+  | GeneratedProjectionPathRowsRefused { cause: GeneratedProjectionPathsRefusal }
+
+fn deterministic_generated_projection_paths_from_rows(
+  rows: List<GeneratedProjectionPathRow>
+) -> GeneratedProjectionPathsOutcome {
+  let outcome = fold(rows, init: GeneratedProjectionPathRowsAccepted { rows: [] }, f: fn(acc, row) {
+    match acc {
+      GeneratedProjectionPathRowsRefused { cause } => GeneratedProjectionPathRowsRefused { cause: cause }
+      GeneratedProjectionPathRowsAccepted { rows: accepted } => {
+        if accepted |> any(candidate => candidate.path == row.path) {
+          GeneratedProjectionPathRowsRefused {
+            cause: GeneratedProjectionPathCollision { path: row.path }
+          }
+        } else {
+          GeneratedProjectionPathRowsAccepted { rows: concat(accepted, [row]) }
+        }
+      }
+    }
+  })
+  match outcome {
+    GeneratedProjectionPathRowsRefused { cause } => GeneratedProjectionPathsRefused { cause: cause }
+    GeneratedProjectionPathRowsAccepted { rows } => GeneratedProjectionPathsAccepted {
+      paths: rows |> map(row => row.path) |> sort_by(path => path)
+    }
+  }
+}
+
+fn deterministic_generated_projection_paths() -> GeneratedProjectionPathsOutcome {
+  let rows = committed_generated_artifact_paths()
+    |> map(path => GeneratedProjectionPathRow { path: path })
+  deterministic_generated_projection_paths_from_rows(rows: rows)
+}
+
+// THE STAGE0 ARM IS A COMPLEMENT, NOT A ROSTER, AND THAT IS THE WHOLE CONSTRUCTION.
+//
+// The stage0 seed mirror is the artifact the generated-artifact merge driver was written for
+// (DESIGN records the #7836 receipt: the ours side dropped authority-derived bytes twice,
+// against this mirror). Its arm routed through gunbc.stage0_emit_plan, which the #8406 regen
+// cut deleted at the root. Nothing refused, because the consumer that needed it — this module —
+// was outside the deletion census, so the population silently narrowed to the committed
+// registry and every emitted stage0 source lost its merge attribute.
+//
+// A PATH LIST CANNOT BE THE REPAIR, IN EITHER OF ITS TWO SPELLINGS. A hand roster is what stood
+// in for the dead derivation before and is what #8674 deleted; and the live derivation that
+// replaced it (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths)
+// takes two OBSERVATIONS as its inputs — git ls-files and a git show of the emitted-population
+// manifest. Reaching it from here would make a committed byte projection a function of somebody's
+// working tree: two clones at one commit could disagree about what .gitattributes must contain,
+// and the drift gate would then refuse or pass on a fact about a checkout rather than about the
+// model. So the arm is rebuilt from the pure half of the same authority instead.
+//
+// The pure half is the crate layout's own claim. hand_maintained_stage0_filenames() names every
+// direct child of the stage0 source root that is NOT emitted, and Git attributes express a
+// complement directly, because the last matching line wins and `!attr` unsets: one glob claims
+// the directory's direct children and one unset row per hand-maintained member takes them back
+// out. A newly emitted stage0 file is then covered BY CONSTRUCTION — nobody has to remember it,
+// which is exactly the failure that produced this defect, and the reason the class does not go
+// back to a roster that goes stale between authoring and merge.
+//
+// THE ORDER OF THESE ROWS IS A CORRECTNESS PROPERTY AND IT FAILS SILENTLY. Last match wins, so
+// an unset row emitted ABOVE the glob is inert — and inert in the dangerous direction, since the
+// hand-maintained file then silently acquires the driver with no diagnostic anywhere. The glob is
+// therefore constructed ahead of the unsets here rather than sorted into them, and
+// test.claim.generated_projection_merge_rows_witness reds when the two are transposed.
+//
+// THE OVER-CLAIM IS THE SAFE DIRECTION, WHICH IS WHY COVERAGE-BY-DEFAULT IS ADMISSIBLE HERE AND
+// #8674 REJECTED THE SAME COMPLEMENT FOR ITS OWN QUESTION. That module classifies maintenance
+// disposition, where a complement makes an unregistered file "generated" by definition and drives
+// the unclassified refusal's firing rate to zero — an absorbing arm. This module answers a
+// different question with asymmetric failure directions: an over-claimed hand file gets a LOUD
+// driver refusal at merge time, recoverable in place; an under-claimed generated file gets a
+// SILENT text merge that drops authority-derived bytes. The complement errs toward the loud one.
+//
+// THE UNSET POPULATION IS LAYOUT MEMBERSHIP MINUS THE ARTIFACT REGISTRY, and that subtraction is
+// load-bearing rather than defensive: bootstrap_stage0_crate_layout_generated.rs and
+// v1_interpreter_dispatch_generated.rs are BOTH hand_maintained_stage0_filenames() members (they
+// are pub-mod-declared by hand) and registry artifacts already carrying the attribute today. An
+// unset row for either would REMOVE working coverage. derived_hand_maintained_disposition_repo_paths()
+// is the existing authority for exactly that difference; this module joins it rather than
+// recomputing it.
+// Cross-authority receipt for the complement, measured at d311b1ceab: the stage0 source root holds
+// 173 direct children and hand_maintained_stage0_filenames() claims 37, so the complement is 136;
+// the emitter's own declaration (src/v1/stage0/src/emitted_population.rs) names 137 direct
+// children. The two agree exactly except main.rs, which is the single
+// emitter_produced_divergent_registrations row — a file the emitter emits and whose committed bytes
+// deliberately diverge from it, so regeneration is NOT its recovery and the unset row is correct.
+// Two independently derived populations agreeing on 136 of 137 is the evidence that the layout
+// claim is the right complement basis. THE FILE HEADER IS NOT THE POPULATION and was tested and
+// rejected as one: 135 files carry '// Generated by v1 compiler -- do not edit.' at that ref, and
+// the header disagrees with the model in BOTH directions — main.rs and std_lens_verdict.rs carry it
+// and are hand-maintained, while compiler_tests.rs, emitted_population.rs and v1_rt.rs lack it and
+// are in the emitted-population manifest.
+
+type GeneratedProjectionMergeSetting
+  = MergeGeneratedArtifact
+  | MergeAttributeUnspecified
+
+type GeneratedProjectionMergeRow {
+  pattern: String
+  setting: GeneratedProjectionMergeSetting
+}
+
+type GeneratedProjectionMergeRowsOutcome
+  = GeneratedProjectionMergeRowsAccepted { rows: List<GeneratedProjectionMergeRow> }
+  | GeneratedProjectionMergeRowsRefused { cause: GeneratedProjectionPathsRefusal }
+
+data stage0_generated_source_pattern: String = concat(stage0_src_repo_prefix, "*.rs")
+
+// A slash-bearing Git attributes pattern does not match across '/', so this claims the DIRECT
+// CHILDREN of the stage0 source root and leaves bin/, cli_run/ and module_path_index/ untouched.
+// That is the correct scope and not a convenient one: every emitted stage0 source is a direct child
+// (measured at d311b1ceab — zero of the emitter-declared sources sit in a subdirectory), and the
+// three subdirectories are hand-maintained Rust the crate layout claim does not enumerate at file
+// grain, so a wider glob would over-claim a population no authority here can take back out.
+
+fn stage0_generated_projection_merge_rows() -> List<GeneratedProjectionMergeRow> {
+  concat(
+    [
+      GeneratedProjectionMergeRow {
+        pattern: stage0_generated_source_pattern,
+        setting: MergeGeneratedArtifact
+      },
+      GeneratedProjectionMergeRow {
+        pattern: stage0_cargo_toml_repo_path,
+        setting: MergeGeneratedArtifact
+      }
+    ],
+    derived_hand_maintained_disposition_repo_paths()
+      |> sort_by(path => path)
+      |> map(path => GeneratedProjectionMergeRow {
+        pattern: path,
+        setting: MergeAttributeUnspecified
+      })
+  )
+}
+
+fn deterministic_generated_projection_merge_rows() -> GeneratedProjectionMergeRowsOutcome {
+  match deterministic_generated_projection_paths() {
+    GeneratedProjectionPathsRefused { cause } => GeneratedProjectionMergeRowsRefused { cause: cause }
+    GeneratedProjectionPathsAccepted { paths } => GeneratedProjectionMergeRowsAccepted {
+      rows: concat(
+        paths |> map(path => GeneratedProjectionMergeRow {
+          pattern: path,
+          setting: MergeGeneratedArtifact
+        }),
+        stage0_generated_projection_merge_rows()
+      )
+    }
+  }
+}

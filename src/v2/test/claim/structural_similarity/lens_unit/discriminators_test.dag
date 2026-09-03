@@ -1,13 +1,7 @@
 module v2.test.structural_similarity.lens_unit.discriminators
 
-import v2.lens.structural_similarity { type_decls_anti_unify }
-import v2.std.node {
-  Node, Edge, Positional,
-  TypeNode, Atom, Conj, Disj,
-  Symbol, node_synthetic
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])

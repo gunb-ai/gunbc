@@ -1,0 +1,42 @@
+module tools.dag_compile_clean_shard_transport
+
+import extdeps.shell
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.dag_compile_clean_transport {
+  dcc_fixture_only_compile_args,
+  dcc_gunbc_path,
+  dcc_gunbc_ready
+}
+
+data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
+
+fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
+  let root = git.Inspect.Toplevel()
+  if dcc_gunbc_ready(root: root.path) {
+    let stage = shell.Mktemp.Dir()
+    if stage.success {
+      let staged = shell.Copy.File(
+        source: concat(root.path, concat("/", entry_rel_path)),
+        destination: stage.path
+      )
+      let compile = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: dcc_gunbc_path(root: root.path),
+        args: dcc_fixture_only_compile_args(tmp: stage.path)
+      )
+      let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
+      staged.success && compile.success && cleaned_stage.success
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+fn run_shard_a_exemplar_compile() -> Bool {
+  single_module_shard_compile_typed(entry_rel_path: shard_a_exemplar_entry_path)
+}

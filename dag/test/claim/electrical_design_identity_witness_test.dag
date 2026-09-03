@@ -1,0 +1,87 @@
+module test.claim.electrical_design_identity_witness
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, String }
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalDesignIdentity,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  NetIdentity,
+  TerminalIdentity,
+  component_identity_eq,
+  component_instance_identity,
+  component_local_label,
+  net_contains_terminal,
+  net_identity,
+  net_identity_eq,
+  net_local_label,
+  terminal_ref,
+  terminal_ref_equal,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// TWO BOARDS THAT NAME THEIR RAILS THE SAME WAY, which is to say: two ordinary boards. Every board
+// has a VCC and a U1, so the collision this fixture builds is the common case rather than a
+// contrived one, and that is exactly why the design axis has to be in the identity.
+data board_a: ElectricalDesignIdentity = "test.design_identity.board_a" as ElectricalDesignIdentity
+data board_b: ElectricalDesignIdentity = "test.design_identity.board_b" as ElectricalDesignIdentity
+
+data vcc_on_a: NetIdentity = net_identity(design: board_a, local_identity: "VCC")
+data vcc_on_b: NetIdentity = net_identity(design: board_b, local_identity: "VCC")
+data gnd_on_a: NetIdentity = net_identity(design: board_a, local_identity: "GND")
+
+data u1_on_a: ComponentInstanceIdentity = component_instance_identity(design: board_a, local_identity: "U1")
+data u1_on_b: ComponentInstanceIdentity = component_instance_identity(design: board_b, local_identity: "U1")
+
+// THE WALL. Identical local labels, different designs, and the model must not confuse them. Before
+// the design axis these were branded strings and this comparison was TRUE -- an admitted copper
+// result, a footprint binding or a routing verdict established on one board was replayable against
+// the other. This is the claim every later projection rests on when it says it describes one
+// physical world.
+test fn w_same_label_on_two_boards_is_not_one_net() -> Bool {
+  !net_identity_eq(a: vcc_on_a, b: vcc_on_b)
+}
+
+test fn w_same_label_on_two_boards_is_not_one_component() -> Bool {
+  !component_identity_eq(a: u1_on_a, b: u1_on_b)
+}
+
+// THE CONTROL THAT KEEPS THE WALL FROM BEING VACUOUS. A refusal that fires on everything proves
+// nothing, so the same relation must still hold WITHIN one design: two independently constructed
+// identities with the same design and the same label are the same identity. Without this, an
+// equality hardwired to false would satisfy both walls above.
+test fn w_the_same_net_on_one_board_is_still_one_net() -> Bool {
+  net_identity_eq(a: vcc_on_a, b: net_identity(design: board_a, local_identity: "VCC"))
+    && component_identity_eq(a: u1_on_a, b: component_instance_identity(design: board_a, local_identity: "U1"))
+}
+
+// And the label axis still discriminates within one design, so the design field has not swallowed
+// the distinction it was added beside.
+test fn w_different_labels_on_one_board_are_different_nets() -> Bool {
+  !net_identity_eq(a: vcc_on_a, b: gnd_on_a)
+}
+
+// THE JOIN THAT CONSUMES IT. Net membership is where a cross-board identity would do its damage:
+// a terminal of U1 on board B must not be found on a net of board A, however exactly its component
+// and terminal labels agree. This asserts the wall through the relation a consumer actually calls,
+// not only through the equality underneath it -- a wall proven only at the primitive is a wall no
+// consumer is shown to route through.
+test fn w_a_terminal_from_another_board_is_not_on_this_net() -> Bool {
+  let t_a = terminal_ref(component: u1_on_a, terminal: "1" as TerminalIdentity)
+  let t_b = terminal_ref(component: u1_on_b, terminal: "1" as TerminalIdentity)
+  let net_a = ElectricalNet { identity: vcc_on_a, members: [t_a] }
+  net_contains_terminal(net: net_a, t: t_a)
+    && !net_contains_terminal(net: net_a, t: t_b)
+}
+
+// The local label survives for diagnostics and for target syntax that has no notion of a design --
+// SPICE and Verilog both spell a node, not a board. This asserts the projection surface still reads
+// what it always read, so the migration did not smuggle a design prefix into emitted bytes.
+test fn w_the_local_label_is_preserved_for_targets() -> Bool {
+  (net_local_label(n: vcc_on_a) as String) == "VCC"
+    && (net_local_label(n: vcc_on_b) as String) == "VCC"
+    && (component_local_label(c: u1_on_a) as String) == "U1"
+}

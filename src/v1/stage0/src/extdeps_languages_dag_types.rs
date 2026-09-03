@@ -6,12 +6,10 @@ use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_coercion::TypeCheckpoint;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -20,7 +18,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
                 Rc::new(ExternalAuthority {
         uri: Rc::new(Uri {
         scheme: UriScheme::Https,
-        locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag".to_string(),
+        locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md#4-the-closed-grounded-substrate".to_string(),
     }),
     })
             };
@@ -31,7 +29,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 pub fn dag_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "Int", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "Float", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "Bool", "default_expr": "false", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}]))
+            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "Int", "grounding_type": "Int", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "Float", "grounding_type": "Float", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "Bool", "grounding_type": "Bool", "default_expr": "false", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "grounding_type": "String", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }

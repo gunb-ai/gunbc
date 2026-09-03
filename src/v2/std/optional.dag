@@ -1,0 +1,20 @@
+module v2.std.optional
+
+type Optional<T>
+  = Absent
+  | Present { value: T }
+
+fn optional_absent<T>() -> Optional<T> {
+  Absent
+}
+
+fn optional_present<T>(value: T) -> Optional<T> {
+  Present { value: value }
+}
+
+fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Optional<T> {
+  match left {
+    Present { value: _ } => left
+    Absent => right
+  }
+}

@@ -1,0 +1,136 @@
+module v2.test.claim.target_model_external_authority_decode
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_scheme_wire }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.compilers.target_model {
+  target_external_authority_bundle_node,
+  target_external_authority_from_node,
+  target_model_named_edge,
+  target_model_type_atom_node,
+  target_model_type_conj_node,
+  target_uri_scheme_discriminant
+}
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import std.types { NonEmptyStr }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE IS THE DISCRIMINATING EVIDENCE FOR.
+//
+// target_external_authority_from_node used to recover the UriScheme variant by asking the
+// HOST for ^UriScheme's nullary inhabitants. That call is answered only by the v1
+// interpreter's live declaration index, so the same decode, compiled into the v2 compiler's
+// own Rust crate, was an unrealized-seam refusal: the compiler could not read back a
+// bundle node it had itself written. It now folds the DECLARED roster
+// extdeps.uri uri_scheme_inhabitants, which every target carries.
+//
+// The three rows below are the three ways that swap could be wrong, and each goes red for
+// a different edit. Round-tripping EVERY declared scheme (not one specimen) is what makes
+// a roster short by one arm fail here rather than in production: the missing scheme's own
+// row refuses. Asserting the refusal on an unknown discriminant is what stops the
+// replacement fabricating a default scheme -- the failure mode a total match over a
+// roster invites, and the one DESIGN section 5 calls a fabricated plausible output. And
+// asserting that the refusal is LOCATED AT THE SCHEME CHILD rather than at the bundle is
+// what proves the new locus argument is threaded: the old code had no node to point at
+// and pointed at the type declaration instead.
+fn decode_round_trips(scheme: UriScheme) -> Bool {
+  match target_external_authority_from_node(
+    node: target_external_authority_bundle_node(
+      authority: ExternalAuthority {
+        uri: Uri { scheme: scheme, locator: "example.invalid/path" as NonEmptyStr }
+      }
+    )
+  ) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      (target_uri_scheme_discriminant(scheme: decoded.uri.scheme)
+        == target_uri_scheme_discriminant(scheme: scheme))
+        && ((decoded.uri.locator as String) == "example.invalid/path")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn every_declared_uri_scheme_round_trips_through_the_bundle_node() -> Bool {
+  fold_list(
+    xs: uri_scheme_inhabitants(),
+    empty: true,
+    cons: fn(acc, scheme) { acc && decode_round_trips(scheme: scheme) }
+  )
+}
+
+// A ROSTER THAT ANSWERS EVERYTHING ANSWERS NOTHING. This is the positive control's
+// discriminating negative: the bundle shape is identical, only the scheme atom names a
+// symbol no arm carries, and the decode must refuse rather than pick an arm.
+fn bundle_node_with_scheme_identity(identity: Symbol) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_external_authority_field_uri_scheme,
+        target: target_model_type_atom_node(identity: identity)
+      ),
+      target_model_named_edge(
+        name: ^target_external_authority_field_uri_locator,
+        target: target_model_type_atom_node(
+          identity: symbol_intern_lexeme(lexeme: "example.invalid/path")
+        )
+      )
+    ]
+  )
+}
+
+fn decode_refusal_reasons(identity: Symbol) -> List<Symbol> {
+  match target_external_authority_from_node(
+    node: bundle_node_with_scheme_identity(identity: identity)
+  ) {
+    Accepted { value: _, diagnostics: _ } => Empty
+    Rejected { diagnostics: ds } =>
+      fold_list(
+        xs: ds.tail,
+        empty: list_snoc_item(xs: Empty, item: ds.head.reason),
+        cons: fn(acc, d) { list_snoc_item(xs: acc, item: d.reason) }
+      )
+  }
+}
+
+fn reasons_contain(reasons: List<Symbol>, wanted: Symbol) -> Bool {
+  fold_list(xs: reasons, empty: false, cons: fn(acc, r) { acc || (r == wanted) })
+}
+
+test fn an_unnamed_scheme_discriminant_refuses_rather_than_defaulting() -> Bool {
+  reasons_contain(
+    reasons: decode_refusal_reasons(
+      identity: symbol_intern_lexeme(lexeme: "NotADeclaredUriScheme")
+    ),
+    wanted: ^coproduct_nullary_inhabitant_missing
+  )
+}
+
+// THE POSITIVE CONTROL FOR THE ROW ABOVE, and it is not redundant with the round trip:
+// it uses the SAME hand-built node shape, so a refusal caused by that shape rather than by
+// the unknown discriminant reds here instead of passing unnoticed above.
+test fn the_same_hand_built_shape_accepts_a_declared_scheme() -> Bool {
+  match target_external_authority_from_node(
+    node: bundle_node_with_scheme_identity(
+      identity: target_uri_scheme_discriminant(scheme: Https)
+    )
+  ) {
+    Accepted { value: decoded, diagnostics: _ } =>
+      (uri_scheme_wire(s: decoded.uri.scheme) as String) == "https://"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// DISTINCT ARMS, DISTINCT ANSWERS. A decode that ignored the discriminant entirely and
+// returned the roster head would pass every row above except this one.
+test fn distinct_scheme_discriminants_decode_to_distinct_schemes() -> Bool {
+  !(target_uri_scheme_discriminant(scheme: Http)
+    == target_uri_scheme_discriminant(scheme: Https))
+    && ((uri_scheme_wire(s: Http) as String) == "http://")
+}

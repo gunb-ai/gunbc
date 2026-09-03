@@ -1,0 +1,173 @@
+module std.computation
+
+import std.termination {
+  DescentEvidence, DescentUnknown, RankingDimension,
+  PositiveDescentAmount, OneStep, AdditionalStep,
+  ProportionalDivisor, DivideByTwo, StrictlyLarger,
+  positive_descent_count
+}
+import std.algebra {
+  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
+  BooleanAlgebraProfile, FinitePowerSetProfile,
+  PointwisePowerCollectionProfile,
+  FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
+  PartialFunctionProfile, FinitelySupportedFunctionProfile,
+  kernel_algebra_profile
+}
+
+
+type SizeBound
+  = CollectionSize { param: String }
+  | ParserStreamSize { witness: String }
+  | WorklistDrainSize { element: String }
+  | SubtreeSize { param: String }
+  | ArithmeticParam { param: String }
+  | ExplicitCountZero
+  | ExplicitCountPositive { steps: PositiveDescentAmount }
+  | Forever
+
+fn tree_size_bound(param: String) -> SizeBound {
+  SubtreeSize { param: param }
+}
+
+type CallPattern
+  = ChildAccessorCall { accessor: String }
+  | CollectionShrinkCall { amount: PositiveDescentAmount, collection: String }
+  | ArithmeticSubtractCall { steps: PositiveDescentAmount, ring_param: String }
+  | ArithmeticDivideCall { divisor: ProportionalDivisor, ring_param: String }
+  | ParserAdvanceCall { witness: String }
+  | WorklistDrainCall { element: String }
+  | FoldBodyCall { outer_collection: String }
+  | SameArgumentCall
+
+type ShrinkFactor
+  = UnitShrink
+  | ConstantShrink { steps: PositiveDescentAmount }
+  | ProportionalShrink { divisor: ProportionalDivisor }
+
+type LoweringTarget {
+  primitive: IterationPrimitive
+  bound: SizeBound
+  evidence: DescentEvidence
+  factor: ShrinkFactor?
+}
+
+type IterationPrimitive
+  = Fold
+  | Descend
+  | Repeat
+
+fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
+  match pattern {
+    ChildAccessorCall { accessor: a } =>
+      LoweringTarget { primitive: Descend,
+        bound: SubtreeSize { param: a },
+        evidence: Strict, factor: none }
+
+    CollectionShrinkCall { amount: p, collection: c } =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: c },
+        evidence: Strict,
+        factor: Present { value: ConstantShrink { steps: p } } }
+
+    ArithmeticSubtractCall { steps: p, ring_param: r } =>
+      LoweringTarget { primitive: Repeat,
+        bound: ArithmeticParam { param: r },
+        evidence: Strict,
+        factor: Present { value: ConstantShrink { steps: p } } }
+
+    ArithmeticDivideCall { divisor: d, ring_param: r } =>
+      LoweringTarget { primitive: Repeat,
+        bound: ArithmeticParam { param: r },
+        evidence: Strict,
+        factor: Present { value: ProportionalShrink { divisor: d } } }
+
+    ParserAdvanceCall { witness: w } =>
+      LoweringTarget { primitive: Fold,
+        bound: ParserStreamSize { witness: w },
+        evidence: Strict, factor: none }
+
+    WorklistDrainCall { element: e } =>
+      LoweringTarget { primitive: Fold,
+        bound: WorklistDrainSize { element: e },
+        evidence: Strict, factor: none }
+
+    FoldBodyCall { outer_collection: oc } =>
+      LoweringTarget { primitive: Fold,
+        bound: CollectionSize { param: oc },
+        evidence: NonIncreasing, factor: none }
+
+    SameArgumentCall =>
+      LoweringTarget { primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing, factor: none }
+  }
+}
+
+fn size_bound_param(bound: SizeBound) -> String? {
+  match bound {
+    SubtreeSize { param: p }    => Present { value: p }
+    CollectionSize { param: p } => Present { value: p }
+    ParserStreamSize { witness: w } => Present { value: w }
+    WorklistDrainSize { element: e } => Present { value: e }
+    ArithmeticParam { param: p } => Present { value: p }
+    ExplicitCountZero           => none
+    ExplicitCountPositive { steps: _ } => none
+    Forever                     => none
+  }
+}
+
+fn is_constant_bound(bound: SizeBound) -> Bool {
+  match bound {
+    ExplicitCountZero => true
+    ExplicitCountPositive { steps: _ } => true
+    Forever                => true
+    _                      => false
+  }
+}
+
+fn forever_iteration_bound() -> Int { 9223372036854775807 }
+
+fn constant_bound_value(bound: SizeBound) -> Int? {
+  match bound {
+    ExplicitCountZero => Present { value: 0 }
+    ExplicitCountPositive { steps: s } => Present { value: positive_descent_count(s) }
+    Forever                    => Present { value: forever_iteration_bound() }
+    _                          => none
+  }
+}
+
+type IterationDimension
+  = TreeDescent
+  | CollectionFold
+  | ArithmeticRepeat
+
+// THE FOLDABLE PROFILES ARE EXACTLY THE FINITELY SUPPORTED ONES, and saying that became possible
+// only once the carriers were split. `PartialFunctionProfile` answered `CollectionFold` here while
+// `PointwisePowerCollectionProfile` answered `none` -- the same distinction, decided two different
+// ways, because one name carried both an open function and a finite table. An open partial
+// function has no iteration dimension for the same reason an open characteristic function does
+// not: there is nothing to walk. The two open profiles now agree, and the two finite ones do.
+fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
+  match profile {
+    FreeMonoidCollectionProfile        => Present { value: CollectionFold }
+    FreeMonoidScalarProfile            => Present { value: CollectionFold }
+    FinitePowerSetProfile              => Present { value: CollectionFold }
+    FinitelySupportedFunctionProfile   => Present { value: CollectionFold }
+    PointwisePowerCollectionProfile    => none
+    PartialFunctionProfile             => none
+    OrderedRingProfile                 => Present { value: ArithmeticRepeat }
+    ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
+    BooleanAlgebraProfile              => none
+  }
+}
+
+fn type_iteration_dimension(type_name: String) -> IterationDimension? {
+  if type_name == "Node" { Present { value: TreeDescent } }
+  else {
+    match kernel_algebra_profile |> get(type_name) {
+      Present { value: p } => algebra_profile_to_dimension(profile: p)
+      Absent => none
+    }
+  }
+}

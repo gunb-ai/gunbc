@@ -1,0 +1,825 @@
+module std.occurrence_identity
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.algebra { FreeMonoid }
+import std.content_hash { Fnv1a64Structural }
+import std.types { Bool, Int, String, SourceSpan }
+
+data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
+
+// AuthoredTokenOrdinalSpace carries the opaque shared allocator state, not an arithmetic quantity:
+// callers advance only through the shared allocator boundary and cannot substitute a bare scalar or
+// a differently-denominated measure.
+
+type AuthoredTokenOrdinalSpace {
+  allocator: OccurrenceIdAllocator
+}
+
+fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
+  AuthoredTokenOrdinalSpace {
+    allocator: occurrence_id_allocator_initial()
+  }
+}
+
+// AuthoredTokenOrdinal is the comparable source-order carrier (strictly-before gating for
+// ModuleExposure). It is a bare Int brand today — not yet Measure<Count, One, Nat> — because the
+// same feature:occurrence-ordinal-value-measure wall that gates AuthoredTokenOrdinalSpace still
+// blocks a faithful HostNative measure projection. Single authority lives here beside
+// AuthoredTokenOrdinalSpace; consumers import the brand, never re-mint a parallel Int wrapper.
+
+type AuthoredTokenOrdinal {
+  value: Int
+}
+
+fn authored_token_ordinal_before(
+  earlier: AuthoredTokenOrdinal,
+  later: AuthoredTokenOrdinal
+) -> Bool {
+  earlier.value < later.value
+}
+
+fn authored_token_ordinal_eq(
+  left: AuthoredTokenOrdinal,
+  right: AuthoredTokenOrdinal
+) -> Bool {
+  left.value == right.value
+}
+
+type OccurrenceId {
+  value: Int
+}
+
+// OccurrenceContainmentPath is the concrete compact storage projection of
+// std.occurrence_binding.ContainmentPath<OccurrenceId>. Generic stage0 emission of
+// ContainmentPath<N> with #[derive] carriers needed v1.compiler.trait_derive_emit item-level Clone
+// bounds (PR #7570); that emitter work is prerequisite but does not by itself dissolve this
+// projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves
+// ContainmentPath<OccurrenceId> compiles there.
+
+type OccurrenceContainmentPath {
+  ancestors: FreeMonoid<OccurrenceId>
+  terminal: OccurrenceId
+}
+
+type OccurrenceCategory
+  = LexicalValueOccurrence
+  | TypeOccurrence
+  | CallableOccurrence
+  | ConstructorOccurrence
+  | NamespaceSegmentOccurrence
+  | FieldOccurrence
+  | MethodOccurrence
+
+type OccurrenceCategoryModuleScopeExposureVerdict
+  = OccurrenceCategoryModuleScopeExposed
+  | OccurrenceCategoryModuleScopeNotExposed {
+      category: OccurrenceCategory,
+    }
+
+// Canonical module-scope exposure surface for declaration categories (review 45716
+// predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly —
+// not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence,
+// TypeOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence are module-scope members;
+// LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not.
+
+fn occurrence_category_module_scope_exposure_verdict(
+  category: OccurrenceCategory
+) -> OccurrenceCategoryModuleScopeExposureVerdict {
+  match category {
+    CallableOccurrence => OccurrenceCategoryModuleScopeExposed
+    TypeOccurrence => OccurrenceCategoryModuleScopeExposed
+    ConstructorOccurrence => OccurrenceCategoryModuleScopeExposed
+    NamespaceSegmentOccurrence => OccurrenceCategoryModuleScopeExposed
+    LexicalValueOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+    FieldOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+    MethodOccurrence =>
+      OccurrenceCategoryModuleScopeNotExposed { category: category }
+  }
+}
+
+type OccurrenceCategoryClauseEDependencyInducingVerdict
+  = OccurrenceCategoryClauseEDependencyInducing
+  | OccurrenceCategoryClauseEDependencyNotInducing {
+      category: OccurrenceCategory,
+    }
+
+// Canonical clause-(e) reference-category filter surface (review 50193 predicate-dissolution):
+// consumers match OccurrenceCategoryClauseEDependencyInducingVerdict directly — not a parallel
+// inline match over the OccurrenceCategory coproduct. LexicalValueOccurrence, CallableOccurrence,
+// ConstructorOccurrence, and NamespaceSegmentOccurrence references may induce cross-file file
+// dependencies; TypeOccurrence is N2's resolve_type_reference_containment_binding lane;
+// FieldOccurrence and MethodOccurrence do not participate in clause-(e) structural walks.
+
+fn occurrence_category_clause_e_dependency_inducing_verdict(
+  category: OccurrenceCategory
+) -> OccurrenceCategoryClauseEDependencyInducingVerdict {
+  match category {
+    LexicalValueOccurrence => OccurrenceCategoryClauseEDependencyInducing
+    CallableOccurrence => OccurrenceCategoryClauseEDependencyInducing
+    ConstructorOccurrence => OccurrenceCategoryClauseEDependencyInducing
+    NamespaceSegmentOccurrence => OccurrenceCategoryClauseEDependencyInducing
+    TypeOccurrence =>
+      OccurrenceCategoryClauseEDependencyNotInducing { category: category }
+    FieldOccurrence =>
+      OccurrenceCategoryClauseEDependencyNotInducing { category: category }
+    MethodOccurrence =>
+      OccurrenceCategoryClauseEDependencyNotInducing { category: category }
+  }
+}
+
+type OccurrenceRole
+  = DeclarationRole
+  | ReferenceRole
+
+type OccurrenceProjection {
+  occurrence: OccurrenceId
+  authored_name: String
+  diagnostic_span: SourceSpan
+}
+
+type OccurrenceIndexEntry {
+  projection: OccurrenceProjection
+  containment: OccurrenceContainmentPath
+}
+
+type OccurrenceIndex {
+  entries: List<OccurrenceIndexEntry>
+}
+
+type DeclarationOccurrence {
+  occurrence: OccurrenceId
+  containment: OccurrenceContainmentPath
+  category: OccurrenceCategory
+  diagnostic_span: SourceSpan
+}
+
+type ReferenceOccurrence {
+  occurrence: OccurrenceId
+  containment: OccurrenceContainmentPath
+  category: OccurrenceCategory
+  diagnostic_span: SourceSpan
+}
+
+type OccurrenceTransport {
+  index: OccurrenceIndex
+  declarations: List<DeclarationOccurrence>
+  references: List<ReferenceOccurrence>
+}
+
+type OccurrenceIdentityAcceptanceLaw {
+  id: String
+  required_receipt: String
+}
+
+data occurrence_identity_acceptance_law_rebuilt_reference: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "rebuilt-reference-identity-preservation",
+  required_receipt: "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.",
+}
+
+data occurrence_identity_acceptance_law_collector_dedupe: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "one-occurrence-collector-dedupe",
+  required_receipt: "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.",
+}
+
+data occurrence_identity_acceptance_law_distinct_occurrences: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "structurally-equal-distinct-occurrences",
+  required_receipt: "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.",
+}
+
+data occurrence_identity_acceptance_law_pattern_reachability: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "pattern-declaration-reachability",
+  required_receipt: "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.",
+}
+
+data occurrence_identity_acceptance_law_parser_isolation: OccurrenceIdentityAcceptanceLaw = OccurrenceIdentityAcceptanceLaw {
+  id: "same-spelling-parser-declaration-isolation",
+  required_receipt: "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.",
+}
+
+data occurrence_identity_acceptance_laws: List<OccurrenceIdentityAcceptanceLaw> = [
+  occurrence_identity_acceptance_law_rebuilt_reference,
+  occurrence_identity_acceptance_law_collector_dedupe,
+  occurrence_identity_acceptance_law_distinct_occurrences,
+  occurrence_identity_acceptance_law_pattern_reachability,
+  occurrence_identity_acceptance_law_parser_isolation,
+]
+
+type OccurrenceTransportRefusal
+  = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
+  | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | DuplicateSuppliedCandidateIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | InconsistentOccurrenceContainment {
+      occurrence: OccurrenceId,
+      diagnostic_span: SourceSpan,
+    }
+  | WrongOccurrenceRole {
+      occurrence: OccurrenceId,
+      expected: OccurrenceRole,
+      observed: OccurrenceRole,
+      diagnostic_span: SourceSpan,
+    }
+  | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
+
+// AN ORDINAL NAMES AN OCCURRENCE ONLY INSIDE THE ALLOCATOR THAT MINTED IT, SO A REFERENCE THAT
+// LEAVES THAT ALLOCATOR CARRIES THE SCOPE IT WAS LAWFUL IN.
+//
+// The scope law at the top of this module forbids filename, SourceSpan, authored name, structural
+// Node equality and content hash as identity INPUTS. It does not forbid pairing an ordinal with the
+// content address of the graph whose allocator minted it, and the distinction is the whole of why
+// this carrier is admissible: the pair does not DERIVE the occurrence's identity -- the parser
+// minted that -- it states the DOMAIN in which the ordinal is a lawful name. That is applicability,
+// not identity, and it is what makes an indexable cross-graph relation sound where a cross-graph
+// KEY is not.
+//
+// IT LIVES HERE BECAUSE THE LAW IT DISCHARGES LIVES HERE. It was first minted downstream, in
+// v2.workflow.legacy_binding_observation, as SubjectOccurrenceRef -- one concept named twice, with
+// the name stating that consumer's vocabulary (a comparison SUBJECT) rather than the fact (an
+// allocator SCOPE). The moment a second consumer needed it -- NodeOccurrenceIdentity's projected
+// arm below -- the fork would have been real, so the authority is hoisted to the module that owns
+// the law rather than copied beside it.
+type ScopedOccurrenceRef {
+  scope: Fnv1a64Structural
+  occurrence: OccurrenceId
+}
+
+// SCOPE EQUALITY IS ASKED THROUGH THIS FUNCTION AND NEVER THROUGH A BARE DIGEST COMPARISON, for the
+// ordinary single-authority reason: a consumer reaching into `.scope.digest` re-decides what makes
+// two allocator domains the same, and two such decisions are free to diverge from this one.
+fn scoped_occurrence_ref_same_scope(
+  left: ScopedOccurrenceRef,
+  right: ScopedOccurrenceRef
+) -> Bool {
+  left.scope.digest == right.scope.digest
+}
+
+fn scoped_occurrence_ref_in_scope(
+  occurrence_ref: ScopedOccurrenceRef,
+  scope: Fnv1a64Structural
+) -> Bool {
+  occurrence_ref.scope.digest == scope.digest
+}
+
+// NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are
+// closure-global. The spelling was chosen while a second, identically named v2 coproduct still
+// existed and could not coexist with these constructors in one closure; that coproduct and its
+// conversions are deleted and this carrier is now the only occurrence-identity carrier a Node
+// holds. The spelling is kept because renaming it would be a corpus-wide rewrite that buys nothing:
+// the constructor spelling is representation, and this shared carrier and its allocator remain the
+// semantic authority.
+
+// THE THIRD ARM IS A DECISION ABOUT THIS SHARED ALGEBRA, NOT A FIELD ON AN EXISTING ONE.
+//
+// A projector that rewrites a graph creates nodes that were never authored -- an inserted qualifier
+// segment is the motivating one. Before this arm the projector's only spelling for such a node was
+// OccurrenceSynthetic, which means "this node has no authored occurrence" and says nothing about
+// WHY it exists. So the cause was lost at construction, and no later pass could recover it: this
+// module's own scope law closes every route by which a finished tree could be re-keyed against the
+// one it was projected from. The consequence was concrete and it is what forced this change --
+// v2.workflow.legacy_binding_delta's ProjectedAsInsertion carries the causing reference and was
+// therefore UNEMITTABLE, a constructor no producer could reach.
+//
+// WHY NOT A FIELD. The obvious repair is `OccurrenceSynthetic { caused_by: ScopedOccurrenceRef? }`
+// and it is the wrong one twice over. It is state-space conflation: Absent would mean both "the
+// compiler synthesised this node and no cause exists" and "a projector created this node and the
+// cause was dropped", which have opposite owners and opposite repairs. And it retypes every
+// existing synthetic node in the corpus, so the change lands SILENTLY -- every current match arm
+// keeps compiling while its meaning widens. A third constructor does the reverse: every total match
+// on this coproduct refuses to compile until its author decides what a projector-created occurrence
+// means there, which is the deletion-as-census move applied to an addition.
+//
+// WHY IT CARRIES AN ID AS WELL AS A CAUSE. An inserted occurrence is a real occurrence in the graph
+// that contains it -- it is minted from that graph's allocator and it must be answerable in that
+// graph's denominator, or a completeness join over the projected side would refuse the projection
+// for succeeding. What it lacks is not an identity, it is an AUTHOR.
+//
+// AND WHY THE CAUSE IS SCOPED WHILE THE ID IS BARE. The id is minted by the allocator of the graph
+// this node lives in, so the containing graph IS its scope and pairing it with an address here
+// would store a fact the position already carries. The cause was minted in a DIFFERENT allocator --
+// the graph that was projected FROM -- so a bare ordinal there would be exactly the unscoped
+// cross-domain name the scope law refuses, and the accidental equality of two independently
+// allocated ordinals would be indistinguishable from a real cause.
+//
+// WHETHER THE CAUSE NAMES AN AUTHORED OCCURRENCE IS NOT DECIDABLE HERE, AND THIS CARRIER DOES NOT
+// PRETEND OTHERWISE. A ScopedOccurrenceRef names an ordinal inside a stated allocator domain; it
+// does not say whether that ordinal was minted for an authored token, and this module cannot find
+// out -- resolving it means holding the causing graph's transport, which is a join and not a
+// property of a node. So a chain, where a projector-created occurrence causes another, is
+// REPRESENTABLE and is not forbidden by construction. Forbidding it here would mean either
+// restricting the cause to a type this module cannot verify or writing a convention nothing
+// executes, and both are worse than saying where the check actually lives: the consumer that holds
+// both graphs. v2.workflow.legacy_binding_delta already refuses a cause that is out of the base
+// subject's scope, and refuses one that is in scope but names no occurrence in the base
+// denominator, so a cause naming a node that does not exist in the graph it claims to come from is
+// caught at the join with both denominators in hand. RUNG, HONESTLY: mitigatable at this carrier,
+// mechanically preventable at that join, and the next rung here would be a construction that can
+// only be reached from a resolved base transport.
+//
+// NOTE THE ASYMMETRY, WHICH IS DELIBERATE: a carried-forward node gets no arm here. Its
+// correspondence to its base counterpart relates two occurrences that BOTH exist, so the projector
+// can emit that pairing from the copy it performed and nothing needs to ride on the node. An
+// insertion has no base counterpart to be paired WITH, which is precisely why its cause has nowhere
+// else to live.
+type NodeOccurrenceIdentity
+  = OccurrenceSynthetic
+  | OccurrenceMinted { id: OccurrenceId }
+  | OccurrenceProjected { id: OccurrenceId, caused_by: ScopedOccurrenceRef }
+
+type OccurrenceIdAllocator {
+  next_id: Int
+}
+
+type OccurrenceIdAllocResult {
+  id: OccurrenceId
+  alloc: OccurrenceIdAllocator
+}
+
+fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
+  OccurrenceIdAllocator { next_id: 0 }
+}
+
+fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
+  OccurrenceIdAllocResult {
+    id: OccurrenceId { value: alloc.next_id },
+    alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 },
+  }
+}
+
+fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
+  left.value == right.value
+}
+
+fn occurrence_id_allocator_advance_to(
+  alloc: OccurrenceIdAllocator,
+  min_next: AuthoredTokenOrdinalSpace
+) -> OccurrenceIdAllocator {
+  let min_next_value = min_next.allocator.next_id
+  if alloc.next_id < min_next_value {
+    OccurrenceIdAllocator { next_id: min_next_value }
+  } else {
+    alloc
+  }
+}
+
+fn authored_token_ordinal_space_from_allocator(
+  alloc: OccurrenceIdAllocator
+) -> AuthoredTokenOrdinalSpace {
+  AuthoredTokenOrdinalSpace {
+    allocator: alloc
+  }
+}
+
+fn node_occurrence_identity_minted(id: OccurrenceId) -> NodeOccurrenceIdentity {
+  OccurrenceMinted { id: id }
+}
+
+fn node_occurrence_identity_projected(
+  id: OccurrenceId,
+  caused_by: ScopedOccurrenceRef
+) -> NodeOccurrenceIdentity {
+  OccurrenceProjected { id: id, caused_by: caused_by }
+}
+
+// occurrence_transport_refusal builds each graph-local identity/category index exactly once, then
+// validates declaration and reference rows by indexed lookup. It must never rescan a full
+// occurrence population per authored occurrence.
+
+fn occurrence_containment_matches_occurrence(
+  containment: OccurrenceContainmentPath,
+  occurrence: OccurrenceId
+) -> Bool {
+  containment.terminal.value == occurrence.value
+}
+
+fn occurrence_containment_paths_equal(
+  left: OccurrenceContainmentPath,
+  right: OccurrenceContainmentPath
+) -> Bool {
+  left.ancestors == right.ancestors &&
+  left.terminal.value == right.terminal.value
+}
+
+// Canonical containment-prefix predicates for structural exposure (review 45716 single-authority;
+// review 47424 fold surface): declaration containment is exposed to a reference when prefix is a
+// prefix of path. Ancestors are compared by projecting each FreeMonoid through fold (never a local
+// Empty/Cons recursive match — DESIGN predicate/walker dissolution). Consumers import these from
+// std.occurrence_identity — never reproduce locally.
+
+fn occurrence_containment_path_contains_ancestor(
+  ancestors: FreeMonoid<OccurrenceId>,
+  target: OccurrenceId
+) -> Bool {
+  fold(
+    ancestors,
+    init: false,
+    f: (found, id) => found || id.value == target.value,
+  )
+}
+
+fn occurrence_containment_ancestors_as_list(
+  ancestors: FreeMonoid<OccurrenceId>
+) -> List<OccurrenceId> {
+  reverse(fold(
+    ancestors,
+    init: [],
+    f: (acc, id) => concat([id], acc),
+  ))
+}
+
+type OccurrenceIdListPrefixAcc {
+  path_remaining: List<OccurrenceId>
+  ok: Bool
+}
+
+fn occurrence_id_list_is_prefix_of(
+  prefix: List<OccurrenceId>,
+  path: List<OccurrenceId>
+) -> Bool {
+  fold(
+    prefix,
+    init: OccurrenceIdListPrefixAcc {
+      path_remaining: path,
+      ok: true,
+    },
+    f: (acc, expected) =>
+      if !acc.ok {
+        acc
+      } else if (acc.path_remaining |> count) == 0 {
+        OccurrenceIdListPrefixAcc {
+          path_remaining: [],
+          ok: false,
+        }
+      } else if occurrence_id_eq(
+        left: acc.path_remaining.first(),
+        right: expected,
+      ) {
+        OccurrenceIdListPrefixAcc {
+          path_remaining: acc.path_remaining.skip(n: 1),
+          ok: true,
+        }
+      } else {
+        OccurrenceIdListPrefixAcc {
+          path_remaining: acc.path_remaining,
+          ok: false,
+        }
+      },
+  ).ok
+}
+
+fn occurrence_containment_ancestors_are_prefix_of(
+  prefix_ancestors: FreeMonoid<OccurrenceId>,
+  path_ancestors: FreeMonoid<OccurrenceId>
+) -> Bool {
+  occurrence_id_list_is_prefix_of(
+    prefix: occurrence_containment_ancestors_as_list(ancestors: prefix_ancestors),
+    path: occurrence_containment_ancestors_as_list(ancestors: path_ancestors),
+  )
+}
+
+fn occurrence_containment_path_is_prefix_of(
+  prefix: OccurrenceContainmentPath,
+  path: OccurrenceContainmentPath
+) -> Bool {
+  if occurrence_containment_paths_equal(left: prefix, right: path) {
+    true
+  } else if prefix.terminal.value == path.terminal.value {
+    occurrence_containment_ancestors_are_prefix_of(
+      prefix_ancestors: prefix.ancestors,
+      path_ancestors: path.ancestors,
+    )
+  } else {
+    occurrence_containment_path_contains_ancestor(
+      ancestors: path.ancestors,
+      target: prefix.terminal,
+    )
+  }
+}
+
+type OccurrenceTransportIndexBuild {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  refusal: OccurrenceTransportRefusal?
+}
+
+fn occurrence_transport_index_build(
+  index: OccurrenceIndex
+) -> OccurrenceTransportIndexBuild {
+  fold(
+    index.entries,
+    init: OccurrenceTransportIndexBuild {
+      entries_by_id: empty_map(),
+      refusal: none,
+    },
+    f: (build, entry) =>
+      match build.refusal {
+        Present { value: _ } => build
+        Absent =>
+          match map_get(
+            build.entries_by_id,
+            entry.projection.occurrence.value
+          ) {
+            Present { value: existing } =>
+              OccurrenceTransportIndexBuild {
+                entries_by_id: build.entries_by_id,
+                refusal: Present {
+                  value: DuplicateAuthoredOccurrenceIdentity {
+                    occurrence: existing.projection.occurrence,
+                    diagnostic_span: existing.projection.diagnostic_span,
+                  },
+                },
+              }
+            Absent =>
+              if occurrence_containment_matches_occurrence(
+                containment: entry.containment,
+                occurrence: entry.projection.occurrence
+              ) {
+                OccurrenceTransportIndexBuild {
+                  entries_by_id: map_insert(
+                    build.entries_by_id,
+                    entry.projection.occurrence.value,
+                    entry
+                  ),
+                  refusal: none,
+                }
+              } else {
+                OccurrenceTransportIndexBuild {
+                  entries_by_id: build.entries_by_id,
+                  refusal: Present {
+                    value: InconsistentOccurrenceContainment {
+                      occurrence: entry.projection.occurrence,
+                      diagnostic_span: entry.projection.diagnostic_span,
+                    },
+                  },
+                }
+              }
+          }
+      }
+  )
+}
+
+type OccurrenceTransportRoleIndexBuild {
+  declarations_by_id: Map<Int, DeclarationOccurrence>
+  references_by_id: Map<Int, ReferenceOccurrence>
+  refusal: OccurrenceTransportRefusal?
+}
+
+fn occurrence_transport_role_index_build(
+  declarations: List<DeclarationOccurrence>,
+  references: List<ReferenceOccurrence>
+) -> OccurrenceTransportRoleIndexBuild {
+  let declaration_build = fold(
+    declarations,
+    init: OccurrenceTransportRoleIndexBuild {
+      declarations_by_id: empty_map(),
+      references_by_id: empty_map(),
+      refusal: none,
+    },
+    f: (build, declaration) =>
+      match build.refusal {
+        Present { value: _ } => build
+        Absent =>
+          match map_get(
+            build.declarations_by_id,
+            declaration.occurrence.value
+          ) {
+            Present { value: existing } =>
+              OccurrenceTransportRoleIndexBuild {
+                declarations_by_id: build.declarations_by_id,
+                references_by_id: build.references_by_id,
+                refusal: Present {
+                  value: DuplicateAuthoredOccurrenceIdentity {
+                    occurrence: existing.occurrence,
+                    diagnostic_span: existing.diagnostic_span,
+                  },
+                },
+              }
+            Absent =>
+              OccurrenceTransportRoleIndexBuild {
+                declarations_by_id: map_insert(
+                  build.declarations_by_id,
+                  declaration.occurrence.value,
+                  declaration
+                ),
+                references_by_id: build.references_by_id,
+                refusal: none,
+              }
+          }
+      }
+  )
+  match declaration_build.refusal {
+    Present { value: _ } => declaration_build
+    Absent =>
+      fold(
+        references,
+        init: declaration_build,
+        f: (build, reference) =>
+          match build.refusal {
+            Present { value: _ } => build
+            Absent =>
+              match map_get(
+                build.references_by_id,
+                reference.occurrence.value
+              ) {
+                Present { value: existing } =>
+                  OccurrenceTransportRoleIndexBuild {
+                    declarations_by_id: build.declarations_by_id,
+                    references_by_id: build.references_by_id,
+                    refusal: Present {
+                      value: DuplicateAuthoredOccurrenceIdentity {
+                        occurrence: existing.occurrence,
+                        diagnostic_span: existing.diagnostic_span,
+                      },
+                    },
+                  }
+                Absent =>
+                  OccurrenceTransportRoleIndexBuild {
+                    declarations_by_id: build.declarations_by_id,
+                    references_by_id: map_insert(
+                      build.references_by_id,
+                      reference.occurrence.value,
+                      reference
+                    ),
+                    refusal: none,
+                  }
+              }
+          }
+      )
+  }
+}
+
+fn declaration_occurrence_refusal(
+  index_by_id: Map<Int, OccurrenceIndexEntry>,
+  references_by_id: Map<Int, ReferenceOccurrence>,
+  declaration: DeclarationOccurrence
+) -> OccurrenceTransportRefusal? {
+  match map_get(index_by_id, declaration.occurrence.value) {
+    Absent =>
+      Present {
+        value: MissingAuthoredOccurrenceIdentity {
+          diagnostic_span: declaration.diagnostic_span,
+        },
+      }
+    Present { value: entry } =>
+      if occurrence_containment_paths_equal(
+        left: declaration.containment,
+        right: entry.containment
+      ) {
+        match map_get(references_by_id, declaration.occurrence.value) {
+          Present { value: reference } =>
+            Present {
+              value: WrongOccurrenceRole {
+                occurrence: declaration.occurrence,
+                expected: DeclarationRole,
+                observed: ReferenceRole,
+                diagnostic_span: declaration.diagnostic_span,
+              },
+            }
+          Absent => none
+        }
+      } else {
+        Present {
+          value: InconsistentOccurrenceContainment {
+            occurrence: declaration.occurrence,
+            diagnostic_span: declaration.diagnostic_span,
+          },
+        }
+      }
+  }
+}
+
+fn reference_occurrence_refusal(
+  index_by_id: Map<Int, OccurrenceIndexEntry>,
+  declarations_by_id: Map<Int, DeclarationOccurrence>,
+  reference: ReferenceOccurrence
+) -> OccurrenceTransportRefusal? {
+  match map_get(index_by_id, reference.occurrence.value) {
+    Absent =>
+      Present {
+        value: MissingAuthoredOccurrenceIdentity {
+          diagnostic_span: reference.diagnostic_span,
+        },
+      }
+    Present { value: entry } =>
+      if occurrence_containment_paths_equal(
+        left: reference.containment,
+        right: entry.containment
+      ) {
+        match map_get(declarations_by_id, reference.occurrence.value) {
+          Present { value: declaration } =>
+            Present {
+              value: WrongOccurrenceRole {
+                occurrence: reference.occurrence,
+                expected: ReferenceRole,
+                observed: DeclarationRole,
+                diagnostic_span: reference.diagnostic_span,
+              },
+            }
+          Absent => none
+        }
+      } else {
+        Present {
+          value: InconsistentOccurrenceContainment {
+            occurrence: reference.occurrence,
+            diagnostic_span: reference.diagnostic_span,
+          },
+        }
+      }
+  }
+}
+
+type ValidatedOccurrenceTransport {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  declarations_by_id: Map<Int, DeclarationOccurrence>
+  references_by_id: Map<Int, ReferenceOccurrence>
+  declarations: List<DeclarationOccurrence>
+  references: List<ReferenceOccurrence>
+}
+
+type OccurrenceTransportValidation
+  = OccurrenceTransportValidated { transport: ValidatedOccurrenceTransport }
+  | OccurrenceTransportRefused { refusal: OccurrenceTransportRefusal }
+
+// Canonical transport validity boundary: occurrence_transport_validate builds each graph-local
+// identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport
+// whose entries_by_id, declarations_by_id, and references_by_id are the exact lookup authorities.
+// Resolvers consume the validated carrier and never rescan OccurrenceIndex.entries or either role
+// population per supplied identity. The declaration/reference lists remain as the authored
+// transport order, not as lookup paths.
+
+fn occurrence_transport_validate(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportValidation {
+  let index_build = occurrence_transport_index_build(
+    index: transport.index
+  )
+  match index_build.refusal {
+    Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+    Absent =>
+      let role_index_build = occurrence_transport_role_index_build(
+        declarations: transport.declarations,
+        references: transport.references
+      )
+      match role_index_build.refusal {
+        Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+        Absent =>
+          let declaration_refusal = fold(
+            transport.declarations,
+            init: none,
+            f: (refusal, declaration) =>
+              match refusal {
+                Present { value: _ } => refusal
+                Absent => declaration_occurrence_refusal(
+                  index_by_id: index_build.entries_by_id,
+                  references_by_id: role_index_build.references_by_id,
+                  declaration: declaration
+                )
+              }
+          )
+          match declaration_refusal {
+            Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+            Absent =>
+              let reference_refusal = fold(
+                transport.references,
+                init: none,
+                f: (refusal, reference) =>
+                  match refusal {
+                    Present { value: _ } => refusal
+                    Absent => reference_occurrence_refusal(
+                      index_by_id: index_build.entries_by_id,
+                      declarations_by_id: role_index_build.declarations_by_id,
+                      reference: reference
+                    )
+                  }
+              )
+              match reference_refusal {
+                Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+                Absent => OccurrenceTransportValidated {
+                  transport: ValidatedOccurrenceTransport {
+                    entries_by_id: index_build.entries_by_id,
+                    declarations_by_id: role_index_build.declarations_by_id,
+                    references_by_id: role_index_build.references_by_id,
+                    declarations: transport.declarations,
+                    references: transport.references,
+                  },
+                }
+              }
+          }
+      }
+  }
+}
+
+fn occurrence_transport_refusal(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportRefusal? {
+  match occurrence_transport_validate(transport: transport) {
+    OccurrenceTransportRefused { refusal: refusal } => Present { value: refusal }
+    OccurrenceTransportValidated { transport: _ } => none
+  }
+}
+
+data authored_token_ordinal_typed_bridge_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.")
+
+data authored_token_ordinal_value_bridge_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.")
+
+data occurrence_containment_storage_projection_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.")

@@ -1,0 +1,44 @@
+module v2.test.lens_unit_modeling.electrical_blocked_pending_flagged
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.unit_modeling { unit_modeling_gate }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data int_leaf_target_elec: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data electrical_field_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^tdp_watts },
+      target: int_leaf_target_elec
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn electrical_blocked_pending_flagged_holds() -> Bool {
+  match unit_modeling_gate(node: electrical_field_input) {
+    Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+

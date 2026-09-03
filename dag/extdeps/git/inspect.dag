@@ -1,0 +1,511 @@
+module extdeps.git.inspect
+
+import std.types { Bool, CommitSha, FilePath, GitRef, Int, String }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs"
+  }
+}
+
+// Read-only repository-root, revision, and tree inspection operations are de-fused from the broad
+// git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and
+// ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this
+// same inspection authority for revision-addressed Rust-source observation. No second Git
+// inspection surface remains in extdeps.git.
+
+// `--no-optional-locks` IS WHAT MAKES `readonly` TRUE, AND ITS ABSENCE MADE THIS DECLARATION FALSE.
+// Measured: running this operation's own argv without the flag against a repository CHANGES the index
+// file (md5 before/after differ), because `git status` refreshes the index and writes cached stat
+// information back. With the flag the index is byte-identical, and the reported entries are unchanged
+// -- so the flag costs nothing and buys the property the operation already claimed. A `readonly`
+// declaration that does not hold is worse than a missing one, because extdeps is the layer whose whole
+// job is to model what upstream actually does, and every consumer downstream reasons from it as a fact.
+//
+// The sentence below said this operation pinned every flag the manual says a script must pin. It did
+// not, and that is why the omission survived: the claim of completeness was the thing that stopped
+// anyone rechecking. Corrected in place rather than appended to, so the false version does not stand
+// beside the true one.
+//
+// THIS FLAG CANNOT BE WITNESSED, AND THAT IS THE SAME FUSION §3 NAMES. It lives inside a `transport
+// shell` literal, and a literal in a service block cannot be called by a test -- which is exactly the
+// defect `ssh.Session.ExecPortableWords` was built to correct, where one site required host-key
+// verification and another disabled it, spelled as indistinguishable strings with no test able to name
+// the disagreement. So nothing stops a later reader deleting this flag as noise; the protection is this
+// paragraph and the measurement in it, which is strictly weaker than a witness and is recorded as such.
+// It climbs when the argv is lifted out of the literal into a callable authority, the same lift the
+// deployed-tree observation performs for its own words.
+//
+// STILL OPEN, NAMED RATHER THAN LEFT TO BE REDISCOVERED: `input {}` means this operation cannot name a
+// repository at all, so it observes whatever directory the process happens to be standing in. That is
+// the ambient-context class, one notch below an operation that at least takes a path, and closing it
+// changes every call site -- a separate repair from this one.
+//
+// WorkingTreeStatus pins the flags Git's own manual says a script must pin. `--porcelain=v1` because the
+// manual states plain `--porcelain` may change and that a version should be given for scripting, so the
+// version is named rather than implied. `-z` because paths may contain spaces, quotes, or newlines and the
+// non-NUL form C-quotes them, which would make every consumer reimplement Git's quoting rules to recover a
+// filename. `--untracked-files=all` because the default `normal` collapses an untracked directory to the
+// directory name alone, and a consumer asking "does this tree contain files HEAD does not name" needs the
+// files, not a folded ancestor.
+//
+// The mock answers a CLEAN tree because the runner contract hands each job a fresh checkout; a mocked
+// observation must report the state the contract guarantees rather than fabricate a dirty one.
+//
+// IgnoredFiles is a SECOND operation rather than an `--ignored=matching` flag on the first, and the reason is
+// measured, not stylistic. `git status --porcelain=v1 -z --untracked-files=all --ignored=matching` reports a
+// directory that itself matches an ignore pattern as one folded entry — `!! ign/` — and never names the file
+// inside it. That is the same folded-ancestor loss `--untracked-files=all` exists to avoid, and it is fatal
+// here specifically, because a consumer asking "which ignored files would the source sync copy" must filter
+// each path against the deployed-scope authority and must name the offending path in its refusal; a folded
+// directory can do neither. `git ls-files --others --ignored --exclude-standard -z` answers with real file
+// paths (`ign/f.dag`), which is the granularity the question needs. Verified by execution against git 2.43.0
+// on a constructed repository, both spellings side by side.
+//
+// `--exclude-standard` is pinned because without it the command applies no ignore rules at all and would
+// return every untracked path — the opposite of the question. The output is a bare NUL-separated path list,
+// so unlike porcelain v1 it carries no status codes and no rename-source continuation to track.
+// MergeBase NAMES THE REPOSITORY IT INSPECTS, AND THE OPERAND IS REQUIRED.
+// An ambient operation answers about whichever checkout the process happens to occupy, so the
+// same call means different things depending on where it was invoked from -- and a wrong answer
+// is INDISTINGUISHABLE from a right one, because two repositories can hold refs that look
+// identical. An OPTIONAL operand would keep the ambient form writable, so it is required: the
+// state this replaces has no spelling.
+//
+// THIS IS THE REPOSITORY'S OWN ESTABLISHED ANSWER, NOT A NEW CONVENTION. extdeps.git RemoteUrlIn
+// already takes `repository_path` and renders `git -C {repository_path}`, for exactly this reason
+// -- it could otherwise confirm the remote of the wrong checkout. This operation is brought into
+// line with that authority rather than inventing a second way to say the same thing.
+//
+// WHY THE OPERAND SITS ON THE OPERATION AND NOT ON THE INVOCATION. "Which repository does this
+// inspect" is a fact about the git operation's SUBJECT; "what directory did the OS start this
+// process in" is a transport fact. Modeling the first as the second would push repository
+// selection into every handler that runs a command -- the N x M adapter shape. One
+// repository-addressed operation with one shell realization is not that.
+//
+// THE SIBLING POPULATION IS DECLARED RATHER THAN SILENTLY LEFT. Five operations in this service
+// are still repository-ambient by the same mechanism: HeadCommit, WorkingTreeStatus,
+// IgnoredFiles, ListTreePathsAtRevision and ShowTree. They are NOT ported here because each
+// carries its own consumer census and this cut is scoped to the operation whose ambient
+// repository blocked a wet observation. Toplevel is deliberately NOT in that list: its purpose IS
+// to discover the ambient repository, so naming one would be circular. RUNG for the five:
+// mitigatable, and the mitigation is only that production happens to run from the repository
+// root. NEXT TRIGGER: the first consumer that must inspect a repository other than its own
+// process position -- which is what forced this one.
+
+// MergeBase CARRIES ITS EXIT CODE BECAUSE THE Bool COLLAPSES AN ANSWER WITH AN ABSENCE OF ONE.
+// `git merge-base` exits 1 when the two commits genuinely share NO merge base -- unrelated
+// histories, which is a FACT about the pair -- and 128 when the ref is invalid or this is not a
+// repository, which is a failure to look. Both render `exit_success = false`, so a consumer
+// holding only the Bool must either refuse both (losing a real answer) or admit both (treating an
+// unreadable repository as proof that two revisions are unrelated). That operation's `exit` block
+// has always DECLARED the distinction; its output simply never surfaced it, so the declaration was
+// unreachable by any caller.
+
+// ResolveRefCommit is a SEPARATE operation from ShowTree rather than a format flag on it, and the
+// separation is the point: `%T` and `%H` answer different questions about the same ref. The tree is
+// the CONTENT at that ref; the commit is its identity INCLUDING ancestry, which the tree does not
+// carry -- two commits with byte-identical trees can have different parents and therefore different
+// merge bases. A consumer that needs the merge to be reproducible needs this one, and a consumer
+// that needs to compare content needs the other; collapsing them into one operation with a format
+// argument would let a caller ask for content and be answered with identity.
+// git grep's EXIT CODE IS THE ANSWER, NOT A VERDICT, and the exit table above is where that is
+// stated once rather than re-derived by each caller. git-grep documents 0 for a match and 1 for no
+// match, so a consumer reading `exit_success` alone cannot distinguish "this revision does not
+// contain the pattern" from "this revision could not be read" -- both arrive as false. The
+// operation therefore publishes `exit_code`, and a caller that collapses 1 and 128 has turned an
+// answer into an absence, which is the empty-observation narrow DESIGN names. Fixed-string
+// matching is pinned in the argv because the patterns callers pass are qualified identity names
+// full of `.`, which a regular expression would read as wildcards -- a silently WIDER match, and
+// therefore a silently WRONG present-at-this-revision answer.
+// GrepMatchesAtRevision READS A REVISION'S CONTENT WITHOUT CHECKING IT OUT, which is the property
+// that makes it distinct from every filesystem read: the subject is a tree that is not the worktree.
+//
+// IT PUBLISHES exit_code AND NOT A success BOOL, and here that is not a style choice inherited from
+// ls_remote_reports_termination_not_success_note -- it is load-bearing. git grep exits 1 for NO
+// MATCHES, which is a perfectly good answer, and 128 for a bad revision, which is not an answer at
+// all. A Bool collapses those two into one false, so a caller could not tell an empty population from
+// an unreadable one -- the empty-observation narrow, arriving through the operation's own output
+// shape.
+//
+// THE PATTERN AND PATHSPEC ARE PARAMETERS because an operation carrying either would be a model of one
+// caller's question rather than of git's content search. `-o` is pinned rather than parameterised: it
+// makes the output the MATCHED TEXT instead of whole lines, and a caller who needs whole lines is
+// asking a different question with a different output size. The prefix `<ref>:<path>:` that git puts
+// on each match is the reason a caller gets the path for free rather than joining for it.
+// ListTreeEntriesAtRevision IS NOT ListTreePathsAtRevision WITH MORE COLUMNS, and the difference is
+// what a consumer can refuse. `--name-only` answers WHICH PATHS a revision contains and erases what
+// each one IS: a regular blob, a symlink, and a submodule gitlink all arrive as a path, so a consumer
+// reading content from that list must treat every entry as a readable file and discover otherwise by
+// failing. The full record carries mode, object type and object id, which lets an entry kind the
+// consumer does not model become a TYPED refusal naming the entry rather than a read error at some
+// later stage -- and it carries the object id, so a population read out of a revision can name each
+// member by content identity instead of by path alone.
+//
+// BOTH OPERATIONS SURVIVE. A consumer that only needs paths pays neither the wider output nor the
+// parse, and asking for identity when you wanted names is the same collapse ResolveRefCommit and
+// ShowTree are kept apart to prevent. The record separator is NUL and the fields are separated by
+// SP SP TAB (`<mode> <type> <object>\t<path>`), which is what makes a path containing a newline, a
+// quote or a tab-free space unambiguous -- git's own -z contract, not a convention this repository
+// invents.
+service git.Inspect {
+  operation Toplevel {
+    input {}
+    output { path: FilePath from "stdout" }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--show-toplevel"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { path: "." } "hermetic checkout root: the runner contract binds cwd = repo toplevel, so the relative root composes with checkout-rooted reads exactly as the absolute toplevel does wet"
+    }
+  }
+
+  operation HeadCommit {
+    input {}
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation WorkingTreeStatus {
+    input {}
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { entries_nul: "", success: true, stderr: "" } "hermetic checkout is clean: the runner contract hands the job a fresh checkout, so the empty entry list is the state a mocked observation must report rather than a fabricated dirty one"
+    }
+  }
+
+  operation IgnoredFiles {
+    input {}
+    output {
+      paths_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { paths_nul: "", success: true, stderr: "" } "hermetic checkout carries no ignored files: the runner contract hands the job a fresh checkout, so the empty path list is the state a mocked observation must report rather than a fabricated one"
+    }
+  }
+
+  operation MergeBase {
+    input { repository_path: String, left: GitRef, right: GitRef }
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "merge-base", "{left}", "{right}"] }
+    exit {
+      0 => Unit
+      1 => String "No merge base"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ListTreePathsAtRevision {
+    input { ref: GitRef }
+    output {
+      paths_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-rz", "--name-only", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ListTreeEntriesAtRevision {
+    input { ref: GitRef }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-rz", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation GrepMatchesAtRevision {
+    input { pattern: String, ref: GitRef, pathspec: String }
+    output {
+      matches: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "grep", "-o", "-E", "{pattern}", "{ref}", "--", "{pathspec}"] }
+    exit {
+      0 => Unit
+      1 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ResolveRefCommit {
+    input { ref: GitRef }
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "show", "-s", "--format=%H", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation GrepFixedAtRevision {
+    input { pattern: String, ref: GitRef }
+    output {
+      paths: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "grep", "--fixed-strings", "--files-with-matches", "-e", "{pattern}", "{ref}"] }
+    exit {
+      0 => Unit
+      1 => String "No file at that revision contains the pattern"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ShowTree {
+    input { ref: GitRef }
+    output {
+      tree: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "show", "-s", "--format=%T", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ConfigGet {
+    input { key: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "config", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key is not set"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation MergeTreeWriteTree {
+    input { left: GitRef, right: GitRef }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "merge-tree", "--write-tree", "{left}", "{right}"] }
+    exit {
+      0 => Unit
+      1 => String "Merge produced conflicts"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+}
+
+// MERGE-BASE EXIT SEMANTICS ARE A FACT OF GIT, SO THEY ARE MODELED HERE BESIDE THE EXIT TABLE THAT
+// DECLARES THEM, and not re-derived by each consumer as bare integers compared with `==`. The
+// operation above already states the contract -- 0, 1, 128 with distinct meanings -- and a consumer
+// that mints its own `merge_base_exit_ok: Int = 0` beside it is holding a second representation of
+// this module's fact: the §2/§3 undeclared sum, free to drift from the exit table the day a fourth
+// code is declared, and free to be compared against the wrong operation's codes with no complaint
+// from anything.
+//
+// THE THREE OUTCOMES ARE NOT A RANKING AND THE MIDDLE ONE IS NOT AN ERROR. Exit 1 is a legitimate
+// ANSWER -- git looked and there is no common ancestor -- which is precisely what lets a consumer
+// distinguish "these histories never met" from "I could not find out", the distinction §5 forbids
+// collapsing. Exit 128 is the refusal: a bad object or a path that is not a repository, where
+// nothing about the two revisions has been established. Rendering 128 as NoCommonAncestor would
+// read an unreadable repository as proof that two revisions are unrelated.
+//
+// THE FIELD IS `base_hex`, NOT `stdout`, AND THAT RENAME IS THE ACTUAL FIX. It never held raw
+// stdout: the operation's output binding delivers `sha` already stripped of git's line terminator,
+// so a field named for the transport was describing something the transport does not hand over.
+//
+// THE NEWLINE CLAIM THIS PARAGRAPH ORIGINALLY MADE WAS FALSE AND IS CORRECTED BY MEASUREMENT.
+// Review 54424 reported that a future caller passing raw stdout would get an "undecodable" refusal
+// on a trailing newline, and I wrote a paragraph here asserting exactly that mechanism -- citing
+// `git merge-base` emitting a newline after the fortieth hex digit, which it does. What I had not
+// checked was whether that byte survives to this fold. It does not. Receipt: a recorded fixture's
+// stored `sha` is 40 characters with no terminator, and REMOVING the trim below leaves the whole
+// wet matrix green -- a mutation that changes nothing is the proof the guard was inert. The
+// caller's trim, which this change deleted, was equally inert for the same reason.
+//
+// So the trim stays as idempotent normalization at the boundary that owns the wire format, and it
+// is described as what it is: a total function over any string a caller hands this fold, NOT a
+// live defect being closed. Calling it the latter would have been a fabricated mechanism sitting
+// in a paragraph justifying its own code -- the same class as an inflated rung, and the reason the
+// measurement is recorded here rather than the conclusion alone.
+//
+// Decoding that hex into an object id still belongs to the consumer that owns the id type; this
+// module owns what git SAID and what its exit code MEANS, not how the caller names commits.
+type MergeBaseOutcome
+  = MergeBaseReported { base_hex: String }
+  | NoCommonAncestor
+  | MergeBaseRefused { exit_code: Int, stderr: String }
+
+data merge_base_exit_reported: Int = 0
+
+data merge_base_exit_no_common_ancestor: Int = 1
+
+// Total over every integer, deliberately: an undeclared exit code is a REFUSAL carrying the code
+// that produced it, never a fourth silent arm and never a default that resolves to an answer.
+fn merge_base_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeBaseOutcome {
+  if exit_code == merge_base_exit_reported {
+    MergeBaseReported { base_hex: trim(s: stdout) }
+  } else {
+    if exit_code == merge_base_exit_no_common_ancestor {
+      NoCommonAncestor
+    } else {
+      MergeBaseRefused { exit_code: exit_code, stderr: stderr }
+    }
+  }
+}
+
+// MERGE-TREE EXIT SEMANTICS ARE ALSO A FACT OF GIT, and they are modeled here for the reason the
+// merge-base note above gives: the operation's exit table already states 0, 1 and 128 with distinct
+// meanings, so a consumer comparing bare integers beside it would hold a second representation of
+// this module's fact.
+//
+// WHAT THIS OPERATION ANSWERS, STATED BECAUSE IT IS NOT THE QUESTION CALLERS EXPECT.
+// `git merge-tree --write-tree A B` answers DOES MERGING B INTO A CHANGE A'S TREE. That is not the
+// same question as IS B'S CONTENT ALREADY IN A, and the two diverge exactly where position matters.
+// Measured receipt (gunbc#9522, 2026-08-28): a branch whose 92 added lines were all present on main
+// had authored one declaration at a DIFFERENT POSITION in its file, so the merge registered an
+// addition and this operation reported a tree differing from main's -- while every line of the
+// branch was already there. A consumer answering "is this already landed" from this operation alone
+// will therefore MISS that case. The divergence is not a defect in git and not one here; it is why
+// the containment consumer in tools.pr_containment_instrument runs a second, content-grain measure
+// beside this one and reports the disagreement as its own disposition rather than resolving it.
+//
+// THE CONFLICTED ARM IS AN ANSWER, NOT AN ERROR, exactly as NoCommonAncestor is above: exit 1 means
+// git merged and found conflicting hunks, which is a fact about the two trees. Exit 128 means
+// nothing about either tree was established. Collapsing them would read an unreadable repository as
+// proof that two revisions conflict.
+//
+// THE TREE OID IS THE FIRST LINE OF STDOUT IN BOTH ANSWERING ARMS -- git writes the tree it built,
+// then, when there were conflicts, the conflict report beneath it. So the conflicted arm carries a
+// real tree oid too, and a caller comparing trees must not assume a tree implies a clean merge.
+type MergeTreeOutcome
+  = MergeTreeClean { tree_hex: String }
+  | MergeTreeConflicted { tree_hex: String }
+  | MergeTreeRefused { exit_code: Int, stderr: String }
+
+data merge_tree_exit_clean: Int = 0
+
+data merge_tree_exit_conflicted: Int = 1
+
+// The tree oid is the first line; anything beneath it is the conflict report and is not this
+// module's to interpret. An answering exit that produced NO first line is a refusal rather than a
+// clean merge of nothing -- an empty stdout is not the identity tree.
+fn merge_tree_first_line(stdout: String) -> String {
+  fold(
+    split(s: trim(s: stdout), delimiter: "\n"),
+    init: "",
+    f: (acc, line) => if acc == "" { trim(s: line) } else { acc }
+  )
+}
+
+// Total over every integer, deliberately, per the merge-base fold above: an undeclared exit code is
+// a REFUSAL carrying the code that produced it, never a fourth silent arm.
+fn merge_tree_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeTreeOutcome {
+  let tree = merge_tree_first_line(stdout: stdout)
+  if tree == "" {
+    MergeTreeRefused {
+      exit_code: exit_code,
+      stderr: concat("git merge-tree produced no tree oid on stdout; stderr: ", stderr)
+    }
+  } else {
+    if exit_code == merge_tree_exit_clean {
+      MergeTreeClean { tree_hex: tree }
+    } else {
+      if exit_code == merge_tree_exit_conflicted {
+        MergeTreeConflicted { tree_hex: tree }
+      } else {
+        MergeTreeRefused { exit_code: exit_code, stderr: stderr }
+      }
+    }
+  }
+}
+
+// A CONFIG KEY THAT IS UNSET IS AN ANSWER, NOT A FAILURE, which is why the exit table above declares
+// 1 as its own arm: `git config --get` exits 1 when the key has no value, and a caller comparing
+// only against 0 would render "this repository does not configure that" identically to "the read
+// broke". They have opposite meanings for anyone deciding whether an observed behaviour is a
+// property of the repository or of the reader's own clone.
+type ConfigReading
+  = ConfigSet { value: String }
+  | ConfigUnset
+  | ConfigUnreadable { exit_code: Int, stderr: String }
+
+data git_config_get_exit_set: Int = 0
+
+data git_config_get_exit_unset: Int = 1
+
+fn config_reading(exit_code: Int, stdout: String, stderr: String) -> ConfigReading {
+  if exit_code == git_config_get_exit_set {
+    ConfigSet { value: trim(s: stdout) }
+  } else {
+    if exit_code == git_config_get_exit_unset {
+      ConfigUnset
+    } else {
+      ConfigUnreadable { exit_code: exit_code, stderr: stderr }
+    }
+  }
+}

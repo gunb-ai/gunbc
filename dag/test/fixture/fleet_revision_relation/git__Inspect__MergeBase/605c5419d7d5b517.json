@@ -1,0 +1,50 @@
+{
+  "operation": "git.Inspect.MergeBase",
+  "input_hash": "605c5419d7d5b517",
+  "inputs": [
+    {
+      "name": "repository_path",
+      "value": {
+        "__tag": "Str",
+        "value": "target/test-fixtures/fleet-revision-relation"
+      }
+    },
+    {
+      "name": "left",
+      "value": {
+        "__tag": "Str",
+        "value": "3ad80d79bd1f64a7f75e121d7323aed053a81f0b"
+      }
+    },
+    {
+      "name": "right",
+      "value": {
+        "__tag": "Str",
+        "value": "1111111111111111111111111111111111111111"
+      }
+    }
+  ],
+  "response": {
+    "__tag": "Record",
+    "__type": "MergeBase",
+    "fields": {
+      "exit_code": {
+        "__tag": "Int",
+        "value": 128
+      },
+      "sha": {
+        "__tag": "Str",
+        "value": ""
+      },
+      "stderr": {
+        "__tag": "Str",
+        "value": "fatal: Not a valid commit name 1111111111111111111111111111111111111111"
+      },
+      "success": {
+        "__tag": "Bool",
+        "value": false
+      }
+    }
+  },
+  "recorded_at": 1787332539
+}

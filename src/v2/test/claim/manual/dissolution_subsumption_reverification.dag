@@ -1,5 +1,6 @@
 module v2.test.manual.dissolution_subsumption_reverification
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimRun,
@@ -8,7 +9,7 @@ import v2.compiler.eval {
   eval_test_claim_subject,
   run_test_claim
 }
-import v2.std.verdict { Verdict, Deferred, Fail, Pass }
+import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
 import v2.compiler.infer {
   InferredFacts,
   InferredTree
@@ -23,7 +24,17 @@ import v2.lens.subsumption {
   rust_language_model_emit_subsumption
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Map, Set }
+import v2.std.collection {
+  Map,
+  PointwisePower
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 
 import v2.std.diagnostic {
   Accepted,
@@ -46,7 +57,6 @@ import v2.std.node {
   Symbol,
   TypeNode,
   Value,
-  SyntheticOccurrence
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -62,7 +72,9 @@ import v2.std.runtime {
   RuntimeUnitValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.verification {
   EqualsClaim,
@@ -88,8 +100,8 @@ type MechanicalReverificationRun {
   test_claim: TestClaimId
   applied_root_fix: DiffId
   execution: MechanicalReverificationExecution
-  findings_before: Set<DiffId>
-  findings_after: Set<DiffId>
+  findings_before: PointwisePower<DiffId>
+  findings_after: PointwisePower<DiffId>
 }
 
 type MechanicalReverificationError
@@ -113,7 +125,7 @@ fn subsumption_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -158,7 +170,7 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
             target: subsumption_symbol_node(s: claim.id)
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     ProducerStageDerivation { derivation_path: _ } =>
       subsumption_symbol_node(s: ^subsumption_runtime_rejected)
@@ -186,7 +198,7 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
         target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -197,12 +209,14 @@ fn completed_lens_ci_execution() -> MechanicalReverificationExecution {
 fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeValue>) -> MechanicalReverificationExecution {
   match run.verdict {
     Pass => completed_lens_ci_execution()
-    Fail { actual: _, falsification: _ } => Failed
+    SemanticMismatch { actual: _, falsification: _ } => Failed
+    BuildFailed { actual: _, diagnostic: _ } => Failed
+    RunFailed { actual: _, diagnostic: _ } => Failed
     Deferred { actual: _, diagnostic: _ } => ReportUnavailable
   }
 }
 
-fn missing_subsumed_fix_before(expected: Set<DiffId>, observed: Set<DiffId>) -> OptionalDiffId {
+fn missing_subsumed_fix_before(expected: PointwisePower<DiffId>, observed: PointwisePower<DiffId>) -> OptionalDiffId {
   let template = DiffId { id: ^emit_rust_template_leaf_fix }
   let name_dispatch = DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if expected.member(template) && !observed.member(template) {
@@ -214,7 +228,7 @@ fn missing_subsumed_fix_before(expected: Set<DiffId>, observed: Set<DiffId>) -> 
   }
 }
 
-fn surviving_subsumed_fix_after(observed: Set<DiffId>) -> OptionalDiffId {
+fn surviving_subsumed_fix_after(observed: PointwisePower<DiffId>) -> OptionalDiffId {
   let template = DiffId { id: ^emit_rust_template_leaf_fix }
   let name_dispatch = DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
   if observed.member(template) {
@@ -335,27 +349,36 @@ fn subsumption_bind_value(
 fn subsumption_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: subsumption_allocate_literal
+      allocate_literal: subsumption_allocate_literal,
+      identity: ^subsumption_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: subsumption_call_primitive
+      call_primitive: subsumption_call_primitive,
+      identity: ^subsumption_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: subsumption_choose_branch
+      choose_branch: subsumption_choose_branch,
+      identity: ^subsumption_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: subsumption_step_loop
+      step_loop: subsumption_step_loop,
+      identity: ^subsumption_step_loop
     },
     bind: BindInterpreter {
-      bind_value: subsumption_bind_value
+      bind_value: subsumption_bind_value,
+      identity: ^subsumption_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
 
-fn subsumption_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn subsumption_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^subsumption_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^subsumption_descent_dimension }
   }
 }
 
@@ -367,14 +390,14 @@ fn subsumption_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn subsumption_fact_lookup(node: Node) -> Witness<InferredFacts> {
-  Holds { value: subsumption_facts(node: node) }
+fn subsumption_fact_lookup(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: subsumption_facts(node: node))
 }
 
 fn subsumption_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: subsumption_fact_lookup
     }
   }
@@ -382,11 +405,11 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
 
 fn subsumption_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^subsumption_allocate_literal_sym,
-    call_primitive: ^subsumption_call_primitive_sym,
-    choose_branch: ^subsumption_choose_branch_sym,
-    step_loop: ^subsumption_step_loop_sym,
-    bind_value: ^subsumption_bind_value_sym,
+    allocate_literal: ^subsumption_allocate_literal,
+    call_primitive: ^subsumption_call_primitive,
+    choose_branch: ^subsumption_choose_branch,
+    step_loop: ^subsumption_step_loop,
+    bind_value: ^subsumption_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
@@ -420,8 +443,8 @@ data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<
   subject: subject_rust_language_model_emit_mechanical_reverification_claim
 )
 
-fn rust_language_model_emit_observed_before_value() -> Set<DiffId> {
-  Set {
+fn rust_language_model_emit_observed_before_value() -> PointwisePower<DiffId> {
+  PointwisePower {
     member: fn(d) {
       d.id == ^emit_rust_template_leaf_fix ||
         d.id == ^emit_rust_name_dispatch_leaf_fix
@@ -429,17 +452,17 @@ fn rust_language_model_emit_observed_before_value() -> Set<DiffId> {
   }
 }
 
-data rust_language_model_emit_observed_before: Set<DiffId> = rust_language_model_emit_observed_before_value()
+data rust_language_model_emit_observed_before: PointwisePower<DiffId> = rust_language_model_emit_observed_before_value()
 
-fn rust_language_model_emit_observed_after_value() -> Set<DiffId> {
-  Set {
+fn rust_language_model_emit_observed_after_value() -> PointwisePower<DiffId> {
+  PointwisePower {
     member: fn(_) {
       false
     }
   }
 }
 
-data rust_language_model_emit_observed_after: Set<DiffId> = rust_language_model_emit_observed_after_value()
+data rust_language_model_emit_observed_after: PointwisePower<DiffId> = rust_language_model_emit_observed_after_value()
 
 data rust_language_model_emit_lens_ci_report: MechanicalReverificationRun = MechanicalReverificationRun {
   test_claim: TestClaimId { id: ^rust_language_model_emit_mechanical_reverification_claim },

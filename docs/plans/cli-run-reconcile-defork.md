@@ -1,0 +1,71 @@
+# Plan — ground `cli_run.rs`'s resolve/reconcile/discovery engine in `.dag` (Lane 4b ∪ seed-shrink)
+
+**Status:** DESIGN — scoping only, no implementation yet. Reported for operator/sunny-newt-884 sign-off before any cutover PR. Linked from `docs/plans/seed-shrink-census.md` Chunk F (`cli_run.rs`).
+
+**Scope boundary (fence, DESIGN §3/§6):** does NOT touch `src/v1/03_resolve.dag` / `src/v1/04_infer.dag` or their GENERATED outputs (`v1_compiler_resolve.rs`, `v1_compiler_infer.rs`) — those are resolver-B's (#6155, open) territory and already `.dag`-authored. This lane only grounds the **orchestration layer around them** that currently lives hand-written in `cli_run.rs`.
+
+## 0. What's actually in scope
+
+The brief names 6 headline functions; the actual orchestration cluster is 15 functions / ~450 LOC in `cli_run.rs` (lines ~478–1011, 1455–1476, 2192–2290ish) — the 6 entry points plus their load-bearing plumbing, which the §4 fence also covers (a worker cutting Phase 2's cache change necessarily touches the plumbing that wires the cache through, not just the 6 named fns):
+
+| fn | does |
+| --- | --- |
+| `build_module_index` / `extract_module_path` / `extract_import_paths` | regex-scan every `.dag` file's `module`/`import` lines into a `module_path → SourceFile` index + raw import-path strings |
+| `resolve_transitively` | BFS the import strings to the transitive source-file closure for one or more entries |
+| `resolve_entry_graph` (brief), `resolve_entry_graph_with_index`, `resolve_entry_with_index`, `resolve_entry_with_index_for_discovery_corpus`, `build_multi_entry_index`, `load_sources_for_entry_with_index` | plumbing that builds/threads `MultiEntryIndex` (the parse_cache/typed_module_cache carrier) into an entry resolve |
+| `resolve_entry_with_parse_cache`, `resolved_graph_from_sources` (brief) | orchestrate parse → resolve → normalize → typecheck → ownership over a closure, with 3 independent hand-rolled caches |
+| `reconcile_with_typed_cache` (brief) | per-module typecheck reuse across batch entries (my own #4867, resolve-cost lever PR1) — keyed by `mod_name` string |
+| `whole_tree_resolved_ctx` (brief), `discover_owned_data_decls` (brief) | whole-tree / multi-entry batch orchestration — groups entries into `DiscoveryResolveGroup`s by overlapping source closure to avoid re-resolving shared modules |
+
+Not in scope: `run_walk` and anything else deep-hawk-756 is touching (coordination note below); the parse/resolve/infer/typecheck internals themselves (already `.dag`-authored, GENERATED).
+
+## 1. The redundancy this dissolution should fix, not just relocate (§2/§3)
+
+Three findings, each a reason to *design* rather than transliterate:
+
+1. **CORRECTED (cursor review caught this):** `decl_facts`/`concept_decl_facts` (`src/v2/std/concept_index.dag`) is the wrong authority to cite — its `ConceptDecl`/`DeclFact` rows carry `{qualified_name, name, kind, node, rel_path}`, no import edges. The real structural surface already exists and is `.dag`-modeled: `cli_run.rs`'s `import_resolution_facts`/`module_declaration_facts` (~line 7012–7068) produce `ImportResolutionFact`/`ModuleDeclarationFact` rows, projected purely in `src/v2/lens/module_graph.dag`. So the redundancy is narrower than "cli_run.rs re-scans text instead of using decl_facts": `resolve_transitively`'s BFS in the *resolve/reconcile* path duplicates the closure `module_graph.dag` already computes over that fact shape (see #2). The `extract_import_paths` regex-scan is a real but *separate* lever — still live inside `import_resolution_facts` (the host builtin backing the modeled facts), not eliminated by this lane, and NOT gated on `decl_facts_project.rs`'s dissolution (unrelated fact shape, no import edges there either).
+2. **The closure fold already exists in `.dag` — repoint onto it, don't re-author it.** `src/v2/lens/module_graph.dag`'s `import_closure`/`import_closure_live` already computes the transitive module closure over `ImportResolutionFact`/`ModuleDeclarationFact` (a `FreeMonoid`+fuel-bounded fixpoint, not `std.graph`'s `CallGraph` adjacency — a possible second closure-algorithm fork, worth a separate note to the operator, out of this lane's scope). `resolve_transitively`/`resolve_entry_graph`'s closure computation should call `import_closure_live` — not `std.graph`, not a new bespoke BFS, not a new `compile_module_graph.dag`; the modeled authority for module closure is `v2.lens.module_graph`, in-tree today.
+3. **Three independent cache tiers, one undeclared authority.** `parse_cache` (keyed by file path), `typed_module_cache` (keyed by module *name*) and the cross-process `resolved_graph_cache` (keyed by content digest via `subject_digest_for_closure`) are three hand-rolled `HashMap`s with three keying policies for one question: "have I already computed this from this content?" `dsl/std/cache_interface.dag` is already modeled AND has real `CacheInterfaceCatalogFacts` inhabitants — `extdeps/realization/resolved_graph.dag` (the disk-tier `resolved_graph_cache` itself) and `extdeps/realization/parse_table_memo.dag` (an existing `locality: InProcess` sibling row — the exact shape `parse_cache`/`typed_module_cache` should take). So this is a de-fork, not greenfield inhabitance: the in-process tiers need `InProcess`-locality sibling rows under the same authority, and the disk-tier realization (`resolved_graph_cache.rs`) should be checked for a model↔realization fork against its own `resolved_graph.dag` row. Keying `typed_module_cache` by name rather than content is a live §5 cache-impurity instance ("key on declared-input content"); the disk tier already keys by content digest, and two policies for one fact is the §3 violation to close.
+
+## 2. Proposed phased authoring (do NOT attempt all of this as one PR)
+
+**Phase 1 — repoint `cli_run.rs`'s closure BFS onto the existing `v2.lens.module_graph` authority (mechanical, low risk, corrected per review).** No new `.dag` module. `resolve_transitively`/the closure step inside `resolve_entry_graph_with_index` should call `import_closure_live` (`src/v2/lens/module_graph.dag`), fed by the *already-modeled* `import_resolution_facts_live`/`module_declaration_facts_live` projections over the existing `import_resolution_facts`/`module_declaration_facts` host builtins (`cli_run.rs` ~7012–7068) — a pure repoint of the *consumer*, no new authority, dissolving the hand-rolled `HashMap`+`Vec` BFS in favor of the existing fixpoint. **Not gated on `decl_facts_project.rs`** (`adhoc-34b0f2cf-3a8`/#6158) — that `DeclFact` shape carries no import edges and is unrelated to this closure; Phase 1 can start independently. The `extract_import_paths` regex-scan inside `import_resolution_facts` is out of this phase's scope — dissolving it means grounding that host builtin's edge-extraction on the real parser, a separate, deeper lever.
+
+**Guard required before cutover (added post-sign-off, DESIGN §5 green-by-execution):** `import_closure_live` must produce the IDENTICAL transitive closure set as the current hand-rolled BFS, proven by execution over a real corpus with a discriminating RED (a module whose closure differs must go red), not by inspection. Two reasons: (a) a different closure silently changes what gets resolved/typechecked; (b) it must not perturb resolver-B's (#6155, bold-ibex-109) before/after baseline, which measures resolve counts over this same closure. **Give bold-ibex-109 a heads-up before Phase 1 lands** so their measurement isn't taken across a closure change mid-flight.
+
+**Bootstrap-recursion hazard (added, operator review 2026-07-02) — part of Phase 1's acceptance beside the closure-equivalence guard:** the repoint of `resolve_transitively`/`resolve_entry_graph` onto `import_closure_live` must not create a cycle where resolving an entry requires a `.dag` closure query that itself needs the resolver path being replaced. Concretely:
+- (a) **Fail-closed, not skip, on missing provenance.** If `import_closure_live` cannot establish provenance for a module (e.g. a file the current resolver hasn't loaded yet), the failure must be a typed error, not a silent skip that under-counts the closure (§5 — a silently-smaller closure is fail-open, not a fail-closed miss).
+- (b) **No recursive dependency on `resolve_entry_graph` during the closure query.** `import_closure_live`'s fact sources (`import_resolution_facts_live`/`module_declaration_facts_live`) must not route back through the `cli_run.rs` resolve path being repointed — verify by tracing the call graph, not by assuming the `.dag` layer is inert.
+- (c) **Perf receipt shows no extra full-corpus resolve.** The closure-equivalence receipt should report cost, not just correctness; a second full-corpus scan/resolve beside the existing one is disqualifying even if the closure sets match.
+
+**Phase 2 — align the reconcile caches to the existing `cache_interface.dag` inhabitant, don't invent a parallel one.** Correction from sign-off review: `cache_interface.dag` is NOT uninhabited — `dsl/extdeps/realization/resolved_graph.dag` already grounds the disk-tier cache as a `CacheInterfaceCatalogFacts` row (`resolved_graph_cache_id`, `PersistenceLocality::PerHostFilesystem`, `ContentAddressed` key derivation, evidence citing `resolved_graph_cache.rs`'s temp-file+rename write path and `subject_digest_for_closure` keying). Phase 2 is therefore: (a) add `InProcess`-locality `CacheInterfaceCatalogFacts` sibling rows under the same `resolved_graph_cache` family for `parse_cache`/`typed_module_cache` — one interface, N `PersistenceLocality` realizations (the Realization pattern, §2), not a flattened single cache; (b) reconcile `resolved_graph_cache.rs` against `resolved_graph.dag` — it may already be a model↔realization fork worth closing in the same phase; (c) re-key `typed_module_cache` from `mod_name` to content — the DESIGN §5 cache-impurity failure mode ("key on declared-input content"); the disk tier already keys by content digest, and two keying policies for one fact is the §3 violation to close. Highest-value, highest-risk phase (resolve-cost-critical path, Lane 4b's goal) — needs its own **explicit pre-merge sign-off** (separate from this design sign-off) plus a before/after wall-clock receipt (≤ current cost) and a discriminating RED (cache-miss-when-should-hit AND hit-when-should-miss) before cutover.
+
+**Phase 3 — whole-tree/discovery batch grouping.** `discover_owned_data_decls`'s `DiscoveryResolveGroup` splitting-by-shared-closure is the same problem `v2.lens.affected_set` and `ci_floor_plan.dag` batch scheduling already solve (group work by shared dependency surface to avoid duplicate resolution). De-fork against those rather than author a third batching algorithm. Lowest priority — latent/advisory path only, not on the floor's hot path; drop if the de-fork doesn't pay a measured cost.
+
+## 3. Receipt (per brief)
+
+Each phase: seed LOC moved HAND→GENERATED in `cli_run.rs` · `regen_stage0 --verify` byte-identical · Phase 1 additionally: closure-set equivalence receipt (identical transitive closure vs. the hand-rolled BFS, discriminating RED on divergence), heads-up to bold-ibex-109/#6155 before landing, fail-closed (not skip) on missing provenance, no recursive dependency on `resolve_entry_graph` during the closure query, perf receipt showing no extra full-corpus resolve · Phase 2 additionally: explicit pre-merge sign-off separate from this design sign-off (load-bearing pipeline surface), wall-clock before/after on the same reconcile workload (folds Lane 4b's perf goal) with a discriminating RED (cache-miss-when-should-hit AND hit-when-should-miss), and the in-process/cross-process `PersistenceLocality` distinction preserved (one interface, N realizations — not a flattened cache).
+
+## 4. Coordination
+
+`cli_run.rs` is also touched by the CI-repair wave (`run_walk`, M1 memo — deep-hawk-756). This lane owns the resolve/reconcile/discovery cluster in §0's table (the 6 brief functions plus listed plumbing); no edits outside that set — in particular not `run_walk` — without an ordering note posted first.
+
+## Interim workspace-root scaffold (PR #6474 — HAND-RUST receipt)
+
+**Problem:** `workspace_root()` was compile-time baked from `CARGO_MANIFEST_DIR`. After the CI job-split (build job packs `release-bins.tgz`, ci job unpacks on a potentially different self-hosted runner), `claim_executor`/`gunbc` read `ci_layer_roots.dag` and source roots from a path absent on the execution checkout — fail-closed panic, zero diagnostic until runtime.
+
+**Interim fix (seed-retained, post-#6484):** `workspace_root_from(start_cwd)` — the `.git`-ancestor kernel shared with production `workspace_root()` (#6484 on main). Tests call `workspace_root_from` with an explicit start path so the receipt discriminates the live discovery rule (no parallel Cargo.toml+dag/ algorithm).
+
+| receipt row | authority |
+| --- | --- |
+| Scaffold disposition | `gunbc.cli_run_workspace_root_scaffold.cli_run_workspace_root_discovery_scaffold` |
+| Dissolve-on trigger | `cli_run_workspace_root_discovery_dissolve_trigger` (mirrored in `cli_run.rs` comment) |
+| Discriminating tests | `cli_run::workspace_root_discovery_tests::{from_subdirectory_matches_git_toplevel, refuses_path_outside_git_checkout}` |
+| Floor witness | `dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag` |
+| Deferral lane | Chunk F here + `ROADMAP` `5-dissolve-patches` → `cli_run.rs` GENERATED (not a permanent HAND expansion) |
+
+**Not a census shrink:** seed-shrink Chunk F baseline (~4,165 LOC) is unchanged in direction — this is counted interim debt until Chunk F dissolution, not new permanent surface. **Deleted-scaffold path:** `workspace_root_from`/`OnceLock` block deletes when Chunk F retires HAND path-dependent root discovery.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when all three phases land and `cli_run.rs`'s resolve/reconcile/discovery functions are GENERATED, not HAND_MAINTAINED.

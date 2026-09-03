@@ -1,0 +1,551 @@
+module std.cache_interface
+
+import std.types { NonEmptyStr, Bool, Int, LogicalTime }
+import v2.std.optional { Absent, Optional, Present }
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash }
+import std.measure { Nano, ByteSize, Second, second, Nanosecond, nanosecond, nanosecond_count }
+
+import std.pareto {
+  AxisComparison,
+  DominanceVerdict,
+  HigherIsBetter,
+  LowerIsBetter,
+  axis_comparison_int,
+  dominance_of_comparisons,
+}
+import std.realization_schedule {
+  CostAccount,
+}
+import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
+
+type StorageSurface = NonEmptyStr where brand("StorageSurface")
+
+type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
+
+type PersistenceLocality
+  = InProcess
+  | PerRunnerFilesystem
+  | PerHostFilesystem
+  | CrossHostNetwork
+
+// The former single EvictionPolicy axis (Ttl | Lru | SizeBounded | Never | Manual)
+// fused four independent questions and forked a fifth. Ttl and Manual were a
+// second spelling of InvalidationTrigger's TtlExpiry / ManualPurge, which this
+// module already carries on key_derivation — so the old axis could not state
+// "bounded by bytes AND released at scope exit" while it happily stated one
+// concept twice. Splitting it is a §3 de-fork, not a new taxonomy: freshness
+// stays on InvalidationTrigger, and what remains here is capacity, the action
+// taken at capacity, the replacement order (if any), and storage lifetime.
+
+// UNIT OUTER, EVIDENCE INNER. A first cut put the unit only on the arms that
+// carried a number (ByteLimit / EntryCountLimit) and let the other two states
+// stand alone — so RuntimeDerivedLimit and LimitUnobserved erased whether the
+// thing bounded was bytes, entries, or objects, and a consumer needing a BYTE
+// budget could not tell sccache (byte ceiling, value unread) from the typed
+// module cache (entry ceiling, value derived at run start). The unit is a fact
+// about the cache; the value's standing is a fact about our EVIDENCE for it.
+// Those are independent, so they are separate levels.
+type CapacityValue<T>
+  = ExactLimit { value: T }
+  | RuntimeDerivedLimit { authority: DeclarationRef }
+  | EffectiveLimitUnobserved
+
+type CapacityLimit
+  = ByteCapacity { limit: CapacityValue<ByteSize> }
+  | EntryCountCapacity { limit: CapacityValue<Int> }
+
+type ReplacementStrategy = LeastRecentlyUsed | ProviderNativeReplacement
+
+type AtCapacityDisposition
+  = RefuseNewStore
+  | ReplaceExisting { strategy: ReplacementStrategy }
+  | AtCapacityUnobserved
+
+// Three states, because "known unbounded" and "not established" have different
+// remedies and only the bounded arm may ever discharge a boundedness
+// obligation. at_capacity nests INSIDE the bounded arm because full-store
+// behaviour only exists where a ceiling does — so CapacityUnbounded paired
+// with ReplaceExisting is unwritable rather than merely wrong.
+// A row that merely evicts by LRU has named a replacement ORDER and
+// established no ceiling: it is CapacityUnobserved until a capacity fact is
+// cited, which is exactly the inference provider_from_catalog used to make.
+type CapacityPolicy
+  = CapacityUnbounded
+  | CapacityBounded { limit: CapacityLimit, at_capacity: AtCapacityDisposition }
+  | CapacityUnobserved
+
+// Lifetime names no frame: the provider already carries its scope as
+// List<Frame>, so ReleasedAtProviderScopeExit says storage ends with THAT
+// scope rather than re-spelling "witness" or "entry" in a second place.
+type ReleasePolicy
+  = ReleasedAtProviderScopeExit
+  | ReleasedNever
+  | ReleasedManually
+
+// The product the old sum could not express. One vocabulary serves both the
+// cited mechanism and the ladder's required class: with the axes separated,
+// "required class" is a PREDICATE over retention (is growth bounded?), not a
+// second taxonomy — so the ScopeExit/SpacePacked homonym dissolves rather than
+// being renamed. Freshness is NOT an axis here: TtlExpiry and ManualPurge stay
+// on InvalidationTrigger, where they already lived.
+type ProviderRetention {
+  release_policy: ReleasePolicy
+  capacity: CapacityPolicy
+}
+
+// THREE PREDICATES, THREE ROLES — deliberately not one word "bounded".
+// A first cut had provider_for_bounded_role consult the GROWTH predicate, which
+// admits ReleasedAtProviderScopeExit + CapacityUnbounded: fine for a short
+// scoped memo whose frame ends, and exactly wrong for a promoted entry-scoped
+// memo that needs a byte ceiling INSIDE its frame. The 2026-07-10 20GiB kill
+// happened under a live scope, so scope release is evidence about growth over
+// time and never about peak. A role asks the predicate matching its obligation.
+
+// Growth over time: storage ends with the provider's scope, or a ceiling exists.
+fn retention_growth_is_bounded(r: ProviderRetention) -> Bool {
+  match r.release_policy {
+    ReleasedAtProviderScopeExit => true
+    ReleasedNever => retention_has_capacity_bound(r: r)
+    ReleasedManually => retention_has_capacity_bound(r: r)
+  }
+}
+
+// A ceiling exists, whatever its unit and whoever knows its value.
+fn retention_has_capacity_bound(r: ProviderRetention) -> Bool {
+  capacity_is_bounded(c: r.capacity)
+}
+
+fn capacity_is_bounded(c: CapacityPolicy) -> Bool {
+  match c {
+    CapacityUnbounded => false
+    CapacityBounded { limit: _, at_capacity: _ } => true
+    CapacityUnobserved => false
+  }
+}
+
+// A ceiling in BYTES whose value is in hand — the only state from which a real
+// store can size itself. A runtime-derived or unobserved value does not qualify:
+// both name a number nobody here holds.
+fn retention_has_exact_byte_bound(r: ProviderRetention) -> Bool {
+  match r.capacity {
+    CapacityUnbounded => false
+    CapacityUnobserved => false
+    CapacityBounded { limit: l, at_capacity: _ } => capacity_limit_exact_bytes_present(l: l)
+  }
+}
+
+fn capacity_limit_exact_bytes_present(l: CapacityLimit) -> Bool {
+  match l {
+    EntryCountCapacity { limit: _ } => false
+    ByteCapacity { limit: v } => match v {
+      ExactLimit { value: _ } => true
+      RuntimeDerivedLimit { authority: _ } => false
+      EffectiveLimitUnobserved => false
+    }
+  }
+}
+
+type AtomicityModel = PerFile | WriteThenRename | WriteThenCommit | TwoPhase
+
+type AuthScope = None | FilesystemPerms | ApiKey | NetworkAcl
+
+type ReadLatencyClass = InProcessNs | LocalDiskUs | LanMs | WanTensMs
+
+type ConsistencyModel = Strong | Eventual | ReadYourWrites
+
+type TransportFaithfulnessReason
+  = ValueKindNotSerializable
+  | EncodingMalformed
+  | UnknownEncodedTag
+
+type CacheRejectReason
+  = SubjectDigestMismatch
+  | ContentDigestMismatch
+  | ProducerReceiptMissing
+  | BackendKeyMalformed
+  | BackendUnauthorized
+  | BackendUnavailable
+  | FreshnessExpired
+  | TransportFaithfulnessFailure { reason: TransportFaithfulnessReason }
+
+type CacheLookupSemantics
+  = ExactKeyOnly
+  | PrefixFallback { ordered_prefixes: List<NonEmptyStr> }
+  | NativeInternalLookup
+  | ContentAddressLookup
+
+type CacheWriteSemantics
+  = WriteOnce
+  | OverwriteAllowed
+  | ProviderInternal
+
+type CacheMissSemantics
+  = MissThenCreate
+  | MissIsDiagnostic
+  | ProviderNativeFallback
+
+type CacheLayerPlan {
+  layers: List<CacheInterfaceId>
+}
+
+type CacheDeploymentBackends {
+  available: List<CacheInterfaceId>
+}
+
+type KeyDerivationClass
+  = ContentAddressedByValue
+  | HandAuthoredString
+  | NativeInternalHash
+
+type VisibilityScope = Repo | Org | Network | World
+
+// TtlExpiry CARRIES ITS WINDOW. The retention split claimed freshness "stays on
+// InvalidationTrigger", but TtlExpiry was a bare tag with no duration, so
+// retiring the old eviction axis deleted the one typed TTL in the live catalog
+// (hermetic_fixture's Ttl { days: 30 }) and left the number surviving only in an
+// evidence prose string. A de-fork that drops the fact it was consolidating has
+// not consolidated it, and prose is not a carrier a machine can read (§4c). The
+// window is Second rather than days because the cited seed constant is
+// FIXTURE_FRESHNESS_SECS -- the row now states the unit its authority states.
+type InvalidationTrigger
+  = TtlExpiry { window: Second }
+  | ManualPurge
+  | ToolchainChange
+  | DependencyChange
+
+type KeyDerivationFacts {
+
+  vendor_only_key_inputs_omitted: Bool
+  overwritable: Bool
+  prefix_fallback_allowed: Bool
+  content_verified_on_read: Bool
+  visibility_scope: VisibilityScope
+  invalidation_triggers: List<InvalidationTrigger>
+}
+
+type CacheRowEvidence
+  = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
+  | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
+  | OperatorObserved { note: NonEmptyStr, observed_at: Optional<LogicalTime> }
+  | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
+
+type CacheEvidence {
+  field: NonEmptyStr
+  evidence: CacheRowEvidence
+}
+
+type ProviderKeyEncoding
+  = OpaqueStringEncoding
+  | CasContentEncoding
+  | NativeInternalEncoding
+
+type CacheInterfaceFacts {
+  identity: CacheInterfaceId
+  backing_surface: StorageSurface
+  transport_encoding: ProviderKeyEncoding
+
+  vendor_transport_encoding_collapsed: Bool
+  key_derivation: KeyDerivationFacts
+  lookup_semantics: CacheLookupSemantics
+  write_semantics: CacheWriteSemantics
+  miss_semantics: CacheMissSemantics
+  value_shape: ValueShape
+  locality: PersistenceLocality
+  retention: ProviderRetention
+  atomicity: AtomicityModel
+  auth: AuthScope
+  read_latency: ReadLatencyClass
+  consistency: ConsistencyModel
+  evidence: List<CacheEvidence>
+}
+
+type CacheStoreView {
+  facts: CacheInterfaceFacts
+}
+
+type ArtifactIdentity<T> {
+  subject_digest: ContentHash
+  artifact_kind: ArtifactKindId
+}
+
+type ProviderKey
+  = OpaqueStringKey { key: NonEmptyStr }
+  | CasContentDigest { digest: ContentHash }
+
+type BackendCacheKey {
+  store: CacheInterfaceId
+  key: ProviderKey
+}
+
+type CacheKeyProjection<T> {
+  artifact: ArtifactIdentity<T>
+  backend: CacheInterfaceFacts
+}
+
+type ExecutionReceiptRef<T> {
+  receipt_digest: ExecutionReceiptDigest
+}
+
+type ProducerReceipt<T>
+  = InternalExecution { receipt: ExecutionReceiptRef<T> }
+  | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
+  | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
+
+type CachedArtifactReceipt<T> {
+  artifact: ArtifactIdentity<T>
+  backend_key: BackendCacheKey
+  producer: ProducerReceipt<T>
+  content_digest: ContentHash
+}
+
+type CacheLookupResult<T>
+  = Hit { receipt: CachedArtifactReceipt<T> }
+  | Miss
+  | RejectedHit { reason: CacheRejectReason }
+
+type CacheWriteRejectReason
+  = WriteOnceConflict
+  | WriteUnfaithful { reason: TransportFaithfulnessReason }
+  | BackendWriteRejected { backend_reason: CacheRejectReason }
+
+type CacheWriteResult<T>
+  = Written { receipt: CachedArtifactReceipt<T> }
+  | WriteSkippedIdempotent { receipt: CachedArtifactReceipt<T> }
+  | WriteRejected { reason: CacheWriteRejectReason }
+
+type RecomputeReason
+  = SubjectAbsent
+  | HitRefused { reason: CacheRejectReason }
+
+type RealizeRoute<T>
+  = Reuse { receipt: CachedArtifactReceipt<T> }
+  | Recompute { reason: RecomputeReason }
+
+fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
+  match lookup {
+    Hit { receipt } => Reuse { receipt: receipt }
+    Miss => Recompute { reason: SubjectAbsent }
+    RejectedHit { reason: r } => Recompute { reason: HitRefused { reason: r } }
+  }
+}
+
+fn classify_write<T>(
+  existing: CacheLookupResult<T>,
+  offered_content: ContentHash,
+  fresh_receipt: CachedArtifactReceipt<T>,
+) -> CacheWriteResult<T> {
+  match existing {
+    Miss => Written { receipt: fresh_receipt }
+    Hit { receipt } =>
+      if receipt.content_digest == offered_content {
+        WriteSkippedIdempotent { receipt: receipt }
+      } else {
+        WriteRejected { reason: WriteOnceConflict }
+      }
+    RejectedHit { reason: r } =>
+      WriteRejected { reason: BackendWriteRejected { backend_reason: r } }
+  }
+}
+
+fn persistence_locality_rank(locality: PersistenceLocality) -> Int {
+  match locality {
+    InProcess => 0
+    PerRunnerFilesystem => 1
+    PerHostFilesystem => 2
+    CrossHostNetwork => 3
+  }
+}
+
+fn read_latency_rank(latency: ReadLatencyClass) -> Int {
+  match latency {
+    InProcessNs => 0
+    LocalDiskUs => 1
+    LanMs => 2
+    WanTensMs => 3
+  }
+}
+
+fn read_latency_cost(facts: CacheInterfaceFacts) -> Nanosecond {
+  match facts.read_latency {
+    InProcessNs => nanosecond(count: 1)
+    LocalDiskUs => nanosecond(count: 1000)
+    LanMs => nanosecond(count: 1000000)
+    WanTensMs => nanosecond(count: 10000000)
+  }
+}
+
+type CacheReachCandidate {
+  layer: CacheInterfaceId?
+  fetch_cost: Nanosecond
+  recompute_saved: Nanosecond
+  latency: Nanosecond
+}
+
+fn cache_reach_candidate_recompute() -> CacheReachCandidate {
+  CacheReachCandidate {
+    layer: none
+    fetch_cost: nanosecond(count: 0)
+    recompute_saved: nanosecond(count: 0)
+    latency: nanosecond(count: 0)
+  }
+}
+
+fn cache_reach_candidate_probe(
+  id: CacheInterfaceId,
+  catalog: List<CacheInterfaceFacts>,
+  recompute: CostAccount<Nano>,
+) -> CacheReachCandidate? {
+  match cache_facts_for_id(id: id, catalog: catalog) {
+    Absent => none
+    Present { value: facts } =>
+      let fetch = read_latency_cost(facts: facts)
+      Present {
+        value: CacheReachCandidate {
+          layer: Present { value: id }
+          fetch_cost: fetch
+          recompute_saved: recompute.time
+          latency: fetch
+        }
+      }
+  }
+}
+
+fn cache_reach_comparisons(a: CacheReachCandidate, b: CacheReachCandidate) -> List<AxisComparison> {
+  [
+    axis_comparison_int(
+      goal: LowerIsBetter,
+      a: nanosecond_count(n: a.fetch_cost),
+      b: nanosecond_count(n: b.fetch_cost),
+    ),
+    axis_comparison_int(
+      goal: HigherIsBetter,
+      a: nanosecond_count(n: a.recompute_saved),
+      b: nanosecond_count(n: b.recompute_saved),
+    ),
+    axis_comparison_int(
+      goal: LowerIsBetter,
+      a: nanosecond_count(n: a.latency),
+      b: nanosecond_count(n: b.latency),
+    ),
+  ]
+}
+
+fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> DominanceVerdict {
+  dominance_of_comparisons(comparisons: cache_reach_comparisons(a: a, b: b))
+}
+
+fn cache_layer_cost_justified(
+  id: CacheInterfaceId,
+  catalog: List<CacheInterfaceFacts>,
+  recompute: CostAccount<Nano>,
+) -> Bool {
+  match cache_facts_for_id(id: id, catalog: catalog) {
+    Absent => false
+    Present { value: facts } => nanosecond_count(n: recompute.time) >= nanosecond_count(n: read_latency_cost(facts: facts))
+  }
+}
+
+fn cache_layer_beats_recompute_path(
+  id: CacheInterfaceId,
+  catalog: List<CacheInterfaceFacts>,
+  recompute: CostAccount<Nano>,
+) -> Bool {
+  match cache_reach_candidate_probe(id: id, catalog: catalog, recompute: recompute) {
+    Absent => false
+    Present { value: probe } =>
+      match cache_reach_dominates(
+        a: cache_reach_candidate_recompute(),
+        b: probe,
+      ) {
+        Dominates => false
+        _ => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+      }
+  }
+}
+
+fn cache_interface_id_available(
+  id: CacheInterfaceId,
+  available: List<CacheInterfaceId>,
+) -> Bool {
+  available
+    |> fold(
+      init: false,
+      f: (acc, candidate) => acc || (candidate == id),
+    )
+}
+
+fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: CacheInterfaceId) -> Bool {
+  plan.layers
+    |> fold(
+      init: false,
+      f: (acc, layer) => acc || (layer == id),
+    )
+}
+
+fn plan_cache_layers(
+  deployment: CacheDeploymentBackends,
+  recompute: CostAccount<Nano>,
+  catalog: List<CacheInterfaceFacts>,
+  default_order: List<CacheInterfaceId>,
+) -> CacheLayerPlan {
+  CacheLayerPlan {
+    layers: default_order
+      |> filter(id => cache_interface_id_available(id: id, available: deployment.available))
+      |> filter(id => cache_layer_beats_recompute_path(id: id, catalog: catalog, recompute: recompute)),
+  }
+}
+
+fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId? {
+  plan.layers.first()
+}
+
+fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId? {
+  plan.layers.skip(n: 1).first()
+}
+
+fn cache_facts_for_id(id: CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts? {
+  catalog
+    |> filter(facts => facts.identity == id)
+    |> first()
+}
+
+fn cache_layer_ids_respect_locality(
+  layers: List<CacheInterfaceId>,
+  catalog: List<CacheInterfaceFacts>,
+  last_rank: Int,
+) -> Bool {
+  match layers.first() {
+    Absent => true
+    Present { value: id } =>
+      match cache_facts_for_id(id: id, catalog: catalog) {
+        Absent => false
+        Present { value: facts } =>
+          let rank = persistence_locality_rank(locality: facts.locality)
+          if rank < last_rank {
+            false
+          } else {
+            cache_layer_ids_respect_locality(
+              layers: layers.skip(n: 1),
+              catalog: catalog,
+              last_rank: rank,
+            )
+          }
+      }
+  }
+}
+
+fn cache_layer_plan_respects_locality_order(
+  plan: CacheLayerPlan,
+  catalog: List<CacheInterfaceFacts>,
+) -> Bool {
+  cache_layer_ids_respect_locality(layers: plan.layers, catalog: catalog, last_rank: -1)
+}
+
+fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
+  CacheStoreView { facts: facts }
+}
+
+fn cache_key_projection<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> CacheKeyProjection<T> {
+  CacheKeyProjection { artifact: artifact, backend: backend }
+}

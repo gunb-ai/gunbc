@@ -1,9 +1,15 @@
 module v1.compiler.infer_patterns
 
+import std.occurrence_identity { OccurrenceSynthetic }
+
 import std.types { SourceSpan }
+
+import std.syntax { LiteralValue }
+
 import v1.std.core {
+  match_pattern_is_irrefutable,
   Node,
-  find_child_named, NewlineIndex, authored_name_at,
+  find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
@@ -12,18 +18,140 @@ import v1.std.core {
   ErrorNode, make_error_node,
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
   MatchPattern, LitPattern, arm_pattern,
-  LiteralValue, LitBool,
-  with_optional_cardinality,
-  none_type, error_type, no_span, kernel_span
+  Wildcard, Bind, VariantPattern,
+  field_binding_pattern, field_binding_name_at,
+  LitBool, LitNull,
+  with_optional_cardinality, preserve_outer_optional_cardinality,
+  none_type, error_type, no_span, kernel_span,
+  qualified_last_segment
 }
+
 import v1.compiler.infer_types {
   child_type_node,
-  extract_optional_inner_node,
-  emit_map_has
+  extract_optional_inner_node
 }
+
 import v1.compiler.infer_env {
   TypeEnv,
-  lookup_type, lookup_type_by_name
+  lookup_type, lookup_type_by_name, lookup_type_for,
+  symbol_index_lookup
+}
+
+import v1.compiler.infer_resolve {
+  is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
+  substitute_type_slots_scoped
+}
+
+fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
+  let decl = resolve_generic_use_decl(env: env, n: scrut_node)
+  fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+    let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
+    match scrut_node.children |> skip(pair.first) |> first {
+      Present { value: arg } => map_insert(acc, slot, arg)
+      Absent => acc
+    }
+  )
+}
+
+fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeEnv) -> Node {
+  let decl_is_disj = decl.connective == Disj
+  let has_inferred_alias = decl.inferred != none && decl.connective == NoConnective && decl.children |> count == 0
+  if decl_is_disj {
+    if (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
+      let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+      substitute_type_slots_scoped(
+        n: decl,
+        slot_bindings: subst,
+        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
+        source_indices: env.source_indices,
+        bind_type_variables: true
+      )
+    } else { decl }
+  } else if has_inferred_alias {
+    match decl.inferred {
+      Present { value: Resolved { node: target } } =>
+        let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+        let substituted = substitute_type_slots_scoped(
+          n: target,
+          slot_bindings: subst,
+          decl_name: name,
+          source_indices: env.source_indices,
+        bind_type_variables: true
+        )
+        expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
+      _ => scrut_node
+    }
+  } else {
+    if decl.connective == Conj && (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
+      let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+      substitute_type_slots_scoped(
+        n: decl,
+        slot_bindings: subst,
+        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
+        source_indices: env.source_indices,
+        bind_type_variables: true
+      )
+    } else {
+      scrut_node
+    }
+  }
+}
+
+fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
+  let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
+  let is_generic_use = scrut_node.connective == NoConnective && scrut_node.children |> count > 0
+    && is_user_generic_use_site(n: scrut_node, env: env)
+  match lookup_type_by_name(env: env, name: name) {
+    Present { value: decl } =>
+      if is_generic_use {
+        expand_scrut_from_decl(decl: decl, scrut_node: scrut_node, name: name, env: env)
+      } else {
+        let def_is_disj = decl.connective == Disj
+        let has_inferred_body = decl.inferred != none && decl.connective == NoConnective
+        if def_is_disj {
+          decl
+        } else if has_inferred_body {
+          match decl.inferred {
+            Present { value: Resolved { node: target } } =>
+              let target_is_disj = target.connective == Disj
+              let target_is_generic_use = target.connective == NoConnective && target.children |> count > 0
+              if target_is_disj {
+                target
+              } else if target_is_generic_use {
+                let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+                let substituted = substitute_type_slots_scoped(
+                  n: target,
+                  slot_bindings: subst,
+                  decl_name: name,
+                  source_indices: env.source_indices,
+        bind_type_variables: true
+                )
+                expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
+              } else { scrut_node }
+            _ => scrut_node
+          }
+        } else {
+          scrut_node
+        }
+      }
+    Absent => scrut_node
+  }
+}
+
+fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node {
+  let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
+  let is_disj = scrut_node.connective == Disj
+  let is_witness = is_witness_type_name(name: name)
+  let is_optional = scrut_node.return_cardinality == CardOptional
+  if is_optional || is_disj || is_witness {
+    scrut_node
+  } else {
+    match scrut_node.inferred {
+      Present { value: Resolved { node: target } } =>
+        expand_scrut_type_for_variant_lookup(scrut_node: target, env: env)
+      _ => expand_scrut_from_type_name(scrut_node: scrut_node, env: env)
+    }
+  }
 }
 
 fn is_witness_type_name(name: String) -> Bool {
@@ -53,8 +181,8 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 fn synthesize_optional_present_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
-  let value_field = Node { name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_node = Node { name: "Present", span: scrut.span, ident_span: Present { value: kernel_span(name: "Present") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_node = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: scrut.span, ident_span: Present { value: kernel_span(name: "Present") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   present_node
 }
 
@@ -63,14 +191,22 @@ fn synthesize_witness_holds_variant(scrut: Node) -> Node {
     Present { value: child } => child_type_node(ch: child)
     Absent => error_type
   }
-  let value_field = Node { name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  Node { name: "Holds", span: scrut.span, ident_span: Present { value: kernel_span(name: "Holds") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "Holds", span: scrut.span, ident_span: Present { value: kernel_span(name: "Holds") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn synthesize_witness_violates_variant(scrut: Node) -> Node {
-  let diagnostic_type = Node { name: "Diagnostic", span: scrut.span, ident_span: Present { value: kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let diagnostic_field = Node { name: "diagnostic", span: scrut.span, ident_span: Present { value: kernel_span(name: "diagnostic") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: diagnostic_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  Node { name: "Violates", span: scrut.span, ident_span: Present { value: kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let diagnostic_type = Node { occurrence_identity: OccurrenceSynthetic, name: "Diagnostic", span: scrut.span, ident_span: Present { value: kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let diagnostic_field = Node { occurrence_identity: OccurrenceSynthetic, name: "diagnostic", span: scrut.span, ident_span: Present { value: kernel_span(name: "diagnostic") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: diagnostic_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "Violates", span: scrut.span, ident_span: Present { value: kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn pattern_subject_preserving_outer_optional(outer: Node, inner: PatternSubject) -> PatternSubject {
+  match inner {
+    PatternResolved { node: resolved } =>
+      PatternResolved { node: preserve_outer_optional_cardinality(outer: outer, inner: resolved) }
+    _ => inner
+  }
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
@@ -80,7 +216,7 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
     PatternLookupBlocked
   } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred != none {
     match n.inferred {
-      Present { value: Resolved { node: target } } => pattern_subject_from_node(n: target)
+      Present { value: Resolved { node: target } } => pattern_subject_preserving_outer_optional(outer: n, inner: pattern_subject_from_node(n: target))
       _ => PatternResolved { node: n }
     }
   } else {
@@ -130,13 +266,49 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
+// A qualified pattern head must bind what the bare spelling binds. The dotted
+// branch answers from the SYMBOL INDEX, which returns the coproduct's
+// DECLARATION -- uninstantiated -- while the bare branch answers from the
+// scrutinee, which carries the instantiation. So a bare `Ok { value: r }` bound
+// r to the scrutinee's type ARGUMENT and the qualified spelling of the same
+// pattern bound it to the declaration's type PARAMETER, so every field read off
+// r reported no such field on type 'T'. Measured on a two-function probe whose
+// only difference is the spelling of the head.
+//
+// The index lookup still runs first and still decides ADMISSION: a head naming
+// a variant of some other coproduct misses there exactly as before. What changes
+// is where the bound NODE comes from once admission succeeds -- the scrutinee
+// when it carries that variant, the declaration otherwise, which is the
+// pre-existing answer for a scrutinee that does not.
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: scrut_node } =>
+      let source_indices = env.source_indices
+      if contains(variant_name, ".") {
+        match symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
+          Present { value: resolved } =>
+            if (resolved.connective == Disj) {
+              match find_child_named(n: resolved, name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
+                Present { value: variant_child } =>
+                  match find_child_named(n: expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env), name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
+                    Present { value: scrut_child } => node_lookup_resolved(node: scrut_child)
+                    Absent => node_lookup_resolved(node: variant_child)
+                  }
+                Absent =>
+                  variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+              }
+            } else {
+              node_lookup_resolved(node: resolved)
+            }
+          Absent =>
+            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+        }
+      } else {
+      let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
       let scrut_opt = scrut_node.return_cardinality == CardOptional
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
@@ -160,7 +332,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
 
           let record_destructure = field_binding_count > 0
             && scrut_node.connective == Conj
-            && scrut_name == variant_name
+            && qualified_last_segment(name: scrut_name) == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)
           } else if optional_coproduct_subject && variant_name == "Present" {
@@ -175,6 +347,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
             Absent => fallback
           }
         }
+      }
       }
   }
 }
@@ -195,6 +368,296 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
   }
 }
 
+fn variant_pattern_coverage_key(name: String) -> String {
+  let segs = split(name, separator: ".")
+  if segs |> count == 0 { name } else { fold(segs, init: "", f: (_, seg) => seg) }
+}
+
+// -- NESTED PATTERN EXHAUSTIVENESS: THE COLUMNS ARE CARRIED JOINTLY --
+//
+// The flat fold this replaces keyed coverage on the arm HEAD alone and discarded
+// `field_bindings`, so `A { i: P { v: v } }` marked the whole of `A` covered while the
+// emitted Rust restricted that arm to `Inner::P`. gunbc accepted with zero diagnostics and
+// rustc refused the emission it had just authorised -- an instance of
+// accepted_source_emits_uncompilable_target, measured on a two-coproduct probe.
+//
+// Per-column coverage taken INDEPENDENTLY would fail open in the same direction:
+// `A { x: P, y: Q }` beside `A { x: R, y: S }` reports x covered by {P,R} and y by {Q,S}
+// while `A { x: P, y: S }` matches nothing. An unsound checker IS this class, so the
+// recursion carries a MATRIX -- rows of patterns over a vector of column types -- and
+// specialises one constructor at a time, never one field at a time.
+//
+// TERMINATION: a column's constructors are expanded only when EVERY declared constructor
+// already appears at some row head, and specialisation replaces each such head with that row's
+// own authored sub-patterns, so the recursion is bounded by authored pattern DEPTH and not by
+// the type. A recursive type (`Cons { tail: List } | Nil`) does not diverge: under
+// `Cons { tail: _ }` the inner column's signature is incomplete, which takes the default arm
+// and stops.
+//
+// WHAT IS AND IS NOT CLOSED, CORRECTED AGAINST THE DECLARATION RATHER THAN ASSUMED. An earlier
+// version of this note claimed Bool was among the OPEN scalars. It is not: `std.types` declares
+// `type Bool = True | False`, an ordinary Disj, so a Bool column resolves to a two-arm roster and
+// a nested `{ gate_verdict: false }` arm that never covers `true` is refused -- correctly, since
+// the emitted `match` faces the same two arms. The claim was measured false by this change's own
+// census (gunbc.host_standup GreenPlaceFromGunbcGate), and it UNDERSTATED what the checker does,
+// which is still a rung-honesty defect: a scope sentence nobody can check against the code is
+// the same failure as an inflated one, pointing the other way.
+//
+// GENUINELY OPEN, and refused nowhere: Int and String columns, whose inhabitants are not a
+// declared roster. Rows covering such a column with literals alone are not refused. That is the
+// PRE-EXISTING top-level behaviour (a non-coproduct scrutinee was never checked at all) carried
+// unchanged to nested depth, not a new failure arm.
+//
+// AND THAT SENTENCE UNDERSTATED ITS OWN SCOPE, WHICH BY THE PARAGRAPH ABOVE IS THE SAME DEFECT
+// AGAIN, POINTING THE SAME WAY. `ConstructorsOpen` is an ELSE branch, so it is not the set {Int,
+// String}: it is EVERYTHING that is not optional, not a witness, and carries no Disj connective.
+// That is THREE states with three different correct answers, measured (gunbc#10028, review 59399):
+//   - a genuine open scalar -- a finite literal set cannot cover it, so a witness is owed;
+//   - a SINGLE-CONSTRUCTOR PRODUCT -- a record type, no `|`, hence no Disj -- which is CLOSED with
+//     exactly one constructor and whose total destructure is total. `v2.std.grammar`
+//     `derive_grammar_relation_token_edges_recursive_step` is the live specimen: it matches a
+//     `Witness` with both arms present and its nested `DeriveGrammarRelationTokensProgress` column
+//     is a three-field record;
+//   - a type whose lookup FAILED, where `resolve_scrutinee_type` returns the node unchanged. That
+//     is IGNORANCE, NOT AN ANSWER, and it is the reason the arm cannot simply be flipped to refuse.
+//
+// WHY THE ARM IS NOT FLIPPED HERE, MEASURED RATHER THAN ARGUED. Deleting the guard so the arm
+// yields a witness was implemented and reverted: the corpus reports NINETEEN sites, sampled rather
+// than counted, and they are false positives of the second kind. A widening arm and a
+// false-refusal arm can be THE SAME LINE READ IN TWO DIRECTIONS, and flipping it trades a
+// fail-open for a fail-closed-on-valid-input while the modelling deficit underneath is untouched.
+// NEXT-RUNG TRIGGER: split this roster into those three states, SUFFICIENT FOR a closed
+// single-constructor product to be adjudicated as closed and an unresolved type to refuse as
+// unresolved rather than either being answered as open. The nineteen sites are that trigger's
+// acceptance corpus, not its debt. Rostered as a third instance of
+// `accepted_source_emits_uncompilable_target` in `gunbc.recurring_failure_mode`.
+
+type ConstructorRoster
+  = ConstructorsClosed { names: List<String> }
+  | ConstructorsOpen
+
+type ConstructorField { name: String, type_node: Node }
+
+type PatternWitnessRow { cells: List<String> }
+
+fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
+  let scrut_is_optional = type_node.return_cardinality == CardOptional
+  let has_structure = type_node.connective != NoConnective
+  let resolved_raw = if has_structure {
+    type_node
+  } else {
+    match lookup_type_for(env: env, node: type_node) {
+      Present { value: def } => def
+      Absent => type_node
+    }
+  }
+  if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
+}
+
+// THE ROSTER FOLLOWS THE TYPE SYSTEM'S ANSWER, NOT THE AUTHORED SPELLING -- AND THAT IS AN OPEN
+// QUESTION HELD OPEN DELIBERATELY, not a settled one.
+//
+// A type position may name one VARIANT rather than its coproduct (`HostCliDependencyAbsent?`), and
+// `lookup_type_for` answers with the declaration owning the name, so the column resolves to the
+// PARENT. By inhabitance only that one variant can occur there, so the parent's other arms are
+// unreachable and requiring them looks like a phantom.
+//
+// A narrowing to the singleton was written and then REMOVED, because the .dag type system already
+// answers this question the other way and answers it out loud: on `Present { value: a } => a.tool`
+// it refuses `no field 'tool' on type 'VObs'` (still-swift-363, executed). The corpus sites survive
+// only because they destructure IN THE PATTERN, which works against a variant even when the column
+// is the parent -- so the same column gives two different answers depending on the spelling, and
+// only one of them makes the type system speak. A roster saying `singleton` while resolution says
+// `parent` would be one concept with two answers inside one compiler (section 3), and it would make
+// the checker STOP REPORTING a class rather than report it -- the silent widen section 5 forbids.
+// Under uncertainty the arm that refuses is the correct one, so the roster follows resolution.
+//
+// AND THE REFUSAL IS CORRECT, WITH THE DEFECT UPSTREAM IN THE SOURCE -- ruled by tidy-lynx-804
+// after reading the producer, and it inverts the repair rather than softening it. Adding a
+// `HostCliDependencyPresent` arm would answer for a state that cannot occur by inhabitance: a
+// fabricated plausible output at a site whose whole purpose is refusal, silencing the checker
+// without making anything exhaustive. The site is NOT a missing arm and must not be batched as one.
+//
+// The real repair is ordinary section 2 modeling, and it is cheaper than the substrate question
+// below: the concept `an absence carrying tool and hint` ALREADY EXISTS but is fused into a variant,
+// so it cannot be named in a type position. Give it its own type and let the observation be
+// `Present | Absent(that type)`; the signature then returns a real Optional of a real type and both
+// matches are exhaustive with one arm -- legitimately, not by silencing.
+//
+// WHAT REMAINS UNDECIDED, named so it does not stall untracked (section 4b(2)): whether a variant
+// should be a FIRST-CLASS TYPE, making `HostCliDependencyAbsent?` a singleton Optional without
+// re-modeling. Rust cannot express that -- hence the emitter's variant_to_enum -- so it is a
+// substrate question, it is NOT what these two sites are waiting on, and it is not settled here.
+fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
+  let resolved = resolve_scrutinee_type(type_node: type_node, env: env)
+  let is_coproduct = resolved.connective == Disj
+  let resolved_is_optional = resolved.return_cardinality == CardOptional
+  let resolved_is_witness = is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
+  if resolved_is_optional {
+    ConstructorsClosed { names: ["Present", "Absent"] }
+  } else if resolved_is_witness {
+    ConstructorsClosed { names: ["Holds", "Violates"] }
+  } else if is_coproduct {
+    ConstructorsClosed { names: resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c)) }
+  } else {
+    ConstructorsOpen
+  }
+}
+
+// The variant's declared field order and field types come from the SAME lookup the binder
+// uses at inference time (`lookup_variant_in_type`), so a nested column is typed by the
+// authority that types the binding a nested pattern would introduce -- not a second reading
+// of the coproduct declaration.
+fn constructor_fields(type_node: Node, ctor: String, env: TypeEnv, module_name: String) -> List<ConstructorField> {
+  let subject = pattern_subject_from_node(n: resolve_scrutinee_type(type_node: type_node, env: env))
+  let lookup = lookup_variant_in_type(scrut: subject, variant_name: ctor, module_name: module_name, env: env, field_binding_count: 0)
+  match lookup.status {
+    LookupFailed => []
+    LookupResolved { node: variant_node } =>
+      variant_node.children |> map(ch => ConstructorField {
+        name: authored_name_at(source_indices: env.source_indices, node: ch),
+        type_node: child_type_node(ch: ch)
+      })
+  }
+}
+
+fn pattern_row_head(row: List<MatchPattern>) -> MatchPattern {
+  match row |> first {
+    Present { value: p } => p
+    Absent => Wildcard
+  }
+}
+
+fn pattern_row_is_irrefutable(row: List<MatchPattern>) -> Bool {
+  match_pattern_is_irrefutable(pattern: pattern_row_head(row: row))
+}
+
+fn pattern_matches_constructor(p: MatchPattern, ctor: String) -> Bool {
+  match p {
+    VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
+      variant_pattern_coverage_key(name: n) == ctor
+    LitPattern { value: v } =>
+      match v {
+        LitBool { value: b } => if b { ctor == "True" } else { ctor == "False" }
+        LitNull => ctor == "Absent"
+        _ => false
+      }
+    Wildcard => false
+    Bind { declaration: _ } => false
+  }
+}
+
+// A field binding is matched BY NAME against the constructor's declared fields; a field the
+// pattern does not name is a wildcard column, which is what `A { i: _ }` and the omission
+// `A { }` both mean. A binding whose name matches no declared field -- the positional `"0"`
+// spelling -- contributes nothing, so the column stays a wildcard and the arm keeps the
+// coverage it has today rather than acquiring a refusal this change did not measure.
+fn field_binding_pattern_for(bindings: List<Node>, field_name: String, source_indices: Map<String, NewlineIndex>) -> MatchPattern {
+  match bindings |> filter(b => field_binding_name_at(n: b, source_indices: source_indices) == field_name) |> first {
+    Present { value: b } => field_binding_pattern(n: b)
+    Absent => Wildcard
+  }
+}
+
+fn specialize_pattern_row(row: List<MatchPattern>, ctor: String, fields: List<ConstructorField>, source_indices: Map<String, NewlineIndex>) -> List<List<MatchPattern>> {
+  let head = pattern_row_head(row: row)
+  let rest = row |> skip(1)
+  if match_pattern_is_irrefutable(pattern: head) {
+    [concat(fields |> map(f => Wildcard), rest)]
+  } else if pattern_matches_constructor(p: head, ctor: ctor) {
+    match head {
+      VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+        [concat(fields |> map(f => field_binding_pattern_for(bindings: fbs, field_name: f.name, source_indices: source_indices)), rest)]
+      _ => [concat(fields |> map(f => Wildcard), rest)]
+    }
+  } else {
+    []
+  }
+}
+
+fn render_constructor_witness(ctor: String, fields: List<ConstructorField>, cells: List<String>) -> String {
+  let parts = fields |> enumerate |> fold(init: [], f: (acc, pair) =>
+    match cells |> skip(pair.first) |> first {
+      Present { value: cell } =>
+        if cell == "_" { acc } else { concat(acc, [concat(pair.second.name, ": ", cell)]) }
+      Absent => acc
+    }
+  )
+  if parts |> count == 0 { ctor } else { concat(ctor, " { ", parts |> join(separator: ", "), " }") }
+}
+
+fn constructor_appears_at_row_head(rows: List<List<MatchPattern>>, ctor: String) -> Bool {
+  any(rows, r => pattern_matches_constructor(p: pattern_row_head(row: r), ctor: ctor))
+}
+
+fn default_pattern_rows(rows: List<List<MatchPattern>>) -> List<List<MatchPattern>> {
+  rows |> filter(r => pattern_row_is_irrefutable(row: r)) |> map(r => r |> skip(1))
+}
+
+// THE SIGNATURE-COMPLETENESS TEST IS WHAT DECIDES THE BRANCH, and reading it as "some row is
+// irrefutable" instead is the precision defect that costs valid programs. With
+// `A { x: P, y: _ }` beside `A { x: _, y: P }` and `A { x: Q, y: Q }`, the x column has an
+// irrefutable row, but keeping ONLY that row -- the default matrix -- drops the constructor rows
+// that also cover `x = P`, and the checker reports `A { x: _, y: Q }` missing when arm one
+// covers it. The default matrix is sound exactly when some constructor is ABSENT from every row
+// head: values carrying that constructor are then matched by the irrefutable rows and by nothing
+// else, so those rows alone decide the remaining columns.
+fn exhaustiveness_witnesses(rows: List<List<MatchPattern>>, columns: List<Node>, env: TypeEnv, module_name: String) -> List<PatternWitnessRow> {
+  match columns |> first {
+    Absent => if (rows |> count) > 0 { [] } else { [PatternWitnessRow { cells: [] }] }
+    Present { value: head_type } =>
+      let rest_columns = columns |> skip(1)
+      match constructor_roster_for(type_node: head_type, env: env) {
+        ConstructorsOpen =>
+          let defaulted = default_pattern_rows(rows: rows)
+          if (defaulted |> count) == 0 && (rows |> count) > 0 { [] } else {
+            exhaustiveness_witnesses(rows: defaulted, columns: rest_columns, env: env, module_name: module_name)
+              |> map(w => PatternWitnessRow { cells: concat(["_"], w.cells) })
+          }
+        ConstructorsClosed { names: ctors } =>
+          let absent_ctors = ctors |> filter(c => constructor_appears_at_row_head(rows: rows, ctor: c) == false)
+          if (absent_ctors |> count) > 0 {
+            let sub = exhaustiveness_witnesses(
+              rows: default_pattern_rows(rows: rows),
+              columns: rest_columns, env: env, module_name: module_name
+            )
+            absent_ctors |> flat_map(c => sub |> map(w => PatternWitnessRow { cells: concat([c], w.cells) }))
+          } else {
+            ctors |> fold(init: [], f: (acc, c) =>
+              let fields = constructor_fields(type_node: head_type, ctor: c, env: env, module_name: module_name)
+              let field_count = fields |> count
+              let sub = exhaustiveness_witnesses(
+                rows: rows |> flat_map(r => specialize_pattern_row(row: r, ctor: c, fields: fields, source_indices: env.source_indices)),
+                columns: concat(fields |> map(f => f.type_node), rest_columns),
+                env: env, module_name: module_name
+              )
+              concat(acc, sub |> map(w => PatternWitnessRow {
+                cells: concat(
+                  [render_constructor_witness(ctor: c, fields: fields, cells: w.cells |> take(field_count))],
+                  w.cells |> skip(field_count)
+                )
+              }))
+            )
+          }
+      }
+  }
+}
+
+// A WITNESS ROW AT TOP LEVEL CARRIES EXACTLY ONE CELL, and the residual arm says so instead of
+// naming a pattern. `exhaustiveness_witnesses` prepends one cell per column it consumes and the
+// entry below passes a single column, so a cell-less row means the recursion broke its own
+// invariant. Answering `_` there would print a WILDCARD -- a well-formed pattern a reader would
+// take for a real uncovered case -- which is the fabricated-plausible-output arm section 5
+// forbids, and the fact that the branch is unreachable today is what makes the fabrication
+// durable rather than harmless: nothing would ever contradict it. The refusal is still a
+// refusal in either arm, so what this protects is the NAME the diagnostic carries.
+fn witness_row_missing_name(w: PatternWitnessRow) -> String {
+  match w.cells |> first {
+    Present { value: c } => c
+    Absent => "<unnameable witness: exhaustiveness_witnesses returned a cell-less row>"
+  }
+}
+
 fn check_match_exhaustiveness(
   scrutinee_type: Node,
   arms: List<Node>,
@@ -202,55 +665,25 @@ fn check_match_exhaustiveness(
   span: SourceSpan,
   module_name: String
 ) -> List<ErrorNode> {
-  let scrut_is_optional = scrutinee_type.return_cardinality == CardOptional
-  let has_structure = scrutinee_type.connective != NoConnective
-  let resolved_raw = if has_structure {
-    scrutinee_type
-  } else {
-    match lookup_type_by_name(env: env, name: authored_name_at(source_indices: env.source_indices, node: scrutinee_type)) {
-      Present { value: def } => def
-      Absent => scrutinee_type
-    }
-  }
-  let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
-  let is_coproduct = resolved.connective == Disj
-  let resolved_is_optional = resolved.return_cardinality == CardOptional
-  let resolved_is_witness = is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
-  if is_coproduct || resolved_is_optional || resolved_is_witness {
-    let variant_names = if resolved_is_optional {
-      ["Present", "Absent"]
-    } else if resolved_is_witness {
-      ["Holds", "Violates"]
-    } else {
-      resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c))
-    }
-    let has_catch_all = any(arms, arm =>
-      match arm_pattern(n: arm) {
-        Wildcard => true
-        Bind { name: _ } => true
-        _ => false
-      }
-    )
-    if has_catch_all {
-      []
-    } else {
-      let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
-        match arm_pattern(n: arm) {
-          VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
-            map_insert(acc, n, true)
-          LitPattern { value: v } => match v {
-            LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
-            _ => acc
-          }
-          _ => acc
-        }
+  match constructor_roster_for(type_node: scrutinee_type, env: env) {
+    ConstructorsOpen => []
+    ConstructorsClosed { names: _ } =>
+      let witnesses = exhaustiveness_witnesses(
+        rows: arms |> map(a => [arm_pattern(n: a)]),
+        columns: [scrutinee_type],
+        env: env,
+        module_name: module_name
       )
-      let uncovered = variant_names |> filter(v => emit_map_has(m: covered_set, key: v) == false)
-      if count(uncovered) > 0 {
-        [make_error_node(diagnostic: NonExhaustiveMatch { missing: uncovered, span: span }, module_name: module_name)]
+      if (witnesses |> count) > 0 {
+        [make_error_node(
+          diagnostic: NonExhaustiveMatch {
+            missing: witnesses |> map(w => witness_row_missing_name(w: w)),
+            span: span
+          },
+          module_name: module_name
+        )]
       } else {
         []
       }
-    }
-  } else { [] }
+  }
 }

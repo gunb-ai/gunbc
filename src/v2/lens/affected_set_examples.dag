@@ -1,4 +1,6 @@
 module v2.lens.affected_set_examples
+
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -12,7 +14,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   diagnostics_singleton
 }
-import v2.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode }
 import v2.lens.affected_set {
   AffectedBoundaryRead,
   AffectedFrontierRead,
@@ -41,17 +43,18 @@ import v2.lens.affected_set {
   ReasonDiagnostics
 }
 import v2.std.dependency { DependencyView }
+
 data affected_set_example_hash: Hash = affected_set_example_hash
 
 data affected_set_example_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 data affected_set_claim_failure_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_set_claim_failure_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data affected_set_example_path: Path = Path { steps: [^affected_set_example_path_symbol] }
@@ -177,6 +180,5 @@ data affected_set_example_two_edit_diff: Diff = Diff {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Example frontier values for the affected-set lens: carries no independent bad-state class; its single-authority home (DESIGN sec 3) is a sub-module of affected_set, not a separate top-level lens. Grounding authority: v2.lens.affected_set owning its example values as a sub-module / test fixture. Dissolves on: the affected-set frontier examples fold into v2.lens.affected_set as a sub-module, not a top-level lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

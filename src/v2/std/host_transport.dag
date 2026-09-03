@@ -8,10 +8,12 @@ import v2.std.diagnostic {
   Diagnostic,
   Outcome,
   Rejected,
+  CorrectionNotModeled,
   None,
+  Unavailable,
   diagnostics_singleton,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.machine { Byte }
 import v2.std.node { Node, Symbol }
@@ -32,13 +34,22 @@ type WorkspaceFile {
   content: WorkspaceContent
 }
 
+type MaterializedWorkspaceFile {
+  path: RelPath
+  text: String
+}
+
 type InvocationArg
   = LiteralArg { text: String }
   | WorkspacePath { path: RelPath }
   | ProducedArtifact { path: RelPath }
 
+type ProcessProgram
+  = HostToolProgram { executable: String }
+  | ProducedProgram { path: RelPath }
+
 type ProcessInvocation {
-  tool: Symbol
+  program: ProcessProgram
   args: List<InvocationArg>
 }
 
@@ -52,6 +63,33 @@ type HostTransportDescriptor {
   build: List<ProcessInvocation>
   run: ProcessInvocation
   runtime_value_codec: RuntimeValueCodec
+  build_environment: HostBuildEnvironment
+}
+
+// THE EMITTED PROGRAM'S BUILD ENVIRONMENT IS A ROW ON ITS TARGET'S TRANSPORT, NOT AN
+// INHERITANCE AND NOT ONE GLOBAL LIST. The host transport builds and runs the emitted program
+// under env_clear() plus exactly the ambient variables the descriptor names, admitted by exact
+// name; every other ambient variable is refused by negation. The admitted names are hashed into
+// the build-context identity, so the row is per TARGET: a Rust realization must not carry
+// PYTHONPATH (an unrelated change would perturb its identity) and a Python one must not carry
+// Cargo state. Flag-bearing variables (RUSTFLAGS, CARGO_ENCODED_RUSTFLAGS, CFLAGS, GOFLAGS, ...)
+// are absent BY CONSTRUCTION of each row and deliberately not enumerated as exclusions: a build
+// flag is policy, and a policy a realization wants is a runtime_row field with its own RED,
+// never something the ambient shell exported for compiling the seed. The seed used to admit
+// RUST*/CARGO_*/*FLAGS by prefix (and the uncached transport inherited the whole environment),
+// so the required floor's `RUSTFLAGS=-D warnings` -- exported for the SEED build -- reached the
+// emitted program and four emit_host expected-red rows were red only in CI, on `-D dead-code`
+// (gunbc#9727). CARGO_TARGET_DIR is never a row entry: the seed constructs it at the realization
+// boundary (the workspace's own target dir). The seed carries no veto of its own -- what a row
+// names is admitted, so a row is the whole policy.
+type HostBuildEnvironment {
+  ambient_names: List<String>
+}
+
+// Shared subset, consumed explicitly by each target's row: where the process finds tools and
+// scratch. Nothing applies to a target that does not name it.
+fn host_process_location_names() -> List<String> {
+  ["PATH", "HOME", "TMPDIR"]
 }
 
 type EmitHostRuntimeRow {
@@ -68,16 +106,22 @@ data target_emit_host_runtime_row_unconfigured: TargetEmitHostRuntimeRow = HostR
 fn emit_host_runtime_row_unconfigured_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_runtime_row_unconfigured_reason,
-    at: port_locus(port: ^emit_host_runtime_row_unconfigured_reason),
-    correction: None
+    at: invariant_port_locus(
+      port: ^emit_host_runtime_row_lookup_port,
+      invariant: ^emit_host_runtime_row_unconfigured_reason
+    ),
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
 fn emit_host_runtime_row_parse_byte_width_mismatch_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_runtime_row_parse_byte_width_mismatch,
-    at: port_locus(port: ^emit_host_runtime_row_parse_byte_width_mismatch),
-    correction: None
+    at: invariant_port_locus(
+      port: ^emit_host_runtime_row_parse_port,
+      invariant: ^emit_host_runtime_row_parse_byte_width_mismatch
+    ),
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
@@ -120,5 +164,19 @@ fn configured_emit_host_runtime_row_from_target_row(
       Accepted { value: configured, diagnostics: None }
     HostRuntimeRowAbsent =>
       outcome_rejected(d: emit_host_runtime_row_unconfigured_diagnostic())
+  }
+}
+
+type EmittedEffectFamily
+  = FilesystemReadFamily
+  | ShellExecRunFamily
+
+fn emitted_family_runtime_row_gated(
+  family: EmittedEffectFamily,
+  present: EmitHostRuntimeRow
+) -> TargetEmitHostRuntimeRow {
+  match family {
+    FilesystemReadFamily => HostRuntimeRowPresent { row: present }
+    ShellExecRunFamily => HostRuntimeRowPresent { row: present }
   }
 }

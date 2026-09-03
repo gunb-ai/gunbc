@@ -1,0 +1,38 @@
+module extdeps.tools.rustfmt
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceRustup }
+import std.types { Bool, String, FilePath }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/stable/edition-guide/rust-2018/rustfmt.html"
+  }
+}
+
+data rustfmt_cli_tool: CliTool = CliTool {
+  name: "rustfmt",
+  min_version: Absent,
+  installable_via: [SourceRustup],
+}
+
+data rustfmt_parse_files_note: String = "--emit stdout makes this a parse observation rather than a formatting gate: parseable input may be reformatted in stdout, while the source workspace remains untouched."
+
+service rustfmt.Parse {
+  operation Files {
+    input { workdir: FilePath, edition: String, files: List<String> }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["env", "-C", "{workdir}", "rustfmt", "--emit", "stdout", "--edition", "{edition}", files] }
+    exit {
+      0 => Unit
+      nonzero => String "rustfmt refused at least one input"
+    }
+  }
+}

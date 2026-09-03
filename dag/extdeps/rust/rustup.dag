@@ -1,0 +1,68 @@
+module extdeps.rustup
+
+import std.types { NonEmptyStr, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "rust-lang.github.io/rustup/"
+  }
+}
+
+type RustChannel = Stable | Beta | Nightly
+
+data rustup_install_url: NonEmptyStr = "https://rustup.rs"
+
+data default_channel: RustChannel = Stable
+
+data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"
+
+data rustup_component_authority_note: NonEmptyStr = "Components, cited to the rustup book's Components concept page rather than minted here. The load-bearing fact this vocabulary exists to carry is that a component is a property of a TOOLCHAIN, not of a machine: rustup installs each component into one toolchain directory, and the ~/.cargo/bin entries are shims that dispatch to whichever toolchain is active. So 'is rustfmt installed on this host' is not a well-formed question — two toolchains on one host routinely disagree, and the shim resolves through exactly one of them. Any consumer that asks the host-shaped question gets a true-sounding answer to a question it did not mean."
+
+type RustupComponent
+  = Rustfmt
+  | Clippy
+  | RustSrc
+  | RustAnalyzer
+  | RustDocs
+
+fn rustup_component_name(c: RustupComponent) -> NonEmptyStr {
+  match c {
+    Rustfmt => "rustfmt"
+    Clippy => "clippy"
+    RustSrc => "rust-src"
+    RustAnalyzer => "rust-analyzer"
+    RustDocs => "rust-docs"
+  }
+}
+
+fn rustup_component_eq(a: RustupComponent, b: RustupComponent) -> Bool {
+  (rustup_component_name(c: a) as String) == (rustup_component_name(c: b) as String)
+}
+
+// RUSTUP_HOME IS RUSTUP'S FACT, NOT CARGO'S, and the split is the whole reason this sits here
+// rather than beside CARGO_HOME in extdeps.cargo. The two are routinely set together at one call
+// site, which is what makes the merge tempting -- but they are governed by two independently
+// versioned upstream products (DESIGN section 3, external upstream decomposition), and a single
+// enumeration would mean a rustup release editing cargo's module.
+//
+// What the variable selects is the toolchain ROOT, which is why it is load-bearing for a build
+// service rather than cosmetic: it decides which toolchain directory the shims dispatch into, and
+// the component note above already records that a component is a property of a toolchain and not
+// of a machine. A build that inherits an ambient RUSTUP_HOME is built by whichever toolchain that
+// root happens to hold.
+data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "rust-lang.github.io/rustup/environment-variables.html"
+  }
+}
+
+// STATED AS ONE NAME RATHER THAN A COPRODUCT OF ONE. Cargo's variables next door are a closed
+// enumeration because cargo genuinely offers several that this repository sets; rustup offers one
+// that it does. An axis with a single inhabitant is a nickname for a fixed fact (DESIGN section 3)
+// and the .dag front end reads a one-arm coproduct as a type alias besides, so the fact is stated
+// directly. A second rustup variable arriving is what turns this into an enumeration.
+data rustup_home_env_name: NonEmptyStr = "RUSTUP_HOME"

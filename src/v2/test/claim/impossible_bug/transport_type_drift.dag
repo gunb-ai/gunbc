@@ -1,31 +1,8 @@
 module v2.test.impossible_bug.transport_type_drift
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  node_locus,
-  None,
-  Outcome,
-  Rejected,
-  Suggested,
-  diagnostics_singleton
-}
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim,
-  manual_claim_anchor
-}
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -35,7 +12,7 @@ data shared_wire_contract_input: Node = Node {
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
     Edge { label: Named { name: ^server_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data falsification_wire_contract_drift: Node = Node {
@@ -44,7 +21,7 @@ data falsification_wire_contract_drift: Node = Node {
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
     Edge { label: Named { name: ^server_field }, target: atom_node(s: ^server_field_string_symbol) },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data falsification_target_contract_drift: Node = Node {
@@ -53,7 +30,7 @@ data falsification_target_contract_drift: Node = Node {
     Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
     Edge { label: Named { name: ^target_field }, target: atom_node(s: ^target_field_bool_symbol) },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {

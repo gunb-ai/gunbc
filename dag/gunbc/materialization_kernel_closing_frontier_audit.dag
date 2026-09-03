@@ -1,0 +1,127 @@
+module gunbc.materialization_kernel_closing_frontier_audit
+
+import std.types { Bool, Int, List, NonEmptyStr }
+
+data materialization_kernel_closing_frontier_audit_note: String = "RENAMED from gunbc.materialization_kernel_closing_contract (still-bat-561 operator ruling, 2026-08-02, msg_9609b3a3): this module is an AUDIT of the v1-materialization-kernel roadmap node's closing frontier, not the closing contract itself. The original framing was a DESIGN §5 violation at the architectural level — verdicts were AUTHORED (hand-written Delivered/PartiallyDelivered/NotDelivered rows with prose evidence) rather than DERIVED from executed observations, so editing a row from NotDelivered to Delivered would green the file without executing any operation the evidence string names. That is exactly the named anti-pattern: 'a check satisfiable by editing the declaration while the realizer still lies.' A genuine closing contract would need each clause to carry a typed OBSERVATION (ExecutedPass / ExecutedRefusal / Unavailable) with the verdict DERIVED from it, not authored beside it — that machinery does not exist here and this file does not claim to be that.
+
+What this file actually is, and remains useful for (operator: 'your audit is genuinely useful and it should land; it just must not claim to be the closing mechanism'): a per-clause investigation record against the seven obligations the parent brief (still-bat-561, Lane F) named, each citing the concrete executing witness_module/witness_fn that was actually run to reach its verdict, or the concrete symbol/gap that keeps it open. The prose evidence fields are audit findings a human or a future session can verify by re-running the cited witnesses — they are not self-verifying, and this file does not claim the roadmap node's red_control or handback is satisfied by anything in it. materialization_kernel_all_clauses_delivered below is a derived SUMMARY over the audited rows (an AND-fold), not a roadmap execution contract.
+
+Per-clause sourcing (audited 2026-08-02, session quick-swift-501, against PR #7534 as merged and the live tree, not against the PR's own prose): every Delivered/PartiallyDelivered/NotDelivered verdict below names an executing witness_module/witness_fn pair or, for NotDelivered/PartiallyDelivered, the concrete symbol whose absence or shape keeps the clause from closing. Nothing here restates std.materialization_ladder or std.materialization_provider vocabulary (DESIGN §3 single authority / the brief's 'NO SECOND CACHE MECHANISM' instruction) — this audit sits one layer above them, checking whether the v1-materialization-kernel roadmap node's OWN stated obligations are discharged by the CacheProvider/ArtifactRequest machinery those modules already define, never minting a parallel cache or provider concept.
+
+WHAT REMAINS OUTSIDE THIS FILE'S AUTHORITY: acceptance of the roadmap node itself is a gunbc.roadmap_model RoadmapAcceptanceReceipt, authored by the operator (roadmap_acceptance_receipt_note names accepted_by as evidence, not a worker action); this audit does not accept the node and does not claim to, and it is not itself the node's closing contract. It gives a human reviewer, or a future execution-derived contract, something concrete to check against instead of prose."
+
+type ClauseVerdict
+  = NotDelivered { reason: NonEmptyStr }
+  | PartiallyDelivered { reason: NonEmptyStr, evidence: NonEmptyStr }
+  | Delivered { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, evidence: NonEmptyStr }
+
+type FrontierClause {
+  id: NonEmptyStr
+  statement: NonEmptyStr
+  verdict: ClauseVerdict
+}
+
+// The one exhaustive match on ClauseVerdict in this module; every other Bool-producing projection
+// on a FrontierClause routes through this (review 47530, DESIGN §3 — an undeclared sum re-matched
+// by a family of free predicates duplicates the same exhaustiveness fact at each call site).
+
+fn clause_delivered(c: FrontierClause) -> Bool {
+  match c.verdict {
+    Delivered { witness_module: _, witness_fn: _, evidence: _ } => true
+    PartiallyDelivered { reason: _, evidence: _ } => false
+    NotDelivered { reason: _ } => false
+  }
+}
+
+// DELETED (review 47530 round 2, still-bat-561): this module previously carried
+// clause_has_any_evidence, a Bool-returning fn that always returned true because every
+// ClauseVerdict variant requires a NonEmptyStr reason/evidence field by construction — the bad
+// state (a clause with no evidence) has no constructor, so the check could not fail. A function
+// named has_any_evidence that returns true unconditionally reads as a performed check to any caller
+// who does not open it, which is worse than no function at all (DESIGN §4b(4) — a climb deletes the
+// redundant lower-rung PRODUCTION machinery the construction obsoletes; §5 — a check standing where
+// construction already makes the state unwritable is validation, not verification).
+// materialization_kernel_every_clause_has_evidence, its sole caller, was deleted with it for the
+// same reason, and the witness that asserted it
+// (materialization_kernel_every_clause_carries_evidence) was deleted rather than kept
+// green-by-tautology. This note is the surviving, durable part: every FrontierClause carries
+// evidence because ClauseVerdict's three variants each require a NonEmptyStr field (reason, or
+// reason+evidence, or witness_module+witness_fn+evidence) — read the type in this file if you need
+// to confirm that property holds; there is nothing left to call.
+
+fn closing_frontier_clauses() -> List<FrontierClause> {
+  [
+    FrontierClause {
+      id: "contract-exists-and-can-fail",
+      statement: "The v1-materialization-kernel node has an actual, checkable audit capable of failing on zero progress (brief step 1).",
+      verdict: Delivered {
+        witness_module: "test.claim.materialization_kernel_closing_frontier_audit_witness",
+        witness_fn: "materialization_kernel_audit_not_all_delivered_today",
+        evidence: "This module and its paired witness test are the audit; the fold below evaluates false against the audited clauses that follow, proving by execution that the audit summary can read false rather than vacuously passing."
+      }
+    },
+    FrontierClause {
+      id: "warm-hit-skips-semantic-recompute",
+      statement: "A restart-stable exact hit skips the semantic computation the artifact claims to replace, proven by execution rather than by serving an equal result (brief step 2).",
+      verdict: NotDelivered {
+        reason: "REGRESSION DECLARED 2026-08-11 (gunbc#8146, review 51132). PREVIOUS RUNG: Delivered. TEMPORARY RUNG: NotDelivered. REASON: the cited witness module was executed and does not pass — resolve_cross_process_cache_test reports 53 passed / 3 FAILED (provider_disposition_four_arm_matrix, repeat_resolve_through_disk_seam_does_not_reenter_provider, same_subject_resolves_share_one_graph_store_hits_v2_disk, the last two cascading from a poisoned GUNBC_RESOLVED_GRAPH_CACHE_DIR env mutex) in 1321s. The Delivered verdict was therefore ALREADY inflated before this PR: the suite was gated by --no-run, so no run ever contradicted it. This row does not lower a real rung, it corrects a reported one to the rung executed evidence establishes (DESIGN §4b(1)). BOUNDED POPULATION: the three clauses citing resolve_cross_process_cache_test and resolved_graph_cache_size_bound_test. RESTORATION TRIGGER: root-cause and fix the failing tests, bring the module under the gate budget (22min exceeds the 15min step cap), and re-declare it in test.retirement.model; those steps are necessary but no longer sufficient after the 2026-08-31 real-corpus cold write stayed incomplete after 28 minutes at 1.2 GiB compressed. A compact representation must also publish and serve the exact real invocation with positive net payoff and invalidate on a source edit before this clause may return to Delivered. THIS CLAUSE specifically: cross_process_hit_skips_semantic_recompute (the TYPECHECK_COMPUTE_COUNT skip proof) is not among the three failures, but it shares the poisoned env mutex and the module as a whole does not pass, so the module cannot be enrolled and the clause has no executing consumer." as NonEmptyStr
+      }
+    },
+    FrontierClause {
+      id: "corruption-identity-completeness-overcap-refuse",
+      statement: "Corruption, wrong identity, incomplete content, and over-cap storage each refuse without cold widening (brief step 3).",
+      verdict: NotDelivered {
+        reason: "REGRESSION DECLARED 2026-08-11 (gunbc#8146, review 51132). PREVIOUS RUNG: Delivered. TEMPORARY RUNG: NotDelivered. REASON: the cited witness module was executed and does not pass — resolve_cross_process_cache_test reports 53 passed / 3 FAILED (provider_disposition_four_arm_matrix, repeat_resolve_through_disk_seam_does_not_reenter_provider, same_subject_resolves_share_one_graph_store_hits_v2_disk, the last two cascading from a poisoned GUNBC_RESOLVED_GRAPH_CACHE_DIR env mutex) in 1321s. The Delivered verdict was therefore ALREADY inflated before this PR: the suite was gated by --no-run, so no run ever contradicted it. This row does not lower a real rung, it corrects a reported one to the rung executed evidence establishes (DESIGN §4b(1)). BOUNDED POPULATION: the three clauses citing resolve_cross_process_cache_test and resolved_graph_cache_size_bound_test. RESTORATION TRIGGER: root-cause and fix the failing tests, bring the module under the gate budget (22min exceeds the 15min step cap), and re-declare it in test.retirement.model; those steps are necessary but no longer sufficient after the 2026-08-31 real-corpus cold write stayed incomplete after 28 minutes at 1.2 GiB compressed. A compact representation must also publish and serve the exact real invocation with positive net payoff and invalidate on a source edit before this clause may return to Delivered. THIS CLAUSE specifically: its refusal witnesses live in the same unenrollable module; provider-grain corroboration in materialization_provider_resolved_graph_consumer_test remains retained and executing, but corroboration is not the claim." as NonEmptyStr
+      }
+    },
+    FrontierClause {
+      id: "bounded-eviction-and-full-store",
+      statement: "Bounded-store eviction and full-store behavior are modeled and executed (brief step 4).",
+      verdict: NotDelivered {
+        reason: "REGRESSION DECLARED 2026-08-11 (gunbc#8146, review 51132). PREVIOUS RUNG: Delivered. TEMPORARY RUNG: NotDelivered. REASON: the cited witness module was executed and does not pass — resolve_cross_process_cache_test reports 53 passed / 3 FAILED (provider_disposition_four_arm_matrix, repeat_resolve_through_disk_seam_does_not_reenter_provider, same_subject_resolves_share_one_graph_store_hits_v2_disk, the last two cascading from a poisoned GUNBC_RESOLVED_GRAPH_CACHE_DIR env mutex) in 1321s. The Delivered verdict was therefore ALREADY inflated before this PR: the suite was gated by --no-run, so no run ever contradicted it. This row does not lower a real rung, it corrects a reported one to the rung executed evidence establishes (DESIGN §4b(1)). BOUNDED POPULATION: the three clauses citing resolve_cross_process_cache_test and resolved_graph_cache_size_bound_test. RESTORATION TRIGGER: root-cause and fix the failing tests, bring the module under the gate budget (22min exceeds the 15min step cap), and re-declare it in test.retirement.model; those steps are necessary but no longer sufficient after the 2026-08-31 real-corpus cold write stayed incomplete after 28 minutes at 1.2 GiB compressed. A compact representation must also publish and serve the exact real invocation with positive net payoff and invalidate on a source edit before this clause may return to Delivered. THIS CLAUSE specifically: resolved_graph_cache_size_bound_test is deleted with the failing sibling it shares a lane with; its own two tests were not observed failing, and it is deleted for lack of a consumer rather than for failing." as NonEmptyStr
+      }
+    },
+    FrontierClause {
+      id: "lookup-ahead-of-index-construction",
+      statement: "Lookup moves ahead of index construction, and only after the identity and refusal contract from the two clauses above is preserved at the new position (brief step 5).",
+      verdict: NotDelivered {
+        reason: "GATE RE-CLOSED 2026-08-11 (gunbc#8146, review 51190). This reason previously read that the warm-hit-skips-semantic-recompute gate was lifted because that clause had reached Delivered — true when written, falsified in this same PR when that clause was demoted to NotDelivered on the measurement that its cited witness module fails (53 pass / 3 fail / 1321s) and had never executed under --no-run. So step 5 is BLOCKED again, not honestly unstarted: its prerequisite is back to NotDelivered and re-opens with it. The underlying code position is unchanged either way: v1_compiler.cli_run fn resolved_graph_from_sources_with_index's cross-process probe still runs after process_shared_index and entry-closure/source loading, unchanged from PR #7534's own self-documented scope limit ('this does not close dashboard startup ... a warm hit skips typecheck/reconcile but still pays corpus-index/source-loading')."
+      }
+    },
+    FrontierClause {
+      id: "real-production-invocation",
+      statement: "One real production invocation is bound; an opt-in test-only environment variable is not completion (brief step 6).",
+      verdict: NotDelivered {
+        reason: "MEASURED 2026-08-31 on the exact proposed production consumer: GUNBC_RESOLVED_GRAPH_CACHE_DIR armed for gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/fabric_ci_evidence.dag --function fabric_ci_calibration_assertion_success. FORMAT v5's file-backed encoder fixes the memory defect (stable ~4.34 GiB VmHWM rather than the prior 31 GiB SIGKILL), but the cold write remained incomplete after 28 minutes with 1.2 GiB compressed output. That exceeds the entire CI payoff window before any warm benefit can be collected, so binding this representation would make production slower by construction. No production route is bound and no warm datum exists. NEXT TRIGGER: choose a compact persisted resolved-graph representation in the program-level comparison against change-denominating the floor, then execute this same real invocation cold and warm plus an invalidating source edit; bind it only if the measured net payoff is positive."
+      }
+    },
+    FrontierClause {
+      id: "hand-rust-growth-tracked-live",
+      statement: "The recorded hand-Rust growth and its deletion trigger stay live until the host bridge is emitted or removed (brief step 7).",
+      verdict: Delivered {
+        witness_module: "test.claim.resolved_graph_cache_hand_rust_witness",
+        witness_fn: "resolved_graph_cache_hand_rust_receipt_is_checkable",
+        evidence: "UPDATED 2026-08-11 (gunbc#8146, review 51152): the population shrank with the test-suite cutover and this prose is corrected to the live figures rather than left describing a tree that no longer exists. gunbc.resolved_graph_cache_hand_rust_scaffold now enrolls FOUR touched paths (v1_compiler.cli_run; v1_compiler.cli_run.materialization_provider_consumer; v1_compiler.resolved_graph_cache; materialization_provider_resolved_graph_consumer_test.rs) with per-path net LOC deltas summing to 1256. Three of the original seven departed with the cutover: ir_fixture_seam_soundness_test.rs, resolve_cross_process_cache_test.rs and resolved_graph_cache_size_bound_test.rs. THE CLAUSE STAYS Delivered, and its evidence is STRONGER than before, which is why: resolved_graph_cache_hand_rust_receipt_is_checkable no longer checks only a list length and a LOC fold — it now joins every censused path to a readable file (every_censused_path_exists), so a path deleted out from under this receipt refuses instead of passing. That join is what caught this drift. Both the primary scaffold and the paired gunbc.materialization_provider_consumer_scaffold remain std.disposition Scaffold\{dissolves_to: SingleAuthority\} (seed-retained, named dissolve trigger: cli_run_hollowing_plan area 2.6 typed module cache/memo, or witness-realization landing a typed host-effect transport), never silently absorbed as permanent."
+      }
+    },
+  ]
+}
+
+fn materialization_kernel_progress_count(clauses: List<FrontierClause>) -> Int {
+  clauses |> filter(c => clause_delivered(c: c)) |> count()
+}
+
+fn materialization_kernel_clause_count(clauses: List<FrontierClause>) -> Int {
+  count(clauses)
+}
+
+// RENAMED from materialization_kernel_closing_contract_holds (still-bat-561 operator ruling,
+// 2026-08-02): this is a derived AUDIT SUMMARY over closing_frontier_clauses — true only if every
+// audited clause independently reached Delivered — not a roadmap execution contract and not itself
+// bound to the v1-materialization-kernel roadmap node's acceptance. See
+// materialization_kernel_closing_frontier_audit_note above for why the prior framing (an authored
+// AND-fold presented as 'the contract') was retired.
+
+fn materialization_kernel_all_clauses_delivered(clauses: List<FrontierClause>) -> Bool {
+  clauses |> fold(init: true, f: (acc, c) => acc && clause_delivered(c: c))
+}

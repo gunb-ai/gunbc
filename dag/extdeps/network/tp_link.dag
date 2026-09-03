@@ -1,0 +1,38 @@
+module extdeps.network.tp_link
+
+import std.types { NonEmptyStr }
+import std.measure { milliwatt, bandwidth }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.network.switch_types { NetworkSwitchCatalogRow }
+import extdeps.vendor.tp_link { tp_link }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.tp-link.com/us/home-networking/unmanaged-switch/tl-sg1024s/"
+  }
+}
+
+data tp_link_tl_sg1024s_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogRow {
+  model: "TL-SG1024S",
+  manufacturer: tp_link,
+  port_count: 24,
+  port_speed: bandwidth(1000000000),
+  fanless: true,
+  switching_capacity: bandwidth(48000000000),
+  max_power_draw: milliwatt(13600),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.network.tp_link",
+      decl_name: "tp_link_tl_sg1024s_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -1,0 +1,259 @@
+module std.evaluation_budget
+
+import std.types { NonEmptyStr, Bool, Int, String }
+import std.contract_identity { ContractIdentity, ContractName }
+import std.measure {
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
+  PositiveMillisecond,
+  positive_millisecond_count,
+  nanoseconds_per_millisecond,
+}
+
+// THIS CARRIER IS DELIBERATELY CALLER-AGNOSTIC, AND THAT IS THE WHOLE REASON IT EXISTS. The
+// interpreter already enforced two cooperative deadlines, but the only results it could raise were
+// named for one caller — EvalBudgetExceeded carried the fast-lane witness ruling in its message and
+// WitnessWallBudgetExceeded carried the falsifier lane's. A served HTTP request is not a witness,
+// so raising either at a serve route would make the kernel manufacture a witness concept for a
+// non-witness caller (operator review 2026-08-09) — the DESIGN section 3 nickname failure, one
+// concept wearing another domain's name. The kernel raises THIS result; each caller maps it into
+// its own refusal vocabulary at its own boundary, so witness guidance stays with the witness lane
+// and route guidance stays with the route.
+
+// TWO CLOCKS, NOT ONE, AND NEITHER SUBSUMES THE OTHER. Thread CPU excludes blocking I/O and
+// scheduler time-slicing, which is what makes it the honest bound on a runaway evaluation: a
+// genuine non-terminating fold burns CPU and is caught, while a bounded scan whose WALL time was
+// inflated by a cold page cache or a co-resident build is not misclassified. That insulation is
+// also its blind spot, and the blind spot is recorded rather than discovered —
+// dag/test/claim/generated_artifact_drift_test.dag fixed_point_witness_long_lane_note states it
+// exactly: nothing bounds waiting, so a subject with small CPU and large wait NEVER crosses a CPU
+// cap. For a served route that is not an academic gap, because a handler blocked on a filesystem
+// read or a subprocess holds its listener just as completely as one spinning. So the clock is part
+// of the exceeded result: a consumer that cannot tell which bound fired cannot tell a spin from a
+// stall, and those have different remedies.
+
+data evaluation_budget_opaque_host_call_note: String = "PREEMPTION-1 (operator-directed, 2026-08-19): NEITHER CLOCK BOUNDS AN EVALUATION BLOCKED INSIDE A SINGLE OPAQUE HOST CALL, AND THIS IS THE MECHANISM RATHER THAN A CORNER CASE. v1_interpreter eval_expr polls both deadlines on a stride between calls to itself — the poll IS the only place either clock is read. A native builtin (a `free_call.*` arm dispatched to Rust, such as compile_dag_rust_emit_check, which runs v1_compiler_compile compile_sources synchronously to completion) never calls back into eval_expr while it runs, so no stride point falls inside it: the whole duration of the host call is invisible to the poll, whichever clock is armed. This is not suspected, it is measured and it recurs: test.claim.long.root_d_checkpoint_scalar_declared_arity_witness root_d_checkpoint_scalar_declared_arity_witness_holds spends its cost inside one compile_dag_rust_emit_check call that compiles a virtual fixture importing std.integer, and floor run 32301212975 recorded it completing (VerdictReached, not SafetyInterrupted) at 60317ms CPU against a 5000ms required_floor_claim_cpu_safety_limit_ms — twelve times the declared limit, uninterrupted, for the second time running (2792-2855ms isolated per docs/plans/witness-cost-first-touch-attribution.md, then 60317ms under floor pressure). The distinction this carrier already draws between EvaluationBudgetExceeded (observed, a poll fired) and no result at all (never polled) is therefore load-bearing, not decorative: silence from this carrier is not evidence a claim stayed within budget, only that no poll happened to land inside it. THE CONSEQUENCE FOR ANY CALLER BUILDING ENFORCEMENT ON TOP OF THIS KERNEL: a declared cpu_limit/wall_limit is a real bound on evaluation the poll can see and NO bound at all on time spent inside one opaque host call — that residue is why v1_interpreter's own eval_expr comment names worker isolation, not a budget, as what would bound it unconditionally. required_floor_claim_cpu_safety_limit_ms and required_floor_claim_wall_safety_limit_ms (v2.workflow.required_floor) are consequently mitigatable for ordinary evaluation and not even that for a claim whose cost lives inside one opaque host call — reported instead, honestly, as a completed_over_cost_requirement measurement rather than a SafetyInterrupted bound. Recorded here, at the caller-agnostic kernel, before any caller is built or extended on the assumption that arming either limit makes a host call interruptible, because it does not."
+
+// LIMITS ARE MILLISECONDS AND ELAPSED IS NANOSECONDS, following std.measure
+// nanosecond_millisecond_projection_note rather than a local preference: Nanosecond is the
+// canonical exact elapsed-time carrier while Millisecond is a policy and presentation scale, and
+// that note forbids retaining a floored value for measurement. A declared budget is authored
+// policy, so it is a Millisecond; an observed crossing is a measurement, so it is a Nanosecond and
+// is never floored on the way into this carrier. The limit is a PositiveMillisecond specifically —
+// a zero-millisecond budget has no constructor, so the degenerate policy that would refuse every
+// evaluation before it began is unwritable rather than validated.
+
+type EvaluationClock
+  = ThreadCpu
+  | MonotonicWall
+
+fn evaluation_clock_key(c: EvaluationClock) -> NonEmptyStr {
+  match c {
+    ThreadCpu => "thread_cpu" as NonEmptyStr
+    MonotonicWall => "monotonic_wall" as NonEmptyStr
+  }
+}
+
+type EvaluationEntryIdentity {
+  entry: NonEmptyStr
+}
+
+type EvaluationLimit
+  = LimitUnset
+  | LimitSet { limit: PositiveMillisecond }
+
+data evaluation_limit_unset_is_a_state_not_a_default_note: String = "LimitUnset IS A DECLARED POLICY STATE, NOT A MISSING VALUE, and separating it from a sentinel is what keeps this from becoming the absorbing fallback DESIGN section 5 forbids. Unset means this caller has declared that it does not bound this clock — today's serve behavior, stated rather than implied. It is NOT the same fact as a limit that could not be read, which would be a refusal; and it is not spelled as a zero or a very large number, because both of those are answers wearing the shape of an absence. A consumer matching on this coproduct cannot silently treat unbounded as bounded."
+
+// THE NANOSECOND CARRIER, NOT A NANOSECOND-SHAPED Int. This projection returned a bare Int in the
+// module that imports Nanosecond as canonical, so its result type-checked against any other Int in
+// the file -- a wall remainder, a cpu remainder, a count of anything. The carrier already exists and
+// the multiplication that produces the value is exactly millisecond_to_nanosecond's arithmetic, so
+// returning Int here was a second nanosecond authority standing beside the imported one.
+fn evaluation_limit_nanos(limit: PositiveMillisecond) -> Nanosecond {
+  nanosecond(count: positive_millisecond_count(m: limit) * nanoseconds_per_millisecond())
+}
+
+// THE EVALUATION BUDGET IS A CONTRACT, SO ITS IDENTITY IS THE CANONICAL TRIPLE. Subject is phantom:
+// an evaluation-budget identity and a Required CI identity are different types even though both are
+// surface/name/epoch, so one can never be substituted for the other.
+type EvaluationBudgetContract
+
+// ONE ENTRY, PROJECTED FROM THE IDENTITY, NEVER AUTHORED BESIDE IT. The policy carried an `entry`
+// field AND the exceeded result carried its own, so a policy about one entry could report a breach
+// naming another -- two representations of one fact, which DESIGN section 3 forbids and which no
+// consumer could have adjudicated. The contract's NAME is the entry, and this projection is the
+// only way to obtain one.
+type EvaluationBudgetPolicy {
+  contract: ContractIdentity<EvaluationBudgetContract>
+  cpu_limit: EvaluationLimit
+  wall_limit: EvaluationLimit
+}
+
+fn evaluation_budget_entry(policy: EvaluationBudgetPolicy) -> EvaluationEntryIdentity {
+  EvaluationEntryIdentity { entry: policy.contract.name as NonEmptyStr }
+}
+
+// THE OBSERVATION IS A PAIR, so a clock and the elapsed time measured ON that clock arrive together.
+// They were two loose arguments beside a third loose limit, which made "a ThreadCpu measurement
+// judged against the wall limit" an ordinary call rather than an unwritable state.
+type EvaluationObservation {
+  clock: EvaluationClock
+  elapsed: Nanosecond
+}
+
+// THE POLICY SELECTS THE LIMIT FOR THE OBSERVED CLOCK. No caller passes a limit: the pairing of
+// clock to limit is the policy's own business, and a caller that could choose it could pair them
+// wrongly.
+fn evaluation_policy_limit_for_clock(
+  policy: EvaluationBudgetPolicy,
+  clock: EvaluationClock,
+) -> EvaluationLimit {
+  match clock {
+    ThreadCpu => policy.cpu_limit
+    MonotonicWall => policy.wall_limit
+  }
+}
+
+// THE TYPED CONSEQUENCE OF A BREACH, carried INSIDE the exceeded arm and nowhere else. It has no
+// code field: a `consequence_code` on the policy, the identity or this record would make a contract
+// with an arbitrary or self-contradictory consequence CONSTRUCTIBLE, and would relocate the
+// invariant into callers. The machine identity of the breach is this module's own
+// `evaluation_budget_refusal_code`, reached only once an exceeded assessment exists.
+type EvaluationBudgetRefusalConsequence {
+  contract: ContractIdentity<EvaluationBudgetContract>
+  clock: EvaluationClock
+  elapsed: Nanosecond
+  limit: PositiveMillisecond
+}
+
+// NO FLOOR IS NOT A MET FLOOR, AND THE FOLD BELOW USED TO SAY IT WAS. `LimitUnset` answered
+// `EvaluationWithinBudget`, so "this caller declared no bound on this clock" and "the elapsed time
+// was measured against a bound and came in under it" were one value -- and this module's own
+// `evaluation_limit_unset_is_a_state_not_a_default_note` already forbade exactly that, saying a
+// consumer matching on the coproduct "cannot silently treat unbounded as bounded". The note was
+// right and the fold contradicted it: two unset clocks would establish that an evaluation-budget
+// quality floor was MET while establishing nothing at all, which is the state-space conflation
+// DESIGN section 5 names and the precise way a numerical ceiling gets renamed a quality floor.
+//
+// Every arm carries the contract it assessed. A bare within-budget value, detached from the
+// contract, must not cross a production boundary to be joined by convention later.
+type EvaluationBudgetAxisAssessment
+  = NoFloorOnClock {
+      contract: ContractIdentity<EvaluationBudgetContract>
+      clock: EvaluationClock
+    }
+  | EvaluationWithinBudget {
+      contract: ContractIdentity<EvaluationBudgetContract>
+      clock: EvaluationClock
+      elapsed: Nanosecond
+      limit: PositiveMillisecond
+    }
+  | EvaluationBudgetExceeded {
+      contract: ContractIdentity<EvaluationBudgetContract>
+      clock: EvaluationClock
+      elapsed: Nanosecond
+      limit: PositiveMillisecond
+      consequence: EvaluationBudgetRefusalConsequence
+    }
+
+// THE GRADE DECISION TAKES A POLICY AND AN OBSERVATION, not four loose values. Its predecessor
+// accepted entry, clock, elapsed and limit independently, which left three malformed compositions
+// writable as ordinary calls: an entry from contract A judged against a limit authored for B, a
+// ThreadCpu measurement judged against the wall limit, and a within-budget answer detached from
+// every contract. None of those is constructible here.
+//
+// THE INVERSE QUALITY ORDER IS THE LAW, not an example of one. Elapsed time is a cost, so quality
+// runs against it: quality(a) >= quality(b) iff elapsed(a) <= elapsed(b), the floor is MET iff
+// elapsed <= limit and BREACHED iff elapsed > limit. Equality therefore belongs to the admitted
+// side by the law itself rather than by convention.
+fn evaluation_budget_assess(
+  policy: EvaluationBudgetPolicy,
+  observation: EvaluationObservation,
+) -> EvaluationBudgetAxisAssessment {
+  match evaluation_policy_limit_for_clock(policy: policy, clock: observation.clock) {
+    LimitUnset =>
+      NoFloorOnClock { contract: policy.contract, clock: observation.clock }
+    LimitSet { limit: l } =>
+      if nanosecond_count(n: observation.elapsed) > nanosecond_count(n: evaluation_limit_nanos(limit: l)) {
+        EvaluationBudgetExceeded {
+          contract: policy.contract,
+          clock: observation.clock,
+          elapsed: observation.elapsed,
+          limit: l,
+          consequence: EvaluationBudgetRefusalConsequence {
+            contract: policy.contract,
+            clock: observation.clock,
+            elapsed: observation.elapsed,
+            limit: l,
+          },
+        }
+      } else {
+        EvaluationWithinBudget {
+          contract: policy.contract,
+          clock: observation.clock,
+          elapsed: observation.elapsed,
+          limit: l,
+        }
+      }
+  }
+}
+
+// THE CONSEQUENCE EXISTS ONLY WHERE A BREACH DOES. NoFloorOnClock and within-budget assessments
+// produce ABSENT, which is the whole content of "no floor" being a distinct state: an unbounded
+// clock cannot yield a budget-refusal consequence, and neither can a met floor.
+fn evaluation_budget_refusal_consequence(
+  assessment: EvaluationBudgetAxisAssessment,
+) -> Optional<EvaluationBudgetRefusalConsequence> {
+  match assessment {
+    NoFloorOnClock { contract: _, clock: _ } => Absent
+    EvaluationWithinBudget { contract: _, clock: _, elapsed: _, limit: _ } => Absent
+    EvaluationBudgetExceeded { contract: _, clock: _, elapsed: _, limit: _, consequence: c } =>
+      Present { value: c }
+  }
+}
+
+// THE ENTRY A BREACH REPORTS IS PROJECTED FROM THE CONTRACT IT BREACHED, never carried beside it.
+fn evaluation_budget_consequence_entry(
+  consequence: EvaluationBudgetRefusalConsequence,
+) -> EvaluationEntryIdentity {
+  EvaluationEntryIdentity { entry: consequence.contract.name as NonEmptyStr }
+}
+
+// THE COMPOSITION LAW IS EARLIEST-DEADLINE-WINS, AND IT IS STATED HERE BECAUSE THE SEED CURRENTLY
+// IMPLEMENTS ITS INVERSE. v1_interpreter arm_eval_deadline sets its cell unconditionally with a
+// FRESH baseline, so a nested arm does not shorten an outer bound — it resets the clock and grants
+// the outer evaluation a whole new budget, and clear_eval_deadline then sets None rather than
+// restoring what it displaced, so an inner clear disarms an outer deadline entirely (verified
+// 2026-08-09). An inner scope may therefore only ever tighten: the effective limit is the smaller
+// of what remains on the outer deadline and what the inner scope requests. Modeled as a fold over
+// remaining nanoseconds rather than over declared limits, because two scopes armed at different
+// instants can carry the same declared limit and different remaining time, and it is the remaining
+// time that decides which fires first.
+
+// BOTH SIDES OF THIS FOLD ARE ELAPSED TIME, so both carry the elapsed-time type. Taking two bare
+// Ints let a wall remainder and a cpu remainder meet in the same call and type-check, which is the
+// one substitution the min above must never make silently -- the two clocks are separately armed and
+// separately assessed, and the smaller of a wall remainder and a cpu limit is not a bound on either.
+fn effective_nested_limit_nanos(
+  outer_remaining_nanos: Nanosecond,
+  inner_limit_nanos: Nanosecond,
+) -> Nanosecond {
+  if nanosecond_count(n: outer_remaining_nanos) < nanosecond_count(n: inner_limit_nanos) {
+    outer_remaining_nanos
+  } else {
+    inner_limit_nanos
+  }
+}
+
+// THE REFUSAL CODE IS STABLE AND CARRIES NO RETRY PROMISE, which is a modeling decision and not an
+// omission. A deterministic request that exceeds a fixed evaluation policy will exceed it again on
+// every retry, so advertising Retry-After — or reaching for a status whose meaning is temporary
+// capacity — would tell the caller something the model does not know. The machine-readable code,
+// the clock that fired, the entry, and both quantities are what a consumer can act on; whether a
+// later attempt may be admitted is a separate fact that no arm here establishes (operator review
+// 2026-08-09).
+
+fn evaluation_budget_refusal_code() -> NonEmptyStr {
+  "evaluation_budget_exceeded" as NonEmptyStr
+}

@@ -1,0 +1,70 @@
+module test.claim.test_module_hygiene_hand_rust_equivalence_witness
+
+import gunbc.test_module_hygiene {
+  is_file_grain_function,
+  ExplicitExpandInput,
+  expand_explicit_pairs_or_refuse,
+  failure_receipt_companion,
+}
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE USED TO CARRY, and why it does not. Fourteen of the eighteen witnesses here
+// pinned gunbc.test_module_hygiene orphan_plain_names_or_refuse against synthetic ModuleSurface
+// fixtures — zero-enrolled demotion, directory-prefix bypass, cross-module export partial/empty,
+// test-data-only, plain-data enrollment, dead plain data, plain-data chains, a planted orphan, and
+// an unparsable refusal. Every one of them tested the orphan census, which is deleted along with
+// its fixtures, its scaffold carrier, and its hand-authored cross-module export exception roster.
+// Deleting the machinery deletes its evidence, which is normally forbidden — DESIGN §4b's
+// dissolution-on-climb rule keeps the discriminating RED enrolled when a class CLIMBS. This is not
+// a climb: the class is abandoned, not made unwritable, so there is no higher rung for the evidence
+// to guard, and retaining fixtures for a fold nothing calls would be specification-without-
+// execution. The scope loss is declared in the module authority note on gunbc.test_module_hygiene
+// rather than implied here. WHAT SURVIVES BELOW is the file-grain expand half plus the
+// failure-receipt companion convention, both of which have live consumers in claim_executor.
+test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool {
+  is_file_grain_function(function: "")
+    && (is_file_grain_function(function: "alpha_holds") == false)
+}
+
+test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool {
+  match expand_explicit_pairs_or_refuse(inputs: [
+    ExplicitExpandInput {
+      entry: "empty_grain_test.dag",
+      function: "",
+      content: "module empty_grain\n\nfn plain_only() -> Bool { true }\n"
+    }
+  ]) {
+    Refused { reason: reason } =>
+      string_contains(s: reason, pattern: "has no test fn / test data declarations")
+        && string_contains(s: reason, pattern: "empty_grain_test.dag")
+    _ => false
+  }
+}
+
+test fn test_module_hygiene_failure_receipt_companion_derives_suffix() -> Bool {
+  failure_receipt_companion(function: "witness_holds") == "witness_failure_receipt"
+    && failure_receipt_companion(function: "witness_passes") == "witness_failure_receipt"
+}
+
+// THE DISCRIMINATING RED FOR THE 2026-08-24 TOTALITY CHANGE, and the reason this row is
+// rewritten rather than deleted. It used to assert that a name carrying neither suffix has
+// NO companion -- which is exactly the eligibility predicate that change deletes, so the row
+// was the false predicate enshrined as a test. It is kept, inverted, as the permanent
+// regression control that the projection stays total (DESIGN section 4b, meta-obligation 4:
+// a climb deletes the production machinery it obsoletes, never the evidence).
+test fn test_module_hygiene_failure_receipt_companion_is_total() -> Bool {
+  failure_receipt_companion(function: "ordinary_fn") == "ordinary_fn_failure_receipt"
+    && failure_receipt_companion(function: "") == "_failure_receipt"
+}
+
+test fn codex_wet_enrolled_witnesses_resolve_failure_receipt_companion() -> Bool {
+  failure_receipt_companion(
+    function: "materialize_codex_runtime_bundle_produces_native_executable_holds",
+  ) == "materialize_codex_runtime_bundle_produces_native_executable_failure_receipt"
+    && failure_receipt_companion(
+      function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
+    ) == "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_failure_receipt"
+}

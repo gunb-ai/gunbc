@@ -1,0 +1,355 @@
+module extdeps.cpu.ampere
+
+import std.types { String, List }
+import std.measure { ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
+import extdeps.external_authority { ExternalAuthority, FactCitation }
+import std.decl_ref { decl_field_ref }
+import extdeps.uri { Uri, Https }
+import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisionPubliclyServed, HeldRevisionIsCurrentPublicCopy }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.cpu.types {
+  ProcessorCoolingMount,
+  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Ampere_Altra"
+  }
+}
+
+// THE UNQUALIFIED NAME USED TO DENOTE THE QUALIFIED PRODUCT, WHICH IS A MEANING FORK. This was
+// named ampere_altra_rev_a1_datasheet_authority while its locator is the Altra MAX datasheet, and
+// its sibling below carries the explicit `classic` qualifier for the non-Max part. So the bare
+// family name denoted the narrower product and the qualified-sounding name denoted the broader
+// one -- one spelling suggesting a meaning it does not carry, which 3 forbids independently of
+// whether any fact was misattributed.
+//
+// NO FACT MOVED, AND THE DISCRIMINATING PAIR IS WHY THAT IS CHECKABLE RATHER THAN ASSERTED. Altra
+// and Altra Max differ in last-level cache, so the two L3 rows below are a natural discriminator:
+// ampere_altra_max_l3_capacity is 16 MiB and cites this authority, ampere_altra_classic_l3_capacity
+// is 32 MiB and cites the classic one. Both were already correct, so this rename is a pure
+// spelling change over 30 references and changes no citation, no value and no authority.
+data ampere_altra_max_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_15_20230809_b7cdce449e_424d129849.pdf"
+  }
+}
+
+data ampere_altra_classic_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/assets/Altra_Rev_A1_DS_v1_50_20240130_3375c3dec5_1c5d4604fa.pdf"
+  }
+}
+
+// AMPERE SERVES ITS DATASHEETS FROM MORE THAN ONE SURFACE, AND THEY DISAGREE. This block was first
+// written on 2026-09-02 from the family product brief alone, which links Altra v1.50 and Altra Max
+// v1.25, and it concluded that v1.50 was current. That conclusion was WRONG, and the error is worth
+// naming because the measurement itself was sound: the brief was fetched, its links read, and each
+// PDF confirmed to resolve. What failed was reading ONE publication surface as the publisher's
+// current serving state. The brief is a stale index. Ampere's customer-connect device-documentation
+// surface serves newer revisions of both documents.
+//
+// SO THE INDEX IS PART OF THE FACT, NOT A CONVENIENCE. A supersession standing is relative to what
+// the publisher serves NOW, so naming which surface was consulted is what makes the standing
+// falsifiable; collapsing two disagreeing pages into "the Ampere page" would conceal exactly the
+// stale-index condition this vocabulary exists to expose.
+//
+// AND THE SURFACE NAMED MUST BE ONE THAT SERVES THE ROSTER. An earlier revision named
+// products/altra#device-documentation, which was measured on 2026-09-02 to redirect to
+// amperecomputing.com/auth/login and serve no document roster anonymously at all. A field whose
+// entire purpose is to name the page actually read is defeated by naming a login redirect. The
+// dedicated family surface below resolves directly, 152047 bytes, no redirect.
+data ampere_altra_device_documentation_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/customer-connect/products/altra-family-device-documentation"
+  }
+}
+
+// THE NON-MAX ALTRA CITATION IS SUPERSEDED BY ISSUE 1.55, VERIFIED BY RETRIEVAL. The locator below
+// was fetched on 2026-09-02: HTTP 200, 6630790 bytes, a valid PDF whose own content stream carries
+// the string "Issue 1.55". This row exists because an earlier revision of this block recorded the
+// OPPOSITE -- HeldRevisionIsCurrentPublicCopy -- on the strength of 1.55 being absent from the
+// product brief. Absence from one index is not absence from the publisher.
+//
+// The standard that produced the wrong answer is nevertheless the right standard, and it is kept:
+// a supersession is recorded only for a revision actually retrieved, never for one merely listed.
+// 1.55 now meets it. Retiring this standing means ingesting 1.55 and re-deriving the rows that
+// cite the datasheet -- section 2.10's active-channel facts are reported unchanged there, but
+// "reported unchanged" is not a reading, and no row here is restated from it.
+data ampere_altra_classic_rev_a1_v1_55_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=h51y6okvdig3i4u3lst6n120&file=Altra_Rev_A1_DS_v1_55_20250408_e814f50701.pdf&type=technical-document"
+  }
+}
+
+data ampere_altra_classic_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionPubliclyServed {
+  newer_version_label: "v1.55",
+  newer_authority: ampere_altra_classic_rev_a1_v1_55_authority,
+  index_authority: ampere_altra_device_documentation_authority,
+  held_version_label: "v1.50",
+  detail: "retrieved 2026-09-02: HTTP 200, 6630790 bytes, PDF self-identifying as Issue 1.55 dated 2025-04-08, while the cited locator pins v1.50 dated 2024-01-30; the family product brief still links v1.50 and is a stale index",
+}
+
+// THE ALTRA MAX CITATION IS SUPERSEDED BY v1.30, VERIFIED BY RETRIEVAL. An earlier revision of
+// this block recorded the debt as "AT LEAST v1.25", because v1.30 was reported on the
+// device-documentation surface but no locator for it had been retrieved, and citing a document
+// nobody has held is the precise error the non-Max row above corrects in the other direction.
+// That reasoning was right and the conclusion is now simply superseded by evidence: the v1.30
+// locator was supplied, fetched on 2026-09-02, and measured at HTTP 200, 6613878 bytes, a valid
+// PDF of 89 pages whose decompressed content streams carry "1.30" 94 times against "1.25" four.
+// v1.25 remains a true historical observation; it is no longer the furthest revision held.
+data ampere_altra_max_rev_a1_v1_30_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=z7tgvww8kuqd9ofrrwq381df&file=Altra_Max_Rev_A1_DS_v1_30_20250408_99487b8f45.pdf&type=technical-document"
+  }
+}
+
+data ampere_altra_max_rev_a1_datasheet_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionPubliclyServed {
+  newer_version_label: "v1.30",
+  newer_authority: ampere_altra_max_rev_a1_v1_30_authority,
+  index_authority: ampere_altra_device_documentation_authority,
+  held_version_label: "v1.15",
+  detail: "retrieved 2026-09-02: Altra Max Rev A1 DS v1.30 dated 2025-04-08 resolves HTTP 200 at 6613878 bytes over 89 pages while the cited locator pins v1.15 dated 2023-08-09; v1.25 was also retrieved and is superseded in turn, so this debt is retired only by ingesting v1.30",
+}
+
+data ampere_altra_max_m12830_thermal_limits: ProcessorThermalLimits = ProcessorThermalLimits {
+  maximum_continuous_junction_temperature: celsius(100),
+  thermal_throttle_temperature: celsius(105),
+  thermal_shutdown_temperature: celsius(120),
+  authority: ampere_altra_max_rev_a1_datasheet_authority,
+}
+
+// Ampere Altra Max Rev A1 datasheet issue 1.25, table 14: M128-30 maximum continuous junction temperature TCJ=100C, SoC thermal throttling TM1=105C, and thermal shutdown TM2=120C. These are processor facts. A fleet fan policy may derive its emergency ramp from them, but must not rewrite them as operator preference.
+data ampere_altra_l1_data_capacity_per_core: ByteSize = byte_size(65536)
+data ampere_altra_l1_instruction_capacity_per_core: ByteSize = byte_size(65536)
+data ampere_altra_l1_line_size: ByteSize = byte_size(64)
+
+data ampere_altra_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+  data_capacity_per_core: ampere_altra_l1_data_capacity_per_core,
+  instruction_capacity_per_core: ampere_altra_l1_instruction_capacity_per_core,
+  line_size: ampere_altra_l1_line_size,
+}
+
+data ampere_altra_l1_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "data_capacity_per_core"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "instruction_capacity_per_core"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+]
+
+data ampere_altra_l2_capacity_per_core: ByteSize = byte_size(1048576)
+data ampere_altra_l2_line_size: ByteSize = byte_size(64)
+
+data ampere_altra_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+  capacity_per_core: ampere_altra_l2_capacity_per_core,
+  line_size: ampere_altra_l2_line_size,
+}
+
+data ampere_altra_l2_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l2_cache_geometry", field_name: "capacity_per_core"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l2_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+]
+
+data ampere_altra_max_l3_capacity: ByteSize = byte_size(16777216)
+data ampere_altra_l3_line_size: ByteSize = byte_size(64)
+
+data ampere_altra_max_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: ampere_altra_max_l3_capacity,
+  line_size: ampere_altra_l3_line_size,
+}
+
+data ampere_altra_max_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_l3_cache_geometry", field_name: "capacity"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_l3_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+]
+
+data ampere_altra_classic_l3_capacity: ByteSize = byte_size(33554432)
+
+data ampere_altra_classic_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: ampere_altra_classic_l3_capacity,
+  line_size: ampere_altra_l3_line_size,
+}
+
+data ampere_altra_classic_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_classic_l3_cache_geometry", field_name: "capacity"),
+    authority: ampere_altra_classic_rev_a1_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_classic_l3_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_classic_rev_a1_datasheet_authority,
+  },
+]
+
+// THE SOCKET IS A FAMILY FACT AND NOW HAS ONE HOME. Every Altra and Altra Max part is LGA4926,
+// and the package mechanicals are stated family-wide by the platform specification and the
+// datasheet's mechanical section rather than per SKU. Until now each catalog row minted its own
+// CpuSocket literal and extdeps.cpu.ampere_altra_package reached through the M128-30 row — an
+// ALTRA MAX part — to obtain the socket for a module named for Altra.
+//
+// That is the §3 fork in its quiet form: nothing was wrong with the VALUE, since both parts really
+// do share the socket, so no witness could fail. What was wrong is that a family fact had no
+// authority, and one product's row was silently standing in as one. The cost lands the first time
+// a Max-specific fact rides that reference, or the first time someone edits the Max row believing
+// it governs only Max.
+//
+// The platform owner rides on the family row for the same reason the rest of it does: which
+// platform an LGA4926 socket belongs to is a family fact, not a per-SKU one, and a contact count
+// alone does not identify a socket.
+// THE MOUNT DESIGNATION IS THE ONE THE DATASHEETS ATTEST, not a name minted here. ILM4926 is named
+// by two Ampere datasheets and the OCP Mt. Jade specification, and extdeps.cpu_attachment.ilm4926
+// carries that attestation and the open question of which physical part it denotes. For the cooling
+// question that ambiguity does not bite: whatever ILM4926 turns out to name, it is the retention
+// interface a cooler bolts to, which is exactly the fact a mount identity is for.
+data ampere_lga4926_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
+  platform_owner: ampere_vendor,
+  designation: "ILM4926",
+}
+
+data ampere_lga4926_socket: CpuSocket = CpuSocket {
+  platform_owner: ampere_vendor,
+  termination: SocketedLandGrid,
+  contact_count: 4926,
+  cooling_mount: ampere_lga4926_cooling_mount,
+}
+
+// The citations sit beside the family socket they ground, not on each SKU row, because the fact
+// they cite is the family's.
+data socket_lga4926_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "termination"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "contact_count"),
+    authority: ampere_altra_max_rev_a1_datasheet_authority,
+  },
+]
+
+data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "M128-30",
+  oem_listing_id: none,
+  vendor: ampere_vendor,
+  architecture: Aarch64,
+  cores: 128,
+  threads: hardware_thread_count(128),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: ampere_lga4926_socket,
+  socket_citations: socket_lga4926_citations,
+  tdp_watts: watt(183),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
+  l2_cache: ampere_altra_l2_cache_geometry,
+  l2_cache_citations: ampere_altra_l2_cache_citations,
+  l3_cache: ampere_altra_max_l3_cache_geometry,
+  l3_cache_citations: ampere_altra_max_l3_cache_citations,
+}
+
+data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "Q64-30",
+  oem_listing_id: "AC-106418002",
+  vendor: ampere_vendor,
+  architecture: Aarch64,
+  cores: 64,
+  threads: hardware_thread_count(64),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: ampere_lga4926_socket,
+  socket_citations: socket_lga4926_citations,
+  tdp_watts: watt(124),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
+  l2_cache: ampere_altra_l2_cache_geometry,
+  l2_cache_citations: ampere_altra_l2_cache_citations,
+  l3_cache: ampere_altra_classic_l3_cache_geometry,
+  l3_cache_citations: ampere_altra_classic_l3_cache_citations,
+}
+
+// The Approved Vendor List: Ampere's positive qualification results for
+// memory on the Altra family. Absence of a part from this list is the absence
+// of a positive result, NOT a negative result — see
+// gunbc.host_memory_qualification SpecificPartQualification, which keeps those
+// two states distinct.
+data ampere_altra_avl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=ppuyl31kktnze6gbof70xitc"
+  }
+}
+
+data ampere_altra_avl_current_issue: NonEmptyStr = "1.15 (December 2025)"
+
+
+// The Ampere Altra family product brief, cited for the per-SKU table (core
+// count, sustained frequency, TDP, socket, memory channels). Distinct from the
+// datasheet authorities above: the datasheet grounds the family's cache and
+// socket geometry, the brief is where the SKU table lives.
+data ampere_altra_family_product_brief_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
+  }
+}
+
+// Q80-30, live-fetched 2026-08-18 from the family product brief: 80 cores,
+// 3.0 GHz sustained, 161W, 4926-pin FCLGA, eight 72-bit DDR4-3200 channels.
+// Cache geometry and socket are family facts already cited above and are
+// reused rather than re-stated — this is an Altra Classic part, so it takes
+// the classic L3 row exactly as Q64-30 does.
+//
+// The row is added because extdeps.cloud.ubicloud's catalog note names it as
+// that module's own grounding successor: the vendor states its arm64 runners
+// are backed by dedicated Q80-30 cores, and until this row existed the
+// architecture field alone carried that claim.
+data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "Q80-30",
+  oem_listing_id: none,
+  vendor: ampere_vendor,
+  architecture: Aarch64,
+  cores: 80,
+  threads: hardware_thread_count(80),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: ampere_lga4926_socket,
+  socket_citations: socket_lga4926_citations,
+  tdp_watts: watt(161),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
+  l2_cache: ampere_altra_l2_cache_geometry,
+  l2_cache_citations: ampere_altra_l2_cache_citations,
+  l3_cache: ampere_altra_classic_l3_cache_geometry,
+  l3_cache_citations: ampere_altra_classic_l3_cache_citations,
+}
+
+// THE MODULE'S OWN ROSTER OF CATALOG ROWS, for the same reason as the AMD side: one authority for
+// "every Ampere processor modelled here", edited beside the rows it names.
+data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
+  altra_max_m12830_catalog,
+  altra_q6430_catalog,
+  altra_q8030_catalog,
+]

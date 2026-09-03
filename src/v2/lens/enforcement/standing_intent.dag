@@ -1,0 +1,138 @@
+module v2.lens.enforcement.standing_intent
+
+
+type IntentProperty
+  = LensFamily { lens: v2.lens.registry.LensIdV0 }
+  | LensHygieneLiveness
+  | LensHygieneSelfApply
+  | LensClosureQuestionZero
+  | ModelAnemia
+  | SingleAuthorityConsolidation
+
+type IntentFallback
+  = Refuse
+  | UnknownFallback
+  | AuditOnlyWithReason { reason: String }
+
+type StandingIntent {
+  id: String
+  property: IntentProperty
+  displaced_cost: String
+  mechanism_class: String
+  recurring: Bool
+  receiptable: Bool
+  desired_scope: v2.lens.enforcement.vocab.ScopeRoster
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster
+  default_mode: v2.lens.enforcement.vocab.EnforcementMode
+  required_consumer: v2.lens.enforcement.vocab.ConsumerRequirement
+  self_application_required: Bool
+  allowed_narrowing: List<v2.lens.enforcement.vocab.NarrowingReason>
+  fallback_when_unavailable: IntentFallback
+}
+
+data whole_corpus_scope: v2.lens.enforcement.vocab.ScopeRoster = { roots: ["dag", "src/v1", "src/v2"] }
+
+data standing_intent_complexity_repo_wide: StandingIntent = {
+  id: "complexity.repo-wide",
+  property: LensFamily { lens: Cost },
+  displaced_cost: "operator re-performs the whole-corpus complexity join (what/where/which lens/is it live/reaches v1/self-applies) on every new lens, gate, and PR",
+  mechanism_class: "cost/complexity lens family (v2.lens.cost asymptotic engine)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "v1.compiler.infer.build_type_env")] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
+  self_application_required: true,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_lenses_must_be_live: StandingIntent = {
+  id: "lenses.must-be-live",
+  property: LensHygieneLiveness,
+  displaced_cost: "an inert lens (machinery present, nothing gates on it) is coverage-by-illusion; someone re-audits wired-vs-declared by hand",
+  mechanism_class: "lens registry liveness (a v2.lens.enforcement.vocab.Blocking claim must have a live consumer)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_lens_closure_question_zero: StandingIntent = {
+  id: "lens.closure.question-zero",
+  property: LensClosureQuestionZero,
+  displaced_cost: "the lens count grows toward 200 redundant modules because every new check authors a fresh .dag file instead of a row on an existing invariant-kernel; the smell is re-paid in review by diligence",
+  mechanism_class: "lens-module closure gate (row-not-lens; v2.lens.enforcement.lens_module_gate)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
+  self_application_required: false,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_lenses_self_apply_or_exempt: StandingIntent = {
+  id: "lenses.self-apply-or-exempt",
+  property: LensHygieneSelfApply,
+  displaced_cost: "a lens that does not analyze itself hides its own violations one layer up (the fractal gap); rediscovered per lens",
+  mechanism_class: "lens self-application (each lens self-applies or carries an explicit exemption)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_model_anemia_repo_wide: StandingIntent = {
+  id: "model.anemia.repo-wide",
+  property: ModelAnemia,
+  displaced_cost: "a String leaf hiding named parts bills every consumer plus the eventual de-fork; caught late in review",
+  mechanism_class: "anemia lens (decompress -> map -> reduce; suggest a decomposition target)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: AuditOnly,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
+  fallback_when_unavailable: AuditOnlyWithReason { reason: "object anemia lens is task E; declared now so the intent cannot be silently lost" }
+}
+
+data standing_intent_single_authority_consolidation: StandingIntent = {
+  id: "single-authority.consolidation",
+  property: SingleAuthorityConsolidation,
+  displaced_cost: "two names for one concept fork every derived artifact (testgen, emit, lenses) and are consolidated later; the extdeps.shell fork reddened main",
+  mechanism_class: "consolidation lens (suggest the single authority; realization/transport/external-source needs an explicit direction)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: AuditOnly,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
+  fallback_when_unavailable: AuditOnlyWithReason { reason: "object consolidation lens is task E; declared now so the intent cannot be silently lost" }
+}
+
+data standing_intent_registry: List<StandingIntent> = [
+  standing_intent_complexity_repo_wide,
+  standing_intent_lenses_must_be_live,
+  standing_intent_lens_closure_question_zero,
+  standing_intent_lenses_self_apply_or_exempt,
+  standing_intent_model_anemia_repo_wide,
+  standing_intent_single_authority_consolidation
+]

@@ -1,0 +1,296 @@
+module test.claim.floor_discovery_exact_subject_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { List, String }
+import std.execution_mode { ExecutionMode, Hermetic, Wet }
+import std.content_hash { Fnv1a64Structural, Sha1Digest, content_hash_atom }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import v2.workflow.floor_discovery {
+  FloorDiscoverySubject,
+  FloorDiscoveryRequest,
+  FloorDiscoverySubjectBound,
+  FloorDiscoverySubjectRefused,
+  FloorDiscoveryTestedCommitMismatch,
+  FloorDiscoveryTestedTreeMismatch,
+  FloorDiscoverySourceRootsMismatch,
+  FloorDiscoveryRequestBound,
+  FloorDiscoveryRequestRefused,
+  FloorDiscoveryRequestSubjectMismatch,
+  FloorDiscoveryScopeMismatch,
+  FloorDiscoveryExecutionModeMismatch,
+  floor_discovery_subject_bind,
+  floor_discovery_request_bind,
+  floor_discovery_request_identity,
+  floor_discovery_commit_id,
+  floor_discovery_tree_id,
+}
+import v2.workflow.floor_discovery_transport {
+  TransportNeedsTree,
+  TransportNeedsTrackedWorktree,
+  TransportNeedsUntrackedWorktree,
+  TransportNeedsPublication,
+  TransportRefused,
+  TransportReady,
+  CommitObserved,
+  TreeObserved,
+  TrackedWorktreeObserved,
+  UntrackedWorktreeObserved,
+  SnapshotPublished,
+  FloorDiscoverySnapshotArtifact,
+  FloorDiscoverySnapshotWriteReceipt,
+  floor_discovery_transport_initialize,
+  floor_discovery_transport_observe,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data tested_commit: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+}
+data other_commit: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+}
+
+data tested_tree: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "1111111111111111111111111111111111111111" }
+}
+
+data other_tree: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" }
+}
+
+fn naming_identity() -> Fnv1a64Structural {
+  content_hash_atom(value: "floor-discovery-naming-authority-fixture")
+}
+
+fn tool_identity() -> Fnv1a64Structural {
+  content_hash_atom(value: "floor-discovery-tool-fixture")
+}
+
+fn subject_fx(
+  commit: GitObjectId,
+  tree: GitObjectId,
+  roots: List<String>,
+) -> FloorDiscoverySubject {
+  FloorDiscoverySubject {
+    tested_commit: floor_discovery_commit_id(object_id: commit),
+    tested_tree: floor_discovery_tree_id(object_id: tree),
+    source_roots: roots,
+    execution_authority_source_roots: ["dag", "src/v2"],
+    naming_authority_identity: naming_identity(),
+    tool_identity: tool_identity(),
+  }
+}
+
+fn request_fx(
+  subject: FloorDiscoverySubject,
+  scope: List<String>,
+  mode: ExecutionMode,
+) -> FloorDiscoveryRequest {
+  FloorDiscoveryRequest {
+    subject: subject,
+    scan_dirs: ["dag/test/claim"],
+    exclude_substrings: ["/long/"],
+    discovery_scope_dirs: scope,
+    execution_mode: mode,
+  }
+}
+
+fn canonical_subject() -> FloorDiscoverySubject {
+  subject_fx(commit: tested_commit, tree: tested_tree, roots: ["dag", "src/v1"])
+}
+
+fn canonical_request() -> FloorDiscoveryRequest {
+  request_fx(subject: canonical_subject(), scope: ["dag/test/claim"], mode: Hermetic)
+}
+
+test fn exact_subject_binds() -> Bool {
+  match floor_discovery_subject_bind(
+    expected: canonical_subject(),
+    observed: canonical_subject(),
+  ) {
+    FloorDiscoverySubjectBound { subject: _ } => true
+    FloorDiscoverySubjectRefused { cause: _ } => false
+  }
+}
+
+test fn wrong_commit_refuses_at_commit_coordinate() -> Bool {
+  match floor_discovery_subject_bind(
+    expected: canonical_subject(),
+    observed: subject_fx(commit: other_commit, tree: tested_tree, roots: ["dag", "src/v1"]),
+  ) {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoveryTestedCommitMismatch { expected: _, observed: _ }
+    } => true
+    _ => false
+  }
+}
+
+test fn wrong_tree_refuses_at_tree_coordinate() -> Bool {
+  match floor_discovery_subject_bind(
+    expected: canonical_subject(),
+    observed: subject_fx(commit: tested_commit, tree: other_tree, roots: ["dag", "src/v1"]),
+  ) {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoveryTestedTreeMismatch { expected: _, observed: _ }
+    } => true
+    _ => false
+  }
+}
+
+test fn source_root_order_is_part_of_the_subject() -> Bool {
+  match floor_discovery_subject_bind(
+    expected: canonical_subject(),
+    observed: subject_fx(commit: tested_commit, tree: tested_tree, roots: ["src/v1", "dag"]),
+  ) {
+    FloorDiscoverySubjectRefused {
+      cause: FloorDiscoverySourceRootsMismatch { expected: _, observed: _ }
+    } => true
+    _ => false
+  }
+}
+
+test fn request_preserves_subject_refusal() -> Bool {
+  let wrong_subject = subject_fx(commit: tested_commit, tree: other_tree, roots: ["dag", "src/v1"])
+  match floor_discovery_request_bind(
+    expected: canonical_request(),
+    observed: request_fx(subject: wrong_subject, scope: ["dag/test/claim"], mode: Hermetic),
+  ) {
+    FloorDiscoveryRequestRefused {
+      cause: FloorDiscoveryRequestSubjectMismatch {
+        cause: FloorDiscoveryTestedTreeMismatch { expected: _, observed: _ }
+      }
+    } => true
+    _ => false
+  }
+}
+
+test fn wrong_scope_refuses_without_widening() -> Bool {
+  match floor_discovery_request_bind(
+    expected: canonical_request(),
+    observed: request_fx(subject: canonical_subject(), scope: [], mode: Hermetic),
+  ) {
+    FloorDiscoveryRequestRefused {
+      cause: FloorDiscoveryScopeMismatch { expected: _, observed: _ }
+    } => true
+    _ => false
+  }
+}
+
+test fn wrong_execution_mode_refuses() -> Bool {
+  match floor_discovery_request_bind(
+    expected: canonical_request(),
+    observed: request_fx(subject: canonical_subject(), scope: ["dag/test/claim"], mode: Wet),
+  ) {
+    FloorDiscoveryRequestRefused {
+      cause: FloorDiscoveryExecutionModeMismatch { expected: _, observed: _ }
+    } => true
+    _ => false
+  }
+}
+
+test fn exact_request_binds() -> Bool {
+  match floor_discovery_request_bind(
+    expected: canonical_request(),
+    observed: canonical_request(),
+  ) {
+    FloorDiscoveryRequestBound { request: _ } => true
+    FloorDiscoveryRequestRefused { cause: _ } => false
+  }
+}
+
+test fn commit_and_tree_each_move_request_identity() -> Bool {
+  let canonical = floor_discovery_request_identity(request: canonical_request())
+  let changed_commit = floor_discovery_request_identity(
+    request: request_fx(
+      subject: subject_fx(commit: other_commit, tree: tested_tree, roots: ["dag", "src/v1"]),
+      scope: ["dag/test/claim"],
+      mode: Hermetic,
+    )
+  )
+  let changed_tree = floor_discovery_request_identity(
+    request: request_fx(
+      subject: subject_fx(commit: tested_commit, tree: other_tree, roots: ["dag", "src/v1"]),
+      scope: ["dag/test/claim"],
+      mode: Hermetic,
+    )
+  )
+  canonical.digest != changed_commit.digest
+    && canonical.digest != changed_tree.digest
+    && changed_commit.digest != changed_tree.digest
+}
+
+test fn canonical_request_identity_matches_bootstrap_golden() -> Bool {
+  floor_discovery_request_identity(request: canonical_request()).digest == "f8e90d00ba0ad7f8"
+}
+
+test fn transport_preserves_exact_subject_and_refuses_dirty_worktree() -> Bool {
+  let request = canonical_request()
+  let after_commit = floor_discovery_transport_observe(
+    state: floor_discovery_transport_initialize(request: request),
+    observation: CommitObserved { commit: floor_discovery_commit_id(object_id: tested_commit) },
+  )
+  let after_tree = floor_discovery_transport_observe(
+    state: after_commit,
+    observation: TreeObserved { tree: floor_discovery_tree_id(object_id: tested_tree) },
+  )
+  match floor_discovery_transport_observe(
+    state: after_tree,
+    observation: TrackedWorktreeObserved { modified_paths: ["src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs"] },
+  ) {
+    TransportRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn transport_requires_clean_worktree_before_publication() -> Bool {
+  let request = canonical_request()
+  let s0 = floor_discovery_transport_initialize(request: request)
+  let s1 = floor_discovery_transport_observe(
+    state: s0,
+    observation: CommitObserved { commit: floor_discovery_commit_id(object_id: tested_commit) },
+  )
+  let s2 = floor_discovery_transport_observe(
+    state: s1,
+    observation: TreeObserved { tree: floor_discovery_tree_id(object_id: tested_tree) },
+  )
+  let s3 = floor_discovery_transport_observe(
+    state: s2,
+    observation: TrackedWorktreeObserved { modified_paths: [] },
+  )
+  let s4 = floor_discovery_transport_observe(
+    state: s3,
+    observation: UntrackedWorktreeObserved { paths: [] },
+  )
+  let s5 = floor_discovery_transport_observe(
+    state: s4,
+    observation: SnapshotPublished {
+      receipt: FloorDiscoverySnapshotWriteReceipt {
+        artifact: FloorDiscoverySnapshotArtifact {
+          request_identity_digest: floor_discovery_request_identity(request: request),
+          payload_digest: floor_discovery_request_identity(request: request),
+        },
+        walk_attempt_id: "attempt-test",
+      },
+    },
+  )
+  match s5 {
+    TransportReady => true
+    _ => false
+  }
+}
+
+test fn all_floor_discovery_exact_subject_controls_hold() -> Bool {
+  exact_subject_binds()
+    && wrong_commit_refuses_at_commit_coordinate()
+    && wrong_tree_refuses_at_tree_coordinate()
+    && source_root_order_is_part_of_the_subject()
+    && request_preserves_subject_refusal()
+    && wrong_scope_refuses_without_widening()
+    && wrong_execution_mode_refuses()
+    && exact_request_binds()
+    && commit_and_tree_each_move_request_identity()
+    && canonical_request_identity_matches_bootstrap_golden()
+    && transport_preserves_exact_subject_and_refuses_dirty_worktree()
+    && transport_requires_clean_worktree_before_publication()
+}

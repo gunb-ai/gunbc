@@ -1,0 +1,31 @@
+module test.fixture.rest_exchange_replay_probe
+
+import extdeps.transports.rest { RestOutcome }
+
+service test.RestReplay {
+  config { endpoint: "https://rest-replay.invalid" }
+
+  operation Observe {
+    output {
+      message: String from "message"
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+  }
+
+  operation Sibling {
+    output {
+      message: String from "message"
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+  }
+
+  operation Legacy {
+    output { message: String from "message" }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+  }
+}

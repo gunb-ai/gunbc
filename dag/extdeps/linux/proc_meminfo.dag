@@ -1,0 +1,40 @@
+module extdeps.linux.proc_meminfo
+
+import std.types { NonEmptyStr }
+import std.types { List }
+import std.measure { Kibibyte }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/meminfo"
+  }
+}
+
+type MemoryMetric {
+  key: NonEmptyStr
+  value: Kibibyte
+}
+
+type ProcMeminfo {
+  mem_total: Kibibyte
+  mem_free: Kibibyte
+  mem_available: Kibibyte
+  buffers: Kibibyte
+  cached: Kibibyte
+  swap_total: Kibibyte
+  swap_free: Kibibyte
+  all_metrics: List<MemoryMetric>
+}
+
+data meminfo_field_names: List<NonEmptyStr> = [
+  "MemTotal",
+  "MemFree",
+  "MemAvailable",
+  "Buffers",
+  "Cached",
+  "SwapTotal",
+  "SwapFree",
+]

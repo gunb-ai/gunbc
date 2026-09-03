@@ -1,0 +1,143 @@
+module std.realization
+
+import std.types { Bool, String, List }
+import std.effects {
+  KeySource,
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
+  key_source_eq, create_double_init_collapsible
+}
+import std.realization_schedule {
+  RealizationPlan,
+  RealizationObjective,
+  Runnable,
+  RunnableSingleClaim,
+  RunnableDiscoveryBatch,
+  ScheduleWitnessEntry,
+  Schedule,
+  CostAccount,
+  cost_account_measured,
+  cost_account_predicted_zero,
+  cost_account_time_count,
+  schedule_generates_same_batch_count,
+  schedule_generates_identical_schedule,
+  schedule_eq,
+  runnable_step_label,
+  schedule_batch_contains_label,
+}
+import std.realization_measurement {
+  RealizationMeasureEffect,
+  cost_account_measured_from_time,
+  cost_account_measured_from_schedule_critical_path,
+  schedule_critical_path_time,
+  schedule_batch_critical_path,
+  time_measure_list_total,
+}
+import std.realization_width {
+  bounded_host_spawn_width,
+  shard_count_positive,
+  witness_spawn_width_capped_by_hardware,
+  width_fold_objective_goals,
+  width_bounded_realization,
+  witness_width_fold_preserves_schedule_topology,
+  witness_budget_ignoring_fold_fails,
+  witness_measured_cost_affects_shard_balance,
+  memory_aware_spawn_width,
+  memory_bounded_shard_count,
+  budget_safety_fraction_apply,
+  memory_aware_width_value,
+  witness_memory_term_non_binding_uses_shard_count,
+  witness_tight_budget_backs_off_below_shard_count,
+  witness_unreadable_budget_falls_back_conservative,
+  witness_safety_fraction_is_load_bearing,
+  witness_subunit_budget_admits_one,
+  process_bounded_job_count,
+  process_memory_aware_spawn_width,
+  process_memory_aware_width_value,
+  witness_pids_term_binds_below_cores_and_memory,
+  witness_memory_term_still_binds_under_three_term_fold,
+  witness_unreadable_pids_budget_falls_back_conservative,
+  witness_subunit_pids_budget_admits_one,
+}
+
+type Independence = Independent | Dependent | Unknown
+
+fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectShape<KeySource>) -> Independence {
+  match left {
+    ReadEffect => match right {
+      ReadEffect => Independent
+      UpsertEffect { key_source: _ } => Unknown
+      DeleteEffect { key_source: _ } => Unknown
+      CreateEffect { cause: _ } => Unknown
+      AppendEffect => Unknown
+      ExecuteEffect => Unknown
+    }
+    UpsertEffect { key_source: lk } => match right {
+      ReadEffect => Unknown
+      UpsertEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      DeleteEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      CreateEffect { cause: _ } => Unknown
+      AppendEffect => Unknown
+      ExecuteEffect => Unknown
+    }
+    DeleteEffect { key_source: lk } => match right {
+      ReadEffect => Unknown
+      UpsertEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      DeleteEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      CreateEffect { cause: _ } => Unknown
+      AppendEffect => Unknown
+      ExecuteEffect => Unknown
+    }
+    CreateEffect { cause: _ } => Unknown
+    AppendEffect => Unknown
+    ExecuteEffect => Unknown
+  }
+}
+
+type Placement
+  = LocalInProcess
+  | LocalFilesystem
+  | RemoteNetwork
+  | LocalAccelerator
+
+type Materialization = Recompute | Memoize | Share
+
+type RealizedStep<S> {
+  shape: EffectShape<KeySource>
+  placement: Placement
+  materialization: Materialization
+  cost: CostAccount<S>
+}
+
+fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> List<RealizedStep<S>> {
+  acc |> map(e =>
+    if create_double_init_collapsible(a: e.shape, b: s.shape) {
+      RealizedStep {
+        shape: e.shape,
+        placement: e.placement,
+        materialization: Share,
+        cost: e.cost
+      }
+    } else {
+      e
+    }
+  )
+}
+
+fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bool {
+  let peers = acc |> filter(e => create_double_init_collapsible(a: e.shape, b: s.shape))
+  !((peers |> length) == 0)
+}
+
+fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
+  reverse(steps |> fold(init: [], f: fn(acc, s) {
+    if has_collapsible_peer(acc: acc, s: s) {
+      mark_collapsible_share(acc: acc, s: s)
+    } else {
+      concat([s], acc)
+    }
+  }))
+}

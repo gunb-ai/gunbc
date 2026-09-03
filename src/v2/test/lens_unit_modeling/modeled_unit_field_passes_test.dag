@@ -1,0 +1,44 @@
+module v2.test.lens_unit_modeling.modeled_unit_field_passes
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.unit_modeling { unit_modeling_gate }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data bytesize_carrier_target: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^ByteSize } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data modeled_unit_field_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^ram_bytes },
+      target: bytesize_carrier_target
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn modeled_unit_field_passes_holds() -> Bool {
+  match unit_modeling_gate(node: modeled_unit_field_input) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+

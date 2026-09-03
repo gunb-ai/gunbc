@@ -1,0 +1,439 @@
+module v1.compiler.tokenize
+
+import std.types { SourceSpan }
+import v1.std.core {
+  make_file_span,
+  Token, TokenShape,
+  ShKeyword,
+  ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
+  ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
+  ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
+  ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
+  ShQuestion, ShNullCoalesce, ShCaret, ShPipe, ShPipeArrow,
+  ShLitStr, ShLitInt, ShLitFloat, ShIdent,
+  ShStrBegin, ShStrMid, ShStrEnd,
+  ShNewline, ShEof, ShUnknown
+}
+
+import extdeps.languages.dag.syntax { dag_keyword_set }
+import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
+
+fn is_keyword_text(text: String) -> Bool {
+  match lookup(dag_keyword_set, key: text) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+data single_punct: Map<String, TokenShape> = {
+  "(": ShLParen, ")": ShRParen,
+  "[": ShLBracket, "]": ShRBracket,
+  ":": ShColon, ",": ShComma, ".": ShDot,
+  "+": ShPlus, "*": ShStar, "%": ShPercent, "/": ShSlash,
+  "^": ShCaret
+}
+
+type TokenizerState {
+  pos: Int
+  tokens: List<Token>
+  interp_depth: List<Int>
+}
+
+type TokPos {
+  pos: Int
+  interp_depth: List<Int>
+}
+
+type ScanResult {
+  pos: Int
+  token: Token
+  interp_depth: List<Int>
+}
+
+type SourceRef {
+  file: String
+  text: String
+  source_chars: List<Int>
+}
+
+fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
+  Token { text: text, span: span, shape: shape }
+}
+
+fn source_char(source: SourceRef, pos: Int) -> String {
+  from_code_point(cp: source.source_chars[pos])
+}
+
+fn source_code_point(source: SourceRef, pos: Int) -> Int {
+  let _ = record_source_chars_index_lookup()
+  source.source_chars[pos]
+}
+
+fn source_len(source: SourceRef) -> Int {
+  count(source.source_chars)
+}
+
+fn source_substring(source: SourceRef, start: Int, end: Int) -> String {
+  chars_to_string(chars: source.source_chars, start: start, end: end)
+}
+
+fn source_scan_while(source: SourceRef, start: Int, pred: fn(Int) -> Bool) -> Int {
+  if start >= source_len(source: source) { source_len(source: source) }
+  else if pred(ch: source.source_chars[start]) {
+    source_scan_while(source: source, start: start + 1, pred: pred)
+  } else { start }
+}
+
+fn source_skip_ws(source: SourceRef, start: Int) -> Int {
+  if start >= source_len(source: source) { start }
+  else {
+    let ch = source.source_chars[start]
+    if ch == 32 || ch == 9 { source_skip_ws(source: source, start: start + 1) }
+    else { start }
+  }
+}
+
+fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
+  if start >= source_len(source: source) { source_len(source: source) }
+  else if source.source_chars[start] == 10 { start }
+  else { source_scan_to_eol(source: source, start: start + 1) }
+}
+
+fn tokenize(source: String, file: String) -> List<Token> {
+  let c = chars(source)
+  let src = SourceRef { file: file, text: source, source_chars: c }
+  let initial = TokPos { pos: 0, interp_depth: [] }
+  let final_state = tokenize_loop(source: src, tokens: [], pos: initial, fuel: source_len(source: src) + 1)
+  let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
+  list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof))
+}
+
+fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanResult {
+  let ch = source_code_point(source: source, pos: pos.pos)
+
+  if ch == 10 {
+    return ScanResult {
+      pos: pos.pos + 1,
+      token: make_token(text: "\n", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShNewline),
+      interp_depth: pos.interp_depth
+    }
+  }
+
+  if ch == 125 && count(pos.interp_depth) > 0 {
+    let top = last(pos.interp_depth).value
+    if top == 0 {
+      let popped = drop_last(stack: pos.interp_depth)
+      let cont_pos = TokPos { pos: pos.pos + 1, interp_depth: popped }
+      return scan_str_cont(source: source, pos: cont_pos, span_start: pos.pos)
+    } else {
+      return ScanResult {
+        pos: pos.pos + 1,
+        token: make_token(text: "}", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShRBrace),
+        interp_depth: replace_last(stack: pos.interp_depth, value: top - 1)
+      }
+    }
+  }
+
+  scan_token(source: source, pos: pos, ch: ch)
+}
+
+fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos, fuel: Int) -> TokenizerState {
+  let s = skip_spaces(source: source, pos: pos)
+  if s.pos >= source_len(source: source) {
+    return TokenizerState { pos: s.pos, tokens: tokens, interp_depth: s.interp_depth }
+  }
+  let result = scan_next_token(source: source, pos: s)
+  tokenize_loop(source: source, tokens: list_push(tokens, result.token), pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1)
+}
+
+fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
+  if ch == 34 { return scan_string(source: source, pos: pos) }
+  if is_digit(ch: ch) { return scan_number(source: source, pos: pos) }
+  if is_ident_start(ch: ch) { return scan_ident(source: source, pos: pos) }
+
+  let next_ch = if pos.pos + 1 < source_len(source: source) {
+    source_code_point(source: source, pos: pos.pos + 1)
+  } else { 0 }
+
+  if ch == 61 && next_ch == 62 { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
+  if ch == 45 && next_ch == 62 { return emit(pos: pos, shape: ShArrow, text: "->", len: 2, file: source.file) }
+  if ch == 61 && next_ch == 61 { return emit(pos: pos, shape: ShEqEq, text: "==", len: 2, file: source.file) }
+  if ch == 33 && next_ch == 61 { return emit(pos: pos, shape: ShNe, text: "!=", len: 2, file: source.file) }
+  if ch == 60 && next_ch == 61 { return emit(pos: pos, shape: ShLe, text: "<=", len: 2, file: source.file) }
+  if ch == 62 && next_ch == 61 { return emit(pos: pos, shape: ShGe, text: ">=", len: 2, file: source.file) }
+  if ch == 38 && next_ch == 38 { return emit(pos: pos, shape: ShAnd, text: "&&", len: 2, file: source.file) }
+  if ch == 124 && next_ch == 124 { return emit(pos: pos, shape: ShOr, text: "||", len: 2, file: source.file) }
+  if ch == 124 && next_ch == 62 { return emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2, file: source.file) }
+  if ch == 124 { return emit(pos: pos, shape: ShPipe, text: "|", len: 1, file: source.file) }
+  if ch == 63 && next_ch == 63 { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
+  if ch == 46 && next_ch == 46 { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
+
+  if ch == 61 { return emit(pos: pos, shape: ShEq, text: "=", len: 1, file: source.file) }
+  if ch == 60 { return emit(pos: pos, shape: ShLt, text: "<", len: 1, file: source.file) }
+  if ch == 62 { return emit(pos: pos, shape: ShGt, text: ">", len: 1, file: source.file) }
+  if ch == 45 { return emit(pos: pos, shape: ShMinus, text: "-", len: 1, file: source.file) }
+  if ch == 33 { return emit(pos: pos, shape: ShBang, text: "!", len: 1, file: source.file) }
+  if ch == 63 { return emit(pos: pos, shape: ShQuestion, text: "?", len: 1, file: source.file) }
+
+  if ch == 123 {
+    let new_depth = if count(pos.interp_depth) > 0 {
+      replace_last(stack: pos.interp_depth, value: last(pos.interp_depth).value + 1)
+    } else {
+      pos.interp_depth
+    }
+    let tok = make_token(text: "{", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShLBrace)
+    return ScanResult {
+      pos: pos.pos + 1, token: tok, interp_depth: new_depth
+    }
+  }
+
+  if ch == 125 {
+    let tok = make_token(text: "}", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShRBrace)
+    return ScanResult {
+      pos: pos.pos + 1, token: tok, interp_depth: pos.interp_depth
+    }
+  }
+
+  let ch_text = source_char(source: source, pos: pos.pos)
+  match lookup(single_punct, key: ch_text) {
+    Holds { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
+    Violates { diagnostic: _ } => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
+  }
+}
+
+fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) -> ScanResult {
+  let token = make_token(text: text, span: make_file_span(file: file, start: pos.pos, end: pos.pos + len), shape: shape)
+  ScanResult {
+    pos: pos.pos + len,
+    token: token,
+    interp_depth: pos.interp_depth
+  }
+}
+
+fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
+  let end = source_scan_while(source: source, start: pos.pos, pred: is_ident_char)
+  let text = source_substring(source: source, start: pos.pos, end: end)
+  let shape = if is_reserved_emit_sentinel(text: text) { ShUnknown }
+    else if is_keyword_text(text: text) { ShKeyword }
+    else { ShIdent }
+  let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
+  ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
+}
+
+fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
+  let int_end = source_scan_while(source: source, start: pos.pos, pred: is_digit)
+  if int_end + 1 < source_len(source: source) && source_code_point(source: source, pos: int_end) == 46 && is_digit(ch: source_code_point(source: source, pos: int_end + 1)) {
+    let frac_end = source_scan_while(source: source, start: int_end + 1, pred: is_digit)
+    let text = source_substring(source: source, start: pos.pos, end: frac_end)
+    let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: ShLitFloat)
+    return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
+  }
+  let text = source_substring(source: source, start: pos.pos, end: int_end)
+  let parsed = parse_int(s: text)
+  let shape = match parsed {
+    Present { value: _ } => ShLitInt
+    Absent => ShUnknown
+  }
+  let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: int_end), shape: shape)
+  ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
+}
+
+type StringScanResult
+  = ClosedString { content: String, end_pos: Int }
+  | InterpolationStart { content: String, end_pos: Int }
+  | UnterminatedString { content: String, end_pos: Int }
+
+fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
+  let span_start = pos.pos
+  let body_start = pos.pos + 1
+  let result = scan_string_body(source: source, pos: body_start, acc: [])
+  match result {
+    ClosedString { content, end_pos } => {
+      let processed = process_escapes(raw: content)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShLitStr)
+      ScanResult {
+        pos: end_pos + 1, token: token,
+        interp_depth: pos.interp_depth
+      }
+    }
+    InterpolationStart { content, end_pos } => {
+      let processed = process_escapes(raw: content)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrBegin)
+      ScanResult {
+        pos: end_pos + 1,
+        token: token,
+        interp_depth: pos.interp_depth |> append(items: 0)
+      }
+    }
+    UnterminatedString { content, end_pos } => {
+      let processed = process_escapes(raw: content)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos), shape: ShUnknown)
+      ScanResult {
+        pos: end_pos, token: token,
+        interp_depth: pos.interp_depth
+      }
+    }
+  }
+}
+
+fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult {
+  let result = scan_string_body(source: source, pos: pos.pos, acc: [])
+  match result {
+    ClosedString { content, end_pos } => {
+      let processed = process_escapes(raw: content)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrEnd)
+      ScanResult {
+        pos: end_pos + 1, token: token,
+        interp_depth: pos.interp_depth
+      }
+    }
+    InterpolationStart { content, end_pos } => {
+      let processed = process_escapes(raw: content)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrMid)
+      ScanResult {
+        pos: end_pos + 1,
+        token: token,
+        interp_depth: pos.interp_depth |> append(items: 0)
+      }
+    }
+    UnterminatedString { content, end_pos } => {
+      let processed = process_escapes(raw: content)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos), shape: ShUnknown)
+      ScanResult {
+        pos: end_pos, token: token,
+        interp_depth: pos.interp_depth
+      }
+    }
+  }
+}
+
+fn scan_string_body(source: SourceRef, pos: Int, acc: List<String>) -> StringScanResult {
+  if pos >= source_len(source: source) {
+    UnterminatedString { content: join(acc, separator: ""), end_pos: pos }
+  } else {
+    let ch = source_char(source: source, pos: pos)
+    if ch == "\"" {
+      ClosedString { content: join(acc, separator: ""), end_pos: pos }
+    } else if ch == "\\" {
+      if pos + 1 < source_len(source: source) {
+        let escaped = source_char(source: source, pos: pos + 1)
+        scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, "\\"), escaped))
+      } else {
+        UnterminatedString { content: join(list_push(acc, "\\"), separator: ""), end_pos: pos + 1 }
+      }
+    } else if ch == "{" {
+      if should_start_interpolation(source: source, pos: pos) {
+        InterpolationStart { content: join(acc, separator: ""), end_pos: pos }
+      } else {
+        scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, "{"))
+      }
+    } else {
+      scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, ch))
+    }
+  }
+}
+
+fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
+  if pos + 1 >= source_len(source: source) {
+    false
+  } else {
+    let next = source_code_point(source: source, pos: pos + 1)
+    is_ident_start(ch: next) || next == 40 || next == 33 || next == 45
+  }
+}
+
+fn process_escapes(raw: String) -> String {
+  process_escapes_loop(source: raw, pos: 0, acc: [])
+}
+
+fn process_escapes_loop(source: String, pos: Int, acc: List<String>) -> String {
+  if pos >= string_length(s: source) {
+    join(acc, separator: "")
+  } else {
+    let ch = char_at(s: source, pos: pos)
+    if ch == "\\" && pos + 1 < string_length(s: source) {
+      let next = char_at(s: source, pos: pos + 1)
+      let resolved = if next == "\"" { "\"" }
+        else if next == "\\" { "\\" }
+        else if next == "n" { "\n" }
+        else if next == "t" { "\t" }
+        else if next == "{" { "{" }
+        else if next == "}" { "}" }
+        else { concat("\\", next) }
+      process_escapes_loop(source: source, pos: pos + 2, acc: list_push(acc, resolved))
+    } else {
+      process_escapes_loop(source: source, pos: pos + 1, acc: list_push(acc, ch))
+    }
+  }
+}
+
+fn drop_last(stack: List<Int>) -> List<Int> {
+  let len = count(stack)
+  fold(enumerate(stack), init: [], f: fn(result, pair) {
+    if pair.first < len - 1 {
+      result |> append(items: pair.second)
+    } else {
+      result
+    }
+  })
+}
+
+fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
+  let prefix = drop_last(stack: stack)
+  prefix |> append(items: value)
+}
+
+fn skip_spaces(source: SourceRef, pos: TokPos) -> TokPos {
+  let p = source_skip_ws(source: source, start: pos.pos)
+  TokPos { pos: p, interp_depth: pos.interp_depth }
+}
+
+fn is_digit(ch: Int) -> Bool {
+  ch >= 48 && ch <= 57
+}
+
+fn is_ident_start(ch: Int) -> Bool {
+  ch == 95 || is_xid_start(ch: ch) || is_emoji_ident(ch: ch)
+}
+
+fn is_ident_char(ch: Int) -> Bool {
+  is_xid_continue(ch: ch) || is_emoji_ident(ch: ch)
+}
+
+fn is_hex_upper_digit(ch: Int) -> Bool {
+  (ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 70)
+}
+
+fn all_hex_upper_in_range(text: String, pos: Int, end: Int) -> Bool {
+  if pos >= end { true }
+  else {
+    let ch = code_point(c: char_at(s: text, pos: pos))
+    if is_hex_upper_digit(ch: ch) { all_hex_upper_in_range(text: text, pos: pos + 1, end: end) }
+    else { false }
+  }
+}
+
+fn sentinel_prefix_matches(text: String, prefix: String, pos: Int, len: Int) -> Bool {
+  if pos >= len { true }
+  else if code_point(c: char_at(s: text, pos: pos)) != code_point(c: char_at(s: prefix, pos: pos)) { false }
+  else { sentinel_prefix_matches(text: text, prefix: prefix, pos: pos + 1, len: len) }
+}
+
+fn sentinel_suffix_matches(text: String, suffix: String, pos: Int, sfx_len: Int, text_start: Int) -> Bool {
+  if pos >= sfx_len { true }
+  else if code_point(c: char_at(s: text, pos: text_start + pos)) != code_point(c: char_at(s: suffix, pos: pos)) { false }
+  else { sentinel_suffix_matches(text: text, suffix: suffix, pos: pos + 1, sfx_len: sfx_len, text_start: text_start) }
+}
+
+fn is_reserved_emit_sentinel(text: String) -> Bool {
+  let rule = canonical_emoji_char_escape()
+  let pfx = rule.prefix
+  let sfx = rule.suffix
+  let pfx_len = string_length(s: pfx)
+  let sfx_len = string_length(s: sfx)
+  let n = string_length(s: text)
+  if n < pfx_len + sfx_len + 1 { false }
+  else if !sentinel_prefix_matches(text: text, prefix: pfx, pos: 0, len: pfx_len) { false }
+  else if !sentinel_suffix_matches(text: text, suffix: sfx, pos: 0, sfx_len: sfx_len, text_start: n - sfx_len) { false }
+  else { all_hex_upper_in_range(text: text, pos: pfx_len, end: n - sfx_len) }
+}

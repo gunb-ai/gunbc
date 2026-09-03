@@ -1,0 +1,1331 @@
+module std.measure
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import extdeps.currency.currency { CurrencyCode }
+import std.nat { Nat }
+import std.types { Int, Bool, String, NonEmptyStr }
+import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
+import extdeps.units.iso_80000_3 {
+  square_millimetres_per_square_metre,
+  cubic_millimetres_per_cubic_metre,
+  arcseconds_per_turn,
+  degrees_per_turn,
+  arcseconds_per_degree_derived,
+}
+import extdeps.units.dimensionless {
+  parts_per_ten_thousand_unity_count,
+  percent_unity_hundred_count,
+}
+
+type Quantity =
+    Time
+  | Length
+  | Mass
+  | Memory
+  | Information
+  | DataRate
+  | Frequency
+  | Count
+  | Currency
+
+  | Power
+
+  | ApparentPower
+
+  | Energy
+
+  | Temperature
+  | TemperatureDifference
+
+  | RotationalSpeed
+
+  | ElectricPotential
+  | ElectricPotentialDifference
+  | ElectricCurrent
+  | Resistance
+  | Capacitance
+  | Inductance
+  | ElectricCharge
+  | MagneticFlux
+
+  | Area
+  | Volume
+  | PlaneAngle
+
+  | Dimensionless
+
+type Scale =
+    Atto
+  | Femto
+  | Pico
+  | Nano
+  | Micro
+  | Milli
+  | One
+  | Sixty
+  | RackUnitHeight
+  | SquareFootArea
+
+  | ArcsecondAngle
+  | DegreeAngle
+  | TurnAngle
+  | Kilo
+  | Mega
+  | Giga
+  | Tera
+  | Peta
+  | Exa
+
+  | Kibi
+  | Mebi
+  | Gibi
+  | Tebi
+
+fn scale_exponent(s: Scale) -> Int? {
+  match s {
+    Atto  => Present { value: -18 }
+    Femto => Present { value: -15 }
+    Pico  => Present { value: -12 }
+    Nano  =>  Present { value:  -9 }
+    Micro =>  Present { value:  -6 }
+    Milli =>  Present { value:  -3 }
+    One   =>  Present { value:   0 }
+    ArcsecondAngle => none
+    DegreeAngle    => none
+    TurnAngle      => none
+    Sixty =>  none
+    RackUnitHeight => none
+    SquareFootArea => none
+    Kilo  =>  Present { value:   3 }
+    Mega  =>  Present { value:   6 }
+    Giga  =>  Present { value:   9 }
+    Tera  =>  Present { value:  12 }
+    Peta  =>  Present { value:  15 }
+    Exa   =>  Present { value:  18 }
+    Kibi  =>  Present { value:  10 }
+    Mebi  =>  Present { value:  20 }
+    Gibi  =>  Present { value:  30 }
+    Tebi  =>  Present { value:  40 }
+  }
+}
+
+fn gibibyte_scale_factor_bytes() -> Nat {
+  let k = kibi_factor()
+  k * k * k
+}
+
+fn mebibyte_scale_factor_bytes() -> Nat {
+  let k = kibi_factor()
+  k * k
+}
+
+fn kibi_factor() -> Nat {
+  iec_kibi_factor()
+}
+
+fn seconds_per_minute() -> Nat {
+  iso8601_seconds_per_minute()
+}
+
+fn minutes_per_hour() -> Nat {
+  iso8601_minutes_per_hour()
+}
+
+fn hours_per_day() -> Nat {
+  iso8601_hours_per_day()
+}
+
+fn seconds_per_day() -> Nat {
+  hours_per_day() * minutes_per_hour() * seconds_per_minute()
+}
+
+fn milliseconds_per_second() -> Nat {
+  milli_per_unit()
+}
+
+// The decimal scale factors, declared once beside kibi_factor for the same
+// reason: a consumer writing * 1000000 to turn megatransfers into transfers is
+// re-stating the Mega scale the Scale coproduct above already carries.
+fn milli_per_unit() -> Nat {
+  1000
+}
+
+fn mega_factor() -> Nat {
+  1000 * 1000
+}
+
+fn time_scale_factor_seconds(s: Scale) -> Nat? {
+  match s {
+    One => Present { value: 1 }
+    ArcsecondAngle => none
+    DegreeAngle => none
+    TurnAngle => none
+    Sixty => Present { value: seconds_per_minute() }
+    RackUnitHeight => none
+    SquareFootArea => none
+    Atto  => none
+    Femto => none
+    Pico  => none
+    Nano  => none
+    Micro => none
+    Milli => none
+    Kilo  => none
+    Mega  => none
+    Giga  => none
+    Tera  => none
+    Peta  => none
+    Exa   => none
+    Kibi  => none
+    Mebi  => none
+    Gibi  => none
+    Tebi  => none
+  }
+}
+
+fn memory_scale_factor_bytes(s: Scale) -> Nat? {
+  match s {
+    One  => Present { value: 1 }
+    Kibi => Present { value: kibi_factor() }
+    Mebi => Present { value: kibi_factor() * kibi_factor() }
+    Gibi => Present { value: gibibyte_scale_factor_bytes() }
+    Tebi => Present { value: gibibyte_scale_factor_bytes() * kibi_factor() }
+    Atto  => none
+    Femto => none
+    Pico  => none
+    Nano  => none
+    Micro => none
+    Milli => none
+    ArcsecondAngle => none
+    DegreeAngle => none
+    TurnAngle => none
+    Sixty => none
+    RackUnitHeight => none
+    SquareFootArea => none
+    Kilo  => none
+    Mega  => none
+    Giga  => none
+    Tera  => none
+    Peta  => none
+    Exa   => none
+  }
+}
+
+type Measure<Q, S, M> {
+  count: M
+}
+
+fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
+  m.count
+}
+
+fn measure_scale_fraction_floor<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
+
+  Measure { count: if den == 0 { den } else { (m.count * num) / den } }
+}
+
+fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, S, Nat>) -> Nat {
+
+  let each_count = each.count
+  if each_count == 0 { each_count } else { capacity.count / each_count }
+}
+
+fn measure_scale_fraction_ceil<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
+
+  Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
+}
+
+fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
+  Measure { count: a.count + b.count }
+}
+
+fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
+  a.count <= b.count
+}
+
+fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
+  Measure { count: count }
+}
+
+type ByteSize = Measure<Memory, One, Nat>
+
+type Kibibyte = Measure<Memory, Kibi, Nat>
+
+type Mebibyte = Measure<Memory, Mebi, Nat>
+
+type Gibibyte = Measure<Memory, Gibi, Nat>
+
+// THE DECIMAL SIBLING of Gibibyte, added because the two are routinely quoted
+// with the same word and differ by 7.4 percent. Vendors publish "GB" meaning
+// 10^9 (storage rates, CI runner catalogs) while DIMM capacity is binary, so a
+// model that carries both as one type can compare them silently. Carrying them
+// as two Measure types at two Scales makes the comparison a conversion the
+// author must write, which is the same resolution ByteBasis reaches by
+// validation and this reaches by construction.
+type Gigabyte = Measure<Memory, Giga, Nat>
+
+fn gigabyte(count: Nat) -> Gigabyte {
+  Measure { count: count }
+}
+
+fn gigabyte_count(g: Gigabyte) -> Nat {
+  measure_count(g)
+}
+
+fn mebibyte(count: Nat) -> Mebibyte {
+  Measure { count: count }
+}
+
+fn mebibyte_count(m: Mebibyte) -> Nat {
+  measure_count(m)
+}
+
+fn gibibyte(count: Nat) -> Gibibyte {
+  Measure { count: count }
+}
+
+fn gibibyte_count(g: Gibibyte) -> Nat {
+  measure_count(g)
+}
+
+fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
+  byte_size(count: gibibyte_count(g) * gibibyte_scale_factor_bytes())
+}
+
+fn kibibyte(count: Nat) -> Kibibyte {
+  Measure { count: count }
+}
+
+fn kibibyte_count(k: Kibibyte) -> Nat {
+  measure_count(k)
+}
+
+fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
+  byte_size(count: kibibyte_count(k) * kibi_factor())
+}
+
+fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
+  byte_size(count: mebibyte_count(m) * mebibyte_scale_factor_bytes())
+}
+
+type BitWidth = Measure<Information, One, Nat>
+
+fn bits_per_byte() -> Nat {
+  octet_bit_count()
+}
+
+type Hertz = Measure<Frequency, One, Nat>
+
+// DDR "MT/s": mega-TRANSFERS per second. Dimensionally a frequency-family rate (1/s at Mega
+// scale), semantically distinct from both Hertz (a clock: DDR moves two transfers per clock,
+// so the marketing figure is never the clock) and DataRate (bits/s: transfers x bus width).
+// The alias carries the transfer semantics; the scale carries the Mega.
+type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
+
+type HardwareThreadCount = Measure<Count, One, Nat>
+
+type CharacterCount = Measure<Count, One, Nat>
+
+type TokenCount = Measure<Count, One, Nat>
+
+type Millicore = Measure<Count, Milli, Nat>
+
+type Watt = Measure<Power, One, Nat>
+
+type Milliwatt = Measure<Power, Milli, Nat>
+
+// APPARENT POWER IS NOT POWER, and it is a separate dimension rather than a second Watt alias for
+// exactly the reason std.measure exists. A supply rated 120 V at 15 A can deliver 1800 volt-amperes;
+// how many WATTS that is depends on the load's power factor, which is a property of the load and is
+// not on any supply's datasheet. Carrying both on the Power dimension would make Watt and VoltAmpere
+// interchangeable at the type level, and the first comparison between a device's real draw and a
+// supply's rating would silently assert a power factor of one - a fabricated fact about hardware
+// nobody measured. They are different dimensions, so that comparison does not typecheck and a
+// consumer must declare the factor it is assuming.
+type VoltAmpere = Measure<ApparentPower, One, Nat>
+
+type Volt = Measure<ElectricPotentialDifference, One, Nat>
+
+// The millivolt exists for the same reason the micrometre does, one axis over: a device's
+// recommended operating window is not a whole number of volts. The iCE40 core supply runs 1.14 V
+// to 1.26 V and its I/O banks 1.71 V to 3.46 V, so at volt grain the entire core window collapses
+// to a single value and the check that a rail sits inside it stops discriminating. Naming the
+// finer step keeps every bound exact instead of forcing a rounding policy at the point where the
+// bound is what matters.
+type Millivolt = Measure<ElectricPotentialDifference, Milli, Nat>
+
+type Ampere = Measure<ElectricCurrent, One, Nat>
+
+// The micrometre exists as a named carrier because EIA-310's rack unit is 44.45 mm - NOT a whole
+// number of millimetres - so any quantity derived from a rack unit count is inexact at millimetre
+// grain and exact at micrometre grain. Naming it lets a consumer stay exact instead of choosing
+// between a truncation and a rounding policy, which is the choice std.measure exists to remove.
+//
+// A SECOND, INDEPENDENT CONSUMER ARRIVED AT THE SAME CARRIER, recorded because two unrelated
+// subjects needing one step finer is what makes this a scale argument on the Length axis rather
+// than a rack-specific convenience: a printed circuit board sits on a half-millimetre package
+// pitch with hundred-micrometre traces, which whole millimetres cannot express at all. Two
+// declarations of it were briefly authored in parallel and one was deleted — the concept is one,
+// and its reasons accumulate here rather than forking the type.
+type Micrometer = Measure<Length, Micro, Nat>
+
+type Millimeter = Measure<Length, Milli, Nat>
+
+// THE SIGNED SPATIAL COMPONENT LIVES IN std.affine_space, NOT HERE. This module carried a
+// SignedMillimeterComponent - Measure<Length, Milli, Int> - as the scalar behind Point3 and
+// Vector3, and it was deleted once those aggregates became frame-relative. The reason is the whole
+// argument of the frame work: a coordinate's unit is a property of the FRAME it is expressed in,
+// which a registrar answers, so a component type that hard-codes millimetres asserts one frame's
+// scale for every frame in the corpus. A board drawn on a half-millimetre package pitch and a room
+// drawn in millimetres cannot share it, and nothing in the type would have said so.
+//
+// It is recorded rather than silently removed because the deletion is the point: leaving both
+// standing would have been a second signed-spatial authority beside the frame-owned one, which is
+// exactly the fork the migration existed to close. Nat-backed Millimeter above is untouched and is
+// NOT widened - a wall of length -3 m must remain unwritable, and that is a magnitude rather than
+// a component.
+
+// AREA AND VOLUME carry the scale their ratio to the base unit actually has. An earlier revision
+// wrote Measure<Area, Milli, Nat> and warned in a comment not to read Milli linearly - but Scale is
+// not documentation, it is a fold: scale_exponent answers Milli => -3, so the carrier asserted that
+// a square millimetre is 10^-3 of a square metre. It is 10^-6, and a comment cannot correct a fold.
+//
+// THE FIX IS THE EXISTING SCALE, NOT A NEW ONE. A revision after that minted MilliSquared => -6 and
+// MilliCubed => -9, which are Micro and Nano under second names - one decimal factor spelled twice,
+// the section 3 nickname, and every fold over Scale then had to grow two arms answering what an
+// existing arm already answered. Scale is the decimal factor; the ALIAS is what names the unit, and
+// SquareMillimeter says which unit this is. No generic linear scale conversion may be applied to
+// either carrier regardless: the ratios are squared and cubed, which is why the conversions below
+// DERIVE from extdeps.units.iso_80000_3 through a real import edge rather than a prose pointer - a
+// citation that names an authority the module does not depend on is a floating island, and would
+// let the factor here and the factor there drift with nothing to notice.
+type SquareMillimeter = Measure<Area, Micro, Nat>
+
+type CubicMillimeter = Measure<Volume, Nano, Nat>
+
+// The SOURCE units of the conversions below. They exist so a conversion cannot be handed "three of
+// something": square_metres_to_square_millimetres(count: 3) accepted a bare Nat and so re-created,
+// at the conversion boundary, exactly the dimensional erasure this slice exists to close.
+type SquareMeter = Measure<Area, One, Nat>
+
+// THE SQUARE FOOT is non-decimal, like Sixty and RackUnitHeight: one international foot is
+// exactly 0.3048 m, so one square foot is exactly 0.09290304 square metres - not a power of
+// ten, so scale_exponent answers none rather than pretending. US commercial real estate
+// quotes area and rent in this unit (the MoneyRate PerSquareFootYear period marker below is
+// its rent-side twin); the carrier keeps the listing's own unit rather than converting at
+// ingestion, which would trade an exact quoted figure for a rounded derived one.
+type SquareFoot = Measure<Area, SquareFootArea, Nat>
+
+type CubicMeter = Measure<Volume, One, Nat>
+
+// PLANE ANGLE units are non-decimal, like Sixty and RackUnitHeight already are: an arcsecond is
+// 1/1296000 of a turn, which is not a power of ten, so scale_decimal_exponent answers `none` rather
+// than pretending. An earlier revision typed Arcsecond as scale One, asserting it was the coherent
+// base unit - it is not; the radian is.
+// THE TURN IS THIS SUBSTRATE'S EXACT CANONICAL ANGLE UNIT, and that is a numeric-policy decision
+// made HERE rather than a fact read off ISO 80000-3. It lived in extdeps.units.iso_80000_3 while
+// being a choice about which carrier gunbc computes in, which is the layer inversion section 3
+// names: extdeps states that the radian is the coherent unit and that degree, arcminute and
+// arcsecond are exact rational subdivisions of the turn; picking the turn BECAUSE those
+// subdivisions are rational, and therefore exact in integer arithmetic, is ours.
+//
+// The consequence is the one that matters: 1 turn = 2*pi rad is irrational, so no exact integer
+// conversion to radian exists and NONE IS OFFERED. A total degree-to-radian function over integers
+// would silently floor - inventing precision at the unit boundary, before any geometry ran. Radian
+// conversion waits on the approximate-numeric realization and its declared error bound.
+//
+// Angle magnitude and signed angular displacement are separate types for the same reason length
+// magnitude and the signed component are.
+type Arcsecond = Measure<PlaneAngle, ArcsecondAngle, Nat>
+
+type ArcsecondDisplacement = Measure<PlaneAngle, ArcsecondAngle, Int>
+
+type Degree = Measure<PlaneAngle, DegreeAngle, Nat>
+
+// A full turn as a first-class carrier, so the exact canonical unit is representable rather than
+// only describable in prose.
+type Turn = Measure<PlaneAngle, TurnAngle, Nat>
+
+// Signed area: the dot product of two displacement vectors is an AREA with a meaningful sign, not
+// an untyped integer. Without this carrier a dot product returns a bare Int and its dimension is
+// erased at the first operation.
+type SignedSquareMillimeter = Measure<Area, Micro, Int>
+
+fn square_meter(count: Nat) -> SquareMeter {
+  Measure { count: count }
+}
+
+fn square_meter_count(m: SquareMeter) -> Nat {
+  measure_count(m)
+}
+
+fn cubic_meter(count: Nat) -> CubicMeter {
+  Measure { count: count }
+}
+
+fn cubic_meter_count(m: CubicMeter) -> Nat {
+  measure_count(m)
+}
+
+fn degree(count: Nat) -> Degree {
+  Measure { count: count }
+}
+
+fn degree_count(d: Degree) -> Nat {
+  measure_count(d)
+}
+
+fn square_millimeter(count: Nat) -> SquareMillimeter {
+  Measure { count: count }
+}
+
+fn square_millimeter_count(m: SquareMillimeter) -> Nat {
+  measure_count(m)
+}
+
+fn cubic_millimeter(count: Nat) -> CubicMillimeter {
+  Measure { count: count }
+}
+
+fn cubic_millimeter_count(m: CubicMillimeter) -> Nat {
+  measure_count(m)
+}
+
+fn arcsecond(count: Nat) -> Arcsecond {
+  Measure { count: count }
+}
+
+fn arcsecond_count(a: Arcsecond) -> Nat {
+  measure_count(a)
+}
+
+fn arcsecond_displacement(count: Int) -> ArcsecondDisplacement {
+  Measure { count: count }
+}
+
+fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> Int {
+  measure_count(a)
+}
+
+// EIA-310 rack unit: 1U = 1.75 in = 44.45 mm EXACTLY, which is 44450 micrometres — an
+// integer, so the quantum is exact in the Nat carrier and needs no rounding. RackUnitHeight
+// is a non-decimal scale in the same sense Sixty is: scale_exponent has no answer for it and
+// the conversion lives in a domain factor function instead.
+type RackUnit = Measure<Length, RackUnitHeight, Nat>
+
+type Joule = Measure<Energy, One, Nat>
+
+type Celsius = Measure<Temperature, One, Int>
+
+type CelsiusDelta = Measure<TemperatureDifference, One, Int>
+
+type PositiveMeasureCount
+  = PositiveMeasureSuccessor { predecessor: Nat }
+
+type PositiveMeasureCountBuild
+  = PositiveMeasureCountBuilt { count: PositiveMeasureCount }
+  | PositiveMeasureCountRefused {
+      cause: PositiveMeasureCountNonPositive,
+    }
+
+type PositiveMeasureCountNonPositive {
+  observed: Int
+}
+
+fn positive_measure_count(predecessor: Nat) -> PositiveMeasureCount {
+  PositiveMeasureSuccessor { predecessor: predecessor }
+}
+
+fn positive_measure_count_from_int(
+  count: Int,
+) -> PositiveMeasureCountBuild {
+  if count <= 0 {
+    PositiveMeasureCountRefused {
+      cause: PositiveMeasureCountNonPositive { observed: count },
+    }
+  } else {
+    PositiveMeasureCountBuilt {
+      count: positive_measure_count(
+        predecessor: count - 1,
+      ),
+    }
+  }
+}
+
+fn positive_measure_count_value(
+  count: PositiveMeasureCount,
+) -> Int {
+  match count {
+    PositiveMeasureSuccessor { predecessor: predecessor } =>
+      predecessor + 1
+  }
+}
+
+type PositiveCelsiusDelta
+  = PositiveCelsiusDeltaValue { count: PositiveMeasureCount }
+
+// A count of CONCURRENT SERVING SLOTS -- how many requests one loaded model answers at once.
+//
+// It is on the Count axis, a sibling of HardwareThreadCount, CharacterCount and TokenCount with a
+// different thing being counted, so it takes only arguments std.measure already owns. What it does
+// NOT take is Nat, and the difference is the point: a slot count of zero describes a serving cell
+// that serves nothing, which is not a quieter configuration but an absent one. Built over
+// PositiveMeasureCount the way PositiveCelsiusDelta is, so zero has no constructor rather than a
+// validator -- and a caller who wants "off" must remove the cell rather than set it to nothing.
+type PositiveSlotCount
+  = PositiveSlotCountValue { count: PositiveMeasureCount }
+
+type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
+
+// A per-minute count of discrete events -- a frequency-family rate whose period marker is
+// part of the type, at the same non-decimal Sixty the time table uses for
+// seconds-per-minute. Sibling of RevolutionsPerMinute (whose per-minute period rode into
+// its Quantity) and MegatransfersPerSecond (frequency at Mega): a per-second and a
+// per-minute figure can never be compared or assigned across without a modeled
+// conversion. First consumer: gunbc.memory_stall_refusal's major-fault rate.
+type EventsPerMinute = Measure<Frequency, Sixty, Nat>
+
+fn events_per_minute(count: Nat) -> EventsPerMinute {
+  Measure { count: count }
+}
+
+fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+  measure_count(r)
+}
+
+// HOW MANY FILES ONE ARTIFACT IS SPLIT INTO, on the Count axis beside PositiveSlotCount and built
+// the same way over PositiveMeasureCount.
+//
+// Zero is excluded by CONSTRUCTION rather than by a check, and the argument is the sibling's: a
+// zero-shard artifact is not a smaller artifact, it is an absent one -- there is nothing to load, so
+// the row describes a model that cannot be served. A caller with no artifact removes the artifact
+// rather than declaring it as zero files.
+type PositiveShardCount
+  = PositiveShardCountValue { count: PositiveMeasureCount }
+
+fn positive_shard_count(count: PositiveMeasureCount) -> PositiveShardCount {
+  PositiveShardCountValue { count: count }
+}
+
+fn positive_shard_count_value(shards: PositiveShardCount) -> Int {
+  match shards {
+    PositiveShardCountValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
+}
+
+fn watt(count: Nat) -> Watt {
+  Measure { count: count }
+}
+
+fn watt_count(w: Watt) -> Nat {
+  measure_count(w)
+}
+
+fn milliwatt(count: Nat) -> Milliwatt {
+  Measure { count: count }
+}
+
+// MILLI -> ONE, ONCE, HERE. A consumer dividing a milliwatt count by a literal
+// 1000 is re-stating the Milli scale this module already declares, and the
+// division is FLOOR — 1,999 mW is one watt and the 999 is dropped, which is a
+// property of the conversion the name says out loud rather than a rounding a
+// caller has to remember.
+fn milliwatt_to_watt_floor(w: Milliwatt) -> Watt {
+  watt(count: milliwatt_count(w: w) / milli_per_unit())
+}
+
+fn milliwatt_count(w: Milliwatt) -> Nat {
+  measure_count(w)
+}
+
+fn volt(count: Nat) -> Volt {
+  Measure { count: count }
+}
+
+fn volt_count(v: Volt) -> Nat {
+  measure_count(v)
+}
+
+fn millivolt(count: Nat) -> Millivolt {
+  Measure { count: count }
+}
+
+fn millivolt_count(v: Millivolt) -> Nat {
+  measure_count(v)
+}
+
+fn ampere(count: Nat) -> Ampere {
+  Measure { count: count }
+}
+
+fn ampere_count(a: Ampere) -> Nat {
+  measure_count(a)
+}
+
+fn micrometer(count: Nat) -> Micrometer {
+  Measure { count: count }
+}
+
+fn micrometer_count(m: Micrometer) -> Nat {
+  measure_count(m)
+}
+
+fn millimeter(count: Nat) -> Millimeter {
+  Measure { count: count }
+}
+
+fn millimeter_count(m: Millimeter) -> Nat {
+  measure_count(m)
+}
+
+fn micrometers_per_rack_unit() -> Nat {
+  44450
+}
+
+fn rack_unit(count: Nat) -> RackUnit {
+  Measure { count: count }
+}
+
+fn rack_unit_count(u: RackUnit) -> Nat {
+  measure_count(u)
+}
+
+fn joule(count: Nat) -> Joule {
+  Measure { count: count }
+}
+
+fn joule_count(j: Joule) -> Nat {
+  measure_count(j)
+}
+
+fn celsius(count: Int) -> Celsius {
+  Measure { count: count }
+}
+
+fn celsius_count(c: Celsius) -> Int {
+  measure_count(c)
+}
+
+fn celsius_delta(count: Int) -> CelsiusDelta {
+  Measure { count: count }
+}
+
+fn celsius_delta_count(delta: CelsiusDelta) -> Int {
+  measure_count(delta)
+}
+
+fn positive_slot_count(
+  count: PositiveMeasureCount,
+) -> PositiveSlotCount {
+  PositiveSlotCountValue { count: count }
+}
+
+fn positive_slot_count_value(
+  slots: PositiveSlotCount,
+) -> Int {
+  match slots {
+    PositiveSlotCountValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
+}
+
+fn positive_celsius_delta(
+  count: PositiveMeasureCount,
+) -> PositiveCelsiusDelta {
+  PositiveCelsiusDeltaValue { count: count }
+}
+
+fn positive_celsius_delta_count(
+  delta: PositiveCelsiusDelta,
+) -> Int {
+  match delta {
+    PositiveCelsiusDeltaValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
+}
+
+fn rpm(count: Nat) -> RevolutionsPerMinute {
+  Measure { count: count }
+}
+
+fn rpm_count(r: RevolutionsPerMinute) -> Nat {
+  measure_count(r)
+}
+
+type MoneyAmount<S> = Measure<Currency, S, Nat>
+
+type MoneyAmountMicro = MoneyAmount<Micro>
+
+fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
+  Measure { count: count }
+}
+
+fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
+  measure_count(m)
+}
+
+// Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers —
+// never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a
+// derived projection at read time, never a stored catalog field.
+
+type PerSecond
+
+type PerMinute
+
+type PerHour
+
+type PerMonth
+
+type Once
+
+type MoneyRate<P> {
+  amount: MoneyAmountMicro
+  currency: CurrencyCode
+}
+
+type MoneyPerSecond = MoneyRate<PerSecond>
+
+type MoneyPerMinute = MoneyRate<PerMinute>
+
+type MoneyPerHour = MoneyRate<PerHour>
+
+type MoneyPerMonth = MoneyRate<PerMonth>
+
+type MoneyOnce = MoneyRate<Once>
+
+type PerKilowattHour
+
+type PerSquareFootYear
+
+type MoneyPerKilowattHour = MoneyRate<PerKilowattHour>
+
+type MoneyPerSquareFootYear = MoneyRate<PerSquareFootYear>
+
+// MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P
+// = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records
+// — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a
+// Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single
+// Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount.
+// Passing PerMinute where PerHour is expected is unwritable via the type argument.
+
+fn money_rate_micros<P>(q: MoneyRate<P>) -> Nat {
+  money_amount_micro_count(m: q.amount)
+}
+
+fn money_per_minute_micros(q: MoneyPerMinute) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn money_per_month_micros(q: MoneyPerMonth) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn money_once_micros(q: MoneyOnce) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn money_per_kilowatt_hour_micros(q: MoneyPerKilowattHour) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
+  money_rate_micros(q: q)
+}
+
+fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
+  MoneyPerHour {
+    amount: money_amount_micro(count: money_per_minute_micros(q: q) * minutes_per_hour()),
+    currency: q.currency,
+  }
+}
+
+fn billing_month_as_hour_count() -> Nat {
+  730
+}
+
+// Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used
+// for cross-vendor hourly equivalence only — not a vendor quote.
+
+// Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic
+// Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the
+// un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types
+// at data/fn sites.
+
+fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
+  MoneyPerHour {
+    amount: money_amount_micro(count: money_per_month_micros(q: q) / billing_month_as_hour_count()),
+    currency: q.currency,
+  }
+}
+
+fn byte_size(count: Nat) -> ByteSize {
+  Measure { count: count }
+}
+
+fn byte_size_count(b: ByteSize) -> Nat {
+  measure_count(b)
+}
+
+fn bit_width(count: Nat) -> BitWidth {
+  Measure { count: count }
+}
+
+fn bit_width_count(b: BitWidth) -> Nat {
+  measure_count(b)
+}
+
+fn square_foot(count: Nat) -> SquareFoot {
+  Measure { count: count }
+}
+
+fn square_foot_count(a: SquareFoot) -> Nat {
+  measure_count(a)
+}
+
+fn hertz(count: Nat) -> Hertz {
+  Measure { count: count }
+}
+
+fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {
+  Measure { count: count }
+}
+
+fn megatransfers_per_second_count(r: MegatransfersPerSecond) -> Nat {
+  measure_count(r)
+}
+
+fn hertz_count(h: Hertz) -> Nat {
+  measure_count(h)
+}
+
+fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
+  Measure { count: count }
+}
+
+fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
+  measure_count(t)
+}
+
+// A budget or length expressed in characters is a COUNT of a unit, not a bare scalar — the same
+// axis HardwareThreadCount already instantiates, with a different thing being counted. It lives
+// here rather than as a std.types brand because the consumers compare and order these budgets, and
+// measure_le is where that ordering already lives (review 44089).
+
+fn character_count(count: Nat) -> CharacterCount {
+  Measure { count: count }
+}
+
+fn character_count_value(c: CharacterCount) -> Nat {
+  measure_count(c)
+}
+
+// A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and
+// CharacterCount already instantiate, with a different thing being counted — so it is a fourth
+// member of an existing family, not a new point in the type space. It lives HERE, beside its
+// siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns:
+// an instantiation declared downstream would be a fourth name for a shape this module already names
+// three times, which is the DESIGN section 3 fork. That is the distinction from
+// extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and
+// are therefore genuinely new instantiations that CANNOT be written here without importing vendor
+// vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in
+// gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it.
+// HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a
+// TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one
+// construction site each, never a wall.
+
+// A count of MODEL PARAMETERS, a fifth member of the same Count family -- and the one member whose
+// SCALE is the whole point. A published parameter figure is quoted in billions and is not an
+// integer number of them: DeepSeek-V4's own /api/show reports 284.3B. Stored at Giga over Nat that
+// fact is unwritable and rounds to 284; stored as a bare Nat the scale lives in prose, which is how
+// `284` comes to mean 284,000,000,000 with nothing to say so. Mega holds it exactly -- 284.3B is
+// 284300 -- so the fraction survives without introducing a rational.
+//
+// It lives HERE for the reason its four siblings do: Measure of Count at Mega over Nat takes only
+// arguments std.measure already owns, so an instantiation declared downstream would be a fifth name
+// for a shape this module already names. Landed by review 58449 on gunbc#9897, which caught
+// gunbc.model.publication's ParameterCounts storing scaled quantities as raw naturals.
+//
+// HONEST LIMIT, the same one the siblings carry: the family is structurally identical, so passing a
+// ParameterCount where a CharacterCount belongs is WRITABLE. It buys reading clarity and one
+// construction site, never a wall.
+type ParameterCount = Measure<Count, Mega, Nat>
+
+fn parameter_count(millions: Nat) -> ParameterCount {
+  Measure { count: millions }
+}
+
+fn parameter_count_value(p: ParameterCount) -> Nat {
+  measure_count(p)
+}
+
+fn token_count(count: Nat) -> TokenCount {
+  Measure { count: count }
+}
+
+fn token_count_value(t: TokenCount) -> Nat {
+  measure_count(t)
+}
+
+// A per-second rate of tokens -- the frequency family at One, period marker in the type, sibling of
+// EventsPerMinute and MegatransfersPerSecond. It exists because token throughput is quoted two ways
+// that are NOT the same quantity and get confused constantly: PREFILL rate (how fast an existing
+// prompt is absorbed) and DECODE rate (how fast new tokens are emitted). Both are tokens per second,
+// so the type cannot separate them -- the FIELD NAME must, and a consumer carrying only one of them
+// is under-specified rather than merely terse.
+//
+// First consumer: gunbc.model.choice, where prefill rate is a serving-admission floor. It is a rate
+// and not a TokenCount because a count answers "how many" and a rate answers "how fast"; assigning
+// one to the other is the class this family exists to make unwritable.
+type TokensPerSecond = Measure<Frequency, One, Nat>
+
+fn tokens_per_second(count: Nat) -> TokensPerSecond {
+  Measure { count: count }
+}
+
+fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+  measure_count(r)
+}
+
+fn millicore(count: Nat) -> Millicore {
+  Measure { count: count }
+}
+
+fn millicore_count(m: Millicore) -> Nat {
+  measure_count(m)
+}
+
+type Bandwidth = Measure<DataRate, One, Nat>
+
+fn bandwidth(count: Nat) -> Bandwidth {
+  Measure { count: count }
+}
+
+fn bandwidth_count(b: Bandwidth) -> Nat {
+  measure_count(b)
+}
+
+type Nanosecond = Measure<Time, Nano, Nat>
+
+fn nanosecond(count: Nat) -> Nanosecond {
+  Measure { count: count }
+}
+
+fn nanosecond_count(n: Nanosecond) -> Nat {
+  measure_count(n)
+}
+
+type Microsecond = Measure<Time, Micro, Nat>
+
+fn microsecond(count: Nat) -> Microsecond {
+  Measure { count: count }
+}
+
+fn microsecond_count(m: Microsecond) -> Nat {
+  measure_count(m)
+}
+
+type Millisecond = Measure<Time, Milli, Nat>
+
+fn millisecond(count: Nat) -> Millisecond {
+  Measure { count: count }
+}
+
+fn millisecond_count(m: Millisecond) -> Nat {
+  measure_count(m)
+}
+
+type PositiveMillisecond
+  = PositiveMillisecondValue { count: PositiveMeasureCount }
+
+fn positive_millisecond(count: PositiveMeasureCount) -> PositiveMillisecond {
+  PositiveMillisecondValue { count: count }
+}
+
+fn positive_millisecond_count(m: PositiveMillisecond) -> Int {
+  match m {
+    PositiveMillisecondValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
+}
+
+fn nanoseconds_per_millisecond() -> Nat {
+  1000000
+}
+
+fn millisecond_to_nanosecond(m: Millisecond) -> Nanosecond {
+  nanosecond(count: millisecond_count(m: m) * nanoseconds_per_millisecond())
+}
+
+fn nanosecond_to_millisecond_floor(n: Nanosecond) -> Millisecond {
+  millisecond(count: nanosecond_count(n: n) / nanoseconds_per_millisecond())
+}
+
+// Nanosecond is the canonical exact elapsed-time carrier. Millisecond remains a policy and
+// presentation scale. Converting Millisecond to Nanosecond is exact; converting Nanosecond to
+// Millisecond is explicitly floor-only and may be used only at a named presentation, wire, or
+// signed-policy boundary. Measurement, ordering, joining, and attribution must retain Nanosecond.
+
+type Second = Measure<Time, One, Nat>
+
+fn second(count: Nat) -> Second {
+  Measure { count: count }
+}
+
+fn second_count(s: Second) -> Nat {
+  measure_count(s)
+}
+
+fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
+  joule(watt_count(w: power) * second_count(s: time))
+}
+
+fn volt_ampere(count: Nat) -> VoltAmpere {
+  Measure { count: count }
+}
+
+fn volt_ampere_count(v: VoltAmpere) -> Nat {
+  measure_count(v)
+}
+
+// The product of a supply's nominal voltage and its rated current, which is what a supply is rated
+// in. It deliberately produces apparent power rather than Watt: the datasheet figures multiply to
+// volt-amperes and to nothing else.
+fn apparent_power_from_supply(supply_voltage: Volt, rated_current: Ampere) -> VoltAmpere {
+  volt_ampere(volt_count(v: supply_voltage) * ampere_count(a: rated_current))
+}
+
+type Minute = Measure<Time, Sixty, Nat>
+
+fn minute(count: Nat) -> Minute {
+  Measure { count: count }
+}
+
+fn minute_count(m: Minute) -> Nat {
+  measure_count(m)
+}
+
+fn minute_to_millisecond(m: Minute) -> Millisecond {
+  millisecond(count: minute_count(m) * seconds_per_minute() * milliseconds_per_second())
+}
+
+type Percent = Measure<Dimensionless, One, Nat>
+
+fn percent(count: Nat) -> Percent {
+  Measure { count: count }
+}
+
+fn percent_count(p: Percent) -> Nat {
+  measure_count(p)
+}
+
+// RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale —
+// grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as
+// basis_point_unity_count).
+
+fn permyriad_half_for_round_half_up() -> Int {
+  parts_per_ten_thousand_unity_count() / 2
+}
+
+fn percent_scale_hundred() -> Int {
+  percent_unity_hundred_count()
+}
+
+data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
+
+type BasisPoint = Measure<Dimensionless, One, Nat>
+
+fn basis_point(count: Nat) -> BasisPoint {
+  Measure { count: count }
+}
+
+fn basis_point_count(bp: BasisPoint) -> Nat {
+  measure_count(bp)
+}
+
+fn basis_point_unity_count() -> Nat {
+  parts_per_ten_thousand_unity_count()
+}
+
+// One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same
+// Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed
+// margin envelopes.
+
+type AmortizationMonths = Measure<Count, One, Nat>
+
+fn amortization_months(count: Nat) -> AmortizationMonths {
+  Measure { count: count }
+}
+
+fn amortization_months_count(m: AmortizationMonths) -> Nat {
+  measure_count(m)
+}
+
+// Count of calendar billing months for setup-fee amortization — a named Count carrier, not SI
+// duration (cf. billing_month_as_hour_count for the hourly divisor convention only).
+
+type ClockBasis
+  = CpuClock
+  | WallClock
+
+data measure_clock_basis_note: String = "WHICH CLOCK a duration was read from, carried as data rather than spelled in a field name (operator ruling 2026-08-05). The defect this closes is not recording one clock instead of two — recording BOTH is correct — it is a duration whose meaning lives only in the name of the field holding it. A figure called wall_nanos and a figure called cpu_nanos are two magnitudes that compare, add and threshold as if they were the same quantity, and nothing in the type stops it: the fast-lane cap is enforced on CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004, 2507 against 5003 and 7944 against 5018 -- every number correct, only the bases differing, and no test could have caught any of it. THE REPO ALREADY RULED ON THIS SHAPE one magnitude over: extdeps.pricing.object_storage byte_basis_note opens with 'the unit word is not the unit' and resolves vendor GB-vs-GiB ambiguity with a typed ByteBasis on the row, never a second field named gibibytes beside one named gigabytes. This is that resolution for clocks. TWO ARMS AND NOT THREE, deliberately, and this is where it DIVERGES from ByteBasis: ByteBasisUnstated exists because vendors publish rates without saying which byte they mean, so the ambiguity is an external fact we can only record. A clock basis is never external -- this repository takes its own measurements and always knows which clock it read -- so an Unstated arm would model an absence that cannot occur here, and an uninhabited arm is its own defect. Failing to READ a clock is a different fact and is carried by Measured on the value, not by a third basis."
+
+fn clock_basis_eq(a: ClockBasis, b: ClockBasis) -> Bool {
+  match a {
+    CpuClock =>
+      match b {
+        CpuClock => true
+        WallClock => false
+      }
+    WallClock =>
+      match b {
+        CpuClock => false
+        WallClock => true
+      }
+  }
+}
+
+fn clock_basis_cpu() -> ClockBasis {
+  CpuClock
+}
+
+fn clock_basis_wall() -> ClockBasis {
+  WallClock
+}
+
+data clock_basis_authority_reachability_note: String = "WHY THIS CARRIER LIVES IN std.measure AND NOT WHERE IT WAS FIRST DECLARED, generalized because the same authority hit the same wall twice in one day (2026-08-05). ClockBasis was minted in std.observation, the module whose events first needed it. Within hours it failed to be an authority twice, for two different reasons that look unrelated and are not. First it was internal, and gunbc's migration-policy carrier could not state its own basis without it being EXPORTED. Then std.realization_schedule -- which carried a forked second spelling, WitnessCostClock, that this lane was dissolving -- turned out to be UPSTREAM of std.observation through std.effect_grant and std.effects, so importing the authority created a cycle and the compiler refused it outright. A single authority that half the corpus cannot import is not a single authority. REACHABILITY IS PART OF WHAT MAKES SOMETHING AN AUTHORITY, not a deployment detail discovered afterwards, and it is the part nobody checks when minting one: declaring a concept once is assumed to settle it, when what actually settles it is every consumer being able to name it. The home is therefore chosen by who must reach it, not by who first needed it -- and here that answer is also the honest one on the merits, since which clock a duration was read from is a fact about the MEASUREMENT rather than about the observation event that happens to carry one, this module already owns the magnitudes the basis qualifies, and extdeps.pricing.object_storage ByteBasis is in-repo precedent for a basis living beside its magnitude. A METHOD NOTE, because the cycle was nearly missed: it was checked for by grepping the two files' direct imports, which showed no edge. That is a LOCAL instrument answering a question that is only decidable GLOBALLY, and it returned a confident wrong answer. Only the compiler could see it. When the question is transitive, only a transitive instrument answers it."
+
+// Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter
+// boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and
+// nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes
+// give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it
+// drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the
+// clock is never recovered from a label string; the function name is a symbol the seed selects, not
+// prose it parses. They dissolve with the seed transport itself, on the witness-realization lane's
+// trigger — when a realized runner enforces the deadline, it constructs the outcome here directly
+// and has nothing to marshal.
+
+fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
+  match b {
+    CpuClock => "thread-CPU" as NonEmptyStr
+    WallClock => "wall" as NonEmptyStr
+  }
+}
+
+// Derived from the cited ISO 80000-3 factors, not from the linear Scale fold. These exist so the
+// squared/cubed relation has a modeled consumer: without them the carriers above would name an
+// authority nothing reaches.
+//
+// BOTH SIDES OF THE CONVERSION ARE TYPED. An earlier revision took a bare Nat, so the one boundary
+// where a unit is being CHANGED - the single place a wrong unit is most likely to enter - was the
+// one place the substrate accepted an undimensioned number.
+fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {
+  square_millimeter(count: square_meter_count(m: area) * square_millimetres_per_square_metre())
+}
+
+fn cubic_metres_to_cubic_millimetres(volume: CubicMeter) -> CubicMillimeter {
+  cubic_millimeter(count: cubic_meter_count(m: volume) * cubic_millimetres_per_cubic_metre())
+}
+
+// One full turn in arcseconds, derived from the cited subdivision chain rather than restated.
+fn full_turn_arcseconds() -> Arcsecond {
+  arcsecond(count: arcseconds_per_turn())
+}
+
+fn degrees_to_arcseconds(degrees: Degree) -> Arcsecond {
+  arcsecond(count: degree_count(d: degrees) * arcseconds_per_degree_derived())
+}
+
+fn turns_to_arcseconds(turns: Turn) -> Arcsecond {
+  arcsecond(count: turn_count(t: turns) * arcseconds_per_turn())
+}
+
+// A quarter turn is exact in arcseconds because the subdivision is rational - the same reason the
+// turn is the canonical unit and radian conversion is absent.
+fn quarter_turn_arcseconds() -> Arcsecond {
+  arcsecond(count: arcseconds_per_turn() / 4)
+}
+
+fn turn(count: Nat) -> Turn {
+  Measure { count: count }
+}
+
+fn turn_count(t: Turn) -> Nat {
+  measure_count(t)
+}
+
+fn signed_square_millimeter(count: Int) -> SignedSquareMillimeter {
+  Measure { count: count }
+}
+
+fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> Int {
+  measure_count(m)
+}
+
+data amortization_months_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.")
+
+data basis_point_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.")
+
+// WHICH ORIGIN a reading was taken against, and it is a DIFFERENT axis from ClockBasis rather than a
+// finer spelling of it. ClockBasis says which KIND of clock produced a duration (cpu or wall);
+// ClockDomain says which ORIGIN two instants share, and therefore whether subtracting them means
+// anything. Both are needed and neither implies the other: two wall readings from independently
+// started monotonic clocks are the same basis and still not comparable.
+//
+// This axis exists because the floor's records cross processes. A coordinator and its worker each
+// hold their own monotonic origin, so a Rust `Instant` from one is not orderable against an
+// `Instant` from the other — the type permits the subtraction and the answer is meaningless. A
+// console timestamp is not a substitute either: it is formatted wall time, reordered by buffering
+// and rounded to the millisecond.
+type ClockDomain
+  = ProcessMonotonic { process: NonEmptyStr }
+  | SharedMonotonic { origin: NonEmptyStr }
+
+fn clock_domain_eq(a: ClockDomain, b: ClockDomain) -> Bool {
+  match a {
+    ProcessMonotonic { process: p } =>
+      match b {
+        ProcessMonotonic { process: q } => (p as String) == (q as String)
+        SharedMonotonic { origin: _ } => false
+      }
+    SharedMonotonic { origin: o } =>
+      match b {
+        ProcessMonotonic { process: _ } => false
+        SharedMonotonic { origin: p } => (o as String) == (p as String)
+      }
+  }
+}
+
+type ObservationInstant {
+  domain: ClockDomain
+  basis: ClockBasis
+  since_origin: Nanosecond
+}
+
+// Ordering is only defined WITHIN a domain, so the answer is three-valued rather than a Bool. A
+// Bool would have to pick a side for the incomparable case, and both sides are wrong: `false` for
+// "a is not before b" reads as "b is at or before a", which is a claim about an order that does not
+// exist. This is the same shape as compare_content_hash returning a cross-family arm rather than
+// collapsing to false.
+type InstantOrder
+  = InstantBefore
+  | InstantSame
+  | InstantAfter
+  | InstantIncomparable { left: ClockDomain, right: ClockDomain }
+
+fn compare_instants(a: ObservationInstant, b: ObservationInstant) -> InstantOrder {
+  if !clock_domain_eq(a: a.domain, b: b.domain) {
+    InstantIncomparable { left: a.domain, right: b.domain }
+  } else if !clock_basis_eq(a: a.basis, b: b.basis) {
+    InstantIncomparable { left: a.domain, right: b.domain }
+  } else {
+    let x = nanosecond_count(n: a.since_origin)
+    let y = nanosecond_count(n: b.since_origin)
+    if x < y { InstantBefore } else if x == y { InstantSame } else { InstantAfter }
+  }
+}

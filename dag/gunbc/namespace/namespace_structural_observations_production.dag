@@ -1,0 +1,40 @@
+module gunbc.namespace_structural_observations_production
+
+import gunbc.namespace_structural_observations_contract {
+  OrdinaryCompileStructuralAdmission,
+  StructuralObservationSubject,
+}
+import std.types { List, String }
+
+// THE PRODUCTION SEAM, AND IT IS A TRANSPORT RATHER THAN AN AUTHORITY.
+//
+// The closing check for namespace-structural-observations has to consume observations from an
+// ORDINARY COMPILE, and the only compiler in the tree is the v1 seed: the required floor resolves
+// `dag` and `src/v2` only, and no dag module imports v1 anywhere in the corpus, so a dag witness
+// cannot call the parser walk that produces them. `namespace_structural_observation_admissions` is
+// the hermetic host bridge across that boundary -- it takes ONE in-memory source, reads no
+// repository file, and returns exactly what
+// `v1.gunbc.namespace_reference_derived_closure_production_observations` computed. It decides
+// nothing: the four observations are composed in that .dag producer and the capability judgement is
+// made by gunbc.namespace_reference_derived_closure_admission, which the producer calls. Declared
+// and enrolled as seed growth at gunbc.namespace_structural_observation_bridge_seed_growth.
+//
+// WHY THIS IS NOT IN THE CONTRACT MODULE: the v1 producer imports the contract module for the
+// subject and row types, so a builtin call there would close a cycle through the seed's emit
+// closure. The check stays pure; only this seam is host-bound.
+// Host bridge from the ordinary v1 compile path to the dag closing check. Carries no policy: the
+// subject is supplied by the caller, the observations are composed in the v1 producer, and the
+// capability assessment is the one shared authority.
+
+fn namespace_structural_observations_production_admissions(
+  subject: StructuralObservationSubject,
+) -> List<OrdinaryCompileStructuralAdmission> {
+  namespace_structural_observation_admissions(
+    subject.file,
+    subject.source,
+    subject.neighbour_name,
+    subject.branch_binder_name,
+    subject.later_name,
+    subject.homonym_name,
+  )
+}

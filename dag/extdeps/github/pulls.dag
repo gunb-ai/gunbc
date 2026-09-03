@@ -1,0 +1,379 @@
+module extdeps.github.pulls
+
+import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
+import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
+import extdeps.github.errors { GitHubErrorShape }
+import std.credentials { CredentialSource, EnvVar }
+import std.serialization { WireFormat, Text }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.transports.rest { RestOutcome }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.github.pulls_contracts {
+  pull_request_state_wire_contract,
+  review_state_wire_contract,
+  review_event_wire_contract
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/pulls/pulls"
+  }
+}
+
+data github_cli_pull_merge_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cli.github.com/manual/gh_pr_merge"
+  }
+}
+
+type PullRequestState = Open | Closed
+
+type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
+
+type ReviewEvent = Approve | RequestChanges | Comment | PendingEvent
+
+type PullRequestRef {
+  ref: GitRef
+  sha: CommitSha
+  label: String
+}
+
+// `merge_commit_sha` IS THE TEST-MERGE FOR AN OPEN PULL REQUEST, not the commit a merge produced.
+// GitHub computes a merge of the head into the base and reports it here, and for a pull request
+// that has actually merged the same field instead names the resulting commit. Two meanings on one
+// upstream field is the upstream's shape, not ours to rename — but it is optional because GitHub
+// omits it while mergeability is still being computed, and that `Absent` is a real state a consumer
+// must decide about rather than a value to wait for.
+type PullRequest {
+  number: Int
+  title: String
+  body: String?
+  state: PullRequestState
+  html_url: NonEmptyStr
+  user: GitHubUser
+  head: PullRequestRef
+  base: PullRequestRef
+  created_at: Timestamp
+  updated_at: Timestamp
+  merged_at: Timestamp?
+  draft: Bool
+  merge_commit_sha: CommitSha?
+}
+
+// One-time GitHub REST pull on 2026-08-01 under this module's existing GET-pull authority. Each row
+// is the PullRequest.created_at and PullRequest.merged_at pair returned by github.Pulls.Get,
+// normalized once from the wire Timestamp strings to Unix epoch milliseconds so arithmetic
+// consumers do not pretend Timestamp is subtractable. The source URL remains on every row and
+// fetched_on makes staleness inspectable. PullRequest stays the one wire-response authority;
+// PullTimingObservation is its cited, immutable arithmetic projection, not a second endpoint or
+// response model.
+
+type PullTimingObservation {
+  pull_number: Int
+  opened_at: EpochMs
+  merged_at: EpochMs
+  source_url: NonEmptyStr
+  fetched_on: NonEmptyStr
+}
+
+fn pull_timing_observation(
+  pull_number: Int,
+  opened_at: EpochMs,
+  merged_at: EpochMs,
+  source_url: NonEmptyStr,
+) -> PullTimingObservation {
+  PullTimingObservation {
+    pull_number: pull_number,
+    opened_at: opened_at,
+    merged_at: merged_at,
+    source_url: source_url,
+    fetched_on: "2026-08-01",
+  }
+}
+
+data gunbc_pr_7393_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7393,
+  opened_at: 1785284539000,
+  merged_at: 1785298702000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7393",
+)
+
+data gunbc_pr_7405_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7405,
+  opened_at: 1785294084000,
+  merged_at: 1785357921000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7405",
+)
+
+data gunbc_pr_7429_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7429,
+  opened_at: 1785356295000,
+  merged_at: 1785358865000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7429",
+)
+
+data gunbc_pr_7431_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7431,
+  opened_at: 1785358812000,
+  merged_at: 1785397720000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7431",
+)
+
+data gunbc_pr_7441_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7441,
+  opened_at: 1785362512000,
+  merged_at: 1785370233000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7441",
+)
+
+data gunbc_pr_7542_timing: PullTimingObservation = pull_timing_observation(
+  pull_number: 7542,
+  opened_at: 1785552700000,
+  merged_at: 1785557096000,
+  source_url: "https://github.com/gunb-ai/gunbc/pull/7542",
+)
+
+// GitHub CLI documents --match-head-commit as the commit SHA the pull-request head must match to
+// allow merge and --squash as the repository's squash strategy. The operation exposes termination
+// as data because a nonzero result is a domain refusal the landing workflow must render and
+// receipt, not an interpreter crash. It deliberately carries no --admin and no --auto: landing
+// workflow v1 performs the one operator-clicked merge already admitted by the dashboard summary;
+// merge-queue enqueue remains a later realization.
+
+service github.CliPulls {
+  operation ListOpenJson {
+    input { repo: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "gh", "pr", "list",
+        "--repo", "{repo}",
+        "--state", "open",
+        "--limit", "1000",
+        "--json", "author,number,title,url,headRefName,headRefOid,isDraft,state,changedFiles",
+      ]
+    }
+  }
+
+  operation SquashMergeExactHead {
+    input {
+      repo: NonEmptyStr
+      pull_number: Int
+      expected_head: CommitSha
+    }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "gh", "pr", "merge", "{pull_number}",
+        "--repo", "{repo}",
+        "--squash",
+        "--match-head-commit", "{expected_head}",
+      ]
+    }
+  }
+}
+
+service github.Pulls {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+  }
+
+  operation List {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      state: PullRequestState = Open
+      per_page: Int = default_per_page
+    }
+    output {
+      pulls: List<PullRequest>
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls",
+      query: { state: state, per_page: per_page }
+    }
+    response {
+      200 => List<PullRequest>
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Get {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+    }
+    output {
+      pr: PullRequest
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}"
+    }
+    response {
+      200 => PullRequest
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Diff {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+    }
+    output {
+      diff: String
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}",
+      headers: { "Accept": "application/vnd.github.diff" },
+      response_format: Text
+    }
+    response {
+      200 => String
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation ListReviews {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+    }
+    output {
+      reviews: List<PullReview>
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews"
+    }
+    response {
+      200 => List<PullReview>
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation CreateReview {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+      commit_id: CommitSha
+      body: String
+      event: ReviewEvent = Comment
+      comments: Json
+    }
+    output {
+      id: Int from "id"
+      html_url: NonEmptyStr from "html_url"
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews",
+      body: { commit_id: commit_id, body: body, event: event, comments: comments }
+    }
+    response {
+      200 => PullReview
+      401 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation ListComments {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+    }
+    output {
+      comments: List<ReviewComment>
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/comments"
+    }
+    response {
+      200 => List<ReviewComment>
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+type PullReview {
+  id: Int
+  body: String
+  state: ReviewState
+  commit_id: CommitSha
+  html_url: NonEmptyStr
+}
+
+data structural_coverage_gap_github_pull_review_response_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "PullReview" },
+      JsonPending { field: "node_id" },
+      JsonPending { field: "user" },
+      JsonPending { field: "pull_request_url" },
+      JsonPending { field: "_links" },
+      JsonPending { field: "submitted_at" },
+      JsonPending { field: "author_association" }
+    ],
+    trigger: "GitHub PullReview consumer needs full review response fidelity"
+  }
+]
+
+type ReviewComment {
+  id: Int
+  node_id: String
+  path: FilePath
+  line: Int?
+  original_line: Int?
+  body: String
+  html_url: NonEmptyStr
+}

@@ -1,0 +1,124 @@
+module extdeps.dhcp.v4
+
+import std.types { NonEmptyStr, String, Bool }
+import std.nat { Nat }
+import std.measure { Second, second, second_count }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc2132#section-3.14"
+  }
+}
+
+type MacAddress = NonEmptyStr where brand("MacAddress")
+
+// THE TRIGGER NAMED AN ARTIFACT AND NOT THE CAPABILITY. It read
+// bound_dissolution on extdeps.network.mac parse_mac_address -- a DeclarationAppears condition --
+// so the row dissolved the moment that function existed. The row's own reason states what it is
+// for: MacAddress is a branded NonEmptyStr hiding six grounded octets, deep-decompose it. Landing
+// the parser satisfies neither half. The brand is still `NonEmptyStr where brand("MacAddress")` and
+// its consumer sites still cast strings to it, so the artifact trigger would have retired the row
+// with the capability entirely undone -- strictly worse than leaving it open, because an unmet row
+// still ranks for work and a met one does not. Section 4b(3) names exactly this shape: a trigger
+// must state the CAPABILITY, and one naming an artifact is the direction the machinery cannot see,
+// because it is satisfied honestly while the thing it protected stays dead.
+//
+// AND THE FIRST CORRECTION WAS ALSO WRONG, WHICH IS WHY THE CAPABILITY TEXT IS NOW UNBOUND RATHER
+// THAN A SECOND TRIGGER. It was repointed to retires_dissolution on MacAddress itself, reading "the
+// row ends when the brand is gone". That is the right SENTENCE and the wrong MECHANISM: a
+// retirement condition asks whether a named declaration is absent from a supplied population, and
+// std.dissolution says in as many words that an empty present_decls reports the condition FIRED --
+// the honest reading of "nothing is present". The consumers of this census fold it with
+// present_decls: [], so the row would have reported FIRED-WHILE-STILL-PRESENT on a corpus nobody
+// read, turning a true statement about the brand into a false measurement. Caught by execution:
+// three witnesses over the census went red, and the count they partition moved by exactly one row.
+//
+// THE CAPABILITY IS NOT A SINGLE DECLARATION EVENT AT ALL, which is the real lesson. It is the
+// brand's deletion PLUS the migration of every consumer site, and no DeclarationAppears or
+// DeclarationRetires trigger can encode a conjunction over a population. An unbound condition
+// carrying the capability in words is the honest encoding: it cannot be satisfied by an artifact,
+// it cannot fire spuriously against an unread corpus, and it ends when someone judges the work done
+// and deletes the row.
+data mac_address_anemic_brand_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress"),
+    reason: "MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary",
+    dissolution: unbound_dissolution(description: "extdeps.dhcp.v4 MacAddress is deleted AND every consumer site is re-homed onto extdeps.network.mac Eui48Address"),
+  )
+]
+
+// The Ipv4Address anemic brand (NonEmptyStr where brand) was dissolved 2026-07-24: it is now the
+// structured four-octet carrier in extdeps.network.ipv4 (dissolve_on_ipv4_address_anemic_brand
+// fired — its named trigger, extdeps/network/ipv4.dag + parse_ipv4_address witness, landed).
+// Consumers import Ipv4Address from extdeps.network.ipv4 directly (ipv4 is a network concept, not a
+// DHCP one — the prior re-home through this module was a layering artifact). The MacAddress brand
+// above remains anemic; its dissolution (extdeps/network/mac.dag, hex-octet parse) is the
+// fast-follow — same consumer files, deferred to keep the IPv4 reach-lane change focused.
+
+type DhcpClientHostNameOption12 = HostName
+
+type DhcpLeaseAssignment =
+    DynamicLease
+  | StaticReservation
+
+type DhcpLeaseStatus =
+    Active
+  | Inactive
+  | Expired
+
+type DhcpAddressOrigin =
+    DhcpClient
+  | StaticConfig
+
+type DhcpLeaseObservation
+  = DynamicDhcpLease {
+      client_hostname: DhcpClientHostNameOption12?
+      lease_time_remaining: Second
+      status: DhcpLeaseStatus
+    }
+  | StaticDhcpReservation {
+      reservation_label: NonEmptyStr
+      status: DhcpLeaseStatus
+    }
+
+fn dhcp_lease_remaining_from_cited_minutes(minutes: Nat) -> Second {
+  second(minutes * 60)
+}
+
+fn dhcp_lease_remaining_cited_minutes(remaining: Second) -> Nat {
+  second_count(remaining) / 60
+}
+
+fn dhcp_mac_pinned_reservation_not_contradictory(
+  address_origin: DhcpAddressOrigin,
+  assignment_policy: DhcpLeaseAssignment,
+) -> Bool {
+  match address_origin {
+    DhcpClient =>
+      match assignment_policy {
+        DynamicLease => true
+        StaticReservation => true
+      }
+    StaticConfig =>
+      match assignment_policy {
+        StaticReservation => true
+        DynamicLease => false
+      }
+  }
+}
+
+fn parse_dhcp_client_hostname_option12(raw: String) -> Result<DhcpClientHostNameOption12, DomainNameParseError> {
+  match parse_host_name(raw: raw) {
+    Ok { value: host } => Ok { value: host }
+    Err { value: e } => Err { value: e }
+  }
+}

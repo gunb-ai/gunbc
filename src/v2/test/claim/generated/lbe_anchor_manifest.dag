@@ -1,11 +1,5 @@
 module v2.test.generated.lbe_anchor_manifest
 
-import v2.std.verification {
-  ManualAnchorKey,
-  ManualLbeConjDagSurface,
-  ManualLbeDisjDagSurface,
-  ManualLbeTransformDagSurface
-}
 
 data manual_anchor_lbe_conj_dag_surface: ManualAnchorKey = ManualLbeConjDagSurface
 

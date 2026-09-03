@@ -1,15 +1,5 @@
 module v2.test.grounding_go.family_receipt
 
-import v2.compiler.eval { TestClaimRun }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.test.grounding_go.sg_claims {
-  run_go_g2_g1_3_fact_registry,
-  run_go_g2_sg1_atom_realizations,
-  run_go_g2_sg2_projection_absence,
-  run_go_g2_sg5_collection_absence
-}
 
 data grounding_go_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_go_g2_sg1_atom_realizations,

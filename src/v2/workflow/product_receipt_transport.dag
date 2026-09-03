@@ -1,0 +1,213 @@
+module v2.workflow.product_receipt_transport
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+import std.content_hash { content_hash_atom }
+import std.types { NonEmptyStr }
+import v2.std.logic { Bool }
+import v2.std.subject_evidence {
+  EvidenceInstrumentRefused,
+  EvidenceSubjectCompleted,
+  EvidenceSubjectUnreached,
+  SubjectEvidence,
+  subject_evidence_establishes
+}
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import tools.host_prelude {
+  WitnessBinReady,
+  WitnessBinRefused,
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path
+}
+
+// ONE TRANSACTION, and the two things that make it one.
+//
+// The transaction directory is FIXED and is not cleaned between boundaries.
+// Every existing gate on this path emits its manifest into a per-run mktemp
+// directory, runs one claim against it, and removes it -- so the next
+// boundary, if there is one, rediscovers its input instead of consuming the
+// artifact its predecessor produced. That is the shape this lane exists to
+// replace, and a cleanup between boundaries would reintroduce it silently.
+//
+// The manifest DIGEST is computed here, from the bytes the host emitter just
+// wrote, and handed to the stage process as an argument. The stage re-hashes
+// the file it was actually resolved against and refuses if the two differ.
+// Without that hand-off the composition would be two invocations agreeing by
+// convention, which is precisely what a per-component board already reports.
+
+data product_receipt_txn_rel: String = "/target/product-receipt"
+data product_receipt_manifest_dir_rel: String = "/target/product-receipt/manifest"
+data product_receipt_manifest_file: String = "/host_source_root_ingest_manifest.dag"
+data product_receipt_stage_entry_file: String = "src/v2/workflow/product_receipt_stage.dag"
+data product_receipt_ingest_source_root: String = "src/v2"
+data product_receipt_compiler_entry: String = "src/v2/compiler/00_compile.dag"
+
+// The manifest lands in target/product-receipt/manifest and THAT directory -- never bare target/ --
+// is the source root handed to the stage process. Adding bare target/ as a source root admits the
+// whole build-output tree as source and collides a generated .dag with any committed module of the
+// same name; the per-run mktemp directories elsewhere in the corpus exist for that reason. A fixed
+// directory is used here rather than a mktemp one because this transaction's whole point is that
+// the artifact SURVIVES between boundaries and can be inspected after the run; it is emptied at the
+// start of each transaction, not at the end of one.
+
+fn product_receipt_ingest_args(manifest_dir: String, entry: String) -> List<String> {
+  [
+    "--source-root", product_receipt_ingest_source_root,
+    "--entry", entry,
+    "--emit-dag-manifest", concat(manifest_dir, product_receipt_manifest_file)
+  ]
+}
+
+fn product_receipt_stage_args(
+  manifest_dir: String,
+  txn: String,
+  manifest_identity: String,
+  entry: String
+) -> List<String> {
+  [
+    "run",
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--source-root", manifest_dir,
+    "--entry", product_receipt_stage_entry_file,
+    "--function", "run_product_receipt_stage",
+    "--arg", concat("txn=", txn),
+    "--arg", concat("manifest_identity=", manifest_identity),
+    "--arg", concat("entry=", entry)
+  ]
+}
+
+// THE CLOSED NO-VERDICT VOCABULARY FOR THIS RECEIPT, AND WHY THE ARMS SPLIT WHERE THEY DO.
+//
+// The proposition is "the seven-boundary product receipt is GREEN". Six things can stop that
+// question being answered and NONE of them is evidence about the receipt, which is exactly what the
+// old `-> Bool` said they were: every one of them arrived at the consumer as the same `false` that a
+// genuinely non-green receipt produces.
+//
+// The split between the two no-verdict arms is by WHOSE deficit it is, per the carrier. Clearing the
+// transaction directory and making the manifest directory are this harness setting up its own bench:
+// if they fail the question was never posed, so they are InstrumentRefused. The ingest run, the
+// manifest read, the staging run and the receipt read are the SUBJECT being exercised and failing to
+// arrive -- the instrument worked, the subject did not get there -- so they are SubjectUnreached.
+type ProductReceiptNoVerdict
+  = ReceiptTxnNotCleared
+  | ReceiptManifestDirNotMade
+  | ReceiptIngestDidNotRun
+  | ReceiptManifestUnreadable
+  | ReceiptStageDidNotRun
+  | ReceiptFileUnreadable
+
+// ReceiptNotGreen CARRIES THE BODY IT READ. A receipt that was produced and is not green is a
+// statement about the subject, and the body is the difference -- free at construction, unrecoverable
+// afterwards. Without it this variant would be a Bool wearing a name.
+type ProductReceiptOutcome
+  = ReceiptGreen
+  | ReceiptNotGreen { body: String }
+
+fn product_receipt_outcome_licenses(outcome: ProductReceiptOutcome) -> Bool {
+  match outcome {
+    ReceiptGreen => true
+    ReceiptNotGreen { body: _ } => false
+  }
+}
+
+// EVERY REFUSAL ARM NAMES ITS OWN STEP. The nesting is what buys that: an early return sharing one
+// arm with a later one would re-alias the two, which is the defect being repaired rather than a
+// style question. Steps are also no longer executed past a refusal -- the previous form ran the
+// ingest and the manifest read unconditionally and only then consulted a conjunction.
+fn seven_boundary_product_receipt_evidence(
+  root: String,
+  entry: String
+) -> SubjectEvidence<ProductReceiptNoVerdict, ProductReceiptOutcome> {
+  let txn = concat(root, product_receipt_txn_rel)
+  let manifest_dir = concat(root, product_receipt_manifest_dir_rel)
+
+  let cleared = shell.Remove.RecursiveForce(path: txn)
+  if cleared.success {
+    let made = shell.Mkdir.Parents(path: manifest_dir)
+    if made.success {
+      let derived = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+        args: product_receipt_ingest_args(manifest_dir: manifest_dir, entry: entry)
+      )
+      if derived.success {
+        let manifest_read = Filesystem.Read(
+          path: concat(manifest_dir, product_receipt_manifest_file)
+        )
+        if manifest_read.success {
+          let identity = content_hash_atom(value: manifest_read.content as NonEmptyStr)
+          let staged = gunbc.WitnessBin.Run(
+            workdir: root,
+            bin_path: witness_bin_release_path(root: root, bin_name: "gunbc"),
+            args: product_receipt_stage_args(
+              manifest_dir: manifest_dir,
+              txn: txn,
+              manifest_identity: identity.digest,
+              entry: entry
+            )
+          )
+          if staged.success {
+            let receipt = Filesystem.Read(path: concat(txn, "/receipt.txt"))
+            if receipt.success {
+              EvidenceSubjectCompleted {
+                outcome: if string_contains(s: receipt.content, pattern: "RECEIPT: GREEN") {
+                  ReceiptGreen
+                } else {
+                  ReceiptNotGreen { body: receipt.content }
+                }
+              }
+            } else {
+              EvidenceSubjectUnreached { cause: ReceiptFileUnreadable }
+            }
+          } else {
+            EvidenceSubjectUnreached { cause: ReceiptStageDidNotRun }
+          }
+        } else {
+          EvidenceSubjectUnreached { cause: ReceiptManifestUnreadable }
+        }
+      } else {
+        EvidenceSubjectUnreached { cause: ReceiptIngestDidNotRun }
+      }
+    } else {
+      EvidenceInstrumentRefused { cause: ReceiptManifestDirNotMade }
+    }
+  } else {
+    EvidenceInstrumentRefused { cause: ReceiptTxnNotCleared }
+  }
+}
+
+// The terminal Bool boundary, collapsing at the one audited site the carrier provides rather than by
+// a conjunction here. Callers needing the distinction match the evidence directly.
+func run_seven_boundary_product_receipt_ready(root: String, entry: String) -> Bool {
+  subject_evidence_establishes(
+    evidence: seven_boundary_product_receipt_evidence(root: root, entry: entry),
+    licenses: fn(o) { product_receipt_outcome_licenses(outcome: o) }
+  )
+}
+
+func run_product_receipt_for_entry(entry: String) -> ProcessExit {
+  let root = git.Inspect.Toplevel()
+  let ingest_bin = witness_bin(
+    var_name: "DISCOVER_SOURCE_ROOT_INGEST",
+    bin_name: "discover_source_root_ingest"
+  )
+  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } =>
+      exit_failure(reason: "discover_source_root_ingest is not built")
+    WitnessBinReady { path: _ } =>
+      if run_seven_boundary_product_receipt_ready(root: root.path, entry: entry) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: "seven-boundary product receipt is RED")
+      }
+  }
+}
+
+func run_seven_boundary_product_receipt() -> ProcessExit {
+  run_product_receipt_for_entry(entry: product_receipt_compiler_entry)
+}

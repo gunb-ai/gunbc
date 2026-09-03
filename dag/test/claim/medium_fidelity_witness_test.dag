@@ -1,0 +1,78 @@
+module test.claim.medium_fidelity
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type ProbeVerdict = Dominates | Incomparable
+
+fn is_lossless(f: DecodeFidelity) -> Bool {
+  match f {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn text_medium_lossless() -> extdeps.communication.medium.Medium<String> {
+  extdeps.communication.medium.Medium {
+    carried: "fn add(x: Int, y: Int) -> Int { x + y }",
+    fidelity: Lossless
+  }
+}
+
+fn probe_medium_lossless() -> extdeps.communication.medium.Medium<ProbeVerdict> {
+  extdeps.communication.medium.Medium { carried: Dominates, fidelity: Lossless }
+}
+
+fn prose_medium() -> extdeps.communication.medium.Medium<String> {
+  extdeps.communication.medium.Medium {
+    carried: "roughly linear time, details omitted",
+    fidelity: Lossy
+  }
+}
+
+fn mis_tagged_prose_medium() -> extdeps.communication.medium.Medium<String> {
+  extdeps.communication.medium.Medium {
+    carried: "roughly linear time, details omitted",
+    fidelity: Lossless
+  }
+}
+
+test fn text_medium_tag_is_lossless() -> Bool {
+  let m = text_medium_lossless()
+  match m.fidelity {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+test fn probe_medium_tag_is_lossless() -> Bool {
+  let m = probe_medium_lossless()
+  match m.fidelity {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+test fn probe_carried_is_non_text() -> Bool {
+  let m = probe_medium_lossless()
+  match m.carried {
+    Dominates => true
+    Incomparable => false
+  }
+}
+
+test fn prose_medium_tag_is_lossy() -> Bool {
+  let m = prose_medium()
+  match m.fidelity {
+    Lossy => true
+    Lossless => false
+  }
+}
+
+test fn lossy_prose_not_advertised_lossless() -> Bool {
+  !is_lossless(prose_medium().fidelity)
+}
+
+test fn red_mistag_certifies_lossless_by_tag_alone() -> Bool {
+  is_lossless(mis_tagged_prose_medium().fidelity)
+}
+

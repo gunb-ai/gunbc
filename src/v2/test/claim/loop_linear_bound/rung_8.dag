@@ -1,16 +1,5 @@
 module v2.test.loop_linear_bound.rung_8
 
-import v2.compiler.eval { TestClaimRun, run_test_claim, test_claim_input }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.std.verification { TestClaim }
-import v2.test.computation_shapes.loop_linear_bound {
-  claim_loop_linear_bound_content_hash_stable,
-  claim_loop_linear_bound_equals_refl,
-  claim_loop_linear_bound_well_formed
-}
-import v2.test.rung_3_4_common { rung34_test_claim_subject }
 
 fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim(

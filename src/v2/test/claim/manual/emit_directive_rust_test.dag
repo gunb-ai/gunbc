@@ -3,7 +3,7 @@ module v2.test.manual.emit_directive_rust
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
-import v2.extdeps.languages.rust {
+import v2.extdeps.languages.rust_test {
   rust_emit_directive_emitted_call,
   rust_emit_directive_target_model
 }
@@ -11,7 +11,16 @@ import v2.extdeps.languages.bash {
   emit_directive_bash_emitted_command,
   emit_directive_bash_target_model
 }
-import v2.std.collection { Map }
+import v2.std.collection {
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -27,15 +36,12 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-fn emit_directive_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^emit_directive_rust_facts_unexpected_consultation,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn emit_directive_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_absent()
 }
 
 data emit_directive_rust_error_example: EmitDirective = EmitDirective {
@@ -66,7 +72,7 @@ fn emit_directive_rust_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: rust_emit_directive_emitted_call,
-      facts: Map { lookup: emit_directive_facts_lookup }
+      facts: PartialFunction { lookup: emit_directive_facts_lookup }
     },
     target: rust_emit_directive_target_model(d: d)
   )
@@ -76,7 +82,7 @@ fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: Map { lookup: emit_directive_facts_lookup }
+      facts: PartialFunction { lookup: emit_directive_facts_lookup }
     },
     target: emit_directive_bash_target_model(d: d)
   )

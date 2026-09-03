@@ -1,0 +1,112 @@
+module gunbc.required_ci_phase_roster
+
+import std.types { String, Bool, List }
+
+// THE SUBSTRATE AUTHORITY FOR WHICH PHASES REQUIRED CI RUNS, AND WHICH LANE OWNS EACH.
+// gunbc.required_ci_host_verdict_census recorded the gap this module closes: "Phase existence and
+// lane ownership are themselves host facts: RequiredCiPhase, its exhaustive lane match, and
+// REQUIRED_CI_PHASES have no substrate authority" -- and named this carrier as its next rung
+// (required_ci_phase_roster_next_rung). Phase identity and lane ownership are one roster, consumed
+// by the workflow emission (gunbc.fabric_witness_run takes its lane vocabulary from
+// required_ci_lane_name) and by the program-standing derivation
+// (gunbc.compiler_frontend_program_status derives NamespaceWaveAdmissionEnrolled from membership in
+// required_ci_phases, never from a status row).
+//
+// THE HOST REALIZATION IS A DECLARED PARALLEL REPRESENTATION WITH AN EXECUTING JOIN, NOT A TWIN
+// LEFT TO DRIFT. claim_executor's RequiredCiPhase enum realizes this coproduct, and every
+// --required-ci run joins the two BEFORE running any phase: set equality over this declaration's
+// variant names, both directions, so "declared here and not realized" and "realized and not
+// declared" are separate refusals that stop the line (the join shape
+// v1_compiler.namespace_wave_admission vocabulary_findings executes against its disposition
+// authority). The join deliberately does NOT cover lane ownership -- the host lane match is not
+// readable from the declaration index -- and that residue is honest for enrolment truth: both lanes
+// execute in every required run, so a lane divergence can move a phase between two jobs that both
+// run; it cannot un-enrol one. The terminal state is the census's dissolution row: the workflow
+// emission consumes this roster whole and the host enum, lane match and REQUIRED_CI_PHASES list
+// delete atomically. Until then the parallel representation is this module's declared debt and the
+// per-run join is its wall.
+type RequiredCiLane
+  = BuildLane
+  | WitnessesLane
+
+fn required_ci_lane_name(l: RequiredCiLane) -> String {
+  match l {
+    BuildLane => "build"
+    WitnessesLane => "witnesses"
+  }
+}
+
+// THE PHASE IDENTITIES ARE A CLOSED VOCABULARY. Adding a phase means adding a variant, at which
+// point required_ci_phase_name and required_ci_phase_lane refuse to compile until the phase states
+// its CLI word and lane -- construction, not a list a phase can be omitted from. Four phases are
+// the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29), with the
+// generated-artifact wall restored after its declared population produced a real drift incident:
+// parse, namespace-wave-admission, regen, generated-artifact, floor.
+//
+// WALL-CLOCK PRICE OF THIS WIDENING, recorded here because `gunbc.rung_drop`
+// `required_gate_bankruptcy` requires every static-roster widening to be priced on the roster's
+// own header. GitHub Actions run 33392747727 is the first required execution: the timestamped
+// generated-artifact phase ran from 12:50:53.0230951Z to 12:53:00.5811355Z -- 127.558 seconds --
+// over rostered=35, adjudicated=35, unadjudicated=0. Its would-be-drifted tree found exactly one
+// drift (`docs/design-ledgers.md`), stopped the build lane, and thereby supplied the live RED this
+// restoration exists for. The first regenerated-head execution, run 33394205676, ran the same
+// phase from 13:19:53.9903928Z to 13:22:04.8572336Z -- 130.867 seconds -- and reported
+// rostered=35, adjudicated=35, matches=35, drifted=0, absent=0, unadjudicated=0. Thus both prices
+// name the same instrument and roster grain: 127.558 seconds would-be-drifted, 130.867 clean.
+type RequiredCiPhase
+  = ParsePhase
+  | NamespaceWaveAdmissionPhase
+  | RegenPhase
+  | GeneratedArtifactPhase
+  | FloorPhase
+
+fn required_ci_phase_name(p: RequiredCiPhase) -> String {
+  match p {
+    ParsePhase => "parse"
+    NamespaceWaveAdmissionPhase => "namespace-wave-admission"
+    RegenPhase => "regen"
+    GeneratedArtifactPhase => "generated-artifact"
+    FloorPhase => "floor"
+  }
+}
+
+// Lane ownership, total. Parse and the wave wall share the witnesses lane because the wall
+// consumes the index the parse phase builds -- one acquisition, two consumers.
+fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
+  match p {
+    ParsePhase => WitnessesLane
+    NamespaceWaveAdmissionPhase => WitnessesLane
+    RegenPhase => BuildLane
+    GeneratedArtifactPhase => BuildLane
+    FloorPhase => WitnessesLane
+  }
+}
+
+// THE ROSTER IS THE DENOMINATOR every enrolment question folds over. A variant absent from this
+// list is declared and not enrolled -- representable on purpose, because that is what a deliberate
+// un-enrolment (a bankruptcy) looks like, and it must be a visible row edit here, not a silent host
+// edit. The per-run host join keeps the two from diverging silently in either direction.
+data required_ci_phases: List<RequiredCiPhase> = [
+  ParsePhase,
+  NamespaceWaveAdmissionPhase,
+  RegenPhase,
+  GeneratedArtifactPhase,
+  FloorPhase,
+]
+
+fn required_ci_phase_is(a: RequiredCiPhase, b: RequiredCiPhase) -> Bool {
+  required_ci_phase_name(p: a) == required_ci_phase_name(p: b)
+}
+
+// Membership at identity grain. Parameterized on the roster rather than closing over
+// required_ci_phases so a witness can author both the enrolled and the un-enrolled population --
+// the RED is authorable at the fixture boundary, which is the boundary that decides (DESIGN 4b).
+fn required_ci_phase_enrolled(p: RequiredCiPhase, phases: List<RequiredCiPhase>) -> Bool {
+  any(phases, x => required_ci_phase_is(a: x, b: p))
+}
+
+fn lane_phase_names(lane: RequiredCiLane, phases: List<RequiredCiPhase>) -> List<String> {
+  phases
+    |> filter(p => required_ci_lane_name(l: required_ci_phase_lane(p: p)) == required_ci_lane_name(l: lane))
+    |> map(p => required_ci_phase_name(p: p))
+}

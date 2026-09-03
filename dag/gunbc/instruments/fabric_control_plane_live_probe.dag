@@ -1,0 +1,318 @@
+module tools.fabric_control_plane_live_probe
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.currency.currency { Usd }
+import std.measure {
+  MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro,
+  Second, second, hardware_thread_count,
+}
+import product.fabric.work { Shape, HardRequirements }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
+import std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration }
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
+import product.fabric.demand { Demand }
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  AvailabilityObservation, AvailableIndefinitely,
+  CommitmentState, PayAsYouGo,
+  StartCostObservation, StartCostMeasured,
+  TransitionCostObservation, NoTransitionRequired,
+  OperatingCostObservation, OperatingCostMeasured,
+  OpportunityCostObservation, NoFeasibleAlternativeUse,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest, AccountAdvanced, MoneyRefused, reserve_money }
+import product.fabric.execution { ReservationRef, LeaseIdentity }
+import std.content_hash { content_hash_of_value }
+import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction }
+import gunbc.fabric_floor_dispatch { floor_demand }
+import gunbc.fabric_control_plane {
+  CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
+  StoreUnavailable, AttemptRefused, BudgetRefused,
+  CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
+  HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, release_reserved_cell_at,
+  FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
+  fabric_cell_allocation_key, reserve_selected_cell, broker_reserve_for_demand,
+  bind_fabric_cell_candidate,
+}
+
+// The live receipt for the EFFECTFUL half of the broker, which the hermetic witness cannot
+// reach. An entry point rather than a shell script, for the reason DESIGN gives: if a
+// measurement is worth re-deriving it is worth an entry point.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_control_plane_live_probe.dag \
+//     --function cp_live_reservation_is_exclusive --arg root=<an EMPTY directory>
+//
+// THE SECOND FUNCTION'S ASSERTION IS NOT ITS RETURN VALUE. Run
+// cp_live_nothing_admissible_touches_no_store against a FRESH empty root and then list that
+// directory: it must still be empty. A broker that reserved a cell when selection admitted
+// nothing would fabricate a decision the market refused to make, and would still return a
+// plausible-looking outcome -- only the absence of a file catches it.
+
+fn cp_probe_offer_id(key: OfferKey) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc", key: key }
+}
+
+fn cp_probe_demand_id(key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc", key: key }
+}
+
+fn cp_probe_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: "srv3", slot_index: 6 }
+}
+
+// NOTHING OFFERED AND EVERYTHING REJECTED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, so
+// NoCellAdmissible splits into 50 and 51 rather than one code. `considered` is empty only when
+// the roster was empty -- a binding that refused -- and populated when real offers failed a
+// screen. The first is a broken fixture, the second is the market answering. Read as a single
+// code, a probe offer declaring 1 thread against the floor's required 8 looked exactly like a
+// correct market refusal, and the fixture defect was invisible.
+//
+// A THIRD STATE JOINS THAT SPLIT for the same reason. 52 is "the roster was not empty and
+// admission removed every member across the capacity-class line" -- read as 50 it would look
+// like nothing was offered, sending a reader to find capacity that was there and correctly
+// refused. It is checked FIRST because a refused roster can leave the market with nothing to
+// consider, so 50 and 52 are both true of that state and only 52 says which happened.
+//
+// A commit returns 100 + its generation so it can never be confused with a refusal code; the
+// four refusals stay distinct because their remedies differ.
+fn cp_probe_code(r: CellReservation) -> Int {
+  match r {
+    CellReserved { offer: _, slot_key: _, generation: g, account: _ } => 100 + g
+    ReservationLost { slot_key: _ } => 2
+    BudgetRefused { slot_key: _, refusal: _ } => 6
+    StoreUnavailable { slot_key: _, cause: _ } => 3
+    AttemptRefused { slot_key: _, detail: _ } => 4
+    NoCellAdmissible { considered: c, refused: f } =>
+      if f.length() != 0 { 52 } else { if c.length() == 0 { 50 } else { 51 } }
+  }
+}
+
+// A funded account for the live rows. The ceiling is far above any probe
+// liability on purpose: these rows measure the STORE, and a budget refusal here
+// would be a fixture defect masquerading as a store answer -- exactly the
+// conflation the 50/51 split above exists to prevent, one resource over.
+fn cp_probe_account() -> MoneyAccount {
+  MoneyAccount {
+    account: "fleet-ci",
+    currency: Usd,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000000) },
+      entries: [],
+    },
+    leases: [],
+  }
+}
+
+fn cp_probe_reserve(root: NonEmptyStr, expected: CasExpectation) -> Int {
+  cp_probe_code(
+    r: reserve_selected_cell(
+      root: root,
+      slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+      expected: expected,
+      demand_id: cp_probe_demand_id(key: "demand-7"),
+      offer_id: cp_probe_offer_id(key: "offer-1"),
+      account: cp_probe_account(),
+    )
+  )
+}
+
+// The exclusion itself. A fresh cell reserves at generation 1; a SECOND writer
+// expecting the same absent slot must LOSE rather than overwrite -- that middle
+// row is the whole point, because it is the case where two brokers ranked the
+// same roster and reached the same answer; and a writer that correctly expects
+// generation 1 advances to 2.
+fn cp_live_reservation_is_exclusive(root: NonEmptyStr) -> Bool {
+  let first = cp_probe_reserve(root: root, expected: ExpectSlotAbsent)
+  let second = cp_probe_reserve(root: root, expected: ExpectSlotAbsent)
+  let advance = cp_probe_reserve(root: root, expected: ExpectSlotGeneration { generation: 1 })
+  first == 101 && second == 2 && advance == 102
+}
+
+// The empty-roster control for the split above. It must answer 50 -- nothing
+// offered -- and NOT 51, or the two states are still collapsed and the e2e row
+// below cannot tell a broken fixture from a market refusal.
+fn cp_live_empty_roster_reports_nothing_offered(root: NonEmptyStr) -> Bool {
+  cp_live_nothing_admissible_touches_no_store(root: root) == 50
+}
+
+fn cp_probe_demand() -> Demand<NonEmptyStr> {
+  floor_demand(
+    id: cp_probe_demand_id(key: "demand-floor-1"),
+    work: FabricIdentity { principal: "gunbc", key: "work-floor-1" },
+    origin: "gunbc.observation.pr-1",
+    submitted_at: "2026-08-27T00:00:00Z",
+    account: "fleet-ci",
+    reservation_price: money_amount_micro(count: 500000),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    deadline: none,
+  )
+}
+
+fn cp_live_nothing_admissible_touches_no_store(root: NonEmptyStr) -> Int {
+  cp_probe_code(
+    r: broker_reserve_for_demand(
+      root: root,
+      demand: cp_probe_demand(),
+      expected: ExpectSlotAbsent,
+      roster: [],
+      sanctions: [],
+      account: cp_probe_account(),
+      maximum_buy_order: money_amount_micro(count: 1000000),
+      delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
+    )
+  )
+}
+
+// THE END-TO-END ROW, AND IT IS THE ONE THE HERMETIC ROWS STRUCTURALLY CANNOT REACH. The mint row
+// proves a mismatched pair refuses; the exclusive row proves the store arbitrates. Neither proves
+// the BROKER carries the market's choice into the store -- that join is exactly what stayed green
+// through the defect this arrow repairs. So this row runs the whole path with a real roster and
+// then reads the FILESYSTEM: the slot that appears must be the cell whose offer won, spelled by
+// its canonical name and nothing else.
+fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: cp_probe_offer_id(key: "offer-1"),
+    executor: executor,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+fn cp_probe_roster(executor: NonEmptyStr) -> List<FabricCellCandidate> {
+  fold(
+    match bind_candidate(
+      offer: cp_probe_offer_for(executor: executor),
+      dispatch: DispatchInputs {
+        offer: cp_probe_offer_id(key: "offer-1"),
+        availability: AvailableIndefinitely {
+          delay: second(count: 0),
+          receipt: "gunbc.observation.availability-1",
+        },
+        commitment: PayAsYouGo,
+        start: StartCostMeasured {
+          amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+          receipt: "gunbc.observation.start-1",
+        },
+        transition: NoTransitionRequired,
+        operating: OperatingCostMeasured {
+          rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
+          receipt: "gunbc.observation.power-1",
+        },
+        opportunity: NoFeasibleAlternativeUse,
+      },
+    ) {
+      CandidateBound { candidate: c } => [c]
+      DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    },
+    init: [],
+    f: (acc, c) =>
+      match bind_fabric_cell_candidate(slot: cp_probe_slot(), candidate: c) {
+        CellCandidateBound { bound: b } => acc + [b]
+        OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => acc
+      },
+  )
+}
+
+fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
+  cp_probe_code(
+    r: broker_reserve_for_demand(
+      root: root,
+      demand: cp_probe_demand(),
+      roster: cp_probe_roster(executor: "srv3-06"),
+      sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
+      expected: ExpectSlotAbsent,
+      account: cp_probe_account(),
+      maximum_buy_order: money_amount_micro(count: 1000000),
+      delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
+    )
+  )
+}
+
+// THE RELEASE COMMIT IS THE ONE ARM NO HERMETIC ROW CAN REACH. Every refusal in
+// release_reserved_cell is decided from the slot observation, a value, so the witness file covers
+// all of them. The successful free-write is a host effect, refused under the floor's hermetic
+// envelope, so a live run is its only possible evidence -- the same split the reserve path
+// carries, and the reason this file exists.
+//
+// The codes are disjoint from cp_probe_code's so a release outcome cannot be confused with a
+// reservation one, and each refusal keeps its own number because their remedies differ exactly
+// as the reservation's do.
+fn cp_probe_release_code(r: CellHoldEnd) -> Int {
+  match r {
+    CellHoldEnded { slot_key: _, generation: g, account: _ } => 200 + g
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => 20
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => 21
+    HoldEndLost { slot_key: _ } => 22
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => 23
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => 24
+  }
+}
+
+fn cp_probe_reservation_ref() -> ReservationRef {
+  fabric_reservation_payload(
+    demand: cp_probe_demand_id(key: "demand-floor-1"),
+    offer: cp_probe_offer_id(key: "offer-1"),
+  ) as ReservationRef
+}
+
+// The account carries a real hold taken through reserve_money, not an authored
+// ledger entry: an authored hold would let this row pass against a release that
+// never agreed with the reserve path about what a hold looks like.
+fn cp_probe_held_account() -> List<MoneyAccount> {
+  match reserve_money(
+    a: cp_probe_account(),
+    request: MoneyReservationRequest {
+      reference: cp_probe_reservation_ref(),
+      generation: 0,
+      maximum_liability: money_amount_micro(count: 1000),
+      currency: Usd,
+    },
+  ) {
+    AccountAdvanced { account: a } => [a]
+    MoneyRefused { refusal: _ } => []
+  }
+}
+
+// The observation is read by release_reserved_cell_at from the store itself
+// rather than supplied here. A hand-built observation would prove only that the
+// decision agrees with itself; this row exists to establish that the store's
+// own answer flows through the holder comparison and reaches a commit.
+fn cp_live_release_frees_the_cell_it_reserved(root: NonEmptyStr) -> Int {
+  fold(
+    cp_probe_held_account(),
+    init: 0,
+    f: fn(acc, a) {
+      cp_probe_release_code(
+        r: release_reserved_cell_at(
+          root: root,
+          slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+          lease: LeaseIdentity {
+            lease_key: "cell-lease-probe",
+            resource_fingerprint: content_hash_of_value(value: "srv3-06"),
+            generation: 0,
+          },
+          reservation: cp_probe_reservation_ref(),
+          reason: "probe release",
+          released_at: "2026-08-28T02:00:00Z",
+          account: a,
+        )
+      )
+    },
+  )
+}

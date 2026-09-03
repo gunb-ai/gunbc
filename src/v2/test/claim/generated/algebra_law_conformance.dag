@@ -1,12 +1,13 @@
 module v2.test.generated.algebra_law_conformance
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.testgen {
   testgen_emit_algebra_law_claim
 }
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.nat {
   Nat,
   Succ,
@@ -24,13 +25,14 @@ import v2.std.verification {
   Unit
 }
 import v2.std.diagnostic { Outcome }
+
 fn algebra_law_generated_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
-fn algebra_law_generated_nat_value(value: Nat) -> Node {
+fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> Node {
   match value {
     Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
     Succ { prev: p } =>
@@ -40,12 +42,12 @@ fn algebra_law_generated_nat_value(value: Nat) -> Node {
           Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
           Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
 
-fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, result: Nat) -> Node {
+fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -54,23 +56,23 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
       Edge { label: Named { name: ^algebra_law_generated_right_field }, target: right },
       Edge { label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
-fn t19_generated_nat_zero_value() -> Nat {
+fn t19_generated_nat_zero_value() -> v2.std.nat.Nat {
   Zero
 }
 
-fn t19_generated_nat_one_value() -> Nat {
+fn t19_generated_nat_one_value() -> v2.std.nat.Nat {
   Succ { prev: t19_generated_nat_zero_value() }
 }
 
-fn t19_generated_nat_two_value() -> Nat {
+fn t19_generated_nat_two_value() -> v2.std.nat.Nat {
   Succ { prev: t19_generated_nat_one_value() }
 }
 
-fn t19_generated_nat_three_value() -> Nat {
+fn t19_generated_nat_three_value() -> v2.std.nat.Nat {
   Succ { prev: t19_generated_nat_two_value() }
 }
 
@@ -90,17 +92,17 @@ fn t19_generated_nat_three() -> Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_three_value())
 }
 
-fn t19_generated_nat_add(left: Node, right: Node, result: Nat) -> Node {
+fn t19_generated_nat_add(left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_add_application, left: left, right: right, result: result)
 }
 
-fn t19_generated_nat_mul(left: Node, right: Node, result: Nat) -> Node {
+fn t19_generated_nat_mul(left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_mul_application, left: left, right: right, result: result)
 }
 
 data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddLeftIdentity,
-  label: "generated/algebra_law: Nat addition left identity",
+  label: "generated/algebra_law: v2.std.nat.Nat addition left identity",
   lhs: t19_generated_nat_add(
     left: t19_generated_nat_zero(),
     right: t19_generated_nat_one(),
@@ -112,7 +114,7 @@ data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_al
 
 data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddAssociativity,
-  label: "generated/algebra_law: Nat addition associativity",
+  label: "generated/algebra_law: v2.std.nat.Nat addition associativity",
   lhs: t19_generated_nat_add(
     left: t19_generated_nat_add(
       left: t19_generated_nat_one(),
@@ -142,7 +144,7 @@ data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_al
 
 data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatMulAnnihilator,
-  label: "generated/algebra_law: Nat multiplication annihilator",
+  label: "generated/algebra_law: v2.std.nat.Nat multiplication annihilator",
   lhs: t19_generated_nat_mul(
     left: t19_generated_nat_zero(),
     right: t19_generated_nat_three(),

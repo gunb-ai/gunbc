@@ -1,10 +1,7 @@
 module v2.test.manual.discriminant_intrinsic
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type DiscriminantProbeShape
   = ProbeAlpha { x: Int }

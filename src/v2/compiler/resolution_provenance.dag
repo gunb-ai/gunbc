@@ -1,0 +1,308 @@
+module v2.compiler.resolution_provenance
+
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra {
+  contains,
+  fold_list,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_snoc_item
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_last_segment
+}
+import v2.std.symbol_index {
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalUnbound,
+  SymbolIndex,
+  symbol_index_global_unique_lookup,
+  symbol_index_lexical_lookup,
+  symbol_index_lookup
+}
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+
+// Resolution already knows which declaration answered a name but throws the answer's PATH away --
+// lookup_symbol_index_atom_identity keeps only the canonical Symbol, so nothing downstream can say
+// which module supplied a binding. That is why dependency edges are currently matched from the
+// reference SPELLING against declared module paths, a syntactic guess DESIGN section 4 rules out.
+// This module keeps the path: one name resolved at one position answers with its target and the
+// module that CONTAINS it, and the dependency derivation below consumes those answers and nothing
+// else.
+
+type ReferenceSite {
+  position: QualifiedName
+  spelling: QualifiedName
+}
+
+type ResolutionProvenance
+  = ProvenanceResolved { site: ReferenceSite, target: QualifiedName, owner: QualifiedName }
+  | ProvenanceOwnerless { site: ReferenceSite, target: QualifiedName }
+  | ProvenanceAmbiguous { site: ReferenceSite }
+  | ProvenanceUnbound { site: ReferenceSite }
+
+// TWO results, carried together so neither can be taken without the other.
+// `answers` holds one record per MENTION and never collapses -- two mentions of
+// one target stay two records naming their own sites. `dependencies` is the
+// distinct set of owning modules and collapses exactly once, here and nowhere
+// else. `unresolved` keeps the mentions that produced no owner, so a name the
+// resolver could not place is a counted refusal rather than a missing edge.
+type FileDependencyProvenance {
+  answers: FreeMonoid<ResolutionProvenance>
+  dependencies: FreeMonoid<QualifiedName>
+  unresolved: FreeMonoid<ResolutionProvenance>
+}
+
+fn provenance_qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  a == b
+}
+
+fn provenance_symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn module_roster_from_roots(roots: FreeMonoid<Node>) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, root) {
+      match qualified_name_from_module_node(root: root) {
+        Accepted { value: module_qn, diagnostics: _ } =>
+          if contains(xs: acc, item: module_qn, eq: provenance_qualified_name_eq) {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: module_qn)
+          }
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+// Owner is the LONGEST rostered module path that contains the target. Longest
+// rather than first because module paths nest (a.b and a.b.c are both prefixes of
+// a.b.c.T) and only the innermost one owns the declaration; taking any prefix
+// would attribute the edge to an ancestor that declares nothing.
+fn provenance_owner_of_target(
+  roster: FreeMonoid<QualifiedName>,
+  target: QualifiedName
+) -> Optional<QualifiedName> {
+  fold_list(
+    xs: roster,
+    empty: optional_absent(),
+    cons: fn(best, candidate) {
+      if is_prefix_of(prefix: candidate, xs: target, eq: provenance_symbol_eq) {
+        match best {
+          Absent => optional_present(value: candidate)
+          Present { value: current } =>
+            if length(xs: candidate) > length(xs: current) {
+              optional_present(value: candidate)
+            } else {
+              best
+            }
+        }
+      } else {
+        best
+      }
+    }
+  )
+}
+
+fn provenance_from_target(
+  site: ReferenceSite,
+  roster: FreeMonoid<QualifiedName>,
+  target: QualifiedName
+) -> ResolutionProvenance {
+  match provenance_owner_of_target(roster: roster, target: target) {
+    Present { value: owner } =>
+      ProvenanceResolved { site: site, target: target, owner: owner }
+    Absent => ProvenanceOwnerless { site: site, target: target }
+  }
+}
+
+// Same selection order as the live NamespaceOnlyY resolver
+// (lookup_symbol_index_atom_identity): a qualified spelling is an exact index
+// lookup, a bare name walks the containment chain from its position and then
+// falls to the globally unique binding. What differs is only that the answer
+// keeps its path.
+fn resolve_reference_provenance(
+  index: SymbolIndex,
+  roster: FreeMonoid<QualifiedName>,
+  site: ReferenceSite
+) -> ResolutionProvenance {
+  if length(xs: site.spelling) > 1 {
+    match symbol_index_lookup(index: index, qualified_path: site.spelling) {
+      Present { value: _ } =>
+        provenance_from_target(site: site, roster: roster, target: site.spelling)
+      Absent => ProvenanceUnbound { site: site }
+    }
+  } else {
+    match qualified_name_last_segment(qn: site.spelling) {
+      Absent => ProvenanceUnbound { site: site }
+      Present { value: name } =>
+        match symbol_index_lexical_lookup(
+          index: index,
+          position: site.position,
+          name: name
+        ) {
+          LexicalHit { node: _, path: path } =>
+            provenance_from_target(site: site, roster: roster, target: path)
+          LexicalAmbiguous { candidates: _ } => ProvenanceAmbiguous { site: site }
+          LexicalUnbound =>
+            match symbol_index_global_unique_lookup(index: index, name: name) {
+              GlobalBareHit { node: _, path: path } =>
+                provenance_from_target(site: site, roster: roster, target: path)
+              GlobalBareLookupAmbiguous => ProvenanceAmbiguous { site: site }
+              GlobalBareLookupUnbound => ProvenanceUnbound { site: site }
+            }
+        }
+    }
+  }
+}
+
+fn resolve_reference_sites(
+  index: SymbolIndex,
+  roster: FreeMonoid<QualifiedName>,
+  sites: FreeMonoid<ReferenceSite>
+) -> FreeMonoid<ResolutionProvenance> {
+  fold_list(
+    xs: sites,
+    empty: Empty,
+    cons: fn(acc, site) {
+      list_snoc_item(
+        xs: acc,
+        item: resolve_reference_provenance(index: index, roster: roster, site: site)
+      )
+    }
+  )
+}
+
+fn empty_file_dependency_provenance(
+  answers: FreeMonoid<ResolutionProvenance>
+) -> FileDependencyProvenance {
+  FileDependencyProvenance {
+    answers: answers,
+    dependencies: Empty,
+    unresolved: Empty
+  }
+}
+
+fn file_dependency_provenance_snoc_unresolved(
+  acc: FileDependencyProvenance,
+  answer: ResolutionProvenance
+) -> FileDependencyProvenance {
+  FileDependencyProvenance {
+    answers: acc.answers,
+    dependencies: acc.dependencies,
+    unresolved: list_snoc_item(xs: acc.unresolved, item: answer)
+  }
+}
+
+fn file_dependency_provenance_snoc_owner(
+  acc: FileDependencyProvenance,
+  module_qn: QualifiedName,
+  owner: QualifiedName
+) -> FileDependencyProvenance {
+  if owner == module_qn {
+    acc
+  } else if contains(xs: acc.dependencies, item: owner, eq: provenance_qualified_name_eq) {
+    acc
+  } else {
+    FileDependencyProvenance {
+      answers: acc.answers,
+      dependencies: list_snoc_item(xs: acc.dependencies, item: owner),
+      unresolved: acc.unresolved
+    }
+  }
+}
+
+// Answers alone: no tree, no import list and no reference spelling reaches this
+// fold -- its only inputs are the resolution answers and the module's own name,
+// so a dependency it reports cannot have come from anything but a resolved
+// target's containment owner.
+fn module_dependencies_from_provenance(
+  answers: FreeMonoid<ResolutionProvenance>,
+  module_qn: QualifiedName
+) -> FileDependencyProvenance {
+  fold_list(
+    xs: answers,
+    empty: empty_file_dependency_provenance(answers: answers),
+    cons: fn(acc, answer) {
+      match answer {
+        ProvenanceResolved { site: _, target: _, owner: owner } =>
+          file_dependency_provenance_snoc_owner(
+            acc: acc,
+            module_qn: module_qn,
+            owner: owner
+          )
+        ProvenanceOwnerless { site: _, target: _ } =>
+          file_dependency_provenance_snoc_unresolved(acc: acc, answer: answer)
+        ProvenanceAmbiguous { site: _ } =>
+          file_dependency_provenance_snoc_unresolved(acc: acc, answer: answer)
+        ProvenanceUnbound { site: _ } =>
+          file_dependency_provenance_snoc_unresolved(acc: acc, answer: answer)
+      }
+    }
+  )
+}
+
+fn module_dependencies_from_sites(
+  index: SymbolIndex,
+  roster: FreeMonoid<QualifiedName>,
+  module_qn: QualifiedName,
+  sites: FreeMonoid<ReferenceSite>
+) -> FileDependencyProvenance {
+  module_dependencies_from_provenance(
+    answers: resolve_reference_sites(index: index, roster: roster, sites: sites),
+    module_qn: module_qn
+  )
+}
+
+fn file_dependency_provenance_is_total(provenance: FileDependencyProvenance) -> Bool {
+  is_empty(xs: provenance.unresolved)
+}
+
+// The per-mention half, asked at mention grain: which declaration answered THIS
+// site. Collapsing happens only in `dependencies`, so this stays a function of
+// the individual answer and never of the file's set.
+fn answer_owner_optional(answer: ResolutionProvenance) -> Optional<QualifiedName> {
+  match answer {
+    ProvenanceResolved { site: _, target: _, owner: owner } => optional_present(value: owner)
+    ProvenanceOwnerless { site: _, target: _ } => optional_absent()
+    ProvenanceAmbiguous { site: _ } => optional_absent()
+    ProvenanceUnbound { site: _ } => optional_absent()
+  }
+}
+
+fn answer_site(answer: ResolutionProvenance) -> ReferenceSite {
+  match answer {
+    ProvenanceResolved { site: site, target: _, owner: _ } => site
+    ProvenanceOwnerless { site: site, target: _ } => site
+    ProvenanceAmbiguous { site: site } => site
+    ProvenanceUnbound { site: site } => site
+  }
+}
+
+fn answer_target_optional(answer: ResolutionProvenance) -> Optional<QualifiedName> {
+  match answer {
+    ProvenanceResolved { site: _, target: target, owner: _ } => optional_present(value: target)
+    ProvenanceOwnerless { site: _, target: target } => optional_present(value: target)
+    ProvenanceAmbiguous { site: _ } => optional_absent()
+    ProvenanceUnbound { site: _ } => optional_absent()
+  }
+}

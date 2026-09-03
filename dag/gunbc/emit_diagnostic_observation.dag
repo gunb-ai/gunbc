@@ -1,0 +1,532 @@
+module gunbc.emit_diagnostic_observation
+
+import std.types { Bool, Int, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+
+// THE EMIT STAGE'S OWN POPULATION, decoded from the only surface `gunbc compile` offers.
+//
+// WHY A DECODER AND NOT A NEW COMPILER OUTPUT. Emission is v1 05_emit territory and the v1 seed is
+// frozen with maintenance active: the admission test is PURPOSE, and it admits repair rather than
+// growth. Adding a machine-readable diagnostic stream to the CLI would be growth, so this reads what
+// the CLI already prints -- the same rendering a person reads -- rather than widening the seed for
+// an instrument's convenience. That choice has a cost and the cost is named below: this is a prose
+// decode, and a prose decode that skips what it does not recognise is an absorbing fallback.
+//
+// WHAT STOPS IT BEING ONE. The compiler states its own diagnostic total, and this decode REFUSES
+// when the population it recovered is not that total. So an unrecognised diagnostic shape does not
+// quietly shrink the population -- it makes the accounts disagree and stops the line, naming both
+// numbers. The cross-check is the whole reason the decode is admissible at all: without it, a
+// rendering change upstream would silently turn a real population into a smaller one, which is
+// exactly the fabricated measurement this instrument exists to end.
+//
+// THE TOTAL HAS TWO SOURCES BECAUSE THE COMPILER HAS TWO PATHS, and reading only one of them would
+// have made this decode refuse every entry it is most useful on. `gunbc compile --entry` prints
+// `compiled: N files emitted, M diagnostics` on the COMPLETED path and exits after the refusal
+// cause and the rendered diagnostics on the REFUSED path, where no tree is written and no such line
+// appears. The renderer's own closing line -- `H blocking error(s), A advisory diagnostic(s) ...`,
+// or `H error(s)` when there are no advisories -- survives both. Where both are present they are a
+// THIRD check against each other and a disagreement refuses; where neither is present the compile
+// never reached the point where it counts its own diagnostics, and no population may be reported.
+
+data emit_error_bracket_prefix: String = "error["
+data emit_advisory_bracket_prefix: String = "advisory["
+data emit_error_bare_prefix: String = "error: "
+data emit_advisory_bare_prefix: String = "advisory: "
+data emit_location_separator: String = "]: "
+data emit_summary_prefix: String = "compiled: "
+data emit_entry_scope_marker: String = "reference-derived closure"
+data emit_severity_blocking_marker: String = " blocking error(s), "
+data emit_severity_error_suffix: String = " error(s)"
+
+// SEVERITY IS THE COMPILER'S OWN WORD, kept verbatim rather than re-coded into a local enum. The
+// blocking/advisory split is `gunbc.compile_clean_diagnostic_policy`'s fact; re-minting it here as a
+// second vocabulary is the nicknaming this repository removes.
+type GunbcDiagnostic {
+  severity: String
+  location: String
+  message: String
+}
+
+// WHETHER THE POPULATION IS THE WHOLE POPULATION, which is a different question from how many
+// members it has and is not answerable by looking at them.
+//
+// `v1.05_emit_rust` `emit_rust` is a SEQUENCE OF EARLY RETURNS: measured on the live file, two arms
+// return `EmitResult { files: [], diagnostics }` before the rest of the body runs, so while the
+// first fires the checks after it NEVER EXECUTE. A count taken over emit is therefore potentially a
+// PREFIX of the truth rather than the truth -- not an undercount anyone can bound, but a count that
+// stops silently at whichever earlier check fired. The receipt: two workflow-parameter diagnostics
+// were masking eight anonymous-record ones; clearing the two made the eight appear, and they had
+// been standing the whole time. The tell was WALL TIME, not the counts -- emit ran LONGER once
+// cleared, because it got further -- which is exactly DESIGN's rule that if a count of zero and an
+// unreached check produce the same output, the number is not an observation.
+//
+// SO THE EXTENT PARTICIPATES IN THE CARRIER, and the derivation is exact rather than a guess. Both
+// early returns yield NO FILES, and the CLI prints its `compiled:` line only on the path where a
+// tree was written. So a compile that reported emitted files ran the emit body to its end and its
+// population is COMPLETE; a compile that reported none cannot be established as complete, and says
+// so. The second arm is deliberately named for IGNORANCE rather than for truncation: a refusal
+// whose cause lay outside emit also lands there, and claiming such a population IS truncated would
+// be answering a question this observation cannot answer. Over-stating ignorance is safe; the
+// opposite is the defect.
+type EmitPopulationExtent
+  = EmitPopulationComplete
+  | EmitPopulationCompletenessUnestablished
+
+fn emit_population_extent_text(extent: EmitPopulationExtent) -> String {
+  match extent {
+    EmitPopulationComplete => "complete (emit ran to the end of its body)"
+    EmitPopulationCompletenessUnestablished =>
+      "completeness-unestablished (emit returned before writing a tree, and its body early-returns, so this population may be a prefix of unknown length)"
+  }
+}
+
+// ONE DERIVATION, so the extent cannot drift from the observation it is a function of.
+fn emit_population_extent_of(files: EmittedFileCount) -> EmitPopulationExtent {
+  match files {
+    FilesEmitted { count: _ } => EmitPopulationComplete
+    FilesNotWritten => EmitPopulationCompletenessUnestablished
+  }
+}
+
+// A REFUSED COMPILE WRITES NO TREE, so "how many files were emitted" has no answer on that path
+// and is not zero. The two states are named rather than collapsed onto 0, which would read as a
+// compile that ran and produced nothing.
+type EmittedFileCount
+  = FilesEmitted { count: Int }
+  | FilesNotWritten
+
+type EmitDiagnosticRead
+  = EmitDiagnosticsRead {
+      diagnostics: List<GunbcDiagnostic>
+      emitted_files: EmittedFileCount
+      declared_total: Int
+    }
+  | EmitSummaryAbsent
+  | EmitSummaryUnreadable { line: String }
+  | EmitPopulationMismatch { decoded: Int, declared: Int }
+  | EmitSummaryDisagreement { compiled_total: Int, severity_total: Int }
+  | EmitAnchorDuplicated { anchor: EmitSummaryAnchor, count: Int }
+  | EmitScopeUnconfirmed
+  | EmitOutputTruncated { extent: CaptureExtent }
+
+// WHICH OF THE TWO ANCHORS WAS SEEN MORE THAN ONCE. A closed pair rather than a name, so a third
+// anchor cannot be reported without this coproduct gaining an arm and every reader refusing to
+// compile until it decides what the new one means.
+type EmitSummaryAnchor
+  = CompiledSummaryAnchor
+  | SeveritySummaryAnchor
+
+type EmitLineRead
+  = EmitLineDiagnostic { diagnostic: GunbcDiagnostic }
+  | EmitLineOther
+
+fn emit_line_severity(line: String) -> String {
+  if starts_with(s: line, prefix: emit_error_bracket_prefix) {
+    "error"
+  } else {
+    if starts_with(s: line, prefix: emit_advisory_bracket_prefix) {
+      "advisory"
+    } else {
+      if starts_with(s: line, prefix: emit_error_bare_prefix) {
+        "error"
+      } else {
+        if starts_with(s: line, prefix: emit_advisory_bare_prefix) {
+          "advisory"
+        } else {
+          ""
+        }
+      }
+    }
+  }
+}
+
+fn emit_line_is_bracketed(line: String) -> Bool {
+  starts_with(s: line, prefix: emit_error_bracket_prefix)
+    || starts_with(s: line, prefix: emit_advisory_bracket_prefix)
+}
+
+// The location is read by LENGTH from the one separator the renderer emits, not by searching the
+// line for something that looks like a path. A message may legitimately contain a colon, a bracket,
+// or a path fragment; anchoring on the separator means those cannot be mistaken for structure.
+fn emit_line_read(line: String) -> EmitLineRead {
+  let severity = emit_line_severity(line: line)
+  if severity == "" {
+    EmitLineOther
+  } else {
+    if emit_line_is_bracketed(line: line) {
+      let parts = split(s: line, delimiter: emit_location_separator)
+      match get(xs: parts, index: 0) {
+        Absent => EmitLineOther
+        Present { value: head } => {
+          let open = severity.length() + 1
+          let body_start = head.length() + emit_location_separator.length()
+          if body_start > line.length() || head.length() < open {
+            EmitLineOther
+          } else {
+            EmitLineDiagnostic {
+              diagnostic: GunbcDiagnostic {
+                severity: severity,
+                location: substring(s: head, start: open, end: head.length()),
+                message: substring(s: line, start: body_start, end: line.length())
+              }
+            }
+          }
+        }
+      }
+    } else {
+      let bare = severity.length() + 2
+      EmitLineDiagnostic {
+        diagnostic: GunbcDiagnostic {
+          severity: severity,
+          location: "",
+          message: substring(s: line, start: bare, end: line.length())
+        }
+      }
+    }
+  }
+}
+
+type EmitSummaryRead
+  = EmitSummaryRead { emitted_files: Int, declared_total: Int }
+  | EmitSummaryNotFound
+  | EmitSummaryMalformed { line: String }
+  | EmitSummaryDuplicated { count: Int }
+
+// `compiled: N files emitted, M diagnostics` -- the two numbers are read by POSITION IN THE WORD
+// LIST of the compiler's own summary line, and a line that does not yield two integers at those
+// positions is malformed rather than defaulted. A default here would be the fabricated zero: a
+// summary this decode could not read would report a clean compile.
+//
+// THIS LINE IS PRINTED ONLY WHERE THE COMPILE COMPLETED. `gunbc compile --entry` writes the tree
+// and prints it on the completed path; on a refusal it exits after the refusal cause and the
+// rendered diagnostics, having written no tree at all. So its ABSENCE is not a defect -- it is how
+// this decode learns that no tree was emitted -- and the population's total then comes from the
+// severity summary below instead.
+fn emit_summary_of_line(line: String) -> EmitSummaryRead {
+  let words = split(s: line, delimiter: " ")
+  match get(xs: words, index: 1) {
+    Absent => EmitSummaryMalformed { line: line }
+    Present { value: files_word } =>
+      match get(xs: words, index: 4) {
+        Absent => EmitSummaryMalformed { line: line }
+        Present { value: diag_word } =>
+          match parse_int(s: files_word) {
+            Absent => EmitSummaryMalformed { line: line }
+            Present { value: files } =>
+              match parse_int(s: diag_word) {
+                Absent => EmitSummaryMalformed { line: line }
+                Present { value: diags } =>
+                  EmitSummaryRead { emitted_files: files, declared_total: diags }
+              }
+          }
+      }
+  }
+}
+
+// A SECOND ANCHOR LINE IS A REFUSAL, NOT AN UPDATE. This fold previously answered with the LAST
+// matching line, so two `compiled:` lines in one stream -- a compiler that printed twice, or two
+// runs' output concatenated by whatever captured it -- silently discarded the first and reported
+// the second as though it were the only account. That is the same wrong shape this module refuses
+// everywhere else: one population, two claims about it, one of them dropped without a diagnostic.
+// A malformed first line stays malformed, because it already names the line it could not read.
+fn emit_summary_fold(acc: EmitSummaryRead, line: String) -> EmitSummaryRead {
+  if starts_with(s: line, prefix: emit_summary_prefix) {
+    match acc {
+      EmitSummaryNotFound => emit_summary_of_line(line: line)
+      EmitSummaryMalformed { line: l } => EmitSummaryMalformed { line: l }
+      EmitSummaryRead { emitted_files: _, declared_total: _ } => EmitSummaryDuplicated { count: 2 }
+      EmitSummaryDuplicated { count: n } => EmitSummaryDuplicated { count: n + 1 }
+    }
+  } else {
+    acc
+  }
+}
+
+// THE SECOND ANCHOR, and the one that is present on BOTH the completed and the refused path: the
+// renderer's own closing line. It has two shapes, because the renderer names the policy only when
+// there is an advisory population to attribute to it:
+//   `9 blocking error(s), 119 advisory diagnostic(s) (policy: ...)`
+//   `9 error(s)`
+// A run whose diagnostic list is EMPTY prints neither -- the renderer returns before it -- which is
+// why this reading is an option rather than a requirement, and why the two anchors are combined
+// below rather than either being trusted alone.
+type EmitSeverityRead
+  = EmitSeverityRead { blocking: Int, advisory: Int }
+  | EmitSeverityNotFound
+  | EmitSeverityMalformed { line: String }
+  | EmitSeverityDuplicated { count: Int }
+
+fn emit_severity_of_line(line: String) -> EmitSeverityRead {
+  let words = split(s: line, delimiter: " ")
+  match get(xs: words, index: 0) {
+    Absent => EmitSeverityMalformed { line: line }
+    Present { value: first } =>
+      match parse_int(s: first) {
+        Absent => EmitSeverityMalformed { line: line }
+        Present { value: blocking } =>
+          if string_contains(s: line, pattern: emit_severity_blocking_marker) {
+            match get(xs: words, index: 3) {
+              Absent => EmitSeverityMalformed { line: line }
+              Present { value: advisory_word } =>
+                match parse_int(s: advisory_word) {
+                  Absent => EmitSeverityMalformed { line: line }
+                  Present { value: advisory } =>
+                    EmitSeverityRead { blocking: blocking, advisory: advisory }
+                }
+            }
+          } else {
+            EmitSeverityRead { blocking: blocking, advisory: 0 }
+          }
+      }
+  }
+}
+
+fn emit_line_is_severity_summary(line: String) -> Bool {
+  string_contains(s: line, pattern: emit_severity_blocking_marker)
+    || ends_with(s: line, suffix: emit_severity_error_suffix)
+}
+
+// The severity anchor takes the same rule as the compiled anchor above, for the same reason. Fixing
+// only the one the review named would have left the identical silent overwrite one fold away.
+fn emit_severity_fold(acc: EmitSeverityRead, line: String) -> EmitSeverityRead {
+  if emit_line_is_severity_summary(line: line) {
+    match acc {
+      EmitSeverityNotFound => emit_severity_of_line(line: line)
+      EmitSeverityMalformed { line: l } => EmitSeverityMalformed { line: l }
+      EmitSeverityRead { blocking: _, advisory: _ } => EmitSeverityDuplicated { count: 2 }
+      EmitSeverityDuplicated { count: n } => EmitSeverityDuplicated { count: n + 1 }
+    }
+  } else {
+    acc
+  }
+}
+
+// THREE INDEPENDENT ACCOUNTS OF ONE POPULATION, AND THEY MUST AGREE.
+//
+// The decoded rows, the compiler's `compiled:` total where it printed one, and the renderer's own
+// blocking/advisory split are three readings of the same set. Requiring them to agree is what makes
+// a PROSE decode admissible at all: an unrecognised diagnostic shape does not quietly shrink the
+// population, it makes the accounts disagree and stops the line, naming both numbers.
+//
+// AND AT LEAST ONE DECLARED TOTAL MUST EXIST. If neither anchor is present the compile did not
+// reach the point where it states its own total -- which is exactly the state that must never be
+// reported as a clean, empty population.
+// THE SCOPE THE COMPILER ACTUALLY USED, required before any population is read.
+//
+// `gunbc compile --entry` is NOT MODELLED in the .dag authority: measured on the live file,
+// `v1.05_emit_rust` `emit_subcommand_enum` renders the Compile variant with five fields and no
+// `entry`, while the Run variant nine lines below it carries `entry: Option<String>` -- and the
+// Compile HANDLER it emits is the whole-tree implementation, whose own comment reads "Entry
+// modules: all .dag files in the FIRST source root". The flag lives only in the hand-maintained
+// `main.rs`, which is this repository's one declared divergence from its emitted form.
+//
+// SO THERE ARE TWO HAZARDS AND THEY FAIL IN OPPOSITE DIRECTIONS. A compiler WITHOUT the flag
+// refuses the invocation outright, which is loud and already safe. A compiler that ACCEPTS the flag
+// and IGNORES IT compiles the whole first source root and prints an ordinary summary -- and a
+// per-entry instrument would report that whole-tree population as one entry's. That is the silent
+// substitution this decode exists to prevent, and it is exactly what closing the divergence by
+// adding the field WITHOUT its handler would produce.
+//
+// The compiler names which scope it used: the entry-scoped path reports a "reference-derived
+// closure", the whole-tree path an import-closure resolve over every file it collected. Requiring
+// the marker binds the population to the scope that produced it, so the instrument refuses rather
+// than measures if the entry-scoped path is ever silently lost.
+fn emit_entry_scope_confirmed(lines: List<String>) -> Bool {
+  count(filter(lines, line => string_contains(s: line, pattern: emit_entry_scope_marker))) > 0
+}
+
+// THE CAPTURE'S OWN STANDING, carried as ONE record because its three facts are only meaningful
+// together. A total with no window to measure it against is a number that needs a constant to
+// interpret, and the flag alone says a stream was clipped without saying by how much. Grouping them
+// is what lets the refusal below report an OVERAGE rather than a verdict.
+//
+// THE SIZES ARE ByteSize AND NOT Int. `std.measure` already owns the byte quantity, and a bare
+// scalar here would be a second representation of a concept with one authority -- the same finding
+// review 56126 raised against this change's own fixture, applied to the carrier rather than only to
+// the place it was caught.
+//
+// THE FLAG IS CARRIED RATHER THAN DERIVED from `total > retained`. The host performs that judgment
+// itself (`bounded_shell_host_drain.rs` sets `truncated` per policy, and for the complete-within
+// policy it is NOT simply a size comparison), so deriving it here would be a second implementation
+// of a decision the observer already made -- and one that would silently disagree with it the day
+// the policies differ.
+type CaptureExtent {
+  truncated: Bool
+  total: ByteSize
+  retained: ByteSize
+}
+
+// HOW FAR OVER THE WINDOW A STREAM RAN, which is the quantity a reader actually acts on: it is the
+// difference between knowing a wall exists and knowing what it would take to move it.
+fn capture_overage_bytes(extent: CaptureExtent) -> Int {
+  byte_size_count(extent.total) - byte_size_count(extent.retained)
+}
+
+// THE TRUNCATION ARM RUNS FIRST, AND THE ORDER IS THE WHOLE POINT.
+//
+// The v1 host captures a subprocess's stderr as a BOUNDED TAIL -- `bounded_shell_host_drain.rs`
+// `DEFAULT_SHELL_STDERR_TAIL_BYTES`, 16 KiB -- so what this decode receives for a talkative
+// compile is the END of the stream and not the stream. The scope marker the check below requires is
+// printed near the HEAD, so before this arm existed a truncated read landed on
+// EmitScopeUnconfirmed, whose stated cause is that the compiler did not report a reference-derived
+// closure. That cause is FALSE about the compiler: it did report one, in bytes nobody kept. DESIGN
+// names that class -- not-applicable rendered as malformed, one reason symbol over two states with
+// opposite owners -- and the recognition rule fits exactly: the arm sat downstream of a search that
+// returned Absent, so it needed its own reason.
+//
+// RECEIPT: `dag/std/abi.dag` compiles 0 blocking / 90 advisory; its stderr is 51,029 bytes; the
+// marker is on line 8 of 371 and the last 16 KiB contains it zero times. Through the instrument
+// that entry returned unreached-at-emit-decode, twice, citing the compiler's scoping.
+//
+// AND IT IS NOT A MARGINAL CASE. Nine `dag/std` and `dag/extdeps` entries were compiled directly
+// and their stderr sized: `dag/std/logic.dag` is 360 bytes and every other one -- content_hash,
+// measure, process, integer, interval, os, types, and `extdeps/uri` -- falls between 51,029 and
+// 79,265 bytes. Eight of nine candidates are three to five times over the window, so a consumer
+// that folds this decode over a discovered universe will find most of it unreadable, and before
+// this arm it would have been told the compiler was at fault for all of it.
+//
+// AND THE ASYMMETRY IS THE DURABLE FINDING, worth more than this arm. The marker's position is
+// bounded FROM THE HEAD by construction; the retained window is bounded from the TAIL, so its
+// distance from the head is the subject's total stderr, which is unbounded. A head fact is being
+// read through a tail instrument, and NO value of the tail constant makes it readable -- raising it
+// buys subjects until the next talkative one and moves the cliff rather than removing it. That is
+// why this change declares the truncation rather than widening the window, and why the durable
+// repair is neither: the entry scope is a fact the COMPILER owns, and recovering it by matching its
+// prose is a positional citation of something that has a symbol. A typed scope output retires both
+// the grep and this arm; that decision is above this module and is not made here.
+fn read_emit_diagnostics(stderr: String, capture: CaptureExtent) -> EmitDiagnosticRead {
+  if capture.truncated == true {
+    EmitOutputTruncated { extent: capture }
+  } else {
+    let lines = split(s: stderr, delimiter: "\n")
+    if emit_entry_scope_confirmed(lines: lines) {
+      read_scoped_emit_diagnostics(lines: lines)
+    } else {
+      EmitScopeUnconfirmed
+    }
+  }
+}
+
+fn read_scoped_emit_diagnostics(lines: List<String>) -> EmitDiagnosticRead {
+  let compiled = fold(lines, init: EmitSummaryNotFound, f: (acc, line) => emit_summary_fold(acc: acc, line: line))
+  let severity = fold(lines, init: EmitSeverityNotFound, f: (acc, line) => emit_severity_fold(acc: acc, line: line))
+  match compiled {
+    EmitSummaryMalformed { line: l } => EmitSummaryUnreadable { line: l }
+    EmitSummaryDuplicated { count: n } =>
+      EmitAnchorDuplicated { anchor: CompiledSummaryAnchor, count: n }
+    EmitSummaryNotFound =>
+      match severity {
+        EmitSeverityNotFound => EmitSummaryAbsent
+        EmitSeverityMalformed { line: l } => EmitSummaryUnreadable { line: l }
+        EmitSeverityDuplicated { count: n } =>
+          EmitAnchorDuplicated { anchor: SeveritySummaryAnchor, count: n }
+        EmitSeverityRead { blocking: b, advisory: a } =>
+          emit_population_against(lines: lines, declared: b + a, files: FilesNotWritten)
+      }
+    EmitSummaryRead { emitted_files: files, declared_total: declared } =>
+      match severity {
+        EmitSeverityNotFound =>
+          emit_population_against(lines: lines, declared: declared, files: FilesEmitted { count: files })
+        EmitSeverityMalformed { line: l } => EmitSummaryUnreadable { line: l }
+        EmitSeverityDuplicated { count: n } =>
+          EmitAnchorDuplicated { anchor: SeveritySummaryAnchor, count: n }
+        EmitSeverityRead { blocking: b, advisory: a } =>
+          if b + a != declared {
+            EmitSummaryDisagreement { compiled_total: declared, severity_total: b + a }
+          } else {
+            emit_population_against(lines: lines, declared: declared, files: FilesEmitted { count: files })
+          }
+      }
+  }
+}
+
+fn emit_collect_diagnostics(acc: List<GunbcDiagnostic>, line: String) -> List<GunbcDiagnostic> {
+  match emit_line_read(line: line) {
+    EmitLineOther => acc
+    EmitLineDiagnostic { diagnostic: d } => concat(acc, [d])
+  }
+}
+
+fn emit_population_against(lines: List<String>, declared: Int, files: EmittedFileCount) -> EmitDiagnosticRead {
+  let found = fold(lines, init: [], f: (acc, line) => emit_collect_diagnostics(acc: acc, line: line))
+  let decoded = count(found)
+  if decoded != declared {
+    EmitPopulationMismatch { decoded: decoded, declared: declared }
+  } else {
+    EmitDiagnosticsRead {
+      diagnostics: found,
+      emitted_files: files,
+      declared_total: declared
+    }
+  }
+}
+
+fn gunbc_diagnostic_is_blocking(d: GunbcDiagnostic) -> Bool {
+  d.severity == "error"
+}
+
+fn emit_blocking_count(ds: List<GunbcDiagnostic>) -> Int {
+  count(filter(ds, d => gunbc_diagnostic_is_blocking(d: d)))
+}
+
+fn emitted_file_count_text(files: EmittedFileCount) -> String {
+  match files {
+    FilesEmitted { count: n } => to_string(n)
+    FilesNotWritten => "(no tree written — the compiler refused)"
+  }
+}
+
+fn gunbc_diagnostic_row(d: GunbcDiagnostic) -> String {
+  concat(
+    concat(d.severity, concat("\t", d.location)),
+    concat("\t", d.message)
+  )
+}
+
+fn emit_summary_anchor_name(anchor: EmitSummaryAnchor) -> String {
+  match anchor {
+    CompiledSummaryAnchor => "`compiled:`"
+    SeveritySummaryAnchor => "severity"
+  }
+}
+
+fn emit_diagnostic_read_refusal_reason(read: EmitDiagnosticRead) -> String {
+  match read {
+    EmitDiagnosticsRead { diagnostics: _, emitted_files: _, declared_total: _ } => ""
+    EmitSummaryAbsent =>
+      "gunbc compile stated no diagnostic total of its own — neither a `compiled:` line nor a rendered severity summary — so the compile did not reach the point where it counts its own diagnostics, and any population read from this output would be a fabricated zero"
+    EmitSummaryUnreadable { line: l } =>
+      concat("gunbc compile summary line is not readable: ", l)
+    EmitPopulationMismatch { decoded: d, declared: n } =>
+      concat(
+        concat("decoded ", to_string(d)),
+        concat(" diagnostic line(s) against a compiler-declared total of ", to_string(n))
+      )
+    EmitAnchorDuplicated { anchor: a, count: n } =>
+      concat(
+        concat("gunbc compile printed its ", emit_summary_anchor_name(anchor: a)),
+        concat(
+          concat(" summary line ", to_string(n)),
+          " times in one output — one population with more than one account of itself, and taking the last would discard the others without a diagnostic"
+        )
+      )
+    EmitOutputTruncated { extent: e } =>
+      concat(
+        concat(
+          concat("the compiler's stderr reached this decode TRUNCATED: the host retained ", to_string(byte_size_count(e.retained))),
+          concat(" of ", concat(to_string(byte_size_count(e.total)), " byte(s), discarding "))
+        ),
+        concat(
+          to_string(capture_overage_bytes(extent: e)),
+          " byte(s) from the HEAD of the stream, including the entry-scope marker. The v1 host retains a bounded tail (bounded_shell_host_drain.rs DEFAULT_SHELL_STDERR_TAIL_BYTES). This is a limit of the instrument's capture and says nothing about the subject: no population may be reported from a stream of unknown extent, and no value of the tail bound fixes it, because the marker's distance from the tail is the subject's total output"
+        )
+      )
+    EmitScopeUnconfirmed =>
+      "gunbc compile did not report a reference-derived closure, so the compile this output describes cannot be established as scoped to the requested entry — a whole-tree population reported as one entry's is the substitution this decode refuses, and `--entry` is carried only by the hand-maintained main.rs rather than by the .dag authority"
+    EmitSummaryDisagreement { compiled_total: c, severity_total: s } =>
+      concat(
+        concat("the compiler's own two totals disagree: `compiled:` says ", to_string(c)),
+        concat(" and the rendered severity summary says ", to_string(s))
+      )
+  }
+}

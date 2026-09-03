@@ -1,5 +1,6 @@
 module v2.extdeps.languages.machine_code
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.grammar {
   StampClass,
   StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
@@ -16,8 +17,9 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List, Map }
+import std.algebra { Empty }
+import v2.std.algebra { list_map }
+import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert }
 import v2.std.machine { Byte }
 import v2.std.text { String }
 import v2.std.model_core {
@@ -29,11 +31,9 @@ import v2.std.model_core {
   ModelCoreFactAxisOverflowDisposition,
   ModelCoreFactAxisSignedness,
   ModelCoreFactAxisSurfaceSpelling,
-  primitive_fact_axis_unbound_diagnostic,
   ModelCoreFactAxisWidth
 }
-import v2.std.witness { Holds, Violates }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 type Isa
   = X86_64Isa { revision: Symbol }
@@ -310,7 +310,7 @@ fn mc_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -368,30 +368,32 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
         target: mc_inhabitant_atom(id: facts.std_projection)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
 fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          Holds { value: mc_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          Holds { value: mc_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          Holds { value: mc_int_kind_node(kind: facts.kind) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          Holds { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          Holds { value: mc_overflow_node(overflow: facts.overflow_release) }
-      } else {
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            empty_map(),
+            discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+            mc_inhabitant_atom(id: facts.surface_spelling)
+          ),
+          discriminant(v: ModelCoreFactAxisWidth {}),
+          mc_int_width_node(width: facts.width)
+        ),
+        discriminant(v: ModelCoreFactAxisSignedness {}),
+        mc_int_kind_node(kind: facts.kind)
+      ),
+      discriminant(v: ModelCoreFactAxisEncoding {}),
+      mc_inhabitant_atom(id: ^mc_repr_twos_complement)
+    ),
+    discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+    mc_overflow_node(overflow: facts.overflow_release)
+  )
 }
 
 fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -> PrimitiveFactBundle {
@@ -402,19 +404,12 @@ fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -
 }
 
 fn mc_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  fold_list(
-    xs: mc_integer_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(
-        xs: acc,
-        item: mc_primitive_bundle_from_integer_facts(facts: facts)
-      )
-    }
-  )
+  list_map(xs: mc_integer_facts_catalog, f: fn(facts) {
+    mc_primitive_bundle_from_integer_facts(facts: facts)
+  })
 }
 
-fn machine_code_model_core_wave1() -> ModelCore {
+fn machine_code_model_core() -> ModelCore {
   ModelCore {
     primitives: mc_primitive_bundles_from_integer_catalog(),
     inhabitance: [],
@@ -431,7 +426,7 @@ fn machine_code_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn machine_code_wave1_lex(token_class: Symbol, spelling: String) -> LexRules {
+fn machine_code_lex(token_class: Symbol, spelling: String) -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -442,7 +437,7 @@ fn machine_code_wave1_lex(token_class: Symbol, spelling: String) -> LexRules {
   }
 }
 
-fn machine_code_wave1_grammar(
+fn machine_code_grammar(
   production_name: Symbol,
   token_class: Symbol,
   emitted_identity: Symbol
@@ -461,19 +456,19 @@ fn machine_code_wave1_grammar(
   }
 }
 
-fn machine_code_wave1_formal_production(production_name: Symbol, token_class: Symbol) -> FormalProduction {
+fn machine_code_formal_production(production_name: Symbol, token_class: Symbol) -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: production_name),
     rhs: [grammar_formal_terminal(identity: token_class)]
   }
 }
 
-fn machine_code_x86_64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: ^machine_code_token_x86_64_nop, spelling: "nop")
+fn machine_code_x86_64_lex() -> LexRules {
+  machine_code_lex(token_class: ^machine_code_token_x86_64_nop, spelling: "nop")
 }
 
-fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
-  machine_code_wave1_grammar(
+fn machine_code_x86_64_grammar() -> ParseGrammar {
+  machine_code_grammar(
     production_name: ^machine_code_production_x86_64_nop,
     token_class: ^machine_code_token_x86_64_nop,
     emitted_identity: ^machine_code_surface_x86_64_nop_instruction
@@ -482,8 +477,8 @@ fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
 
 fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: machine_code_x86_64_wave1_lex(),
-    grammar: machine_code_x86_64_wave1_grammar()
+    lex: machine_code_x86_64_lex(),
+    grammar: machine_code_x86_64_grammar()
   }
 }
 
@@ -492,7 +487,7 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: machine_code_x86_64_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "nop",
-      production: machine_code_wave1_formal_production(
+      production: machine_code_formal_production(
         production_name: ^machine_code_production_x86_64_nop,
         token_class: ^machine_code_token_x86_64_nop
       ),
@@ -501,12 +496,12 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-fn machine_code_aarch64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: ^machine_code_token_aarch64_nop, spelling: "nop")
+fn machine_code_aarch64_lex() -> LexRules {
+  machine_code_lex(token_class: ^machine_code_token_aarch64_nop, spelling: "nop")
 }
 
-fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
-  machine_code_wave1_grammar(
+fn machine_code_aarch64_grammar() -> ParseGrammar {
+  machine_code_grammar(
     production_name: ^machine_code_production_aarch64_nop,
     token_class: ^machine_code_token_aarch64_nop,
     emitted_identity: ^machine_code_surface_aarch64_nop_instruction
@@ -515,8 +510,8 @@ fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
 
 fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: machine_code_aarch64_wave1_lex(),
-    grammar: machine_code_aarch64_wave1_grammar()
+    lex: machine_code_aarch64_lex(),
+    grammar: machine_code_aarch64_grammar()
   }
 }
 
@@ -525,7 +520,7 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: machine_code_aarch64_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "nop",
-      production: machine_code_wave1_formal_production(
+      production: machine_code_formal_production(
         production_name: ^machine_code_production_aarch64_nop,
         token_class: ^machine_code_token_aarch64_nop
       ),
@@ -534,12 +529,12 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-fn machine_code_riscv64_wave1_lex() -> LexRules {
-  machine_code_wave1_lex(token_class: ^machine_code_token_riscv64_nop, spelling: "nop")
+fn machine_code_riscv64_lex() -> LexRules {
+  machine_code_lex(token_class: ^machine_code_token_riscv64_nop, spelling: "nop")
 }
 
-fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
-  machine_code_wave1_grammar(
+fn machine_code_riscv64_grammar() -> ParseGrammar {
+  machine_code_grammar(
     production_name: ^machine_code_production_riscv64_nop,
     token_class: ^machine_code_token_riscv64_nop,
     emitted_identity: ^machine_code_surface_riscv64_nop_instruction
@@ -548,8 +543,8 @@ fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
 
 fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: machine_code_riscv64_wave1_lex(),
-    grammar: machine_code_riscv64_wave1_grammar()
+    lex: machine_code_riscv64_lex(),
+    grammar: machine_code_riscv64_grammar()
   }
 }
 
@@ -558,7 +553,7 @@ fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: machine_code_riscv64_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "nop",
-      production: machine_code_wave1_formal_production(
+      production: machine_code_formal_production(
         production_name: ^machine_code_production_riscv64_nop,
         token_class: ^machine_code_token_riscv64_nop
       ),

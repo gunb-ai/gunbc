@@ -1,0 +1,150 @@
+module extdeps.tools.sha256sum
+
+import std.types { NonEmptyStr, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/coreutils.html"
+  }
+}
+
+// The FIPS 180-4 algorithm citation is CONSUMED from extdeps.crypto.hash
+// extdeps_external_authority_anchor, never re-minted here (DESIGN §3 single authority). This
+// module's own extdeps_external_authority_anchor is the coreutils manual — the tool that prints
+// the digest — which is a different upstream subject from the algorithm it implements, so those
+// two rows are distinct facts rather than a nickname pair. A local sha256_algorithm_authority row
+// previously re-declared FIPS 180-4 here and was DELETED (review 55859); review 50411 had already
+// refused the identical fork in the sibling extdeps.tools.sha512sum, which records the same
+// consume rule. THE FORK HAD ALREADY DRIFTED, which is the argument for deleting rather than
+// reconciling: the local row read csrc.nist.gov/pubs/fips/180-4/final while the owning row reads
+// csrc.nist.gov/pubs/fips/180-4/upd1/final, so the two spellings of one citation had begun to
+// disagree about which revision of the standard is cited — exactly the decay §3 predicts and the
+// reason a second name for one fact is a correctness concern rather than a style one.
+//
+// NOT DONE HERE, and named rather than left implied: this module carries no ExternalModelScope, so
+// unlike sha512sum there is no further_citations slot to carry the consumed citation structurally.
+// Declaring one is a modeling act on this module's own subject rather than part of removing the
+// fork, so it stays with this module's owner.
+data sha256sum_cli_tool: CliTool = CliTool {
+  name: "sha256sum",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+// DigestFile DIGESTS a file rather than verifying it against one a caller already has. CheckFile
+// answers "does this file match this digest", which cannot be used to LEARN a digest: a caller that
+// wants to record which bytes it actually ran has nothing to compare against yet. coreutils prints
+// `<digest>  <path>` on stdout, so the reading is the first whitespace-delimited field.
+service sha256sum.Sha256 {
+  operation DigestFile {
+    input { path: NonEmptyStr }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["sha256sum", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "sha256sum could not read the file"
+    }
+  }
+
+  operation CheckFile {
+    input { checksum_file: NonEmptyStr }
+    output { matches: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["sha256sum", "--check", "--status", "{checksum_file}"] }
+    exit {
+      0 => Unit "checksum matches"
+      nonzero => Unit "checksum mismatch or file missing"
+    }
+  }
+}
+
+// DESIGN §3 shape/transport/policy split: Sha256Verify(path, expected_digest) is the interface
+// shape, cited to extdeps.crypto.hash extdeps_external_authority_anchor (FIPS 180-4 — the SHA-256
+// algorithm itself, not a particular CLI, and consumed from the module that owns that citation
+// rather than re-minted here). sha256sum_verify_via_shell is ONE transport handler realizing that
+// shape via the coreutils sha256sum CLI (sha256sum_cli_tool / CheckFile above); a future
+// native/library digest realization is another handler bound to the same shape, not a rewrite.
+
+type Sha256VerifyVerdict
+  = Sha256Matches
+  | Sha256Mismatch
+  | Sha256VerifyInfraFailure { reason: NonEmptyStr }
+
+// Sha256VerifyInfraFailure is DESIGN §5 state-space de-conflation (cursor review, PR #6596):
+// mktemp/checksum-file-write failures are environment/tooling failures, not evidence about path's
+// digest, so they must not collapse into Sha256Mismatch alongside a genuine sha256sum mismatch - a
+// caller that surfaces Sha256Mismatch as HashMismatchRefusal would otherwise mislabel a broken
+// mktemp as a corrupted download.
+
+data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
+    reason: "Sha256VerifyVerdict|transport:shell-only",
+    dissolution: unbound_dissolution(description: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"),
+  )
+]
+
+// sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely.
+// THE READING, and its absence is a refusal rather than an empty digest. A digest that could not
+// be taken is not the digest of nothing: an artifact whose bytes were never observed must not be
+// recorded as though they were, which is the whole point of carrying a digest in a provenance
+// receipt at all.
+type Sha256FileDigest
+  = Sha256FileDigest { digest: Digest }
+  | Sha256FileDigestUnavailable { path: NonEmptyStr, reason: String }
+
+fn sha256sum_file_digest_via_shell(path: NonEmptyStr) -> Sha256FileDigest {
+  let observed = sha256sum.Sha256.DigestFile(path: path)
+  if observed.success == false {
+    Sha256FileDigestUnavailable { path: path, reason: "sha256sum could not read the file" }
+  } else {
+    match get(xs: split(s: trim(s: observed.line), delimiter: " "), index: 0) {
+      Absent =>
+        Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed no digest field" }
+      Present { value: hex } =>
+        if hex.length() == 0 {
+          Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed an empty digest field" }
+        } else {
+          Sha256FileDigest { digest: sha256_digest(hex: hex as NonEmptyStr) }
+        }
+    }
+  }
+}
+
+fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -> Sha256VerifyVerdict {
+  let checksum_dir = shell.Mktemp.Dir()
+  if checksum_dir.success == false {
+    Sha256VerifyInfraFailure { reason: "mktemp -d failed" as NonEmptyStr }
+  } else {
+    let checksum_path = concat(checksum_dir.path as String, "/checksum") as NonEmptyStr
+    let checksum_line = concat(expected_digest as String, concat("  ", path as String))
+    let wrote = Filesystem.Write(path: checksum_path as String, content: checksum_line)
+    if wrote.success == false {
+      let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
+      Sha256VerifyInfraFailure { reason: "checksum file write failed" as NonEmptyStr }
+    } else {
+      let checked = sha256sum.Sha256.CheckFile(checksum_file: checksum_path, expect: OutcomeIsData)
+      let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
+      if checked.matches {
+        Sha256Matches
+      } else {
+        Sha256Mismatch
+      }
+    }
+  }
+}

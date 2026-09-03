@@ -1,0 +1,4 @@
+module std.rational
+
+
+type Rational = Field<FieldOfFractions<Int>>

@@ -1,0 +1,33 @@
+module std.perturbation
+
+
+type PerturbationReading
+  = ForwardSameInSameOut
+  | BackwardDiffInDiffOut
+
+type PerturbationVerdict
+  = ResponseConsistent
+  | ResponseViolation
+
+fn perturbation_verdict(reading: PerturbationReading, output_responded: Bool) -> PerturbationVerdict {
+  match reading {
+    ForwardSameInSameOut =>
+      if output_responded { ResponseViolation } else { ResponseConsistent }
+    BackwardDiffInDiffOut =>
+      if output_responded { ResponseConsistent } else { ResponseViolation }
+  }
+}
+
+fn perturbation_is_violation(reading: PerturbationReading, output_responded: Bool) -> Bool {
+  match perturbation_verdict(reading: reading, output_responded: output_responded) {
+    ResponseViolation => true
+    ResponseConsistent => false
+  }
+}
+
+fn perturbation_consistent(reading: PerturbationReading, output_responded: Bool) -> Bool {
+  match perturbation_verdict(reading: reading, output_responded: output_responded) {
+    ResponseConsistent => true
+    ResponseViolation => false
+  }
+}

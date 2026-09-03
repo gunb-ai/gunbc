@@ -1,0 +1,256 @@
+module gunbc.endpoint_authority_replacement_cut
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.replacement_cut {
+  ReplacementCutId,
+  CoverageOpen,
+  ConsumerDisposition, RetainChangedContract,
+  BoundaryConsumer,
+  BoundaryCensus, ConsumersEnumerated,
+  HigherBoundaryAnswer, DescentParentUnauthored,
+  EvidenceDisposition, ReplaceEvidence, RetireEvidence,
+  ExternalXAnswer, NoExternalOracleRequired,
+  ReplacementCut,
+  PlanAdmission,
+  admit_replacement_cut_plan,
+  CutRegistration, RegisteredExactCut,
+}
+
+// THE FIRST CUT AUTHORED AT EXACT DECLARATION GRAIN. X is the router-backed endpoint projection;
+// Y is an endpoint derived from the fleet attachment authority whose ABSENCE IS REPRESENTABLE.
+//
+// THE CONTRACT CHANGE IS THE POINT, and it is not "same endpoint API, different table underneath".
+// spark_endpoint_for_binding returns none for SlotUnassigned, but fleet_probe_endpoint_for folds
+// with the input hostname as its init and maps Absent => acc -- so a matching unassigned Spark
+// returns the literal "srv5" or "srv6" rather than an absent endpoint, and fleet_probe_target_for
+// then builds ProbeTargetReady out of that total String. Its EndpointUnobserved cause is therefore
+// not reachable through this path at all. X is a total String projection that silently swallows
+// absence, and BOTH endpoint functions are X for that reason.
+//
+// WHY THE HELPER IS IN THE REGION DESPITE CONTRIBUTING NO BOUNDARY: boundary size is not the
+// criterion for region membership. covered_region is the X implementation that leaves at cutover,
+// and spark_endpoint_for_binding takes a DgxSparkRouterBinding and projects a reservation address --
+// it is router-specific with no terminal role once attachment authority lands. Leaving it behind
+// would preserve a dead X vocabulary and the fixture population that keeps that vocabulary looking
+// active. Measured: outside its defining module it is reached only from the witness carrier.
+// Slice 0A of the router-authority migration. THIS PLAN IS EXPECTED TO REFUSE, and the refusal is
+// the deliverable rather than a defect: every surviving consumer is RetainChangedContract with
+// CoverageOpen, because Y -- the attachment-backed endpoint authority -- does not exist yet. Naming
+// a coverage authority anyway would be the fallback-wearing-a-disposition move the carrier refuses.
+// Per the Slice 0 ruling, PlanRefused with pinned CoverageOpen causes is a valid 0A result;
+// weakening the plan to make it admit would destroy the point of the carrier. THE POPULATION IS NOT
+// EXACT AND THIS ROW DOES NOT CLAIM IT IS: the honest 0A standing is an exact-GRAIN authored prior
+// with population observation UNAVAILABLE, since the join that would establish exactness is 0B and
+// does not exist.
+//
+// CENSUS GRAIN: consuming DECLARATION x consumed-authority DECLARATION, measured on the tree rather
+// than surveyed at module grain. The measurement found three things a module-grain read reports
+// wrongly. FIRST, gunbc.fleet_multi_principal_probe and gunbc.spark.managed_access_apply each
+// contain FOUR and TWO consuming declarations respectively -- one module is not one consumer, which
+// is exactly why the relation is keyed at declaration grain. SECOND, two apparent hits in
+// gunbc.spark.serving_converge_slice_wet are not consumers at all:
+// spark_serving_converge_slice_wet_note names the authority in prose, and
+// spark_serving_converge_slice_emit_receipt embeds the literal text
+// `address_authority=fleet_probe_endpoint_for` inside a RENDERED RECEIPT LINE. Neither is a
+// dependency edge; both are non-graph residue, and the receipt line is the more interesting one
+// because after the cut it would go on printing a claim about an authority that no longer decides
+// the address. THIRD, gunbc.host_reach_identity_probe imported fleet_probe_endpoint_for and never
+// called it -- a dead import that reads as a consumer at module grain and is not one at declaration
+// grain. It is deleted rather than dispositioned, because an unused import has no enclosing
+// declaration and so cannot inhabit this relation at all; modelling around dead code instead of
+// removing it would have put an unrepresentable row into the carrier's first exact census.
+//
+// WHAT THIS CENSUS IS NOT: it is an AUTHORED prior, not an observed population. The exact join that
+// would make it PopulationExact is Slice 0B and does not exist, so an omitted consumer remains
+// undetectable here exactly as the carrier's model note says. The region is expected to be
+// declaration-binding observable -- its two members are ordinary function declarations, and the
+// SlotAssigned/SlotUnassigned selectors inside spark_endpoint_for_binding point OUTWARD to
+// DgxSparkRouterBinding, which is outside the region and therefore not an inbound selector use of a
+// covered declaration -- but that expectation is pending the boundary producer and is not claimed
+// as established.
+
+data endpoint_authority_cut_identity: ReplacementCutId = "cut-router-endpoint-authority" as ReplacementCutId
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn endpoint_root() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for")
+}
+
+fn helper_root() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.fleet_reach_endpoint", decl_name: "spark_endpoint_for_binding")
+}
+
+// Every surviving consumer takes the same terminal contract, so it is stated once here rather than
+// copied per row: they stop receiving a total String that may be a hostname standing in for a
+// missing endpoint, and start receiving a resolved attachment endpoint or a typed refusal.
+fn survives_on_attachment_endpoint(justification: String) -> ConsumerDisposition {
+  RetainChangedContract {
+    terminal_contract: nes(s: "consumes a resolved attachment endpoint or a typed endpoint refusal, never a total String in which a hostname stands in for an absent endpoint"),
+    justification: nes(s: justification),
+    coverage: CoverageOpen,
+  }
+}
+
+fn endpoint_consumer(module_path: String, decl_name: String, justification: String) -> BoundaryConsumer {
+  BoundaryConsumer {
+    consumer: decl_ref(module_path: module_path, decl_name: decl_name),
+    consumed_old_authority: endpoint_root(),
+    disposition: survives_on_attachment_endpoint(justification: justification),
+  }
+}
+
+// The same-module consumer, and the most important row in the census. fleet_probe_target_for sits
+// OUTSIDE the two-member region and calls into it, so it crosses the boundary exactly like a caller
+// in another module -- a fact a module-grain census cannot express at all. It is also the consumer
+// whose contract change finally makes its own EndpointUnobserved cause constructible.
+fn same_module_consumer() -> List<BoundaryConsumer> {
+  [
+    endpoint_consumer(
+      module_path: "gunbc.fleet_reach_endpoint",
+      decl_name: "fleet_probe_target_for",
+      justification: "builds ProbeTargetReady from the endpoint; under Y its EndpointUnobserved arm becomes reachable for the first time, since today it receives a total String that cannot express absence",
+    ),
+  ]
+}
+
+fn external_consumers() -> List<BoundaryConsumer> {
+  [
+    endpoint_consumer(
+      module_path: "gunbc.fleet_host_key_enrollment",
+      decl_name: "scan_host_key_lines",
+      justification: "scans host keys at the endpoint; must scan at the attachment address",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.fleet_multi_principal_probe",
+      decl_name: "probe_leg",
+      justification: "probe transport endpoint",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.fleet_multi_principal_probe",
+      decl_name: "multi_principal_reach_line_agent_backed",
+      justification: "builds principal@endpoint for the reach leg",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.fleet_multi_principal_probe",
+      decl_name: "multi_principal_sudo_line_agent_backed",
+      justification: "builds principal@endpoint for the sudo leg",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.fleet_multi_principal_probe",
+      decl_name: "agent_backed_probe_success",
+      justification: "builds principal@endpoint for the success probe",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.fleet_ssh_locus",
+      decl_name: "fleet_locus_ssh_target",
+      justification: "ssh target addressing for the locus",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.spark.grant_privileged_operation",
+      decl_name: "classify_credential_read",
+      justification: "credential read transport endpoint",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.spark.managed_access_apply",
+      decl_name: "privileged_leg",
+      justification: "privileged leg transport endpoint",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.spark.managed_access_apply",
+      decl_name: "managed_principal_leg",
+      justification: "managed principal leg transport endpoint",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.spark.managed_grant_install",
+      decl_name: "spark_grant_install_transport",
+      justification: "grant install transport endpoint",
+    ),
+    endpoint_consumer(
+      module_path: "gunbc.spark.serving_converge_slice_wet",
+      decl_name: "spark_serving_converge_slice_wet_host_report",
+      justification: "wet slice host report addressing",
+    ),
+  ]
+}
+
+fn endpoint_authority_cut_consumers() -> List<BoundaryConsumer> {
+  concat(same_module_consumer(), external_consumers())
+}
+
+fn endpoint_authority_cut_region() -> List<DeclarationRef> {
+  [helper_root(), endpoint_root()]
+}
+
+// The witness carrier's declarations are EVIDENCE, not boundary population, and they need separate
+// dispositions even though they occupy one file. FOUR of them, not three: spark_endpoint_or_empty is
+// an ORDINARY declaration rather than a test fn, which is exactly why one witness FILE is not one
+// evidence subject. It sits outside the region and calls spark_endpoint_for_binding directly,
+// collapsing Absent to "" so the equality witness can compare two Strings -- so it retires with the
+// entry point it adapts.
+fn endpoint_authority_cut_evidence() -> List<EvidenceDisposition> {
+  [
+    ReplaceEvidence {
+      old_evidence: nes(s: "test.claim.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names"),
+      new_evidence: nes(s: "the same claim -- the fleet uses modeled endpoints rather than assuming Spark hostnames resolve -- read against the attachment authority instead of router reservations"),
+    },
+    ReplaceEvidence {
+      old_evidence: nes(s: "test.claim.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint"),
+      new_evidence: nes(s: "absence never becomes a fabricated endpoint, asserted against Y's typed endpoint-refusal arm; the old subject, an unassigned DgxSparkRouterBinding, retires with X"),
+    },
+    RetireEvidence {
+      evidence: nes(s: "test.claim.host_reach_identity_probe_witness spark_endpoint_or_empty"),
+      retired_subject: nes(s: "an Absent-to-empty-String adapter over spark_endpoint_for_binding"),
+      retirement_reason: nes(s: "its only role is adapting one of the two retiring X entry points for the equality witness that also retires. Under Y the absence it flattens is representable, so an adapter that erases it would reintroduce the defect the new contract exists to remove."),
+    },
+    RetireEvidence {
+      evidence: nes(s: "test.claim.host_reach_identity_probe_witness probe_endpoint_agrees_with_the_projection_it_consumes"),
+      retired_subject: nes(s: "agreement between the two X entry points fleet_probe_endpoint_for and spark_endpoint_for_binding"),
+      retirement_reason: nes(s: "its exact subject is agreement between two old entry points, added because those entry points once carried duplicate implementations. Y has ONE endpoint authority, so recreating a second entry point merely to retain this witness would preserve the defect shape the witness records. A single-authority witness for Y is new evidence for a surviving general invariant, not a continuation of this two-function equality claim."),
+    },
+  ]
+}
+
+fn endpoint_authority_cut_why_not_higher() -> HigherBoundaryAnswer {
+  DescentParentUnauthored {
+    intended_parent_boundary: nes(s: "fleet host addressing whose current authority is the home router"),
+    basis: nes(s: "the broader address-authority replacement has not been authored as a cut. No parent id is coined: a fabricated parent identity is false AND joins cleanly, which no reader can detect, and OutermostBoundary would mint a sealed plan asserting this boundary is outermost when arrival, slot allocation and deployment admission all still read router rows."),
+  }
+}
+
+// NOT HistoricalMeasurementSource, and the correction matters because the wrong answer contradicts
+// the region. An external X role is a role the COVERED X keeps playing after the cut, and the covered
+// X here is exactly the two endpoint-projection functions -- which this cut says have no terminal
+// role, which is the whole reason the helper is in the region. Historical router rows, old lease
+// observations and dated receipts do survive as history, but they are reservation-layer facts
+// outside this two-function region and belong to the residue program or the reservation cuts. Git
+// history needs no permission from a cut.
+fn endpoint_authority_cut_external_x() -> ExternalXAnswer {
+  NoExternalOracleRequired {
+    justification: nes(s: "the covered X is two endpoint-projection functions with no terminal role; nothing needs them as an oracle after the cut. Historical router and lease evidence survives under its own dispositions in the reservation-layer cuts, not as a surviving role for these functions."),
+  }
+}
+
+fn endpoint_authority_replacement_cut() -> ReplacementCut {
+  ReplacementCut {
+    identity: endpoint_authority_cut_identity,
+    old_root_consumer: nes(s: "gunbc.fleet_reach_endpoint router-backed endpoint projection"),
+    subject: nes(s: "the transport endpoint at which a fleet host is reached, for every reach-layer consumer: probe, collection, key scan, grant install and serving observation"),
+    contract: nes(s: "given a fleet host identity, yield the endpoint at which it is reached, or refuse; absence must be representable and must never be rendered as the host name"),
+    new_root: nes(s: "endpoint derived from the fleet attachment authority, with endpoint absence and refusal represented, and no router reservation or hostname fallback standing in for missing attachment state"),
+    why_not_higher: endpoint_authority_cut_why_not_higher(),
+    covered_region: endpoint_authority_cut_region(),
+    boundary_census: ConsumersEnumerated { consumers: endpoint_authority_cut_consumers() },
+    external_x: endpoint_authority_cut_external_x(),
+    evidence_dispositions: endpoint_authority_cut_evidence(),
+  }
+}
+
+fn endpoint_authority_cut_admission() -> PlanAdmission {
+  admit_replacement_cut_plan(cut: endpoint_authority_replacement_cut())
+}
+
+fn endpoint_authority_cut_registration() -> CutRegistration {
+  RegisteredExactCut { cut: endpoint_authority_replacement_cut() }
+}

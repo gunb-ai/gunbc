@@ -1,0 +1,1153 @@
+module gunbc.rust_item_scan
+
+import extdeps.languages.rust.syntax { rust_item_forms }
+import gunbc.rust_item_identity {
+  RustConst,
+  RustEnum,
+  RustFunction,
+  RustImplBlock,
+  RustImplMethod,
+  RustItemIdentity,
+  RustItemKind,
+  RustModule,
+  RustStatic,
+  RustStruct,
+  RustTrait,
+  RustTypeAlias,
+  rust_item_identity_key
+}
+import std.algebra { trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
+
+// WHY THIS READER EXISTS, AND WHAT CAPABILITY IT RESTORES.
+//
+// The item-grain census that gunbc.seed_growth_admission's completeness join needs had exactly one
+// realization -- scripts/rust_item_census.py -- and it was deleted by gunbc#9132 with the rest of
+// the measurement corpus. Nothing replaced it, so from 2026-08-24 there was NO ROUTE in this
+// repository to enumerate Rust items at identity grain. THAT DROP WAS NEVER DECLARED, and it could
+// not have been caught by the delete-first census DESIGN section 3 relies on: the census's
+// consumers were lanes rather than modules, so no dependent could refuse when it went. It is also
+// a live instance of DESIGN section 4b(3)'s own rule that a restoration trigger must name the
+// CAPABILITY -- rust_item_host_observation_scaffold_note's dissolution read "producer lands and
+// enrolls; Python script deleted", a conjunction whose second half an unrelated cut satisfied while
+// the producer never landed.
+//
+// THE DELETED SCRIPT'S DEFECT IS NOT REPRODUCED HERE, and that is the reason this is authored in
+// .dag rather than transliterated. Its ITEM_PATTERNS were a SECOND roster of Rust item keywords,
+// authored beside -- and independent of -- the grammar authority that already owns them. That is
+// the DESIGN section 3 nicknaming violation, and the census predicted its own failure from it:
+// gunbc.bare_reference_scanner_admission records the script over-reporting one diff by 100 percent,
+// counting nine fixture declarations authored inside Rust raw string literals as Rust items. Here
+// the item-keyword population is READ FROM extdeps.languages.rust.syntax rust_item_forms. There is
+// no second roster; a keyword the grammar authority does not carry is not an item here, by
+// construction rather than by diligence.
+//
+// WHAT THIS IS NOT: a Rust parser. No ingest grammar for Rust exists in this tree -- the rust
+// authority carries item FORMS and lexical spellings for emission, not a parse table -- so this
+// reader recognizes item HEADERS and their extents by scope depth over rustfmt-normalized source,
+// and REFUSES on any structural line it does not recognize. That refusal is what makes an
+// incomplete recognizer safe: incompleteness surfaces as a typed, located line-stop rather than as
+// a smaller population, which is the empty-observation narrow DESIGN section 5 forbids. It is also
+// what keeps the raw-string defect above from recurring in a new spelling: source inside a raw
+// string literal that reaches a scope boundary is not a recognized structural line, so it refuses
+// instead of minting a phantom item.
+// Item-grain reader over rustfmt-normalized Rust source. Item keywords are read from
+// extdeps.languages.rust.syntax rust_item_forms and are not re-coined; every structural line the
+// recognizer cannot classify is a typed, located refusal rather than a dropped line. Replaces the
+// deleted scripts/rust_item_census.py, whose regex ITEM_PATTERNS were the second roster this reader
+// refuses to author. THREE CONSTRUCTS ARE RECOGNIZED AS EXTENTS THAT DECLARE NOTHING -- a wrapped
+// use list, a wrapped attribute, and a macro invocation block -- because rustfmt continues each
+// past its first line and a reader that met the continuation at a scope boundary would refuse most
+// of the population it exists to census. A macro block additionally records its REGION: the grammar
+// authority carries no macro item form, so a declaration made by a macro cannot be named here, and
+// a changed line inside one is reported UNATTRIBUTED rather than file-level, because a static added
+// inside thread_local! is hand-Rust growth and file-level is the answer that would admit it
+// silently.
+
+// THE RECOGNIZER'S PRECONDITION IS A REPOSITORY FACT, NOT AN ASSUMPTION. Extents are decided by
+// scope depth: a scope opened at indent 4*d contains structural lines at indent 4*(d+1), and closes
+// at a line that is exactly a closing brace at its own indent. That is rustfmt's normal form, and
+// `cargo fmt --all --check` is a documented check over this tree, so the precondition is one the
+// repository already holds rather than one this reader hopes for. WHERE IT DOES NOT HOLD THE READER
+// REFUSES: a file whose bodies are not so normalized reaches a line it cannot classify and returns
+// RustFileScanRefused naming the line and its text. It never guesses an extent, because a guessed
+// extent silently mis-attributes a changed line to the wrong item -- the one failure mode that
+// would let the admission join report green over an unenumerated addition.
+
+// INLINE MODULES ARE SCOPES, NOT LEAVES, because the citation vocabulary already treats them that
+// way. gunbc.declaration_index_seed_growth cites seven declarations under
+// v1_compiler.cli_run.bare_reference_scanner_tests -- an inline `mod` inside cli_run.rs whose
+// members are cited individually. A reader that recorded the mod as one opaque item would make
+// those seven citations unjoinable, so the scan descends and each item carries the dotted path of
+// its enclosing inline modules. An impl block inside a module nests the same way; a method's
+// impl_subject comes from the nearest enclosing impl, never from a module.
+
+// FOUR SCOPES THAT RECORD NOTHING SIT BESIDE THE THREE THAT DO, and each exists because rustfmt
+// wraps a construct across lines that this reader would otherwise meet at a scope boundary and
+// refuse. A `use` list, a derive attribute and a macro invocation all continue past their first
+// line; none of them is an item, so none records one. Measured on the seed's hand-maintained Rust
+// before they existed, wrapped `use` lists alone refused 58 files -- a recognizer safe enough to be
+// useless, which is the failure mode a fail-closed reader has to be watched for.
+type RustScanScope
+  = ModuleScope { module_name: String, start_line: Int }
+  | UseScope { start_line: Int }
+  | AttributeScope { start_line: Int }
+  | MacroScope { macro_name: String, start_line: Int }
+  | ImplScope { impl_subject: String, start_line: Int }
+  | ItemScope {
+      kind: RustItemKind,
+      item_name: String,
+      impl_subject: String,
+      enclosing_module: String,
+      start_line: Int,
+      raw_terminator: String
+    }
+
+// A MACRO INVOCATION'S BLOCK IS AN EXTENT WITH NO ITEM, AND A CHANGE INSIDE IT IS UNATTRIBUTED.
+//
+// `thread_local! { static … }` and `macro_rules! name { … }` declare real things, and this reader
+// cannot name them: the grammar authority carries no macro item form, and inventing one here would
+// be the second roster this module exists not to author. Recognizing the EXTENT keeps the file
+// scannable -- cli_run.rs itself carries a thread_local! block, and refusing the whole file for it
+// would put the most important subject of the census permanently out of reach. Reporting a change
+// inside it as file-level would be the fail-open: a static added inside thread_local! is hand-Rust
+// growth. So the region is recorded, a changed line inside it is UNATTRIBUTED, and the admission
+// join stops the line. Named ceiling, not silence.
+type RustMacroRegion {
+  macro_name: String
+  start_line: Int
+  loc: Int
+}
+
+type RustLineAttribution
+  = AttributedToItem { item_key: String }
+  | AttributedToFileLevel
+  | AttributedToUnnamedMacroBlock { macro_name: String, line: Int }
+  | AttributionOutOfRange { line: Int, line_count: Int }
+
+type RustFileScan
+  = RustFileScanned {
+      repo_path: String,
+      items: List<RustItemIdentity>,
+      macro_regions: List<RustMacroRegion>,
+      line_count: Int
+    }
+  | RustFileScanRefused {
+      repo_path: String,
+      line: Int,
+      line_text: String,
+      detail: String
+    }
+
+type RustScanState {
+  repo_path: String
+  line_number: Int
+  items: List<RustItemIdentity>
+  macro_regions: List<RustMacroRegion>
+  scopes: List<RustScanScope>
+  attach_start: Int
+  refusal_line: Int
+  refusal_text: String
+  refusal_detail: String
+}
+
+fn rust_item_keywords() -> List<String> {
+  list_map(xs: rust_item_forms, f: fn(form) { form.keyword })
+}
+
+fn rust_keyword_is_item_form(word: String) -> Bool {
+  any(xs: rust_item_keywords(), predicate: fn(k) { k == word })
+}
+
+// TOTAL OVER THE AUTHORITY'S KEYWORDS AND OVER NOTHING ELSE. std.syntax ItemFormKind collapses
+// trait, impl, const and static into OtherForm, so the kind cannot be read off the form's kind
+// field alone; the keyword decides. Membership still comes from the authority -- every caller has
+// already asked rust_keyword_is_item_form -- so this never widens the population, it only names
+// what the authority admitted. rust_item_kind_keyword_mapping_is_total is the executing evidence
+// that the two stay in step: a keyword added to the grammar authority and not named here reds it,
+// rather than silently acquiring a plausible kind.
+fn rust_item_kind_for_keyword(word: String) -> RustItemKind {
+  if word == "fn" { RustFunction }
+  else if word == "struct" { RustStruct }
+  else if word == "enum" { RustEnum }
+  else if word == "type" { RustTypeAlias }
+  else if word == "trait" { RustTrait }
+  else if word == "impl" { RustImplBlock }
+  else if word == "mod" { RustModule }
+  else if word == "static" { RustStatic }
+  else { RustConst }
+}
+
+fn rust_item_kind_mapping_named_keywords() -> List<String> {
+  ["fn", "struct", "enum", "type", "trait", "impl", "mod", "static", "const"]
+}
+
+fn rust_item_kind_keyword_mapping_is_total() -> Bool {
+  fold_list(
+    xs: rust_item_keywords(),
+    empty: true,
+    cons: fn(ok, k) {
+      ok && any(xs: rust_item_kind_mapping_named_keywords(), predicate: fn(n) { n == k })
+    }
+  )
+}
+
+fn char_is_ident(c: String) -> Bool {
+  (c >= "a" && c <= "z")
+    || (c >= "A" && c <= "Z")
+    || (c >= "0" && c <= "9")
+    || c == "_"
+}
+
+fn leading_ident_from(s: String, at: Int, acc: String) -> String {
+  if at >= string_length(s: s) {
+    acc
+  } else {
+    let c = char_at(s: s, pos: at)
+    if char_is_ident(c: c) {
+      leading_ident_from(s: s, at: at + 1, acc: concat(acc, c))
+    } else {
+      acc
+    }
+  }
+}
+
+fn leading_ident(s: String) -> String {
+  leading_ident_from(s: s, at: 0, acc: "")
+}
+
+fn drop_prefix_length(s: String, n: Int) -> String {
+  if n >= string_length(s: s) { "" } else { substring(s: s, start: n, end: string_length(s: s)) }
+}
+
+fn indent_width_from(s: String, at: Int) -> Int {
+  if at >= string_length(s: s) {
+    at
+  } else if char_at(s: s, pos: at) == " " {
+    indent_width_from(s: s, at: at + 1)
+  } else {
+    at
+  }
+}
+
+fn indent_width(s: String) -> Int {
+  indent_width_from(s: s, at: 0)
+}
+
+fn scan_past_char_from(s: String, at: Int, target: String) -> Int {
+  if at >= string_length(s: s) {
+    at
+  } else if char_at(s: s, pos: at) == target {
+    at + 1
+  } else {
+    scan_past_char_from(s: s, at: at + 1, target: target)
+  }
+}
+
+data rust_item_modifier_words: List<String> = ["pub", "async", "unsafe", "extern", "default"]
+
+fn word_is_item_modifier(word: String) -> Bool {
+  any(xs: rust_item_modifier_words, predicate: fn(m) { m == word })
+}
+
+// `const` IS THE ONE SPELLING THAT IS BOTH A MODIFIER AND AN ITEM KEYWORD. It opens a constant on
+// its own and modifies a function when `fn` follows, so the peel consults the NEXT word rather than
+// the current one. Getting this wrong in either direction is a silent mis-classification -- `const
+// fn foo` recorded as a constant named `fn`, or `const C` dropped entirely -- so the discriminating
+// pair is authored as a witness rather than argued for here.
+fn peel_item_modifiers(s: String, fuel: Int) -> String {
+  if fuel <= 0 {
+    s
+  } else {
+    let t = trim(s: s)
+    if starts_with(s: t, prefix: "pub(") {
+      peel_item_modifiers(
+        s: drop_prefix_length(s: t, n: scan_past_char_from(s: t, at: 0, target: ")")),
+        fuel: fuel - 1
+      )
+    } else if starts_with(s: t, prefix: "\"") {
+      peel_item_modifiers(
+        s: drop_prefix_length(s: t, n: scan_past_char_from(s: t, at: 1, target: "\"")),
+        fuel: fuel - 1
+      )
+    } else {
+      let w = leading_ident(s: t)
+      if w == "const" {
+        let rest = trim(s: drop_prefix_length(s: t, n: string_length(s: w)))
+        if leading_ident(s: rest) == "fn" { peel_item_modifiers(s: rest, fuel: fuel - 1) } else { t }
+      } else if word_is_item_modifier(word: w) {
+        peel_item_modifiers(s: drop_prefix_length(s: t, n: string_length(s: w)), fuel: fuel - 1)
+      } else {
+        t
+      }
+    }
+  }
+}
+
+fn peeled_item_head(text: String) -> String {
+  peel_item_modifiers(s: text, fuel: 8)
+}
+
+// THE IMPL SUBJECT IS THE TEXT THE CITATION VOCABULARY ALREADY USES. The uncitable item this
+// repository has carried in prose since the Cargo-manifest bridge is spelled
+// "std::fmt::Display for Stage0CargoBinManifestParseRefusal", so the subject recovered here is the
+// header text after `impl` and its generics with the body brace and any where-clause removed --
+// exactly that string. Recovering some other normal form would fork one identity into two
+// spellings that coincide only until someone edits either.
+fn strip_impl_generics(s: String) -> String {
+  let t = trim(s: s)
+  if starts_with(s: t, prefix: "<") {
+    trim(s: drop_prefix_length(s: t, n: scan_past_char_from(s: t, at: 0, target: ">")))
+  } else {
+    t
+  }
+}
+
+fn trim_trailing_marker(s: String, marker: String) -> String {
+  let t = trim(s: s)
+  let n = string_length(s: t)
+  let m = string_length(s: marker)
+  if n >= m && substring(s: t, start: n - m, end: n) == marker {
+    trim(s: substring(s: t, start: 0, end: n - m))
+  } else {
+    t
+  }
+}
+
+fn impl_subject_from_head(rest: String) -> String {
+  let without_generics = strip_impl_generics(s: rest)
+  let without_brace = trim_trailing_marker(
+    s: trim_trailing_marker(s: without_generics, marker: "{"),
+    marker: ";"
+  )
+  trim_trailing_marker(s: without_brace, marker: "where")
+}
+
+fn line_is_blank(text: String) -> Bool {
+  trim(s: text) == ""
+}
+
+fn line_is_attribute_or_comment(text: String) -> Bool {
+  let t = trim(s: text)
+  starts_with(s: t, prefix: "#[")
+    || starts_with(s: t, prefix: "#![")
+    || starts_with(s: t, prefix: "//")
+}
+
+fn line_is_file_level_declaration(text: String) -> Bool {
+  let w = leading_ident(s: peeled_item_head(text: text))
+  w == "use" || w == "crate"
+}
+
+// A HEADER CLOSES ON ITS OWN LINE when it carries no block that outlives it: a `;`-terminated
+// declaration, or a whole item written on one line. Otherwise it opens a scope that closes at a
+// brace at its own indent. There is no third case, and a line matching neither at a scope boundary
+// is exactly the state this reader refuses on.
+fn head_closes_on_its_own_line(text: String) -> Bool {
+  let t = trim(s: text)
+  let n = string_length(s: t)
+  if n == 0 {
+    true
+  } else {
+    let last = substring(s: t, start: n - 1, end: n)
+    last == ";" || (last == "}" && string_contains(s: t, pattern: "{"))
+  }
+}
+
+fn ends_with(s: String, suffix: String) -> Bool {
+  let n = string_length(s: s)
+  let m = string_length(s: suffix)
+  n >= m && substring(s: s, start: n - m, end: n) == suffix
+}
+
+fn hash_run_from(s: String, at: Int, acc: Int) -> Int {
+  if at >= string_length(s: s) {
+    acc
+  } else if char_at(s: s, pos: at) == "#" {
+    hash_run_from(s: s, at: at + 1, acc: acc + 1)
+  } else {
+    acc
+  }
+}
+
+fn repeat_hashes(n: Int, acc: String) -> String {
+  if n <= 0 { acc } else { repeat_hashes(n: n - 1, acc: concat(acc, "#")) }
+}
+
+// A RAW STRING IS THE ONE CONSTRUCT THAT PUTS ARBITRARY TEXT AT A SCOPE BOUNDARY, and it is the
+// exact construct the deleted census misread: gunbc.bare_reference_scanner_admission records it
+// counting nine .dag declarations authored inside Rust raw string literals as Rust items. The
+// terminator is recovered from the opening delimiter's own hash count -- which is what makes the
+// literal self-describing and the recovery decidable rather than a guess -- and while it is open
+// every line is skipped, so no text inside a literal can be read as structure.
+//
+// WHAT THIS DOES NOT COVER, named rather than left to be found: a raw string opened INSIDE a body
+// rather than on the item's own header line. Its content is body text at a deeper indent and is
+// skipped like any body line; it only matters if that content reaches the item's own indent AND
+// matches the close test below. The close test is deliberately narrow for that reason, and a
+// premature close leaves the remaining literal text at a scope boundary, where it is not a
+// recognized structural line and the file REFUSES. So the residual failure mode is a refusal, not
+// a silent mis-attribution. The next rung is a modeled Rust lexer, at which point this whole
+// recognizer deletes in its favour.
+fn raw_string_open_terminator_from(s: String, at: Int) -> String {
+  if at >= string_length(s: s) {
+    ""
+  } else if char_at(s: s, pos: at) != "r" {
+    raw_string_open_terminator_from(s: s, at: at + 1)
+  } else {
+    let hashes = hash_run_from(s: s, at: at + 1, acc: 0)
+    if at + 1 + hashes < string_length(s: s)
+      && char_at(s: s, pos: at + 1 + hashes) == "\"" {
+      concat("\"", repeat_hashes(n: hashes, acc: ""))
+    } else {
+      raw_string_open_terminator_from(s: s, at: at + 1)
+    }
+  }
+}
+
+fn raw_string_terminator(text: String) -> String {
+  let opened = raw_string_open_terminator_from(s: text, at: 0)
+  if opened == "" {
+    ""
+  } else {
+    let after_open = drop_prefix_length(
+      s: text,
+      n: scan_past_char_from(s: text, at: 0, target: "\"")
+    )
+    if string_contains(s: after_open, pattern: opened) { "" } else { opened }
+  }
+}
+
+fn scan_top_raw_terminator(scopes: List<RustScanScope>) -> String {
+  fold_list(
+    xs: list_last_scope(xs: scopes),
+    empty: "",
+    cons: fn(_acc, scope) {
+      match scope {
+        ItemScope {
+          kind: _,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_terminator: raw
+        } => raw
+        ModuleScope { module_name: _, start_line: _ } => ""
+        ImplScope { impl_subject: _, start_line: _ } => ""
+        UseScope { start_line: _ } => ""
+        AttributeScope { start_line: _ } => ""
+        MacroScope { macro_name: _, start_line: _ } => ""
+      }
+    }
+  )
+}
+
+fn scan_state_clear_raw(state: RustScanState) -> RustScanState {
+  fold_list(
+    xs: list_last_scope(xs: state.scopes),
+    empty: state,
+    cons: fn(_acc, scope) {
+      match scope {
+        ItemScope {
+          kind: kind,
+          item_name: name,
+          impl_subject: subject,
+          enclosing_module: enclosing,
+          start_line: start,
+          raw_terminator: _
+        } =>
+          scan_state_of(
+            state: state,
+            items: state.items,
+            scopes: list_snoc_item(
+              xs: list_drop_last(xs: state.scopes),
+              item: ItemScope {
+                kind: kind,
+                item_name: name,
+                impl_subject: subject,
+                enclosing_module: enclosing,
+                start_line: start,
+                raw_terminator: ""
+              }
+            ),
+            attach_start: state.attach_start
+          )
+        ModuleScope { module_name: _, start_line: _ } => state
+        ImplScope { impl_subject: _, start_line: _ } => state
+        UseScope { start_line: _ } => state
+        AttributeScope { start_line: _ } => state
+        MacroScope { macro_name: _, start_line: _ } => state
+      }
+    }
+  )
+}
+
+// AN ITEM CLOSES AT ITS OWN INDENT ON A LINE THAT ENDS THE DECLARATION, and the test admits exactly
+// two shapes because rustfmt produces exactly two. A block item ends on a line beginning with its
+// closing brace -- `}` for a struct or a fn, `});` for a static built from a closure, `];` for a
+// slice literal, all of which begin with the brace or bracket that opened them; a declaration
+// without a surviving block ends on a line terminated by a semicolon. What the test deliberately
+// does NOT admit is any other line at the item's indent, which is why a wrapped signature's `) ->
+// T {` is body rather than a close, and why arbitrary text is far more likely to refuse than to
+// close an item early.
+fn line_closes_item(text: String) -> Bool {
+  let t = trim(s: text)
+  starts_with(s: t, prefix: "}") || starts_with(s: t, prefix: "]") || ends_with(s: t, suffix: ";")
+}
+
+fn scope_start_line(scope: RustScanScope) -> Int {
+  match scope {
+    ModuleScope { module_name: _, start_line: n } => n
+    UseScope { start_line: n } => n
+    AttributeScope { start_line: n } => n
+    MacroScope { macro_name: _, start_line: n } => n
+    ImplScope { impl_subject: _, start_line: n } => n
+    ItemScope {
+      kind: _,
+      item_name: _,
+      impl_subject: _,
+      enclosing_module: _,
+      start_line: n,
+      raw_terminator: _
+    } => n
+  }
+}
+
+fn list_drop_last<T>(xs: List<T>) -> List<T> {
+  let n = length(xs: xs)
+  fold_list(
+    xs: xs,
+    empty: [] as List<T>,
+    cons: fn(acc, x) { if length(xs: acc) + 1 >= n { acc } else { list_snoc_item(xs: acc, item: x) } }
+  )
+}
+
+fn list_last_scope(xs: List<RustScanScope>) -> List<RustScanScope> {
+  fold_list(xs: xs, empty: [] as List<RustScanScope>, cons: fn(_acc, x) { [x] })
+}
+
+fn scan_scope_depth(state: RustScanState) -> Int {
+  length(xs: state.scopes)
+}
+
+fn scan_expected_indent(state: RustScanState) -> Int {
+  4 * scan_scope_depth(state: state)
+}
+
+fn scan_enclosing_module_path(scopes: List<RustScanScope>) -> String {
+  fold_list(
+    xs: scopes,
+    empty: "",
+    cons: fn(acc, scope) {
+      match scope {
+        ModuleScope { module_name: name, start_line: _ } =>
+          if acc == "" { name } else { concat(acc, concat(".", name)) }
+        ImplScope { impl_subject: _, start_line: _ } => acc
+        UseScope { start_line: _ } => acc
+        AttributeScope { start_line: _ } => acc
+        MacroScope { macro_name: _, start_line: _ } => acc
+        ItemScope {
+          kind: _,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_terminator: _
+        } => acc
+      }
+    }
+  )
+}
+
+fn scan_enclosing_impl_subject(scopes: List<RustScanScope>) -> String {
+  fold_list(
+    xs: scopes,
+    empty: "",
+    cons: fn(acc, scope) {
+      match scope {
+        ImplScope { impl_subject: subject, start_line: _ } => subject
+        ModuleScope { module_name: _, start_line: _ } => acc
+        UseScope { start_line: _ } => acc
+        AttributeScope { start_line: _ } => acc
+        MacroScope { macro_name: _, start_line: _ } => acc
+        ItemScope {
+          kind: _,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_terminator: _
+        } => acc
+      }
+    }
+  )
+}
+
+fn scan_state_refused(state: RustScanState) -> Bool {
+  state.refusal_line > 0
+}
+
+fn scan_state_of(
+  state: RustScanState,
+  items: List<RustItemIdentity>,
+  scopes: List<RustScanScope>,
+  attach_start: Int
+) -> RustScanState {
+  RustScanState {
+    repo_path: state.repo_path,
+    line_number: state.line_number,
+    items: items,
+    macro_regions: state.macro_regions,
+    scopes: scopes,
+    attach_start: attach_start,
+    refusal_line: 0,
+    refusal_text: "",
+    refusal_detail: ""
+  }
+}
+
+fn scan_state_refuse(state: RustScanState, text: String, detail: String) -> RustScanState {
+  RustScanState {
+    repo_path: state.repo_path,
+    line_number: state.line_number,
+    items: state.items,
+    macro_regions: state.macro_regions,
+    scopes: state.scopes,
+    attach_start: state.attach_start,
+    refusal_line: state.line_number,
+    refusal_text: text,
+    refusal_detail: detail
+  }
+}
+
+fn scan_state_advance(state: RustScanState) -> RustScanState {
+  RustScanState {
+    repo_path: state.repo_path,
+    line_number: state.line_number + 1,
+    items: state.items,
+    macro_regions: state.macro_regions,
+    scopes: state.scopes,
+    attach_start: state.attach_start,
+    refusal_line: state.refusal_line,
+    refusal_text: state.refusal_text,
+    refusal_detail: state.refusal_detail
+  }
+}
+
+fn scan_item_start_line(state: RustScanState) -> Int {
+  if state.attach_start > 0 { state.attach_start } else { state.line_number }
+}
+
+fn scan_item_of_scope(
+  state: RustScanState,
+  scope: RustScanScope,
+  end_line: Int
+) -> List<RustItemIdentity> {
+  match scope {
+    UseScope { start_line: _ } => state.items
+    AttributeScope { start_line: _ } => state.items
+    MacroScope { macro_name: _, start_line: _ } => state.items
+    ModuleScope { module_name: name, start_line: start } =>
+      list_snoc_item(
+        xs: state.items,
+        item: RustItemIdentity {
+          repo_path: state.repo_path,
+          kind: RustModule,
+          name: name as NonEmptyStr,
+          impl_subject: "",
+          enclosing_module: scan_enclosing_module_path(scopes: list_drop_last(xs: state.scopes)),
+          start_line: start,
+          loc: end_line - start + 1
+        }
+      )
+    ImplScope { impl_subject: subject, start_line: start } =>
+      list_snoc_item(
+        xs: state.items,
+        item: RustItemIdentity {
+          repo_path: state.repo_path,
+          kind: RustImplBlock,
+          name: subject as NonEmptyStr,
+          impl_subject: "",
+          enclosing_module: scan_enclosing_module_path(scopes: list_drop_last(xs: state.scopes)),
+          start_line: start,
+          loc: end_line - start + 1
+        }
+      )
+    ItemScope {
+      kind: kind,
+      item_name: name,
+      impl_subject: subject,
+      enclosing_module: enclosing,
+      start_line: start,
+      raw_terminator: _
+    } =>
+      list_snoc_item(
+        xs: state.items,
+        item: RustItemIdentity {
+          repo_path: state.repo_path,
+          kind: kind,
+          name: name as NonEmptyStr,
+          impl_subject: subject,
+          enclosing_module: enclosing,
+          start_line: start,
+          loc: end_line - start + 1
+        }
+      )
+  }
+}
+
+fn scan_state_with_macro_region(state: RustScanState, scope: RustScanScope) -> RustScanState {
+  match scope {
+    MacroScope { macro_name: name, start_line: start } =>
+      RustScanState {
+        repo_path: state.repo_path,
+        line_number: state.line_number,
+        items: state.items,
+        macro_regions: list_snoc_item(
+          xs: state.macro_regions,
+          item: RustMacroRegion {
+            macro_name: name,
+            start_line: start,
+            loc: state.line_number - start + 1
+          }
+        ),
+        scopes: state.scopes,
+        attach_start: state.attach_start,
+        refusal_line: state.refusal_line,
+        refusal_text: state.refusal_text,
+        refusal_detail: state.refusal_detail
+      }
+    UseScope { start_line: _ } => state
+    AttributeScope { start_line: _ } => state
+    ModuleScope { module_name: _, start_line: _ } => state
+    ImplScope { impl_subject: _, start_line: _ } => state
+    ItemScope {
+      kind: _,
+      item_name: _,
+      impl_subject: _,
+      enclosing_module: _,
+      start_line: _,
+      raw_terminator: _
+    } => state
+  }
+}
+
+fn scan_close_scope(state: RustScanState) -> RustScanState {
+  fold_list(
+    xs: list_last_scope(xs: state.scopes),
+    empty: scan_state_refuse(
+      state: state,
+      text: "}",
+      detail: "closing brace with no open scope"
+    ),
+    cons: fn(_acc, scope) {
+      scan_state_of(
+        state: scan_state_with_macro_region(state: state, scope: scope),
+        items: scan_item_of_scope(state: state, scope: scope, end_line: state.line_number),
+        scopes: list_drop_last(xs: state.scopes),
+        attach_start: 0
+      )
+    }
+  )
+}
+
+fn scan_open_header(state: RustScanState, text: String) -> RustScanState {
+  let head = peeled_item_head(text: text)
+  let keyword = leading_ident(s: head)
+  let rest = trim(s: drop_prefix_length(s: head, n: string_length(s: keyword)))
+  let start = scan_item_start_line(state: state)
+  let enclosing = scan_enclosing_module_path(scopes: state.scopes)
+  let self_closing = head_closes_on_its_own_line(text: text)
+  if keyword == "impl" {
+    let subject = impl_subject_from_head(rest: rest)
+    if subject == "" {
+      scan_state_refuse(state: state, text: text, detail: "impl header carries no subject")
+    } else {
+      let scope = ImplScope { impl_subject: subject, start_line: start }
+      if self_closing {
+        scan_state_of(
+          state: state,
+          items: scan_item_of_scope(state: state, scope: scope, end_line: state.line_number),
+          scopes: state.scopes,
+          attach_start: 0
+        )
+      } else {
+        scan_state_of(
+          state: state,
+          items: state.items,
+          scopes: list_snoc_item(xs: state.scopes, item: scope),
+          attach_start: 0
+        )
+      }
+    }
+  } else {
+    let name = leading_ident(s: rest)
+    if name == "" {
+      scan_state_refuse(
+        state: state,
+        text: text,
+        detail: concat(keyword, " item header carries no name")
+      )
+    } else if keyword == "mod" && !self_closing {
+      scan_state_of(
+        state: state,
+        items: state.items,
+        scopes: list_snoc_item(
+          xs: state.scopes,
+          item: ModuleScope { module_name: name, start_line: start }
+        ),
+        attach_start: 0
+      )
+    } else {
+      let impl_subject = scan_enclosing_impl_subject(scopes: state.scopes)
+      let kind =
+        if keyword == "fn" && impl_subject != "" { RustImplMethod }
+        else { rust_item_kind_for_keyword(word: keyword) }
+      let scope = ItemScope {
+        kind: kind,
+        item_name: name,
+        impl_subject: if kind == RustImplMethod { impl_subject } else { "" },
+        enclosing_module: enclosing,
+        start_line: start,
+        raw_terminator: if self_closing { "" } else { raw_string_terminator(text: text) }
+      }
+      if self_closing {
+        scan_state_of(
+          state: state,
+          items: scan_item_of_scope(state: state, scope: scope, end_line: state.line_number),
+          scopes: state.scopes,
+          attach_start: 0
+        )
+      } else {
+        scan_state_of(
+          state: state,
+          items: state.items,
+          scopes: list_snoc_item(xs: state.scopes, item: scope),
+          attach_start: 0
+        )
+      }
+    }
+  }
+}
+
+fn scan_scope_is_item(scopes: List<RustScanScope>) -> Bool {
+  fold_list(
+    xs: list_last_scope(xs: scopes),
+    empty: false,
+    cons: fn(_acc, scope) {
+      match scope {
+        ItemScope {
+          kind: _,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_terminator: _
+        } => true
+        ModuleScope { module_name: _, start_line: _ } => false
+        ImplScope { impl_subject: _, start_line: _ } => false
+        UseScope { start_line: _ } => false
+        AttributeScope { start_line: _ } => false
+        MacroScope { macro_name: _, start_line: _ } => false
+      }
+    }
+  )
+}
+
+// THE STEP ASKS ONE QUESTION AND REFUSES WHEN IT CANNOT ANSWER IT: is this line at the current
+// scope boundary. Deeper lines are body and are never inspected -- which is why this reader needs
+// neither brace matching nor string-literal tracking, since it never asks a question whose answer
+// depends on them. A line SHALLOWER than the boundary, or one at the boundary that is not a
+// recognized structural form, is the state that refuses; that is the arm the deleted script did not
+// have, and its absence is why the script silently minted phantom items from raw-string fixtures.
+// CLOSING A WRAPPED ATTRIBUTE KEEPS ITS ATTACHMENT, which the ordinary scope close would drop. An
+// attribute belongs to the declaration BELOW it, so the item's extent must begin at the attribute
+// rather than at its own header line; the general close resets that attachment because every other
+// scope genuinely ends a region. Losing it here would not change any item's identity, but it would
+// leave the attribute's own lines outside every item, so an edit to a derive would be reported as
+// file-level -- an under-attribution, which is the quiet direction.
+fn scan_close_attribute_scope(state: RustScanState) -> RustScanState {
+  fold_list(
+    xs: list_last_scope(xs: state.scopes),
+    empty: state,
+    cons: fn(_acc, scope) {
+      scan_state_of(
+        state: state,
+        items: state.items,
+        scopes: list_drop_last(xs: state.scopes),
+        attach_start: scope_start_line(scope: scope)
+      )
+    }
+  )
+}
+
+fn scan_top_scope_kind(scopes: List<RustScanScope>) -> String {
+  fold_list(
+    xs: list_last_scope(xs: scopes),
+    empty: "",
+    cons: fn(_acc, scope) {
+      match scope {
+        UseScope { start_line: _ } => "use"
+        AttributeScope { start_line: _ } => "attribute"
+        MacroScope { macro_name: _, start_line: _ } => "macro"
+        ModuleScope { module_name: _, start_line: _ } => "module"
+        ImplScope { impl_subject: _, start_line: _ } => "impl"
+        ItemScope {
+          kind: _,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_terminator: _
+        } => "item"
+      }
+    }
+  )
+}
+
+fn line_opens_macro_invocation(text: String) -> Bool {
+  let t = trim(s: text)
+  let name = leading_ident(s: t)
+  name != ""
+    && starts_with(s: trim(s: drop_prefix_length(s: t, n: string_length(s: name))), prefix: "!")
+}
+
+fn scan_step(state: RustScanState, text: String) -> RustScanState {
+  if scan_state_refused(state: state) {
+    scan_state_advance(state: state)
+  } else if line_is_blank(text: text) {
+    scan_state_advance(state: scan_state_of(state: state, items: state.items, scopes: state.scopes, attach_start: 0))
+  } else if scan_top_scope_kind(scopes: state.scopes) == "use" {
+    if ends_with(s: trim(s: text), suffix: ";") {
+      scan_state_advance(state: scan_close_scope(state: state))
+    } else {
+      scan_state_advance(state: state)
+    }
+  } else if scan_top_scope_kind(scopes: state.scopes) == "attribute" {
+    if ends_with(s: trim(s: text), suffix: "]") {
+      scan_state_advance(state: scan_close_attribute_scope(state: state))
+    } else {
+      scan_state_advance(state: state)
+    }
+  } else if scan_top_scope_kind(scopes: state.scopes) == "macro" {
+    if indent_width(s: text) == scan_expected_indent(state: state) - 4
+      && line_closes_item(text: text) {
+      scan_state_advance(state: scan_close_scope(state: state))
+    } else {
+      scan_state_advance(state: state)
+    }
+  } else {
+    let indent = indent_width(s: text)
+    let expected = scan_expected_indent(state: state)
+    let inside_item = scan_scope_is_item(scopes: state.scopes)
+    if inside_item {
+      let raw = scan_top_raw_terminator(scopes: state.scopes)
+      if raw != "" {
+        if !string_contains(s: text, pattern: raw) {
+          scan_state_advance(state: state)
+        } else if indent == expected - 4 && line_closes_item(text: text) {
+          scan_state_advance(state: scan_close_scope(state: state))
+        } else {
+          scan_state_advance(state: scan_state_clear_raw(state: state))
+        }
+      } else if indent == expected - 4 && line_closes_item(text: text) {
+        scan_state_advance(state: scan_close_scope(state: state))
+      } else {
+        scan_state_advance(state: state)
+      }
+    } else if indent > expected {
+      scan_state_advance(
+        state: scan_state_refuse(
+          state: state,
+          text: text,
+          detail: "line is indented past the current scope boundary but no item is open at it"
+        )
+      )
+    } else if indent < expected {
+      if trim(s: text) == "}" && indent == expected - 4 {
+        scan_state_advance(state: scan_close_scope(state: state))
+      } else {
+        scan_state_advance(
+          state: scan_state_refuse(
+            state: state,
+            text: text,
+            detail: "line is shallower than the current scope boundary and does not close it"
+          )
+        )
+      }
+    } else if line_is_attribute_or_comment(text: text) {
+      let attaching = scan_state_of(
+        state: state,
+        items: state.items,
+        scopes: state.scopes,
+        attach_start: if state.attach_start > 0 { state.attach_start } else { state.line_number }
+      )
+      if starts_with(s: trim(s: text), prefix: "//") || ends_with(s: trim(s: text), suffix: "]") {
+        scan_state_advance(state: attaching)
+      } else {
+        scan_state_advance(
+          state: scan_state_of(
+            state: attaching,
+            items: attaching.items,
+            scopes: list_snoc_item(
+              xs: attaching.scopes,
+              item: AttributeScope { start_line: state.line_number }
+            ),
+            attach_start: attaching.attach_start
+          )
+        )
+      }
+    } else if line_is_file_level_declaration(text: text) {
+      if ends_with(s: trim(s: text), suffix: ";") {
+        scan_state_advance(state: scan_state_of(state: state, items: state.items, scopes: state.scopes, attach_start: 0))
+      } else {
+        scan_state_advance(
+          state: scan_state_of(
+            state: state,
+            items: state.items,
+            scopes: list_snoc_item(xs: state.scopes, item: UseScope { start_line: state.line_number }),
+            attach_start: 0
+          )
+        )
+      }
+    } else if line_opens_macro_invocation(text: text) {
+      if head_closes_on_its_own_line(text: text) {
+        scan_state_advance(state: scan_state_of(state: state, items: state.items, scopes: state.scopes, attach_start: 0))
+      } else {
+        scan_state_advance(
+          state: scan_state_of(
+            state: state,
+            items: state.items,
+            scopes: list_snoc_item(
+              xs: state.scopes,
+              item: MacroScope {
+                macro_name: leading_ident(s: trim(s: text)),
+                start_line: if state.attach_start > 0 { state.attach_start } else { state.line_number }
+              }
+            ),
+            attach_start: 0
+          )
+        )
+      }
+    } else if rust_keyword_is_item_form(word: leading_ident(s: peeled_item_head(text: text))) {
+      scan_state_advance(state: scan_open_header(state: state, text: text))
+    } else {
+      scan_state_advance(
+        state: scan_state_refuse(
+          state: state,
+          text: text,
+          detail: "structural line is neither an item header the rust grammar authority names, nor a use declaration, attribute or comment"
+        )
+      )
+    }
+  }
+}
+
+fn scan_rust_source(repo_path: String, content: String) -> RustFileScan {
+  let lines = split(s: content, delimiter: "\n")
+  let final = fold_list(
+    xs: lines,
+    empty: RustScanState {
+      repo_path: repo_path,
+      line_number: 1,
+      items: [],
+      macro_regions: [],
+      scopes: [],
+      attach_start: 0,
+      refusal_line: 0,
+      refusal_text: "",
+      refusal_detail: ""
+    },
+    cons: fn(acc, line) { scan_step(state: acc, text: line) }
+  )
+  if scan_state_refused(state: final) {
+    RustFileScanRefused {
+      repo_path: repo_path,
+      line: final.refusal_line,
+      line_text: final.refusal_text,
+      detail: final.refusal_detail
+    }
+  } else if length(xs: final.scopes) > 0 {
+    fold_list(
+      xs: list_last_scope(xs: final.scopes),
+      empty: RustFileScanRefused {
+        repo_path: repo_path,
+        line: 1,
+        line_text: "",
+        detail: "scope stack is non-empty but carries no scope"
+      },
+      cons: fn(_acc, scope) {
+        RustFileScanRefused {
+          repo_path: repo_path,
+          line: scope_start_line(scope: scope),
+          line_text: "",
+          detail: "scope is still open at end of file -- its closing brace was never reached at its own indent"
+        }
+      }
+    )
+  } else {
+    RustFileScanned {
+      repo_path: repo_path,
+      items: final.items,
+      macro_regions: final.macro_regions,
+      line_count: length(xs: lines)
+    }
+  }
+}
+
+fn scan_item_keys(items: List<RustItemIdentity>) -> List<String> {
+  list_map(xs: items, f: fn(item) { rust_item_identity_key(item: item) })
+}
+
+fn item_contains_line(item: RustItemIdentity, line: Int) -> Bool {
+  line >= item.start_line && line <= item.start_line + item.loc - 1
+}
+
+// ATTRIBUTION HAS NO UNKNOWN ARM, AND THAT IS A PROPERTY OF THE SCAN RATHER THAN OPTIMISM HERE.
+// scan_rust_source refuses on every structural line it cannot classify, so on a RustFileScanned
+// every line is either inside an item or is a recognized file-level line. The only residual
+// question is whether the line exists at all, which is why the third arm is a range fact and not a
+// "could not tell". A caller holding a RustFileScanRefused already has its refusal and never
+// reaches this function.
+//
+// THE INNERMOST CONTAINING ITEM WINS. A method's lines are inside both the method and its impl
+// block, and a module's members are inside the module; the containing item with the greatest start
+// line is the one the change is about. Reporting the outer one would attribute a method edit to the
+// impl block, which is precisely the mis-attribution that would let a new capability land inside an
+// enclosing scope with no addition to report.
+fn macro_region_contains_line(region: RustMacroRegion, line: Int) -> Bool {
+  line >= region.start_line && line <= region.start_line + region.loc - 1
+}
+
+fn attribute_scanned_line(
+  items: List<RustItemIdentity>,
+  macro_regions: List<RustMacroRegion>,
+  line_count: Int,
+  line: Int
+) -> RustLineAttribution {
+  if line < 1 || line > line_count {
+    AttributionOutOfRange { line: line, line_count: line_count }
+  } else {
+    let hits = filter(xs: items, predicate: fn(item) { item_contains_line(item: item, line: line) })
+    let innermost = fold_list(
+      xs: hits,
+      empty: 0,
+      cons: fn(best, item) { if item.start_line > best { item.start_line } else { best } }
+    )
+    fold_list(
+      xs: filter(xs: hits, predicate: fn(item) { item.start_line == innermost }),
+      empty: fold_list(
+        xs: filter(
+          xs: macro_regions,
+          predicate: fn(region) { macro_region_contains_line(region: region, line: line) }
+        ),
+        empty: AttributedToFileLevel,
+        cons: fn(_acc, region) {
+          AttributedToUnnamedMacroBlock { macro_name: region.macro_name, line: line }
+        }
+      ),
+      cons: fn(_acc, item) { AttributedToItem { item_key: rust_item_identity_key(item: item) } }
+    )
+  }
+}

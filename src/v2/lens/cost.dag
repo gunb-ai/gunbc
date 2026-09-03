@@ -1,15 +1,14 @@
 module v2.lens.cost
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.extdeps.languages.llvm_ir { LlvmInstruction }
-import v2.std.algebra {
+import std.algebra {
   BoundedLattice,
   Equal,
   Greater,
-  Lattice,
-  Magma,
   Monoid,
-  Semigroup
 }
 import v2.std.cardinality {
   loop_bound_measure,
@@ -37,7 +36,7 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  loop_edge_contributes_to_iteration_fold,
+  edge_contributes_to_cost_fold,
   Named,
   Node,
   NodeFold,
@@ -47,7 +46,7 @@ import v2.std.node {
   Value,
   fold_node
 }
-import v2.std.nat { Nat, Succ, Zero, nat_add, nat_compare }
+import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.witness { Holds, Violates, Witness }
 
 type SizeVariable {
@@ -67,7 +66,7 @@ type ExponentialBase {
 }
 
 type SymbolicCost
-  = ConstantCost { value: Nat }
+  = ConstantCost { value: v2.std.nat.Nat }
   | LinearCost { variable: SizeVariable }
   | LogCost { variable: SizeVariable }
   | PolynomialCost { variable: SizeVariable, degree: PolynomialDegree }
@@ -100,7 +99,7 @@ type SymbolicCostFoldState {
   parent: Node
 }
 
-fn constant_cost(value: Nat) -> SymbolicCost {
+fn constant_cost(value: v2.std.nat.Nat) -> SymbolicCost {
   ConstantCost { value: value }
 }
 
@@ -234,17 +233,43 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   }
 }
 
+// Zero is checked on BOTH operands before anything else, and the order is the whole point. An
+// earlier revision matched a's arms first - including UnknownCost - and only then inspected b, so
+// zero times unknown absorbed to zero while unknown times ZERO returned unknown. Multiplication is
+// commutative, so an operand order that changes the answer is a defect on its face, not a stylistic
+// asymmetry: the authority absorbed zero only when zero happened to be written on the left. Found
+// by comparing this authority against v2.lens.cost.valuation, whose exact evaluator has the same
+// obligation - a zero multiplicity means the other factor is never executed, so its work is zero
+// whatever that factor is and however little is known about it. Both paths now answer zero for both
+// orders, so the two agree completely rather than agreeing in one direction and diverging in the
+// other. The scope of that claim is CLASSIFICATION, not provenance, and saying so here is what
+// stops a later reader from concluding the function is symmetric in every respect and then being
+// surprised. One asymmetry survives deliberately: unknown times unknown returns the LEFT operand's
+// diagnostic, so the reverse order returns the right one and the other is dropped. That is a lesser
+// class than what this change fixed - before it, the operand order changed the KIND of the answer,
+// and now it changes only which of two equally valid diagnostics is carried - and it is not
+// introduced here: symbolic_sequential carries the identical left-biased drop, so it is a
+// module-wide pattern of UnknownCost holding exactly one diagnostic. Closing it means widening
+// UnknownCost to carry several, which is a real change with its own witnesses and does not belong
+// on the annihilator fix.
+
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => zero_cost()
-    ConstantCost { value: Succ { prev: Zero } } => b
-    UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => zero_cost()
-        ConstantCost { value: Succ { prev: Zero } } => a
-        UnknownCost { diagnostic: _ } => b
-        _ => ProductCost { lhs: a, rhs: b }
+        _ =>
+          match a {
+            ConstantCost { value: Succ { prev: Zero } } => b
+            UnknownCost { diagnostic: _ } => a
+            _ =>
+              match b {
+                ConstantCost { value: Succ { prev: Zero } } => a
+                UnknownCost { diagnostic: _ } => b
+                _ => ProductCost { lhs: a, rhs: b }
+              }
+          }
       }
   }
 }
@@ -285,8 +310,8 @@ fn nonzero_nat_dominates(a: NonZeroNat, b: NonZeroNat) -> Bool {
   nat_dominates(a: a.prev, b: b.prev)
 }
 
-fn nat_dominates(a: Nat, b: Nat) -> Bool {
-  match nat_compare(a: a, b: b) {
+fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
+  match v2.std.nat.nat_compare(a: a, b: b) {
     Greater => true
     Equal => true
     _ => false
@@ -376,7 +401,7 @@ fn cost_fold_step(
   e: Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  if loop_edge_contributes_to_iteration_fold(parent: acc.parent, e: e) {
+  if edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
     SymbolicCostFoldState {
       mode: acc.mode,
       cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),
@@ -615,24 +640,20 @@ fn cost_lattice_join(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 }
 
 data symbolic_cost_sequential_monoid: Monoid<SymbolicCost> = Monoid {
-  semigroup: Semigroup { magma: Magma { op: symbolic_sequential } },
+  op: symbolic_sequential,
   identity: ConstantCost { value: Zero }
 }
 
 data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
-  lattice: Lattice {
-    meet: cost_lattice_meet,
-    join: cost_lattice_join
-  },
+  meet: cost_lattice_meet,
+  join: cost_lattice_join,
   top: UnknownCost { diagnostic: cost_lattice_top_diagnostic },
   bottom: ConstantCost { value: Zero }
 }
 
 data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = BoundedLattice {
-  lattice: Lattice {
-    meet: asymptotic_class_meet,
-    join: asymptotic_class_join
-  },
+  meet: asymptotic_class_meet,
+  join: asymptotic_class_join,
   top: ClassUnknown,
   bottom: ClassConstant
 }
@@ -669,7 +690,7 @@ fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
-    construction: "cost is TOTAL over the closed 6-connective x 5-behavior kernel -- anything expressible is kernel-composed, so it has a SymbolicCost by construction (a new connective/behavior is a C1 STOP)"
-  },
-  rationale: "Cost is computed by construction over the closed kernel, not validated; there is no 'uncosted' bad state to flag. complexity and synthesis are its projections."
+    mechanism: SubstrateMandatoryTag,
+    authority: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
+  }
 }

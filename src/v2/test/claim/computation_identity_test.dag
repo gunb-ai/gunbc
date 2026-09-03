@@ -1,0 +1,56 @@
+module v2.test.claim.computation_identity_test
+
+import std.computation_identity {
+  ComputationIdentity,
+  StructurallyIdentical,
+  NormalizedIdentical,
+  ExtensionallyIdentical,
+  IdentityUnknown,
+  IdentityUnknownCause,
+  MissingConcept,
+  MissingEnforcement,
+  BoundUnmodeled,
+  identity_grade_is_known,
+  identity_permits_share
+}
+import v2.std.materialize {
+  materialize_share_identity_grade,
+  materialize_share_grade_permits_share,
+  materialize_ungrounded_identity
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+test fn witness_known_grades_permit_share() -> Bool {
+  identity_permits_share(ci: StructurallyIdentical)
+    && identity_permits_share(ci: NormalizedIdentical { normalizer: "alpha-rename" })
+    && identity_permits_share(ci: ExtensionallyIdentical { bound: "declared-input-domain" })
+}
+
+test fn witness_unknown_never_permits_share() -> Bool {
+  let unknown = IdentityUnknown {
+    cause: MissingEnforcement { detail: "no lens covers this producer" }
+  }
+  (identity_permits_share(ci: unknown) == false)
+    && (identity_grade_is_known(ci: unknown) == false)
+}
+
+test fn witness_unknown_cause_arms_construct() -> Bool {
+  let a = IdentityUnknown { cause: MissingConcept { detail: "x" } }
+  let b = IdentityUnknown { cause: BoundUnmodeled { detail: "y" } }
+  (identity_grade_is_known(ci: a) == false) && (identity_grade_is_known(ci: b) == false)
+}
+
+test fn witness_materialize_share_is_structural() -> Bool {
+  match materialize_share_identity_grade() {
+    StructurallyIdentical => materialize_share_grade_permits_share()
+    NormalizedIdentical { normalizer: _ } => false
+    ExtensionallyIdentical { bound: _ } => false
+    IdentityUnknown { cause: _ } => false
+  }
+}
+
+test fn witness_materialize_ungrounded_refuses_share() -> Bool {
+  identity_permits_share(ci: materialize_ungrounded_identity(detail: "normalized peer")) == false
+}
+

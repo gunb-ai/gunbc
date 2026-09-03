@@ -1,0 +1,94 @@
+module v2.std.native_agreement
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent
+}
+import v2.std.logic { Bool }
+import v2.std.integer { integer_int_to_decimal_string, integer_u8_from_byte }
+import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
+import v2.std.text { String }
+
+type NativeAgreementDivergence {
+  member_id: String
+  interpreted_value: String
+  native_value: String
+}
+
+// Native-vs-interpreted agreement loudness (ROADMAP 2a Lane B, 2026-07-23): when emit_on_demand
+// family-crate per-PR agreement redds, the floor receipt MUST name the failing member and BOTH
+// runtime answers — the srv2-05 revert (#7091, routed_flip_reverted_note) carried
+// compile_skipped=true x3 then Bool(false) with member and values unknown. This module is the typed
+// divergence carrier + formatter; claim_executor invokes the companion *_failure_receipt fn on
+// Bool(false) witnesses. Verdict-to-divergence extraction lives in
+// v2.compiler.self_host.native_agreement_support (acyclicity: the compiler layer imports std, so
+// std cannot import compiler back).
+
+fn octet_display(octet: Int) -> String {
+  integer_int_to_decimal_string(value: octet)
+}
+
+// THE OCTET IS AN Int AND THE LIST HOLDS Byte. `list_at_optional` over a `List<Byte>` yields
+// `Optional<Byte>`, which this function previously returned under a declared `Optional<Int>`:
+// the record then reached `octet_display`'s Int parameter and every label of a primitive with a
+// second byte aborted with `cannot apply Lt to Record and Int`. It stayed invisible because the
+// only reachable arm in practice was the empty-list one, whose `Absent` answers "?" -- so the
+// formatter that exists to stop a divergence being reported as values-unknown could instead
+// abort exactly when a divergence was being reported. The conversion is named here rather than
+// the declaration widened, because the carrier's octet IS an integer.
+fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {
+  match value {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue { bytes: bytes, primitive_type: _ }
+    } =>
+      match list_at_optional(xs: bytes, index: 1) {
+        Present { value: octet_byte } => Present { value: integer_u8_from_byte(b: octet_byte) }
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn runtime_value_octet_label(value: RuntimeValue) -> String {
+  match runtime_value_discriminant_octet(value: value) {
+    Present { value: octet } => octet_display(octet: octet)
+    Absent => "?"
+  }
+}
+
+fn format_native_agreement_divergence(d: NativeAgreementDivergence) -> String {
+  concat(
+    "member=",
+    concat(
+      d.member_id,
+      concat(
+        " interpreted=",
+        concat(d.interpreted_value, concat(" native=", d.native_value))
+      )
+    )
+  )
+}
+
+fn first_native_agreement_divergence(
+  divergences: List<NativeAgreementDivergence>
+) -> Optional<NativeAgreementDivergence> {
+  match divergences {
+    Empty => Absent
+    Cons { head: d, tail: _ } => Present { value: d }
+  }
+}
+
+fn native_agreement_failure_receipt(
+  divergences: List<NativeAgreementDivergence>
+) -> String {
+  match first_native_agreement_divergence(divergences: divergences) {
+    Present { value: d } => format_native_agreement_divergence(d: d)
+    Absent => ""
+  }
+}

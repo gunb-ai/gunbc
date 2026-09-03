@@ -2,26 +2,52 @@
 // Source module: std.realization_schedule
 
 use self::CostBasis::*;
+use self::FloorWorkerIdentity::*;
+use self::FloorWorkerObservationOutcome::*;
+use self::FloorWorkerTerminalReceipt::*;
+use self::FloorWorkerTerminalReport::*;
+use self::NoWalkFinalization::*;
+use self::OnSuccessRunnableDisposition::*;
+use self::PreWalkExecution::*;
 use self::Runnable::*;
+use self::RunnableBatchClampSource::*;
 use self::RunnableMemoryClass::*;
-use self::ScheduleLensViolation::*;
-use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
-use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
-pub use crate::std_lens_verdict::{LensVerdict, LensVerdictDiagnostic, LensVerdictLocus};
-use crate::std_measure::Quantity::Time;
-pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
-pub use crate::std_measure::{ByteSize, Measure, Quantity, Watt};
+use self::WitnessCostBasis::*;
+use self::WitnessKind::*;
+use self::WitnessSpan::*;
+pub use crate::std_algebra::FreeMonoid;
+use crate::std_content_hash::ContentHash::*;
+pub use crate::std_content_hash::{
+    as_content_hash_structural, content_hash_atom, content_hash_combine_structural,
+    fnv1a64_structural_hex_digest, serialize_content_hash,
+};
+pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_execution_mode::execution_mode_eq;
+pub use crate::std_execution_mode::ExecutionMode;
+use crate::std_execution_mode::ExecutionMode::Hermetic;
+use crate::std_measure::ClockBasis::{CpuClock, WallClock};
+pub use crate::std_measure::{
+    byte_size, byte_size_count, clock_basis_eq, measure_count, millisecond_count, second_count,
+    time_measure, watt, Time,
+};
+pub use crate::std_measure::{ByteSize, ClockBasis, Measure, Millisecond, Second, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;
+pub use crate::std_process_termination::ProcessTermination;
+use crate::std_process_termination::ProcessTermination::{
+    ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,
+};
 use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, ContentHash, List};
+pub use crate::std_types::{Bool, CommitSha, List, NonEmptyStr};
+pub use crate::std_witness_admission::WitnessConsumerCadence;
+use crate::std_witness_admission::WitnessConsumerCadence::*;
 use crate::v1_rt;
-use crate::v1_rt::Witness::Violates;
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -35,35 +61,35 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Nat>>,
-    pub space: Box<ByteSize>,
-    pub power: Box<Watt>,
+    pub time: Rc<Measure<Time, S, i64>>,
+    pub space: ByteSize,
+    pub power: Watt,
     pub basis: CostBasis,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
 pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
-        time: time_measure(0),
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        time: crate::std_measure::time_measure(0),
+        space: crate::std_measure::byte_size(0),
+        power: crate::std_measure::watt(0),
         basis: CostBasis::Predicted,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<Time, S, i64>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
-        time: time,
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        time: time.clone(),
+        space: crate::std_measure::byte_size(0),
+        power: crate::std_measure::watt(0),
         basis: CostBasis::Measured,
         _phantom: std::marker::PhantomData,
     })
 }
 
 pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
-    measure_count(account.time.clone())
+    crate::std_measure::measure_count(account.time.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -71,88 +97,340 @@ pub struct RealizationObjective {
     pub goals: Rc<Vec<AxisGoal>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ScheduleWitnessEntry {
-    pub entry: String,
-    pub function: String,
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum WitnessKind {
+    CorpusWitnessKind,
+    ExecutionWitnessKind,
+    NativeBundleWitnessKind,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RunnableMemoryPeak {
-    pub predicted_peak: Box<ByteSize>,
+pub struct WitnessSeam {
+    pub producer: String,
+    pub consumer: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum RunnableMemoryClass {
-    RunnableMemoryNegligible,
-    RunnableMemorySubstantial { peak: Rc<RunnableMemoryPeak> },
+pub enum WitnessCostBasis {
+    MeasuredAtExactSubject {
+        clock: ClockBasis,
+        duration: Millisecond,
+        receipt: String,
+    },
+    EstimatedFromSiblingClass {
+        clock: ClockBasis,
+        source_witness: String,
+        basis: String,
+    },
 }
-impl RunnableMemoryClass {
-    pub fn peak(&self) -> Rc<RunnableMemoryPeak> {
+impl WitnessCostBasis {
+    pub fn clock(&self) -> ClockBasis {
         match self {
-            RunnableMemoryClass::RunnableMemoryNegligible => panic!("no peak on unit variant"),
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: __val, .. } => __val.clone(),
+            WitnessCostBasis::MeasuredAtExactSubject { clock: __val, .. } => __val.clone(),
+            WitnessCostBasis::EstimatedFromSiblingClass { clock: __val, .. } => __val.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScheduledWitnessEnvelope {
+    pub path_classification: WitnessConsumerCadence,
+    pub wall_budget: Millisecond,
+    pub max_staleness: Millisecond,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WitnessSpan {
+    SpanUndeclared,
+    SpanSeams {
+        seams: Rc<Vec<Rc<WitnessSeam>>>,
+    },
+    SpanEnrolled {
+        seams: Rc<Vec<Rc<WitnessSeam>>>,
+        cost_basis: Rc<WitnessCostBasis>,
+        envelope: Rc<ScheduledWitnessEnvelope>,
+    },
+}
+impl WitnessSpan {
+    pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
+        match self {
+            WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
+            WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
+            WitnessSpan::SpanEnrolled { seams: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
+    match a.clone() {
+        WitnessKind::CorpusWitnessKind => match b.clone() {
+            WitnessKind::CorpusWitnessKind => true,
+            WitnessKind::ExecutionWitnessKind => false,
+            WitnessKind::NativeBundleWitnessKind => false,
+        },
+        WitnessKind::ExecutionWitnessKind => match b.clone() {
+            WitnessKind::ExecutionWitnessKind => true,
+            WitnessKind::CorpusWitnessKind => false,
+            WitnessKind::NativeBundleWitnessKind => false,
+        },
+        WitnessKind::NativeBundleWitnessKind => match b.clone() {
+            WitnessKind::NativeBundleWitnessKind => true,
+            WitnessKind::CorpusWitnessKind => false,
+            WitnessKind::ExecutionWitnessKind => false,
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScheduleWitnessEntry {
+    pub entry: String,
+    pub function: String,
+    pub kind: WitnessKind,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum RunnableMemoryClass {
+    RunnableMemoryNegligible,
+    RunnableMemorySubstantial,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableResourceProfile {
     pub heavy_whole_tree_resolve: bool,
     pub spawns_host_compiler: bool,
-    pub memory: Rc<RunnableMemoryClass>,
+    pub memory: RunnableMemoryClass,
+    pub execution_mode: ExecutionMode,
 }
 
-pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
-    Rc::new(RunnableMemoryClass::RunnableMemoryNegligible)
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableBatchClamp {
+    pub overhead: Second,
+    pub per_unit: Millisecond,
+    pub authority: Rc<DeclarationRef>,
 }
 
-pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
-    Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
-        peak: Rc::new(RunnableMemoryPeak {
-            predicted_peak: Box::new(predicted_peak),
-        }),
-    })
+pub fn runnable_batch_clamp_ms(clamp: Rc<RunnableBatchClamp>, units: i64) -> i64 {
+    ((crate::std_measure::second_count(clamp.overhead.clone()) * 1000)
+        + (units.clone() * crate::std_measure::millisecond_count(clamp.per_unit.clone())))
 }
 
-pub fn runnable_memory_class_eq(
-    left: Rc<RunnableMemoryClass>,
-    right: Rc<RunnableMemoryClass>,
-) -> bool {
-    match (*left).clone() {
-        RunnableMemoryClass::RunnableMemoryNegligible => match (*right).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => true,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => false,
-        },
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => match (*right).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => false,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
-                (byte_size_count((*lp.predicted_peak).clone())
-                    == byte_size_count((*rp.predicted_peak).clone()))
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RunnableBatchClampSource {
+    RunnableUsesFloorPositionalClamp,
+    RunnableOwnsBatchClamp { clamp: Rc<RunnableBatchClamp> },
+}
+impl RunnableBatchClampSource {
+    pub fn clamp(&self) -> Rc<RunnableBatchClamp> {
+        match self {
+            RunnableBatchClampSource::RunnableUsesFloorPositionalClamp => {
+                panic!("no clamp on unit variant")
+            }
+            RunnableBatchClampSource::RunnableOwnsBatchClamp { clamp: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum FloorWorkerIdentity {
+    OrdinaryFloorWorker,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FloorWorkerTerminalReceipt {
+    FloorWorkerTerminalReceiptObserved {
+        report: Rc<FloorWorkerTerminalReport>,
+    },
+    FloorWorkerTerminalReceiptMissing,
+}
+impl FloorWorkerTerminalReceipt {
+    pub fn report(&self) -> Rc<FloorWorkerTerminalReport> {
+        match self {
+            FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptObserved {
+                report: __val,
+                ..
+            } => __val.clone(),
+            FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptMissing => {
+                panic!("no report on unit variant")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FloorWorkerTerminalReport {
+    FloorWorkerReportedCompleted { detail: String },
+    FloorWorkerReportedRefused { detail: String },
+    FloorWorkerReportedFailed { detail: String },
+    FloorWorkerTerminalReportMalformed { detail: String },
+}
+impl FloorWorkerTerminalReport {
+    pub fn detail(&self) -> String {
+        match self {
+            FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: __val, .. } => {
+                __val.clone()
+            }
+            FloorWorkerTerminalReport::FloorWorkerReportedRefused { detail: __val, .. } => {
+                __val.clone()
+            }
+            FloorWorkerTerminalReport::FloorWorkerReportedFailed { detail: __val, .. } => {
+                __val.clone()
+            }
+            FloorWorkerTerminalReport::FloorWorkerTerminalReportMalformed {
+                detail: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FloorWorkerObservationOutcome {
+    FloorWorkerCompleted,
+    FloorWorkerRefused { detail: String },
+    FloorWorkerFailed { detail: String },
+    FloorWorkerDiedWithoutTerminalReceipt { detail: String },
+}
+impl FloorWorkerObservationOutcome {
+    pub fn detail(&self) -> String {
+        match self {
+            FloorWorkerObservationOutcome::FloorWorkerCompleted => {
+                panic!("no detail on unit variant")
+            }
+            FloorWorkerObservationOutcome::FloorWorkerRefused { detail: __val, .. } => {
+                __val.clone()
+            }
+            FloorWorkerObservationOutcome::FloorWorkerFailed { detail: __val, .. } => __val.clone(),
+            FloorWorkerObservationOutcome::FloorWorkerDiedWithoutTerminalReceipt {
+                detail: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FloorWorkerObservation {
+    pub worker: FloorWorkerIdentity,
+    pub termination: Rc<ProcessTermination>,
+    pub terminal_receipt: Rc<FloorWorkerTerminalReceipt>,
+}
+
+pub fn floor_worker_observation_outcome(
+    observation: Rc<FloorWorkerObservation>,
+) -> Rc<FloorWorkerObservationOutcome> {
+    match (*observation.terminal_receipt.clone()).clone() {
+        FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptMissing => Rc::new(
+            FloorWorkerObservationOutcome::FloorWorkerDiedWithoutTerminalReceipt {
+                detail: "worker termination had no terminal report".to_string(),
+            },
+        ),
+        FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptObserved {
+            report: report, ..
+        } => match (*observation.termination.clone()).clone() {
+            ProcessTermination::ProcessExited { code: 0, .. } => match (*report.clone()).clone() {
+                FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: _, .. } => {
+                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerCompleted)
+                }
+                FloorWorkerTerminalReport::FloorWorkerReportedRefused {
+                    detail: detail, ..
+                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    detail: ("refusal report contradicted exit code 0: ".to_string()
+                        + &detail.clone()),
+                }),
+                FloorWorkerTerminalReport::FloorWorkerReportedFailed { detail: detail, .. } => {
+                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                        detail: detail.clone(),
+                    })
+                }
+                FloorWorkerTerminalReport::FloorWorkerTerminalReportMalformed {
+                    detail: detail,
+                    ..
+                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    detail: detail.clone(),
+                }),
+            },
+            ProcessTermination::ProcessExited { code: _, .. } => match (*report.clone()).clone() {
+                FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: _, .. } => {
+                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                        detail: "completion report contradicted nonzero exit".to_string(),
+                    })
+                }
+                FloorWorkerTerminalReport::FloorWorkerReportedRefused {
+                    detail: detail, ..
+                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerRefused {
+                    detail: detail.clone(),
+                }),
+                FloorWorkerTerminalReport::FloorWorkerReportedFailed { detail: detail, .. } => {
+                    Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                        detail: detail.clone(),
+                    })
+                }
+                FloorWorkerTerminalReport::FloorWorkerTerminalReportMalformed {
+                    detail: detail,
+                    ..
+                } => Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    detail: detail.clone(),
+                }),
+            },
+            ProcessTermination::ProcessSignaled { signal: _, .. } => {
+                Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    detail: "terminal report contradicted signal death".to_string(),
+                })
+            }
+            ProcessTermination::ProcessTerminationUnobserved => {
+                Rc::new(FloorWorkerObservationOutcome::FloorWorkerFailed {
+                    detail: "terminal report exists but process termination was unobserved"
+                        .to_string(),
+                })
             }
         },
     }
 }
 
-pub fn runnable_memory_substantial_sum(
-    left: Rc<RunnableMemoryClass>,
-    right: Rc<RunnableMemoryClass>,
-) -> Rc<RunnableMemoryClass> {
-    {
-        let left_count = match (*left).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => 0,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
-            }
+pub type FloorWorkerObservationReceiptPath = String;
+
+pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptPath {
+    thread_local! {
+        static CACHED: FloorWorkerObservationReceiptPath = {
+            serde_json::from_value(serde_json::json!("target/floor-worker-observation-receipt.tsv"))
+                .expect("valid data definition")
         };
-        let right_count = match (*right).clone() {
-            RunnableMemoryClass::RunnableMemoryNegligible => 0,
-            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
-            }
-        };
-        runnable_memory_substantial(byte_size((left_count + right_count)))
+    }
+    CACHED.with(|c: &FloorWorkerObservationReceiptPath| c.clone())
+}
+
+pub fn runnable_memory_negligible() -> RunnableMemoryClass {
+    RunnableMemoryClass::RunnableMemoryNegligible
+}
+
+pub fn runnable_memory_substantial() -> RunnableMemoryClass {
+    RunnableMemoryClass::RunnableMemorySubstantial
+}
+
+pub fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemoryClass) -> bool {
+    match left.clone() {
+        RunnableMemoryClass::RunnableMemoryNegligible => match right.clone() {
+            RunnableMemoryClass::RunnableMemoryNegligible => true,
+            RunnableMemoryClass::RunnableMemorySubstantial => false,
+        },
+        RunnableMemoryClass::RunnableMemorySubstantial => match right.clone() {
+            RunnableMemoryClass::RunnableMemoryNegligible => false,
+            RunnableMemoryClass::RunnableMemorySubstantial => true,
+        },
     }
 }
 
@@ -160,9 +438,13 @@ pub fn runnable_resource_profile_eq(
     left: Rc<RunnableResourceProfile>,
     right: Rc<RunnableResourceProfile>,
 ) -> bool {
-    (((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
+    ((((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
         && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
         && runnable_memory_class_eq(left.memory.clone(), right.memory.clone()))
+        && crate::std_execution_mode::execution_mode_eq(
+            left.execution_mode.clone(),
+            right.execution_mode.clone(),
+        ))
 }
 
 pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
@@ -170,25 +452,28 @@ pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
         memory: runnable_memory_negligible(),
+        execution_mode: ExecutionMode::Hermetic,
     })
 }
 
 pub fn runnable_resource_profile(
     heavy_whole_tree_resolve: bool,
     spawns_host_compiler: bool,
-    memory: Rc<RunnableMemoryClass>,
+    memory: RunnableMemoryClass,
+    execution_mode: ExecutionMode,
 ) -> Rc<RunnableResourceProfile> {
     Rc::new(RunnableResourceProfile {
-        heavy_whole_tree_resolve: heavy_whole_tree_resolve,
-        spawns_host_compiler: spawns_host_compiler,
-        memory: memory,
+        heavy_whole_tree_resolve: heavy_whole_tree_resolve.clone(),
+        spawns_host_compiler: spawns_host_compiler.clone(),
+        memory: memory.clone(),
+        execution_mode: execution_mode.clone(),
     })
 }
 
 pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
-    match (*profile.memory.clone()).clone() {
+    match profile.memory.clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => false,
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => true,
+        RunnableMemoryClass::RunnableMemorySubstantial => true,
     }
 }
 
@@ -196,28 +481,39 @@ pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -
     profile.heavy_whole_tree_resolve.clone()
 }
 
-pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSize {
-    match (*profile.memory.clone()).clone() {
-        RunnableMemoryClass::RunnableMemoryNegligible => byte_size(0),
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-            (*p.predicted_peak).clone()
-        }
+pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
+    match (*r.clone()).clone() {
+        Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
+        Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => runnable_resource_profile_negligible(),
     }
 }
 
-pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
-    match (*r).clone() {
-        Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
-        Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
+pub fn runnable_batch_clamp_source(r: Rc<Runnable>) -> Rc<RunnableBatchClampSource> {
+    match (*r.clone()).clone() {
+        Runnable::RunnableSingleClaim { .. } => {
+            Rc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp)
+        }
+        Runnable::RunnableDiscoveryBatch { .. } => {
+            Rc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp)
+        }
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => Rc::new(RunnableBatchClampSource::RunnableUsesFloorPositionalClamp),
     }
 }
 
 pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
         Runnable::RunnableSingleClaim { profile: p, .. } => {
             runnable_excludes_corpus_co_residence(p.clone())
         }
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => false,
     }
 }
 
@@ -233,158 +529,49 @@ pub enum Runnable {
         source_roots: Rc<Vec<String>>,
         scan_dirs: Rc<Vec<String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-        skip_unaffected_node_frontier: bool,
+        exclude_substrings: Rc<Vec<String>>,
+        discovery_scope_dirs: Rc<Vec<String>>,
         profile: Rc<RunnableResourceProfile>,
     },
-}
-impl Runnable {
-    pub fn profile(&self) -> Rc<RunnableResourceProfile> {
-        match self {
-            Runnable::RunnableSingleClaim { profile: __val, .. } => __val.clone(),
-            Runnable::RunnableDiscoveryBatch { profile: __val, .. } => __val.clone(),
-        }
-    }
+    RunnableKernelWorkload {
+        fused_op_count: i64,
+    },
 }
 
-pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RealizationPlan<S> {
-    pub target: ContentHash,
-    pub objective: Rc<RealizationObjective>,
-    pub schedule: Box<Schedule>,
-    pub total: Rc<CostAccount<S>>,
-    pub _phantom: std::marker::PhantomData<S>,
-}
-
-pub fn runnable_step_label(r: Rc<Runnable>) -> String {
-    match (*r).clone() {
-        Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
-        Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
-    }
-}
-
-pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
-    batch
-        .iter()
-        .cloned()
-        .fold(false, |acc: bool, r: Rc<Runnable>| {
-            (acc || (runnable_step_label(r.clone()) == target.clone()))
-        })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
-pub enum ScheduleLensViolation {
-    EmptySchedule,
-    CompileGateNotFirst { expected: String },
-    CorpusBeforeCompile,
-    SingleBatchOnly,
+pub enum OnSuccessRunnableDisposition {
+    OnSuccessRunnableAdmitted,
+    OnSuccessDiscoveryRefused,
+    OnSuccessKernelRefused,
+    OnSuccessHeavyResolveRefused,
+    OnSuccessHostCompilerRefused,
+    OnSuccessSubstantialRefused,
 }
-impl ScheduleLensViolation {
-    pub fn expected(&self) -> String {
-        match self {
-            ScheduleLensViolation::EmptySchedule => panic!("no expected on unit variant"),
-            ScheduleLensViolation::CompileGateNotFirst {
-                expected: __val, ..
-            } => __val.clone(),
-            ScheduleLensViolation::CorpusBeforeCompile => panic!("no expected on unit variant"),
-            ScheduleLensViolation::SingleBatchOnly => panic!("no expected on unit variant"),
+
+pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunnableDisposition {
+    match (*runnable.clone()).clone() {
+        Runnable::RunnableDiscoveryBatch { .. } => {
+            OnSuccessRunnableDisposition::OnSuccessDiscoveryRefused
         }
-    }
-}
-
-pub fn schedule_lens_module() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "std.realization_schedule".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn schedule_lens_violation_diagnostic(
-    kind: Rc<ScheduleLensViolation>,
-    compile_gate_fn: String,
-) -> Rc<LensVerdictDiagnostic> {
-    {
-        let at = Rc::new(LensVerdictLocus::ModuleWholeFile {
-            module_name: schedule_lens_module(),
-        });
-        match (*kind).clone() {
-            ScheduleLensViolation::EmptySchedule => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_empty_schedule".to_string(),
-                at: at,
-            }),
-            ScheduleLensViolation::CompileGateNotFirst {
-                expected: expected, ..
-            } => Rc::new(LensVerdictDiagnostic {
-                reason: ("schedule_lens_compile_gate_not_first:".to_string() + &expected.clone()),
-                at: at,
-            }),
-            ScheduleLensViolation::CorpusBeforeCompile => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_corpus_before_compile".to_string(),
-                at: at,
-            }),
-            ScheduleLensViolation::SingleBatchOnly => Rc::new(LensVerdictDiagnostic {
-                reason: "schedule_lens_single_batch_only".to_string(),
-                at: at,
-            }),
-        }
-    }
-}
-
-pub fn schedule_lens_verdict_for_ci_floor<S>(
-    plan: Rc<RealizationPlan<S>>,
-    compile_gate_fn: String,
-) -> Rc<LensVerdict> {
-    if (((*plan.schedule).clone().len() as i64) == 0) {
-        Rc::new(LensVerdict::Violation {
-            diagnostic: schedule_lens_violation_diagnostic(
-                Rc::new(ScheduleLensViolation::EmptySchedule),
-                compile_gate_fn.clone(),
-            ),
-        })
-    } else {
-        if (((*plan.schedule).clone().len() as i64) < 2) {
-            Rc::new(LensVerdict::Violation {
-                diagnostic: schedule_lens_violation_diagnostic(
-                    Rc::new(ScheduleLensViolation::SingleBatchOnly),
-                    compile_gate_fn.clone(),
-                ),
-            })
-        } else {
-            {
-                let batch0 = (*plan.schedule).clone().first().cloned();
-                if ((batch0.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) != 1) {
-                    Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => OnSuccessRunnableDisposition::OnSuccessKernelRefused,
+        Runnable::RunnableSingleClaim { profile, .. } => {
+            if profile.heavy_whole_tree_resolve.clone() {
+                OnSuccessRunnableDisposition::OnSuccessHeavyResolveRefused
+            } else {
+                if profile.spawns_host_compiler.clone() {
+                    OnSuccessRunnableDisposition::OnSuccessHostCompilerRefused
                 } else {
-                    if !schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), compile_gate_fn.clone()) {
-                        Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
-                    } else {
-                        if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
-                            Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CorpusBeforeCompile), compile_gate_fn.clone()),
-})
-                        } else {
-                            {
-                                let batch1 = (*plan.schedule).clone().get(1 as usize).cloned();
-if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
-                                    Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
-})
-                                } else {
-                                    Rc::new(LensVerdict::Holds)
-                                }
-}
+                    match profile.memory.clone() {
+                        RunnableMemoryClass::RunnableMemoryNegligible => {
+                            OnSuccessRunnableDisposition::OnSuccessRunnableAdmitted
+                        }
+                        RunnableMemoryClass::RunnableMemorySubstantial => {
+                            OnSuccessRunnableDisposition::OnSuccessSubstantialRefused
                         }
                     }
                 }
@@ -393,15 +580,169 @@ if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optio
     }
 }
 
+pub fn walk_plan_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — ELIGIBLE INDEPENDENT RESOLVE GROUPS within a stage MAY overlap, subject to resource admission — no sibling ordering is guaranteed, so anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. The contract is deliberately weaker than \"members run concurrently\" (review 2026-07-31), because the executor can legitimately withdraw overlap without breaking anything: same-entry same-mode claims are COMBINED into one resolve group and run serially within it; memo-lane and discovery units run on the main thread; and at governor width 1 two spawned threads exist while only one claim body is admitted at a time. Promising wall-time concurrency would make grouping, memo placement, and the governor into contract violations when they are the design. What the admission occupants actually need is the absence of a guaranteed order, and that is what is stated. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).\n\nWHAT THE EXECUTOR PROVIDES, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). THE THREE GAPS THIS NOTE USED TO NAME ARE CLOSED. Both populations now run through ONE executor, `run_stage`: same unit grouping, same lane partition (`batch_unit_lane`), same derived cost clamp. ADMISSION IS PER-LANE, NOT UNIVERSAL, and this note states it precisely because an earlier draft's {same governor admission} shorthand was read as a property of every unit and used to justify deleting a real refusal (review 2026-07-31): `run_batch_unit` takes an `AdmittedSlot` for the unit's lifetime. Ordinary spawned-lane units reach it on worker threads. On-success units that would otherwise take that lane reach the SAME function serially on the executor's main thread, still acquire the SAME slot, and thereby consume that thread's already-warm process_shared_index instead of rebuilding a second cold index. This is a typed consequence of the population, never a claim-name exception. It deliberately withdraws sibling overlap for on-success stages; the contract above permits that withdrawal and still guarantees NO sibling order, while the first live roster uses singleton stages and therefore loses no available overlap. Memo-lane and discovery main-thread units remain UNADMITTED. That is why a heavy-whole-tree-resolve claim is refused admission to an on-success stage rather than merely admitted narrowly — it would route to the memo lane, where no slot governs it, and its context stays resident in `stage_memo` across later stages, so wrapping the call in an ordinary slot would not bound it either. Ordinary members within a stage may therefore OVERLAP subject to per-lane admission; on-success members do not promise overlap. Each on-success stage writes ITS OWN receipt before the next begins, so a process death mid-sequence no longer erases the record of stages that had in fact completed; and the callers differ only where their population semantics require it: ordering/failure policy plus warm-index placement for green-only postconditions.\n\nWHAT MAKES THAT CHECKABLE RATHER THAN ASSERTED. Ordinary spawned-lane overlap was unreachable by a test while spawn-and-join sat inlined in the batch loop. `spawn_units`/`join_units` are split out so a LATCH can reach them: each member increments a shared counter and waits until it observes the other, which a serial ordinary executor cannot satisfy because the first member waits for a peer that was never started. The bound on that wait is a deadlock detector, never the assertion. Proven discriminating by mutation — making `spawn_units` run each ordinary unit inline turns the overlap control RED with the exact serial signature [false, true] and leaves the join and panic controls green. On-success stages deliberately do not use that overlap path. Their BARRIER is stronger and simpler: each `run_stage` returns before `run_walk` advances its loop, and the loop takes `&mut stage_memo` per iteration, so two stages cannot overlap. The schedule lens continues to treat sibling membership as an unordered multiset because implementation order is not a semantic guarantee.\n\nWHAT STILL REFUSES — the TOTAL account, replacing a paragraph that had gone self-contradictory (review 2026-07-31). The prior text asserted that the arm-time validator no longer refuses a heavy-whole-tree-resolve claim, which was true of one revision and false of the one before AND after it; the restored refusal was described elsewhere in this same note, so the canonical carrier stated both. A partial list is how that happened, so this is written as a closed enumeration rather than as commentary on what changed.\n\nAn on-success stage refuses, at arm time:\n  - an UNDECLARED resource profile — the values would be the parse's fail-closed fillers rather than the plan's statements, and a wall read off invented facts is worse than no wall;\n  - `heavy_whole_tree_resolve` — such a unit takes the memo lane, which is UNADMITTED, and its resolved context stays resident in the stage memo across every later stage;\n  - `spawns_host_compiler`;\n  - SUBSTANTIAL residency — the last two because stages supply no clamp parameters (`gunbc_ci_floor_batch_clamp_params` indexes the ORDINARY batches), so such a claim would run unclamped;\n  - a DISCOVERY runnable — it has no defined green-only meaning.\n\nAll four profile restrictions are conditional on mechanisms stages do not yet have, and each names a DIFFERENT trigger; they do not dissolve together. `spawns_host_compiler` and substantial residency dissolve on stages carrying declared clamp parameters. `heavy_whole_tree_resolve` dissolves on a context-lifetime resident reservation — and that reservation is NOT expressible today, which is the part an earlier draft of this sentence got wrong by naming the lease alone as its trigger. An `AdmittedSlot` is a CONCURRENCY slot: holding one for a memoized context's lifetime pins the active count, so the zero-active progress floor never fires, every later admission holds on a full window, and the width that would relieve it grows only on a completion that can no longer happen. The real trigger is therefore TWO steps in order: split execution-slot accounting from resident-reservation accounting, THEN take a context-lifetime reservation against the second. The undeclared-profile refusal has no dissolution — it is the fail-closed floor.\n\nEvery plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn walk_plan_run_stage_claim_executor_seed_deferral() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, and the manifest/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; resolving executor-owned decisions against inherited walk roots is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. The merge-admission pre-walk extension (2026-08-02, review 47517) is likewise this SAME deferral grown, not a new one: the PreWalkExecution value parser, `run_pre_walk_execution` (including its capture-refusal-wire read), the two WalkPopulationBudget watchdogs and the WalkPopulationBudgetRefusal durable writer, and the per-stage memory snapshots are HAND-RUST in `claim_executor.rs`, all dissolving on the same trigger as the rest of this row — the executor walk and its receipt projections becoming emitted `.dag` realizations. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.\n\nWHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.\n\nWHAT THE SCOPED EXTENSION WAS, and why this row shrank. A scoped-witness worker once ran a second source-root envelope in a sequential child process, with its own clamp, execution authority, request projection and TSV receipt family, all hand-Rust here. Its single instance and every carrier behind it were deleted 2026-08-15 with affected-set selection, because the batch existed to make a second subject envelope affordable and selection was what made it affordable. The seed shrank by that whole path rather than migrating it.\n\nMIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane choice, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn walk_finalization_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan { batches: floor_batches, finalization: NoWalkFinalization, .. }` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.\n\nWHAT THE PARAMETERIZATION DOES AND DOES NOT BUY, measured rather than assumed — and the measurement contradicted the intent, so the intent is not what gets written down. The review that requested this asked for a construction wall: the floor's return type should REJECT the empty policy. It does not, today. Probed by execution 2026-07-30: replacing the floor's finalization with NoFinalizationDeclared {} while the signature still reads WalkPlan<FloorFinalization> TYPECHECKS, and fails only later, at the first field access, as a runtime error. A narrower probe isolates the general defect — the typechecker does not check a function's declared return type against its body at all (`fn f() -> Int { \"not an int\" }` typechecks; so does a mismatched generic instantiation), nor a `data` declaration's annotation against its value, while ARGUMENT position is checked and refuses correctly. So this is a §5 WALL-AFTER-GROUNDING, not a wall now: the class is decidable, the single authority it waits on is return-position typechecking, and until that lands the enforcement is honestly VALIDATION — the enrolled witness floor_plan_projects_the_declared_resolve_count_authority (v2.test.claim.ci_floor_plan_witness) reds when the floor stops projecting the declared count, with a forked-count RED control beside it. Saying the signature walls it would be the same overclaim this note's own history is a record of. dissolve-on: return-position type enforcement in the typechecker, at which point the signature becomes the wall and the witness becomes redundant.\n\nLANGUAGE-LAYER FINDING recorded rather than absorbed (§5 workaround rule): a one-variant sum cannot be spelled `type T = OneVariant` — that production is the type-ALIAS form, and the compiler reads OneVariant as an unresolved type name (probed by execution). The nullary variant therefore has to be spelled `= NoFinalizationDeclared {}`, an empty record variant. That is position-dependent meaning for the same syntax (`= A | B` makes A a variant; `= A` makes A an alias target), and it belongs in the grammar-consolidation lane, not in a silent respelling.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NoWalkFinalization {
+    NoFinalizationDeclared,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PreWalkExecution {
+    NoPreWalkExecution,
+    TypedClaimSubprocess {
+        transport_entry: String,
+        transport_function: String,
+        source_roots: Rc<Vec<String>>,
+        claim_entry: String,
+        claim_function: String,
+    },
+}
+impl PreWalkExecution {
+    pub fn transport_entry(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no transport_entry on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                transport_entry: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn transport_function(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no transport_function on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                transport_function: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn source_roots(&self) -> Rc<Vec<String>> {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no source_roots on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                source_roots: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn claim_entry(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no claim_entry on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                claim_entry: __val, ..
+            } => __val.clone(),
+        }
+    }
+    pub fn claim_function(&self) -> String {
+        match self {
+            PreWalkExecution::NoPreWalkExecution => panic!("no claim_function on unit variant"),
+            PreWalkExecution::TypedClaimSubprocess {
+                claim_function: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WalkPlan<F: Clone> {
+    pub pre_walk_execution: Rc<PreWalkExecution>,
+    pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub finalization: F,
+    pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub ordinary_budget: Option<Millisecond>,
+    pub on_success_budget: Option<Millisecond>,
+    pub _phantom: std::marker::PhantomData<F>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WalkPopulationBudgetRefusal {
+    pub population: String,
+    pub plan_site: String,
+    pub population_index: i64,
+    pub active_unit: String,
+    pub elapsed: Millisecond,
+    pub budget: Millisecond,
+}
+
+pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RealizationPlan<S> {
+    pub target: Rc<ContentHash>,
+    pub objective: Rc<RealizationObjective>,
+    pub schedule: Schedule,
+    pub total: Rc<CostAccount<S>>,
+    pub _phantom: std::marker::PhantomData<S>,
+}
+
+pub fn runnable_step_label(r: Rc<Runnable>) -> String {
+    match (*r.clone()).clone() {
+        Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
+        Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => "__kernel_workload__".to_string(),
+    }
+}
+
+pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
+    batch.iter().cloned().fold(false, |acc: bool, r: _| {
+        (acc || (runnable_step_label(r.clone()) == target.clone()))
+    })
+}
+
 pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
-    (((*left.schedule).clone().len() as i64) == ((*right.schedule).clone().len() as i64))
+    ((left.schedule.clone().len() as i64) == (right.schedule.clone().len() as i64))
 }
 
 pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
-    ((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
+    (((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
+        && witness_kind_eq(a.kind.clone(), b.kind.clone()))
+}
+
+pub fn schedule_witness_entry_roster_contains(
+    xs: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    w: Rc<ScheduleWitnessEntry>,
+) -> bool {
+    xs.iter()
+        .cloned()
+        .fold(false, |found: bool, x: Rc<ScheduleWitnessEntry>| {
+            (found || schedule_witness_entry_eq(x.clone(), w.clone()))
+        })
 }
 
 pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
@@ -460,13 +801,13 @@ continue;
 }
 
 pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
-    match (*left).clone() {
+    match (*left.clone()).clone() {
         Runnable::RunnableSingleClaim {
             entry: le,
             function: lf,
             profile: lp,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim {
                 entry: re,
                 function: rf,
@@ -477,30 +818,50 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
             Runnable::RunnableDiscoveryBatch { .. } => false,
+            Runnable::RunnableKernelWorkload {
+                fused_op_count: _, ..
+            } => false,
         },
         Runnable::RunnableDiscoveryBatch {
             source_roots: lsr,
             scan_dirs: lsd,
             explicit_entries: lex,
-            skip_unaffected_node_frontier: lskip,
+            exclude_substrings: lex2,
+            discovery_scope_dirs: lsc,
             profile: lp,
             ..
-        } => match (*right).clone() {
+        } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch {
                 source_roots: rsr,
                 scan_dirs: rsd,
                 explicit_entries: rex,
-                skip_unaffected_node_frontier: rskip,
+                exclude_substrings: rex2,
+                discovery_scope_dirs: rsc,
                 profile: rp,
                 ..
             } => {
-                ((((string_list_eq(lsr.clone(), rsr.clone())
+                (((((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
-                    && (lskip.clone() == rskip.clone()))
+                    && string_list_eq(lex2.clone(), rex2.clone()))
+                    && string_list_eq(lsc.clone(), rsc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
+            Runnable::RunnableKernelWorkload {
+                fused_op_count: _, ..
+            } => false,
+        },
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: lleft,
+            ..
+        } => match (*right.clone()).clone() {
+            Runnable::RunnableSingleClaim { .. } => false,
+            Runnable::RunnableDiscoveryBatch { .. } => false,
+            Runnable::RunnableKernelWorkload {
+                fused_op_count: rcount,
+                ..
+            } => (lleft.clone() == rcount.clone()),
         },
     }
 }
@@ -560,10 +921,36 @@ pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
-    schedule_eq((*plan.schedule).clone(), schedule)
+    schedule_eq(plan.schedule.clone(), schedule.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Predicted;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Measured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CorpusWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExecutionWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeBundleWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableMemoryNegligible;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableMemorySubstantial;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OrdinaryFloorWorker;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessRunnableAdmitted;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessDiscoveryRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessKernelRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessHeavyResolveRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessHostCompilerRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OnSuccessSubstantialRefused;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NoFinalizationDeclared;

@@ -1,0 +1,81 @@
+module gunbc.v1_deletion_plan
+
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// COMPACT V1 EXIT MODEL (operator verdict 2026-07-28, retiring this file's second-mutable-roadmap
+// role). This file owns exactly one thing: the identity and meaning of the four v1 finish lines and
+// the roadmap node each binds to. It owns nothing else. The dependency graph is
+// gunbc.roadmap_authority (RoadmapEdge rows); per-node acceptance criteria live on the roadmap
+// tickets themselves (TicketFields red_control/handback — restating them here would be a second
+// representation); acceptance is a gunbc.roadmap_model RoadmapAcceptanceReceipt row in the
+// authority, so a finish line is reached exactly when its bound node is accepted, never by an
+// assertion in this file. The prior three-gate brick ledger
+// (PlanGate/PlanMilestone/BrickState/ConfidenceBasis rows, lane_state execution prose, day
+// estimates; cycle-5 remodel 2026-07-20) is retired: probe receipts and execution state live in
+// their natural carriers (docs/probes/*, the witness corpus, gunbc.proactive_verification_ledger,
+// the self-host frontier), and the full brick history remains in git history at this path. The
+// four-line split replaces the single overloaded 'delete v1' terminal: interpreter deletion is a
+// link-grain no-consumer claim that does not wait on unrelated hand-Rust or v1 test migration;
+// product v1-freedom and repository-wide zero hand-maintained Rust are separate downstream claims
+// with their own bars.
+
+type V1FinishLine
+  = CompilerFixedPoint
+  | InterpreterDeleted
+  | ProductsV1Free
+  | ZeroHandMaintainedRust
+
+type V1FinishLineSpec {
+  line: V1FinishLine
+  name: String
+  claim: String
+  node: RoadmapNodeId
+}
+
+fn v1_exit_node_id(s: String) -> RoadmapNodeId { s }
+
+fn v1_finish_line_key(l: V1FinishLine) -> String {
+  match l {
+    CompilerFixedPoint => "compiler-fixed-point"
+    InterpreterDeleted => "interpreter-deleted"
+    ProductsV1Free => "products-v1-free"
+    ZeroHandMaintainedRust => "zero-hand-maintained-rust"
+  }
+}
+
+fn v1_exit_finish_lines() -> List<V1FinishLineSpec> {
+  [
+    V1FinishLineSpec {
+      line: CompilerFixedPoint,
+      name: "Compiler fixed point",
+      claim: "Every part of the new compiler generates its own source, that source builds, and the result behaves the same again — the generator itself first, then everything else it does. Matching the old compiler byte for byte is deliberately not the goal.",
+      node: v1_exit_node_id(s: "v1-emitter-fixed-point"),
+    },
+    V1FinishLineSpec {
+      line: InterpreterDeleted,
+      name: "Interpreter deleted",
+      claim: "Nothing we ship or run reaches the old runner any more, and its code is gone. Unrelated hand-written Rust and the old compiler's tests are not part of this claim.",
+      node: v1_exit_node_id(s: "v1-interpreter-delete"),
+    },
+    V1FinishLineSpec {
+      line: ProductsV1Free,
+      name: "Products v1-free",
+      claim: "Every product builds and runs with the old code absent. Anything that genuinely has to stay is listed with a reason.",
+      node: v1_exit_node_id(s: "v1-products-v1-free"),
+    },
+    V1FinishLineSpec {
+      line: ZeroHandMaintainedRust,
+      name: "Zero hand-maintained Rust",
+      claim: "Every Rust file we track is generated from a description or deleted. Hand-maintaining Rust is a stage we pass through, not where we stop.",
+      node: v1_exit_node_id(s: "v1-zero-hand-maintained-rust"),
+    },
+  ]
+}
+
+fn v1_finish_line_accepted(spec: V1FinishLineSpec, accepted: List<RoadmapNodeId>) -> Bool {
+  accepted |> any(id => id == spec.node)
+}
+
+fn v1_finish_lines_accepted_count(accepted: List<RoadmapNodeId>) -> Int {
+  count(v1_exit_finish_lines() |> filter(s => v1_finish_line_accepted(spec: s, accepted: accepted)))
+}

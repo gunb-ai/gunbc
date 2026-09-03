@@ -1,0 +1,50 @@
+module gunbc.systemctl_stop_run
+
+import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.host_effect { HostEffectTransport }
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.host_operation_exec {
+  HostOperationObserved,
+  HostOperationRefused,
+  host_operation_exec,
+  host_operation_materialize_argv,
+  SystemctlStop,
+}
+
+type SystemctlStopOutcome =
+    SystemctlStopped { stdout: String }
+  | SystemctlStopRefused { reason: String }
+
+// One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
+// commented in full.
+//
+// STOP IS THE ONE SEAM THAT READS STDERR, and it is why HostOperationObserved carries stderr as an
+// OPTIONAL rather than a String. systemd.Systemctl.Stop declares a stderr output; the readonly reads
+// beside it do not. An absent stderr therefore means THIS OPERATION DOES NOT MODEL ONE -- not that
+// the process wrote nothing -- so the arm below refuses with that distinction stated instead of
+// rendering `none` as an empty reason.
+fn systemctl_stop_run(transport: HostEffectTransport, unit: NonEmptyStr) -> SystemctlStopOutcome {
+  match host_operation_exec(transport: transport, operation: SystemctlStop { unit: unit }) {
+    HostOperationObserved { stdout: out, success: ok, stderr: err } =>
+      if ok {
+        SystemctlStopped { stdout: out }
+      } else {
+        match err {
+          Present { value: e } => SystemctlStopRefused { reason: e }
+          Absent => SystemctlStopRefused {
+            reason: "systemd.Systemctl.Stop exited unsuccessfully and the leg modelled no stderr",
+          }
+        }
+      }
+    HostOperationRefused { operation: _, reason: why } =>
+      SystemctlStopRefused { reason: why }
+  }
+}
+
+fn systemctl_stop_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
+  let authority = ["systemctl", "stop", unit as String]
+  match host_operation_materialize_argv(operation: SystemctlStop { unit: unit }) {
+    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}

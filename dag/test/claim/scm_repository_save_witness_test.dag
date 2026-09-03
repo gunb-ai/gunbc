@@ -1,0 +1,106 @@
+module test.claim.scm_repository_save_witness
+
+// THE SAVE BOUNDARY'S ORDER PROPERTY, PROVED WITHOUT PERFORMING A WRITE.
+//
+// What matters about `save_repository` is not that it can write a file but that an unrepresentable
+// repository is refused BEFORE any bytes exist -- a write that succeeds and is later found corrupt
+// reports the fault to whoever LOADS it rather than to whoever caused it.
+//
+// HOW THAT IS ESTABLISHED WITHOUT A HOST WRITE, which is why this file can execute at all: on the
+// refusal path `Filesystem.Write` is never reached, so the operation is pure. Asking
+// `load_repository` about the same path afterwards is a READ, and a read of a path under the
+// checkout root is an INPUT under the interpreter's hermetic carve-out. So the pair -- refuse, then
+// observe the path is still unreadable -- establishes that nothing was written, using only the
+// direction of the boundary that routes.
+//
+// WHAT IS DELIBERATELY NOT CLAIMED HERE: that a SUCCESSFUL save writes correct bytes, and that a
+// failed write is reported. Both need a real host write, and the frame that would run them is not
+// established. What IS established, by execution: under `gunbc run` a write DOES occur -- the
+// mutation receipt below produced an actual file. Whether the required floor's hermetic frame
+// admits the same write is a DIFFERENT question, not measured; a write has no input carve-out the
+// way a read of a checkout path does. Asserting either answer without measuring the floor would be
+// the rung claim DESIGN forbids. Authoring the two write arms as claims before that is settled
+// would risk two permanently-unexecuted claims in a file whose other claims run -- the decoration
+// DESIGN calls worse than absent, because the file would be cited as covering a boundary it half
+// covers. Closing the gap needs a measured route, not another claim here.
+//
+// THE MUTATION RECEIPT, stronger than a passing pair. Replacing the checked encoder with an
+// unchecked one -- removing the adjudication from ahead of the write -- reds BOTH claims, and the
+// second STAYS red after the source is restored. Not flaky: the mutated save really wrote
+// `this_file_is_never_written.json`, so the file exists and the claim correctly keeps reporting it.
+// The order property is observed against a real filesystem, not asserted. In CI each run is a fresh
+// checkout, so the sticky red is self-healing there and load-bearing here.
+
+import std.types { Bool, Int, String }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store { empty_store }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryEncodeRefusal,
+  RepositoryCheckoutNotInCommits,
+}
+import gunbc.scm.repository_save {
+  RepositorySave,
+  RepositorySaved,
+  RepositorySaveRefusedByCodec,
+  RepositoryFileUnwritable,
+  save_repository,
+}
+import gunbc.scm.repository_load {
+  RepositoryLoad,
+  RepositoryLoadRefused,
+  RepositoryFileUnreadable,
+  load_repository,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// UNDER THE CHECKOUT ROOT AND NEVER CREATED, exactly as on the load side. If a refusal ever DID
+// write, this path would come into existence and the second claim below would go loud.
+data scm_sv_never_written_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_written.json"
+
+// A repository whose checkout selects a commit that is not among its commits. Unrepresentable by
+// any writer to any path -- the caller's fact about the value, not the host's about the path.
+fn scm_sv_unrepresentable_repository() -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: empty_store(),
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: Present { value: RepositoryCommitRef { identity: MintedId { ordinal: 1 } } },
+  }
+}
+
+test fn scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() -> Bool {
+  match save_repository(path: scm_sv_never_written_path, repo: scm_sv_unrepresentable_repository()) {
+    RepositorySaveRefusedByCodec { path: p, cause: c } =>
+      p == scm_sv_never_written_path &&
+        match c {
+          RepositoryCheckoutNotInCommits { selected: _ } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// THE ORDER CLAIM. Having refused, the path must still not exist.
+test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
+  let refused = match save_repository(
+    path: scm_sv_never_written_path,
+    repo: scm_sv_unrepresentable_repository(),
+  ) {
+    RepositorySaveRefusedByCodec { path: _, cause: _ } => true
+    _ => false
+  }
+  let absent = match load_repository(path: scm_sv_never_written_path) {
+    RepositoryLoadRefused { cause: RepositoryFileUnreadable { path: _, error: _ } } => true
+    _ => false
+  }
+  refused && absent
+}
+
+test fn scm_repository_save_keystone_holds() -> Bool {
+  scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() &&
+    scm_sv_a_refused_save_leaves_no_file()
+}

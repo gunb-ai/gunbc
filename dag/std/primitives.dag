@@ -1,0 +1,733 @@
+module std.primitives
+
+type Certainty = Proven | Amortized | Expected | Conservative
+
+type CarrierCostSensitivity
+  = CarrierInsensitive
+  | CarrierSensitive { ephemeral_work: String, persistent_work: String }
+
+type PrimitiveContract {
+  name: String
+  work: String
+  output_size: String
+  certainty: Certainty
+  carrier_cost: CarrierCostSensitivity
+}
+
+data char_at_contract: PrimitiveContract = {
+  name: "char_at",
+  work: "pos",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data string_length_contract: PrimitiveContract = {
+  name: "string_length",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data substring_contract: PrimitiveContract = {
+  name: "substring",
+  work: "end",
+  output_size: "end - start",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data string_contains_contract: PrimitiveContract = {
+  name: "string_contains",
+  work: "n * m",
+  output_size: "1",
+  certainty: Conservative,
+  carrier_cost: CarrierInsensitive
+}
+
+data starts_with_contract: PrimitiveContract = {
+  name: "starts_with",
+  work: "m",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data ends_with_contract: PrimitiveContract = {
+  name: "ends_with",
+  work: "m",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data trim_contract: PrimitiveContract = {
+  name: "trim",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data concat_contract: PrimitiveContract = {
+  name: "concat",
+  work: "n + m",
+  output_size: "n + m",
+  certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "log(n + m)" }
+}
+
+data split_contract: PrimitiveContract = {
+  name: "split",
+  work: "n",
+  output_size: "k",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data repeat_contract: PrimitiveContract = {
+  name: "repeat",
+  work: "m * n",
+  output_size: "m * n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data chars_contract: PrimitiveContract = {
+  name: "chars",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data to_string_contract: PrimitiveContract = {
+  name: "to_string",
+  work: "n",
+  output_size: "n",
+  certainty: Conservative,
+  carrier_cost: CarrierInsensitive
+}
+
+data parse_int_contract: PrimitiveContract = {
+  name: "parse_int",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data str_eq_contract: PrimitiveContract = {
+  name: "str_eq",
+  work: "min(n, m)",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data replace_section_contract: PrimitiveContract = {
+  name: "replace_section",
+  work: "n",
+  output_size: "n",
+  certainty: Conservative,
+  carrier_cost: CarrierInsensitive
+}
+
+data code_point_contract: PrimitiveContract = {
+  name: "code_point",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data from_code_point_contract: PrimitiveContract = {
+  name: "from_code_point",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data scan_while_contract: PrimitiveContract = {
+  name: "scan_while",
+  work: "k",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data skip_horizontal_ws_contract: PrimitiveContract = {
+  name: "skip_horizontal_ws",
+  work: "k",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data scan_to_eol_contract: PrimitiveContract = {
+  name: "scan_to_eol",
+  work: "k",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data scan_string_end_contract: PrimitiveContract = {
+  name: "scan_string_end",
+  work: "k",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data map_contract: PrimitiveContract = {
+  name: "map",
+  work: "n * f_work",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data filter_contract: PrimitiveContract = {
+  name: "filter",
+  work: "n * pred_work",
+  output_size: "k <= n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data filter_map_contract: PrimitiveContract = {
+  name: "filter_map",
+  work: "n * f_work",
+  output_size: "k <= n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data flat_map_contract: PrimitiveContract = {
+  name: "flat_map",
+  work: "n * f_work",
+  output_size: "sum(f_output_sizes)",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data fold_contract: PrimitiveContract = {
+  name: "fold",
+  work: "n * f_work",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data any_contract: PrimitiveContract = {
+  name: "any",
+  work: "k * pred_work",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data all_contract: PrimitiveContract = {
+  name: "all",
+  work: "k * pred_work",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data contains_contract: PrimitiveContract = {
+  name: "contains",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data join_contract: PrimitiveContract = {
+  name: "join",
+  work: "n + total_length",
+  output_size: "total_length + (n - 1) * sep_length",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data sort_contract: PrimitiveContract = {
+  name: "sort",
+  work: "n * log(n)",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data sort_by_contract: PrimitiveContract = {
+  name: "sort_by",
+  work: "n * (key_work + log(n))",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data dedup_contract: PrimitiveContract = {
+  name: "dedup",
+  work: "n * n",
+  output_size: "k <= n",
+  certainty: Conservative,
+  carrier_cost: CarrierInsensitive
+}
+
+data len_contract: PrimitiveContract = {
+  name: "len",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data count_contract: PrimitiveContract = {
+  name: "count",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data sum_contract: PrimitiveContract = {
+  name: "sum",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data first_contract: PrimitiveContract = {
+  name: "first",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log n" }
+}
+
+data last_contract: PrimitiveContract = {
+  name: "last",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log n" }
+}
+
+data get_contract: PrimitiveContract = {
+  name: "get",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log n" }
+}
+
+data max_by_contract: PrimitiveContract = {
+  name: "max_by",
+  work: "n * f_work",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data reverse_contract: PrimitiveContract = {
+  name: "reverse",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data list_push_contract: PrimitiveContract = {
+  name: "list_push",
+  work: "1",
+  output_size: "n + 1",
+  certainty: Amortized,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log n" }
+}
+
+data append_contract: PrimitiveContract = {
+  name: "append",
+  work: "m",
+  output_size: "n + m",
+  certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "log(n + m)" }
+}
+
+data skip_contract: PrimitiveContract = {
+  name: "skip",
+  work: "n",
+  output_size: "max(0, len - n)",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data zip_contract: PrimitiveContract = {
+  name: "zip",
+  work: "min(n, m)",
+  output_size: "min(n, m)",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data enumerate_contract: PrimitiveContract = {
+  name: "enumerate",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data empty_map_contract: PrimitiveContract = {
+  name: "empty_map",
+  work: "1",
+  output_size: "0",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data map_insert_contract: PrimitiveContract = {
+  name: "map_insert",
+  work: "1",
+  output_size: "n + 1",
+  certainty: Amortized,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log32 n" }
+}
+
+data map_get_contract: PrimitiveContract = {
+  name: "map_get",
+  work: "1",
+  output_size: "1",
+  certainty: Expected,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log32 n" }
+}
+
+data map_contains_key_contract: PrimitiveContract = {
+  name: "map_contains_key",
+  work: "1",
+  output_size: "1",
+  certainty: Expected,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log32 n" }
+}
+
+data lookup_contract: PrimitiveContract = {
+  name: "lookup",
+  work: "1",
+  output_size: "1",
+  certainty: Expected,
+  carrier_cost: CarrierSensitive { ephemeral_work: "1", persistent_work: "log32 n" }
+}
+
+data map_merge_contract: PrimitiveContract = {
+  name: "map_merge",
+  work: "m",
+  output_size: "n + m",
+  certainty: Amortized,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "m * log32(n + m)" }
+}
+
+data map_keys_contract: PrimitiveContract = {
+  name: "map_keys",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data map_values_contract: PrimitiveContract = {
+  name: "map_values",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data index_by_contract: PrimitiveContract = {
+  name: "index_by",
+  work: "n * key_fn_work",
+  output_size: "n",
+  certainty: Amortized,
+  carrier_cost: CarrierInsensitive
+}
+
+data with_contract: PrimitiveContract = {
+  name: "with",
+  work: "n + m",
+  output_size: "n + m",
+  certainty: Proven,
+  carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "m * log32 n" }
+}
+
+data filesystem_read_contract: PrimitiveContract = {
+  name: "filesystem_read",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data to_bytes_contract: PrimitiveContract = {
+  name: "to_bytes",
+  work: "n",
+  output_size: "n",
+  certainty: Conservative,
+  carrier_cost: CarrierInsensitive
+}
+
+data to_json_contract: PrimitiveContract = {
+  name: "to_json",
+  work: "n",
+  output_size: "n",
+  certainty: Conservative,
+  carrier_cost: CarrierInsensitive
+}
+
+data hash_contract: PrimitiveContract = {
+  name: "hash",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data hash_combine_contract: PrimitiveContract = {
+  name: "hash_combine",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data atom_identity_hash_contract: PrimitiveContract = {
+  name: "atom_identity_hash",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data contiguous_loop_elementwise_kernel_contract: PrimitiveContract = {
+  name: "contiguous_loop_elementwise_kernel",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data contiguous_loop_elementwise_float_kernel_contract: PrimitiveContract = {
+  name: "contiguous_loop_elementwise_float_kernel",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+// Enumerable registry surface names parallel to builtin_function_registry keys. Witness-time census
+// cannot call map_keys on Map<String, Node> because Node is not a runtime Value. Relocated from
+// v1.compiler.infer_method for dag/ compile scope (review 46064) — same parallel-enumeration debt,
+// not a new fork. Dissolve-on: fold builtin_function_registry construction from this list as the
+// single authority.
+
+fn builtin_registry_surface_names() -> List<String> {
+  [
+    "count",
+    "string_length",
+    "code_point",
+    "to_int",
+    "scan_while",
+    "scan_string_end",
+    "scan_to_eol",
+    "skip_horizontal_ws",
+    "parse_int",
+    "char_at",
+    "substring",
+    "from_code_point",
+    "chars_to_string",
+    "record_source_chars_index_lookup",
+    "resolution_silent_pick_is_enabled",
+    "name_resolution_policy_is_namespace_only",
+    "resolution_silent_pick_record_global_bare_lcp_pick",
+    "resolution_silent_pick_record_global_bare_lcp_tie",
+    "resolution_silent_pick_record_fn_parent_first_hit",
+    "to_string",
+    "discriminant",
+    "concat",
+    "map_insert",
+    "map_merge",
+    "with",
+    "empty_set",
+    "set_insert",
+    "set_union",
+    "map_contains_key",
+    "map_has",
+    "map_is_empty",
+    "rc_ptr_eq",
+    "rc_vec_ptr_eq",
+    "emit_map_has",
+    "set_contains",
+    "lookup",
+    "map_get",
+    "Some",
+    "map_keys",
+    "sorted_map_keys",
+    "map_values",
+    "get",
+    "reverse",
+    "list_push",
+    "hash_combine",
+    "atom_identity_hash",
+    "trace_mark",
+    "observed_peak_resident_bytes",
+    "observed_monotonic_nanos",
+    "string_contains",
+    "length",
+    "starts_with",
+    "replace",
+    "filesystem_read",
+    "emit_host_run_transport",
+    "emit_host_run_transport_cached",
+    "emit_host_native_cache_evict",
+    "contiguous_loop_elementwise_kernel",
+    "contiguous_loop_elementwise_float_kernel",
+    "shell_materialize_operation_argv",
+    "shell_transport_operation_rows",
+    "extdeps_shape_transport_policy_facts_for_qualified_name",
+    "extdeps_qualified_name_resolves_in_derived_module_set",
+    "extdeps_external_authority_facts_for_qualified_name",
+    "extdeps_external_authority_live_clean_tree_holds",
+    "extdeps_external_authority_live_roster_module_count",
+    "seed_runner_bool_false_failure_detail",
+    "doc_graph_orphan_count",
+    "doc_graph_admitted_root_count",
+    "doc_graph_dangling_link_count",
+    "doc_graph_doc_count",
+    "compile_dag_rust_emit_check",
+    "parsed_import_statements",
+    "namespace_structural_observation_admissions",
+    "witness_layer_roots_compile_clean_check",
+    "witness_layer_roots_compile_clean_emit_check",
+    "install_or_consume_floor_compile_clean_gate_receipt",
+    "record_generated_artifact_drift_gate_failure_detail",
+    "record_generated_artifact_drift_gate_clean",
+    "consume_generated_artifact_drift_gate_receipt",
+    "witness_compile_clean_cli_floor_verdicts_agree",
+    "test_migration_debt_module_names",
+    "test_migration_legacy_behavior_ids",
+    "test_migration_witness_behavior_ids",
+    "test_migration_behavior_discovery_holds",
+    "inert_carrier_names_live",
+    "inert_carrier_declared_count",
+    "non_fold_residue_count",
+    "non_fold_residue_unrostered_count",
+    "non_fold_residue_stale_roster_count",
+    "non_fold_residue_coproduct_universe_count",
+    "commit_witness_claim_roster_unresolvable_count",
+    "commit_witness_claim_pair_resolvable",
+    "non_fold_residue_wildcard_red_fixture_holds",
+    "non_fold_residue_total_fold_green_fixture_holds",
+    "non_fold_residue_roster_red_fixture_holds",
+    "non_fold_residue_synthetic_unrostered_red_holds",
+    "complexity_linearity_syntactic_finding_count",
+    "complexity_linearity_wildcard_facts",
+    "complexity_linearity_syntactic_site_fired",
+    "fallback_arm_census_facts",
+    "fallback_arm_census_class_count",
+    "fallback_arm_census_total",
+    "fallback_arm_census_reconciliation_holds",
+    "census_corpus_roots_follow_layer_authority",
+    "transport_script_position_facts_for_path",
+    "layer_import_facts",
+    "import_resolution_facts",
+    "reference_resolution_facts",
+    "module_declaration_facts",
+    "concept_decl_facts",
+    "decl_facts",
+    "export_signature_facts",
+    "data_decl_type_facts",
+    "fact_cardinality_decl_facts",
+    "languages_consumer_census_data_decl_count",
+    "languages_consumer_census_per_language_row_count",
+    "languages_consumer_census_format_row_count",
+    "languages_consumer_census_external_consumer_count",
+    "languages_consumer_census_is_composition_only",
+    "languages_consumer_census_has_external_consumer",
+    "is_xid_start",
+    "is_xid_continue",
+    "is_emoji_ident",
+  ]
+}
+
+data primitive_contract_roster_note: String = "Hand-maintained parallel enumeration of every *_contract data declaration in this module. A new foo_contract row silently under-reports on primitive_surface_census_derived until this roster is updated — the open-denominator class D0 is designed to expose. Dissolve-on: derive the roster by enumerating *_contract declarations once declaration introspection lands, so contract surfaces read the module rather than a second list."
+
+fn primitive_contract_roster() -> List<PrimitiveContract> {
+  [
+    char_at_contract,
+    string_length_contract,
+    substring_contract,
+    string_contains_contract,
+    starts_with_contract,
+    ends_with_contract,
+    trim_contract,
+    concat_contract,
+    split_contract,
+    repeat_contract,
+    chars_contract,
+    to_string_contract,
+    parse_int_contract,
+    str_eq_contract,
+    replace_section_contract,
+    code_point_contract,
+    from_code_point_contract,
+    scan_while_contract,
+    skip_horizontal_ws_contract,
+    scan_to_eol_contract,
+    scan_string_end_contract,
+    map_contract,
+    filter_contract,
+    filter_map_contract,
+    flat_map_contract,
+    fold_contract,
+    any_contract,
+    all_contract,
+    contains_contract,
+    join_contract,
+    sort_contract,
+    sort_by_contract,
+    dedup_contract,
+    len_contract,
+    count_contract,
+    sum_contract,
+    first_contract,
+    last_contract,
+    get_contract,
+    max_by_contract,
+    reverse_contract,
+    list_push_contract,
+    append_contract,
+    skip_contract,
+    zip_contract,
+    enumerate_contract,
+    empty_map_contract,
+    map_insert_contract,
+    map_get_contract,
+    map_contains_key_contract,
+    lookup_contract,
+    map_merge_contract,
+    map_keys_contract,
+    map_values_contract,
+    index_by_contract,
+    with_contract,
+    filesystem_read_contract,
+    to_bytes_contract,
+    to_json_contract,
+    hash_contract,
+    hash_combine_contract,
+    atom_identity_hash_contract,
+    contiguous_loop_elementwise_kernel_contract,
+    contiguous_loop_elementwise_float_kernel_contract,
+  ]
+}

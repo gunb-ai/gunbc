@@ -1,0 +1,99 @@
+module test.claim.duplicate_declaration_wall_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WALL THIS ROW GUARDS, and why it exists at the FIXTURE boundary rather than over the corpus.
+// A module declaring one name TWICE was accepted with ZERO diagnostics and the SECOND declaration
+// silently won: `v1.compiler.env` `symbol_index_insert` is a `map_insert` keyed on the qualified
+// name, so the second write REPLACED the first and every reference bound the survivor. Measured by
+// execution through our own binary before the wall landed: a module with `fn probe_dup() -> Int { 1 }`
+// then `fn probe_dup() -> Int { 2 }` ran its caller to 2, and the one-definition control to 1 --
+// same harness, duplication the only variable. `v1.compiler.resolve` `check_duplicate_declarations`
+// now refuses it with a blocking `DuplicateDeclaration`.
+//
+// WHY THE RED IS AUTHORABLE HERE AND NOWHERE ELSE (DESIGN 4b): no `Accepted` module may now carry
+// the state, so the refusal is unreachable from the corpus -- but a fixture hands the compiler
+// source text, and a compiler's regression probes are invalid programs by definition. Declining to
+// author it because the accepted tree cannot hold it would be specification-without-execution.
+//
+// THE BOUND THIS ROW STATES, about the repository's evidence discipline rather than the compiler:
+// where two definitions of one name are semantically EQUIVALENT, no behavioural witness can
+// discriminate them whichever wins. Green-by-execution proves BEHAVIOUR and is structurally blind
+// to duplicate AUTHORSHIP. Hence a compile-seam refusal, not a runtime probe, and hence the live
+// specimens this wall's landing repaired had passed every witness over them.
+//
+// WHAT THIS SURFACE OBSERVES, so no receipt reads more coverage than it has:
+// `compile_dag_rust_emit_check` answers false when the compile carries ANY hard diagnostic, so a
+// red row alone does not establish WHICH judgment refused. The discrimination is carried by the
+// PAIR: each red fixture and its green control differ by exactly the duplicated declaration, so a
+// red that survives its control's green is a red caused by the duplication. The path measured is
+// source -> `.dag` acceptance through the v1 pipeline to the Rust render target, single module.
+// NOT measured: the interpreter's disposition of the same source, and cross-module name
+// collisions, a different class (two keys, not one).
+
+fn duplicate_fn_source() -> String {
+  "module test.claim.duplicate_declaration_wall_duplicate_fn\nimport std.types { Int }\n\nfn which_one() -> Int { 1 }\n\nfn which_one() -> Int { 2 }\n"
+}
+
+fn single_fn_source() -> String {
+  "module test.claim.duplicate_declaration_wall_single_fn\nimport std.types { Int }\n\nfn which_one() -> Int { 1 }\n"
+}
+
+// The collision is NOT fn/fn only. A `data` and a `fn` of one name share one symbol-index key, and
+// that shape had LIVE exposure on main: `dag/gunbc/systemctl_list_units.dag` declared
+// `data systemctl_list_units_all_states: String` and `fn systemctl_list_units_all_states(..)`, so
+// the reference intended for the string bound the FUNCTION. Repaired in the same change that
+// landed the wall.
+fn duplicate_data_and_fn_source() -> String {
+  "module test.claim.duplicate_declaration_wall_duplicate_kind\nimport std.types { Int }\n\ndata thing: Int = 1\n\nfn thing() -> Int { 2 }\n"
+}
+
+fn distinct_data_and_fn_source() -> String {
+  "module test.claim.duplicate_declaration_wall_distinct_kind\nimport std.types { Int }\n\ndata thing: Int = 1\n\nfn other() -> Int { 2 }\n"
+}
+
+// THE DISCRIMINATING REDS.
+
+test fn two_function_declarations_of_one_name_are_refused() -> Bool {
+  compile_dag_rust_emit_check(
+    duplicate_fn_source(),
+    "src/test_claim_duplicate_declaration_wall_duplicate_fn.rs",
+    [],
+    []
+  ) == false
+}
+
+test fn a_data_and_a_function_sharing_one_name_are_refused() -> Bool {
+  compile_dag_rust_emit_check(
+    duplicate_data_and_fn_source(),
+    "src/test_claim_duplicate_declaration_wall_duplicate_kind.rs",
+    [],
+    []
+  ) == false
+}
+
+// THE POSITIVE CONTROLS. Each is its red's fixture with the duplication removed and nothing else
+// changed, so a red above cannot pass by its fixture being broken some other way. Per DESIGN 4b(4)
+// they stay enrolled after the wall lands: they are the executing evidence that the rung is real,
+// and deleting them would recreate specification-without-execution one rung up.
+
+test fn one_function_declaration_compiles_clean() -> Bool {
+  compile_dag_rust_emit_check(
+    single_fn_source(),
+    "src/test_claim_duplicate_declaration_wall_single_fn.rs",
+    ["which_one"],
+    []
+  )
+}
+
+test fn a_data_and_a_function_with_distinct_names_compile_clean() -> Bool {
+  compile_dag_rust_emit_check(
+    distinct_data_and_fn_source(),
+    "src/test_claim_duplicate_declaration_wall_distinct_kind.rs",
+    ["other"],
+    []
+  )
+}

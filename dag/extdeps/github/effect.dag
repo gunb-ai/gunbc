@@ -1,0 +1,156 @@
+module extdeps.github.effect
+
+import std.types { NonEmptyStr, CommitSha }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.app {
+  GitHubAppPermission,
+  GitHubPermissionAxis,
+  ContentsAxis,
+  WorkflowsAxis,
+  ActionsAxis,
+  MetadataAxis,
+  OrganizationSelfHostedRunnersAxis,
+  AppAccessRead,
+  AppAccessWrite
+}
+import extdeps.github.github { Repository }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
+  }
+}
+
+data contents_write_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/git/refs#update-a-reference"
+  }
+}
+
+data workflow_dispatch_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
+  }
+}
+
+data organization_runner_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/self-hosted-runners#create-a-registration-token-for-an-organization"
+  }
+}
+
+type RepositoryPath { value: NonEmptyStr }
+
+type GitHubOrganizationRef { login: NonEmptyStr }
+
+type GitBranchRef { name: NonEmptyStr }
+
+type GitHubWorkflowRef { file_name: NonEmptyStr }
+
+type GitHubEffect
+  = AdvanceRepositoryBranch {
+      repository: Repository
+      branch: GitBranchRef
+      changed_paths: List<RepositoryPath>
+    }
+  | DispatchWorkflow {
+      repository: Repository
+      workflow: GitHubWorkflowRef
+      subject: CommitSha
+    }
+  | RegisterOrganizationRunner {
+      organization: GitHubOrganizationRef
+    }
+
+data workflow_directory_prefix: NonEmptyStr = ".github/workflows/"
+
+fn path_has_prefix(path: NonEmptyStr, prefix: NonEmptyStr) -> Bool {
+  let prefix_len = string_length(s: prefix)
+  if string_length(s: path) < prefix_len {
+    false
+  } else {
+    substring(s: path, start: 0, end: prefix_len) == prefix
+  }
+}
+
+fn is_workflow_projection_path(path: RepositoryPath) -> Bool {
+  path_has_prefix(path: path.value, prefix: workflow_directory_prefix)
+}
+
+fn any_workflow_projection_path(paths: List<RepositoryPath>) -> Bool {
+  fold_list(
+    xs: paths,
+    empty: false,
+    cons: fn(found, p) { found || is_workflow_projection_path(path: p) }
+  )
+}
+
+fn workflow_projection_paths(paths: List<RepositoryPath>) -> List<RepositoryPath> {
+  filter(paths, p => is_workflow_projection_path(path: p))
+}
+
+data contents_write: GitHubAppPermission = GitHubAppPermission {
+  name: ContentsAxis,
+  access: AppAccessWrite
+}
+
+data workflows_write: GitHubAppPermission = GitHubAppPermission {
+  name: WorkflowsAxis,
+  access: AppAccessWrite
+}
+
+data actions_write: GitHubAppPermission = GitHubAppPermission {
+  name: ActionsAxis,
+  access: AppAccessWrite
+}
+
+data metadata_read: GitHubAppPermission = GitHubAppPermission {
+  name: MetadataAxis,
+  access: AppAccessRead
+}
+
+data organization_self_hosted_runners_write: GitHubAppPermission = GitHubAppPermission {
+  name: OrganizationSelfHostedRunnersAxis,
+  access: AppAccessWrite
+}
+
+fn advance_branch_required_permissions(paths: List<RepositoryPath>) -> List<GitHubAppPermission> {
+  if any_workflow_projection_path(paths: paths) {
+    [contents_write, workflows_write]
+  } else {
+    [contents_write]
+  }
+}
+
+fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPermission> {
+  match effect {
+    AdvanceRepositoryBranch { repository: _, branch: _, changed_paths } =>
+      advance_branch_required_permissions(paths: changed_paths)
+    DispatchWorkflow { repository: _, workflow: _, subject: _ } =>
+      [actions_write]
+    RegisterOrganizationRunner { organization: _ } =>
+      [organization_self_hosted_runners_write]
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.effect",
+      decl_name: "GitHubEffect",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.effect.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.github.effect.contents_write_citation,
+    extdeps.github.effect.workflow_dispatch_citation,
+    extdeps.github.effect.organization_runner_citation
+  ]
+}

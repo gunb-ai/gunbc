@@ -1,0 +1,217 @@
+module gunbc.measurement_provenance
+
+import std.types { Bool, String }
+
+import gunbc.devboot.outcome {
+  BuildExecutionOutcome,
+  ArtifactAvailability,
+  ArtifactAvailable,
+  ArtifactMissing,
+  ArtifactCorrupt,
+  ArtifactUnreadable,
+  StoredArtifact,
+  StoredArtifactRecord,
+  DevbootWorkStatus,
+}
+
+// FOUR SPECIMENS, ONE ABSENT RELATION, ONE DAY (2026-08-20, this fleet). (1) A stale binary
+// produced first_generation_equal=true — tree and compiler were different vintages and nothing in
+// the receipt said so. (2) A DIFFERENT stale binary produced a 9-declaration drop that did not
+// exist, escalated through three sessions before execution refuted it byte-identical across 131
+// files — the binary had been replaced mid-sequence as collateral from an unrelated all-bins build,
+// and the author never typed a command that built it. (3) `cargo build 2>&1 | tail -4 && next`
+// takes tail's exit status, so a FAILED build proceeded as success and the downstream step measured
+// a stale artifact. (4) A treatment merge hit 'refusing to merge unrelated histories' on a shallow
+// clone; unguarded, the baseline numbers would have re-reported as the treatment arm. Every one
+// returned a plausible, well-formed number. Every one was caught by a person noticing an
+// inconsistency, never by a mechanism. The root is not 'stale binaries' — it is one relation,
+// absent in all four: a reported observation is not structurally bound to the SUCCESSFUL
+// CONSTRUCTION of its exact instrument and its exact subject. This module makes the unbound
+// observation unrepresentable rather than checkable.
+
+// THE SHAPE THIS MODULE REFUSES TO BE: a function whose job is to verify that a measurement carries
+// its provenance. If such a function can exist, the bad state was already writable and this would
+// be a validator standing where construction belongs (DESIGN section 5). Instead Observation<Value>
+// is a coproduct whose bound arm (Observed) is reachable ONLY by folding two retrievability
+// observations that both landed on ArtifactAvailable. The unbound arms carry no StoredArtifact:
+// there is nothing to copy forward, so a caller cannot manufacture instrument or subject identity
+// for a build that did not produce retrievable bytes. observe is the ONLY constructor of Observed;
+// no other function in this module builds one.
+
+// WHY THIS MODULE MINTS NO OUTCOME VOCABULARY OF ITS OWN. An earlier revision of this carrier
+// declared its own InstrumentConstruction and SubjectConstruction coproducts, each collapsing every
+// way a construction can fail into one NonEmptyStr detail. That was a second and strictly poorer
+// authority for a concept gunbc.devboot.outcome already owns (DESIGN section 3), and the poverty
+// was not cosmetic: devboot keeps BuildFailureCause and InfrastructureRefusalCause deliberately
+// APART because a compilation failure is a fact about the subject and retrying changes nothing,
+// while an infrastructure refusal is a fact about this host at this moment and the same subject may
+// succeed later — fusing them makes 'is retry pointless' unanswerable, which is precisely what a
+// single detail string does. Specimen (4), a subject that could not be fetched, exists there as the
+// TYPE InfrastructureRefusalCause SubjectNotFetchable rather than as a sentence. So this module
+// imports that authority and contributes only what devboot does not model: the binding of a
+// reported Value to the identities of the instrument that produced it and the subject it was taken
+// of. devboot answers 'may a caller believe it holds these bytes'; this module answers 'may a
+// caller believe this number was produced by that instrument from that subject', and it answers it
+// by having no arm in which the number travels without both.
+
+// WHAT THE FOLD ONTO devboot CLOSED, WHICH THIS CARRIER PREVIOUSLY DECLARED OUT OF REACH. Specimen
+// (1) is a PAST successful build being read as evidence about a PRESENT binary. The earlier
+// revision named that axis outside the modeled guarantee and stopped there. devboot had already
+// split it on purpose: execution is history and availability is an observation of the store,
+// ArtifactAvailable carries the read-back that established it, and availability_permits_retrieval
+// reads the availability axis ALONE so that a past success contributes nothing to whether bytes can
+// be had now. observe therefore selects its arm on availability alone and never on execution — an
+// ExecutionProduced whose artifact is Missing, Corrupt or Unreadable yields a refusal, not an
+// Observed — which is specimen (1)'s shape refused by construction rather than declared unmodeled.
+// Execution is still CARRIED into the refusal arms, because that is where the retry question is
+// answered; it simply has no vote on whether the observation binds.
+
+// FOUR MORE SPECIMENS, SIX DAYS LATER, ONE MODE THIS CARRIER DID NOT CLOSE (2026-08-26, this
+// fleet). In one night four sessions independently produced false BLOCKING defect reports about a
+// healthy main. Three were the modes already modeled here — a baked binary of an older vintage, and
+// a check that returned CLEAN because the entry compiled did not reach the stage that produces the
+// diagnostic. The fourth was not: a binary that was FRESHLY BUILT, retrievable, uncorrupted and
+// passing every freshness probe on offer, from a WORKTREE fourteen commits behind main. Its bytes
+// were beyond reproach; the source they were built from was stale, and it refused three channels
+// that current main models. The earlier revision of this carrier could not have said so. Its
+// Observed arm carried StoredArtifact, whose only subject-identity field is subject_digest — which
+// devboot's own header calls an index rather than a proof — so a measurement was bound to bytes and
+// to nothing about the tree those bytes came from. Carrying StoredArtifactRecord instead binds
+// tree_oid into the bound arm, so two instruments built from different trees are now
+// distinguishable AT the observation rather than by a reader remembering to check. WHAT THIS DOES
+// AND DOES NOT CLAIM: it makes the vintage REPRESENTABLE and CARRIED where it was previously
+// absent, which is what lets a consumer compare it; it does not by itself refuse a stale
+// instrument, because which tree a measurement ought to have been taken from is a fact about the
+// reader's question and not about the store. That comparison is the consumer's, and this carrier's
+// job is to make it possible to state.
+
+// A SECOND HAZARD CLOSED BY THE SAME SIGNATURE CHANGE, AND IT IS NOT THE ONE THE WORK STARTED FROM.
+// The earlier observe took four loose axes — instrument execution, instrument availability, subject
+// execution, subject availability — so a caller could pair one build's execution with another
+// build's availability and no arm could refuse: the fold selects on availability, and the refusal
+// it returns then reports the OTHER build's answer to 'is retry pointless'. Every arm would have
+// been well-formed and the mis-pairing invisible. DevbootWorkStatus is devboot's own binding of the
+// two axes to the request they describe, so taking two statuses makes the mismatch unwritable
+// rather than undetected. Recorded separately from the vintage note because it was found by writing
+// the signature rather than by the specimens, and a hazard folded silently into another finding's
+// story is one nobody can later check.
+
+// THE HONEST BOUNDARY THAT REMAINS, NARROWED BUT NOT CLOSED. What is structural: no Observation can
+// carry a Value alongside an instrument or subject identity unless both retrievability observations
+// landed on ArtifactAvailable, and the identities it carries are StoredArtifact values taken out of
+// those arms rather than assembled here. What is NOT structural: whether the ArtifactAvailable
+// handed to observe was itself established by a read-back performed by THIS invocation against the
+// path actually used, rather than hand-authored with a fabricated Sha256Digest by a caller who
+// bypassed the store entirely. devboot states that contract for its own producers; nothing in the
+// type system enforces it against an arbitrary caller, and that is the same residual gap
+// sole_constructor already names as unverified for generic carriers. So the wet boundary has moved
+// — from 'no read-back is modeled at all' to 'the read-back is modeled and required, and its
+// authenticity rests on an unverified construction ceiling' — and DESIGN section 4b's rule is to
+// say which rung that is rather than claim a uniform climb. A SECOND RESIDUE, NAMED BECAUSE THIS
+// REVISION MOVED IT RATHER THAN CLOSED IT: the StoredArtifactRecord the bound arm carries is
+// assembled here from ONE DevbootWorkStatus — its subject paired with the artifact its own
+// availability arm observed — rather than taken out of the store as a record. That pairing is
+// faithful to what a status means, since both fields answer for the same work id; it is not the
+// store's own read-back of the record, so a caller who hand-authored a status can still hand-author
+// the pairing. The vintage is now carried and comparable, which is strictly more than it was; its
+// authenticity rests on the same unverified construction ceiling as the digest above, and not on a
+// stronger one. The practical discipline this does not replace: freeze the instrument outside the
+// build tree before first measurement and invoke it by absolute path, because a binary can be
+// silently replaced by an unrelated command between the observation and the measurement.
+
+// ADOPTION STATUS, STATED RATHER THAN IMPLIED. Nothing in the accepted program folds through
+// observe today, and the fold onto devboot did not change that: measured on this branch,
+// gunbc.devboot is itself imported by four of its own siblings and three witness tests, and by no
+// production consumer anywhere. So this carrier and the authority it now shares are one unconsumed
+// cluster rather than two, which is progress in modeling and none in consumption. That is worth
+// stating plainly because the precedent this design was originally argued from does NOT have that
+// property — gunbc.regen_receipt earns its keep because required_regen_host folds the actual regen
+// path through it — and a citation whose force depends on a consumption fact the citation does not
+// carry is itself a specimen of this module's subject. The trigger for adoption is the first
+// measurement site that needs a number bound to its instrument and subject; binding one is a
+// separate packet scoped against a real wet path, not an addition to this carrier, and a caller
+// invented here to occupy the consumer slot would be a fabricated consumer — the exact class this
+// module exists to refuse.
+
+// THE REPORTED FACT, BOUND OR REFUSED. Observation<Value> is generic over the reported
+// number/fact so this carrier is not re-minted per measurement site (DESIGN section 2 — one
+// concept, every breadth). Observed is the only arm carrying a Value, and it is the only arm
+// carrying identities; the two unbound arms carry the two devboot axes instead, so a refusal
+// says both what could not be had NOW (availability) and whether retrying is pointless
+// (execution). A plausible Value with no bound instrument or subject has no constructor here.
+//
+// THE BOUND ARM CARRIES StoredArtifactRecord RATHER THAN StoredArtifact, and that is the whole
+// content of this revision. StoredArtifact's only subject-identity field is subject_digest,
+// which gunbc.devboot.outcome declares in its own words to be an INDEX so a candidate can be
+// found and explicitly NOT what decides whether the candidate is the right one. An Observed
+// built on it therefore bound a Value to some bytes and to nothing about where those bytes came
+// from. StoredArtifactRecord is devboot's existing pairing of those bytes with the full
+// BuildSubject they were built for — including tree_oid, the source vintage — so the identity
+// the observation carries is now the one devboot itself uses to decide identity, and no second
+// vocabulary is minted to say so (DESIGN section 3).
+type Observation<Value>
+  = Observed { instrument: StoredArtifactRecord, subject: StoredArtifactRecord, value: Value }
+  | InstrumentNotHeld { execution: BuildExecutionOutcome, availability: ArtifactAvailability }
+  | SubjectNotHeld { execution: BuildExecutionOutcome, availability: ArtifactAvailability }
+
+// THE SOLE CONSTRUCTOR OF Observed. It selects on availability ALONE, agreeing with devboot's
+// availability_permits_retrieval by construction rather than by restating its rule — the arms
+// here exist to extract the StoredArtifact that the Bool-returning authority cannot hand back,
+// and the witness asserts the two agree on every arm so the agreement is executed, not assumed.
+//
+// IT TAKES TWO DevbootWorkStatus VALUES RATHER THAN FOUR LOOSE AXES, which closes a second
+// hazard the earlier signature left open and which no arm could have refused. With execution
+// and availability arriving as independent parameters, nothing stopped a caller pairing build
+// A's execution with build B's availability: the fold would have selected on B and reported
+// A's retry answer, and every arm would have looked well-formed. A status is devboot's own
+// pairing of the two axes with the request they belong to, so the mismatch is now unwritable
+// rather than undetected (DESIGN section 5 — construction over validation).
+//
+// The instrument is decided before the subject, so an instrument refusal is reported over a
+// subject one when both are unavailable — an arbitrary but declared tie-break, not a silent
+// drop of the second failure. A caller wanting both still holds both statuses; this fold
+// reports one typed refusal rather than a merged one (DESIGN section 5: a failure arm must
+// refuse, never widen).
+fn observe<Value>(
+  instrument: DevbootWorkStatus,
+  subject: DevbootWorkStatus,
+  value: Value,
+) -> Observation<Value> {
+  match instrument.availability {
+    ArtifactMissing =>
+      InstrumentNotHeld { execution: instrument.execution, availability: instrument.availability }
+    ArtifactCorrupt { expected, observed } =>
+      InstrumentNotHeld { execution: instrument.execution, availability: instrument.availability }
+    ArtifactUnreadable { detail } =>
+      InstrumentNotHeld { execution: instrument.execution, availability: instrument.availability }
+    ArtifactAvailable { artifact: instrument_artifact } =>
+      match subject.availability {
+        ArtifactMissing =>
+          SubjectNotHeld { execution: subject.execution, availability: subject.availability }
+        ArtifactCorrupt { expected, observed } =>
+          SubjectNotHeld { execution: subject.execution, availability: subject.availability }
+        ArtifactUnreadable { detail } =>
+          SubjectNotHeld { execution: subject.execution, availability: subject.availability }
+        ArtifactAvailable { artifact: subject_artifact } =>
+          Observed {
+            instrument: StoredArtifactRecord {
+              subject: instrument.subject,
+              artifact: instrument_artifact,
+            },
+            subject: StoredArtifactRecord {
+              subject: subject.subject,
+              artifact: subject_artifact,
+            },
+            value: value,
+          }
+      }
+  }
+}
+
+fn observation_is_bound<Value>(o: Observation<Value>) -> Bool {
+  match o {
+    Observed { instrument, subject, value } => true
+    InstrumentNotHeld { execution, availability } => false
+    SubjectNotHeld { execution, availability } => false
+  }
+}

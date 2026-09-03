@@ -1,0 +1,530 @@
+module extdeps.github.expressions
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Lossless }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/learn-github-actions/expressions"
+  }
+}
+
+type ExpressionContext
+  = Github
+  | Env
+  | Vars
+  | Job
+  | Jobs
+  | Steps
+  | Runner
+  | Secrets
+  | Strategy
+  | Matrix
+  | Needs
+  | Inputs
+
+type ExpressionFunction
+  = Contains
+  | StartsWith
+  | EndsWith
+  | Format
+  | Join
+  | ToJSON
+  | FromJSON
+  | HashFiles
+  | Success
+  | Always
+  | Cancelled
+  | Failure
+
+type Expression
+  = ContextAccess { context: ExpressionContext, path: List<String> }
+  | FunctionCall { function: ExpressionFunction, args: List<Expression> }
+  | StringLiteral { value: String }
+  | LogicalOr { left: Expression, right: Expression }
+  | LogicalAnd { left: Expression, right: Expression }
+  | Equals { left: Expression, right: Expression }
+
+type TemplateSegment
+  = LiteralText { text: String }
+  | Interpolation { expression: Expression }
+
+type ExpressionTemplate {
+  segments: List<TemplateSegment>
+}
+
+fn context_name(context: ExpressionContext) -> String {
+  match context {
+    Github => "github"
+    Env => "env"
+    Vars => "vars"
+    Job => "job"
+    Jobs => "jobs"
+    Steps => "steps"
+    Runner => "runner"
+    Secrets => "secrets"
+    Strategy => "strategy"
+    Matrix => "matrix"
+    Needs => "needs"
+    Inputs => "inputs"
+  }
+}
+
+fn function_name(function: ExpressionFunction) -> String {
+  match function {
+    Contains => "contains"
+    StartsWith => "startsWith"
+    EndsWith => "endsWith"
+    Format => "format"
+    Join => "join"
+    ToJSON => "toJSON"
+    FromJSON => "fromJSON"
+    HashFiles => "hashFiles"
+    Success => "success"
+    Always => "always"
+    Cancelled => "cancelled"
+    Failure => "failure"
+  }
+}
+
+type ExpressionSpellings {
+  path_sep: String
+  call_open: String
+  call_close: String
+  arg_sep: String
+  string_quote: String
+  or_op: String
+  and_op: String
+  eq_op: String
+  interp_open: String
+  interp_close: String
+  index_open: String
+  index_close: String
+}
+
+data default_expression_spellings: ExpressionSpellings = {
+  path_sep: ".",
+  call_open: "(",
+  call_close: ")",
+  arg_sep: ", ",
+  string_quote: "'",
+  or_op: " || ",
+  and_op: " && ",
+  eq_op: " == ",
+  interp_open: "${{ ",
+  interp_close: " }}",
+  index_open: "['",
+  index_close: "']",
+}
+
+// THIS WRITER HAS A CANONICAL SPELLING FOR PATH SEGMENTS, AND THE CHOICE IS OURS RATHER THAN
+// THE GRAMMAR'S.
+//
+// The cited authority (docs.github.com, this module's anchor) admits two forms for reaching a
+// property: index notation `['name']`, and property dereference `.name`. Its rule for the second
+// is quoted rather than paraphrased, because an earlier revision of this comment paraphrased it
+// wrongly: "In order to use property dereference syntax, the property name must start with a
+// letter or `_` and contain only alphanumeric characters, `-`, or `_`."
+//
+// SO A HYPHEN IS ADMITTED BY THE DOT FORM, AND AN EARLIER REVISION OF THIS COMMENT SAID THE
+// OPPOSITE. It read that `-` is the subtraction operator, that `needs.a-b.result` "does not name
+// a property at all", and that it evaluates to the empty string. THAT IS FALSE and it was never
+// measured -- it was asserted from recall by one session, deferred to by another, and written
+// into an authority where a reader would have taken it as established. It is corrected in place
+// rather than deleted, because the correction is the more useful record: the two of us AGREEING
+// was produced by deference, not by evidence, and an agreement whose generator is deference is
+// not corroboration.
+//
+// WHAT THE POLICY ACTUALLY IS: index notation for anything outside the narrow dereference
+// production, dot notation otherwise. That is a claim about US, not about GitHub. It is chosen
+// because index notation is explicit, reaches ARBITRARY keys uniformly, and does not depend on
+// the narrower production at all -- so a segment this writer has never seen before cannot be
+// rendered into a form the consumer might read as an operator expression. Both forms are valid
+// for the segments we emit today; this one stays valid for the segments we do not.
+//
+// WHY IT IS MODELED HERE AND NOT AT A CALL SITE. The production is a fact about the upstream
+// language, so a consumer hand-spelling `['...']` for its own case would be a second account of
+// the grammar (DESIGN 3). Choosing the form from the SEGMENT means a caller cannot spell it
+// wrong -- construction rather than a rule callers must remember (DESIGN 5).
+//
+// THE PREDICATE IS NARROWER THAN THE PRODUCTION, DELIBERATELY, and its name says which question
+// it answers. `path_segment_takes_dot_form` is THIS WRITER'S canonical choice; it is not
+// `path_segment_is_valid_with_a_dot`, which would be a different function with `-` admitted. A
+// reader who confuses the two will conclude GitHub rejects something GitHub accepts.
+fn dot_form_code_point(c: Int) -> Bool {
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
+}
+
+fn dot_form_leading_code_point(c: Int) -> Bool {
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
+}
+
+// THE START CHARACTER IS A SEPARATE RULE FROM THE REST, AND THAT SHAPE IS THE UPSTREAM
+// PRODUCTION'S, NOT A CONVENIENCE. The cited sentence says the name must START WITH a letter or
+// `_` and then CONTAIN ONLY the wider set, so `0a` is excluded by the start rule while every one
+// of its characters is individually admitted. Folding the two into one alphabet would admit it,
+// and this is the one place where the predicate and the production agree exactly rather than the
+// predicate being the narrower canonical choice.
+fn path_segment_takes_dot_form(segment: String) -> Bool {
+  match segment.chars().first() {
+    Absent => false
+    Present { value: lead } =>
+      dot_form_leading_code_point(c: lead)
+        && all(segment.chars(), c => dot_form_code_point(c: c))
+  }
+}
+
+fn render_path_segment_with(segment: String, sp: ExpressionSpellings) -> String {
+  if path_segment_takes_dot_form(segment: segment) {
+    concat(sp.path_sep, segment)
+  } else {
+    join([sp.index_open, segment, sp.index_close], "")
+  }
+}
+
+fn join_path_with(path: List<String>, sp: ExpressionSpellings) -> String {
+  fold(path, init: "", f: (acc, segment) =>
+    concat(acc, render_path_segment_with(segment: segment, sp: sp)))
+}
+
+fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> String {
+  join(map(args, a => serialize_expression_with(expression: a, sp: sp)), sp.arg_sep)
+}
+
+fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) -> String {
+  match expression {
+    ContextAccess { context: c, path: p } =>
+      concat(context_name(context: c), join_path_with(path: p, sp: sp))
+    FunctionCall { function: f, args: a } =>
+      join([function_name(function: f), sp.call_open, serialize_args_with(args: a, sp: sp), sp.call_close], "")
+    StringLiteral { value: v } =>
+      join([sp.string_quote, v, sp.string_quote], "")
+    LogicalOr { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op)
+    LogicalAnd { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.and_op)
+    Equals { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.eq_op)
+  }
+}
+
+fn interpolate_with(expression: Expression, sp: ExpressionSpellings) -> String {
+  join([sp.interp_open, serialize_expression_with(expression: expression, sp: sp), sp.interp_close], "")
+}
+
+fn serialize_segment_with(segment: TemplateSegment, sp: ExpressionSpellings) -> String {
+  match segment {
+    LiteralText { text: t } => t
+    Interpolation { expression: e } => interpolate_with(expression: e, sp: sp)
+  }
+}
+
+fn serialize_template_with(template: ExpressionTemplate, sp: ExpressionSpellings) -> String {
+  fold(template.segments, init: "", f: (acc, segment) =>
+    concat(acc, serialize_segment_with(segment: segment, sp: sp)))
+}
+
+fn join_path(path: List<String>) -> String {
+  join_path_with(path: path, sp: default_expression_spellings)
+}
+
+fn serialize_args(args: List<Expression>) -> String {
+  serialize_args_with(args: args, sp: default_expression_spellings)
+}
+
+fn serialize_expression(expression: Expression) -> String {
+  serialize_expression_with(expression: expression, sp: default_expression_spellings)
+}
+
+fn interpolate(expression: Expression) -> String {
+  interpolate_with(expression: expression, sp: default_expression_spellings)
+}
+
+fn serialize_segment(segment: TemplateSegment) -> String {
+  serialize_segment_with(segment: segment, sp: default_expression_spellings)
+}
+
+fn serialize_template(template: ExpressionTemplate) -> String {
+  serialize_template_with(template: template, sp: default_expression_spellings)
+}
+
+data all_expression_contexts: List<ExpressionContext> = [
+  Github, Env, Vars, Job, Jobs, Steps, Runner, Secrets, Strategy, Matrix, Needs, Inputs
+]
+
+data all_expression_functions: List<ExpressionFunction> = [
+  Contains, StartsWith, EndsWith, Format, Join, ToJSON, FromJSON, HashFiles,
+  Success, Always, Cancelled, Failure
+]
+
+fn context_from_name(name: String) -> ExpressionContext? {
+  fold(all_expression_contexts, init: none, f: (acc, c) => match acc {
+    Present { value: x } => Present { value: x }
+    Absent => if context_name(context: c) == name { Present { value: c } } else { none }
+  })
+}
+
+fn function_from_name(name: String) -> ExpressionFunction? {
+  fold(all_expression_functions, init: none, f: (acc, fn_variant) => match acc {
+    Present { value: x } => Present { value: x }
+    Absent => if function_name(function: fn_variant) == name { Present { value: fn_variant } } else { none }
+  })
+}
+
+fn expr_is_string_literal(s: String, sp: ExpressionSpellings) -> Bool {
+  starts_with(s: s, prefix: sp.string_quote)
+    && ends_with(s: s, suffix: sp.string_quote)
+    && (s.length() >= (2 * sp.string_quote.length()))
+}
+
+fn expr_is_call(s: String, sp: ExpressionSpellings) -> Bool {
+  ends_with(s: s, suffix: sp.call_close) && string_contains(s, sp.call_open)
+}
+
+fn parse_args_with(args_str: String, sp: ExpressionSpellings) -> List<Expression>? {
+  if args_str == "" {
+    Present { value: [] }
+  } else {
+    fold(split(s: args_str, delimiter: sp.arg_sep), init: Present { value: [] }, f: (acc, part) => match acc {
+      Absent => none
+      Present { value: sofar } => match parse_atom_with(s: part, sp: sp) {
+        Absent => none
+        Present { value: e } => Present { value: concat(sofar, [e]) }
+      }
+    })
+  }
+}
+
+fn parse_string_literal_atom(s: String, sp: ExpressionSpellings) -> Expression? {
+  if expr_is_string_literal(s: s, sp: sp) {
+    Present { value: StringLiteral {
+      value: substring(s: s, start: sp.string_quote.length(), end: s.length() - sp.string_quote.length()),
+    } }
+  } else {
+    none
+  }
+}
+
+fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
+  if !expr_is_call(s: s, sp: sp) {
+    none
+  } else {
+    let segs = split(s: s, delimiter: sp.call_open)
+    let after = join(segs.skip(n: 1), sp.call_open)
+    let args_str = if ends_with(s: after, suffix: sp.call_close) {
+      substring(s: after, start: 0, end: after.length() - sp.call_close.length())
+    } else {
+      after
+    }
+    match function_from_name(name: segs.first()) {
+      Absent => none
+      Present { value: fn_variant } => match parse_args_with(args_str: args_str, sp: sp) {
+        Absent => none
+        Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
+      }
+    }
+  }
+}
+
+// THE PARSE READS THE SAME TWO FORMS THE SERIALIZER WRITES, which is what keeps this module one
+// grammar read in both directions (DESIGN 4) rather than an emitter with a narrower reader
+// beside it. Index segments are normalized back to the dot form before splitting, so
+// `needs['a-b'].result` and `needs.a_b.result` both yield an ordinary segment list and a
+// serialize-then-ingest round trip returns the identical value.
+//
+// WHAT THE NORMALIZATION DOES NOT ADMIT, named rather than left to be discovered: a segment
+// whose own text contains the path separator or the index delimiters. No such segment can be
+// produced by the serializer above, so the round trip is total over what this module writes;
+// a hand-authored expression carrying one is outside what this reader claims.
+fn parse_context_access_atom(s: String, sp: ExpressionSpellings) -> Expression? {
+  let dotted = replace(replace(s, sp.index_open, sp.path_sep), sp.index_close, "")
+  let segs = split(s: dotted, delimiter: sp.path_sep)
+  match context_from_name(name: segs.first()) {
+    Absent => none
+    Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
+  }
+}
+
+fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
+  match parse_string_literal_atom(s: s, sp: sp) {
+    Present { value: e } => Present { value: e }
+    Absent =>
+      match parse_function_call_atom(s: s, sp: sp) {
+        Present { value: e } => Present { value: e }
+        Absent => parse_context_access_atom(s: s, sp: sp)
+      }
+  }
+}
+
+fn parse_expression_with(s: String, sp: ExpressionSpellings) -> Expression? {
+  let parts = split(s: s, delimiter: sp.or_op)
+  if parts.length() == 1 {
+    parse_atom_with(s: s, sp: sp)
+  } else {
+    fold(parts.skip(n: 1), init: parse_atom_with(s: parts.first(), sp: sp), f: (acc, part) => match acc {
+      Absent => none
+      Present { value: left } => match parse_atom_with(s: part, sp: sp) {
+        Absent => none
+        Present { value: e } => Present { value: LogicalOr { left: left, right: e } }
+      }
+    })
+  }
+}
+
+fn ingest_expression_with(src: String, sp: ExpressionSpellings) -> Expression? {
+  parse_expression_with(s: src, sp: sp)
+}
+
+fn ingest_expression(src: String) -> Expression? {
+  ingest_expression_with(src: src, sp: default_expression_spellings)
+}
+
+fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
+  let parts = split(s: src, delimiter: sp.interp_open)
+  let lead = parts.first()
+  let lead_segs = if lead == "" { [] } else { [ LiteralText { text: lead } ] }
+  let built = fold(parts.skip(n: 1), init: Present { value: lead_segs }, f: (acc, part) => match acc {
+    Absent => none
+    Present { value: sofar } => {
+      let halves = split(s: part, delimiter: sp.interp_close)
+      if halves.length() < 2 {
+        none
+      } else {
+        let trailing = join(halves.skip(n: 1), sp.interp_close)
+        match parse_expression_with(s: halves.first(), sp: sp) {
+          Absent => none
+          Present { value: e } => {
+            let with_interp = concat(sofar, [ Interpolation { expression: e } ])
+            Present {
+              value: if trailing == "" { with_interp } else { concat(with_interp, [ LiteralText { text: trailing } ]) },
+            }
+          }
+        }
+      }
+    }
+  })
+  match built {
+    Absent => none
+    Present { value: segs } => Present { value: ExpressionTemplate { segments: segs } }
+  }
+}
+
+fn ingest_template(src: String) -> ExpressionTemplate? {
+  ingest_template_with(src: src, sp: default_expression_spellings)
+}
+
+fn runner_os() -> Expression { ContextAccess { context: Runner, path: ["os"] } }
+fn runner_arch() -> Expression { ContextAccess { context: Runner, path: ["arch"] } }
+fn runner_temp() -> Expression { ContextAccess { context: Runner, path: ["temp"] } }
+
+data runner_provided_env_var_names: List<String> = [
+  "RUNNER_NAME",
+  "RUNNER_OS",
+  "RUNNER_ARCH",
+  "RUNNER_TEMP",
+  "RUNNER_TOOL_CACHE",
+  "RUNNER_DEBUG",
+  "RUNNER_ENVIRONMENT"
+]
+
+fn string_in_list(needle: String, haystack: List<String>) -> Bool {
+  fold(haystack, init: false, f: (acc, candidate) => acc || (candidate == needle))
+}
+
+fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
+  match expression {
+    ContextAccess { context: c, path: p } =>
+      match c {
+        Env => string_in_list(needle: join_path(path: p), haystack: runner_provided_env_var_names)
+        _ => false
+      }
+    FunctionCall { function: _, args: a } =>
+      fold(a, init: false, f: (acc, arg) => acc || expression_accesses_runner_var_via_env(expression: arg))
+    LogicalOr { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    LogicalAnd { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    Equals { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    StringLiteral { value: _ } => false
+  }
+}
+
+fn expression_uses_context(expression: Expression, target: ExpressionContext) -> Bool {
+  match expression {
+    ContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: target)
+    FunctionCall { function: _, args: a } =>
+      fold(a, init: false, f: (acc, arg) => acc || expression_uses_context(expression: arg, target: target))
+    LogicalOr { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    LogicalAnd { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    Equals { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    StringLiteral { value: _ } => false
+  }
+}
+
+fn template_accesses_runner_var_via_env(template: ExpressionTemplate) -> Bool {
+  fold(template.segments, init: false, f: (acc, segment) => acc || match segment {
+    Interpolation { expression: e } => expression_accesses_runner_var_via_env(expression: e)
+    LiteralText { text: _ } => false
+  })
+}
+
+fn template_uses_context(template: ExpressionTemplate, target: ExpressionContext) -> Bool {
+  fold(template.segments, init: false, f: (acc, segment) => acc || match segment {
+    Interpolation { expression: e } => expression_uses_context(expression: e, target: target)
+    LiteralText { text: _ } => false
+  })
+}
+
+// LogicalAnd and Equals were added because a consumer needed to LOWER a job condition rather than
+// concatenate one (review 49400 on gunbc#7903: the falsifier alert's trust-wall condition was being
+// built by nested concat of raw expression text — a foreign-language executable string in normal
+// form, authored outside the module that owns that language, in the very change that declares that
+// class as residue to shrink). Both are ordinary GitHub Actions expression syntax
+// (docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/evaluate-expressions-in-workflows-and-actions#operators,
+// read 2026-08-06), so this models what upstream already has.
+//
+// NO GROUPING CONSTRUCT WAS ADDED, AND THAT IS THE LOAD-BEARING DECISION. GitHub binds && tighter
+// than ||, so an Or nested under an And needs parentheses to keep its meaning, and the first
+// attempt here made LogicalOr parenthesize unconditionally. review 49430 refused it, correctly and
+// on the strongest possible ground: this module is READ IN BOTH DIRECTIONS — parse_expression_with
+// is the inverse of serialize_expression_with — and the change added a construct to emission that
+// ingest could not read, so `(a || b)` serialized out and would not parse back. That is precisely
+// the one-grammar-both-directions invariant DESIGN §4 states, broken by editing one direction
+// alone. Three round-trip witnesses and an emission golden would have caught it; they were not run,
+// and the earlier claim on the PR that they had been was wrong.
+//
+// So emission is UNCHANGED from before this row, and the precedence hazard is answered where it
+// actually arises — at the authoring site, by choosing a shape that needs no grouping.
+// gunbc.falsifier_alert_admission builds its condition in DISTRIBUTED form, `A && B && s || A && B
+// && d`, which under GitHub's own precedence already parses as the intended `(A && B && s) || (A &&
+// B && d)`. Adding parentheses to this grammar remains legitimate future work, but it is a change
+// to BOTH directions plus the goldens that pin them, not a serializer edit.
+//
+// DECLARED ASYMMETRY, NAMED RATHER THAN LEFT IMPLIED (review 49460): parse_expression_with reads
+// Or, calls, context accesses and string literals; it does NOT read && or ==. So these two
+// operators are EMISSION-ONLY today, and this module is bidirectional for the constructs that
+// predate them and one-way for these. That is a real §4 asymmetry, admissible here only because no
+// consumer reads these forms BACK — the sole use is lowering a job condition that GitHub evaluates
+// and nothing in this tree re-ingests. It stops being admissible the moment any consumer parses a
+// condition containing && or ==, which is the trigger: ingest arms for both operators plus
+// round-trip witnesses covering them land before that consumer, not after it. Stated explicitly
+// because the previous revision of this row broke bidirectionality by accident and shipped it; an
+// asymmetry that is declared and triggered is a frontier, one that is merely true is a defect
+// waiting to be discovered.
+
+fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>) -> Bool {
+  fold(templates, init: false, f: (acc, template) =>
+    acc || template_accesses_runner_var_via_env(template: template))
+}

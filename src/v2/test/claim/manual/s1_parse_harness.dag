@@ -1,0 +1,18 @@
+module v2.test.manual.s1_parse_harness
+
+
+fn s1_parse_ok(source: String, file: Symbol) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: file, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

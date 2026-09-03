@@ -1,0 +1,262 @@
+module gunbc.os_install_mechanism
+
+import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcEndpoint, bmc_controller_of_endpoint }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { BoundDissolution, DeclarationRetires, DissolutionCondition }
+import std.types { Bool, EpochMs, Int, List, String }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget,
+  BootTargetPxe,
+  BootTargetCd,
+}
+import extdeps.bmc.capability {
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareReleaseIdentity,
+  BmcFirmwareVersion,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog }
+import gunbc.fleet_bmc_firmware_evidence {
+  BmcFirmwareCapabilityEvidenceAbsent,
+  BmcFirmwareCapabilityResolved,
+  BmcFirmwareCapabilityVersionAmbiguous,
+  BmcFirmwareCapabilityVersionUncatalogued,
+  BmcFirmwareEvidence,
+  BmcFirmwareEvidenceAttested,
+  BmcFirmwareEvidenceObserved,
+  BmcFirmwareEvidenceUnobserved,
+  bmc_firmware_capability_standing,
+  srv1_bmc_firmware_evidence,
+  srv2_bmc_firmware_evidence,
+  srv3_bmc_firmware_evidence,
+  srv4_bmc_firmware_evidence,
+}
+import gunbc.machine_intake_access {
+  AccessContextBound,
+  AccessContextCatalogRefused,
+  AccessContextControlRouteEvidenceMismatch,
+  AccessContextObservationEvidenceMismatch,
+  AccessContextObservationForOtherAttempt,
+  AccessContextProbeEvidenceMismatch,
+  AccessContextProfileAmbiguous,
+  AccessContextProfileLookupNotRun,
+  AccessContextProfileUncatalogued,
+  AccessContextPromotedProfileUnverified,
+  AccessContextUnobserved,
+  BootDeliveryTarget,
+  BoundBmcAccessContextStanding,
+}
+import gunbc.boot_artifact_delivery {
+  BootArtifactDelivery,
+  BootDeliveryCandidateVerdict,
+  BootDeliveryPlan,
+  BootDeliveryPlanned,
+  BootDeliveryRefusalCause,
+  BootDeliveryRefused,
+  BootDeliverySolution,
+  DeliveryAccessUnbound,
+  DeliveryBootControlRouteAmbiguous,
+  DeliveryBootControlRouteNotControlCapable,
+  DeliveryBootControlRouteNotInProfile,
+  DeliveryBootControlRouteUnobserved,
+  DeliveryBootControlSurfaceUnestablished,
+  DeliveryTargetControllerMismatch,
+  DeliveryTargetSubjectMismatch,
+  DeliveryNoBootSourceOverride,
+  DeliveryNoEligibleTransport,
+  MegaRacRestRemoteMedia,
+  OpenBmcConfigfsUsbGadget,
+  OpenBmcNbdProxyWebsocket,
+  PxeChainBoot,
+  RedfishVirtualMediaPull,
+  UefiHttpBoot,
+}
+
+// THE LEGACY MECHANISM VOCABULARY. Three arms, each the name an existing
+// consumer (gunbc.os_install, gunbc.nbd_proxy_virtual_media_install,
+// gunbc.srv3_os_install_actuate_scope) matches on. FirmwareUpdateThenVirtualMedia
+// is gone: a firmware transition is not a delivery (gunbc.bmc_firmware_transition),
+// and the arm that preselected "then virtual media" from "some catalog row is
+// VM-capable" was the second solver ruling 3 §3 deleted.
+type OsInstallMechanism
+  = VirtualMediaInstall
+  | NbdProxyVirtualMediaInstall
+  | PxeHttpInstall
+
+// FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29
+// §14, ruling 3 §3). gunbc.boot_artifact_delivery is the one delivery solver. This module is a
+// compatibility PROJECTION of its answer onto the three legacy mechanism names, kept only
+// because gunbc.srv3_os_install_actuate_scope and gunbc.nbd_proxy_virtual_media_install still
+// read OsInstallMechanismSolution and fail closed on its refusals. It has no solver of its own
+// any more: the capability-only solve_install_mechanism (virtual media from a capability row
+// alone, PXE by absence in its else-arm) and the FirmwareUpdateThenVirtualMedia precursor were
+// deleted with ruling 3, together with srv3_install_mechanism, gunbc.os_install
+// fleet_install_server_specs and the ProxyDhcpDnsmasqArtifact path that consumed them. The
+// per-host rows here never bind an access context — nothing on the install path observes an
+// endpoint or runs a profile lookup — so every host's solution is
+// InstallAccessProfileNotLookedUp for its evidence endpoint, asserted, not defaulted. Growth
+// surfaces (new arms, new causes, new per-host rows) are closed; the retirement trigger is
+// not this prose but the two typed rows that follow, one per consumer.
+type OsInstallMechanismRefusalCause
+  = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
+  | InstallFirmwareVersionUncatalogued { firmware: BmcFirmwareVersion }
+  | InstallFirmwareVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
+  | InstallAccessProfileNotLookedUp { endpoint: BmcControllerEndpoint }
+  | InstallAccessContextUnbound { standing: BoundBmcAccessContextStanding }
+  | InstallTargetContextMismatch { requested: BootDeliveryTarget }
+  | InstallNoBootSourceOverride { firmware: BmcFirmwareReleaseIdentity }
+  | InstallBootControlUnestablished { cause: BootDeliveryRefusalCause }
+  | InstallNoEligibleTransport {
+      firmware: BmcFirmwareReleaseIdentity,
+      considered: List<BootDeliveryCandidateVerdict>,
+    }
+  | InstallDeliveryOutsideLegacyMechanism { delivery: BootArtifactDelivery }
+
+// The projection dissolves when its consumers read gunbc.boot_artifact_delivery's
+// BootDeliverySolution directly — that is, when the two declarations that take an
+// OsInstallMechanismSolution retire. Bound, so std.dissolution can decide it from the
+// present-declaration census rather than from anyone's say-so.
+data os_install_mechanism_projection_dissolves_with_srv3_plan_standing: DissolutionCondition = BoundDissolution { trigger: DeclarationRetires { ref: DeclarationRef { module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan_standing_for", field: WholeDeclaration } } }
+
+data os_install_mechanism_projection_dissolves_with_actuator_plan_standing: DissolutionCondition = BoundDissolution { trigger: DeclarationRetires { ref: DeclarationRef { module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_plan_standing_for", field: WholeDeclaration } } }
+
+type OsInstallMechanismSolution
+  = OsInstallMechanismSelected { mechanism: OsInstallMechanism }
+  | OsInstallMechanismRefused { cause: OsInstallMechanismRefusalCause }
+
+// X's projection of Y's plan. A planned delivery maps to the legacy arm that
+// names it, or to a typed refusal where no legacy arm exists.
+fn os_install_mechanism_of_plan(plan: BootDeliveryPlan) -> OsInstallMechanismSolution {
+  match plan.delivery {
+    RedfishVirtualMediaPull { params: _ } => OsInstallMechanismSelected { mechanism: VirtualMediaInstall }
+    OpenBmcNbdProxyWebsocket { params: _ } => OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
+    PxeChainBoot { evidence: _ } => OsInstallMechanismSelected { mechanism: PxeHttpInstall }
+    MegaRacRestRemoteMedia { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
+    OpenBmcConfigfsUsbGadget { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
+    UefiHttpBoot { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
+  }
+}
+
+// X's projection of Y's whole answer, refusals included, at the grain X's
+// consumers match on. An access context that never bound is named by the
+// standing that refused it; the path that never ran a lookup at all keeps its
+// own arm because it is a different fact from a lookup that found nothing.
+fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallMechanismSolution {
+  match solution {
+    BootDeliveryPlanned { plan: p } => os_install_mechanism_of_plan(plan: p)
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryAccessUnbound { standing: s } =>
+          match s {
+            AccessContextProfileLookupNotRun { endpoint: e } => OsInstallMechanismRefused { cause: InstallAccessProfileNotLookedUp { endpoint: e } }
+            AccessContextBound { context: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextUnobserved { endpoint: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextObservationForOtherAttempt { expected: _, found: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextObservationEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextProbeEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextControlRouteEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextPromotedProfileUnverified { observation_receipt: _, promotion_receipt: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextProfileUncatalogued { observed_identity: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextProfileAmbiguous { observed_identity: _, count: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextCatalogRefused { standing: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+          }
+        DeliveryTargetSubjectMismatch { requested: r, bound_subject: _ } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r } }
+        DeliveryTargetControllerMismatch { requested: r, bound_endpoint: _ } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r } }
+        DeliveryNoBootSourceOverride { firmware: fw } => OsInstallMechanismRefused { cause: InstallNoBootSourceOverride { firmware: fw } }
+        DeliveryBootControlSurfaceUnestablished { standing: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteUnobserved { endpoint: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteNotInProfile { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteNotControlCapable { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteAmbiguous { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
+          OsInstallMechanismRefused { cause: InstallNoEligibleTransport { firmware: fw, considered: considered } }
+      }
+  }
+}
+
+// The legacy evidence names its controller with a protocol-carrying
+// BmcEndpoint; the access standing names the controller alone.
+fn bmc_firmware_evidence_endpoint(ev: BmcFirmwareEvidence) -> BmcControllerEndpoint {
+  match ev {
+    BmcFirmwareEvidenceObserved { observation: o } => bmc_controller_of_endpoint(endpoint: o.endpoint)
+    BmcFirmwareEvidenceAttested { attestation: a } => bmc_controller_of_endpoint(endpoint: a.endpoint)
+    BmcFirmwareEvidenceUnobserved { endpoint: e } => bmc_controller_of_endpoint(endpoint: e)
+  }
+}
+
+// The per-host entry point. The firmware evidence still decides whether the
+// host's release is even catalogued (absent, uncatalogued and ambiguous are
+// facts about the evidence, kept at their own grain); a catalogued release then
+// refuses at the access step, because nothing on this path binds an access
+// context — no observation receipt, no profile lookup — and the projection may
+// not manufacture one from the catalog row (ruling 2 answer (a)).
+fn solve_install_mechanism_from_evidence(
+  evidence: BmcFirmwareEvidence,
+  catalog: List<BmcFirmwareCapabilityRow>,
+) -> OsInstallMechanismSolution {
+  match bmc_firmware_capability_standing(evidence: evidence, catalog: catalog) {
+    BmcFirmwareCapabilityResolved { row: _ } =>
+      OsInstallMechanismRefused { cause: InstallAccessProfileNotLookedUp { endpoint: bmc_firmware_evidence_endpoint(ev: evidence) } }
+    BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } =>
+      OsInstallMechanismRefused { cause: InstallFirmwareEvidenceAbsent { endpoint: e } }
+    BmcFirmwareCapabilityVersionUncatalogued { firmware: fw } =>
+      OsInstallMechanismRefused { cause: InstallFirmwareVersionUncatalogued { firmware: fw } }
+    BmcFirmwareCapabilityVersionAmbiguous { firmware: fw, count: n } =>
+      OsInstallMechanismRefused {
+        cause: InstallFirmwareVersionAmbiguous { firmware: fw, count: n },
+      }
+  }
+}
+
+data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
+
+data srv1_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
+  evidence: srv1_bmc_firmware_evidence,
+  catalog: srv3_firmware_catalog,
+)
+
+data srv2_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
+  evidence: srv2_bmc_firmware_evidence,
+  catalog: srv3_firmware_catalog,
+)
+
+data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
+  evidence: srv3_bmc_firmware_evidence,
+  catalog: srv3_firmware_catalog,
+)
+
+data srv4_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
+  evidence: srv4_bmc_firmware_evidence,
+  catalog: srv3_firmware_catalog,
+)
+
+fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOverrideTarget {
+  match mechanism {
+    VirtualMediaInstall => BootTargetCd
+    NbdProxyVirtualMediaInstall => BootTargetCd
+    PxeHttpInstall => BootTargetPxe
+  }
+}
+
+// The boot target a host's install would use, carried as a standing so a host with no derived
+// mechanism has no boot target either. gunbc.bmc_onboarding previously handed srv3's
+// board-default CD target to EVERY host including srv4, whose firmware justifies no delivery
+// mechanism at all — a live contradiction between the evidence model and the onboarding model.
+type InstallBootTargetStanding
+  = InstallBootTargetSelected { target: RedfishBootSourceOverrideTarget }
+  | InstallBootTargetRefused { cause: OsInstallMechanismRefusalCause }
+
+fn install_boot_target_standing_for(solution: OsInstallMechanismSolution) -> InstallBootTargetStanding {
+  match solution {
+    OsInstallMechanismSelected { mechanism: m } =>
+      InstallBootTargetSelected { target: install_boot_target_for(mechanism: m) }
+    OsInstallMechanismRefused { cause: c } => InstallBootTargetRefused { cause: c }
+  }
+}
+
+data srv3_install_boot_target_standing: InstallBootTargetStanding = install_boot_target_standing_for(
+  solution: srv3_install_mechanism_solution
+)
+
+data srv4_install_boot_target_standing: InstallBootTargetStanding = install_boot_target_standing_for(
+  solution: srv4_install_mechanism_solution
+)

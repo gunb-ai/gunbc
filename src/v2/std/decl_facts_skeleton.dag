@@ -1,0 +1,239 @@
+module v2.std.decl_facts_skeleton
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.types { List, String }
+import v2.std.algebra {
+  Empty,
+  HeadAbsent,
+  HeadFound,
+  count_where,
+  fold_list_right,
+  length,
+  list_head,
+  list_reverse,
+}
+import v2.std.collection { Absent, Present }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.decl_index { DeclFact }
+import v2.std.node { Edge, Named, Node, NodeFold, Positional, TypeNode, Atom, Conj, fold_node }
+import v2.std.node_query { node_positional_child_targets }
+
+type OuterRecordConstructorLexeme = String
+
+type SkeletonMarshalAtomLexeme = String
+
+
+
+data decl_facts_nullary_variant_value_identity_gap_note: String = "BOUNDED constructor-lexeme reflection (parse-only decl_facts_corpus_walk metadata): outer ExprRecordLit authored names surface as SkeletonMarshalAtomLexeme / OuterRecordConstructorLexeme atoms (Scaffold, Terminal, DeclarationRef, NamedField, etc.) — constructor SPELLING only, not parent coproduct or declaration identity. DataItem node marshaling in eval_decl_facts delegates to marshal_data_initializer_projection (ctx.lookup_fn_node on the resolved graph), so merge-blocking witnesses that read resolved nullary parent/arm identity through decl_facts() exercise the same typechecked seam as marshal_data_initializer_projection Rust tests — infer-stamped VarBindingKind::VariantValueBinding and InferredNode::Resolved on variant-value ExprVars. Remaining open at this grain: exact parent-variant occurrence identity (this lane lands ResolvedDeclarationLocator qualified-name parent/arm only, not occurrence coordinates). Dissolve-on: occurrence-grain projection or a single marshal authority that folds spelling atoms and resolved identity without a parse-only fork."
+
+data decl_facts_outer_record_constructor_lexeme_authority_note: String = "OuterRecordConstructorLexeme is the honest name for ExprRecordLit-authored constructor spelling reflected in decl_facts skeleton atoms. It is not variant identity: parent coproduct, module, declaration, and variant resolution are separate open obligations. skeleton_contains_outer_record_constructor_lexeme reads the same marshal atom spine as skeleton_contains_marshal_atom_lexeme but types the query parameter honestly."
+
+type DeclFactQualifiedNameResolution
+  = DeclFactResolvedUnique { fact: DeclFact }
+  | DeclFactResolvedMissing { qualified_name: String }
+  | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
+
+fn decl_facts_matching_qualified_name(qn: String, facts: List<DeclFact>) -> List<DeclFact> {
+  list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
+    if fact.qualified_name == qn {
+      Cons { head: fact, tail: acc }
+    } else {
+      acc
+    }
+  }))
+}
+
+fn resolve_decl_fact_by_qualified_name(
+  facts: List<DeclFact>,
+  qn: String
+) -> DeclFactQualifiedNameResolution {
+  let matches = decl_facts_matching_qualified_name(qn: qn, facts: facts)
+  let n = length(xs: matches)
+  if n == 0 {
+    DeclFactResolvedMissing { qualified_name: qn }
+  } else if n > 1 {
+    DeclFactResolvedAmbiguous { qualified_name: qn, match_count: n }
+  } else {
+    match list_head(xs: matches) {
+      HeadAbsent => DeclFactResolvedMissing { qualified_name: qn }
+      HeadFound { value: sole } => DeclFactResolvedUnique { fact: sole }
+    }
+  }
+}
+
+fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexeme? {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      Present { value: symbol_lexeme(sym: sym) }
+    TypeNode { connective: Conj } =>
+      fold(
+        node_positional_child_targets(node: node),
+        init: Absent,
+        f: fn(acc, nested) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
+          }
+        }
+      )
+    _ => Absent
+  }
+}
+
+fn node_skeleton_edge_targets(node: Node) -> List<Node> {
+  list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
+    Cons { head: e.target, tail: acc }
+  }))
+}
+
+fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
+  let child_lexemes = fold_list_right(
+    xs: node_skeleton_edge_targets(node: node),
+    empty: Empty,
+    snoc: fn(acc, child) {
+      fold_list_right(
+        xs: node_skeleton_marshal_atom_lexemes(node: child),
+        empty: acc,
+        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
+      )
+    }
+  )
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      Cons { head: symbol_lexeme(sym: sym), tail: child_lexemes }
+    _ => child_lexemes
+  }
+}
+
+fn skeleton_contains_marshal_atom_lexeme(node: Node, lexeme: SkeletonMarshalAtomLexeme) -> Bool {
+  count_where(
+    xs: node_skeleton_marshal_atom_lexemes(node: node),
+    predicate: fn(lex) { lex == lexeme }
+  ) > 0
+}
+
+fn skeleton_marshal_atom_lexeme_count(node: Node, lexeme: SkeletonMarshalAtomLexeme) -> Int {
+  count_where(
+    xs: node_skeleton_marshal_atom_lexemes(node: node),
+    predicate: fn(lex) { lex == lexeme }
+  )
+}
+
+fn skeleton_contains_outer_record_constructor_lexeme(
+  node: Node,
+  lexeme: OuterRecordConstructorLexeme
+) -> Bool {
+  skeleton_contains_marshal_atom_lexeme(node: node, lexeme: lexeme)
+}
+
+fn skeleton_outer_record_constructor_lexeme_count(
+  node: Node,
+  lexeme: OuterRecordConstructorLexeme
+) -> Int {
+  skeleton_marshal_atom_lexeme_count(node: node, lexeme: lexeme)
+}
+
+fn decl_fact_skeleton_for_resolution(
+  resolution: DeclFactQualifiedNameResolution
+) -> Node? {
+  match resolution {
+    DeclFactResolvedUnique { fact } => Present { value: fact.node }
+    DeclFactResolvedMissing { qualified_name: _ } => Absent
+    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
+  }
+}
+
+// AUTHORED ATOM LEXEMES, EXCLUDING CONSTRUCTOR SPELLINGS — the discriminator the
+// floor_expected_red coherence check needs, derived from edge PROVENANCE rather than
+// lexeme shape (DESIGN §4: a heuristic is never necessary in a closed system).
+//
+// The host marks a record-literal's authored constructor name with a SECOND, NAMED
+// edge (record_construction_spelling) beside the ordinary positional child edge — both
+// edges target the same content-addressed atom, so excluding only the named-edge child
+// during a single walk is not enough: the constructor lexeme still surfaces via the
+// positional path. The correct move is a two-pass value subtraction over the whole
+// subtree: collect every lexeme that appears at the target of ANY
+// record_construction_spelling edge (that IS what "is a constructor spelling" means at
+// the host boundary), then collect every atom lexeme in the subtree, then subtract the
+// first set from the second. Nothing here inspects a lexeme's spelling, characters, or
+// naming convention — every exclusion is earned by an edge label the host already
+// writes for a different reason (record_construction_census_witness_test).
+//
+// The result is deliberately OVER-inclusive, never under-inclusive: an atom reached by
+// a call, a parameter reference, or a nullary-variant-value binding is not excluded by
+// this pass (only construction spellings are), so such an atom survives into the
+// "authored" set rather than being silently dropped. That is the safe failure
+// direction for a coherence check — a spurious member produces a located, nameable
+// refusal; a heuristic that instead matched on shape could instead OMIT an authored
+// identity from the compared set, which is the empty-observation narrow DESIGN §5
+// forbids. A consumer that hits this residue should model the missing atom kind at
+// this derivation, not add an exclusion lexeme here — an exclusion list is the shape
+// filter this function exists to avoid, reintroduced one lexeme at a time.
+type AtomLexemeCensus {
+  all_atom_lexemes: List<SkeletonMarshalAtomLexeme>
+  construction_spelling_lexemes: List<SkeletonMarshalAtomLexeme>
+  self_is_atom: Bool
+  self_lexeme: SkeletonMarshalAtomLexeme
+}
+
+fn skeleton_edge_is_construction_spelling(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^record_construction_spelling
+    Positional => false
+  }
+}
+
+fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: s } } =>
+            AtomLexemeCensus {
+              all_atom_lexemes: [symbol_lexeme(sym: s)],
+              construction_spelling_lexemes: Empty,
+              self_is_atom: true,
+              self_lexeme: symbol_lexeme(sym: s)
+            }
+          _ =>
+            AtomLexemeCensus {
+              all_atom_lexemes: Empty,
+              construction_spelling_lexemes: Empty,
+              self_is_atom: false,
+              self_lexeme: ""
+            }
+        }
+      },
+      step: fn(acc, e, child) {
+        AtomLexemeCensus {
+          all_atom_lexemes: concat(acc.all_atom_lexemes, child.all_atom_lexemes),
+          construction_spelling_lexemes: concat(
+            acc.construction_spelling_lexemes,
+            if skeleton_edge_is_construction_spelling(e: e) && child.self_is_atom {
+              Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
+            } else {
+              child.construction_spelling_lexemes
+            }
+          ),
+          self_is_atom: acc.self_is_atom,
+          self_lexeme: acc.self_lexeme
+        }
+      }
+    }
+  )
+}
+
+fn node_skeleton_authored_non_construction_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
+  let census = skeleton_atom_lexeme_census_fold(n: node)
+  filter(census.all_atom_lexemes, fn(lex) {
+    !contains(xs: census.construction_spelling_lexemes, item: lex, eq: fn(a, b) { a == b })
+  })
+}
+
+data authored_non_construction_atom_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as skeleton_marshal_atom_lexeme_dissolve_on. Also widens if a future decl_facts consumer's subject body carries ExprCall/param-reference/nullary-variant-value atoms alongside string literals — this derivation stays over-inclusive rather than under-inclusive for that residue by design (see the function's own note), so a consumer needing an exact string-literal-only set still has an open obligation rather than a false guarantee.")
+
+data outer_record_constructor_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
+
+data skeleton_marshal_atom_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as outer_record_constructor_lexeme_dissolve_on — skeleton marshal atoms share one cited production roster rather than parallel String nicknames.")

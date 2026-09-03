@@ -48,9 +48,11 @@ import v2.std.runtime {
   LoopInterpreter,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
-import v2.std.verdict { Pass, Deferred, Fail }
+import v2.std.verdict { verdict_establishes_divergence }
 import v2.std.verification {
   TestClaim,
   TestClassification,
@@ -127,20 +129,29 @@ fn idempotent_operation_eval_context() -> EvalContext {
     runtime_identity: ^idempotent_operation_eval_runtime,
     interpretation: InterpretationAlgebra {
       value: ValueInterpreter {
-        allocate_literal: idempotent_operation_allocate_literal
+        allocate_literal: idempotent_operation_allocate_literal,
+        identity: ^idempotent_operation_allocate_literal
       },
       transform: TransformInterpreter {
-        call_primitive: idempotent_operation_call_primitive
+        call_primitive: idempotent_operation_call_primitive,
+        identity: ^idempotent_operation_call_primitive
       },
       branch: BranchInterpreter {
-        choose_branch: idempotent_operation_choose_branch
+        choose_branch: idempotent_operation_choose_branch,
+        identity: ^idempotent_operation_choose_branch
       },
       loop: LoopInterpreter {
-        step_loop: idempotent_operation_step_loop
+        step_loop: idempotent_operation_step_loop,
+        identity: ^idempotent_operation_step_loop
       },
       bind: BindInterpreter {
-        bind_value: idempotent_operation_bind_value
-      }
+        bind_value: idempotent_operation_bind_value,
+        identity: ^idempotent_operation_bind_value
+      },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
+    }
     },
     structure_witness: idempotent_operation_interpretation_structure_witness()
   )
@@ -151,9 +162,9 @@ fn idempotent_operation_inferred_facts(root: Node) -> InferredFacts {
     resolved: root,
     algebra: root,
     descent: Holds {
-      value: TerminationProof {
+      value: v2.std.cardinality.TerminationProof {
         non_increasing: [],
-        strict: RankingDimension { measured: ^idempotent_operation_descent_dimension }
+        strict: v2.std.cardinality.RankingDimension { measured: ^idempotent_operation_descent_dimension }
       }
     }
   )
@@ -163,9 +174,9 @@ fn idempotent_operation_inferred_tree(root: Node) -> InferredTree {
   let facts = idempotent_operation_inferred_facts(root: root)
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: fn(_) {
-        Holds { value: facts }
+        Present { value: facts }
       }
     }
   }
@@ -187,25 +198,47 @@ fn idempotent_operation_run_via_test_claim(claim: TestClaim) -> TestClaimRun<Nod
 
 fn idempotent_operation_generated_run(row: Outcome<TestClaim>) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
   match row {
-    Accepted { value: claim, diagnostics: None } =>
+    Accepted { value: claim, diagnostics: ds } =>
       Accepted {
         value: idempotent_operation_run_via_test_claim(claim: claim),
-        diagnostics: None
+        diagnostics: ds
       }
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }
   }
 }
 
+// THE SHARPEST LIVE SPECIMEN OF CLAIM-ENTAILING EVIDENCE IN AN EXECUTING CONSUMER, and the reason
+// this function changed rather than being left alone as "conservative".
+//
+// Its four consumers are `test fn`s that assert this answers TRUE
+// (generated_idempotent_read_run_non_pass and its three siblings in
+// v2.test.generated_conformance_floor). So TRUE is the PASSING value, and the predecessor answered
+// true on five different paths:
+//
+//     SemanticMismatch -> true   the comparison ran and disagreed          <- the only real evidence
+//     BuildFailed      -> true   the emitted crate did not compile
+//     RunFailed        -> true   the process did not run
+//     Deferred         -> true   the comparison was deferred
+//     Rejected         -> true   the CLAIM ITSELF never constructed
+//
+// Four of those five are ways of NOT MEASURING the operation, and every one of them made the
+// assertion pass. The predicate's truth set was wider than the proposition it was cited to prove
+// (an idempotency claim about a generated operation), which is the exact aliasing shape the
+// evidence rule names -- and unlike its siblings in this migration, here the aliasing points the
+// DANGEROUS way. A `*_is_pass` fold that answers false for a broken toolchain is wrong but
+// conservative: the test goes red and someone looks. This one goes GREEN when nothing was measured,
+// so a total collapse of the emitter would be indistinguishable from four conformance claims
+// holding.
+//
+// The repair is the legal projection and nothing more: a non-pass claim is established only by a
+// comparison that RAN and DIVERGED. A claim that would not construct is an instrument refusal and
+// establishes nothing, so `Rejected` now answers false where it used to answer true.
 fn idempotent_operation_run_non_pass(row: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match row {
-    Accepted { value: run, diagnostics: None } =>
-      match run.verdict {
-        Pass => false
-        Fail { actual: _, falsification: _ } => true
-        Deferred { actual: _, diagnostic: _ } => true
-      }
-    Rejected { diagnostics: _ } => true
+    Accepted { value: run, diagnostics: _ } =>
+      verdict_establishes_divergence(v: run.verdict)
+    Rejected { diagnostics: _ } => false
   }
 }
 

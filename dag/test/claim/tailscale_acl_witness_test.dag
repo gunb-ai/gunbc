@@ -1,0 +1,61 @@
+module test.claim.tailscale_acl_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_acl_reference.json"
+
+fn witness_operator_policy_row_counts() -> Bool {
+  let policy = operator_tailscale_acl_policy
+  (length(policy.grants) == 4)
+    && (length(policy.ssh) == 3)
+    && (length(policy.node_attrs) == 1)
+    && (length(policy.tag_owners) == 2)
+}
+
+fn witness_tag_ci_quarantine_spine() -> Bool {
+  tag_ci_quarantine_holds(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_tag_dashboard_admin_exception() -> Bool {
+  tag_dashboard_admin_plane_holds(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_dashboard_cutover_ip_transient() -> Bool {
+  dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: operator_tailscale_acl_policy)
+    && match dashboard_cutover_mac_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      Terminal { reason: _ } => false
+    }
+}
+
+fn witness_ssh_principal_spine() -> Bool {
+  ssh_members_reach_ci_nonroot_only(policy: operator_tailscale_acl_policy)
+    && ssh_dashboard_reaches_ci_root_and_nonroot(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_security_spine() -> Bool {
+  operator_acl_security_spine_holds(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_emit_matches_reference_fixture() -> Bool {
+  let read = Filesystem.Read(path: tailscale_acl_reference_fixture_path)
+  read.success && (expected_tailscale_acl_json() == read.content)
+}
+
+fn witness_dashboard_tag_not_ci_in_acl_model() -> Bool {
+  tag_dashboard != tag_ci
+    && !string_contains(s: tag_dashboard, pattern: "tag:ci")
+}
+
+test fn tailscale_acl_witnesses() -> Bool {
+  tailscale_grants_external_authority_holds()
+    && witness_operator_policy_row_counts()
+    && witness_tag_ci_quarantine_spine()
+    && witness_tag_dashboard_admin_exception()
+    && witness_dashboard_cutover_ip_transient()
+    && witness_ssh_principal_spine()
+    && witness_security_spine()
+    && witness_emit_matches_reference_fixture()
+    && witness_dashboard_tag_not_ci_in_acl_model()
+}

@@ -1,0 +1,248 @@
+module extdeps.bmc.capability
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcEndpoint }
+import std.nat { Nat }
+import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.algebra { any, filter, length, skip }
+import v2.std.optional { Present }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
+type BmcCapability
+  = CapabilityPowerControl
+  | CapabilityBootSourceOverride
+  | CapabilityAccountManagement
+  | CapabilityFirmwareUpdate
+  | CapabilityVirtualMedia
+  | CapabilityNbdProxyVirtualMedia
+  | CapabilityOemRemoteMedia
+  | CapabilityBiosAttributeConfig
+  | CapabilitySerialConsole
+
+type BmcFirmwareVersion {
+  family: BmcFirmwareFamily
+  version: FirmwareSemanticVersion
+}
+
+type BmcFirmwareVersionParse
+  = BmcFirmwareVersionParsed { version: FirmwareSemanticVersion }
+  | BmcFirmwareVersionRefused { wire: String }
+
+fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
+  let fields = split(s: wire, delimiter: ".")
+  if fields.length() != 3 {
+    BmcFirmwareVersionRefused { wire: wire }
+  } else {
+    match parse_int(s: fields.first()) {
+      Absent => BmcFirmwareVersionRefused { wire: wire }
+      Present { value: major } =>
+        match parse_int(s: fields.skip(n: 1).first()) {
+          Absent => BmcFirmwareVersionRefused { wire: wire }
+          Present { value: minor } =>
+            match parse_int(s: fields.skip(n: 2).first()) {
+              Absent => BmcFirmwareVersionRefused { wire: wire }
+              Present { value: patch } =>
+                if major < 0 || minor < 0 || patch < 0 {
+                  BmcFirmwareVersionRefused { wire: wire }
+                } else {
+                  BmcFirmwareVersionParsed {
+                    version: firmware_semantic_version(
+                      major: major,
+                      minor: minor,
+                      patch: patch,
+                    ),
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+type BmcFirmwareTrack {
+  family: BmcFirmwareFamily
+  major_version: Nat
+}
+
+type BmcFirmwareIntent
+  = BmcFirmwareUnpinned
+  | BmcFirmwareTrackRequired { track: BmcFirmwareTrack }
+
+type BmcFirmwareObservation {
+  endpoint: BmcEndpoint
+  firmware: BmcFirmwareVersion
+  evidence_scope: BmcEvidenceTemporalScope
+  observed_at: EpochMs
+}
+
+type BmcFirmwareIntentObservationVerdict
+  = BmcFirmwareIntentSatisfied
+  | BmcFirmwareIntentMismatch {
+      required: BmcFirmwareTrack,
+      observed: BmcFirmwareVersion,
+    }
+
+type BmcEvidenceTemporalScope
+  = HistoricalEvidenceSnapshot
+  | CurrentEvidenceUnclaimed
+
+type BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion
+  capabilities: List<BmcCapability>
+}
+
+fn bmc_firmware_version_matches_track(
+  firmware: BmcFirmwareVersion,
+  track: BmcFirmwareTrack
+) -> Bool {
+  firmware.family == track.family
+    && firmware.version.major == track.major_version
+}
+
+fn bmc_firmware_version_intent_verdict(
+  firmware: BmcFirmwareVersion,
+  intent: BmcFirmwareIntent,
+) -> BmcFirmwareIntentObservationVerdict {
+  match intent {
+    BmcFirmwareUnpinned => BmcFirmwareIntentSatisfied
+    BmcFirmwareTrackRequired { track: required } =>
+      if bmc_firmware_version_matches_track(
+        firmware: firmware,
+        track: required,
+      ) {
+        BmcFirmwareIntentSatisfied
+      } else {
+        BmcFirmwareIntentMismatch {
+          required: required,
+          observed: firmware,
+        }
+      }
+  }
+}
+
+fn bmc_firmware_observation_intent_verdict(
+  intent: BmcFirmwareIntent,
+  observation: BmcFirmwareObservation
+) -> BmcFirmwareIntentObservationVerdict {
+  bmc_firmware_version_intent_verdict(
+    firmware: observation.firmware,
+    intent: intent,
+  )
+}
+
+type BmcFirmwareCapabilityLookup
+  = BmcFirmwareCapabilityKnown { row: BmcFirmwareCapabilityRow }
+  | BmcFirmwareCapabilityUncatalogued { firmware: BmcFirmwareVersion }
+  | BmcFirmwareCapabilityAmbiguous { firmware: BmcFirmwareVersion, count: Int }
+
+// THE EXACT VENDOR RELEASE IDENTITY, OPAQUE. A BMC reports its firmware as a
+// string the vendor chose ("0.32", "3.22.00", "2.7.1"); bmc_firmware_version_from_wire
+// admits exactly three numeric components, so a live "0.32" either refuses or has
+// to be fabricated as "0.32.0". Profile lookup and observation identity therefore
+// bind on the RAW string plus family; the semantic reading is a derived view that
+// is Present only when the wire parses, never a prerequisite for observing the
+// firmware (machine-intake ruling 3 §1).
+type BmcFirmwareReleaseIdentity {
+  family: BmcFirmwareFamily
+  raw_version: NonEmptyStr
+  semantic_version: FirmwareSemanticVersion?
+}
+
+fn bmc_firmware_release_identity_eq(a: BmcFirmwareReleaseIdentity, b: BmcFirmwareReleaseIdentity) -> Bool {
+  a.family == b.family && a.raw_version == b.raw_version
+}
+
+fn bmc_firmware_release_identity_of_wire(family: BmcFirmwareFamily, wire: NonEmptyStr) -> BmcFirmwareReleaseIdentity {
+  match bmc_firmware_version_from_wire(wire: wire as String) {
+    BmcFirmwareVersionParsed { version: v } =>
+      BmcFirmwareReleaseIdentity { family: family, raw_version: wire, semantic_version: Present { value: v } }
+    BmcFirmwareVersionRefused { wire: _ } =>
+      BmcFirmwareReleaseIdentity { family: family, raw_version: wire, semantic_version: none }
+  }
+}
+
+// Whether a semantic capability row describes this release: same family and the
+// release's derived semantic reading is Present and equal. A release with no
+// semantic reading matches no semantic row — the join refuses rather than
+// guessing a patch component.
+fn bmc_firmware_release_matches_version(rel: BmcFirmwareReleaseIdentity, version: BmcFirmwareVersion) -> Bool {
+  match rel.semantic_version {
+    Absent => false
+    Present { value: v } =>
+      bmc_firmware_version_eq(a: BmcFirmwareVersion { family: rel.family, version: v }, b: version)
+  }
+}
+
+fn bmc_firmware_version_eq(a: BmcFirmwareVersion, b: BmcFirmwareVersion) -> Bool {
+  a.family == b.family
+    && a.version.major == b.version.major
+    && a.version.minor == b.version.minor
+    && a.version.patch == b.version.patch
+}
+
+// Exact-version catalog lookup, deliberately total in the REFUSING direction, on BOTH sides of
+// uniqueness. A firmware version the catalog does not carry yields
+// BmcFirmwareCapabilityUncatalogued rather than a nearest-version or shipped-row substitute: a
+// capability roster is a per-release fact — this board GAINED CapabilityNbdProxyVirtualMedia at
+// 2.07.00 and LOST it again by 3.06.00 — so "close enough" version matching would answer with
+// capabilities the observed firmware does not have.
+//
+// Two or more rows for one version yield BmcFirmwareCapabilityAmbiguous rather than the first
+// hit. First-wins over a duplicated key is a silent selection: two rows for one version is a
+// contradiction in the catalog, and answering from whichever was authored first renders that
+// contradiction as a verdict. Same three-arm shape as extdeps.package `package_lock_lookup_node`
+// (absent / unique / duplicate). DESIGN §5: the failure arm refuses, it does not widen.
+fn bmc_firmware_capability_row_for(
+  firmware: BmcFirmwareVersion,
+  catalog: List<BmcFirmwareCapabilityRow>
+) -> BmcFirmwareCapabilityLookup {
+  let hits = catalog |> filter(row => bmc_firmware_version_eq(a: row.firmware, b: firmware))
+  let n = count(hits)
+  if n == 0 {
+    BmcFirmwareCapabilityUncatalogued { firmware: firmware }
+  } else if n == 1 {
+    fold(
+      hits,
+      init: BmcFirmwareCapabilityUncatalogued { firmware: firmware },
+      f: (_acc, row) => BmcFirmwareCapabilityKnown { row: row },
+    )
+  } else {
+    BmcFirmwareCapabilityAmbiguous { firmware: firmware, count: n }
+  }
+}
+
+fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
+  row.capabilities |> any(c => c == cap)
+}
+
+// THE EXACT-RELEASE CAPABILITY CARRIER (machine-intake ruling 4 §2). A
+// BmcFirmwareCapabilityRow is keyed by a SEMANTIC version, so a release whose
+// vendor string has no semantic reading — the observed Mt. Collins "0.32" — can
+// be represented as a BmcFirmwareReleaseIdentity but can never match a row, and
+// every profile embedding a semantic row refused it forever. This row is keyed
+// by the exact release identity; the access-profile path consumes it, and the
+// semantic row remains for the existing OpenBMC evidence consumers.
+type BmcFirmwareReleaseCapabilityRow {
+  firmware: BmcFirmwareReleaseIdentity
+  capabilities: List<BmcCapability>
+}
+
+fn release_row_has_capability(row: BmcFirmwareReleaseCapabilityRow, cap: BmcCapability) -> Bool {
+  row.capabilities |> any(c => c == cap)
+}
+
+fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> Bool {
+  catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
+}
+
+data bmc_firmware_semver_parser_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused.")

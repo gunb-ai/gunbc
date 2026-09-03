@@ -1,0 +1,303 @@
+module test.claim.bmc_firmware_evidence_install_mechanism
+
+import extdeps.bmc.capability {
+  BmcFirmwareCapabilityAmbiguous,
+  BmcFirmwareCapabilityKnown,
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareCapabilityUncatalogued,
+  BmcFirmwareVersion,
+  bmc_firmware_capability_row_for,
+  bmc_firmware_version_eq,
+  firmware_has_capability,
+  CapabilityNbdProxyVirtualMedia,
+  CapabilityVirtualMedia,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  asrock_altrad8ud_openbmc_3_22_00_capabilities,
+}
+import gunbc.fleet_bmc_firmware_evidence {
+  BmcFirmwareAttestation,
+  BmcFirmwareCapabilityEvidenceAbsent,
+  BmcFirmwareCapabilityResolved,
+  BmcFirmwareCapabilityVersionAmbiguous,
+  BmcFirmwareCapabilityVersionUncatalogued,
+  BmcFirmwareEvidence,
+  BmcFirmwareEvidenceAttested,
+  BmcFirmwareEvidenceObserved,
+  BmcFirmwareEvidenceUnobserved,
+  BmcFirmwareVersionEstablished,
+  BmcFirmwareVersionUnestablished,
+  bmc_firmware_capability_standing,
+  bmc_firmware_evidence_version,
+  srv1_bmc_firmware_evidence,
+  srv2_bmc_firmware_evidence,
+  srv3_bmc_firmware_evidence,
+  srv4_bmc_firmware_evidence,
+}
+import gunbc.os_install_mechanism {
+  InstallAccessContextUnbound,
+  InstallTargetContextMismatch,
+  InstallAccessProfileNotLookedUp,
+  InstallDeliveryOutsideLegacyMechanism,
+  InstallFirmwareEvidenceAbsent,
+  InstallFirmwareVersionAmbiguous,
+  InstallFirmwareVersionUncatalogued,
+  InstallBootControlUnestablished,
+  InstallNoBootSourceOverride,
+  InstallNoEligibleTransport,
+  OsInstallMechanismRefused,
+  OsInstallMechanismSelected,
+  OsInstallMechanismSolution,
+  solve_install_mechanism_from_evidence,
+  srv1_install_mechanism_solution,
+  srv2_install_mechanism_solution,
+  srv3_firmware_catalog,
+  srv3_install_mechanism_solution,
+  srv4_install_mechanism_solution,
+}
+import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
+import std.types { Bool, List, list_length }
+import extdeps.firmware.types { firmware_semantic_version }
+
+data unknown_endpoint: BmcEndpoint = BmcEndpoint { host: "192.168.1.254", protocol: Redfish }
+
+data uncatalogued_firmware: BmcFirmwareVersion = BmcFirmwareVersion {
+  family: OpenBmc,
+  version: firmware_semantic_version(major: 2, minor: 7, patch: 1),
+}
+
+fn solution_refuses_at_profile_lookup_not_run(solution: OsInstallMechanismSolution) -> Bool {
+  match solution {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallAccessProfileNotLookedUp { endpoint: _ } => true
+        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleTransport { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+}
+
+// THE PROJECTION HAS NO SOLVER OF ITS OWN (machine-intake ruling 3 §3). Every
+// host whose firmware release is catalogued — srv1/srv2 attested at 2.07.00,
+// srv3/srv4 observed at 3.22.00 — refuses at the same place: nothing on the
+// install path observes the endpoint's served surfaces or runs a profile
+// lookup, and the projection may not manufacture an access context from the
+// catalog row (ruling 2 answer (a)). The capability-only solver that used to
+// answer NbdProxyVirtualMediaInstall for srv1/srv2 and srv3's board default,
+// and PxeHttpInstall by absence for anything else, is deleted; the refusal is
+// the honest per-host answer until a bound BootDeliverySolution reaches these
+// consumers.
+test fn every_catalogued_host_refuses_at_profile_lookup_not_run() -> Bool {
+  solution_refuses_at_profile_lookup_not_run(solution: srv1_install_mechanism_solution)
+    && solution_refuses_at_profile_lookup_not_run(solution: srv2_install_mechanism_solution)
+    && solution_refuses_at_profile_lookup_not_run(solution: srv3_install_mechanism_solution)
+    && solution_refuses_at_profile_lookup_not_run(solution: srv4_install_mechanism_solution)
+}
+
+// The refusal names the host's OWN evidence endpoint, not a default one.
+test fn profile_lookup_refusal_names_the_evidence_endpoint() -> Bool {
+  match srv4_install_mechanism_solution {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallAccessProfileNotLookedUp { endpoint: e } =>
+          match srv4_bmc_firmware_evidence {
+            BmcFirmwareEvidenceObserved { observation: o } => e.host == o.endpoint.host
+            BmcFirmwareEvidenceAttested { attestation: _ } => false
+            BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+          }
+        _ => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+}
+
+// Provenance is carried structurally, not by a comment: srv1/srv2 inhabit the attested arm and
+// srv3/srv4 the observed arm, so a recollection cannot be read back as a Redfish observation.
+test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool {
+  match srv1_bmc_firmware_evidence {
+    BmcFirmwareEvidenceAttested { attestation: _ } =>
+      match srv2_bmc_firmware_evidence {
+        BmcFirmwareEvidenceAttested { attestation: _ } =>
+          match srv3_bmc_firmware_evidence {
+            BmcFirmwareEvidenceObserved { observation: _ } =>
+              match srv4_bmc_firmware_evidence {
+                BmcFirmwareEvidenceObserved { observation: _ } => true
+                BmcFirmwareEvidenceAttested { attestation: _ } => false
+                BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+              }
+            BmcFirmwareEvidenceAttested { attestation: _ } => false
+            BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+          }
+        BmcFirmwareEvidenceObserved { observation: _ } => false
+        BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+      }
+    BmcFirmwareEvidenceObserved { observation: _ } => false
+    BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+  }
+}
+
+// RED CONTROL — an endpoint with no evidence must refuse with the missing fact,
+// NOT reach the access step (whose refusal would name a lookup that could not
+// even have been keyed) and NOT substitute the board's shipped roster.
+test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step() -> Bool {
+  match solve_install_mechanism_from_evidence(
+    evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
+    catalog: srv3_firmware_catalog,
+  ) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallFirmwareEvidenceAbsent { endpoint: e } => e == unknown_endpoint
+        InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        InstallAccessProfileNotLookedUp { endpoint: _ } => false
+        InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleTransport { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+}
+
+// RED CONTROL — a firmware version one patch off a catalogued row must refuse, not match the
+// nearest row. 2.07.00 is the only version carrying CapabilityNbdProxyVirtualMedia; answering
+// for 2.07.01 from that row would grant a capability nobody observed.
+test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
+  match solve_install_mechanism_from_evidence(
+    evidence: BmcFirmwareEvidenceAttested {
+      attestation: BmcFirmwareAttestation {
+        endpoint: unknown_endpoint,
+        firmware: uncatalogued_firmware,
+        attested_by: "witness",
+        attested_at: 1786320000000,
+      },
+    },
+    catalog: srv3_firmware_catalog,
+  ) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallFirmwareVersionUncatalogued { firmware: f } =>
+          bmc_firmware_version_eq(a: f, b: uncatalogued_firmware)
+        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        InstallAccessProfileNotLookedUp { endpoint: _ } => false
+        InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleTransport { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+}
+
+// POSITIVE CONTROL for the lookup itself — the catalogued version resolves to the row whose
+// capabilities the fleet actually depends on, so the refusals above are discriminating rather
+// than the function refusing everything.
+test fn catalogued_version_resolves_to_its_own_row() -> Bool {
+  match bmc_firmware_capability_row_for(
+    firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+    catalog: srv3_firmware_catalog,
+  ) {
+    BmcFirmwareCapabilityKnown { row: r } =>
+      firmware_has_capability(row: r, cap: CapabilityNbdProxyVirtualMedia)
+        && firmware_has_capability(row: r, cap: CapabilityVirtualMedia) == false
+    BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+    BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
+  }
+}
+
+test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool {
+  match bmc_firmware_capability_row_for(
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+    catalog: srv3_firmware_catalog,
+  ) {
+    BmcFirmwareCapabilityKnown { row: r } =>
+      firmware_has_capability(row: r, cap: CapabilityVirtualMedia) == false
+        && firmware_has_capability(row: r, cap: CapabilityNbdProxyVirtualMedia) == false
+    BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+    BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
+  }
+}
+
+test fn unobserved_evidence_establishes_no_version() -> Bool {
+  match bmc_firmware_evidence_version(
+    evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
+  ) {
+    BmcFirmwareVersionUnestablished { endpoint: e } => e == unknown_endpoint
+    BmcFirmwareVersionEstablished { firmware: _ } => false
+  }
+}
+
+test fn capability_standing_refuses_on_absent_evidence() -> Bool {
+  match bmc_firmware_capability_standing(
+    evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
+    catalog: srv3_firmware_catalog,
+  ) {
+    BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } => e == unknown_endpoint
+    BmcFirmwareCapabilityResolved { row: _ } => false
+    BmcFirmwareCapabilityVersionUncatalogued { firmware: _ } => false
+    BmcFirmwareCapabilityVersionAmbiguous { firmware: _, count: _ } => false
+  }
+}
+
+data duplicated_version_catalog: List<BmcFirmwareCapabilityRow> = [
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+]
+
+data attested_2_07_00_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceAttested {
+  attestation: BmcFirmwareAttestation {
+    endpoint: unknown_endpoint,
+    firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+    attested_by: "witness",
+    attested_at: 1786320000000,
+  },
+}
+
+// RED CONTROL for the manager-flagged duplicate-match defect. Two catalog rows for one version
+// is a contradiction; answering from whichever was authored first would render it as a verdict.
+test fn duplicate_catalog_rows_for_one_version_refuse_as_ambiguous() -> Bool {
+  match bmc_firmware_capability_row_for(
+    firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+    catalog: duplicated_version_catalog,
+  ) {
+    BmcFirmwareCapabilityAmbiguous { firmware: _, count: n } => n == 2
+    BmcFirmwareCapabilityKnown { row: _ } => false
+    BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+  }
+}
+
+test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
+  match solve_install_mechanism_from_evidence(
+    evidence: attested_2_07_00_evidence,
+    catalog: duplicated_version_catalog,
+  ) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallFirmwareVersionAmbiguous { firmware: _, count: n } => n == 2
+        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        InstallAccessProfileNotLookedUp { endpoint: _ } => false
+        InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _ } => false
+        InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleTransport { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+}

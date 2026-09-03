@@ -1,0 +1,145 @@
+module test.claim.realize_kernel
+
+// This witness stayed green under the partial import list its two siblings went red under, which
+// is the point: green is not evidence that the remaining bare references are bound, only that the
+// closure this run happened to assemble contained them.
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.cache_identity {
+  CacheInterfaceId,
+  resolved_graph_artifact_kind,
+  ExecutionReceiptDigest,
+  execution_receipt_digest_of_value,
+}
+import std.cache_interface {
+  ArtifactIdentity,
+  CachedArtifactReceipt,
+  BackendCacheKey,
+  CasContentDigest,
+  ExecutionReceiptRef,
+  InternalExecution,
+  realize_route,
+  classify_write,
+  Hit,
+  Miss,
+  RejectedHit,
+  Reuse,
+  Recompute,
+  SubjectAbsent,
+  HitRefused,
+  ContentDigestMismatch,
+  Written,
+  WriteSkippedIdempotent,
+  WriteRejected,
+  WriteOnceConflict,
+  BackendWriteRejected,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
+data subject_digest_a: ContentHash = content_hash_of_value(value: "realize-kernel-witness-subject-a")
+data content_v1: ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v1")
+data content_v2: ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v2")
+data receipt_digest_v: ExecutionReceiptDigest = execution_receipt_digest_of_value(
+  value: "realize-kernel-witness-receipt-digest" as NonEmptyStr
+)
+
+fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {
+  CachedArtifactReceipt {
+    artifact: ArtifactIdentity {
+      subject_digest: subject_digest_a,
+      artifact_kind: resolved_graph_artifact_kind,
+    },
+    backend_key: BackendCacheKey {
+      store: witness_store_id,
+      key: CasContentDigest { digest: subject_digest_a },
+    },
+    producer: InternalExecution {
+      receipt: ExecutionReceiptRef { receipt_digest: receipt_digest_v },
+    },
+    content_digest: content,
+  }
+}
+
+test fn witness_verified_hit_reuses() -> Bool {
+  let r = mk_receipt(content: content_v1)
+  match realize_route(lookup: Hit { receipt: r }) {
+    Reuse { receipt: _ } => true
+    Recompute { reason: _ } => false
+  }
+}
+
+test fn witness_miss_recomputes() -> Bool {
+  match realize_route(lookup: Miss) {
+    Recompute { reason: SubjectAbsent } => true
+    _ => false
+  }
+}
+
+test fn witness_refused_hit_never_reused() -> Bool {
+  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
+    Recompute { reason: _ } => true
+    Reuse { receipt: _ } => false
+  }
+}
+
+test fn witness_refused_hit_surfaces_reason() -> Bool {
+  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
+    Recompute { reason: HitRefused { reason: ContentDigestMismatch } } => true
+    _ => false
+  }
+}
+
+test fn witness_fresh_subject_written() -> Bool {
+  let fresh = mk_receipt(content: content_v1)
+  match classify_write(existing: Miss, offered_content: content_v1, fresh_receipt: fresh) {
+    Written { receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_idempotent_same_content() -> Bool {
+  let existing = mk_receipt(content: content_v1)
+  let fresh = mk_receipt(content: content_v1)
+  match classify_write(existing: Hit { receipt: existing }, offered_content: content_v1, fresh_receipt: fresh) {
+    WriteSkippedIdempotent { receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_purity_conflict_rejects_overwrite() -> Bool {
+  let existing = mk_receipt(content: content_v1)
+  let fresh = mk_receipt(content: content_v2)
+  match classify_write(existing: Hit { receipt: existing }, offered_content: content_v2, fresh_receipt: fresh) {
+    WriteRejected { reason: WriteOnceConflict } => true
+    _ => false
+  }
+}
+
+test fn execution_receipt_digest_minted_is_computed_content_hash() -> Bool {
+  let minted = execution_receipt_digest_of_value(
+    value: "realize-kernel-witness-receipt-digest" as NonEmptyStr
+  )
+  minted.digest == content_hash_of_value(value: "realize-kernel-witness-receipt-digest" as NonEmptyStr)
+}
+
+test fn execution_receipt_digest_hollow_string_literal_brand_is_not_minted_record() -> Bool {
+  let minted = execution_receipt_digest_of_value(
+    value: "realize-kernel-witness-receipt-digest" as NonEmptyStr
+  )
+  minted.digest != content_hash_of_value(value: "not-the-receipt-label" as NonEmptyStr)
+}
+
+test fn witness_write_over_rejected_hit_composes_reason() -> Bool {
+  let fresh = mk_receipt(content: content_v1)
+  match classify_write(
+    existing: RejectedHit { reason: ContentDigestMismatch },
+    offered_content: content_v1,
+    fresh_receipt: fresh,
+  ) {
+    WriteRejected { reason: BackendWriteRejected { backend_reason: ContentDigestMismatch } } => true
+    _ => false
+  }
+}
+

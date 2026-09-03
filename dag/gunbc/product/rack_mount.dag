@@ -1,0 +1,236 @@
+module product.rack_mount
+
+import std.types { Bool, List, NonEmptyStr }
+import std.integer { Int }
+import std.measure { Micrometer, micrometer, micrometer_count, RackUnit, rack_unit, rack_unit_count, measure_add, measure_le, micrometers_per_rack_unit }
+import product.placement_supply { RackIdentity, PhysicalAssetIdentity, RackUnitPosition }
+import extdeps.rack.types { RackCatalogRow }
+import extdeps.chassis.types { ChassisCatalogRow }
+import v2.std.optional { Present, Absent }
+
+// SPATIAL-4B: RACK-UNIT OCCUPANCY OVER CITED HARDWARE. A chassis from extdeps.chassis occupying
+// rack units in a rack from extdeps.rack. Every dimension below is either a cited vendor fact or
+// derived from EIA-310 through std.measure's micrometers_per_rack_unit; none is authored here,
+// which is the point of doing this band against real catalogue rows rather than invented ones.
+//
+// THE SCOPE IS THE RACK, NOT THE ROOM. This module models no relationship between a rack and any
+// space, and imports no geometry. The room-fit relation an earlier revision carried is deleted
+// rather than weakened. A reader looking here for "which room does this rack stand in" should find
+// nothing, because the answer requires a cited external rack height the corpus does not have.
+//
+// The reason it is deleted rather than patched: rack_units x 44.45 mm is the MOUNTING APERTURE —
+// the usable vertical space between the rails. It is not the rack's external envelope: frames,
+// bases, top members, feet, casters and construction clearances all extend past the aperture, and
+// RackCatalogRow carries no external height for any of them. The earlier RoomMountedRack compared
+// the aperture against a room's ceiling and called the result a fit, which moved this band from an
+// inexact answer to an EXACT answer to the wrong physical question — a plausible-but-false
+// admission, which is worse than the truncation it replaced because nothing about it looks
+// approximate.
+//
+// It also bypassed the join SPATIAL-4A had just established: it took a bare EnclosedSpace as "the
+// room", so it could not say WHICH room the rack stood in, could not distinguish two geometrically
+// identical rooms, and did not require the geometry to belong to any admitted world — while the
+// type name asserted a mounting relation that one scalar comparison does not establish.
+//
+// Dissolve-on, and it is one condition rather than two: a cited external height on the rack catalog
+// authority. When it lands, the relation returns taking a World and a RoomIdentity, resolving the
+// room through the world and retaining that identity in the result, and its discriminating control
+// is the case the deleted version got wrong — a ceiling above the aperture but below the external
+// height must REFUSE.
+//
+// A MOUNT IS AN INTERVAL, NOT A POSITION. A chassis does not sit "at U5", it occupies U5 through U8
+// inclusive, and modelling it as a single position is what makes two mounts collide silently: the
+// positions differ, so nothing looks wrong, while the metal overlaps. The interval is DERIVED from
+// the cited chassis height and the lowest unit, so it cannot disagree with the hardware it
+// describes.
+//
+// WHAT IS NOT DECIDABLE FROM THE CITED ROWS, stated rather than guessed. ChassisCatalogRow carries
+// motherboard_support, but BaseboardCatalogRow carries no form factor, so whether a given board
+// FITS a given chassis cannot be answered from the corpus today. Authoring the ALTRAD8UD's form
+// factor here to make the check work would be inventing a vendor fact - the one thing extdeps
+// exists to prevent - so the check is absent, not approximated, and a caller asking for it gets
+// nothing rather than a plausible answer. Dissolve-on: BaseboardCatalogRow gains a cited
+// form_factor from the ASRock product page already anchored in extdeps.boards.asrock_rack, at
+// which point board admission becomes a wall here.
+//
+// Depth and width are likewise absent from both cited rows, so the only spatial quantity here is
+// vertical, and even that is the mounting APERTURE rather than any envelope the rack occupies.
+// External dimensions arrive when a cited row carries them.
+
+// Every quantity in a refusal carries its carrier rather than its unit in a field NAME. An earlier
+// revision of this sum spelled its heights with _um suffixes on bare Int - the "unit in the name,
+// scalar in the type" pattern std.measure exists to remove, on the refusal path of the very change
+// that added the Micrometer carrier to stop truncating. Positions take product.placement_supply's
+// RackUnitPosition and capacities take std.measure's RackUnit: a position is an ordinal slot index
+// and a capacity is a cardinal magnitude, a distinction placement_supply already draws and this
+// module must not re-draw.
+// The two identities on MountsCollide are named for their PHYSICAL relationship and derived from
+// lowest_unit. An earlier revision passed them as (already-admitted, incoming), which is an
+// input-order fact wearing position names: a mount admitted at U10 colliding with an incoming one
+// at U8 reported U10 as the lower.
+// OccupancyExceedsCapacity is its own arm, because reusing MountExceedsRackHeight would have put a
+// total occupied CARDINALITY in a field that carries a mount's top POSITION everywhere else — one
+// field meaning two things, so a fired diagnostic would mislabel the failure it exists to explain.
+// This arm is unreachable while admission holds; it is the typed answer if the invariant behind
+// rack_units_free is ever broken, not a case a caller is expected to hit.
+type MountRefusal
+  = MountBelowFirstUnit { lowest_unit: RackUnitPosition }
+  | MountExceedsRackHeight { top_unit: RackUnitPosition, rack_capacity: RackUnit }
+  | MountsCollide { lower: PhysicalAssetIdentity, upper: PhysicalAssetIdentity }
+  | AssetMountedTwice { asset: PhysicalAssetIdentity }
+  | OccupancyExceedsCapacity { occupied: RackUnit, capacity: RackUnit }
+
+type MountConstruction<T>
+  = MountReady { value: T }
+  | MountRefused { cause: MountRefusal }
+
+// The occupied interval is derived, so it is a function rather than a stored pair: storing top
+// beside lowest would let an edit to the chassis leave the top describing a height the hardware
+// does not have.
+type ChassisMount {
+  asset: PhysicalAssetIdentity
+  chassis: ChassisCatalogRow
+  lowest_unit: RackUnitPosition
+}
+
+// The span IS the cited chassis row's height - a cardinal magnitude, so it stays a RackUnit and is
+// not re-derived. The top unit is the one place ordinal and cardinal meet: position + magnitude - 1
+// is affine arithmetic, and it is the only site that reads the magnitude's count, deliberately, so
+// the crossing happens once and is visible rather than spread across the occupancy surface.
+fn mount_unit_span(m: ChassisMount) -> RackUnit { m.chassis.rack_units }
+
+fn mount_top_unit(m: ChassisMount) -> RackUnitPosition {
+  m.lowest_unit + rack_unit_count(u: mount_unit_span(m: m)) - 1
+}
+
+// Rack units are numbered from 1 at the bottom, so a mount occupies lowest .. lowest + span - 1
+// inclusive. Two mounts collide when those closed intervals intersect at all - unlike the spatial
+// bands, where touching is adjacency, a shared rack unit is two chassis in one hole.
+fn mounts_collide(a: ChassisMount, b: ChassisMount) -> Bool {
+  a.lowest_unit <= mount_top_unit(m: b) && b.lowest_unit <= mount_top_unit(m: a)
+}
+
+fn asset_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
+  (a as String) == (b as String)
+}
+
+type MountAdmission {
+  admitted: List<ChassisMount>
+  refusal: MountRefusal?
+}
+
+fn admit_mount(acc: MountAdmission, rack: RackCatalogRow, m: ChassisMount) -> MountAdmission {
+  match acc.refusal {
+    Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
+    Absent =>
+      if m.lowest_unit < 1 {
+        MountAdmission { admitted: acc.admitted, refusal: Present { value: MountBelowFirstUnit { lowest_unit: m.lowest_unit } } }
+      } else if mount_top_unit(m: m) > rack_unit_count(u: rack.rack_units) {
+        MountAdmission {
+          admitted: acc.admitted,
+          refusal: Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_capacity: rack.rack_units } },
+        }
+      } else {
+        let conflict = fold(acc.admitted, init: none, f: (found, other) =>
+          match found {
+            Present { value: r } => Present { value: r }
+            Absent =>
+              if asset_eq(a: other.asset, b: m.asset) {
+                Present { value: AssetMountedTwice { asset: m.asset } }
+              } else if mounts_collide(a: other, b: m) {
+                Present {
+                  value: if other.lowest_unit <= m.lowest_unit {
+                    MountsCollide { lower: other.asset, upper: m.asset }
+                  } else {
+                    MountsCollide { lower: m.asset, upper: other.asset }
+                  }
+                }
+              } else {
+                none
+              }
+          })
+        match conflict {
+          Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
+          Absent => MountAdmission { admitted: concat(acc.admitted, [m]), refusal: none }
+        }
+      }
+  }
+}
+
+type RackInstance sole_constructor {
+  identity: RackIdentity
+  catalog: RackCatalogRow
+  mounts: List<ChassisMount>
+}
+
+fn rack_instance(identity: RackIdentity, catalog: RackCatalogRow, mounts: List<ChassisMount>) -> MountConstruction<RackInstance> {
+  let admitted = fold(mounts, init: MountAdmission { admitted: [], refusal: none }, f: (acc, m) =>
+    admit_mount(acc: acc, rack: catalog, m: m))
+  match admitted.refusal {
+    Present { value: r } => MountRefused { cause: r }
+    Absent => MountReady { value: RackInstance { identity: identity, catalog: catalog, mounts: mounts } }
+  }
+}
+
+fn rack_mounts(r: RackInstance) -> List<ChassisMount> { r.mounts }
+
+fn rack_identity(r: RackInstance) -> RackIdentity { r.identity }
+
+fn rack_units_occupied(r: RackInstance) -> RackUnit {
+  fold(r.mounts, init: rack_unit(0), f: (acc, m) => measure_add(acc, mount_unit_span(m: m)))
+}
+
+// FREE CAPACITY IS A DIFFERENCE, AND std.measure DELIBERATELY HAS NO SUBTRACT: the Nat-backed
+// carrier cannot represent a negative magnitude, so a general subtraction would need an underflow
+// answer nobody has decided. Here it cannot underflow, and the reason is a construction rather
+// than an assumption - admission refuses any mount whose top exceeds the rack, and refuses any two
+// mounts that share a unit, so the admitted spans are disjoint intervals inside the capacity and
+// their sum is bounded by it. The guard is kept anyway and REFUSES rather than clamping to zero,
+// because a fabricated zero would report a full rack as empty; if it ever fires, the invariant
+// above is broken and that is worth a typed answer rather than a plausible number.
+fn rack_units_free(r: RackInstance) -> MountConstruction<RackUnit> {
+  let occupied = rack_units_occupied(r: r)
+  if measure_le(occupied, r.catalog.rack_units) {
+    MountReady { value: rack_unit(count: rack_unit_count(u: r.catalog.rack_units) - rack_unit_count(u: occupied)) }
+  } else {
+    MountRefused { cause: OccupancyExceedsCapacity { occupied: occupied, capacity: r.catalog.rack_units } }
+  }
+}
+
+// HEIGHT IS CARRIED IN MICROMETRES BECAUSE A RACK UNIT IS NOT A WHOLE NUMBER OF MILLIMETRES.
+// EIA-310 fixes 1U at 44.45 mm, so 18U is 800.1 mm - and an earlier revision of this function
+// returned Millimeter, computing units * 44450 / 1000, which truncated that to 800 while the
+// comment beside it claimed no rounding entered. A witness then asserted the truncated 800 and
+// passed, which is the fabricated value with its own test pinning it in place. The micrometre is
+// exact for every whole unit count, so the quantity is carried there and the caller converts only
+// where it is willing to say what it wants done with the remainder.
+// Named for what it measures. This is the aperture, not the rack, and no consumer here may treat
+// it as an external dimension.
+fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
+  micrometer(count: rack_unit_count(u: units) * micrometers_per_rack_unit())
+}
+
+// NO ROOM-FIT RELATION IN THIS INCREMENT, and the reason is worth stating because an earlier
+// revision shipped one that looked right.
+//
+// rack_units x 44.45 mm is the MOUNTING APERTURE - the usable vertical space between the rails. It
+// is not the rack's external envelope: frames, bases, top members, feet, casters and construction
+// clearances all extend past the aperture, and RackCatalogRow carries no external height for any
+// of them. The earlier RoomMountedRack compared the aperture against a room's ceiling and called
+// the result a fit, which moved this band from an inexact answer to an EXACT answer to the wrong
+// physical question - a plausible-but-false admission, which is worse than the truncation it
+// replaced because nothing about it looks approximate.
+//
+// It also bypassed the join SPATIAL-4A had just established: it took a bare EnclosedSpace as "the
+// room", so it could not say WHICH room the rack stood in, could not distinguish two geometrically
+// identical rooms, and did not require the geometry to belong to any admitted world - while the
+// type name asserted a mounting relation that one scalar comparison does not establish.
+//
+// Both are removed rather than patched. Dissolve-on, and it is one condition rather than two: a
+// cited external height on the rack catalog authority. When it lands, the relation returns taking a
+// World and a RoomIdentity, resolving the room through the world and retaining that identity in the
+// result, and its discriminating control is the case the deleted version got wrong - a ceiling
+// above the aperture but below the external height must REFUSE.
+fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
+  rack_units_to_micrometres(units: r.catalog.rack_units)
+}

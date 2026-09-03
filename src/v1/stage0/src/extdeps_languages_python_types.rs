@@ -5,14 +5,12 @@ use self::PythonTypeKind::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
+pub use crate::std_coercion::{CallableRepr, CastRule, CastSyntax, InhabitantDecl, TypeCheckpoint};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -32,7 +30,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 pub fn python_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
-            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "float", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "False", "is_copy": null, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "None", "default_expr": "None", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "str", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bytes", "target_type": "bytes", "default_expr": "b\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "str", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Json", "target_type": "dict", "default_expr": "{}", "is_copy": null, "literal_suffix": null}]))
+            serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int", "grounding_type": "int", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "float", "grounding_type": "float", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "grounding_type": "bool", "default_expr": "False", "is_copy": null, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "None", "grounding_type": "None", "default_expr": "None", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "str", "grounding_type": "str", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bytes", "target_type": "bytes", "grounding_type": "bytes", "default_expr": "b\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "str", "grounding_type": "str", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Json", "target_type": "dict", "grounding_type": "dict", "default_expr": "{}", "is_copy": null, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
@@ -42,7 +40,7 @@ pub fn python_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
 pub fn python_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<InhabitantDecl>>> = {
-            serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "list[{0}]", "arity": 1, "identity_expr": "[]", "import_path": null, "is_copy": null}, {"algebra": "BooleanAlgebra", "template": "set[{0}]", "arity": 1, "identity_expr": "set()", "import_path": null, "is_copy": null}, {"algebra": "PartialFunction", "template": "dict[{0}, {1}]", "arity": 2, "identity_expr": "{}", "import_path": null, "is_copy": null}, {"algebra": "OrderedRing", "template": "int", "arity": 0, "identity_expr": "0", "import_path": null, "is_copy": null}, {"algebra": "ApproximateField", "template": "float", "arity": 0, "identity_expr": "0.0", "import_path": null, "is_copy": null}]))
+            serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "list[{0}]", "arity": 1, "identity_expr": "[]", "import_path": null, "is_copy": null}, {"algebra": "FinitePowerSet", "template": "set[{0}]", "arity": 1, "identity_expr": "set()", "import_path": null, "is_copy": null}, {"algebra": "PointwisePower", "template": "set[{0}]", "arity": 1, "identity_expr": "set()", "import_path": null, "is_copy": null}, {"algebra": "PartialFunction", "template": "dict[{0}, {1}]", "arity": 2, "identity_expr": "{}", "import_path": null, "is_copy": null}, {"algebra": "FinitelySupportedFunction", "template": "dict[{0}, {1}]", "arity": 2, "identity_expr": "{}", "import_path": null, "is_copy": null}, {"algebra": "OrderedRing", "template": "int", "arity": 0, "identity_expr": "0", "import_path": null, "is_copy": null}, {"algebra": "ApproximateField", "template": "float", "arity": 0, "identity_expr": "0.0", "import_path": null, "is_copy": null}]))
                 .expect("valid data definition")
         };
     }

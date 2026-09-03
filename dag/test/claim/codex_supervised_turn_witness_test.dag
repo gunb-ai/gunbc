@@ -1,0 +1,375 @@
+module test.claim.codex_supervised_turn_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.codex_app_server_press { AmbientCodexCredentialContext }
+import gunbc.provider_turn_adjudication {
+  ProviderTurnCompleted,
+  ProviderTurnFailed,
+  ProviderTurnNotObserved,
+  ProviderTurnStreamUnreadable,
+  press_display_finished,
+}
+import gunbc.codex_supervised_turn {
+  CodexThreadAbsent,
+  CodexThreadIdle,
+  CodexThreadBusy,
+  CodexTurnStartAdmitted,
+  CodexTurnStartRefusedDuplicateExecution,
+  CodexTurnStartRefusedOutcomeUnobserved,
+  GenerationAbsent,
+  GenerationStoreMalformed,
+  GenerationStoreNegative,
+  GenerationStoreUnreadable,
+  SupervisedRpcOk,
+  codex_supervised_turn_binding,
+  codex_supervised_turn_client_command_id,
+  codex_supervised_turn_session_policy,
+  codex_supervised_turn_start_line_template,
+  codex_supervised_generation_read_from_store,
+  codex_supervised_turn_generation_admission,
+  codex_turn_start_admission,
+  codex_runner_turn_terminal_receipt,
+  disposition_from_supervised_parse,
+  empty_supervised_turn_parse_acc,
+  parse_supervised_turn_stdout,
+  supervised_thread_id_from_line,
+  ThreadIdRead,
+  ThreadIdLineBlank,
+  ThreadIdLineUnreadable,
+  ThreadIdRpcRefused,
+  ThreadIdRpcDuplicated,
+  ThreadIdLineNotThreadStart,
+}
+
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
+
+import std.temporal_effect {
+  HeldSessionLease,
+  LeaseAbsent,
+  LeaseRunningExpected,
+}
+
+data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt; parse_supervised_turn_stdout correlates thread/start and turn/start ids and turn/completed notifications into a terminal receipt with client_command_id."
+
+data supervised_turn_fixture_stdout: String = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"turn-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/completed\",\"params\":{}}\n"
+
+fn fixture_turn() -> WorkerTurn {
+  WorkerTurn {
+    turn_key: "turn-1",
+    attempt_key: "attempt-1",
+    consumed_feedback: "",
+    resulting_head: none,
+  }
+}
+
+fn fixture_credential() -> AmbientCodexCredentialContext {
+  AmbientCodexCredentialContext {
+    codex_home: "/home/briansrls/.codex@gunbc-roadmap" as FilePath,
+  }
+}
+
+test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    prior_generation: 0,
+    observed: LeaseAbsent,
+    standing_receipt: none,
+  )
+  match binding.execution_policy {
+    HeldSessionLease { lease_key: k } => k == ("attempt-1/turn-1" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadIdle) {
+    CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_absent_thread_admits_turn_start() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadAbsent) {
+    CodexTurnStartAdmitted => true
+    _ => false
+  }
+}
+
+test fn witness_busy_thread_refuses_outcome_unobserved() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadBusy) {
+    CodexTurnStartRefusedOutcomeUnobserved { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    prior_generation: 0,
+    observed: LeaseRunningExpected,
+    standing_receipt: none,
+  )
+  match binding.lease.observed {
+    LeaseRunningExpected => true
+    _ => false
+  }
+}
+
+test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool {
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  match parse.thread_start {
+    SupervisedRpcOk { native_id: tid } =>
+      (tid as String) == "thread-uuid-1"
+        && match parse.turn_start {
+          SupervisedRpcOk { native_id: turn_id } => (turn_id as String) == "turn-uuid-1"
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnCompleted => true
+    _ => false
+  }
+}
+
+test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    prior_generation: 0,
+    observed: LeaseAbsent,
+    standing_receipt: none,
+  )
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  let receipt = codex_runner_turn_terminal_receipt(
+    binding: binding,
+    parse: parse,
+    disposition: ProviderTurnCompleted,
+    wire: none,
+  )
+  (receipt.client_command_id as String) == "attempt-1/turn-1"
+    && codex_supervised_turn_client_command_id(turn: fixture_turn()) == receipt.client_command_id
+    && press_display_finished(disposition: receipt.disposition)
+}
+
+test fn witness_parse_turn_failed_notification_disposition() -> Bool {
+  let stdout = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/failed\",\"params\":{}}\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
+  let stdout =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnNotObserved => true
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE DROPPED LINE. Before this repair absorb_supervised_turn_line
+// answered `acc` for a line parse_json refused, so a stream of wholly unreadable lines produced an
+// accumulator identical to one from a stream that carried no terminal event, and the disposition was
+// ProviderTurnNotObserved in both cases. This witness goes RED against that behaviour: it drives
+// three unparseable lines and requires the disposition to say the stream was unreadable, with the
+// count that says how much.
+//
+// It is the pair to witness_exit_zero_without_terminal_is_not_observed above, which is unchanged and
+// remains the positive control: well-formed lines carrying no terminal event must STILL answer
+// NotObserved. Either witness alone is satisfiable by a wrong implementation -- one by answering
+// unreadable for everything, the other by answering not-observed for everything - so both stay
+// enrolled (DESIGN 4b(4)).
+test fn witness_unreadable_lines_are_not_reported_as_unobserved() -> Bool {
+  let stdout = "not json at all\n{ broken\n]]]\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnStreamUnreadable { unreadable_lines: n } => n == 3
+    _ => false
+  }
+}
+
+// AN EMPTY LINE IS NOT AN UNREADABLE ONE, and this is the arm most likely to be broken by a careless
+// repair of the one above. absorb_supervised_turn_line tests for a blank line BEFORE parsing, so a
+// blank separator between records is ordinary stream shape and must not be counted. Without this,
+// counting could be moved ahead of the blank-line test and every trailing newline would be recorded
+// as a decoder failure.
+test fn witness_blank_lines_are_not_counted_as_unreadable() -> Bool {
+  let stdout =
+    "\n{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n\n\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  parse.unreadable_lines == 0
+}
+
+test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool {
+  let line =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}"
+  match supervised_thread_id_from_line(line: line) {
+    ThreadIdRead { id: id } => (id as String) == "thread-uuid-1"
+    ThreadIdLineBlank => false
+    ThreadIdLineUnreadable => false
+    ThreadIdRpcRefused { reason: _ } => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
+  }
+}
+
+// THE THREE CAUSES THE PREDECESSOR `none` COULD NOT TELL APART, asserted as different values. The
+// pair that matters most is the last two: an RPC REFUSAL is the provider rejecting our thread-start
+// and needs a human, while a NON-MATCHING LINE is the ordinary answer for almost every line of a
+// stream and needs nothing. Under the old Optional a supervised run whose thread-start was refused
+// was indistinguishable from one whose response had simply not arrived yet.
+test fn RED_unreadable_thread_id_line_is_not_a_non_matching_line() -> Bool {
+  match supervised_thread_id_from_line(line: "{ not json") {
+    ThreadIdLineUnreadable => true
+    ThreadIdRead { id: _ } => false
+    ThreadIdLineBlank => false
+    ThreadIdRpcRefused { reason: _ } => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
+  }
+}
+
+test fn RED_rpc_refusal_is_not_a_non_matching_line() -> Bool {
+  let line =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"error\":{\"code\":-32000,\"message\":\"thread start refused\"}}"
+  match supervised_thread_id_from_line(line: line) {
+    ThreadIdRpcRefused { reason: _ } => true
+    ThreadIdRead { id: _ } => false
+    ThreadIdLineBlank => false
+    ThreadIdLineUnreadable => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
+  }
+}
+
+// A DEFECT WITNESSED AT ITS CURRENT BEHAVIOUR, NOT AN ASSERTION THAT THE BEHAVIOUR IS RIGHT.
+//
+// This line answers rpc id 99. The reader is looking for id 4. It returns the id anyway, because
+// supervised_rpc_from_id_response never inspects the document's id member -- the `id` parameter
+// only builds message text. So a response to ANY request that happens to carry result.thread.id is
+// read as the thread-start response, and the thread id of an unrelated exchange is accepted as this
+// turn's.
+//
+// It is asserted rather than left undiscovered for two reasons. It pins the exact shape of the gap
+// so the next reader does not have to re-derive it; and the day the id check lands, THIS witness
+// goes red at the line that explains why, which is the notification the defect otherwise has no way
+// to send. It is deliberately NOT repaired here: id matching is not a parse_json fail-open, and
+// fixing it inside a decoder-honesty pass would be the scope widening this pass exists to stop.
+//
+// It is also the positive control the two RED witnesses above need -- without a line that still
+// reads successfully, refusing everything would satisfy both of them.
+test fn a_mis_addressed_rpc_response_is_still_accepted_as_the_thread_id() -> Bool {
+  let line = "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{\"thread\":{\"id\":\"other\"}}}"
+  match supervised_thread_id_from_line(line: line) {
+    ThreadIdRead { id: id } => (id as String) == "other"
+    ThreadIdLineBlank => false
+    ThreadIdLineUnreadable => false
+    ThreadIdRpcRefused { reason: _ } => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
+  }
+}
+
+test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool {
+  let user_input = "say \"hello\"\nline2\\backslash"
+  let line = codex_supervised_turn_start_line_template(user_input: user_input)
+  match parse_json_document(s: line) {
+    JsonDocumentParsed { value: _ } => true
+    JsonDocumentUnreadable { gap: _ } => false
+  }
+}
+
+test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
+  let parse = empty_supervised_turn_parse_acc()
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 1 }) {
+    ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_missing_generation_store_reads_as_zero() -> Bool {
+  match codex_supervised_generation_read_from_store(
+    store_present: false,
+    read_success: true,
+    content: "",
+  ) {
+    GenerationAbsent => true
+    _ => false
+  }
+}
+
+test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "garbage",
+  )
+  match read {
+    GenerationStoreMalformed { content: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "-3",
+  )
+  match read {
+    GenerationStoreNegative { value: v } =>
+      v == -3
+        && match codex_supervised_turn_generation_admission(read: read) {
+          CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool {
+  match codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: true,
+    content: "   ",
+  ) {
+    GenerationStoreMalformed { content: _ } => true
+    GenerationAbsent => false
+    _ => false
+  }
+}
+
+test fn witness_unreadable_generation_store_refuses_prior_read() -> Bool {
+  let read = codex_supervised_generation_read_from_store(
+    store_present: true,
+    read_success: false,
+    content: "",
+  )
+  match read {
+    GenerationStoreUnreadable { reason: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}

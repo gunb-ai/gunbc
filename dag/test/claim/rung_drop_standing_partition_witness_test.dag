@@ -1,0 +1,113 @@
+module test.claim.rung_drop_standing_partition_witness_test
+
+import gunbc.rung_drop {
+  rung_drop_roster,
+  standing_rung_drops,
+  cited_symbol_census,
+  authored_prose_rung_drops,
+  legacy_prose_identity_roster,
+  every_authored_prose_row_names_its_arm,
+  every_legacy_arm_is_claimed_exactly_once,
+  source_root_ingest_gate_rung_drop,
+  consolidated_typed_drop_identities,
+  every_consolidated_typed_drop_is_rostered_once,
+}
+
+// THE DEFECT THIS WITNESS EXISTS FOR, stated as the state that must stay unwritable: DESIGN.md's
+// "The ones standing today" list carried a drop whose restoration trigger had already fired.
+// gunbc.design_document projected that list as an UNFILTERED map over the whole roster, and
+// retirement lived only as prose inside the row's `authored` paragraph, which a projection cannot
+// read. So the canonical authority -- loaded in full on every turn of every session -- asserted a
+// retired drop as currently standing for six days. Two sessions independently built work on that
+// premise. The repair is derivation: `standing_rung_drops` filters on the row's own modeled
+// standing, so the list and the ledger now answer from one authority instead of two.
+
+// THE SECOND CONJUNCT IS THE WHOLE VALUE OF THIS FILE AND IS NOT REDUNDANT WITH THE FIRST.
+// A filter over a roster where every row is Standing excludes nothing, so the first conjunct alone
+// would be permanently green BY CONSTRUCTION -- the DESIGN 4b decoration this project refuses to
+// count as coverage, and an executed conjunct that discriminates nothing. Asserting that the
+// roster actually holds a retired row keeps the partition non-degenerate, so this witness fails if
+// the retired row is ever quietly re-marked Standing, if it is deleted from the roster instead of
+// being retired in place, or if the filter stops excluding it. It goes RED in the pre-repair tree
+// and RED again on the state the repair removed, which is what makes it evidence rather than
+// description.
+//
+// WHAT IT DOES NOT ESTABLISH, because the residue is named rather than left for a reader to
+// discover: the standing field is AUTHORED, and nothing derives it from the paragraph beside it.
+// A row whose prose announces retirement while its field still reads Standing is not detected
+// here and cannot be, since gunbc.rung_drop carries `authored` byte-for-byte on purpose. This
+// witness closes the projection fork -- one authority for the standing list -- and leaves the
+// prose-to-field agreement as the honest open residue.
+
+// THE JOIN IS ON IDENTITY, NOT ON A RE-DERIVED PREDICATE. Asking each row "are you standing?" a
+// second time here would test this file's copy of the arm rather than the projection's, and it
+// would need the coproduct -> Bool accessor gunbc.rung_drop deliberately does not carry. So the
+// witness names the retired row and asks where it appears: absent from the derived list, present
+// exactly once in the roster it was retired in place within.
+test fn standing_list_excludes_every_retired_drop() -> Bool {
+  length(xs: filter(map(standing_rung_drops(), d => d.identity), i => i == cited_symbol_census.identity)) == 0
+    && length(xs: filter(map(rung_drop_roster, d => d.identity), i => i == cited_symbol_census.identity)) == 1
+}
+
+// THE PROSE ARM IS ENUMERATED, AND THIS IS THE PART OF THAT CLAIM A TEST CAN CARRY. A further prose
+// row is not policed here, and this file no longer says it cannot exist: one was authored on
+// another lane and admitted while this witness was being written, which is recorded at
+// gunbc.rung_drop LegacyProseIdentity. What a test CAN carry is the JOIN between the two spellings
+// of an identity that the enumeration introduces -- the row's `identity` field and the arm it
+// carries -- and that join has a real RED, demonstrated below.
+//
+// BOTH DIRECTIONS, because either alone admits a real defect. Per-row agreement alone passes on an
+// arm that no row claims -- a row deleted rather than split, which would shrink the debt without a
+// disposition. Arm-side coverage alone passes on two rows that swapped arms. The discriminating
+// RED for the first is editing one row's arm to another's; for the second, deleting a prose row
+// from the roster.
+test fn every_prose_declaration_agrees_with_its_closed_arm() -> Bool {
+  every_authored_prose_row_names_its_arm(ds: rung_drop_roster)
+    && every_legacy_arm_is_claimed_exactly_once(ds: rung_drop_roster)
+}
+
+// THE PARTITION IS NON-DEGENERATE IN BOTH DIRECTIONS. A roster of only prose rows, or only typed
+// rows, would make one of the two folds above vacuous, so the counts are asserted against each
+// other and against the closed arm roster rather than against a literal. The typed side is named
+// by a row that was declared OUTSIDE any roster until this consolidation, which is the defect this
+// change exists to remove -- if it ever leaves the roster again, this reds.
+test fn the_roster_carries_both_declaration_arms() -> Bool {
+  length(xs: authored_prose_rung_drops(ds: rung_drop_roster)) == length(xs: legacy_prose_identity_roster)
+    && length(xs: rung_drop_roster) > length(xs: legacy_prose_identity_roster)
+    && length(xs: filter(map(rung_drop_roster, d => d.identity),
+                         i => i == source_root_ingest_gate_rung_drop.identity)) == 1
+}
+
+// THE TYPED SIDE IS PINNED BY NAME, WHICH NO OTHER ASSERTION IN THIS FILE DOES. Raised against this
+// witness rather than found by it: the folds above are blind to the typed population -- they answer
+// the same for four consolidated rows as for three -- so a row rescued by this change could have
+// been lost in a later merge with every other assertion still green. That is this PR's own finding
+// recurring inside its repair, which is the one place it would be least likely to be noticed.
+//
+// THE RED IS DELETING ANY OF THE FOUR FROM THE ROSTER, and it is a different red from the prose
+// side's: losing a prose row trips `every_legacy_arm_is_claimed_exactly_once` because the arm goes
+// unclaimed, and there is no arm to go unclaimed for a typed row. This assertion admits a FIFTH
+// typed row without complaint, deliberately -- a new typed drop is the path this consolidation
+// exists to open, and refusing it here would make the control a ratchet against its own purpose.
+// THE SPECIMEN, WRITTEN DOWN BECAUSE A PERMANENTLY-GREEN ASSERTION READS AS CEREMONY. This
+// refused a real loss on its first genuine merge, one merge after it was added. gunbc#10118
+// retired `floor_cut_heal` and taught the projection to render retirement; resolving that merge,
+// git placed main's incoming rows into the region this branch had MOVED
+// `spark_serving_fleet_global_configuration_drop` into, and the row was dropped. THE SURVIVING
+// TEXT WAS COHERENT: no conflict marker, no syntax error, no count that looked wrong, and every
+// other assertion in this file green. An identity diff of the declared set is what caught it.
+// That is the whole argument for asking the question at IDENTITY grain against the AUTHORITY
+// rather than reading the projection: the projection renders each row by its SUBJECT PROSE, so
+// grepping it for an identity slug returns zero whether the row is missing or the instrument is
+// asking a question the artifact does not answer.
+//
+// PER DESIGN section 4b(4) THIS DOES NOT RETIRE WHEN THE CONSOLIDATION LANDS. A climb deletes the
+// redundant lower-rung PRODUCTION machinery; the discriminating RED and its positive control stay
+// enrolled as the executing evidence that the higher rung is still real. Deleting this as
+// scaffolding for a landed change would remove the only thing that distinguishes a guarantee that
+// holds from one that was never tested.
+test fn every_consolidated_typed_row_is_still_rostered() -> Bool {
+  every_consolidated_typed_drop_is_rostered_once(ds: rung_drop_roster)
+    && length(xs: consolidated_typed_drop_identities) == 4
+    && !every_consolidated_typed_drop_is_rostered_once(ds: [])
+}

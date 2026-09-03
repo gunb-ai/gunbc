@@ -1,0 +1,35 @@
+module v2.lens.registry.completeness_test
+
+import v2.lens.module_graph { ModuleDeclarationFact }
+import v2.lens.registry.completeness {
+  lens_registry_completeness_holds,
+  lens_registry_completeness_unenrolled_count_from_facts
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data lens_registry_completeness_fixture_facts: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "v2.lens.alpha_fixture", path: "src/v2/lens/alpha_fixture.dag" },
+  ModuleDeclarationFact { module: "v2.lens.beta_fixture", path: "src/v2/lens/beta_fixture.dag" }
+]
+
+test fn lens_registry_completeness_holds_live() -> Bool {
+  lens_registry_completeness_holds()
+}
+
+test fn lens_registry_completeness_red_control_catches_missing_lens() -> Bool {
+  lens_registry_completeness_unenrolled_count_from_facts(
+    facts: lens_registry_completeness_fixture_facts,
+    bound_module_paths: ["v2.lens.alpha_fixture"]
+  ) > 0
+}
+
+test fn lens_registry_completeness_clean_when_fully_bound() -> Bool {
+  lens_registry_completeness_unenrolled_count_from_facts(
+    facts: lens_registry_completeness_fixture_facts,
+    bound_module_paths: ["v2.lens.alpha_fixture", "v2.lens.beta_fixture"]
+  ) == 0
+}

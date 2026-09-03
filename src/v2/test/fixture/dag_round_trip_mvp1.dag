@@ -1,6 +1,0 @@
-module v2.test.fixture.dag_round_trip_mvp1
-
-import v2.std.node { Symbol }
-fn dag_round_trip_mvp1_identity(s: Symbol) -> Symbol {
-  s
-}

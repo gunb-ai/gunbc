@@ -1,0 +1,55 @@
+module std.stack
+
+type Stack<T>
+  = Empty
+  | Push { top: T, rest: Stack<T> }
+
+fn stack_push<T>(stack: Stack<T>, value: T) -> Stack<T> {
+  Push { top: value, rest: stack }
+}
+
+fn stack_pop<T>(stack: Stack<T>) -> Stack<T> {
+  match stack {
+    Empty => Empty
+    Push { top: _, rest: r } => r
+  }
+}
+
+fn stack_peek<T>(stack: Stack<T>) -> T? {
+  match stack {
+    Empty => none
+    Push { top: t, rest: _ } => Present { value: t }
+  }
+}
+
+fn stack_is_empty<T>(stack: Stack<T>) -> Bool {
+  match stack {
+    Empty => true
+    Push { top: _, rest: _ } => false
+  }
+}
+
+fn stack_size<T>(stack: Stack<T>) -> Int {
+  match stack {
+    Empty => 0
+    Push { top: _, rest: r } => 1 + stack_size(stack: r)
+  }
+}
+
+fn stack_to_list<T>(stack: Stack<T>) -> List<T> {
+  match stack {
+    Empty => []
+    Push { top: t, rest: r } => [t] |> concat(stack_to_list(stack: r))
+  }
+}
+
+fn list_to_stack<T>(items: List<T>) -> Stack<T> {
+  fold(items, Empty, fn(stack, item) { stack_push(stack: stack, value: item) })
+}
+
+fn fold_stack<T, B>(stack: Stack<T>, init: B, f: fn(B, T) -> B) -> B {
+  match stack {
+    Empty => init
+    Push { top: t, rest: r } => fold_stack(stack: r, init: f(init, t), f: f)
+  }
+}

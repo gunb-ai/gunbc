@@ -16,12 +16,10 @@ pub use crate::std_syntax::{
     AlgebraFieldKind, BinOp, BodyKind, ItemForm, ItemFormKind, OperatorSpec,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -100,67 +98,67 @@ pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
         left_bp: 5,
         right_bp: 6,
         binop: Some(BinOp::Or),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "and".to_string(),
         left_bp: 7,
         right_bp: 8,
         binop: Some(BinOp::And),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "==".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Eq),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "!=".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Ne),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "<".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Lt),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: ">".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Gt),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "<=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Le),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: ">=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Ge),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "+".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Add),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "-".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Sub),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "*".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mul),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "/".to_string(),
         left_bp: 15,
@@ -178,7 +176,7 @@ pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mod),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     })])
             };
         }

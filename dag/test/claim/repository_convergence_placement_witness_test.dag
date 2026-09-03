@@ -1,0 +1,366 @@
+module test.claim.repository_convergence_placement_witness_test
+
+import std.types { String, Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.access.posix_effective_principal {
+  EffectivePosixPrincipalRead,
+  EffectivePosixPrincipalReadOutcome,
+  effective_posix_principal_observation,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import gunbc.live_deploy.repository_convergence_placement {
+  ConvergencePlacementOperands,
+  ConvergencePrincipalAdmission,
+  ConvergenceOperandsAdmitted,
+  ConvergenceOperandsRefused,
+  ConvergencePrincipalAdmitted,
+  ConvergencePrincipalMismatch,
+  ConvergencePrincipalUnobservable,
+  ConvergencePlacementReceipt,
+  PlacementWrongPrincipal,
+  PlacementPrincipalUnobservable,
+  PlacementOperandsRefused,
+  PlacementConverged,
+  PlacementConvergenceRefused,
+  PlacementReceiptDecoded,
+  PlacementReceiptUnreadable,
+  ConvergenceReadbackDecoded,
+  ConvergenceReadbackRefused,
+  convergence_base_ref,
+  convergence_exec_start,
+  convergence_operands_for,
+  convergence_principal_admission,
+  convergence_readback_holds,
+  convergence_readback_of_text,
+  convergence_receipt_path,
+  convergence_unit_doc,
+  decode_placement_receipt,
+  placement_converged,
+  placement_receipt_of_convergence,
+  placement_receipt_text,
+}
+
+// EVERY WITNESS HERE IS PURE, AND SAYING SO IS WHAT MAKES THEM RUN. The floor's default disposition
+// is fail-closed -- a file that declares none is treated as ReadsLiveTree and DECLINED, discovered
+// and counted and never executed. That is the inert-family shape DESIGN indicts, where a reader
+// counts witnesses named for a subject and concludes it is covered. Nothing below reaches git, the
+// filesystem or a subprocess: the principal observation is driven through its DECODER over an
+// authored read outcome rather than through the read, so these are substrate inputs only.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CANDIDATE USED THROUGHOUT IS A FIXTURE OBJECT ID, forty lowercase hex characters, so the shape
+// admission it must pass is the production one rather than a relaxed test spelling.
+data fixture_candidate: String = "0123456789abcdef0123456789abcdef01234567"
+
+data fixture_object_source: String = "/home/ghrunner/work/gunbc/gunbc"
+
+fn srv1_service_user() -> String {
+  deployment_spec_srv1().service.service_user as String
+}
+
+fn srv1_repo_root() -> String {
+  deployment_spec_srv1().service.repo_root as String
+}
+
+fn principal_read_outcome(name: String) -> EffectivePosixPrincipalReadOutcome {
+  EffectivePosixPrincipalReadOutcome {
+    read: EffectivePosixPrincipalRead {},
+    exit_code: 0,
+    success: true,
+    stdout: name,
+    stderr: "",
+  }
+}
+
+fn admission_for(observed_name: String) -> ConvergencePrincipalAdmission {
+  convergence_principal_admission(
+    expected: srv1_service_user(),
+    result: effective_posix_principal_observation(
+      outcome: principal_read_outcome(name: observed_name),
+    ),
+  )
+}
+
+fn is_principal_admitted(a: ConvergencePrincipalAdmission) -> Bool {
+  match a {
+    ConvergencePrincipalAdmitted { name: _ } => true
+    ConvergencePrincipalMismatch { expected: _, observed: _ } => false
+    ConvergencePrincipalUnobservable { reason: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL AND THE DISCRIMINATING RED OF THE WALL THIS MODULE EXISTS FOR. The service
+// user is admitted; the CI runner -- the account the deploy actually runs as, which is the mistake
+// being prevented -- is refused, and the refusal NAMES BOTH SIDES rather than answering a bare
+// false. Asserting only the refusal would pass against a wall that refuses everything.
+test fn the_service_principal_is_admitted_and_the_ci_runner_is_refused() -> Bool {
+  is_principal_admitted(a: admission_for(observed_name: srv1_service_user()))
+    && !is_principal_admitted(a: admission_for(observed_name: "ghrunner"))
+    && match admission_for(observed_name: "ghrunner") {
+      ConvergencePrincipalMismatch { expected: e, observed: o } =>
+        e == srv1_service_user() && o == "ghrunner"
+      ConvergencePrincipalAdmitted { name: _ } => false
+      ConvergencePrincipalUnobservable { reason: _ } => false
+    }
+}
+
+// A READ THAT DID NOT ANSWER IS NOT AN ADMITTING ANSWER, and it is a THIRD state rather than a
+// spelling of mismatch: the remedy for "whoami failed" is not the remedy for "the wrong account is
+// running this". A trailing newline on a successful read must NOT be one of these -- the decoder
+// trims -- so the same witness pins that the ordinary shell output shape still admits.
+test fn an_unobservable_principal_refuses_as_its_own_state() -> Bool {
+  let failed = EffectivePosixPrincipalReadOutcome {
+    read: EffectivePosixPrincipalRead {},
+    exit_code: 1,
+    success: false,
+    stdout: "",
+    stderr: "whoami: cannot find name for user ID 1001",
+  }
+  let unobservable = convergence_principal_admission(
+    expected: srv1_service_user(),
+    result: effective_posix_principal_observation(outcome: failed),
+  )
+  match unobservable {
+    ConvergencePrincipalUnobservable { reason: r } => r != ""
+    ConvergencePrincipalAdmitted { name: _ } => false
+    ConvergencePrincipalMismatch { expected: _, observed: _ } => false
+  }
+    && is_principal_admitted(a: admission_for(observed_name: concat(srv1_service_user(), "\n")))
+}
+
+fn admitted_operands(candidate: String, object_source: String) -> ConvergencePlacementOperands? {
+  match convergence_operands_for(
+    spec: deployment_spec_srv1(),
+    candidate: candidate,
+    object_source: object_source,
+  ) {
+    ConvergenceOperandsAdmitted { operands: o } => Present { value: o }
+    ConvergenceOperandsRefused { reason: _ } => none
+  }
+}
+
+fn operands_refused(candidate: String, object_source: String) -> Bool {
+  match convergence_operands_for(
+    spec: deployment_spec_srv1(),
+    candidate: candidate,
+    object_source: object_source,
+  ) {
+    ConvergenceOperandsAdmitted { operands: _ } => false
+    ConvergenceOperandsRefused { reason: r } => r != ""
+  }
+}
+
+// THE OPERANDS COME FROM THE SPEC, WHICH IS THE POINT: the repo is the deployed tree's own root
+// read from one field, and the base ref is the module's declared authority rather than a caller
+// string. The object source is the only path that comes from outside, and it is the runner
+// checkout -- never the target. The primary worktree path is no longer among them: #9555 moved
+// that derivation into repository_converge_wet, which reads it from git's own roster.
+test fn the_operands_derive_from_the_deployment_spec() -> Bool {
+  match admitted_operands(candidate: fixture_candidate, object_source: fixture_object_source) {
+    Absent => false
+    Present { value: o } =>
+      o.repo == srv1_repo_root()
+        && o.base_ref == convergence_base_ref
+        && o.candidate == fixture_candidate
+        && o.remote == fixture_object_source
+        && o.remote != srv1_repo_root()
+  }
+}
+
+// AN ABBREVIATED CANDIDATE IS THE DANGEROUS ONE AND IT IS THE ONE A LENIENT CHECK ADMITS. git would
+// resolve it -- against the TARGET's object store, which is a different population from the one that
+// admitted the revision -- so a shape check that only refused the empty string would let the deploy
+// converge to whatever that abbreviation happens to name on the host today.
+test fn a_candidate_that_is_not_a_full_object_id_refuses() -> Bool {
+  operands_refused(candidate: "", object_source: fixture_object_source)
+    && operands_refused(candidate: "0123456", object_source: fixture_object_source)
+    && operands_refused(
+      candidate: "0123456789ABCDEF0123456789abcdef01234567",
+      object_source: fixture_object_source,
+    )
+    && operands_refused(
+      candidate: "0123456789abcdef0123456789abcdef0123456z",
+      object_source: fixture_object_source,
+    )
+    && !operands_refused(candidate: fixture_candidate, object_source: fixture_object_source)
+}
+
+// AN ABSENT OR RELATIVE OBJECT SOURCE IS THE ENVIRONMENT FILE NOT HAVING REACHED THE UNIT. Admitting
+// it would send `git fetch` at a path nobody chose, from a process whose working directory is `/`.
+test fn an_object_source_that_is_not_an_absolute_path_refuses() -> Bool {
+  operands_refused(candidate: fixture_candidate, object_source: "")
+    && operands_refused(candidate: fixture_candidate, object_source: "   ")
+    && operands_refused(candidate: fixture_candidate, object_source: "gunbc")
+    && !operands_refused(candidate: fixture_candidate, object_source: fixture_object_source)
+}
+
+fn srv1_unit_text() -> String {
+  convergence_unit_doc(
+    spec: deployment_spec_srv1(),
+    candidate: fixture_candidate,
+    receipt_path: convergence_receipt_path(instance_root: "/opt/gunbc"),
+  )
+}
+
+// THE UNIT IS THE PLACEMENT, so the two directives that MAKE it the placement are pinned exactly.
+// `User=` is what causes the repository's owner to perform the transition; without it the unit runs
+// as root and the whole construction is pointless.
+test fn the_unit_runs_as_the_service_user_in_a_oneshot() -> Bool {
+  let unit = srv1_unit_text()
+  string_contains(s: unit, pattern: concat("User=", srv1_service_user()))
+    && string_contains(s: unit, pattern: concat("Group=", srv1_service_user()))
+    && string_contains(s: unit, pattern: "Type=oneshot")
+    && string_contains(s: unit, pattern: "EnvironmentFile=/etc/gunbc-tree-sync.env")
+    && !string_contains(s: unit, pattern: "User=root")
+}
+
+// THE CORPUS COMES FROM THE RUNNER CHECKOUT AND THE BINARY FROM THE INSTALL, AND THIS IS THE WITNESS
+// FOR THE ACCEPTANCE CLAUSE ABOUT A STALE TARGET. The target's tree is 637 commits behind and its
+// corpus predates the convergence module, so a source root under the deployed repo root would make
+// the unit ask a 2026-08-19 corpus to run an operation authored later. Both source roots and the
+// entry therefore sit under the expanded GUNBC_TREE_SRC, and the deployed repo root appears NOWHERE
+// in the command -- which is the discriminating half: asserting only the presence of the runner
+// paths would pass a command that named both.
+test fn the_unit_runs_the_admitted_binary_over_the_runner_checkout_corpus() -> Bool {
+  let spec = deployment_spec_srv1()
+  let cmd = convergence_exec_start(
+    spec: spec,
+    candidate: fixture_candidate,
+    receipt_path: convergence_receipt_path(instance_root: "/opt/gunbc"),
+  )
+  starts_with(s: cmd, prefix: concat(spec.service.serve_binary as String, " run"))
+    && string_contains(s: cmd, pattern: "--source-root $\{GUNBC_TREE_SRC\}/dag")
+    && string_contains(s: cmd, pattern: "--source-root $\{GUNBC_TREE_SRC\}/src/v2")
+    && string_contains(
+      s: cmd,
+      pattern: "--entry $\{GUNBC_TREE_SRC\}/dag/gunbc/live_deploy/repository_convergence_placement.dag",
+    )
+    && string_contains(s: cmd, pattern: "--arg object_source=$\{GUNBC_TREE_SRC\}")
+    && string_contains(s: cmd, pattern: concat("--arg candidate=", fixture_candidate))
+    && !string_contains(s: cmd, pattern: concat("--source-root ", srv1_repo_root()))
+}
+
+// THE RECEIPT IS NOT WRITTEN INSIDE THE REPOSITORY THE TRANSITION RESETS. A path under the worktree
+// is either destroyed by `reset --hard` or reported by the adjudication as untracked residue that
+// refuses the very transition that produced it.
+test fn the_receipt_is_written_outside_the_converged_worktree() -> Bool {
+  let path = convergence_receipt_path(instance_root: "/opt/gunbc")
+  path == "/opt/gunbc/receipts/repository-convergence.json"
+    && !starts_with(s: path, prefix: concat(srv1_repo_root(), "/"))
+    && convergence_receipt_path(instance_root: "/srv/twin")
+      == "/srv/twin/receipts/repository-convergence.json"
+}
+
+// THE ROUND TRIP IS CHECKED BY RE-SERIALISING THE DECODED VALUE AND COMPARING BYTES, which is a
+// stronger equality than comparing the two receipts: it fails if any field was dropped, reordered
+// into a different member, or silently defaulted, whereas a value comparison that ignored one field
+// would pass while that field was lost.
+fn round_trips(receipt: ConvergencePlacementReceipt) -> Bool {
+  let text = placement_receipt_text(receipt: receipt)
+  match decode_placement_receipt(text: text) {
+    PlacementReceiptUnreadable { cause: _ } => false
+    PlacementReceiptDecoded { receipt: back } => placement_receipt_text(receipt: back) == text
+  }
+}
+
+// THE READBACK REACHES THE OUTER TRANSACTION WITH THE CAUSE INTACT, which is the acceptance clause
+// about carrying a typed result rather than an exit code. Every arm round-trips, including the two
+// that never touch git -- if a refused placement decoded as anything else, the deploy would be told
+// a story about git that git was never asked.
+test fn every_receipt_arm_round_trips_through_the_json_codec() -> Bool {
+  round_trips(receipt: PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() })
+    && round_trips(receipt: PlacementConvergenceRefused {
+      candidate: fixture_candidate,
+      repo: srv1_repo_root(),
+      detail: "convergence base-ref moved: expected aaa observed bbb",
+    })
+    && round_trips(receipt: PlacementWrongPrincipal {
+      expected: srv1_service_user(),
+      observed: "ghrunner",
+    })
+    && round_trips(receipt: PlacementPrincipalUnobservable { reason: "whoami failed" })
+    && round_trips(receipt: PlacementOperandsRefused { reason: "the candidate revision is empty" })
+}
+
+// A DETAIL FIELD CARRYING THE CHARACTERS JSON RESERVES MUST SURVIVE, because the payload it carries
+// is another module's diagnostic prose and that prose contains quotes, backslashes and newlines.
+// A codec that corrupted them would hand the operator a mangled cause for a real failure.
+test fn a_detail_carrying_json_metacharacters_survives_the_round_trip() -> Bool {
+  round_trips(receipt: PlacementConvergenceRefused {
+    candidate: fixture_candidate,
+    repo: srv1_repo_root(),
+    detail: "ref \"refs/heads/x\" vanished\n\tpath C:\\tmp -- see `git update-ref`",
+  })
+}
+
+// THE DECODE REFUSES RATHER THAN GUESSING, and the duplicated-verdict case is the one that matters:
+// RFC 8259 does not say which member wins, so a last-wins reader would let a second verdict override
+// the first. A document with two verdicts is refused, not resolved.
+fn receipt_text_is_unreadable(text: String) -> Bool {
+  match decode_placement_receipt(text: text) {
+    PlacementReceiptUnreadable { cause: c } => c != ""
+    PlacementReceiptDecoded { receipt: _ } => false
+  }
+}
+
+test fn a_malformed_or_ambiguous_receipt_refuses_instead_of_decoding() -> Bool {
+  receipt_text_is_unreadable(text: "not json at all")
+    && receipt_text_is_unreadable(text: "{\"schema\": \"gunbc.repository-convergence-placement.v1\"}")
+    && receipt_text_is_unreadable(text: "{\"schema\": \"someone.elses.schema\", \"verdict\": \"converged\"}")
+    && receipt_text_is_unreadable(text: "{\"schema\": \"gunbc.repository-convergence-placement.v1\", \"verdict\": \"invented\"}")
+    && receipt_text_is_unreadable(text: "{\"schema\": \"gunbc.repository-convergence-placement.v1\", \"verdict\": \"converged\", \"verdict\": \"operands-refused\"}")
+}
+
+// AN UNREPORTED TRANSITION IS NOT A CONVERGED ONE. The unit failing before its write, the file being
+// absent, and the document being unreadable all reach the deploy as NOT converged -- the alternative
+// is a transaction that proceeds over a repository nobody moved.
+test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool {
+  let converged = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
+  convergence_readback_holds(
+    readback: convergence_readback_of_text(text: placement_receipt_text(receipt: converged)),
+  )
+    && !convergence_readback_holds(readback: convergence_readback_of_text(text: ""))
+    && !convergence_readback_holds(readback: ConvergenceReadbackRefused { cause: "no receipt" })
+    && !convergence_readback_holds(
+      readback: convergence_readback_of_text(text: placement_receipt_text(
+        receipt: PlacementWrongPrincipal { expected: srv1_service_user(), observed: "ghrunner" },
+      )),
+    )
+    && placement_converged(receipt: converged)
+    && !placement_converged(receipt: PlacementOperandsRefused { reason: "x" })
+    && !placement_converged(receipt: PlacementPrincipalUnobservable { reason: "x" })
+    && !placement_converged(receipt: PlacementConvergenceRefused {
+      candidate: fixture_candidate,
+      repo: srv1_repo_root(),
+      detail: "x",
+    })
+}
+
+// THE CONVERGENCE'S OWN EXIT MAPS TO THE RECEIPT WITHOUT INVENTING A CAUSE. A failure carries the
+// adjudication's located prose through verbatim; a success carries the operands it converged. The
+// RED is that a failure must NOT decode as converged, which is what a truthy-exit reader would do.
+test fn the_convergence_exit_maps_onto_the_receipt_without_fabricating() -> Bool {
+  match admitted_operands(candidate: fixture_candidate, object_source: fixture_object_source) {
+    Absent => false
+    Present { value: o } => {
+      let ok = placement_receipt_of_convergence(operands: o, exit: ExitSuccess)
+      let bad = placement_receipt_of_convergence(
+        operands: o,
+        exit: ExitFailure { code: 1, reason: "convergence head moved without a reflog entry" },
+      )
+      placement_converged(receipt: ok)
+        && !placement_converged(receipt: bad)
+        && match bad {
+          PlacementConvergenceRefused { candidate: c, repo: r, detail: d } =>
+            c == fixture_candidate
+              && r == srv1_repo_root()
+              && d == "convergence head moved without a reflog entry"
+          PlacementConverged { candidate: _, repo: _ } => false
+          PlacementWrongPrincipal { expected: _, observed: _ } => false
+          PlacementPrincipalUnobservable { reason: _ } => false
+          PlacementOperandsRefused { reason: _ } => false
+        }
+    }
+  }
+}

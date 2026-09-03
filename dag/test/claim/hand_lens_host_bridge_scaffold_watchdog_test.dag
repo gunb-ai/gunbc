@@ -1,0 +1,12 @@
+module test.claim.hand_lens_host_bridge_scaffold_watchdog
+
+import gunbc.hand_lens_host_bridge_scaffold_index { transport_script_position_host_bridge_dissolution_trigger }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn hand_lens_host_bridge_scaffold_roster_tracks_5364_dissolution() -> Bool {
+  hand_lens_host_bridge_scaffold_roster_tracked()
+    && scaffold_dissolution_trigger_nonempty(row: transport_script_position_scaffold_row)
+    && scaffold_dissolution_trigger_matches_authority(row: transport_script_position_scaffold_row)
+}

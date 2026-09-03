@@ -1,0 +1,89 @@
+module extdeps.llm.openai_rest
+
+import extdeps.llm.openai {
+  OpenAiChatMessage,
+  OpenAiChatCompletion200Body,
+  OpenAiResponses200Body,
+  OpenAiFinishReason
+}
+import extdeps.llm.openai_errors { OpenAiErrorShape }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "platform.openai.com/docs/api-reference/introduction"
+  }
+}
+
+service llm.OpenAI {
+  config {
+    endpoint: "https://api.openai.com"
+    auth: Bearer
+    auth_input: api_key
+
+    rate_limit: { requests: 500, per: minute, scope: chat }
+  }
+
+  operation ChatCompletion {
+    input {
+      api_key: Secret
+      model: String
+      messages: List<OpenAiChatMessage>
+      temperature: Float?
+      max_tokens: Int?
+    }
+    output {
+      content: String from "choices/0/message/content"
+      model: String from "model"
+      finish_reason: OpenAiFinishReason from "choices/0/finish_reason"
+      prompt_tokens: Int from "usage/prompt_tokens"
+      completion_tokens: Int from "usage/completion_tokens"
+    }
+    transport rest {
+      method: POST,
+      path: "/v1/chat/completions",
+      body: { model: model, messages: messages, temperature: temperature, max_tokens: max_tokens }
+    }
+    response {
+      200 => OpenAiChatCompletion200Body
+      400 => OpenAiErrorShape
+      401 => OpenAiErrorShape
+      403 => OpenAiErrorShape
+      404 => OpenAiErrorShape
+      429 => OpenAiErrorShape
+      5xx => OpenAiErrorShape
+    }
+  }
+
+  operation Responses {
+    input {
+      api_key: Secret
+      model: String
+      input: Json
+      instructions: String?
+      max_output_tokens: Int?
+    }
+    output {
+      content: String from "output/0/content/0/text"
+      model: String from "model"
+      output_tokens: Int from "usage/output_tokens"
+      input_tokens: Int from "usage/input_tokens"
+    }
+    transport rest {
+      method: POST,
+      path: "/v1/responses",
+      body: { model: model, input: input, instructions: instructions, max_output_tokens: max_output_tokens }
+    }
+    response {
+      200 => OpenAiResponses200Body
+      400 => OpenAiErrorShape
+      401 => OpenAiErrorShape
+      403 => OpenAiErrorShape
+      404 => OpenAiErrorShape
+      429 => OpenAiErrorShape
+      5xx => OpenAiErrorShape
+    }
+  }
+}

@@ -1,0 +1,370 @@
+module gunbc.runner_slot_provision
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.algebra { trim }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_added_count,
+}
+import gunbc.ownership { Ownership }
+import gunbc.executor_privileged_operation {
+  EnsureOwnedDirectory,
+  RemoveDirectoryTree,
+  executor_managed_directory_mode,
+  executor_privileged_operation_shell_command,
+}
+import gunbc.runner_host_deploy {
+  RunnerHostDeploy,
+  runner_index_seq,
+}
+import extdeps.github.actions_runner {
+  ActionsRunnerSlotPrivilegedCommands,
+  actions_runner_base_dir,
+  actions_runner_cache_dir,
+  ActionsRunnerBinaryArtifact,
+  actions_runner_release_2_336_0,
+  actions_runner_base_dir_ensure_script,
+  actions_runner_slot_extract_script,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner_slot_allocation { identity_is_fabric_execution_member, gunbc_runner_slots_per_host }
+import gunbc.command_runner {
+  ProcessOutcome,
+  ProcessOutputPresent,
+  ProcessOutputAbsent,
+  ProcessRefused,
+  run_shell_command_capture,
+  LocalExec,
+}
+import extdeps.tools.gnu_coreutils { ls_one_per_line_command }
+
+// RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
+// ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
+// Per slot: cited ActionsRunnerRelease fetch+verify, base dir, extract, ownership, per-slot caps
+// BEFORE systemctl enable. srv3/srv4 materialization target is 6 slots; srv4 disk binding is
+// apply-time preflight in gunbc.runner_lifecycle runner_width_disk_preflight (not a row pin).
+
+data runner_slot_provision_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration,
+  }
+}
+
+type RunnerSlotMemberAt = NonEmptyStr
+
+type RunnerSlotMember {
+  instance_name: NonEmptyStr
+  slot_dir: NonEmptyStr
+}
+
+type RunnerSlotObservation
+  = RunnerSlotsObserved { members: List<RunnerSlotMember> }
+  | RunnerSlotsUnobserved { reason: NonEmptyStr }
+
+fn runner_slot_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
+  join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
+}
+
+fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMember {
+  let name = instance_name as NonEmptyStr
+  RunnerSlotMember {
+    instance_name: name,
+    slot_dir: runner_slot_instance_dir(instance_name: name),
+  }
+}
+
+// THE FABRIC SLOT IS NOT A PROVISIONING TARGET, AND UNTIL 2026-08-23 IT WAS ONE.
+//
+// This mapped runner_instance_names straight through, so desired was 1..runner_count and nothing
+// asked what any slot was FOR. gunbc.runner_slot_allocation authors srv3-06 as
+// SlotServesFabricExecution, so the desired set proposed installing a GitHub Actions runner ON TOP
+// OF THE FABRIC EXECUTION SLOT -- reconcile saw it as an ordinary missing member, and apply would
+// have done it with no refusal anywhere.
+//
+// That is the count-as-authority failure runner_slot_allocation exists to prevent, reintroduced one
+// layer above it. Its note records the first occurrence: purpose derived from index against count,
+// so the fabric slot MOVED WITH THE WIDTH -- at width 7, srv3-07 became fabric and srv3-06 was
+// silently handed back to Actions, relabelling a slot that may be running work. The carve was made
+// an AUTHORED identity so a width change could not do that; this module consumed the width and
+// ignored the carve, reaching the same outcome by the other road.
+//
+// THE FILTER IS ON THE FABRIC ROLE, NOT ON COMMITTED MEMBERSHIP, and that is load-bearing.
+// Filtering on runner_slot_membership would ask whether each index is within the host's committed
+// width -- the question runner_count already answered -- and yields ZERO desired members for any
+// host the fleet model does not know. The reconcile fixtures plant their own synthetic deploy row
+// (host_label "wfix") precisely so their expected counts are literals authored beside a known input
+// rather than a restatement of the live fleet; routing desired through the global width authority
+// would have emptied them and turned four exact-count fixtures green-by-vacuity.
+//
+// So the width still comes from the deploy row, which derives it from gunbc_runner_slots_per_host,
+// and this function removes exactly the identities that are spoken for. Two questions, two answers:
+// how many slots does this host carry, and which are Actions runners.
+//
+// It works on INDICES, not rendered names, so the fabric identity is compared as an identity and
+// never by parsing a slot number back out of a string it was just formatted into.
+//
+// CONSEQUENCE ON THE FLEET: srv3 desires twenty against a committed width of twenty-one. srv1, srv2
+// and srv4 carry no fabric member and are unchanged.
+fn desired_runner_slot_members(deploy: RunnerHostDeploy) -> List<RunnerSlotMember> {
+  let host = deploy.host_label as HostIdentity
+  map(
+    filter(
+      runner_index_seq(n: deploy.runner_count),
+      i => !identity_is_fabric_execution_member(
+        identity: RunnerSlotIdentity { host: host, slot_index: i },
+      ),
+    ),
+    i => runner_slot_member_from_instance_name(
+      instance_name: runner_slot_instance_name(
+        slot: RunnerSlotIdentity { host: host, slot_index: i },
+      ),
+    ),
+  )
+}
+
+fn runner_slot_member_key(m: RunnerSlotMember) -> NonEmptyStr {
+  m.instance_name
+}
+
+fn runner_slot_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool {
+  a.slot_dir as String == b.slot_dir as String
+}
+
+// Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5
+// teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template
+// this lane writes) before apply lands; until host_effect observation can read that signal,
+// ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than
+// fabricated Owned (review 49707).
+
+fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
+  Absent
+}
+
+fn runner_slot_membership_reconcile(
+  desired: List<RunnerSlotMember>,
+  observed: List<RunnerSlotMember>,
+) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: runner_slot_member_key,
+      key_eq: runner_slot_member_key_eq,
+      value_eq: runner_slot_member_value_eq,
+      ownership_of: runner_slot_member_ownership,
+    ),
+  )
+}
+
+type RunnerSlotEnumerationPostcondition
+  = RunnerSlotEnumerationMatched
+  | RunnerSlotEnumerationMismatch {
+      host: HostIdentity
+      declared_count: Int
+      observed_count: Int
+    }
+
+fn runner_slot_enumeration_postcondition(
+  host: HostIdentity,
+  observed: List<RunnerSlotMember>,
+) -> RunnerSlotEnumerationPostcondition {
+  let declared = gunbc_runner_slots_per_host(host: host)
+  let observed_count = length(observed)
+  if observed_count == declared {
+    RunnerSlotEnumerationMatched
+  } else {
+    RunnerSlotEnumerationMismatch {
+      host: host,
+      declared_count: declared,
+      observed_count: observed_count,
+    }
+  }
+}
+
+type RunnerSlotProvisionPlan {
+  host_label: NonEmptyStr
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
+  base_dir_script: String
+  upsert_extract_scripts: List<String>
+}
+
+// THE ONE PLACE THE GRANT ROSTER MEETS THE INSTALL SHAPE. extdeps.github.actions_runner describes
+// what runner installation IS; this module knows which principal performs it here and so which
+// binaries that principal may execute. Both paths come from the closed CiRunnerSudoBinary
+// vocabulary, so a verb with no grant row has no spelling at this seam.
+// THE COMMANDS THE SCRIPT RUNS ARE PROJECTED FROM THE SAME OPERATION ROW THE SUDOERS GRANT IS.
+// gunbc.executor_privileged_operation owns the operation; the executed shell word-vector and the
+// authorizing sudoers match are both DERIVED from its argv. Before this, extdeps rebuilt the argv
+// from two binary paths while the roster granted the binary alone, so the script could name a
+// command the principal was not authorized to run -- measured on srv3, an add-only apply refused at
+// the first sudo with zero slots mutated.
+fn gunbc_runner_slot_privileged_commands(
+  slot_dir: NonEmptyStr,
+  job_user: NonEmptyStr,
+) -> ActionsRunnerSlotPrivilegedCommands {
+  ActionsRunnerSlotPrivilegedCommands {
+    remove_command: executor_privileged_operation_shell_command(
+      op: RemoveDirectoryTree { path: slot_dir },
+    ),
+    install_command: executor_privileged_operation_shell_command(
+      op: EnsureOwnedDirectory {
+        path: slot_dir,
+        owner: job_user,
+        group: job_user,
+        mode: executor_managed_directory_mode,
+      },
+    ),
+  }
+}
+
+fn runner_slot_provision_plan(
+  deploy: RunnerHostDeploy,
+  artifact: ActionsRunnerBinaryArtifact,
+  observed: List<RunnerSlotMember>,
+) -> RunnerSlotProvisionPlan {
+  let membership = runner_slot_membership_reconcile(
+    desired: desired_runner_slot_members(deploy: deploy),
+    observed: observed,
+  )
+  RunnerSlotProvisionPlan {
+    host_label: deploy.host_label,
+    membership: membership,
+    base_dir_script: actions_runner_base_dir_ensure_script(
+      base_install_command: executor_privileged_operation_shell_command(
+        op: EnsureOwnedDirectory {
+          path: actions_runner_base_dir as NonEmptyStr,
+          owner: deploy.runner_user,
+          group: deploy.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+      ),
+      cache_install_command: executor_privileged_operation_shell_command(
+        op: EnsureOwnedDirectory {
+          path: actions_runner_cache_dir as NonEmptyStr,
+          owner: deploy.runner_user,
+          group: deploy.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+      ),
+    ),
+    upsert_extract_scripts: flat_map(membership.actions, a =>
+      match a {
+        MemberAdded { at: _, to: m } =>
+          [actions_runner_slot_extract_script(
+            artifact: artifact,
+            slot_dir: m.slot_dir,
+            privileged: gunbc_runner_slot_privileged_commands(
+              slot_dir: m.slot_dir,
+              job_user: deploy.job_user,
+            ),
+          )]
+        MemberChanged { at: _, from: _, to: _ } => []
+        MemberRemoved { at: _, from: _ } => []
+        MemberRemovalRefused { from: _, cause: _ } => []
+        MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+      }
+    ),
+  }
+}
+
+fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
+  membership_added_count(plan: plan.membership) > 0
+}
+
+// --- observation: the third converge member family -------------------------------------------
+
+// AN UNREADABLE HOST REFUSES; AN EMPTY HOST DOES NOT. Collapsing them is the empty-observation
+// narrow: rendering 'I could not enumerate the slots' as 'this host has no slots' makes the
+// reconcile propose ADDING every desired slot to a machine whose real population was never read,
+// which on apply means installing over a live fleet. RunnerSlotsUnobserved carries the CAUSE AND
+// NOT THE HOST, a correction rather than an omission: this observer runs LocalExec on whatever
+// machine it is on and cannot name it, so a host field here could only be fabricated. Briefly it
+// was -- as the empty string, which is not a HostIdentity, so the fabrication refused to typecheck:
+// the carrier shape doing a review's work. The caller supplies the host it is converging; the
+// observation reports only what it established. RunnerSlotsObserved with an empty list is a genuine
+// answer about a genuinely empty host.
+//
+// THE SIBLING FAMILIES DO NOT DRAW THIS LINE AND THAT IS THE DEFECT NOT TO COPY.
+// gunbc.fleet_converge_plan_cli observe_cap_members_wet yields [] both when a drop-in is absent and
+// when it cannot be read, and observe_timer_members_wet filters on a test that cannot distinguish
+// 'no such unit' from 'could not run the test'. Tolerable for caps, where an absent drop-in is the
+// common real state; not for slots, where absent means 'provision it'.
+//
+// ENUMERATION IS BY DIRECTORY, NOT BY PROBING THE DESIRED NAMES. Asking 'does each name I expect
+// exist' returns only a subset of what was already intended, so an out-of-band slot nobody desired
+// would be invisible and never reported as MemberRemoved. Listing the base directory makes the
+// observed population independent of the desired one, which is the whole point of a reconcile.
+
+func observe_runner_slot_members_wet() -> RunnerSlotObservation
+  uses net: Network
+{
+  match run_shell_command_capture(
+    command: ls_one_per_line_command(path: actions_runner_base_dir),
+    transport: LocalExec,
+  ) {
+    ProcessRefused { exit_code: code, stderr: err } =>
+      RunnerSlotsUnobserved {
+        reason: concat(
+          concat("could not enumerate ", actions_runner_base_dir),
+          concat(": the listing refused rather than returning an empty directory, so this host's slot population is UNKNOWN and must not be read as empty. stderr: ", err)
+        ) as NonEmptyStr,
+      }
+    ProcessOutputAbsent =>
+      RunnerSlotsUnobserved {
+        reason: concat(
+          concat("enumerating ", actions_runner_base_dir),
+          " produced no output at all -- not an empty listing, which would be an empty string. A command that yields nothing has not answered the question, and treating it as 'no slots' would propose installing every desired slot onto a host whose population was never read."
+        ) as NonEmptyStr,
+      }
+    ProcessOutputPresent { text: t } =>
+      RunnerSlotsObserved {
+        members: map(
+          filter(t.split("\n"), l => trim(s: l) != ""),
+          l => runner_slot_member_from_instance_name(instance_name: trim(s: l)),
+        ),
+      }
+  }
+}
+
+type RunnerSlotConvergeVerdict
+  = RunnerSlotConvergePlanned { host: HostIdentity, plan: RunnerSlotProvisionPlan }
+  | RunnerSlotConvergeRefused { host: HostIdentity, reason: NonEmptyStr }
+
+// THE REFUSAL ARM IS WHY THIS FUNCTION EXISTS RATHER THAN CALLERS COMPOSING THE TWO HALVES. A
+// caller holding an observation and a deploy row can always pass the observed members straight
+// into runner_slot_provision_plan, and the unobserved case becomes a list nobody looked at. Routing
+// both through one verdict means the only way to reach a plan is to have read the host, and an
+// unmodeled host or unreadable directory produces a refusal naming which it was.
+
+fn runner_slot_converge_verdict(
+  host: HostIdentity,
+  deploy: RunnerHostDeploy,
+  artifact: ActionsRunnerBinaryArtifact,
+  observation: RunnerSlotObservation,
+) -> RunnerSlotConvergeVerdict {
+  match observation {
+    RunnerSlotsUnobserved { reason: r } =>
+      RunnerSlotConvergeRefused { host: host, reason: r }
+    RunnerSlotsObserved { members: obs } =>
+      RunnerSlotConvergePlanned {
+        host: host,
+        plan: runner_slot_provision_plan(deploy: deploy, artifact: artifact, observed: obs),
+      }
+  }
+}

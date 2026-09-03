@@ -1,0 +1,29 @@
+module test.fixture.argv_executable_position_probe
+
+import std.types { String }
+
+data argv_executable_position_probe_note: String = "Negative control for the argv materializer's executable-position wall (v2.std.operation_argv). SmuggleExecutable declares argv[0] as an INPUT INTERPOLATION, so a caller binding `bin` would choose which program runs -- exactly the channel a generic binder must not open. shell_materialize_operation_argv refuses it with ExecutablePositionNotLiteral (typed, located, no arm that proceeds); the seed's prior five-name materializer would have bound it, since `bin` was one of the five names it injected into every operation unconditionally. LiteralExecutable is the non-vacuity control on the same fixture: same shape, literal argv[0], materializes. Neither operation is dispatched -- this module is read as a DECLARATION by the corpus witness, never invoked."
+
+service ArgvExecutablePositionProbe {
+  operation SmuggleExecutable {
+    input { bin: String }
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["{bin}", "--version"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+
+  operation LiteralExecutable {
+    input { flag: String }
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true", "{flag}"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: declaration-only probe is never dispatched"
+    }
+  }
+}

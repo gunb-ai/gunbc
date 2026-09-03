@@ -1,0 +1,191 @@
+module gunbc.prose_row_frontier
+
+import std.types { Bool, Int, String, List }
+import v2.std.optional { Optional }
+
+// DESIGN 4c rules that unclassified prose is forbidden and that `//` is the quarantine boundary, so a
+// prose-only `data NAME_note: String` row is debt in a representation no lens can classify. The wall
+// was first enrolled path by path, a roster grown in the same change as each migrated batch, so that
+// a day-one corpus-wide flip did not refuse every open lane. Once the corpus-wide sweep migrated every
+// unreferenced row the roster's declared dissolve-on was met: path scoping is deleted and the refusal
+// is unconditional over every introduced row.
+
+// The shape the wall recognises, stated once so the gate, the receipt and the controls cannot drift
+// into three readings of it. A prose row is a MODULE-SCOPE `data` declaration whose name ends in
+// `_note` and whose right-hand side opens a string literal — the exact idiom #6262 introduced when `//`
+// became a parse error, and the population DESIGN 4c calls modeling debt.
+//
+// It is deliberately narrow. A row whose name does not end in `_note`, a nested declaration, or a
+// `data` row carrying an actual program value is not recognised and is not refused: this wall is about
+// the one idiom whose sole purpose is commentary, and widening it to a general prose classifier is the
+// prerequisite the operator ruled must NOT block the first rows leaving.
+data prose_row_decl_prefix: String = "data "
+
+data prose_row_decl_infix: String = ": String = \""
+
+data prose_row_decl_suffix: String = "_note"
+
+data prose_row_colon_code_point: Int = 58
+
+type ProseRowRef {
+  path: String
+  decl_name: String
+}
+
+// Reading a declaration name out of a raw diff line without a regex: scan from the end of `data ` to
+// the first colon, which is where the type annotation starts. The scan is the same shape
+// extdeps.auth.jwt uses for its own colon search, because a second spelling of `find the first colon`
+// is a fork of one rule.
+fn prose_row_ident_end(line: String, i: Int, len: Int) -> Int {
+  if i >= len {
+    i
+  } else if code_point(c: char_at(line, i)) == prose_row_colon_code_point {
+    i
+  } else {
+    prose_row_ident_end(line: line, i: i + 1, len: len)
+  }
+}
+
+// Absent means `this line is not a prose row`, which is the overwhelming majority of a diff — it is a
+// classification miss, never a failure, and the caller must not treat the two alike. A line the fold
+// cannot read AT ALL is a different fact and is carried by ProseRowDiffUnreadable below.
+fn prose_row_decl_name(line: String) -> Optional<String> {
+  let len = string_length(s: line)
+  if !starts_with(s: line, prefix: prose_row_decl_prefix) {
+    none
+  } else {
+    let start = string_length(s: prose_row_decl_prefix)
+    let end = prose_row_ident_end(line: line, i: start, len: len)
+    if end >= len {
+      none
+    } else {
+      let name = substring(s: line, start: start, end: end)
+      if name == "" || string_contains(s: name, pattern: " ") {
+        none
+      } else if !ends_with(s: name, suffix: prose_row_decl_suffix) {
+        none
+      } else if !starts_with(s: substring(s: line, start: end, end: len), prefix: prose_row_decl_infix) {
+        none
+      } else {
+        Present { value: name }
+      }
+    }
+  }
+}
+
+// THE OBSERVATION, AND WHY BOTH SIDES ARE CARRIED.
+//
+// Keying introduction on the DECLARATION NAME rather than on the added line is what makes this wall
+// about new debt instead of about churn. A row edited in place appears as a removal and an addition of
+// the same name; a file moved or a module split appears as every row removed under the old path and
+// added under the new one. Both are the same prose, and refusing them would tax the very cleanup this
+// lane is doing while catching nothing that was not already there.
+//
+// A RENAME IS DELIBERATELY REFUSED, and it is the one case where name-keying differs from intent: the
+// old name leaves and a new one arrives, so the row reads as introduced. That is the wanted answer —
+// a prose row being renamed is a prose row being touched by someone who could migrate it instead.
+type ProseRowDiffObservation
+  = ProseRowsObserved { added: List<ProseRowRef>, removed: List<String> }
+  | ProseRowDiffUnreadable { reason: String }
+
+type ProseRowFoldState {
+  path: String
+  added: List<ProseRowRef>
+  removed: List<String>
+  saw_file_header: Bool
+  saw_hunk: Bool
+}
+
+fn prose_row_diff_line_fold(acc: ProseRowFoldState, line: String) -> ProseRowFoldState {
+  if starts_with(s: line, prefix: "diff --git ") {
+    ProseRowFoldState {
+      path: "",
+      added: acc.added,
+      removed: acc.removed,
+      saw_file_header: acc.saw_file_header,
+      saw_hunk: acc.saw_hunk,
+    }
+  } else if starts_with(s: line, prefix: "+++ b/") {
+    ProseRowFoldState {
+      path: substring(s: line, start: 6, end: string_length(s: line)),
+      added: acc.added,
+      removed: acc.removed,
+      saw_file_header: true,
+      saw_hunk: acc.saw_hunk,
+    }
+  } else if starts_with(s: line, prefix: "+++ ") || starts_with(s: line, prefix: "--- ") {
+    acc
+  } else if starts_with(s: line, prefix: "@@") {
+    ProseRowFoldState {
+      path: acc.path,
+      added: acc.added,
+      removed: acc.removed,
+      saw_file_header: acc.saw_file_header,
+      saw_hunk: true,
+    }
+  } else if starts_with(s: line, prefix: "+") {
+    match prose_row_decl_name(line: substring(s: line, start: 1, end: string_length(s: line))) {
+      Absent => acc
+      Present { value: name } =>
+        ProseRowFoldState {
+          path: acc.path,
+          added: concat(acc.added, [ProseRowRef { path: acc.path, decl_name: name }]),
+          removed: acc.removed,
+          saw_file_header: acc.saw_file_header,
+          saw_hunk: acc.saw_hunk,
+        }
+    }
+  } else if starts_with(s: line, prefix: "-") {
+    match prose_row_decl_name(line: substring(s: line, start: 1, end: string_length(s: line))) {
+      Absent => acc
+      Present { value: name } =>
+        ProseRowFoldState {
+          path: acc.path,
+          added: acc.added,
+          removed: concat(acc.removed, [name]),
+          saw_file_header: acc.saw_file_header,
+          saw_hunk: acc.saw_hunk,
+        }
+    }
+  } else {
+    acc
+  }
+}
+
+// A DIFF THAT PRESENTED HUNKS WITHOUT EVER PRESENTING A FILE HEADER IS UNREADABLE, NOT EMPTY.
+//
+// The distinction is the empty-observation narrow DESIGN names: `I saw no prose rows` and `I could not
+// tell what this diff touched` are different states, and reporting the second as the first is a
+// silently uncovered run rather than an expensive one. An empty diff text is genuinely empty and is
+// observed as such — that is the no-op PR, not a failure.
+fn prose_row_diff_observation(diff_text: String) -> ProseRowDiffObservation {
+  let final_state = fold(
+    split(diff_text, separator: "\n"),
+    init: ProseRowFoldState { path: "", added: [], removed: [], saw_file_header: false, saw_hunk: false },
+    f: fn(acc, line) { prose_row_diff_line_fold(acc: acc, line: line) }
+  )
+  if final_state.saw_hunk && !final_state.saw_file_header {
+    ProseRowDiffUnreadable {
+      reason: "unified diff presented hunk headers but no recognised new-side file header, so no added line can be attributed to a path"
+    }
+  } else {
+    ProseRowsObserved { added: final_state.added, removed: final_state.removed }
+  }
+}
+
+fn prose_row_name_removed(removed: List<String>, name: String) -> Bool {
+  fold(removed, init: false, f: fn(found, r) { found || r == name })
+}
+
+// Introduction is added-minus-removed at NAME grain, per the observation note above.
+fn prose_rows_introduced(added: List<ProseRowRef>, removed: List<String>) -> List<ProseRowRef> {
+  added |> filter(row => !prose_row_name_removed(removed: removed, name: row.decl_name))
+}
+
+fn prose_row_render(row: ProseRowRef) -> String {
+  concat(row.path, concat(" ", row.decl_name))
+}
+
+fn prose_rows_render(rows: List<ProseRowRef>) -> String {
+  join(rows |> map(row => prose_row_render(row: row)), ", ")
+}

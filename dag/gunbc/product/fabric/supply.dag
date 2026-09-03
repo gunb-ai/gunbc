@@ -1,0 +1,770 @@
+module product.fabric.supply
+
+import std.types { Timestamp, Int, List, NonEmptyStr }
+import std.measure {
+  ByteSize,
+  byte_size_count,
+  MoneyAmountMicro, MoneyPerSecond, MoneyPerMinute, MoneyPerHour, MoneyOnce,
+  HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
+  Second, second_count, minutes_per_hour, seconds_per_minute, measure_scale_fraction_ceil,
+}
+import extdeps.currency.currency { CurrencyCode }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import product.fabric.envelope { ResourceEnvelope }
+import extdeps.gpu.types { GpuRuntime, gpu_runtime_eq, gpu_runtime_wire }
+import product.fabric.isolation {
+  IsolationProfile, IsolationGuarantee,
+  unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
+}
+
+// A SupplierOffer is a supplier's statement of capacity it is willing to sell. Owned
+// capacity and rented capacity are ONE type: what differs is the evidence behind
+// the statement, not the kind of thing being stated.
+
+// Observed and quoted supply differ in their evidence, not in their type, and
+// minting two SupplierOffer types would fork the selection fold that must compare
+// them. ObservedSupply is a measurement - this host has three free slots right
+// now, and here is the receipt. QuotedSupply is a standing willingness to sell
+// - this supplier will provide up to N of this shape at this rate until this
+// time, and here is the quote. Bottomless cloud supply is a QuotedSupply with
+// a large quantity bound, never an unbounded one: an offer without a bound
+// cannot be conserved against, and infinite supply is a claim no supplier
+// actually makes. The fields the decision consumes - quantity bound,
+// readiness, validity, normalized quote - stay SURFACED on the offer rather
+// than hidden inside the evidence; the evidence proves those values, it does
+// not replace them.
+// An owned offer carries an EXPLICIT ZERO quote and creates a zero-valued
+// money reservation, rather than carrying no quote at all. Absence must never
+// be interpreted as free. The predecessor model made cost_quote optional and
+// every owned host used the absent arm, so a consumer reading it could not
+// distinguish costs nothing from nobody priced this - and the safe reading of
+// the second is not zero. Requiring the amount means a supplier whose price is
+// genuinely unknown has to say so in a way the selection fold can refuse,
+// instead of being silently treated as the cheapest offer available.
+// A quote is std.measure's MoneyRate at the period the supplier bills in,
+// never a second money-per-period record. MoneyRate already carries the amount
+// and the currency and already makes the period a type argument, so a rate at
+// one period is not assignable where another is expected -- which is exactly
+// the property a price needs, and the reason an earlier version of this file
+// minting its own carrier was a fork rather than a specialization. That
+// version's stated defence was that folding the unit into the measure would
+// make two rates addable; MoneyRate does not fold it into the measure, so the
+// defence described a carrier that does not exist.
+//
+// The runtime coproduct is here for a reason the type parameter cannot serve:
+// selection ranks offers billed on different bases against each other, so they
+// must inhabit one roster, and SupplierOffer<P, PerHour> and SupplierOffer<P, PerSecond> would
+// be different types. Discriminating at the value level keeps the roster
+// homogeneous while keeping the periods unaddable, since reaching either
+// amount requires naming which period it is.
+//
+// Normalizing a supplier's published terms into one of these is the supplier
+// binding's work, and so are billing quantum, rounding, minimum charge, fixed
+// and setup charges, caps, and when billing starts and stops. The core
+// compares normalized quotes; it does not model any supplier's tariff.
+
+type OfferQuote =
+  | QuotedPerSecond(MoneyPerSecond)
+  | QuotedPerMinute(MoneyPerMinute)
+  | QuotedPerHour(MoneyPerHour)
+  | QuotedFlatPerGrant(MoneyOnce)
+
+fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
+  match q {
+    QuotedPerSecond(r) => r.amount
+    QuotedPerMinute(r) => r.amount
+    QuotedPerHour(r) => r.amount
+    QuotedFlatPerGrant(r) => r.amount
+  }
+}
+
+// WHETHER A QUOTE BILLS ELAPSED TIME IS A FACT ABOUT THE QUOTE, so it is projected here,
+// beside the coproduct it reads, rather than re-derived by each consumer that needs it. It
+// decides two different things downstream -- whether a paid-through interval can reduce the
+// bill, and whether a duration multiplies the rate at all -- and a consumer open-coding the
+// match would answer them from its own copy of the partition.
+//
+// It is a NAMED PROJECTION rather than a Bool for the reason this file gives everywhere else:
+// a Bool puts the meaning in the caller's variable name, and the two answers here have
+// different consequences rather than being true and not-true of one property.
+type QuoteBillingBasis
+  = BillsElapsedTime
+  | BillsPerGrant
+
+fn quote_billing_basis(q: OfferQuote) -> QuoteBillingBasis {
+  match q {
+    QuotedFlatPerGrant(_) => BillsPerGrant
+    QuotedPerSecond(_) => BillsElapsedTime
+    QuotedPerMinute(_) => BillsElapsedTime
+    QuotedPerHour(_) => BillsElapsedTime
+  }
+}
+
+fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
+  match q {
+    QuotedPerSecond(r) => r.currency
+    QuotedPerMinute(r) => r.currency
+    QuotedPerHour(r) => r.currency
+    QuotedFlatPerGrant(r) => r.currency
+  }
+}
+
+type OfferEvidence
+  = ObservedSupply { observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | QuotedSupply {
+      quoted_at: Timestamp,
+      valid_until: Timestamp,
+      receipt: ObservationReceiptRef,
+    }
+
+type SupplierOffer<P> {
+  id: FabricIdentity<P, OfferKey>
+  executor: P
+  shape: Shape
+  capabilities: CapabilityManifestRef
+  trust_domain: TrustDomainRef
+  isolation: IsolationProfile
+  quantity_bound: Int
+  ready_at: Timestamp
+  quote: OfferQuote
+  billing_quantum: Second
+  evidence: OfferEvidence
+}
+
+// A SupplierOffer carries no remaining_capacity field. Remaining capacity is DERIVED
+// as the allocatable bound minus the sum of active grant claims against that
+// offer, and deriving it is precisely what makes atomic grant issuance
+// conserve supply. A stored remainder is a second representation of the grant
+// set: it can disagree with the grants that actually exist, and the
+// disagreement is invisible until two grants have already been issued against
+// capacity that existed only in a stale field.
+// Selection is a named policy with one implementation. The interface is named so
+// a second policy is a second instantiation rather than an edit to ExecutionGrant or to
+// the clearing fold; if adding one later requires touching a core carrier, the
+// axis was never real.
+
+// The policy is an axis with exactly one instantiation today: cheapest
+// fungible with delay valuation. The ORDER of its filters is load-bearing and
+// is not a performance detail. Fungibility is decided FIRST - which offers can
+// satisfy this work's shape, capabilities and trust domain, with price not
+// consulted - so that price can never rescue an offer that cannot run the
+// work. Affordability is decided SECOND: within the demand's reservation price
+// and maximum buy order, with budget remaining. Cheapest is decided LAST, over
+// the survivors, comparing provider charge plus valued availability delay,
+// with a stable deterministic tie-break. This is a posted-offer market and not
+// an auction: suppliers publish asks, each demand carries a buyer reservation
+// price, and the fabric takes the cheapest admissible ask. No clearing-price
+// machinery exists because none is needed to make that decision.
+// WHICHEVER MODE IS SELECTED IS A CONSEQUENCE of cheapest-admissible-ask,
+// never a fallback arm, and the distinction decides whether cost can run away.
+// A fallback is a failure arm that widens when the preferred path is
+// unavailable, and it hides the deficit that triggered it. Here nothing widens:
+// one fold evaluates one predicate over every ask, and when the cheapest one
+// stops being cheapest the same fold picks the next without changing shape.
+// If no ask is admissible - budget exhausted, every ask above the reservation
+// price or the maximum buy order, no offer fungible - the outcome is a typed
+// refusal or a demand that stays pending. It is never a degraded execution
+// path, and there is no arm to reach for one.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH STATED THE CONSEQUENCE AS A FIXED
+// ORDER -- rented supply selected only after owned supply is exhausted, owned
+// capacity at an explicit zero quote being simply the cheapest admissible ask
+// while any remains -- and that is FALSE, ruled so by the operator on
+// 2026-08-27. A rented hour already bought has had its cash spent
+// unrecoverably, so its marginal cost over the remainder of that hour is zero,
+// while owned metal is never zero over the same interval because power and
+// cooling are incurred by the act of running. The already-paid rented hour is
+// therefore strictly cheaper at the margin and must WIN, leaving our own
+// machine idle. The old sentence would have had a reader conclude the opposite
+// from this very file.
+//
+// The error is worth keeping visible because of its shape rather than its
+// content: it took a PREDICTION about how the numbers usually come out -- that
+// owned compute will turn out to be the most profitable arbitrage most of the
+// time -- and wrote it down as a PROPERTY of the fold. A selector shaped to
+// reach a conclusion is not ranking, and the zero quote it leaned on is an
+// asking price rather than a running cost, which is precisely the confusion the
+// explicit-zero rule above exists to prevent. What is actually a consequence is
+// only this: nothing in the ranking knows which offers are ours.
+
+type SupplySelectionPolicy =
+  | CheapestFungibleWithDelayValuation
+
+// FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
+//
+// This fold arrived here from gunbc.fabric_witness_run, where it had been
+// written as authorize_floor_run with a FloorRunRefusal coproduct. Nothing in
+// it was ever about the floor: comparing a Work's requirements against an
+// SupplierOffer's capabilities is provider-neutral, and work.dag's own header already
+// calls fungibility "selection's first and load-bearing step". A consumer that
+// owns this fold is a consumer that will answer it differently from the next
+// consumer, which is the fork the fabric exists to prevent.
+//
+// FUNGIBILITY AND AFFORDABILITY ARE TWO FACTS WITH TWO HOMES, NOT ONE VERDICT.
+// A demand that cannot afford an offer and a demand an offer cannot serve are
+// different facts with different remedies -- raise the buy order, or find
+// another supplier. Per DESIGN section 3, fungibility is a SUPPLIER
+// CAPABILITY fact (does this executor satisfy this work's shape, trust domain
+// and capabilities -- true regardless of who is asking or what they will pay)
+// and affordability is BUYER POLICY (can this demand's ceiling, in this
+// currency, clear this supplier's asking price -- true regardless of whether
+// the executor can even run the work). An earlier revision fused both into
+// one OfferEligibility coproduct decided by one offer_eligibility_for fold
+// taking a budget ceiling as an argument, so "this offer cannot run your job"
+// and "this offer is currently too expensive" were the same verdict wearing
+// different constructors. Two coproducts and two folds below, each named for
+// the question it answers and neither importing the other's inputs:
+// offer_fungibility_for takes no money at all, and offer_affordability_for
+// takes no shape, trust domain or capabilities.
+
+type OfferFungibility
+  = Fungible
+  | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
+  | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
+  | IsolationNotProvided { missing: List<IsolationGuarantee> }
+  | ShapeAxesNotCovered { unmet: List<UnmetShapeAxis> }
+
+// ShapeNotCovered IS DELETED RATHER THAN KEPT BESIDE ITS REPLACEMENT.
+//
+// It carried exactly one axis -- required and offered thread counts -- which ShapeAxesNotCovered
+// now carries as ThreadsNotCovered alongside the axes it could not express. Nothing constructs it
+// any more, so keeping it would leave a variant every consumer must match and no producer can
+// ever emit: a permanently-unreachable arm that reads as coverage. DESIGN section 4b(4) is
+// explicit that a climb deletes the redundant lower-rung machinery it obsoletes rather than
+// accumulating it beside the replacement.
+
+// GRANT DURATION -- the fact a RATE quote needs before its per-unit price can
+// be compared to a per-grant ceiling AT ALL. "I cannot compare a $/hr rate to
+// a total ceiling" is true, but it is a UNITS problem -- ignorance about the
+// comparison -- not a fact about the offer, and rendering that ignorance as a
+// verdict on the supplier is the state-space conflation DESIGN section 5
+// names (an offer that is capable, in-currency and cheap must not be
+// unconditionally ineligible because the fold never received what it needed
+// to price it). The repair supplies the missing duration; it does not refuse
+// the supplier.
+//
+// EXACT and ESTIMATED are not decoration on top of that repair -- they are
+// the other half of it. Multiplying a rate by an estimated duration produces
+// a PROJECTED total whose error is inherited from the estimate, so
+// "affordable under a projected total" is a different fact from "affordable
+// under a known one", and collapsing the two into a bare Second would let an
+// estimate's uncertainty vanish the moment it is multiplied. A caller that
+// only knows an estimate cannot construct ExactGrantDuration and claim
+// otherwise -- the two arms are the wall, not a comment beside a single field.
+// A THIRD ARM, AND IT IS THE ONE THE OTHER TWO CANNOT STAND IN FOR (operator ruling,
+// 2026-08-27): "the unknowns have to be represented properly in the modeling, so we can make
+// actual decisions".
+//
+// How long a job will run is NOT KNOWN at selection time, and the two arms above both carry a
+// Second -- so before this arm existed, a caller with no measurement at all had to pick one of
+// them and write a number down. Whatever it wrote then read downstream as a measurement.
+// "This job takes six minutes" and "nobody has ever timed this job" are different states with
+// different correct decisions, and a carrier that can only spell the first has erased the
+// second at the moment it is most load-bearing: a paid-through interval is free only for work
+// that FITS IN IT, and whether it fits is precisely the question an invented estimate answers
+// falsely.
+//
+// The arm carries the obligation rather than a placeholder duration, so the remedy -- go and
+// measure this -- is attached to the state instead of being lost behind a plausible integer.
+type GrantDuration
+  = ExactGrantDuration { seconds: Second }
+  | EstimatedGrantDuration { seconds: Second }
+  | UnobservedGrantDuration { obligation: NonEmptyStr }
+
+// THE ACCESSOR IS PARTIAL AND IS NAMED FOR WHAT IT RETURNS, which is an upper BOUND on the
+// run and not "the duration". It was called grant_duration_seconds and returned a bare
+// Second; both had to change, and the rename is deliberate rather than incidental. A total
+// accessor over a partial fact would have needed something to return for the unobserved arm,
+// and every candidate -- zero, a default, the estimate -- is the fabrication the arm exists to
+// prevent. Keeping the old NAME over the new signature would have let a caller update one
+// line and carry on believing it holds a duration.
+fn grant_duration_bound_seconds(d: GrantDuration) -> Second? {
+  match d {
+    ExactGrantDuration { seconds: s } => Present { value: s }
+    EstimatedGrantDuration { seconds: s } => Present { value: s }
+    UnobservedGrantDuration { obligation: _ } => none
+  }
+}
+
+// QuoteNotPriceableWithoutDuration is NOT a fifth way of being unaffordable. It says the
+// screen could not be RUN, which is a different fact from a demand that cannot pay -- the
+// remedy is a measurement, not a bigger budget -- and it exists because a rate quote and an
+// unobserved duration cannot produce a total at all. A flat per-grant quote does not reach it:
+// that quote prices the grant whole, so it is answerable with no duration whatsoever, and the
+// partition between the two falls out of the quote's own shape rather than a policy choice.
+type DemandOfferAffordability
+  = Affordable
+  | AffordableUnderEstimate { duration_seconds: Second, projected_total: MoneyAmountMicro }
+  | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
+  | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
+  | QuoteNotPriceableWithoutDuration { obligation: NonEmptyStr }
+
+fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
+  (unmet_shape_axes(offered: offered, needed: needed) |> count) == 0
+}
+
+// THREADS WERE THE ONLY AXIS COMPARED, SO FUNGIBILITY RETURNED WRONG ANSWERS.
+//
+// An 8 GiB x64 workload was declared fungible with a 6 GiB arm offer whenever thread counts and the
+// textual capability ref matched. The broker would route work to a machine that cannot run it, and
+// nothing downstream refuses because fungibility already said yes.
+//
+// EACH UNMET AXIS IS NAMED, FOR THE REASON THE ISOLATION MATCH GIVES: "does not fit" is
+// unactionable, while "needs 8589934592 bytes, offered 6442450944" tells a broker which supplier
+// class to look for. An axis the WORK does not state is skipped and is not reported as checked --
+// unstated is not satisfied-by-everything, and rendering it as covered would turn absence of a
+// requirement into a positive clearance.
+//
+// ARCHITECTURE IS EQUALITY, NOT ORDER. There is no sense in which x86_64 "covers" aarch64: a
+// binary built for one does not run on the other, so the comparison is a match and a mismatch is
+// total. Threads and memory are genuine at-least comparisons.
+type UnmetShapeAxis
+  = ThreadsNotCovered { required: HardwareThreadCount, offered: HardwareThreadCount }
+  | MemoryNotCovered { required: ByteSize, offered: ByteSize }
+  | MemoryNotOffered { required: ByteSize }
+  | ArchitectureMismatch { required: Architecture, offered: Architecture }
+  | ArchitectureNotOffered { required: Architecture }
+  | VramNotCovered { required: ByteSize, offered: ByteSize }
+  | GpuNotOffered { required: ByteSize }
+  | GpuRuntimeNotOffered { required: GpuRuntime }
+
+fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
+  match axis {
+    ThreadsNotCovered { required: r, offered: o } =>
+      join(["threads: needs ", to_string(hardware_thread_count_value(t: r)),
+            ", offered ", to_string(hardware_thread_count_value(t: o))], "")
+    MemoryNotCovered { required: r, offered: o } =>
+      join(["memory: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offered ", to_string(byte_size_count(b: o))], "")
+    MemoryNotOffered { required: r } =>
+      join(["memory: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offer states none"], "")
+    ArchitectureMismatch { required: r, offered: o } =>
+      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
+            ", offered ", architecture_diagnostic_name(arch: o) as String], "")
+    ArchitectureNotOffered { required: r } =>
+      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
+            ", offer states none"], "")
+    VramNotCovered { required: r, offered: o } =>
+      join(["gpu vram: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offered ", to_string(byte_size_count(b: o))], "")
+    GpuNotOffered { required: r } =>
+      join(["gpu: needs ", to_string(byte_size_count(b: r)),
+            " bytes of vram, offer states no gpu"], "")
+    GpuRuntimeNotOffered { required: r } =>
+      join(["gpu runtime: needs ", gpu_runtime_wire(runtime: r),
+            ", offer does not provide it"], "")
+  }
+}
+
+fn unmet_thread_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  if hardware_thread_count_value(t: offered.hard.threads)
+    >= hardware_thread_count_value(t: needed.hard.threads) {
+    []
+  } else {
+    [ThreadsNotCovered { required: needed.hard.threads, offered: offered.hard.threads }]
+  }
+}
+
+fn unmet_memory_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.memory {
+    Absent => []
+    Present { value: want } =>
+      match offered.envelope.memory {
+        Absent => [MemoryNotOffered { required: want.min_bytes }]
+        Present { value: have } =>
+          if byte_size_count(b: have.min_bytes) >= byte_size_count(b: want.min_bytes) {
+            []
+          } else {
+            [MemoryNotCovered { required: want.min_bytes, offered: have.min_bytes }]
+          }
+      }
+  }
+}
+
+// THE GPU AXIS, WHICH THIS FOLD DECLARED AND THEN DID NOT READ.
+//
+// ResourceEnvelope has carried `gpu: GpuRequirement?` since the envelope was generalized, and
+// unmet_shape_axes folded threads, memory and architecture only. So a work item demanding VRAM and a
+// CUDA runtime was admitted by any offer with enough threads, with the GPU requirement never
+// examined -- and the caller could not tell, because the fold answers the empty list for both "this
+// axis matched" and "this axis was never looked at".
+//
+// The envelope's own annotation names the rule that breaks: a fold "may skip an unstated axis, but
+// it must never report an unstated axis as CHECKED -- that is the conflation where absence of
+// observation becomes positive clearance". GPU was STATED and unchecked, which is the same
+// conflation reached from the other side.
+//
+// RUNTIME IS NOT A SUBSET TEST OVER THE OFFERED LIST BUT A MEMBERSHIP TEST PER REQUIRED RUNTIME.
+// A work item naming two acceptable runtimes needs the offer to provide ONE of them; a work item
+// naming one needs exactly that one. Reporting per missing runtime rather than a single boolean
+// keeps the diagnosis at the grain the caller can act on, which is the same reason the axes above
+// carry their required and offered values rather than answering false.
+fn unmet_gpu_runtime_axes(want: List<GpuRuntime>, have: List<GpuRuntime>) -> List<UnmetShapeAxis> {
+  flat_map(want, w =>
+    if any(have, h => gpu_runtime_eq(a: h, b: w)) {
+      []
+    } else {
+      [GpuRuntimeNotOffered { required: w }]
+    })
+}
+
+fn unmet_gpu_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.gpu {
+    Absent => []
+    Present { value: want } =>
+      match offered.envelope.gpu {
+        Absent => [GpuNotOffered { required: want.min_vram }]
+        Present { value: have } =>
+          concat(
+            if byte_size_count(b: have.min_vram) >= byte_size_count(b: want.min_vram) {
+              []
+            } else {
+              [VramNotCovered { required: want.min_vram, offered: have.min_vram }]
+            },
+            unmet_gpu_runtime_axes(want: want.runtimes, have: have.runtimes),
+          )
+      }
+  }
+}
+
+fn unmet_architecture_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.cpu {
+    Absent => []
+    Present { value: want_cpu } =>
+      match want_cpu.architecture {
+        Absent => []
+        Present { value: want } =>
+          match offered.envelope.cpu {
+            Absent => [ArchitectureNotOffered { required: want }]
+            Present { value: have_cpu } =>
+              match have_cpu.architecture {
+                Absent => [ArchitectureNotOffered { required: want }]
+                Present { value: have } =>
+                  if have == want { [] } else {
+                    [ArchitectureMismatch { required: want, offered: have }]
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn unmet_shape_axes(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  concat(
+    unmet_thread_axis(offered: offered, needed: needed),
+    concat(
+      unmet_memory_axis(offered: offered, needed: needed),
+      concat(
+        unmet_architecture_axis(offered: offered, needed: needed),
+        unmet_gpu_axis(offered: offered, needed: needed),
+      ),
+    ),
+  )
+}
+
+// THIS FOLD SCREENS FUNGIBILITY. IT DOES NOT SELECT, AND IT TAKES NO MONEY.
+//
+// It answers only: can this executor's shape, trust domain and capabilities
+// satisfy what this work requires. Nothing here chooses among several
+// fungible offers, and choosing -- like pricing -- is where economics live,
+// never here.
+
+fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: SupplierOffer<P>) -> OfferFungibility {
+  let missing_isolation = unsatisfied_isolation_guarantees(
+    required: requirements.isolation,
+    provided: offer.isolation,
+  )
+  let unmet_axes = unmet_shape_axes(offered: offer.shape, needed: requirements.shape)
+  if requirements.trust_domain != offer.trust_domain {
+    TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
+  } else if requirements.capabilities != offer.capabilities {
+    CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
+  } else if (missing_isolation |> count) > 0 {
+    IsolationNotProvided { missing: missing_isolation }
+  } else if (unmet_axes |> count) > 0 {
+    ShapeAxesNotCovered { unmet: unmet_axes }
+  } else {
+    Fungible
+  }
+}
+
+fn seconds_per_hour() -> Nat {
+  minutes_per_hour() * seconds_per_minute()
+}
+
+// A BILLING QUANTUM: the smallest interval a supplier ever charges for, and
+// suppliers round UP a partial quantum rather than pro-rating it. It is a
+// PER-SUPPLIER FACT and is carried on the offer, because it is not a property
+// the fabric may choose. Hetzner bills a one-hour minimum rounded up, so one
+// second of use costs an hour; Ubicloud bills by the minute; owned capacity
+// bills nothing at all and is therefore CONTINUOUS.
+//
+// A quantum of ZERO means continuous, and that is not a degenerate case to be
+// tolerated -- it is the modeled advantage of owned compute. A 90-second job on
+// an hourly supplier is billed 3600 seconds and wastes 3510 of them; the same
+// job on continuous capacity is billed 90. For short CI work that waste can
+// exceed the entire difference in headline rate, so a fold that compared rates
+// while assuming one quantum for everybody would rank suppliers by the wrong
+// number and never say why.
+//
+// An earlier revision hard-coded a SYNTHETIC one-hour quantum here for every
+// offer, and cited gunbc-private's richer per-supplier tariff by name as the
+// thing it was standing in for. That stand-in silently overcharged every
+// sub-hourly supplier by up to a full hour per grant: normalizing a per-minute
+// vendor into the per-hour arm made a three-minute job project a whole hour, a
+// twentyfold overstatement that would have kept the selection fold from ever
+// choosing that supplier. The quantum is now the supplier's own.
+fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
+  if quantum_seconds == 0 {
+    seconds
+  } else {
+    (seconds + (quantum_seconds - 1)) / quantum_seconds
+  }
+}
+
+// THE PROJECTED PER-GRANT TOTAL a quote would bill over one grant of this
+// duration. QuotedFlatPerGrant already IS a per-grant total, so duration does
+// not multiply it -- doing so would double-count a grant the quote already
+// prices whole. QuotedPerSecond and QuotedPerHour are RATES, so the total is
+// the rate times the duration expressed in that rate's own unit.
+//
+// QuotedPerSecond rounds UP via measure_scale_fraction_ceil, the SAME
+// ceiling authority std.measure already uses for scale conversion. QuotedPerHour
+// rounds up to whole BILLED HOURS first (billed_unit_count) and only then
+// multiplies by the hourly rate -- a coarser rounding than a fractional-hour
+// ceiling, because that is how the supplier actually bills. Rounding down
+// anywhere here would understate the bill and could admit an offer whose real
+// cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
+// section 5) one level down: a refusal arm that quietly narrows instead of
+// refusing.
+fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
+  if quantum_seconds == 0 {
+    seconds
+  } else {
+    billed_unit_count(seconds: seconds, quantum_seconds: quantum_seconds) * quantum_seconds
+  }
+}
+
+// The quantum arrives as a Second rather than a bare Nat for the same reason
+// GrantDuration does, two declarations up: this file already models every other
+// duration it carries as Second, so a *_seconds: Nat field here was the one place
+// the magnitude's name lived in the field name instead of in its type. Both are
+// unwrapped to counts on the next two lines because what follows is integer
+// ceiling arithmetic over unit counts, and a count scaled by measure_scale_fraction_ceil
+// is a dimensionless multiplier, not a duration.
+// THE RESULT IS A COPRODUCT because one of its inputs is now partial. A rate quote times an
+// unobserved duration is not a number, and the two candidates for returning one anyway --
+// zero, or a silently substituted estimate -- are the fabricated-plausible-output failure in
+// the fold that decides how much money moves. A flat per-grant quote is priced regardless,
+// since duration never entered its arithmetic.
+type QuotedTotal
+  = QuotedTotalDerived { amount: MoneyAmountMicro }
+  | QuotedTotalNeedsDuration { obligation: NonEmptyStr }
+
+fn quoted_total_amount(t: QuotedTotal) -> MoneyAmountMicro? {
+  match t {
+    QuotedTotalDerived { amount: a } => Present { value: a }
+    QuotedTotalNeedsDuration { obligation: _ } => none
+  }
+}
+
+fn offer_quoted_total_for_grant(
+  quote: OfferQuote,
+  duration: GrantDuration,
+  quantum: Second,
+) -> QuotedTotal {
+  match quote {
+    QuotedFlatPerGrant(r) => QuotedTotalDerived { amount: r.amount }
+    QuotedPerSecond(r) =>
+      rate_total_for_grant(rate: r.amount, den: 1, duration: duration, quantum: quantum)
+    QuotedPerMinute(r) =>
+      rate_total_for_grant(
+        rate: r.amount,
+        den: seconds_per_minute(),
+        duration: duration,
+        quantum: quantum,
+      )
+    QuotedPerHour(r) =>
+      rate_total_for_grant(
+        rate: r.amount,
+        den: seconds_per_hour(),
+        duration: duration,
+        quantum: quantum,
+      )
+  }
+}
+
+// THE REFUSAL CARRIES THE DURATION'S OWN OBLIGATION, and this function matches the duration
+// rather than its bound accessor in order to have one to carry. It previously routed through
+// grant_duration_bound_seconds, whose result type is Second? -- a carrier with exactly two
+// states and no room for the obligation the unobserved arm exists to hold -- and then wrote a
+// fixed sentence of its own into the refusal. Nothing was false about that sentence: a rate
+// quote genuinely cannot be totalled over an unobserved duration. It was the WRONG FACT. The
+// remedy for this refusal is a specific measurement -- go and time THIS work -- and that job is
+// exactly what UnobservedGrantDuration was given a field to name; substituting a restatement of
+// the quote's arithmetic discarded the only part a reader could act on, and did so silently,
+// because a plausible remedy reads like a remedy.
+//
+// So the accessor is not used here at all. Matching the coproduct keeps the obligation IN SCOPE
+// at the point the refusal is built, which is what makes the discard unwritable rather than
+// merely repaired: an arm that wants to invent a sentence now has the authored one sitting
+// beside it, and a future arm added to GrantDuration fails to compile here instead of
+// inheriting whichever branch of a two-state Option it happened to fall into.
+fn rate_total_for_grant(
+  rate: MoneyAmountMicro,
+  den: Nat,
+  duration: GrantDuration,
+  quantum: Second,
+) -> QuotedTotal {
+  match duration {
+    UnobservedGrantDuration { obligation: why } =>
+      QuotedTotalNeedsDuration { obligation: why }
+    ExactGrantDuration { seconds: s } =>
+      rate_total_over_bound(rate: rate, den: den, bound: s, quantum: quantum)
+    EstimatedGrantDuration { seconds: s } =>
+      rate_total_over_bound(rate: rate, den: den, bound: s, quantum: quantum)
+  }
+}
+
+// The arithmetic is the same for an exact and an estimated bound -- what differs is what the
+// resulting total MEANS, which the affordability screen below reads off the
+// duration itself rather than off the number. Sharing the body keeps that distinction in the
+// one fold that acts on it instead of forking it here.
+fn rate_total_over_bound(
+  rate: MoneyAmountMicro,
+  den: Nat,
+  bound: Second,
+  quantum: Second,
+) -> QuotedTotal {
+  QuotedTotalDerived {
+    amount: measure_scale_fraction_ceil(
+      m: rate,
+      num: billed_seconds(seconds: second_count(s: bound), quantum_seconds: second_count(s: quantum)),
+      den: den,
+    ),
+  }
+}
+
+// THIS FOLD SCREENS AFFORDABILITY. IT DOES NOT SELECT, AND IT TAKES NO SHAPE,
+// TRUST DOMAIN OR CAPABILITIES.
+//
+// It answers: can this demand pay this offer's asking price, in this
+// currency, for one grant of the given duration. Nothing here chooses among
+// several affordable offers, and choosing is where the economics actually
+// live.
+//
+// WHAT AN OFFER CARRIES, AND WHAT IT DOES NOT. The quote is a supplier-side
+// ASKING PRICE for one grant. It is NOT an opportunity cost: what an hour could
+// otherwise have earned depends on which OTHER demands could use it, so it is a
+// property of the assignment evaluation and of the decision receipt, never a
+// field on the supply row. Two earlier revisions of this note got this wrong in
+// opposite directions -- first calling opportunity cost a demand-side question,
+// then carrying it on the offer as a second cost -- and both are recorded here
+// rather than reworded, because the sentence was cited downstream each time.
+//
+// Nor is marginal cash cost zero for an owned host: power and cooling are
+// incurred by the act of running, so they are a real dispatch input. Only the
+// HISTORICAL PURCHASE is sunk, and sunk cost is excluded from dispatch while
+// being retained for accounting.
+//
+// WHAT SELECTION NEEDS BEYOND THIS FOLD, AND WHERE EACH OF IT NOW LIVES.
+//
+// This paragraph used to be a list of six things that existed nowhere, ending
+// in the sentence "until those land, this fold is honest as a screen and would
+// be a lie as a selector". Both halves have been overtaken, in two separate
+// ways that are worth keeping apart.
+//
+// ONE OF THE SIX HAD ALREADY LANDED WHEN THE LIST STILL CLAIMED IT HAD NOT.
+// The entry read that offer_quoted_total_for_grant's billed_unit_count is a
+// synthetic one-hour quantum rather than a per-supplier tariff row. That
+// stopped being true when billing_quantum landed as a field on this very
+// carrier: the fold reads offer.billing_quantum, the declaration a few lines
+// up says in terms that the quantum is now the supplier's own, and this
+// sentence sat directly beneath it saying the opposite. A stale claim inside
+// the authority that owns the fact is worse than an absent one, because a
+// reader who checks it here stops looking.
+//
+// THE OTHER FIVE ARE MODELED IN product.fabric.selection, one named
+// observation each -- the availability interval, the paid-through commitment
+// state, the start cost, the transition cost and the alternative uses that
+// give an opportunity cost its value, the last carrying both arms this list
+// asked for: no feasible alternative use, so an hour about to expire idle is
+// not priced as though a customer had been displaced, and the alternative
+// simply UNREAD, so unknown does not silently become zero. A sixth axis joins
+// them there that this list did not name and should have: the marginal
+// operating cost, which is what an owned host's explicit zero quote does NOT
+// state and what a rented offer's published rate already contains.
+//
+// SO THIS FOLD IS STILL A SCREEN, and that is now a division of labour rather
+// than a limitation. It answers whether a demand can pay one offer's asking
+// price; product.fabric.selection composes it with the fungibility screen above
+// and the six observations to rank offers against each other. Selection lives
+// there and not here because a supply row may not import a buyer's delay
+// valuation or a commitment ledger without becoming the place economics live,
+// which is the boundary this header already draws.
+
+// The budget ceiling arrives as SCALARS rather than as demand.BuyTerms, because
+// supply must not import demand -- a backward edge this module already carries
+// once for ObservationReceiptRef and must not deepen. The demand side supplies
+// them at the call site, which is also where they are known. The duration is a
+// third scalar for the same reason: it is a fact about the GRANT being priced,
+// known to whoever is asking, never stored on the offer.
+
+fn offer_affordability_for<P>(
+  offer: SupplierOffer<P>,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  duration: GrantDuration,
+) -> DemandOfferAffordability {
+  if offer_quote_currency(q: offer.quote) != budget_currency {
+    QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
+  } else {
+    match offer_quoted_total_for_grant(
+      quote: offer.quote,
+      duration: duration,
+      quantum: offer.billing_quantum,
+    ) {
+      QuotedTotalNeedsDuration { obligation: why } =>
+        QuoteNotPriceableWithoutDuration { obligation: why }
+      QuotedTotalDerived { amount: projected } =>
+        screen_projected_total(
+          quote: offer.quote,
+          duration: duration,
+          projected: projected,
+          maximum_buy_order: maximum_buy_order,
+        )
+    }
+  }
+}
+
+// An estimated duration yields a PROJECTED total whose error is inherited from the estimate,
+// so the verdict says so -- except under a flat per-grant quote, where duration never entered
+// the arithmetic and there is nothing for the estimate to have distorted.
+fn screen_projected_total(
+  quote: OfferQuote,
+  duration: GrantDuration,
+  projected: MoneyAmountMicro,
+  maximum_buy_order: MoneyAmountMicro,
+) -> DemandOfferAffordability {
+  if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
+    QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
+  } else {
+    match duration {
+      ExactGrantDuration { seconds: _ } => Affordable
+      UnobservedGrantDuration { obligation: _ } => Affordable
+      EstimatedGrantDuration { seconds: s } => match quote {
+        QuotedFlatPerGrant(_) => Affordable
+        QuotedPerSecond(_) =>
+          AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+        QuotedPerMinute(_) =>
+          AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+        QuotedPerHour(_) =>
+          AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+      }
+    }
+  }
+}

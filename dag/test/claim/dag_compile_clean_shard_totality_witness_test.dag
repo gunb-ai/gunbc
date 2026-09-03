@@ -1,0 +1,31 @@
+module test.claim.dag_compile_clean_shard_totality_witness
+
+import tools.dag_compile_clean_shard_totality { witness_totality_holds_on_live_tree }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// THIS FILE IS NOW SINGLE-GRAIN: ONE TEST FN, AND IT GENUINELY READS THE TREE.
+//
+// Its closure reaches tools.dag_compile_clean_shard_totality_transport run_live_dag_entry_glob and
+// through it git.Inspect.Toplevel, so ReadsLiveTree is this file's own property, not forced by a
+// neighbour. A SubstrateInputsOnly row is predict-skip-eligible and a wrongly skipped live-tree row
+// is a selection fail-open, so the stamp stays.
+//
+// WHY THE PREVIOUS NOTE HERE WAS WRONG ON ITS FACTS. The 2026-07-29 correction note it replaces
+// reached the right verdict by the wrong route: it said the closure reaches "the live-read carrier
+// home tools.dag_compile_clean_shard_roster". Measured by call-reachability that module has zero
+// shell effects, as does tools.dag_compile_clean_partition; the live read was always in the
+// totality transport named above. The two-grain diagnosis was correct, the carrier attribution
+// was not, and because it sat beside the code asserting a mechanism, two readers took it as
+// evidence and neither reached for the call graph. A prose row naming the wrong carrier costs more
+// than no note.
+//
+// The nine assertions that shared this file and needed no live tree now live in
+// test.claim.dag_compile_clean_shard_hermetic_witness under SubstrateInputsOnly. They were
+// discovered, counted and never executed while stamped by their neighbour.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// NOT A PER-PR ROW: falsifier-rehomed (gunbc.ci_layer_roots falsifier frontier). The rehoming
+// governs which CADENCE this row runs on; it does not make the file's live-tree reach disappear.
+test fn compile_clean_shard_totality_holds_on_live_tree() -> Bool {
+  witness_totality_holds_on_live_tree()
+}

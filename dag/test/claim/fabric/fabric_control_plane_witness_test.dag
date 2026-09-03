@@ -1,0 +1,746 @@
+module test.claim.fabric_control_plane_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.durable_compare_and_set {
+  CasUnreadableReadRefused, ExpectSlotAbsent,
+  CasSlotObservation, CasObservedReadable, CasReadablePresent, CasSlotVersion,
+  cas_generation_first,
+}
+import std.content_hash { content_hash_of_value }
+import product.fabric.execution {
+  ReservationRef, LeaseIdentity, Receipt, ReceiptPayload, SettlementReceipt, ExecutionReceipt,
+  ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence,
+}
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
+import extdeps.currency.currency { Usd, Eur, CurrencyCode }
+import std.measure {
+  MoneyOnce, MoneyPerSecond, money_amount_micro, Second, second, hardware_thread_count,
+}
+import product.fabric.work { Shape, HardRequirements }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation }
+import product.fabric.budget {
+  MoneyAccount, MoneyRefusal, CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,
+  MoneyReservationRequest, AccountAdvanced, MoneyRefused, reserve_money, release_money,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, SelectionCost, selection_liability, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  AvailabilityObservation, AvailableIndefinitely,
+  CommitmentState, PayAsYouGo,
+  StartCostObservation, StartCostMeasured,
+  TransitionCostObservation, NoTransitionRequired,
+  OperatingCostObservation, OperatingCostMeasured,
+  OpportunityCostObservation, NoFeasibleAlternativeUse,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_executor_class {
+  ExecutorSanction, ExecutorSanctioned, CustomerExecutableCapacity,
+  CapacityClassAdmission, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified,
+}
+import gunbc.fabric_floor_dispatch { floor_demand }
+import gunbc.fabric_control_plane {
+  CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
+  StoreUnavailable, AttemptRefused, BudgetRefused, reserve_priced_cell,
+  CellSlotState, CellHeld, CellFree, CellSlotDecoded, CellSlotUndecodable,
+  cell_slot_payload, decode_cell_slot_payload,
+  CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
+  HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, end_cell_hold,
+  CellSettlementAdmission, SettlementAdmitted, SettlementReceiptRefused,
+  SettlementReceiptCarriesNoSpend, admit_cell_settlement,
+  CellCandidateBinding, CellCandidateBound, OfferExecutorIsNotTheCell,
+  fabric_cell_allocation_key, fabric_reservation_payload,
+  fabric_control_plane_store_root,
+  bind_fabric_cell_candidate, broker_reserve_for_demand, FabricCellCandidate,
+}
+
+// Evidence for the PURE half of the broker. The reserve path performs a host
+// effect, so it is refused under the floor's hermetic envelope and its evidence
+// is a live run rather than a row here -- the same split the CAS store carries,
+// and for the same reason: a witness routed away from its subject is cited as
+// coverage while asserting nothing.
+
+fn cp_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: "srv3", slot_index: 6 }
+}
+
+fn cp_offer_id(key: OfferKey) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc", key: key }
+}
+
+fn cp_demand_id(key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc", key: key }
+}
+
+// THE WALL THAT KEEPS THE FILESYSTEM FROM BECOMING A SECOND IDENTITY AUTHORITY.
+// The key is the slot's own canonical spelling and nothing else, so there is no
+// second place a cell's name can be written and disagree. The slash check is the
+// store's precondition: a key carrying a separator is refused at the mint, so a
+// projection that ever produced one would make every reservation unmintable.
+test fn the_allocation_key_is_the_slots_own_canonical_spelling() -> Bool {
+  let key = fabric_cell_allocation_key(slot: cp_slot())
+  (key as String) == "srv3-06"
+    && !(key as String).contains("/")
+}
+
+// NOTHING WAS OFFERED AND EVERYTHING WAS REFUSED ARE DIFFERENT ANSWERS, and
+// this pair is what forces the broker to keep them apart. Admission removes an
+// unsanctioned executor from the roster BEFORE the market ranks anything, so
+// without the refused population an unsatisfiable demand and a demand refused
+// entirely on the capacity-class safety line arrive as the same symbol -- and
+// their remedies are opposite: offer more capacity, versus stop asking for
+// capacity you are not sanctioned to use.
+//
+// The two rows differ in exactly one input, the roster, so a broker that filled
+// `refused` from anything other than what admission actually rejected cannot
+// satisfy both. The empty-roster row is the control that excludes a broker
+// which always reports a refusal.
+fn cp_admission_refusals(r: CellReservation) -> List<CapacityClassAdmission> {
+  match r {
+    NoCellAdmissible { considered: _, refused: f } => f
+    CellReserved { offer: _, slot_key: _, generation: _, account: _ } => []
+    BudgetRefused { slot_key: _, refusal: _ } => []
+    ReservationLost { slot_key: _ } => []
+    StoreUnavailable { slot_key: _, cause: _ } => []
+    AttemptRefused { slot_key: _, detail: _ } => []
+  }
+}
+
+fn cp_roster(executor: NonEmptyStr) -> List<FabricCellCandidate> {
+  fold(
+    cp_binds(executor: executor),
+    init: [],
+    f: (acc, b) =>
+      match b {
+        CellCandidateBound { bound: c } => acc + [c]
+        OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => acc
+      },
+  )
+}
+
+fn cp_broker(roster: List<FabricCellCandidate>, sanctions: List<ExecutorSanction>) -> CellReservation {
+  broker_reserve_for_demand(
+    root: fabric_control_plane_store_root(),
+    demand: floor_demand(
+      id: cp_demand_id(key: "demand-7"),
+      work: FabricIdentity { principal: "gunbc", key: "work-7" },
+      origin: "gunbc.observation.pr-1",
+      submitted_at: "2026-08-27T00:00:00Z",
+      account: "fleet-ci",
+      reservation_price: money_amount_micro(count: 500000),
+      maximum_buy_order: money_amount_micro(count: 1000000),
+      deadline: none,
+    ),
+    roster: roster,
+    sanctions: sanctions,
+    expected: ExpectSlotAbsent,
+    account: cp_account(currency: Usd, ceiling: 1000000),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
+  )
+}
+
+test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> Bool {
+  let refusals = cp_admission_refusals(
+    r: cp_broker(
+      roster: cp_roster(executor: "srv3-06"),
+      sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: CustomerExecutableCapacity }],
+    ),
+  )
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, a) => acc || cp_refusal_is_class(a: a))
+}
+
+test fn an_empty_roster_reports_no_admission_refusals_at_all() -> Bool {
+  (cp_admission_refusals(r: cp_broker(roster: [], sanctions: [])) |> count) == 0
+}
+
+fn cp_refusal_is_class(a: CapacityClassAdmission) -> Bool {
+  match a {
+    CapacityClassRefused { executor: _, required: _, sanctioned: _ } => true
+    CapacityClassAdmitted { executor: _, class: _ } => false
+    ExecutorNotClassified { executor: _ } => false
+  }
+}
+
+// The slot's contents must say WHO holds the cell and FOR WHAT, or a reservation
+// is an anonymous lock nobody can attribute or release.
+test fn the_reservation_payload_names_both_the_demand_and_the_offer() -> Bool {
+  let payload = fabric_reservation_payload(
+    demand: cp_demand_id(key: "demand-7"),
+    offer: cp_offer_id(key: "offer-1"),
+  )
+  (payload as String).contains("demand-7")
+    && (payload as String).contains("offer-1")
+}
+
+// The deployment authority is a real absolute path rather than a relative or
+// empty one: the store does not create its root, so a root that named nothing
+// would surface as an operational refusal on every reservation.
+test fn the_store_root_is_an_absolute_deployment_path() -> Bool {
+  (fabric_control_plane_store_root() as String).starts_with("/")
+}
+
+fn cp_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: cp_offer_id(key: "offer-1"),
+    executor: executor,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 1) }, envelope: unstated_envelope() },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+fn cp_candidate_for(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: cp_offer_for(executor: executor),
+    dispatch: DispatchInputs {
+      offer: cp_offer_id(key: "offer-1"),
+      availability: AvailableIndefinitely {
+        delay: second(count: 0),
+        receipt: "gunbc.observation.availability-1",
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "gunbc.observation.start-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostMeasured {
+        rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
+        receipt: "gunbc.observation.power-1",
+      },
+      opportunity: NoFeasibleAlternativeUse,
+    },
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+  }
+}
+
+fn cp_binds(executor: NonEmptyStr) -> List<CellCandidateBinding> {
+  fold(
+    cp_candidate_for(executor: executor),
+    init: [],
+    f: (acc, c) => acc + [bind_fabric_cell_candidate(slot: cp_slot(), candidate: c)],
+  )
+}
+
+fn cp_bind_is_bound(b: CellCandidateBinding) -> Bool {
+  match b {
+    CellCandidateBound { bound: _ } => true
+    OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ARROW. An offer whose executor IS the cell's
+// canonical spelling binds, so the row below is not satisfied by a mint that
+// refuses everything -- which would be a roster that can never be built.
+test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool {
+  let bound = cp_binds(executor: "srv3-06")
+  bound.length() == 1 && cp_bind_is_bound(b: bound[0])
+}
+
+// THE DISCRIMINATING RED, AND IT IS THE REASON THE ARROW EXISTS. An earlier cut
+// took the slot as a parameter beside the selection, so a caller could lock
+// srv3-06 against a decision that chose a different supplier's offer -- two
+// true facts with nothing relating them, and every arm still plausible. The
+// mint refuses the mismatched pair, so a reservation for a cell the market did
+// not choose cannot be constructed rather than being caught afterwards.
+test fn an_offer_executed_by_anyone_else_cannot_be_bound_to_this_cell() -> Bool {
+  let bound = cp_binds(executor: "srv1-02")
+  bound.length() == 1 && !cp_bind_is_bound(b: bound[0])
+}
+
+// THE ACCOUNT FIXTURE, PARAMETERIZED ON THE TWO AXES THE BUDGET SEAM CAN REFUSE
+// ON. One fixture rather than three named ones, because the rows below differ
+// only in currency and ceiling and a reader must be able to see that the two
+// refusals come from the same account shape.
+fn cp_account(currency: CurrencyCode, ceiling: Int) -> MoneyAccount {
+  MoneyAccount {
+    account: "fleet-ci",
+    currency: currency,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: ceiling) },
+      entries: [],
+    },
+    leases: [],
+  }
+}
+
+// A priced selection with a real liability. Zero would make the ceiling row
+// green against ANY ceiling including zero, which is the fixture defect that
+// turns a budget wall into a decoration.
+fn cp_cost() -> SelectionCost {
+  SelectionCost {
+    marginal_charge: money_amount_micro(count: 500),
+    start: money_amount_micro(count: 0),
+    transition: money_amount_micro(count: 0),
+    operating: money_amount_micro(count: 500),
+    opportunity: money_amount_micro(count: 0),
+    valued_delay: money_amount_micro(count: 0),
+  }
+}
+
+fn cp_priced(account: MoneyAccount) -> CellReservation {
+  reserve_priced_cell(
+    root: fabric_control_plane_store_root(),
+    demand_id: cp_demand_id(key: "demand-7"),
+    offer: cp_offer_for(executor: "srv3-06"),
+    cost: cp_cost(),
+    expected: ExpectSlotAbsent,
+    account: account,
+  )
+}
+
+fn cp_budget_refusal(r: CellReservation) -> List<MoneyRefusal> {
+  match r {
+    BudgetRefused { slot_key: _, refusal: f } => [f]
+    CellReserved { offer: _, slot_key: _, generation: _, account: _ } => []
+    NoCellAdmissible { considered: _, refused: _ } => []
+    ReservationLost { slot_key: _ } => []
+    StoreUnavailable { slot_key: _, cause: _ } => []
+    AttemptRefused { slot_key: _, detail: _ } => []
+  }
+}
+
+fn cp_refusal_is_ceiling(f: MoneyRefusal) -> Bool {
+  match f {
+    LedgerRefused { account: _, refusal: _ } => true
+    CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => false
+    StaleLeaseGeneration { reference: _, presented: _ } => false
+  }
+}
+
+fn cp_refusal_is_currency(f: MoneyRefusal) -> Bool {
+  match f {
+    CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => true
+    LedgerRefused { account: _, refusal: _ } => false
+    StaleLeaseGeneration { reference: _, presented: _ } => false
+  }
+}
+
+// THE BUDGET SEAM IS REACHED AND ANSWERS WITH A TYPED CAUSE. An account whose
+// ceiling cannot cover the selection's liability refuses the reservation, and
+// the refusal names the ledger rather than being a bare "no" -- so a caller can
+// tell an unaffordable offer from an unavailable cell, which are different
+// problems with different remedies.
+//
+// WHAT THIS ROW DOES NOT ESTABLISH, stated because an earlier version of it
+// claimed exactly this and was wrong: it says NOTHING about whether the budget
+// is consulted BEFORE the store is touched. That version was authored, went
+// green, and then STAYED GREEN under a mutation that moved the compare-and-set
+// ahead of the encumbrance -- the substrate is lazy, so the branch that is not
+// returned is never forced, and both orderings are equally effect-free on this
+// path. The row could not discriminate the thing its name asserted, which makes
+// it a decoration cited as coverage (§4b) rather than a weak check.
+//
+// The claim was corrected to what the carrier actually guarantees rather than
+// deleted, because the guarantee is real and stronger: no arm of CellReservation
+// carries both an account and no cell, so the partial commit has no constructor.
+// That has no authorable RED -- the invalid state does not compile -- so it is
+// correctly covered by no row at all.
+test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> Bool {
+  let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 1)))
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+}
+
+// THE SECOND REFUSAL, ON THE OTHER AXIS, AND IT IS THE CONTROL THAT EXCLUDES A
+// CONSTANT. The row above alone is satisfied by a broker that returns
+// BudgetRefused unconditionally. This one holds the ceiling far above the
+// liability and varies only the CURRENCY, so a constant-refusing broker cannot
+// produce it: the two rows demand two DIFFERENT causes from the same seam.
+//
+// Verified by execution rather than asserted: substituting the account's own
+// currency for the offer's turns this row red. It also proves the currency
+// reaching the budget comes from the OFFER and not from the account. The offer quotes Usd and the account holds Eur; had the
+// broker passed the account's own currency through, the two would agree by
+// construction and this refusal could never fire (§4b -- a check whose red is
+// unauthorable is a decoration, not a wall).
+test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> Bool {
+  let refusals = cp_budget_refusal(
+    r: cp_priced(account: cp_account(currency: Eur, ceiling: 1000000)),
+  )
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_currency(f: f))
+}
+
+// THE LIABILITY IS THE SELECTION'S OWN TOTAL, NOT ONE COMPONENT OF IT, and the
+// ceiling here is what makes that decidable. The fixture's marginal charge is
+// 500 and its operating cost is 500, so selection_liability is 1000. A ceiling
+// of 999 refuses ONLY if the full 1000 was presented: a broker that encumbered
+// the marginal charge alone would present 500, clear 999 comfortably, and this
+// row would go red. That is the discrimination the two rows above cannot make,
+// because both of their ceilings refuse against any nonzero amount.
+test fn the_encumbered_liability_is_the_full_selection_cost() -> Bool {
+  let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 999)))
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+}
+
+// THE RELEASE HALF. Every row below reaches the store-free part of the release
+// decision, which is most of it: release_reserved_cell takes the slot
+// OBSERVATION as a parameter, so every refusal is decided from a value and only
+// the successful free-write is an effect. That split is what lets the walls be
+// witnessed here at all rather than deferred to the live probe, and it is the
+// same hermetic boundary the reservation half runs into from the other side.
+fn cp_held_slot(reservation: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  CasObservedReadable {
+    readable: CasReadablePresent {
+      version: CasSlotVersion {
+        generation: cas_generation_first(),
+        content: content_hash_of_value(value: cp_held_payload(reservation: reservation)),
+        value: cp_held_payload(reservation: reservation),
+      },
+    },
+  }
+}
+
+fn cp_held_payload(reservation: NonEmptyStr) -> NonEmptyStr {
+  cell_slot_payload(state: CellHeld { reservation: reservation as ReservationRef })
+}
+
+fn cp_lease(generation: Int) -> LeaseIdentity {
+  LeaseIdentity {
+    lease_key: "cell-lease-1",
+    resource_fingerprint: content_hash_of_value(value: "srv3-06"),
+    generation: generation,
+  }
+}
+
+// A funded account carrying a real hold at generation 1, so the release has
+// something to release and the fence has something to admit or refuse. Built by
+// RESERVING rather than by authoring a ledger with an entry in it: an authored
+// hold would let these rows pass against a release path that never agreed with
+// the reserve path about what a hold looks like.
+fn cp_held_account(reservation: NonEmptyStr) -> List<MoneyAccount> {
+  match reserve_money(
+    a: cp_account(currency: Usd, ceiling: 1000000),
+    request: MoneyReservationRequest {
+      reference: reservation as ReservationRef,
+      generation: 0,
+      maximum_liability: money_amount_micro(count: 1000),
+      currency: Usd,
+    },
+  ) {
+    AccountAdvanced { account: a } => [a]
+    MoneyRefused { refusal: _ } => []
+  }
+}
+
+fn cp_release(
+  observed: CasSlotObservation<NonEmptyStr>,
+  reservation: NonEmptyStr,
+  lease_generation: Int,
+) -> List<CellHoldEnd> {
+  fold(
+    cp_held_account(reservation: "demand-7|offer-1"),
+    init: [],
+    f: (acc, a) =>
+      acc + [
+        end_cell_hold(
+          root: fabric_control_plane_store_root(),
+          slot_key: "srv3-06",
+          observed: observed,
+          reservation: reservation as ReservationRef,
+          money: release_money(
+            a: a,
+            reference: reservation as ReservationRef,
+            generation: cp_lease(generation: lease_generation).generation,
+            reason: "attempt abandoned before execution",
+            released_at: "2026-08-28T02:00:00Z",
+          ),
+          reason: "attempt abandoned before execution",
+        )
+      ],
+  )
+}
+
+fn cp_release_not_held(r: CellHoldEnd) -> Bool {
+  match r {
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => true
+    CellHoldEnded { slot_key: _, generation: _, account: _ } => false
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => false
+    HoldEndLost { slot_key: _ } => false
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => false
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => false
+  }
+}
+
+fn cp_release_budget_refused(r: CellHoldEnd) -> Bool {
+  match r {
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => true
+    CellHoldEnded { slot_key: _, generation: _, account: _ } => false
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => false
+    HoldEndLost { slot_key: _ } => false
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => false
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => false
+  }
+}
+
+fn cp_all(rs: List<CellHoldEnd>, f: fn(CellHoldEnd) -> Bool) -> Bool {
+  (rs |> count) == 1 && fold(rs, init: false, f: (acc, r) => acc || f(r))
+}
+
+// THE WALL THIS INCREMENT EXISTS FOR: a release must not free a cell held by
+// SOMEONE ELSE. Before the slot carried a typed state, the payload was
+// write-only and this question had no answer -- the release would have gone
+// through on the strength of a generation the CALLER supplied, which is a
+// second account of who holds the cell and free to disagree with the store.
+test fn a_cell_held_by_another_reservation_is_not_released() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: cp_held_slot(reservation: "demand-9|offer-4"),
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: cp_release_not_held,
+  )
+}
+
+// THE POSITIVE CONTROL FOR THAT WALL, and without it the row above is satisfied
+// by a release that refuses every slot. Same observation shape, same lease, and
+// the ONLY difference is that the holder matches -- so this one must NOT answer
+// HoldEndSlotNotHeld. It stops short of a commit because the free-write is a
+// host effect refused under the hermetic envelope, so what it establishes is
+// exactly that the holder comparison admitted it and the decision moved on.
+test fn a_cell_held_by_this_reservation_passes_the_holder_wall() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: cp_held_slot(reservation: "demand-7|offer-1"),
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: fn(r) { !cp_release_not_held(r: r) },
+  )
+}
+
+// AN ALREADY-FREE SLOT IS NOT A NO-OP AND MUST NOT BE TREATED AS ONE. Releasing
+// it a second time would write free over free, and a re-reservation racing that
+// second write would find its precondition broken by the release of a hold it
+// never had.
+test fn an_already_free_slot_has_no_hold_to_release() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: CasObservedReadable {
+        readable: CasReadablePresent {
+          version: CasSlotVersion {
+            generation: cas_generation_first(),
+            content: content_hash_of_value(value: cell_slot_payload(state: CellFree { released_by: "earlier release" })),
+            value: cell_slot_payload(state: CellFree { released_by: "earlier release" }),
+          },
+        },
+      },
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: cp_release_not_held,
+  )
+}
+
+// AN UNREADABLE PAYLOAD REFUSES RATHER THAN BEING READ AS EITHER STATE. "I
+// cannot interpret this slot" is not "the cell is free" and not "the cell is
+// held", and answering either would be the fabricated plausible output.
+test fn a_slot_this_module_cannot_interpret_refuses_the_release() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: CasObservedReadable {
+        readable: CasReadablePresent {
+          version: CasSlotVersion {
+            generation: cas_generation_first(),
+            content: content_hash_of_value(value: "demand-7|offer-1"),
+            value: "demand-7|offer-1",
+          },
+        },
+      },
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: cp_release_not_held,
+  )
+}
+
+// THE FENCE IS PRESENTED, NOT ASSUMED. The hold was taken under lease
+// generation 0; releasing while presenting 1 must refuse at the budget seam. A
+// release that dropped the generation on the floor, or re-derived it from the
+// slot's CAS generation, would pass this row and would let a superseded holder
+// release an encumbrance it no longer owns.
+test fn a_superseded_lease_generation_refuses_at_the_budget_fence() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: cp_held_slot(reservation: "demand-7|offer-1"),
+      reservation: "demand-7|offer-1",
+      lease_generation: 7,
+    ),
+    f: cp_release_budget_refused,
+  )
+}
+
+// THE SLOT RENDERING AND ITS DECODE ARE ONE RELATION READ IN BOTH DIRECTIONS,
+// proven by round trip rather than against a golden string. The held case
+// carries a reference containing the separator on purpose: that is what every
+// real reservation reference looks like, since it is itself a demand and an
+// offer joined by that character, and a decode splitting on every occurrence
+// would truncate all of them.
+fn cp_round_trips(state: CellSlotState) -> Bool {
+  match decode_cell_slot_payload(payload: cell_slot_payload(state: state)) {
+    CellSlotUndecodable { detail: _ } => false
+    CellSlotDecoded { state: back } =>
+      (cell_slot_payload(state: back) as String) == (cell_slot_payload(state: state) as String)
+  }
+}
+
+test fn both_slot_states_survive_the_round_trip() -> Bool {
+  cp_round_trips(state: CellHeld { reservation: "demand-7|offer-1" as ReservationRef })
+    && cp_round_trips(state: CellFree { released_by: "attempt abandoned" })
+}
+
+test fn an_untagged_payload_does_not_decode() -> Bool {
+  match decode_cell_slot_payload(payload: "demand-7|offer-1") {
+    CellSlotUndecodable { detail: _ } => true
+    CellSlotDecoded { state: _ } => false
+  }
+}
+
+// SETTLEMENT'S OWN WALLS. The receipt admission is where settlement differs
+// from release, so it is where the rows go: everything downstream of an
+// admitted receipt is the ending vocabulary release already covers, and
+// re-testing it here would be asserting the same fold twice.
+fn cp_grant_lease() -> LeaseIdentity {
+  LeaseIdentity {
+    lease_key: "cell-lease-1",
+    resource_fingerprint: content_hash_of_value(value: "srv3-06"),
+    generation: 1,
+  }
+}
+
+fn cp_grant() -> ExecutionGrant<NonEmptyStr> {
+  ExecutionGrant {
+    id: FabricIdentity { principal: "gunbc", key: "grant-1" },
+    object: FabricGrantObject {
+      offer: cp_offer_id(key: "offer-1"),
+      quote: cp_offer_for(executor: "srv3-06").quote,
+    },
+    context: FabricGrantContext {
+      demand: cp_demand_id(key: "demand-7"),
+      work: FabricIdentity { principal: "gunbc", key: "work-7" },
+      attempt: FabricIdentity { principal: "gunbc", key: "attempt-1" },
+      executor: "srv3-06",
+      lease: cp_grant_lease(),
+      issued_at: "2026-08-28T01:00:00Z",
+      maximum_liability: money_amount_micro(count: 1000),
+    },
+    evidence: FabricGrantEvidence {
+      fungibility_receipt: "gunbc.observation.fungibility-1",
+      offer_authority: "gunbc.observation.offer-1",
+      resource_conservation: "gunbc.observation.resource-1",
+      budget_conservation: "gunbc.observation.budget-1",
+      principal_authority: "gunbc.observation.principal-1",
+    },
+    resource_reservations: [],
+    money_reservation: "demand-7|offer-1" as ReservationRef,
+  }
+}
+
+fn cp_settlement_receipt(payload: ReceiptPayload) -> Receipt<NonEmptyStr> {
+  Receipt {
+    id: FabricIdentity { principal: "gunbc", key: "receipt-1" },
+    attempt: FabricIdentity { principal: "gunbc", key: "attempt-1" },
+    lease: cp_grant_lease(),
+    payload: payload,
+  }
+}
+
+fn cp_spend_payload() -> ReceiptPayload {
+  SettlementReceipt {
+    reservation: "demand-7|offer-1" as ReservationRef,
+    actual_spend: money_amount_micro(count: 400),
+    settled_at: "2026-08-28T02:00:00Z",
+  }
+}
+
+fn cp_admission(r: Receipt<NonEmptyStr>) -> CellSettlementAdmission {
+  admit_cell_settlement(receipt: r, grant: cp_grant())
+}
+
+fn cp_admission_is_admitted(a: CellSettlementAdmission) -> Bool {
+  match a {
+    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => true
+    SettlementReceiptRefused { admission: _ } => false
+    SettlementReceiptCarriesNoSpend { detail: _ } => false
+  }
+}
+
+fn cp_admission_carries_no_spend(a: CellSettlementAdmission) -> Bool {
+  match a {
+    SettlementReceiptCarriesNoSpend { detail: _ } => true
+    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
+    SettlementReceiptRefused { admission: _ } => false
+  }
+}
+
+fn cp_admission_receipt_refused(a: CellSettlementAdmission) -> Bool {
+  match a {
+    SettlementReceiptRefused { admission: _ } => true
+    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
+    SettlementReceiptCarriesNoSpend { detail: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, and the two rows below are worth nothing without it: a
+// settlement that refused every receipt would satisfy both of them.
+test fn a_settlement_receipt_for_this_grant_is_admitted() -> Bool {
+  cp_admission_is_admitted(a: cp_admission(r: cp_settlement_receipt(payload: cp_spend_payload())))
+}
+
+// ELAPSED TIME IS NOT A CHARGE. An execution receipt records billable seconds
+// as an OBSERVATION -- the billing rule is the supplier's, and quantum,
+// rounding, minimum charge and caps all sit between seconds and money. A
+// settlement that accepted it would have to invent the missing rule, which is
+// the fabricated plausible output, so the payload is matched rather than
+// trusted.
+test fn an_execution_receipt_cannot_settle_because_it_carries_no_spend() -> Bool {
+  cp_admission_carries_no_spend(
+    a: cp_admission(
+      r: cp_settlement_receipt(
+        payload: ExecutionReceipt {
+          step_id: "step-1",
+          outputs: content_hash_of_value(value: "outputs"),
+          billable: second(count: 60),
+          completed_at: "2026-08-28T02:00:00Z",
+        },
+      ),
+    ),
+  )
+}
+
+// A RECEIPT FROM ANOTHER ATTEMPT IS NOT STALE, IT IS UNRELATED, and the
+// admission keeps that distinction rather than answering a bare no. This row
+// also establishes the refusal is decided BEFORE any money is touched: the
+// account here holds no lease for this reservation at all, so a settlement that
+// reached the budget would refuse on the fence instead and answer a different
+// arm.
+test fn a_receipt_from_another_attempt_is_refused_before_the_budget() -> Bool {
+  cp_admission_receipt_refused(
+    a: cp_admission(
+      r: Receipt {
+        id: FabricIdentity { principal: "gunbc", key: "receipt-1" },
+        attempt: FabricIdentity { principal: "gunbc", key: "attempt-9" },
+        lease: cp_grant_lease(),
+        payload: cp_spend_payload(),
+      },
+    ),
+  )
+}

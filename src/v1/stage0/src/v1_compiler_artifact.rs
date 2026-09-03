@@ -6,15 +6,14 @@ use self::BoundaryKind::*;
 use self::DagInferredRecord::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
+use self::RustModuleRenderSelection::*;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -40,12 +39,30 @@ pub enum ArtifactKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RustModuleRenderSelection {
+    RenderEveryModule,
+    RenderSelectedMirrors { basenames: Rc<Vec<String>> },
+}
+impl RustModuleRenderSelection {
+    pub fn basenames(&self) -> Rc<Vec<String>> {
+        match self {
+            RustModuleRenderSelection::RenderEveryModule => panic!("no basenames on unit variant"),
+            RustModuleRenderSelection::RenderSelectedMirrors {
+                basenames: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {
     pub name: String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
     pub entry_modules: Rc<Vec<String>>,
     pub dependencies: Rc<Vec<String>>,
+    pub module_selection: Rc<RustModuleRenderSelection>,
 }
 
 #[derive(
@@ -90,7 +107,7 @@ impl PartitionRule {
 }
 
 pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
-    match (*rule).clone() {
+    match (*rule.clone()).clone() {
         PartitionRule::Explicit {
             artifacts: arts, ..
         } => Rc::new(ArtifactPlan {
@@ -110,13 +127,26 @@ pub fn default_artifact_plan(
     root_modules: Rc<Vec<String>>,
     target: RenderTarget,
 ) -> Rc<ArtifactPlan> {
+    selected_artifact_plan(
+        root_modules.clone(),
+        target.clone(),
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )
+}
+
+pub fn selected_artifact_plan(
+    root_modules: Rc<Vec<String>>,
+    target: RenderTarget,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<ArtifactPlan> {
     plan_artifacts(Rc::new(PartitionRule::Explicit {
         artifacts: Rc::new(vec![Rc::new(Artifact {
             name: "default".to_string(),
             kind: ArtifactKind::ServiceBinary,
-            target: target,
-            entry_modules: root_modules,
+            target: target.clone(),
+            entry_modules: root_modules.clone(),
             dependencies: Rc::new(vec![]),
+            module_selection: selection.clone(),
         })]),
     }))
 }

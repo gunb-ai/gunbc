@@ -1,0 +1,103 @@
+module gunbc.live_deploy.deployed_tree_scope
+
+import std.types { Bool, String, List }
+
+// WHAT THE DEPLOY ACTUALLY INSTALLS, DECLARED ONCE BECAUSE TWO THINGS NEED IT AND MUST NOT DISAGREE.
+// The working-tree leg of the source sync rsyncs the runner checkout wholesale except these
+// prefixes, so the deployed source is the WORKING TREE, not the commit. Two consumers read it:
+//
+//   gunbc.live_deploy.emit       renders `--exclude /<p>` per prefix into the tree-sync ExecStart
+//   gunbc.live_deploy.candidate  decides whether an untracked path would actually be shipped
+//
+// Spelling it in both would let them drift, in the dangerous direction: admission would pass on a
+// path the sync then installs. Same fact, one home (DESIGN §3).
+//
+// IT LIVES IN ITS OWN LEAF MODULE FOR A STRUCTURAL REASON. Putting it beside the emitter and
+// importing that from candidate closes a real cycle — candidate is reached from
+// gunbc.hostname_read, which gunbc.host_effect reaches, which the emitter's own closure reaches —
+// and acyclicity is the import graph's one structural law (DESIGN §3). A fact needed by two modules
+// on opposite sides of a dependency chain belongs beneath both, not inside either.
+// WHY THIS LIST IS NOT JUST target AND .git, AND WHY IT IS STILL NOT EVERY IGNORED PATH.
+// The working-tree leg is rsync, which does not read .gitignore, so an ignored path outside these
+// prefixes is copied to the host under a revision that does not name it. Candidate admission
+// refuses on exactly that state (gunbc.live_deploy.candidate, the ignored_deployed arm), naming two
+// remedies: widen these exclusions, or remove the file. The four appended here take the first
+// because they are host state by construction -- agent session state and local tool/build caches
+// the deployed tree must never contain under any revision, so shipping one is never the intent and
+// refusing on one is pure friction.
+//
+// THE .env FAMILY IS DELIBERATELY ABSENT AND STAYS REFUSED. The repository ignores `.env`,
+// `.env.local` and `.env.*.local`; the third is a wildcard, and both this predicate and rsync's
+// `--exclude /<p>` match a literal segment. Listing the two spellable forms would silence admission
+// on them while `.env.*.local` kept shipping -- partial cover on the one class where the shipped
+// bytes are secrets, strictly worse than the present loud refusal on all three. It stays refused
+// until the exclusion carrier can express a pattern. src/v2/test/claim/manual/sg2_scratch_probe.dag
+// stays refused for a different reason: it sits inside a source root the graph actually reads, so
+// excluding it would change what the host compiles rather than merely what it stores.
+//
+// NOT DERIVED FROM gunbc.gitignore_authority, ON PURPOSE. That authority answers "must not be
+// tracked"; this one answers "must not be shipped", and the sets differ -- a tracked file ships and
+// is not ignored. Deriving would also let an ordinary .gitignore edit silently change what a deploy
+// installs, and would put an import edge into a module kept leaf for the acyclicity reason above.
+data deployed_tree_excluded_prefixes: List<String> = [
+  "target", ".git", ".claude", ".gunbc", "target-codex", ".cargo-home",
+]
+
+fn deployed_tree_rsync_exclude_flags() -> String {
+  join(map(deployed_tree_excluded_prefixes, p => concat("--exclude /", p)), " ")
+}
+
+// Segment-wise, never a character run: `targetish/x` starts with `target` but is not under it, and treating
+// it as excluded would hide from admission a path rsync goes on to ship.
+fn path_is_deployed(path: String) -> Bool {
+  !any(deployed_tree_excluded_prefixes, p => path == p || starts_with(s: path, prefix: concat(p, "/")))
+}
+
+// WHICH REPOSITORY TRANSITION THIS DEPLOYMENT IS BOUND TO, AND WHY IT IS A WALL RATHER THAN A NOTE.
+//
+// The `.git` leg of the source sync copies `HEAD`, `objects`, `packed-refs` and `refs` as FILES and
+// excludes `index` entirely, so the target receives working files from one revision and git
+// metadata from another. Measured on srv1 2026-08-27, `/opt/gunbc/gunbc` is in three-way
+// divergence -- `git status --porcelain` reports 5650 paths, of which 1964 are
+// tracked-and-staged-present but absent from the worktree and 1731 are present but unknown to
+// HEAD -- with the first status column (index vs HEAD) and the second (worktree vs index) BOTH
+// wrong. That is one deployment's output, not two racing: no concurrency control can make a
+// single execution of this operation valid.
+//
+// THIS EXISTS BECAUSE A PR COMMENT IS NOT A WALL. The change that restored the dashboard deploy
+// mode recorded, in prose, that the mode must not be dispatched until this leg is replaced. DESIGN
+// section 5: construction beats validation and a state you can still write will be written; an
+// operator memory and a PR body are neither. So the unsafe dispatch is refused HERE, before the
+// launcher observes anything, and the prose is demoted to explanation.
+//
+// ITS RUNG, HONESTLY: mechanically preventable, not structural. The wall executes and refuses on
+// the real path, but the bound realization is a HAND-DECLARED row -- someone could edit it without
+// having done the work, and nothing would notice. NEXT-RUNG TRIGGER: derive the bound realization
+// from the emitted tree-sync unit itself, so the declaration cannot disagree with what is installed.
+//
+// DISSOLVES ON: the Git-native transition landing, at which point this row becomes
+// `GitNativeConvergence`, the refusal arm stops being reachable from production, and its
+// discriminating control is retained as a regression probe rather than deleted (section 4b(4)).
+type RepositoryTransitionRealization
+  = LegacyGitFileSync
+  | GitNativeConvergence
+
+data deployed_tree_repository_transition: RepositoryTransitionRealization = GitNativeConvergence
+
+type RepositoryTransitionAdmission
+  = RepositoryTransitionAdmitted
+  | LegacyGitFileSyncNotAdmitted { reason: String }
+
+// THE REFUSAL NAMES THE MEASUREMENT RATHER THAN ASSERTING A JUDGEMENT, so an operator who hits it can
+// check the claim on the host instead of taking this module's word for it.
+fn repository_transition_admission(
+  realization: RepositoryTransitionRealization,
+) -> RepositoryTransitionAdmission {
+  match realization {
+    GitNativeConvergence => RepositoryTransitionAdmitted
+    LegacyGitFileSync =>
+      LegacyGitFileSyncNotAdmitted {
+        reason: "the deployed-tree sync still transports .git as files (HEAD/objects/packed-refs/refs copied, index excluded), which leaves the target with working files and git metadata from different revisions -- measured on srv1 as 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. One execution of this operation cannot produce a valid target state, so no dispatch is admitted until the Git-native transition replaces it",
+      }
+  }
+}

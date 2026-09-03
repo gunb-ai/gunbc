@@ -1,0 +1,456 @@
+module extdeps.languages.rust.capabilities
+
+import std.trait_derive_shape {
+  ReprGroundingDeriveElemShape,
+  ReprDeriveElemKernelString,
+  ReprDeriveElemKernelInt,
+  ReprDeriveElemKernelBool,
+  ReprDeriveElemKernelUnit,
+  ReprDeriveElemNullaryEnumCopy,
+  ReprDeriveElemSymbolWrappedOrdCarrier,
+  ReprDeriveElemPayloadCoproduct,
+  ReprDeriveElemUnknown,
+  TargetCapabilityShapeRow,
+  TargetCapabilityShapeTable
+}
+import std.algebra {
+  Cons,
+  Empty
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// WHAT THIS SCOPE NAMES, AND WHAT IT DOES NOT COVER. The citation is the Rust language reference,
+// which governs the `#[derive]` attribute mechanism. The alphabet the subject points at is NOT
+// wholly Rust-governed: RustSerialize and RustDeserialize are serde names, and serde is an
+// independently versioned upstream. So this scope names one subject while the declaration it covers
+// carries members two upstreams govern, and it should be read that way rather than as a coherent
+// single-subject attestation.
+//
+// WHY THE MIXTURE STANDS is not this declaration's decision and is recorded below:
+// rust_capabilities_note carries the operator ruling of 2026-08-19 (option b) that re-homed the
+// closed alphabet here, and rust_capability_alphabet_note carries its reason — an open
+// TargetCapabilityKey brand cannot be matched exhaustively, so rust_trait_derive_spelling stays
+// TOTAL only while the alphabet is closed. The serde spellings are separately attested where they
+// are modeled: extdeps.languages.rust.derive_contracts carries versioned serde trait authorities.
+//
+// HOW THIS WAS FOUND, because the pair is what establishes the claim: reviews 56339 and 56347 on
+// gunbc#9276 rejected OPPOSITE citation shapes here — two citations fuse two governed upstreams into
+// one scope, one citation leaves the serde members unattested by the subject that claims them. Both
+// are correct, so no citation shape over this declaration is coherent; the §3 remedy is separate
+// module authorities, which is a remodel of the carrier and not an edit to any scope.
+//
+// WHAT IS MECHANICALLY ENFORCED, so the rung is not read higher than it is: gunbc.extdeps_scope_frontier
+// enforces scope PRESENCE at the storage grain. Subject-content coherence — that a module's
+// declarations attribute to exactly its declared subject — is the named unenforced frontier
+// feature:extdeps-subject-content-derived (extdeps.external_authority
+// external_model_scope_decision_kernel_note). BOUNDED POPULATION: one declaration, two of its
+// sixteen variants. This annotation deletes when the alphabet is split into Rust-governed and
+// serde-governed authorities, or when the subject-content projection derives DeclaredScopeFacts from
+// the module tree and refuses this scope — whichever lands first.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/attributes/derive.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.rust.capabilities",
+      decl_name: "RustCapability",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data rust_capabilities_note: String = "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the source-shape vocabulary and a table lookup PARAMETERIZED on the capability carrier, naming no carrier itself. THIS module holds the RUST-SPECIFIC half: the closed RustCapability alphabet, the shape-by-capability rows instantiated at K = RustCapability, and the derive-trait list builders. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold. WHY THE COPRODUCT WAS THE WRONG CARRIER FOR THE INTERFACE: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. WHY IT IS STILL THE RIGHT CARRIER FOR THE REALIZATION: an open Symbol brand cannot be matched exhaustively, and rust_trait_derive_spelling is TOTAL by exhaustive match. So the alphabet is re-homed here rather than deleted, and because the std predicate is generic the seed path speaks the alphabet END TO END -- v1.compiler.trait_derive_emit instantiates the predicate at K = RustCapability and needs no lift into the open key space at all. An earlier revision of this migration carried rust_capability_key and rust_capability_keys to perform exactly that lift; parameterizing std deleted both, which is the usual tell that the decomposition is right. ROW FIDELITY: the rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand. WHAT IS DELIBERATELY ABSENT: sixteen one-line data rows binding each key name to its symbol literal, and a rust_capability_emission_order list, were authored in this migration and NEVER REFERENCED -- experimental residue by DESIGN section 6, deleted rather than left to read as authority. Emission order is carried by the list builders, which is where it was before this migration."
+
+fn rust_capability_shape_table() -> TargetCapabilityShapeTable<RustCapability> {
+  TargetCapabilityShapeTable {
+    rows: [
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelString,
+        capabilities: [
+          RustDebug,
+          RustClone,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelInt,
+        capabilities: [
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize,
+          RustAdd,
+          RustSub,
+          RustMul,
+          RustDiv,
+          RustRem,
+          RustNeg
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelBool,
+        capabilities: [
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemKernelUnit,
+        capabilities: [
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemNullaryEnumCopy,
+        capabilities: [
+          RustDebug,
+          RustClone,
+          RustCopy,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemSymbolWrappedOrdCarrier,
+        capabilities: [
+          RustDebug,
+          RustClone,
+          RustPartialEq,
+          RustEq,
+          RustPartialOrd,
+          RustOrd,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemPayloadCoproduct,
+        capabilities: [
+          RustDebug,
+          RustClone,
+          RustPartialEq,
+          RustEq,
+          RustHash,
+          RustSerialize,
+          RustDeserialize
+        ]
+      },
+      TargetCapabilityShapeRow {
+        shape: ReprDeriveElemUnknown,
+        capabilities: []
+      }
+    ]
+  }
+}
+
+type RustCapability
+  = RustDebug
+  | RustClone
+  | RustCopy
+  | RustPartialEq
+  | RustEq
+  | RustPartialOrd
+  | RustOrd
+  | RustHash
+  | RustSerialize
+  | RustDeserialize
+  | RustAdd
+  | RustSub
+  | RustMul
+  | RustDiv
+  | RustRem
+  | RustNeg
+
+data rust_capability_alphabet_note: String = "CLOSED Rust capability alphabet. The B1 keyed contract makes TargetCapabilityKey an OPEN Symbol brand so unrelated modules can share one key space without a coproduct edit -- but an open brand cannot be matched exhaustively, and rust_trait_derive_spelling was TOTAL by exhaustive match before this migration. Deleting the coproduct outright would have traded a structural guarantee (DESIGN section 4b: no Accepted program can spell an unknown capability) for a runtime refusal, which is a rung DROP dressed as a migration. So the coproduct is RE-HOMED rather than deleted: this closed alphabet is Rust s own realization vocabulary, exhaustive at every spelling site, and rust_capability_key is the single total producer that lifts it into the shared open key space. Interface speaks keys; realization speaks the alphabet (DESIGN section 3)."
+
+fn record_derive_traits_heap() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustPartialEq,
+        tail: Cons {
+          head: RustSerialize,
+          tail: Cons { head: RustDeserialize, tail: Empty }
+        }
+      }
+    }
+  }
+}
+
+fn record_derive_traits_copy() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustCopy,
+        tail: Cons {
+          head: RustPartialEq,
+          tail: Cons {
+            head: RustSerialize,
+            tail: Cons { head: RustDeserialize, tail: Empty }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE SEALED-CONSTRUCTION DERIVE CONTRACT. A record whose declaration carries
+// `sole_constructor` states that only its declaring module may mint an inhabitant.
+// `serde::Deserialize` contradicts that statement in the realization: the derive
+// generates a constructor inside the declaring module which any caller reaches through
+// `serde_json::from_value`, so a derived Deserialize is a second, unsealed mint standing
+// beside the declared one (DESIGN section 3 -- one fact, one home).
+//
+// THE CONTRACT IS TRANSITIVE, WHICH IS WHY THIS IS A FILTER AND NOT A SECOND ROSTER. A
+// coproduct carrying a sealed carrier as a variant payload mints one whenever IT is
+// deserialized, so the obligation reaches every container that transitively holds a sealed
+// carrier -- and containers come in as many derive shapes as this module has rosters, so an
+// authored sealed peer per roster would be six parallel rosters for one fact. The subtraction
+// is the fact: one capability, removed wherever construction is confined. Serialize is not
+// removed, because writing a value out is a read and reading is not what the seal confines.
+fn rust_capability_is_deserialize(capability: RustCapability) -> Bool {
+  match capability {
+    RustDeserialize => true
+    RustDebug => false
+    RustClone => false
+    RustCopy => false
+    RustPartialEq => false
+    RustEq => false
+    RustPartialOrd => false
+    RustOrd => false
+    RustHash => false
+    RustSerialize => false
+    RustAdd => false
+    RustSub => false
+    RustMul => false
+    RustDiv => false
+    RustRem => false
+    RustNeg => false
+  }
+}
+
+fn rust_traits_without_deserialize(traits: List<RustCapability>) -> List<RustCapability> {
+  traits |> filter(capability => !rust_capability_is_deserialize(capability: capability))
+}
+
+fn rust_traits_for_construction_contract(traits: List<RustCapability>, deserialize_forbidden: Bool) -> List<RustCapability> {
+  if deserialize_forbidden { rust_traits_without_deserialize(traits: traits) } else { traits }
+}
+
+fn nullary_coproduct_derive_traits() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustCopy,
+        tail: Cons {
+          head: RustPartialEq,
+          tail: Cons {
+            head: RustEq,
+            tail: Cons {
+              head: RustPartialOrd,
+              tail: Cons {
+                head: RustOrd,
+                tail: Cons {
+                  head: RustSerialize,
+                  tail: Cons { head: RustDeserialize, tail: Empty }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn symbol_wrapped_ord_carrier_derive_traits() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustPartialEq,
+        tail: Cons {
+          head: RustEq,
+          tail: Cons {
+            head: RustPartialOrd,
+            tail: Cons {
+              head: RustOrd,
+              tail: Cons {
+                head: RustSerialize,
+                tail: Cons { head: RustDeserialize, tail: Empty }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn fn_field_derive_traits() -> List<RustCapability> {
+  Cons { head: RustClone, tail: Empty }
+}
+
+fn payload_coproduct_derive_traits() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustPartialEq,
+        tail: Cons {
+          head: RustSerialize,
+          tail: Cons { head: RustDeserialize, tail: Empty }
+        }
+      }
+    }
+  }
+}
+
+// USAGE-DERIVED half of the roster, distinct from the SHAPE-derived rosters above and additive to
+// them. The rosters above answer what a type's own structure can support; they cannot answer what a
+// type's USE demands, so a record reaching a keyed-collection key position carries a requirement no
+// shape classification produces. map_key_required_derive_traits names that requirement once: a keyed
+// collection realized as a hash map bounds its key parameter by Hash + Eq (im 15.1.0 HashMap<K, V>
+// declares K: Hash + Eq, matching std::collections::HashMap), so the key type must derive both. The
+// requirement is target-agnostic here and spelled per target in extdeps.languages.rust.emit. Union is
+// append-only and idempotent (derive_traits_union), so a type that already earns a trait from its
+// shape roster gains nothing and its emitted bytes do not move — the asymmetry a fixed wider roster
+// cannot express: a Symbol-wrapped ord carrier already derives Eq and needs only Hash, while a plain
+// record needs both. NOT the same axis as the Ord requirement BTreeSet elements carry
+// (rust_btree_set_element_ord_eligible), which is answered today by refusing at the use site rather
+// than by propagating to the declaration; unifying the two on this fn is the named next step and
+// deliberately not taken here.
+fn phantom_opaque_carrier_derive_traits() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustCopy,
+        tail: Cons {
+          head: RustPartialEq,
+          tail: Cons {
+            head: RustEq,
+            tail: Cons {
+              head: RustSerialize,
+              tail: Cons { head: RustDeserialize, tail: Empty }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn map_key_required_derive_traits() -> List<RustCapability> {
+  Cons { head: RustEq, tail: Cons { head: RustHash, tail: Empty } }
+}
+
+fn kernel_int_arithmetic_traits() -> List<RustCapability> {
+  Cons {
+    head: RustAdd,
+    tail: Cons {
+      head: RustSub,
+      tail: Cons {
+        head: RustMul,
+        tail: Cons {
+          head: RustDiv,
+          tail: Cons {
+            head: RustRem,
+            tail: Cons {
+              head: RustNeg,
+              tail: Cons {
+                head: RustPartialEq,
+                tail: Cons { head: RustPartialOrd, tail: Empty }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// derive_traits_contain and derive_traits_union live HERE, typed on the closed RustCapability
+// alphabet, and not in std.trait_derive_shape. They arrived in this migration by relocation rather
+// than by authoring: in std they were typed on the OPEN TargetCapabilityKey brand while their only
+// consumer, v1.compiler.trait_derive_emit v1_with_map_key_requirement, threads RustCapability end
+// to end -- so the signature laundered the closed alphabet into the open key space, which is
+// exactly the guarantee the alphabet exists to hold (DESIGN section 4b). Caught in review, not by
+// the compiler. THE ALTERNATIVE REPAIR WAS WORSE AND IS RECORDED SO IT IS NOT RETRIED: keeping them
+// in std and lifting to keys at the call site would have forced the union result back through a
+// key-to-spelling step that no longer exists, since spelling is total only over the alphabet.
+// DECLARED SECTION 2 RESIDUE: these are a set-union and a membership test over a list, specialized
+// to one element type because this corpus carries no generic list union to instance. That is
+// duplication waiting to happen -- the next element type that needs a union will either copy these
+// or finally write the generic. Dissolves into a generic std list union when a second element type
+// asks for one; deliberately not minted here, because authoring a new std primitive is a wider
+// change than the review finding that produced this move.
+
+fn derive_traits_contain(
+  traits: List<RustCapability>,
+  capability: RustCapability
+) -> Bool {
+  traits |> any(k => k == capability)
+}
+
+fn derive_traits_union(
+  base: List<RustCapability>,
+  extra: List<RustCapability>
+) -> List<RustCapability> {
+  extra |> fold(init: base, f: (acc, k) =>
+    if derive_traits_contain(traits: acc, capability: k) { acc } else { concat(acc, [k]) }
+  )
+}

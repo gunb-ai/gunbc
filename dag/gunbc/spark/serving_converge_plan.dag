@@ -1,0 +1,764 @@
+module gunbc.spark.serving_converge_plan
+
+import gunbc.spark.serving_observed_members {
+  spark_serving_projection_provenance,
+  SparkServingObservedMemberProjection,
+  SparkServingObservedMembers,
+}
+import std.types { String, List, Bool, NonEmptyStr, Int }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.spark.serving_observation_transaction {
+  SparkServingObservationAcquired,
+  SparkServingObservationTransactionRefused,
+  SparkServingObservationHermeticFixture,
+  spark_serving_provenance_host,
+}
+import gunbc.spark.serving_observe { SparkServingHostObservation }
+import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.spark.serving_convergence_withholding {
+  SparkServingConvergenceWithholding,
+  spark_serving_withheld_hosts,
+  spark_serving_host_is_withheld_in,
+  spark_serving_withholding_cause_in,
+}
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+}
+import gunbc.spark.serving_execution_schedule {
+  ScheduledRows,
+  SparkServingAxisDisposition,
+  SparkServingAxisPlanned,
+  SparkServingComputedRows,
+  spark_serving_bound_axis_plan,
+  spark_serving_computed_rows,
+  SparkServingAxisRefused,
+  SparkServingFrozenExecutionSchedule,
+  SparkServingScheduleFrozen,
+  SparkServingScheduleRefused,
+  scheduled_rows_from_frozen_schedule,
+  scheduled_rows_list,
+  spark_serving_freeze_execution_schedule,
+}
+import gunbc.spark.serving_membership {
+  SparkServingMember,
+  SparkServingMemberAt,
+  SparkServingLingerAddress,
+  spark_serving_member,
+  spark_serving_serving_principal,
+  spark_serving_executor_linger_state_digest,
+  spark_serving_executor_linger_disabled_state_digest,
+  spark_serving_membership_reconcile,
+  spark_serving_baseline_members,
+  spark_serving_membership_noop,
+  spark_serving_desired_members,
+}
+import gunbc.spark.serving_release { SparkServingOccurrence, SparkServingRelease }
+import gunbc.spark.serving_converge_realize {
+  realize_spark_serving_install_effect_command,
+  realize_spark_serving_retirement_effect_command,
+  SparkServingInstallRemoteCommandsPresent,
+  SparkServingInstallRemoteCommandsRefused,
+}
+import gunbc.spark.serving_desired {
+  spark_serving_automation_principal_login,
+  spark_serving_desired_admission,
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+  spark_serving_occurrence,
+}
+import gunbc.spark.serving_member_realization {
+  spark_serving_realization_for_member_action,
+  SparkServingMemberRealization,
+  SparkServingMemberInstalls,
+  SparkServingMemberRetires,
+  spark_serving_install_effects_include,
+}
+import gunbc.spark.cell_role {
+  SparkCellRole, SparkServingCell, SparkTrainingCell, spark_cell_role_of,
+  SparkCellRoleAssignment, spark_cell_role_in, spark_cell_role_assignments,
+  SparkCellRoleLookup, SparkCellRoleAbsent, SparkCellRoleUnique, SparkCellRoleAmbiguous,
+}
+import gunbc.spark.serving_realization {
+  ServingInstallEffect, EnableLingerForOwnAccount,
+  SparkServingRetirementEffect,
+  SparkServingExecutablePlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
+}
+import gunbc.fleet_converge_plan {
+  FleetConvergeSparkServingTypedAction,
+  PlannedEffectExecution,
+  fleet_converge_spark_serving_row_effects,
+}
+// Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed
+// rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount).
+// Plan observes linger state, runs membership_reconcile once, serializes MemberAction +
+// install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never
+// re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec —
+// NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants
+// enable-linger only.
+
+fn spark_serving_desired_linger_member(host: HostIdentity) -> SparkServingMember {
+  spark_serving_member(
+    host: host,
+    principal: spark_serving_serving_principal(),
+    address: SparkServingLingerAddress,
+    state_digest: spark_serving_executor_linger_state_digest(),
+    ownership: Ensured,
+  )
+}
+
+fn spark_serving_linger_observed_members(
+  host: HostIdentity,
+  linger_enabled: Bool,
+) -> List<SparkServingMember> {
+  if linger_enabled {
+    [spark_serving_desired_linger_member(host: host)]
+  } else {
+    [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingLingerAddress,
+        state_digest: spark_serving_executor_linger_disabled_state_digest(),
+        ownership: Ensured,
+      ),
+    ]
+  }
+}
+
+fn spark_serving_linger_membership_plan(
+  host: HostIdentity,
+  linger_enabled: Bool,
+) -> MembershipPlan<SparkServingMember, SparkServingMemberAt> {
+  spark_serving_membership_reconcile(
+    desired: [spark_serving_desired_linger_member(host: host)],
+    observed: spark_serving_linger_observed_members(host: host, linger_enabled: linger_enabled),
+  )
+}
+
+// THE OPERATIONS ARE REALIZED AT PLAN TIME AND FROZEN INTO THE ROW. Apply then executes exactly what
+// the plan admitted, rather than re-deriving bytes from whatever the authorities say when it runs.
+// A row whose effects cannot realize yields no row at all, which the projection above turns into a
+// typed refusal -- so an unrealizable member stops the plan instead of freezing an empty operation
+// list that apply would happily execute as a no-op.
+// THE RECONCILE KEY OF A PLANNED ACTION, WHICH IS THE SCHEDULER'S SUBJECT.
+//
+// The two refusal arms carry no key because they are not executable rows -- a refusal is a fact
+// about why nothing will be done, not a thing to order. They answer with the empty key, which
+// matches no scheduled subject, so a plan carrying one fails the row-count completeness check and
+// refuses. That is the same refusal a dropped row has always produced, reached by the same check.
+fn fleet_converge_spark_serving_action_at(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> SparkServingMemberAt {
+  match action {
+    MemberAdded { at: at, to: _ } => at
+    MemberChanged { at: at, from: _, to: _ } => at
+    MemberRemoved { at: at, from: _ } => at
+    MemberRemovalRefused { from: _, cause: _ } => ""
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
+  }
+}
+
+fn fleet_converge_spark_serving_typed_action(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> FleetConvergeSparkServingTypedAction? {
+  match spark_serving_realization_for_member_action(action: action) {
+    Absent => Absent
+    Present { value: realization } =>
+      match spark_serving_planned_realization_executions(realization: realization) {
+        Absent => Absent
+        Present { value: executions } =>
+          match executions.first() {
+            Absent => Absent
+            Present { value: head } =>
+              Present {
+                value: FleetConvergeSparkServingTypedAction {
+                  action: action,
+                  first_execution: head,
+                  further_executions: executions.skip(n: 1),
+                },
+              }
+          }
+      }
+  }
+}
+
+// REALIZED PER EFFECT, SO THE ATTRIBUTION IS ESTABLISHED WHERE IT IS KNOWN.
+//
+// The whole-sequence realizer folds every effect into one flat list and the attribution is lost at
+// exactly the moment it was available. Realizing one effect at a time keeps it: the operations an
+// effect produced are the operations bound to it, by construction rather than by a later guess at
+// list offsets.
+//
+// One effect refusing refuses the whole row, unchanged from the fold it replaces -- a partially
+// realizable member must not produce a row that applies the half that worked.
+// ONE FOLD, TWO REALIZERS, SELECTED ONCE AT THE TOP.
+//
+// The install and retirement folds are the same fold: accumulate executions, refuse the whole row if
+// any single effect cannot realize. Writing it twice would fork the partial-realization law -- the
+// one that says a member which half-translates must not produce a row that applies the half that
+// worked -- into two copies that could drift. So the direction is chosen once, by matching the
+// realization, and the shared fold takes the per-effect realizer as its only difference.
+fn spark_serving_planned_realization_executions(
+  realization: SparkServingMemberRealization,
+) -> List<PlannedEffectExecution>? {
+  match realization {
+    SparkServingMemberInstalls { effects: es } =>
+      spark_serving_planned_effect_executions(effects: es)
+    SparkServingMemberRetires { effects: es } =>
+      spark_serving_planned_retirement_executions(effects: es)
+  }
+}
+
+fn spark_serving_planned_retirement_executions(
+  effects: List<SparkServingRetirementEffect>,
+) -> List<PlannedEffectExecution>? {
+  fold(effects, init: Present { value: [] }, f: fn(acc, effect) {
+    match acc {
+      Absent => none
+      Present { value: prior } =>
+        match realize_spark_serving_retirement_effect_command(effect: effect) {
+          SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+          SparkServingInstallRemoteCommandsPresent { steps: steps } =>
+            match steps.first() {
+              Absent => none
+              Present { value: head } =>
+                Present {
+                  value: concat(prior, [
+                    PlannedEffectExecution {
+                      effect: PlannedRetirementEffect { retirement: effect },
+                      first_step: head,
+                      further_steps: steps.skip(n: 1),
+                    },
+                  ]),
+                }
+            }
+        }
+    }
+  })
+}
+
+fn spark_serving_planned_effect_executions(
+  effects: List<ServingInstallEffect>,
+) -> List<PlannedEffectExecution>? {
+  fold(effects, init: Present { value: [] }, f: fn(acc, effect) {
+    match acc {
+      Absent => none
+      Present { value: prior } =>
+        match realize_spark_serving_install_effect_command(
+          effect: effect,
+          executor_login: spark_serving_automation_principal_login(),
+        ) {
+          SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+          SparkServingInstallRemoteCommandsPresent { steps: steps } =>
+            match steps.first() {
+              Absent => none
+              Present { value: head } =>
+                Present {
+                  value: concat(prior, [
+                    PlannedEffectExecution {
+                      effect: PlannedInstallEffect { install: effect },
+                      first_step: head,
+                      further_steps: steps.skip(n: 1),
+                    },
+                  ]),
+                }
+            }
+        }
+    }
+  })
+}
+
+// A PLANNED MEMBER THAT DOES NOT TRANSLATE REFUSES; IT IS NOT DROPPED.
+//
+// This projection used to be `flat_map` with `Absent => []`, which discarded any action carrying no
+// install effects and produced a SHORTER row list with no diagnostic. The only action that reaches
+// that arm is `MemberRemovalRefused` -- itself a refusal, so the drop erased a refusal by silently
+// succeeding, and the artifact then reported a typed_row_count that did not cover its own plan.
+//
+// Its observed frequency was zero BY CONSTRUCTION: the only live plan is linger-only and linger
+// always translates, so nothing ever exercised the arm. That is what made it worth closing before
+// the plan widens rather than after -- a four-member plan is exactly the input that reaches it.
+type SparkServingTypedActionProjection
+  = SparkServingTypedActionsProjected { rows: ScheduledRows<FleetConvergeSparkServingTypedAction> }
+  | SparkServingTypedActionsRefused { cause: String }
+
+// THE ROWS COME OUT IN THE SCHEDULED ORDER, NOT THE DIFF ORDER.
+//
+// This function used to walk `plan.actions` directly, and that walk order became the order actuation
+// ran the remedies in -- a set difference's incidental traversal promoted to an execution schedule
+// with nothing in between to notice. The schedule is now derived from the resources' own
+// requires/establishes facts and frozen by the scheduler kernel, and the rows are emitted by folding
+// that frozen order. A refusal to schedule is a refusal to plan: there is no arm that emits rows in
+// an unscheduled order, because an unscheduled order is what produced a manager reload against a
+// unit file that did not exist yet.
+fn fleet_converge_spark_serving_typed_actions(
+  plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+  desired: List<SparkServingMember>,
+) -> SparkServingTypedActionProjection {
+  match spark_serving_freeze_execution_schedule(
+    plan: plan,
+    desired_addresses: flat_map(desired, m => [m.address]),
+  ) {
+    SparkServingScheduleRefused { cause: why } =>
+      SparkServingTypedActionsRefused { cause: why }
+    SparkServingScheduleFrozen { schedule: schedule } =>
+      fleet_converge_spark_serving_typed_actions_in_order(plan: plan, schedule: schedule)
+  }
+}
+
+// FOLDING THE FROZEN ORDER OVER THE PLAN. The completeness check is unchanged and still compares
+// against `plan.actions`, so a row lost to the reordering fold refuses exactly as a row lost to a
+// failed projection always did -- the schedule is a permutation of the planned rows or it is a
+// refusal, never a quiet subset.
+fn fleet_converge_spark_serving_typed_actions_in_order(
+  plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+  schedule: SparkServingFrozenExecutionSchedule,
+) -> SparkServingTypedActionProjection {
+  let scheduled = scheduled_rows_from_frozen_schedule(
+    schedule: schedule,
+    rows_for: fn(at) {
+      flat_map(
+        filter(plan.actions, a => fleet_converge_spark_serving_action_at(action: a) == at),
+        a =>
+          match fleet_converge_spark_serving_typed_action(action: a) {
+            Present { value: row } => [row]
+            Absent => []
+          }
+      )
+    },
+  )
+  let rows = scheduled_rows_list(scheduled: scheduled)
+  if length(rows) == length(plan.actions) {
+    SparkServingTypedActionsProjected { rows: scheduled }
+  } else {
+    SparkServingTypedActionsRefused {
+      cause: join([
+        "spark serving typed actions refused: ", to_string(length(plan.actions)),
+        " planned member actions projected to only ", to_string(length(rows)),
+        " typed rows, so a planned member would have been dropped from the frozen artifact",
+      ], ""),
+    }
+  }
+}
+
+// THE SECOND APPLY-SHELL SPELLING IS DELETED, NOT RE-WIRED.
+//
+// spark_serving_fleet_converge_apply_shell composed fleet_converge_apply_shell with
+// fleet_converge_apply_terminal over one request -- which is exactly what
+// gunbc.fleet_converge_plan fleet_converge_plan_artifact_of_request already does, computing the
+// terminal ONCE and handing that same value to the plan body line and to the apply script. A
+// second spelling of one composition is a second name for one fact (DESIGN section 3), and the
+// two reconstructions could disagree about the terminal with nothing joining them.
+//
+// IT HAD NO CALLER TO MIGRATE. #9763 deleted the Spark-specific artifact route and with it this
+// wrapper's only caller; the symbol has occurred exactly once in the tree -- its own declaration --
+// on every commit since. Review 5070355515 asked for a caller so that a real consumer would
+// exercise the migrated API; giving a dead wrapper a caller would have minted the parallel
+// authority instead of removing it. The Spark axis reaches the single authority through
+// spark_serving_axis_for_observation into fleet_converge_plan_artifact, and THAT route's terminal
+// identity is asserted by execution in test.claim.spark_serving_converge_slice_witness.
+
+// P0-C3: THE SPARK ROWS ARE A FACT ABOUT AN OBSERVATION, NOT A FACT ABOUT AN ARTIFACT.
+//
+// Row production and artifact assembly were fused in one function, and that fusion is why the
+// generic full-host planner could not produce Spark rows: reaching them meant calling the
+// Spark-specific artifact builder, which brings its own timers, its own caps, `observed_slots: []`
+// and an unobserved fabric population. Grafting that beside the generic artifact would have created
+// two subjects, two baselines, two leases, and an arbitrary winner -- so the generic builder went on
+// minting `scheduled_rows_empty()` unconditionally and the whole Spark axis was inert in production.
+//
+// Splitting the row production out dissolves the choice. The Spark-specific artifact route is now
+// deleted outright, and the generic full-host artifact derives its rows from THIS function through
+// the axis seam below -- so there is one authority for "what must be done to this host's serving
+// state" and the artifact assembly stays where the other axes already are.
+//
+// EVERY REFUSAL IS PRESERVED, which is the part a minimum viable extraction would have lost. The
+// four unobserved guards -- unit, enablement, activity, linger -- are not ceremony: each names a
+// probe whose silence would otherwise be read as "the member is absent", and absence is what makes
+// membership_reconcile plan an ADDITION. An extraction that kept only the happy path would have
+// turned four fail-closed walls into four writes against states nobody measured.
+type SparkServingScheduledRowsVerdict
+  = SparkServingScheduledRowsReady {
+      computed: SparkServingComputedRows<FleetConvergeSparkServingTypedAction>
+      plan: SparkServingFullMembershipPlan
+    }
+  | SparkServingScheduledRowsRefused { cause: String }
+
+fn spark_serving_scheduled_rows_for_release(
+  host: NonEmptyStr,
+  projection: SparkServingObservedMemberProjection,
+  serving_release: SparkServingRelease,
+) -> SparkServingScheduledRowsVerdict {
+  match spark_serving_full_membership_plan(
+    occurrence: spark_serving_occurrence(
+      host: host as HostIdentity,
+      serving_release: serving_release,
+    ),
+    serving_release: serving_release,
+    projection: projection,
+  ) {
+    SparkServingFullMembershipPlanRefused { cause: why } =>
+      SparkServingScheduledRowsRefused { cause: join(["plan-refused observation ", why], "") }
+    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, enablement_observed: enablement_observed, activity_observed: activity_observed, linger_observed: linger_observed, observed_members: observed_members, desired_members: desired_members } =>
+      if !unit_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused unit-unobserved host=", host as String,
+            ": the unit member was not observed, and planning it as an addition against an",
+            " unobserved state would write it on every run while no replan could ever be empty",
+          ], ""),
+        }
+      } else if !enablement_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused unit-enablement-unobserved host=", host as String,
+            ": an unobserved enablement projects no member, so the desired one reads as absent and",
+            " the plan would select EnableUserUnit off a probe that never answered",
+          ], ""),
+        }
+      } else if !activity_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused unit-activity-unobserved host=", host as String,
+            ": an unobserved activity projects no member, so the desired active one reads as absent",
+            " and the plan would select StartUserUnit off a probe that never answered",
+          ], ""),
+        }
+      } else if !linger_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused linger-unobserved host=", host as String,
+            ": an unobserved linger is indistinguishable from a disabled one on the member list,",
+            " so planning against it would select the privileged enable-linger effect off a failed probe",
+          ], ""),
+        }
+      } else {
+        match fleet_converge_spark_serving_typed_actions(plan: full_plan, desired: desired_members) {
+          SparkServingTypedActionsRefused { cause: why } =>
+            SparkServingScheduledRowsRefused { cause: join(["plan-refused typed-actions ", why], "") }
+          SparkServingTypedActionsProjected { rows: spark_rows } =>
+            SparkServingScheduledRowsReady {
+              computed: spark_serving_computed_rows(
+                host: host as HostIdentity,
+                observed_members: observed_members,
+                rows: spark_rows,
+              ),
+              plan: full_plan,
+            }
+        }
+      }
+  }
+}
+
+// The same question asked without a pre-admitted release: desired admission is consulted first, so a
+// caller that has not admitted a release cannot accidentally plan against one.
+fn spark_serving_scheduled_rows_for(
+  host: NonEmptyStr,
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingScheduledRowsVerdict {
+  match spark_serving_desired_admission {
+    SparkServingDesiredRefused { cause: why } =>
+      SparkServingScheduledRowsRefused {
+        cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
+      }
+    SparkServingDesiredAdmitted { serving_release: admitted_release } =>
+      spark_serving_scheduled_rows_for_release(
+        host: host,
+        projection: projection,
+        serving_release: admitted_release,
+      )
+  }
+}
+
+// THE AXIS SEAM. A caller that wants the Spark axis for a host gets a DISPOSITION, so a refusal
+// arrives as a refusal rather than as an empty plan the converge would read as "nothing to do".
+//
+// THIS IS THE ONLY ROUTE, AND IT MATCHES THE PROVENANCE ARM RATHER THAN ASKING FOR AN ATTEMPT.
+//
+// The deleted `spark_serving_axis_for` took a host and a projection independently and never joined
+// the host to the projection's own provenance, so a fabricated projection plus any host string still
+// yielded a "bound" payload -- the opacity was real and the binding was not. It survived as "the
+// lower-level route for pure plan tests", which is the parallel-authority tell exactly: a second path
+// beside the modeled one, existing so fixtures could reach a state the modeled path refuses.
+//
+// It is gone. Everything the bound plan carries comes out of ONE observation, and the binding step is
+// reached only from inside the SparkServingObservationAcquired arm -- so the earlier version's
+// weakness, matching on "does an observation attempt exist" rather than on the arm itself, is closed
+// too: an arm test cannot be satisfied by a projector that happens to answer Present.
+//
+// The host join stays, and it is not redundant with the arm match: the projection carries its own
+// provenance, and nothing in the type system says it is the SAME observation the readback came from.
+// A projection observed on another host would otherwise tag one host's schedule with another's
+// identity, and the artifact's subject join would then compare two values that already agreed by the
+// caller's arrangement.
+fn spark_serving_axis_for_observation(
+  observation: SparkServingHostObservation,
+) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  match observation.provenance {
+    SparkServingObservationTransactionRefused { request: r, cause: why } =>
+      SparkServingAxisRefused {
+        host: r.host,
+        cause: join([
+          "the observation transaction for host ", r.host as String,
+          " refused, so there is no measured population to plan from: ", why as String,
+        ], ""),
+      }
+    SparkServingObservationHermeticFixture { host: h, fixture_identity: fid } =>
+      SparkServingAxisRefused {
+        host: h,
+        cause: join([
+          "the observation for host ", h as String,
+          " is the hermetic fixture ", fid as String,
+          ", which measured nothing, so there is no population to plan from",
+        ], ""),
+      }
+    SparkServingObservationAcquired {
+      host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _, receipt: _,
+    } =>
+      if !host_identity_eq(
+        a: h,
+        b: spark_serving_provenance_host(
+          p: spark_serving_projection_provenance(projection: observation.projection),
+        ),
+      ) {
+        SparkServingAxisRefused {
+          host: h,
+          cause: join([
+            "the projection was observed on host ",
+            spark_serving_provenance_host(
+              p: spark_serving_projection_provenance(projection: observation.projection),
+            ) as String,
+            " but the axis is being planned from an observation acquired on ",
+            h as String,
+          ], ""),
+        }
+      } else {
+        match spark_serving_scheduled_rows_for(
+          host: h as NonEmptyStr,
+          projection: observation.projection,
+        ) {
+          SparkServingScheduledRowsRefused { cause: why } =>
+            SparkServingAxisRefused { host: h, cause: why }
+          SparkServingScheduledRowsReady { computed: computed, plan: _ } =>
+            SparkServingAxisPlanned {
+              plan: spark_serving_bound_axis_plan(
+                provenance: observation.provenance,
+                computed: computed,
+              ),
+            }
+        }
+      }
+  }
+}
+
+// THE SECOND ARTIFACT ASSEMBLER IS DELETED, AND ITS ONE UNIQUE FACT MOVED.
+//
+// spark_serving_fleet_converge_plan_artifact_from_rows assembled a whole FleetConvergePlanArtifact
+// beside the generic one, and the only thing it did that the generic assembler did not was write the
+// "# spark-serving-typed-actions:" line the plan's own consistency wall reads. Two assemblers for one
+// artifact is the parallel authority; the wall living on only one of them meant the surviving route
+// emitted plans its own apply reader refuses. The line is now written by the generic assembler, where
+// the rows already are, and this function has no callers left.
+
+fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool {
+  spark_serving_membership_noop(
+    plan: spark_serving_linger_membership_plan(
+      host: operator_host_srv5,
+      linger_enabled: linger_enabled,
+    ),
+  )
+}
+
+// THE ROW CARRIES PLANNED EFFECTS, AND THIS ASKED THE INSTALL-ONLY QUESTION OF THEM.
+//
+// spark_serving_install_effects_include takes List<ServingInstallEffect> and a bare needle. Since the
+// retirement vocabulary landed, fleet_converge_spark_serving_row_effects answers in the WRAPPER,
+// List<SparkServingExecutablePlannedEffect>, so every comparison was a wrapped value against a bare constructor
+// and no row could ever match. This function returned `none` for every input, including rows that
+// plainly carry EnableLingerForOwnAccount -- a silent always-absent, not a refusal.
+//
+// It survived because its discriminating claim lives in a module that could not resolve under the
+// 7.9 GiB CI envelope, so the red was never observed. It is repaired by matching the wrapper it is
+// actually given rather than by widening the install-only predicate, because the two questions are
+// genuinely different: "does this row install linger" must answer false for a RETIREMENT row that
+// mentions linger, and a predicate over the unwrapped union would answer true.
+fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction) -> ServingInstallEffect? {
+  if any(fleet_converge_spark_serving_row_effects(row: row), e =>
+    match e {
+      PlannedInstallEffect { install: i } => i == EnableLingerForOwnAccount
+      PlannedRetirementEffect { retirement: _ } => false
+    }) {
+    Present { value: EnableLingerForOwnAccount }
+  } else {
+    none
+  }
+}
+
+// THE FULL-POPULATION PLAN. `spark_serving_linger_membership_plan` above reconciles a single-element
+// desired list, so three of the four modeled members were never planned and the install effects that
+// act on them could never be selected. This reconciles the whole declared population against what was
+// actually observed.
+//
+// It refuses rather than planning when the observation could not be made: a refused observation
+// rendered as an empty observed population would plan every member as an addition against a host
+// nobody saw.
+//
+// RUNTIME AND MODEL COMPLETENESS REFUSE HERE RATHER THAN TRAVELLING AS FIELDS, and the choice is the
+// point. The projection carries runtime_observed and model_observed; this carrier destructured only
+// unit, enablement and linger, so both were silently dropped -- a refused runtime probe omitted the
+// runtime member, the member read as ABSENT, and InstallOwnedRuntimeClosure became selectable. Same
+// for the model and MaterializeModelArtifact. That is actuation from ignorance: the remedy for "the runtime
+// is not there" and for "we could not look" are different, and omission collapses them.
+//
+// Adding two more Bool fields would have reproduced the very bug -- the defect was a completeness
+// fact that a partial destructure discarded, and the repair cannot be another field for the next
+// destructure to drop. Refusing at the plan means no downstream consumer can forget to check,
+// because there is no plan to consume. Construction over validation.
+//
+// Each cause names its own subject: a single "incomplete observation" sentence would send an
+// operator looking in the wrong place, and these two have different probes and different remedies.
+// DESIRED STATE IS SCOPED BY THE HOST'S ROLE, WHICH IS THE JOIN THIS PLANNER DID NOT HAVE.
+//
+// The role authority landed and the production planner never consulted it. Two paths existed and
+// neither retires anything: iterate the desired-serving hosts and srv6 is simply absent from the
+// loop, so no retirement is ever planned; or invoke the planner for srv6 directly and it constructs
+// the FULL serving desired state, so serving is retained or restored on the machine that was
+// supposed to stop serving. The witness above builds the right plan by filtering a fixture, which
+// proves the scope partition and proves nothing about production.
+//
+// A training cell's desired state is the baseline members alone. The four service members leave
+// desired state, the reconcile emits four removals, and the teardown schedule orders them -- the
+// same set difference the fixture exercises, now reached from the role rather than from a filter the
+// caller remembered to apply.
+//
+// A HOST WITH NO SPARK ROLE REFUSES rather than defaulting to serving. This planner is reachable with
+// any HostIdentity, and answering "full serving desired state" for a machine nobody assigned is how a
+// convergence installs a model server on the wrong box.
+type SparkServingRoleScopedDesired
+  = SparkServingRoleScopedDesiredReady { members: List<SparkServingMember> }
+  | SparkServingRoleScopedDesiredRefused { cause: String }
+
+fn spark_serving_role_scoped_desired_members(
+  occurrence: SparkServingOccurrence,
+  serving_release: SparkServingRelease,
+) -> SparkServingRoleScopedDesired {
+  spark_serving_role_scoped_desired_members_in(
+    assignments: spark_cell_role_assignments,
+    withheld: spark_serving_withheld_hosts,
+    occurrence: occurrence,
+    serving_release: serving_release)
+}
+
+// The roster is a parameter so the training arm below stays exercisable by evidence regardless of
+// which hosts currently hold which role -- see gunbc.spark.cell_role spark_cell_role_in.
+fn spark_serving_role_scoped_desired_members_in(
+  assignments: List<SparkCellRoleAssignment>,
+  withheld: List<SparkServingConvergenceWithholding>,
+  occurrence: SparkServingOccurrence,
+  serving_release: SparkServingRelease,
+) -> SparkServingRoleScopedDesired {
+  if spark_serving_host_is_withheld_in(withheld: withheld, host: occurrence.host) {
+    SparkServingRoleScopedDesiredRefused {
+      cause: spark_serving_withholding_cause_in(withheld: withheld, host: occurrence.host),
+    }
+  } else {
+  match spark_cell_role_in(assignments: assignments, host: occurrence.host) {
+    SparkCellRoleAbsent =>
+      SparkServingRoleScopedDesiredRefused {
+        cause: "spark serving plan refused: the host holds no Spark cell role, and a machine nobody assigned must not receive serving desired state by default",
+      }
+    SparkCellRoleAmbiguous { assignments: rows } =>
+      SparkServingRoleScopedDesiredRefused {
+        cause: join([
+          "spark serving plan refused: ", to_string(length(rows)),
+          " Spark cell role assignments name this host, so the roster does not decide whether it serves or trains",
+        ], ""),
+      }
+    SparkCellRoleUnique { role: role } =>
+      match role {
+        SparkServingCell =>
+          SparkServingRoleScopedDesiredReady {
+            members: spark_serving_desired_members(
+              occurrence: occurrence,
+              serving_release: serving_release,
+            ),
+          }
+        SparkTrainingCell =>
+          SparkServingRoleScopedDesiredReady {
+            members: spark_serving_baseline_members(
+              members: spark_serving_desired_members(
+                occurrence: occurrence,
+                serving_release: serving_release,
+              ),
+            ),
+          }
+      }
+  }
+  }
+}
+
+fn spark_serving_full_membership_plan(
+  occurrence: SparkServingOccurrence,
+  serving_release: SparkServingRelease,
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingFullMembershipPlan {
+  match projection {
+    SparkServingObservedMembers {
+      members: observed,
+      runtime_observed: runtime_observed,
+      model_observed: model_observed,
+      unit_observed: unit_observed,
+      enablement_observed: enablement_observed,
+      activity_observed: activity_observed,
+      linger_observed: linger_observed,
+    } =>
+      if runtime_observed == false {
+        SparkServingFullMembershipPlanRefused {
+          cause: "spark serving plan refused: the runtime materialization was not observed, and an unobserved runtime must not be planned as an absent one — the remedy for a missing runtime is to install it, and the remedy for a failed probe is to fix the probe",
+        }
+      } else if model_observed == false {
+        SparkServingFullMembershipPlanRefused {
+          cause: "spark serving plan refused: the model store was not observed, and an unobserved store must not be planned as an absent one — that would pull a multi-gigabyte artifact onto a host that may already hold it, on the strength of a failed probe",
+        }
+      } else {
+      match spark_serving_role_scoped_desired_members(
+        occurrence: occurrence,
+        serving_release: serving_release,
+      ) {
+        SparkServingRoleScopedDesiredRefused { cause: why } =>
+          SparkServingFullMembershipPlanRefused { cause: why }
+        SparkServingRoleScopedDesiredReady { members: desired } =>
+      SparkServingFullMembershipPlanReady {
+        plan: spark_serving_membership_reconcile(
+          desired: desired,
+          observed: observed,
+        ),
+        desired_members: desired,
+        unit_observed: unit_observed,
+        enablement_observed: enablement_observed,
+        activity_observed: activity_observed,
+        linger_observed: linger_observed,
+        observed_members: observed,
+      }
+      }
+      }
+  }
+}
+
+type SparkServingFullMembershipPlan
+  = SparkServingFullMembershipPlanReady {
+      plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+      unit_observed: Bool,
+      enablement_observed: Bool,
+      activity_observed: Bool,
+      linger_observed: Bool,
+      observed_members: List<SparkServingMember>,
+      desired_members: List<SparkServingMember>,
+    }
+  | SparkServingFullMembershipPlanRefused { cause: String }

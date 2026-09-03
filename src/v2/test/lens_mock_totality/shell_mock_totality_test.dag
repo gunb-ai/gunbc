@@ -1,20 +1,11 @@
 module v2.test.lens_mock_totality.shell_mock_totality
 
+import extdeps.shell.mock_corpus { shell_published_mock_corpus }
+import v2.std.diagnostic { outcome_accepted }
 import v2.lens.mock_totality { mock_unhandled_rejection }
-import v2.test.lens_mock_totality.witness_template {
-  mock_totality_green_holds,
-  mock_totality_red_on_omission_holds,
-  omit_consumer_handles,
-  outcome_accepted_p
-}
-import extdeps.shell.mock_corpus {
-  PublishedMockCase,
-  shell_published_mock_corpus
-}
-import v2.std.collection { List }
-import v2.std.diagnostic { Outcome, outcome_accepted }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.test.lens_mock_totality.witness_template { mock_totality_green_holds, mock_totality_red_on_omission_holds, omit_consumer_handles, outcome_accepted_p }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedShellMock {
   tag: Symbol
@@ -25,8 +16,6 @@ data shell_red_omit_keys: List<String> = ["shell.Exec.Run"]
 fn materialize_shell_mock(case: PublishedMockCase) -> Outcome<MaterializedShellMock> {
   if case.operation_key == "shell.Find.ListDirs" {
     outcome_accepted(value: MaterializedShellMock { tag: ^materialized_find_list_dirs })
-  } else if case.operation_key == "shell.Which.Check" {
-    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_which_check })
   } else if case.operation_key == "shell.Exec.Run" {
     outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_run })
   } else if case.operation_key == "shell.Exec.Check" {

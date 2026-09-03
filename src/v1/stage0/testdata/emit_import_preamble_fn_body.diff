@@ -1,0 +1,27 @@
+diff --git a/dag/extdeps/languages/json/emit.dag b/dag/extdeps/languages/json/emit.dag
+index 775eac87c1..7494695b3a 100644
+--- a/dag/extdeps/languages/json/emit.dag
++++ b/dag/extdeps/languages/json/emit.dag
+@@ -1,7 +1,7 @@
+ module extdeps.languages.json.emit
+ 
+ import extdeps.external_authority { ExternalAuthority }
+-import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
++import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
+ import extdeps.uri { Uri, Https }
+ 
+ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+@@ -40,6 +40,13 @@ fn json_int(n: Int) -> JsonValue {
+   JsonNumber { lexeme: json_int_lexeme(n: n) }
+ }
+ 
++fn json_number_from_lexeme_string(s: String) -> JsonValue? {
++  match json_number_lexeme(s: s) {
++    Present { value: l } => Present { value: JsonNumber { lexeme: l } }
++    Absent => none
++  }
++}
++
+ fn json_string(s: String) -> JsonValue {
+   JsonString { value: s }
+ }

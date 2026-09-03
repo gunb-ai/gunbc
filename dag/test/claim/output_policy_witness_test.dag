@@ -1,0 +1,226 @@
+module test.claim.output_policy_witness
+
+import gunbc.output_policy { ExpectedOutcome }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
+  match d {
+    Suppressed => suppressed
+    Condensed => condensed
+    Full => full
+  }
+}
+
+fn verbosity_is_verbose(v: Verbosity) -> Bool {
+  match v { Verbose => true, _ => false }
+}
+
+fn verbosity_is_quiet(v: Verbosity) -> Bool {
+  match v { Quiet => true, _ => false }
+}
+
+fn verbosity_is_normal(v: Verbosity) -> Bool {
+  match v { Normal => true, _ => false }
+}
+
+test fn w_diagnostic_never_hidden() -> Bool {
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+}
+
+test fn w_instrumentation_is_debug_only() -> Bool {
+  dec_is(d: channel_decision(channel: Instrumentation, verbosity: Normal), suppressed: true, condensed: false, full: false) &&
+  dec_is(d: channel_decision(channel: Instrumentation, verbosity: Quiet), suppressed: true, condensed: false, full: false) &&
+  dec_is(d: channel_decision(channel: Instrumentation, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+}
+
+test fn w_shell_trace_is_debug_only_at_normal() -> Bool {
+  dec_is(d: channel_decision(channel: ShellTrace, verbosity: Normal), suppressed: true, condensed: false, full: false) &&
+  dec_is(d: channel_decision(channel: ShellTrace, verbosity: Quiet), suppressed: true, condensed: false, full: false) &&
+  dec_is(d: channel_decision(channel: ShellTrace, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+}
+
+test fn w_claim_result_shown_at_normal_hidden_at_quiet() -> Bool {
+  dec_is(d: channel_decision(channel: ClaimResult, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: ClaimResult, verbosity: Quiet), suppressed: true, condensed: false, full: false)
+}
+
+test fn w_progress_condenses_at_normal() -> Bool {
+  dec_is(d: channel_decision(channel: Progress, verbosity: Normal), suppressed: false, condensed: true, full: false) &&
+  dec_is(d: channel_decision(channel: Progress, verbosity: Quiet), suppressed: true, condensed: false, full: false)
+}
+
+test fn w_verbose_wins_over_quiet() -> Bool {
+  verbosity_is_verbose(v: resolve_verbosity(env: VerbosityEnv { verbose: true, quiet: true })) &&
+  verbosity_is_quiet(v: resolve_verbosity(env: VerbosityEnv { verbose: false, quiet: true })) &&
+  verbosity_is_normal(v: resolve_verbosity(env: VerbosityEnv { verbose: false, quiet: false }))
+}
+
+test fn w_env_var_dispatch_names_grounded() -> Bool {
+  env_var_for(v: Verbose) == "GUNBC_VERBOSE" &&
+  env_var_for(v: Quiet) == "GUNBC_QUIET"
+}
+
+test fn w_shell_trace_cap_is_authority() -> Bool {
+  shell_trace_summary_max_columns == 100
+}
+
+test fn w_resolve_channel_policy_normal_bundles_decisions() -> Bool {
+  let p = resolve_channel_policy(verbose: false, quiet: false)
+  dec_is(d: p.diagnostic, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.claim_result, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.progress, suppressed: false, condensed: true, full: false) &&
+  dec_is(d: p.shell_trace, suppressed: true, condensed: false, full: false) &&
+  dec_is(d: p.instrumentation, suppressed: true, condensed: false, full: false)
+}
+
+test fn w_resolve_channel_policy_verbose_all_full() -> Bool {
+  let p = resolve_channel_policy(verbose: true, quiet: false)
+  dec_is(d: p.shell_trace, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.instrumentation, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.progress, suppressed: false, condensed: false, full: true)
+}
+
+fn disp_is(d: StreamDisposition, surface: Bool, counts: Bool, suppressed: Bool) -> Bool {
+  match d {
+    SurfaceContent => surface
+    SummarizeCounts => counts
+    StreamSuppressed => suppressed
+  }
+}
+
+fn shell_stream(verbosity: Verbosity, expected: ExpectedOutcome, observed: ObservedOutcome) -> StreamDisposition {
+  effect_stream_disposition(channel: ShellTrace, verbosity: verbosity, expected: expected, observed: observed)
+}
+
+fn surfaced_text_or_marker(d: StreamDisposition, text: String) -> String {
+  match surface_effect_stream(disposition: d, text: text) {
+    Present { value: surfaced } => surfaced
+    Absent => "<omitted>"
+  }
+}
+
+test fn w_divergence_surfaces_agreement_counts_at_normal() -> Bool {
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: ObservedSuccess),
+          surface: false, counts: true, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)),
+          surface: false, counts: true, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: ObservedSuccess),
+          surface: true, counts: false, suppressed: false)
+}
+
+test fn w_red_control_failing_as_declared_does_not_replay_content() -> Bool {
+  surfaced_text_or_marker(
+    d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)),
+    text: "::error::build verification: declared artifact absent"
+  ) == "<omitted>"
+}
+
+test fn w_red_control_that_unexpectedly_succeeds_surfaces() -> Bool {
+  surfaced_text_or_marker(
+    d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: ObservedSuccess),
+    text: "wall did not fire"
+  ) == "| wall did not fire"
+}
+
+test fn w_surfaced_subject_text_cannot_mint_annotations() -> Bool {
+  surfaced_text_or_marker(
+    d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)),
+    text: "::error::boom\n::warning::next"
+  ) == "| ::error::boom\n| ::warning::next"
+}
+
+test fn w_neutralization_is_the_only_route_to_surfaced_text() -> Bool {
+  neutralize_workflow_commands(text: "::endgroup::") == "| ::endgroup::" &&
+  subject_text_line_guard == "| "
+}
+
+// Observation dissolve: Quiet suppresses Ambient ShellTrace scaffolding, but stream disposition
+// follows divergence — Anomaly is never silenced by channel Suppressed (DESIGN section 5). Verbose
+// still surfaces every stream (Full).
+
+test fn w_quiet_ambient_silent_but_divergence_still_surfaces() -> Bool {
+  disp_is(d: shell_stream(verbosity: Quiet, expected: ExpectFailure, observed: ObservedSuccess),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Quiet, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Quiet, expected: ExpectSuccess, observed: ObservedSuccess),
+          surface: false, counts: true, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Verbose, expected: ExpectSuccess, observed: ObservedSuccess),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Verbose, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)),
+          surface: true, counts: false, suppressed: false)
+}
+
+test fn w_effect_stream_disposition_is_exit_invariant() -> Bool {
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 137)),
+          surface: true, counts: false, suppressed: false) &&
+  disp_is(d: shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 137)),
+          surface: false, counts: true, suppressed: false)
+}
+
+test fn w_expectation_axis_is_load_bearing_red_control() -> Bool {
+  let agree = shell_stream(verbosity: Normal, expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1))
+  let diverge = shell_stream(verbosity: Normal, expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1))
+  disp_is(d: agree, surface: true, counts: false, suppressed: false) == false &&
+  disp_is(d: diverge, surface: false, counts: true, suppressed: false) == false
+}
+
+test fn w_shell_trace_stream_policy_projects_the_four_corners() -> Bool {
+  let p = resolve_shell_trace_stream_policy(verbose: false, quiet: false)
+  disp_is(d: p.expect_success_observed_success, surface: false, counts: true, suppressed: false) &&
+  disp_is(d: p.expect_success_observed_failure, surface: true, counts: false, suppressed: false) &&
+  disp_is(d: p.expect_failure_observed_success, surface: true, counts: false, suppressed: false) &&
+  disp_is(d: p.expect_failure_observed_failure, surface: false, counts: true, suppressed: false) &&
+  disp_is(d: p.outcome_is_data_observed_success, surface: false, counts: true, suppressed: false) &&
+  disp_is(d: p.outcome_is_data_observed_failure, surface: false, counts: true, suppressed: false) &&
+  p.subject_line_guard == "| "
+}
+
+// The two OutcomeIsData corners above both assert counts-not-surface, which on its own is the shape a rubber stamp would also have — so it is NOT the discriminating claim. The claim that discriminates is w_outcome_is_data_is_exit_invariant below: under ExpectSuccess and ExpectFailure the disposition FLIPS between the two observed poles, and under OutcomeIsData it must NOT, because the exit is an answer rather than a verdict. An implementation that quietly treated OutcomeIsData as an alias for ExpectSuccess would pass the corner assertions and fail this one.
+fn disp_surfaces(d: StreamDisposition) -> Bool {
+  disp_is(d: d, surface: true, counts: false, suppressed: false)
+}
+
+test fn w_outcome_is_data_is_exit_invariant() -> Bool {
+  let p = resolve_shell_trace_stream_policy(verbose: false, quiet: false)
+  let es_flips = disp_surfaces(d: p.expect_success_observed_failure) && !disp_surfaces(d: p.expect_success_observed_success)
+  let ef_flips = disp_surfaces(d: p.expect_failure_observed_success) && !disp_surfaces(d: p.expect_failure_observed_failure)
+  let oid_still = disp_surfaces(d: p.outcome_is_data_observed_success) == disp_surfaces(d: p.outcome_is_data_observed_failure)
+  es_flips && ef_flips && oid_still
+}
+
+// The display grain is the fact Suppressed | Condensed | Full structurally cannot carry: those three
+// decide what becomes of one line, while the rollup grain decides whether a line exists at all.
+// Verbose keeps leaf grain because the operator asked to see the individual work; Normal and Quiet
+// fold to the batch, where the leaf identities live in the receipt artifact instead.
+test fn w_normal_folds_routine_work_to_batch_grain() -> Bool {
+  match channel_policy(verbosity: Normal).routine_rollup_grain {
+    Absent => false
+    Present { value: g } => match g {
+      BatchGrain => true
+      _ => false
+    }
+  }
+}
+
+test fn w_verbose_keeps_leaf_grain_so_the_operator_sees_individual_work() -> Bool {
+  match channel_policy(verbosity: Verbose).routine_rollup_grain {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_quiet_folds_too_rather_than_relying_on_claim_result_suppression() -> Bool {
+  match channel_policy(verbosity: Quiet).routine_rollup_grain {
+    Absent => false
+    Present { value: g } => match g {
+      BatchGrain => true
+      _ => false
+    }
+  }
+}

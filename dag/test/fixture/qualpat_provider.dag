@@ -1,0 +1,11 @@
+module test.fixture.qualpat_provider
+
+data qualpat_provider_fixture_note: String = "Provider fixture for test.claim.qualified_pattern_head_witness_test: one GENERIC coproduct and one concrete record to instantiate it with, which is the smallest pair that can distinguish a pattern head bound from the DECLARATION (payload type is the parameter T) from one bound from the SCRUTINEE (payload type is the argument). A non-generic coproduct cannot discriminate at all, because declaration and instantiation coincide there. Self-contained by construction: compile_dag_rust_emit_check assembles its source set by following imports, so a fixture that reaches into a THIRD module makes the harness refuse the closure and the control arm goes red for a reason that has nothing to do with the subject. The names are deliberately unlike anything in the seed, so a homonym in the bare-name registry cannot satisfy the assertions by accident."
+
+type QualpatPayload {
+  root: String
+}
+
+type QualpatResult<T>
+  = QualpatOk { value: T }
+  | QualpatErr { code: Int }

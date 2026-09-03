@@ -1,0 +1,306 @@
+module gunbc.econ.llm_attempt_receipt
+
+import std.algebra { FieldOfFractions }
+import std.measure { TokenCount, Nanosecond, Joule, nanosecond_count, token_count, token_count_value }
+import std.nat { Nat }
+import std.types { Bool, List, NonEmptyStr }
+
+// Typed receipt for one LLM attempt against gunbc work, sibling to gunbc.econ.knowable_wedge and
+// gunbc.econ.scm_serving_model. A RECEIPT in the observing product layer, never a fact owned by an
+// upstream provider (DESIGN external-upstream-decomposition rule): extdeps.llm.anthropic owns the
+// provider wire contract; this module owns what WE observed. It carries counts, durations and
+// outcomes only -- no throughput, cost or tokens-per-second field exists in the record, so a
+// transcribed rate is unrepresentable rather than lens-caught (as the guarantee-recovery claims
+// carrier stores no rung). Every rate below is DERIVED from the stored pair and refuses when the
+// pair cannot support it.
+
+// TokenCount, token_count and token_count_value are CONSUMED from std.measure, never redeclared
+// here. An earlier revision declared the alias locally as Measure of Count at One over Nat, citing
+// extdeps.pricing.billing_units as precedent for downstream placement; review 48816 rightly refused
+// the citation. The billing_units aliases introduce their own phantom markers, so MoneyRate of
+// PerStoredUnitMonth is a genuinely new point in the type space unwritable in std without vendor
+// vocabulary; Measure of Count at One over Nat takes only arguments std.measure already owns, and
+// that module already names the shape three times (HardwareThreadCount, CharacterCount,
+// AmortizationMonths). A local fourth name was the DESIGN section 3 fork, not a downstream
+// instantiation, and the regen cost cited to justify it was the cost of doing the right thing. The
+// carrier now lives beside its siblings under std.measure token_count_note.
+
+// Requested and resolved model identity are DISTINCT named carriers, not one string used twice:
+// the dispatch receipt bar (gunbc.dispatch_selection dispatch_execution_receipt_bar_note) forbids
+// displaying what was REQUESTED as though it proved what RAN, and separate fields on separate
+// types keep the two facts addressable. MEASURED LIMIT, NOT A WALL (probe executed 2026-08-05 on
+// this branch): a scratch entry passing a RequestedModelIdentity into a parameter declared
+// ResolvedModelIdentity RESOLVED AND RAN GREEN, so brand() on NonEmptyStr does not refuse
+// cross-brand substitution at this slice. An earlier revision claimed the substitution 'does not
+// compile' and cited a never-written witness
+// requested_model_identity_is_not_resolved_model_identity -- claim and citation both false, caught
+// by executing the probe rather than reading the type. So the honest rung is MITIGATABLE, as
+// std.measure token_count_note records for the Count-axis family: distinct names buy reading
+// clarity and separate construction sites, not unwritability.
+// NEXT-RUNG TRIGGER: the brand-refinement enforcement path making cross-brand assignment a
+// typecheck refusal, or distinct record carriers rather than two brands over one primitive; until
+// one lands, a compile-red control is the only evidence that would establish the wall, and none
+// exists.
+
+type RequestedModelIdentity = NonEmptyStr where brand("RequestedModelIdentity")
+type ResolvedModelIdentity = NonEmptyStr where brand("ResolvedModelIdentity")
+
+// A marketing model name is not an artifact. serving_runtime_identity and model_artifact_identity
+// bind the exact served thing -- quantization, build, adapter set -- because two attempts naming
+// one model at different quantizations are different economic subjects. They stay NonEmptyStr at
+// this slice: the cited artifact rows that would ground them (model catalog, GGUF sizes, runtime
+// versions) land with the pricing rows in the follow-on, and grounding them early would mint a
+// second artifact authority beside the one those rows will carry.
+
+type LlmTaskClass
+  = DagReview
+  | DagPatch
+  | WitnessRepair
+  | ArchitectureJudgment
+
+type ReviewDisposition
+  = ReviewAccepted
+  | ReviewRejected { reason: NonEmptyStr }
+  | ReviewEscalated { reason: NonEmptyStr }
+
+type LlmTokenUsage {
+  input: TokenCount
+  cached_input: TokenCount
+  output: TokenCount
+}
+
+// Usage is a three-state observation, never a zero default. An attempt whose provider reported no
+// usage is NOT one that consumed nothing: conflating them is the absorbing-fallback shape DESIGN
+// section 5 forbids, one level down -- bottom-as-answer for bottom-as-ignorance. So
+// LlmUsageUnobserved carries a located reason and every economic derivation over it refuses, while
+// the attempt and its disposition stay fully readable: execution is not refused because accounting
+// is missing.
+
+type LlmUsageObservation
+  = LlmUsageObserved { usage: LlmTokenUsage }
+  | LlmUsageUnobserved { reason: NonEmptyStr }
+
+type PrefixCacheObservation
+  = PrefixCacheHit { reused: TokenCount }
+  | PrefixCacheMiss
+  | PrefixCacheUnobserved { reason: NonEmptyStr }
+
+// Admitted sessions and active sequences are separate facts: sixteen review agents do not
+// ordinarily decode at once -- most are cloning, compiling, waiting on witnesses or review -- so a
+// server sustaining four active sequences can admit considerably more than four sessions.
+// Reporting either number as the other makes a concurrency sweep unreadable, so the receipt
+// records both and derives neither.
+
+type ConcurrencyObservation {
+  admitted_sessions: Nat
+  active_sequences: Nat
+}
+
+// Durations are optional per phase and stay on Nanosecond, the canonical exact elapsed-time carrier
+// (std.measure nanosecond_millisecond_projection_note: measurement, ordering, joining and
+// attribution retain Nanosecond; millisecond is presentation only). Queue delay is recorded beside
+// prefill and decode because time-to-first-token under load is what a concurrency sweep buys, and
+// a receipt storing only decode would make a queue-bound host look fast.
+
+type AttemptPhaseDurations {
+  queue: Nanosecond?
+  prefill: Nanosecond?
+  decode: Nanosecond?
+}
+
+// The receipt binds the substrate revision that produced the task, not only the answering model.
+// Escalation rate is endogenous to TWO independent variables -- the local model improving, and
+// gunbc's construction guarantees making tasks need less judgment -- both pushing it down. Without
+// the substrate identity a falling rate is credited to whichever variable was being worked on, and
+// the 'progressively smaller models suffice' thesis is a claim about the SECOND, so it cannot be
+// measured without this field.
+
+type SubstrateIdentity {
+  compiler_revision: NonEmptyStr
+  authority_snapshot: NonEmptyStr
+}
+
+type LlmAttemptReceipt {
+  attempt_identity: NonEmptyStr
+  task_class: LlmTaskClass
+
+  prompt_policy_identity: NonEmptyStr
+  context_policy_identity: NonEmptyStr
+  substrate: SubstrateIdentity
+
+  requested_model: RequestedModelIdentity
+  resolved_model: ResolvedModelIdentity
+  model_artifact_identity: NonEmptyStr
+  serving_runtime_identity: NonEmptyStr
+  machine_opportunity_identity: NonEmptyStr
+
+  concurrency: ConcurrencyObservation
+  prefix_cache: PrefixCacheObservation
+
+  usage: LlmUsageObservation
+  durations: AttemptPhaseDurations
+  wall_energy: Joule?
+
+  disposition: ReviewDisposition
+}
+
+// Throughput is an exact fraction over the SAME FieldOfFractions of Nat authority
+// gunbc.econ.acquisition ConversionRate consumes -- output tokens over elapsed nanoseconds -- and
+// nothing divides until a consumer asks for the floor projection. A tokens-per-second scalar would
+// bake one rounding into the authority and make cross-host comparison depend on when the division
+// happened. The floor projection below is a DECLARED lossy view, total by typed refusal: none on a
+// zero denominator rather than dividing, because the record stays publicly constructible even
+// though every derivation that PRODUCES one refuses a zero window first.
+type TokenThroughput = FieldOfFractions<Nat>
+
+type ThroughputRefusalCause
+  = ThroughputUsageUnobserved
+  | DecodeDurationUnobserved
+  | ZeroDecodeDuration
+
+type DecodeThroughputResult
+  = DecodeThroughputDerived { throughput: TokenThroughput }
+  | DecodeThroughputRefused { cause: ThroughputRefusalCause }
+
+fn derive_decode_throughput(receipt: LlmAttemptReceipt) -> DecodeThroughputResult {
+  match receipt.usage {
+    LlmUsageUnobserved { reason: _ } =>
+      DecodeThroughputRefused { cause: ThroughputUsageUnobserved }
+    LlmUsageObserved { usage: u } =>
+      match receipt.durations.decode {
+        none => DecodeThroughputRefused { cause: DecodeDurationUnobserved }
+        Present { value: d } =>
+          if nanosecond_count(n: d) == 0 {
+            DecodeThroughputRefused { cause: ZeroDecodeDuration }
+          } else {
+            DecodeThroughputDerived {
+              throughput: FieldOfFractions {
+                num: token_count_value(t: u.output),
+                denom: nanosecond_count(n: d),
+              }
+            }
+          }
+      }
+  }
+}
+
+fn nanoseconds_per_second() -> Nat {
+  1000000000
+}
+
+fn throughput_per_second_floor(t: TokenThroughput) -> Nat? {
+  if t.denom == 0 {
+    none
+  } else {
+    Present { value: (t.num * nanoseconds_per_second()) / t.denom }
+  }
+}
+
+// Accepted task goodput is the primary quantity, not token throughput: a cheap attempt producing a
+// rejected finding is not useful work, and a host doubling its token rate while halving its
+// acceptance rate has bought nothing. The numerator counts ACCEPTED dispositions only -- escalated
+// and rejected attempts consume the window and contribute zero -- which is what makes this metric
+// fall when a smaller local model is pushed past its envelope. Refuses on an empty roster and on a
+// zero window rather than reporting nothing over nothing.
+fn attempt_is_accepted(d: ReviewDisposition) -> Bool {
+  match d {
+    ReviewAccepted => true
+    ReviewRejected { reason: _ } => false
+    ReviewEscalated { reason: _ } => false
+  }
+}
+
+fn attempt_is_escalated(d: ReviewDisposition) -> Bool {
+  match d {
+    ReviewAccepted => false
+    ReviewRejected { reason: _ } => false
+    ReviewEscalated { reason: _ } => true
+  }
+}
+
+fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
+  fold_list(
+    xs: receipts,
+    empty: 0,
+    cons: fn(acc, r) { if attempt_is_accepted(d: r.disposition) { acc + 1 } else { acc } }
+  )
+}
+
+fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> Nat {
+  fold_list(
+    xs: receipts,
+    empty: 0,
+    cons: fn(acc, r) { if attempt_is_escalated(d: r.disposition) { acc + 1 } else { acc } }
+  )
+}
+
+fn attempt_roster_count(receipts: List<LlmAttemptReceipt>) -> Nat {
+  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
+}
+
+type GoodputRefusalCause
+  = EmptyAttemptRoster
+  | ZeroObservationWindow
+
+type AcceptedGoodput = FieldOfFractions<Nat>
+
+type AcceptedGoodputResult
+  = AcceptedGoodputDerived { goodput: AcceptedGoodput }
+  | AcceptedGoodputRefused { cause: GoodputRefusalCause }
+
+fn derive_accepted_goodput(
+  receipts: List<LlmAttemptReceipt>,
+  window: Nanosecond,
+) -> AcceptedGoodputResult {
+  if attempt_roster_count(receipts: receipts) == 0 {
+    AcceptedGoodputRefused { cause: EmptyAttemptRoster }
+  } else {
+    if nanosecond_count(n: window) == 0 {
+      AcceptedGoodputRefused { cause: ZeroObservationWindow }
+    } else {
+      AcceptedGoodputDerived {
+        goodput: FieldOfFractions {
+          num: accepted_attempt_count(receipts: receipts),
+          denom: nanosecond_count(n: window),
+        }
+      }
+    }
+  }
+}
+
+// Frontier escalation fraction is an exact fraction over the same roster, joining the substrate
+// identity above: the pair distinguishes 'the local model got better' from 'the work got easier'.
+// Refuses on an empty roster rather than reporting zero of zero, which reads as a perfect local
+// tier.
+
+type EscalationFraction = FieldOfFractions<Nat>
+
+type EscalationFractionResult
+  = EscalationFractionDerived { fraction: EscalationFraction }
+  | EscalationFractionRefused { cause: GoodputRefusalCause }
+
+// DECLARED FRONTIER -- this slice lands the mechanism and its discriminating evidence, NOT a
+// production consumer. The gunbc.dispatch_selection seam that will carry these receipts types its
+// observed arm as DispatchUsageObserved of a List of NonEmptyStr, and its only construction site
+// is dispatch_usage_unobserved, so no real attempt has ever been recorded and nothing exists to
+// re-home; calling that seam typed would be the specification-without-execution trap DESIGN
+// section 5 names. NEXT TRIGGER: provider usage capture on the dispatch path replaces the untyped
+// arm with LlmUsageObservation and persists one receipt per real attempt; the cited token-rate rows
+// and cost-per-accepted-task derivation follow in their own slice, where
+// extdeps.pricing.billing_units gains per-token markers beside its storage markers. This module
+// derives no cost precisely because those rates are not yet cited; fabricating a rate to make the
+// arithmetic run is what the follow-on exists to prevent.
+
+fn derive_escalation_fraction(receipts: List<LlmAttemptReceipt>) -> EscalationFractionResult {
+  let total = attempt_roster_count(receipts: receipts)
+  if total == 0 {
+    EscalationFractionRefused { cause: EmptyAttemptRoster }
+  } else {
+    EscalationFractionDerived {
+      fraction: FieldOfFractions {
+        num: escalated_attempt_count(receipts: receipts),
+        denom: total,
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 module v2.program
 
-import v2.compiler.body_producer { produce_mvp1_pick_if_arrow_with_body }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.ingested_fixture_arrows { ingested_pick_if_arrow_with_body }
 import v2.compiler.eval {
   EvalContext,
   effect_io_roundtrip_transform,
@@ -11,8 +12,8 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
-  dag_mvp1_pick_if_body_from_arms,
-  dag_mvp1_type_atom_node
+  dag_pick_if_body_from_arms,
+  dag_type_atom_node
 }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   FileResourceBackend,
@@ -21,19 +22,30 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
-  Absent,
   List,
   Map,
-  Present,
   list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
   Outcome,
   Rejected,
-  diagnostics_singleton
+  Unavailable,
+  diagnostics_singleton,
+  invariant_port_locus
 }
-import v2.std.algebra { Empty, length }
+import std.algebra { Empty }
+import v2.std.algebra { length }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -47,7 +59,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  SyntheticOccurrence
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -79,7 +90,7 @@ fn program_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -135,31 +146,31 @@ fn program_unit_value() -> RuntimeValue {
 }
 
 fn program_literal_one() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one)
+  dag_type_atom_node(identity: ^dag_pick_lit_one)
 }
 
 fn program_literal_two() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two)
+  dag_type_atom_node(identity: ^dag_pick_lit_two)
 }
 
 fn program_kw_true() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
+  dag_type_atom_node(identity: ^dag_token_kw_true)
 }
 
 fn program_kw_false() -> Node {
-  dag_mvp1_type_atom_node(identity: ^dag_token_kw_false)
+  dag_type_atom_node(identity: ^dag_token_kw_false)
 }
 
 data program_locator_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data program_payload_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data program_effect_io_roundtrip: Node = effect_io_roundtrip_transform(
@@ -167,16 +178,16 @@ data program_effect_io_roundtrip: Node = effect_io_roundtrip_transform(
   payload: program_payload_literal
 )
 
-data program_pick_if_branch_with_effect_io: Node = dag_mvp1_pick_if_body_from_arms(
+data program_pick_if_branch_with_effect_io: Node = dag_pick_if_body_from_arms(
   condition: program_kw_true(),
   then_arm: program_effect_io_roundtrip,
   else_arm: program_literal_two()
 )
 
-fn program_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn program_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^program_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^program_descent_dimension }
   }
 }
 
@@ -296,22 +307,22 @@ fn program_bind_value(
 
 fn program_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: program_allocate_literal },
-    transform: TransformInterpreter { call_primitive: program_reject_primitive },
-    branch: BranchInterpreter { choose_branch: program_choose_branch },
-    loop: LoopInterpreter { step_loop: program_step_loop },
-    bind: BindInterpreter { bind_value: program_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: program_allocate_literal, identity: ^program_allocate_literal },
+    transform: TransformInterpreter { call_primitive: program_reject_primitive, identity: ^program_reject_primitive },
+    branch: BranchInterpreter { choose_branch: program_choose_branch, identity: ^program_choose_branch },
+    loop: LoopInterpreter { step_loop: program_step_loop, identity: ^program_step_loop },
+    bind: BindInterpreter { bind_value: program_bind_value, identity: ^program_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn program_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^program_allocate_literal_sym,
-    call_primitive: ^program_reject_primitive_sym,
-    choose_branch: ^program_choose_branch_sym,
-    step_loop: ^program_step_loop_sym,
-    bind_value: ^program_bind_value_sym,
+    allocate_literal: ^program_allocate_literal,
+    call_primitive: ^program_reject_primitive,
+    choose_branch: ^program_choose_branch,
+    step_loop: ^program_step_loop,
+    bind_value: ^program_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
@@ -334,30 +345,28 @@ fn program_facts_for(node: Node) -> InferredFacts {
   )
 }
 
-fn program_facts_lookup(node: Node) -> Witness<InferredFacts> {
+fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
   if node == program_pick_if_branch_with_effect_io {
-    Holds { value: program_facts_for(node: program_pick_if_branch_with_effect_io) }
+    optional_present(value: program_facts_for(node: program_pick_if_branch_with_effect_io))
   } else if node == program_effect_io_roundtrip {
-    Holds { value: program_facts_for(node: program_effect_io_roundtrip) }
+    optional_present(value: program_facts_for(node: program_effect_io_roundtrip))
   } else if node == program_locator_literal {
-    Holds { value: program_facts_for(node: program_locator_literal) }
+    optional_present(value: program_facts_for(node: program_locator_literal))
   } else if node == program_payload_literal {
-    Holds { value: program_facts_for(node: program_payload_literal) }
+    optional_present(value: program_facts_for(node: program_payload_literal))
   } else if node == program_kw_true() {
-    Holds { value: program_facts_for(node: program_kw_true()) }
+    optional_present(value: program_facts_for(node: program_kw_true()))
   } else if node == program_literal_two() {
-    Holds { value: program_facts_for(node: program_literal_two()) }
+    optional_present(value: program_facts_for(node: program_literal_two()))
   } else {
-    Violates {
-      diagnostic: eval_diagnostic(reason: ^program_facts_miss, node: node)
-    }
+    optional_absent()
   }
 }
 
 fn program_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: program_facts_lookup }
+    facts: PartialFunction { lookup: program_facts_lookup }
   }
 }
 
@@ -369,10 +378,31 @@ fn program_eval_root(root: Node) -> Outcome<RuntimeValue> {
   )
 }
 
-fn program_branch_effect_io_holds() -> Bool {
+// The Unavailable arm carries the reason the model could not decide the comparison. Routing it to
+//'false' here would answer a question the model declined to answer, and would discard the only
+// fact that distinguishes "the run produced a different value" from "these values are not
+// comparable" -- v2.lens.undecidable_verdict_collapse refuses that arm at compile.
+fn program_equality_undecided_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(
+      port: ^program_runtime_value_equality,
+      invariant: ^runtime_value_equality_decides
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn program_branch_effect_io_holds() -> Witness<Bool> {
   match program_eval_root(root: program_pick_if_branch_with_effect_io) {
-    Accepted { value: v, diagnostics: None } => v == program_unit_value()
-    _ => false
+    Accepted { value: v, diagnostics: None } =>
+      match runtime_value_equality(a: v, b: program_unit_value()) {
+        RuntimeValuesEqual => Holds { value: true }
+        RuntimeValuesDiffer => Holds { value: false }
+        RuntimeValueEqualityUnavailable { reason: r } =>
+          Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
+      }
+    _ => Holds { value: false }
   }
 }
 
@@ -380,29 +410,27 @@ fn program_pick_if_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [Edge { label: Positional, target: callee }],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn program_pick_if_arrow_facts_lookup(node: Node) -> Witness<InferredFacts> {
-  Holds {
-    value: claim_inferred_facts_from_nodes(
+fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_i64_type(),
       descent: Holds { value: program_termination_proof() }
-    )
-  }
+    ))
 }
 
 fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
   InferredTree {
     root: callee,
-    facts: Map { lookup: program_pick_if_arrow_facts_lookup }
+    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup }
   }
 }
 
-fn program_pick_if_arrow_holds() -> Bool {
-  match produce_mvp1_pick_if_arrow_with_body() {
+fn program_pick_if_arrow_holds() -> Witness<Bool> {
+  match ingested_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let call = program_pick_if_call(callee: arrow)
       match eval_with_context(
@@ -410,11 +438,17 @@ fn program_pick_if_arrow_holds() -> Bool {
         context: program_context_with_effect_io(),
         inputs: inputs_root_only(root: call)
       ) {
-        Accepted { value: v, diagnostics: None } => v == program_int_one_value()
-        _ => false
+        Accepted { value: v, diagnostics: None } =>
+          match runtime_value_equality(a: v, b: program_int_one_value()) {
+            RuntimeValuesEqual => Holds { value: true }
+            RuntimeValuesDiffer => Holds { value: false }
+            RuntimeValueEqualityUnavailable { reason: r } =>
+              Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
+          }
+        _ => Holds { value: false }
       }
     }
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => Holds { value: false }
   }
 }
 
@@ -433,7 +467,7 @@ data program_run_nodes: List<Node> = [program_run_branch_gate, program_run_io_st
 
 data program_run_dependencies: List<DependencyView> = [program_run_branch_to_io]
 
-fn program_runtime_run_holds() -> Bool {
+fn program_runtime_run_holds() -> Witness<Bool> {
   match runtime_run(
     nodes: program_run_nodes,
     dependencies: program_run_dependencies,
@@ -441,17 +475,52 @@ fn program_runtime_run_holds() -> Bool {
     context: program_context_with_effect_io()
   ) {
     RuntimeRunComplete { log: log, scheduled: scheduled } =>
-      length(xs: log.entries) == 2
-        && length(xs: scheduled) == 2
-        && program_branch_effect_io_holds()
-    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } => false
+      match program_branch_effect_io_holds() {
+        Holds { value: equal } =>
+          Holds {
+            value: length(xs: log.entries) == 2
+              && length(xs: scheduled) == 2
+              && equal
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } =>
+      Holds { value: false }
   }
 }
 
+fn witness_conjunction(left: Witness<Bool>, right: Witness<Bool>) -> Witness<Bool> {
+  match left {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: l } =>
+      match right {
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Holds { value: r } => Holds { value: l && r }
+      }
+  }
+}
+
+fn program_runs_witness() -> Witness<Bool> {
+  witness_conjunction(
+    left: witness_conjunction(
+      left: program_branch_effect_io_holds(),
+      right: program_pick_if_arrow_holds()
+    ),
+    right: program_runtime_run_holds()
+  )
+}
+
+// THE DECLARED RESIDUAL (DESIGN 4b(3)). Every arm above threads the undecidability reason as a
+// located Diagnostic. It dies HERE, because v2.std.verification's BoolWitness carries only
+// { entry, function } and the harness reads a Bool -- so a claim can fail, but cannot say why.
+// This is the one sanctioned collapse, in one place, rather than four open-coded ones.
+// RETIRED BY: a diagnostic-carrying witness modality beside BoolWitnessClaim, which is the
+// CAPABILITY that lets a failing claim report its reason. No lesser artifact retires it.
 fn program_runs_holds() -> Bool {
-  program_branch_effect_io_holds()
-    && program_pick_if_arrow_holds()
-    && program_runtime_run_holds()
+  match program_runs_witness() {
+    Holds { value: b } => b
+    Violates { diagnostic: _ } => false
+  }
 }
 
 data unified_claim_program_runs: UnifiedTestClaim = BoolWitnessClaim {

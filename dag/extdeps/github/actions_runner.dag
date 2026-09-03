@@ -1,0 +1,230 @@
+module extdeps.github.actions_runner
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line }
+import extdeps.toolchain.types {
+  Architecture,
+  Aarch64,
+  X86_64,
+  X86,
+  Arm,
+  Armv7,
+  Mips,
+  Mipsel,
+  Mips64,
+  Mips64el,
+  Riscv64,
+  Wasm32,
+}
+import std.types { NonEmptyStr, String, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/runner/releases"
+  }
+}
+
+type ActionsRunnerRelease {
+  version: NonEmptyStr
+  digest_aarch64: Digest
+  digest_x86_64: Digest
+}
+
+type ActionsRunnerPublishedLinuxArch = ActionsRunnerLinuxArm64 | ActionsRunnerLinuxX64
+
+fn actions_runner_published_linux_arch_key_of(arch: ActionsRunnerPublishedLinuxArch) -> NonEmptyStr {
+  match arch {
+    ActionsRunnerLinuxArm64 => "arm64" as NonEmptyStr
+    ActionsRunnerLinuxX64 => "x64" as NonEmptyStr
+  }
+}
+
+fn actions_runner_published_linux_arch_of(arch: Architecture) -> ActionsRunnerPublishedLinuxArch? {
+  match arch {
+    Aarch64 => Present { value: ActionsRunnerLinuxArm64 }
+    X86_64 => Present { value: ActionsRunnerLinuxX64 }
+    X86 => none
+    Arm => none
+    Armv7 => none
+    Mips => none
+    Mipsel => none
+    Mips64 => none
+    Mips64el => none
+    Riscv64 => none
+    Wasm32 => none
+  }
+}
+
+type ActionsRunnerBinaryArtifact {
+  binary_release: ActionsRunnerRelease
+  arch: ActionsRunnerPublishedLinuxArch
+}
+
+fn actions_runner_binary_artifact_for_arch(
+  binary_release: ActionsRunnerRelease,
+  arch: Architecture,
+) -> ActionsRunnerBinaryArtifact? {
+  match actions_runner_published_linux_arch_of(arch: arch) {
+    Present { value: published } =>
+      Present {
+        value: ActionsRunnerBinaryArtifact {
+          binary_release: binary_release,
+          arch: published,
+        }
+      }
+    Absent => none
+  }
+}
+
+fn actions_runner_release_digest(artifact: ActionsRunnerBinaryArtifact) -> Digest {
+  match artifact.arch {
+    ActionsRunnerLinuxArm64 => artifact.binary_release.digest_aarch64
+    ActionsRunnerLinuxX64 => artifact.binary_release.digest_x86_64
+  }
+}
+
+fn actions_runner_tarball_filename(artifact: ActionsRunnerBinaryArtifact) -> String {
+  let arch_key = actions_runner_published_linux_arch_key_of(arch: artifact.arch)
+  join(
+    ["actions-runner-linux-", arch_key as String, "-", artifact.binary_release.version as String, ".tar.gz"],
+    "",
+  )
+}
+
+fn actions_runner_download_url(artifact: ActionsRunnerBinaryArtifact) -> String {
+  let file = actions_runner_tarball_filename(artifact: artifact)
+  join(
+    [
+      "https://github.com/actions/runner/releases/download/v",
+      artifact.binary_release.version as String,
+      "/",
+      file,
+    ],
+    "",
+  )
+}
+
+// WHY 2.334.0 IS GONE RATHER THAN KEPT BESIDE THIS ROW. GitHub retired it server-side: a runner of
+// that version authenticates, reaches "Listening for Jobs", and is then refused with
+// "Runner version v2.334.0 is deprecated and cannot receive messages", exits 0, and is restarted by
+// systemd forever. Measured on srv3 2026-08-25 across all 13 newly provisioned slots. A deprecated
+// pin is not a version that merely lags -- it provisions a runner that CANNOT take work, so keeping
+// it as a selectable row would only preserve a way to build dead slots.
+//
+// THE DIGESTS ARE THE UPSTREAM'S OWN, not recomputed here: actions/runner release v2.336.0 publishes
+// them in its release body, and the emitted install script verifies with sha256sum -c, so a wrong
+// value fails loudly at the host rather than installing an unverified tarball.
+data actions_runner_release_2_336_0: ActionsRunnerRelease = ActionsRunnerRelease {
+  version: "2.336.0",
+  digest_aarch64: sha256_digest(hex: "58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"),
+  digest_x86_64: sha256_digest(hex: "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"),
+}
+
+data actions_runner_base_dir: String = "/opt/actions-runner"
+
+data actions_runner_cache_dir: String = "/opt/actions-runner-cache"
+
+data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration,
+  }
+}
+
+// PRIVILEGE IS SPENT ONCE, TO SET OWNERSHIP -- everything downstream of that runs as the caller.
+// The prior form ran the whole sequence under sudo: rm, install -d, tar, then a recursive chown to
+// undo the root ownership tar had just created. That is privilege held across four operations to
+// reach a state one of them could have established directly, and the chown existed only because
+// the extract before it was privileged for no reason.
+//
+// It was also not a preference. The runner principal's NOPASSWD roster
+// (gunbc.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants) grants install, rm, systemctl,
+// apt-get, visudo and tailscale -- it does not grant tar or chown, and never did. So the emitted
+// script named two binaries the principal executing it could not sudo, and nothing joined the two
+// authorities: the mismatch was discoverable only by running a wet apply on a real host, which is
+// the most expensive place a repository can learn what its own grant roster says. Measured on
+// srv3, an add-only materialization apply refused at the first ungranted sudo with zero slots
+// mutated.
+//
+// install -d -o/-g creates the directory already owned by job_user, so tar and the tarball cleanup
+// need no privilege at all, and the surviving sudo verbs are exactly two roster members.
+
+// THE PRIVILEGED BINARIES ARE SUPPLIED, NOT SPELLED, and that is the whole content of this type.
+// This module knows the SHAPE of runner installation -- fetch, verify, place, own -- and it does
+// not know which POSIX principal will run it or what that principal is permitted to execute. Those
+// are fleet policy, and gunbc.fleet_posix_accounts owns them.
+//
+// The prior form wrote `sudo install` and `sudo rm` as literals here, which made this module a
+// second, silent authoring of "these two verbs are available as root". It was correct only by
+// coincidence: both happen to be roster members. Nothing kept them roster members, and the earlier
+// revision of this same function proved the coincidence is not reliable -- it also wrote `sudo tar`
+// and `sudo chown`, which never were.
+//
+// The alternative was to import the roster accessor here, and that is the wrong direction: an
+// extdeps module describing an upstream product would then depend on this repository's principal
+// policy, so the shape could not be reused by a caller with a different one. Passing the paths in
+// keeps the dependency pointing the way it already does -- gunbc consumes extdeps, chooses the
+// realization, and remains the single place that answers what may run as root.
+type ActionsRunnerSlotPrivilegedCommands {
+  remove_command: String
+  install_command: String
+}
+
+fn actions_runner_slot_extract_script(
+  artifact: ActionsRunnerBinaryArtifact,
+  slot_dir: NonEmptyStr,
+  privileged: ActionsRunnerSlotPrivilegedCommands,
+) -> String {
+  let url = actions_runner_download_url(artifact: artifact)
+  let digest = actions_runner_release_digest(artifact: artifact)
+  let tarball = actions_runner_tarball_filename(artifact: artifact)
+  join([
+    "set -e",
+    join(["curl -fsSL '", url, "' -o /tmp/actions-runner.tar.gz"], ""),
+    digest_shell_verify_line(digest: digest, file_path: "/tmp/actions-runner.tar.gz"),
+    privileged.remove_command,
+    privileged.install_command,
+    join(["tar xzf /tmp/actions-runner.tar.gz -C '", slot_dir as String, "'"], ""),
+    "rm -f /tmp/actions-runner.tar.gz",
+    "",
+  ], "\n")
+}
+
+data actions_runner_base_dir_ensure_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration,
+  }
+}
+
+fn actions_runner_base_dir_ensure_script(
+  base_install_command: String,
+  cache_install_command: String,
+) -> String {
+  join([
+    "set -e",
+    base_install_command,
+    cache_install_command,
+    "",
+  ], "\n")
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.actions_runner",
+      decl_name: "actions_runner_release_2_336_0",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.actions_runner.extdeps_external_authority_anchor,
+  further_citations: []
+}

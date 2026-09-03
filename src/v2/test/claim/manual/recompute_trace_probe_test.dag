@@ -1,0 +1,18 @@
+module v2.test.manual.recompute_trace_probe
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn recompute_probe_leaf(n: Int) -> Int { n + 1 }
+
+fn recompute_probe_shared() -> Int {
+  recompute_probe_leaf(n: 1) + recompute_probe_leaf(n: 2)
+}
+
+test fn recompute_probe_duplicated_demand_holds() -> Bool {
+  (recompute_probe_shared() + recompute_probe_shared()) == 10
+}
+
+test fn recompute_probe_single_demand_holds() -> Bool {
+  recompute_probe_shared() == 5
+}

@@ -1,0 +1,777 @@
+module test.claim.roadmap_workflow_progress_witness_test
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap_provider_events {
+  ProviderCompleted,
+  ProviderRunning,
+  ProviderFailed,
+  ProviderEventsRefused,
+}
+import gunbc.roadmap_workflow_progress {
+  WorkflowAttemptEvidence,
+  workflow_attempt_progress,
+  workflow_attempt_progress_json_value,
+  receipt_records_admission,
+}
+import gunbc.roadmap_workflow_command { legacy_attempt_supersedable_label }
+import gunbc.roadmap_dispatch_environment {
+  DispatchEnvironmentAdmission,
+  EnvironmentAdmitted,
+  EnvironmentRefused,
+  dispatch_environment_admission_json,
+  dispatch_environment_receipt_identity_prefix,
+  dispatch_environment_receipt_decode,
+  ReceiptDecoded,
+  ReceiptUndecodable,
+  ReceiptAdmitted,
+  ReceiptRefused,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence,
+  WorkerProcessRunning,
+  WorkerProcessExited,
+  WorkerProcessAbsent,
+  WorkerProcessUnobserved,
+}
+import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment,
+  EnvironmentWorkflowSegment,
+  WorkspaceWorkflowSegment,
+  AgentWorkflowSegment,
+  VerificationWorkflowSegment,
+  PublicationWorkflowSegment,
+  ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
+  WorkflowSegmentPending,
+  workflow_segment_kind_key,
+  workflow_segment_state_key,
+}
+import gunbc.workflow_reconcile { workflow_reconcile_status_key }
+import gunbc.roadmap_publish {
+  RoadmapPublicationSubject,
+  PublicationSubjectObservation,
+  PublicationSubjectObserved, PublicationSubjectUnobserved,
+  publication_receipt_of,
+  publication_receipt_json,
+  adjudicate_publication,
+  PullRequestsRead, PullRequestsUnreadable,
+  RemoteBranchesRead,
+  RemoteBranch,
+}
+import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
+import extdeps.github.github { GitHubUser, User, Repository }
+import gunbc.roadmap_verification_receipt {
+  VerificationSubject,
+  VerificationSubjectObservation,
+  VerificationSubjectObserved,
+  VerificationSubjectUnobserved,
+  VerificationReceiptFileSource,
+  VerificationReceiptAbsent,
+  VerificationReceiptPresent,
+  CurrentVerificationSelectionObservation,
+  SelectionAbsent,
+  SelectionObserved,
+}
+import std.types { CommitSha }
+import std.content_hash { content_hash_atom }
+import gunbc.git_diff_change_window { git_diff_window_absent_identity }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+
+data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+
+fn fixture_verification_subject() -> VerificationSubject {
+  VerificationSubject {
+    node_identity: "node-1" as NonEmptyStr as RoadmapNodeIdentity,
+    criteria_digest: content_hash_atom(value: "workflow-progress-fixture"),
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+    head_sha: fixture_verification_head,
+    change_window_identity: git_diff_window_absent_identity(),
+  }
+}
+
+fn fixture_verification_selection() -> CurrentVerificationSelectionObservation {
+  SelectionObserved {
+    head: fixture_verification_head,
+    window_identity: git_diff_window_absent_identity(),
+  }
+}
+
+fn fixture_evidence(
+  events: String,
+  process: WorkerProcessEvidence,
+) -> WorkflowAttemptEvidence {
+  WorkflowAttemptEvidence {
+    node_id: "node-1",
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/node-1-afeedfacefeedface",
+    modeled_state_present: true,
+    admission_receipt_readable: true,
+    admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: true,
+    provider_events: events,
+    provider_events_error: "",
+    process: process,
+    validation_summary: "gunbc run --claim-run",
+    verification_subject: VerificationSubjectObserved {
+      subject: fixture_verification_subject(),
+    },
+    verification_selection: fixture_verification_selection(),
+    verification_source: VerificationReceiptAbsent,
+    publication_subject: PublicationSubjectObserved {
+      subject: RoadmapPublicationSubject {
+        node_id: "node-1",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
+    },
+    publication_source: ReceiptSourceAbsent,
+  }
+}
+
+fn segment_state(
+  segments: List<WorkflowSegment>,
+  key: String,
+) -> String {
+  fold(segments, init: "", f: fn(acc, segment) {
+    if acc == "" && workflow_segment_kind_key(kind: segment.kind) == key {
+      workflow_segment_state_key(state: segment.state)
+    } else {
+      acc
+    }
+  })
+}
+
+test fn admitted_running_attempt_projects_ordered_evidence() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n{\"type\":\"turn.started\"}\n",
+    process: WorkerProcessRunning { command: "node" as NonEmptyStr },
+  ))
+  count(progress.segments) == 7
+    && segment_state(progress.segments, "environment") == "complete"
+    && segment_state(progress.segments, "workspace") == "complete"
+    && segment_state(progress.segments, "agent") == "active"
+    && segment_state(progress.segments, "verify") == "pending"
+    && segment_state(progress.segments, "publish") == "pending"
+    && segment_state(progress.segments, "review") == "pending"
+    && segment_state(progress.segments, "audit") == "pending"
+    && progress.reconciliation.desired_count == 7
+    && progress.reconciliation.observed_count == 3
+    && progress.reconciliation.remaining_count == 5
+    && progress.reconciliation.observed_failure_count == 0
+    && progress.reconciliation.observed_refusal_count == 0
+    && progress.reconciliation.plan_refusal_count == 0
+}
+
+test fn provider_completion_cannot_fabricate_verification() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  match progress.provider {
+    ProviderCompleted { activity: _ } =>
+      segment_state(progress.segments, "agent") == "complete"
+        && segment_state(progress.segments, "verify") == "pending"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_without_terminal_event_is_failed() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n",
+    process: WorkerProcessExited { exit_code: 7, last_command: "node" },
+  ))
+  match progress.provider {
+    ProviderFailed { activity: _, detail } =>
+      string_contains(s: detail, pattern: "exited 7")
+        && progress.reconciliation.observed_failure_count == 1
+        && workflow_reconcile_status_key(
+          report: progress.reconciliation,
+        ) == "failed"
+    _ => false
+  }
+}
+
+test fn zero_exit_without_terminal_event_is_refused() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  match progress.provider {
+    ProviderEventsRefused { activity: _, detail } =>
+      string_contains(s: detail, pattern: "without turn.completed")
+        && progress.reconciliation.observed_refusal_count == 1
+        && workflow_reconcile_status_key(
+          report: progress.reconciliation,
+        ) == "refused"
+    _ => false
+  }
+}
+
+test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 1, last_command: "node" },
+  ))
+  match progress.provider {
+    ProviderEventsRefused { activity: _, detail } =>
+      string_contains(s: detail, pattern: "conflicts")
+    _ => false
+  }
+}
+
+// review 44032 REDs. The Agent obligation's design contract requires a compatible process exit, so
+// turn.completed alone must never paint agent complete. These three witnesses pin the arms that
+// previously preserved ProviderCompleted from incomplete evidence: still-running stays active,
+// absent refuses, unobserved refuses. Each is the discriminating control for one arm — flipping any
+// back to `provider` reds exactly one of them.
+
+test fn completed_event_while_process_runs_is_not_complete() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessRunning { command: "node" },
+  ))
+  segment_state(progress.segments, "agent") == "active"
+    && match progress.provider {
+      ProviderRunning { activity } =>
+        string_contains(s: activity, pattern: "awaiting process exit")
+      _ => false
+    }
+}
+
+test fn completed_event_with_absent_process_refuses() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessAbsent,
+  ))
+  segment_state(progress.segments, "agent") == "refused"
+    && match progress.provider {
+      ProviderEventsRefused { activity: _, detail } =>
+        string_contains(s: detail, pattern: "no process exit was observed")
+      _ => false
+    }
+}
+
+test fn completed_event_with_unobserved_process_refuses() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessUnobserved { reason: "tmux refused" },
+  ))
+  segment_state(progress.segments, "agent") == "refused"
+    && match progress.provider {
+      ProviderEventsRefused { activity: _, detail } =>
+        string_contains(s: detail, pattern: "tmux refused")
+      _ => false
+    }
+}
+
+// review 44032 RED. The admission receipt is READ BACK FROM DISK, so nothing guarantees the bytes
+// came from dispatch_environment_admission_json — a corrupt, truncated, or foreign file is exactly
+// the case the projection must survive. The forgery below is well-formed JSON that declares status
+// refused at the top level while carrying an admitted status in a nested member; the former
+// two-string_contains scan matched both fragments and read it as admitted. Note the emitter's own
+// escaping already prevented the narrower attack (a quoted reason cannot reproduce a raw fragment),
+// which is why the fixture is a raw document rather than a round-trip: the vulnerability was never
+// in the emitter, it was in identifying a document by scanning it. Positional identity refuses this
+// because a nested value cannot occupy the document prefix, and the paired green keeps the real
+// emitter's admitted receipt admitted so the witness discriminates rather than rejecting
+// everything.
+
+fn admission_receipt_for(admission: DispatchEnvironmentAdmission) -> String {
+  dispatch_environment_admission_json(admission: admission)
+}
+
+fn nested_admitted_forgery() -> String {
+  "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\", \"reason\": \"probe failed\", \"receipts\": [{\"capability\": \"git-workspace\", \"status\": \"admitted\"}]}"
+}
+
+test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
+  let truncated = "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\", \"validation\": \"gunbc ru"
+  let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
+    receipts: [],
+    validation_summary: "gunbc run --claim-run",
+  })
+  starts_with(
+    s: truncated,
+    prefix: dispatch_environment_receipt_identity_prefix(
+      status: ReceiptAdmitted,
+    ),
+  )
+    && !receipt_records_admission(receipt: truncated)
+    && receipt_records_admission(receipt: genuine)
+}
+
+test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
+  let forged = nested_admitted_forgery()
+  let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
+    receipts: [],
+    validation_summary: "gunbc run --claim-run",
+  })
+  string_contains(s: forged, pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"")
+    && string_contains(s: forged, pattern: "\"status\": \"admitted\"")
+    && !receipt_records_admission(receipt: forged)
+    && receipt_records_admission(receipt: genuine)
+}
+
+// review 44094. The decode splits what the old Bool merged: a receipt that RECORDS a refusal is a
+// different state from a document this reader cannot decode, and each now has its own arm. The
+// truncated fixture is the discriminating one — it carries the admitted prefix verbatim and still
+// fails, because a prefix match alone was never the claim; the whole document must also parse.
+
+test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
+  let refused = admission_receipt_for(admission: EnvironmentRefused {
+    receipts: [],
+    validation_summary: "",
+    reason: "probe failed",
+  })
+  let foreign = "{\"schema\": \"some-other-emitter/v1\", \"status\": \"admitted\"}"
+  let admitted = admission_receipt_for(admission: EnvironmentAdmitted {
+    receipts: [],
+    validation_summary: "gunbc run --claim-run",
+  })
+  match dispatch_environment_receipt_decode(receipt: refused) {
+    ReceiptDecoded { status } =>
+      match status {
+        ReceiptRefused => true
+        ReceiptAdmitted => false
+      }
+    ReceiptUndecodable { reason: _ } => false
+  }
+    && match dispatch_environment_receipt_decode(receipt: foreign) {
+      ReceiptDecoded { status: _ } => false
+      ReceiptUndecodable { reason } =>
+        string_contains(s: reason, pattern: "known status")
+    }
+    && match dispatch_environment_receipt_decode(receipt: admitted) {
+      ReceiptDecoded { status } =>
+        match status {
+          ReceiptAdmitted => true
+          ReceiptRefused => false
+        }
+      ReceiptUndecodable { reason: _ } => false
+    }
+}
+
+test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
+  let base = fixture_evidence(
+    events: "",
+    process: WorkerProcessAbsent,
+  )
+  let forged = WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: nested_admitted_forgery(),
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
+    verification_source: base.verification_source,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
+  }
+  let progress = workflow_attempt_progress(evidence: forged)
+  segment_state(progress.segments, "environment") != "" 
+    && segment_state(progress.segments, "environment") != "complete"
+}
+
+test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
+  let base = fixture_evidence(
+    events: "",
+    process: WorkerProcessAbsent,
+  )
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: true,
+    spawn_failure: "tmux-event-pipe: permission denied",
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
+    verification_source: base.verification_source,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
+  })
+  match progress.provider {
+    ProviderFailed { activity: "dispatch staging failed", detail } =>
+      string_contains(s: detail, pattern: "tmux-event-pipe")
+    _ => false
+  }
+}
+
+test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: "legacy",
+    attempt_key: "",
+    branch: "dispatch/legacy",
+    modeled_state_present: false,
+    admission_receipt_readable: false,
+    admission_receipt: "",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: false,
+    provider_events: "",
+    provider_events_error: "not found",
+    process: WorkerProcessAbsent,
+    validation_summary: "",
+    verification_subject: VerificationSubjectUnobserved {
+      reason: "legacy attempt has no modeled verification subject",
+    },
+    verification_selection: SelectionAbsent,
+    verification_source: VerificationReceiptAbsent,
+    publication_subject: PublicationSubjectObserved {
+      subject: RoadmapPublicationSubject {
+        node_id: "node-1",
+        attempt_key: "feedfacefeedface",
+        repository: Repository {
+          owner: "gunb-ai",
+          name: "gunbc",
+          full_name: "gunb-ai/gunbc",
+          private: false,
+          default_branch: "main",
+        },
+        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+      },
+    },
+    publication_source: ReceiptSourceAbsent,
+  })
+  match progress.provider {
+    ProviderEventsRefused { activity, detail: _ } =>
+      activity == legacy_attempt_supersedable_label
+        && segment_state(progress.segments, "environment") == "refused"
+        && segment_state(progress.segments, "workspace") == "refused"
+        && segment_state(progress.segments, "verify") == "pending"
+        && progress.reconciliation.observed_refusal_count == 3
+    _ => false
+  }
+}
+
+test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
+  let base = fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  )
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: true,
+    admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\"}",
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
+    verification_source: base.verification_source,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
+  })
+  match progress.provider {
+    ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
+      segment_state(progress.segments, "environment") == "refused"
+        && segment_state(progress.segments, "agent") == "refused"
+        && progress.reconciliation.observed_refusal_count == 2
+    _ => false
+  }
+}
+
+test fn workflow_json_exposes_segment_and_provider_facts() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  ))
+  let wire = serialize_json(
+    v: workflow_attempt_progress_json_value(progress: progress),
+  )
+  string_contains(s: wire, pattern: "\"provider_status\": \"completed\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"environment\"")
+    && string_contains(s: wire, pattern: "\"short_label\": \"Env\"")
+    && string_contains(s: wire, pattern: "\"state\": \"complete\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"verify\"")
+    && string_contains(s: wire, pattern: "\"state\": \"pending\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"publish\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"audit\"")
+    && string_contains(s: wire, pattern: "\"workflow_status\": \"not_converged\"")
+    && string_contains(s: wire, pattern: "\"desired_obligations\": 7")
+    && string_contains(s: wire, pattern: "\"observed_obligations\": 3")
+    && string_contains(s: wire, pattern: "\"remaining_obligations\": 4")
+    && string_contains(s: wire, pattern: "\"failed_obligations\": 0")
+    && string_contains(s: wire, pattern: "\"refused_obligations\": 0")
+}
+
+test fn failed_or_refused_stage_is_visible_without_decoding_border_style() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "seg.state === 'failed'")
+    && string_contains(s: js, pattern: "seg.state === 'refused'")
+    && string_contains(s: js, pattern: "seg.short_label + ' · ' + seg.state")
+}
+
+test fn roadmap_workflow_progress_keystone_holds() -> Bool {
+  admitted_running_attempt_projects_ordered_evidence()
+    && provider_completion_cannot_fabricate_verification()
+    && nonzero_exit_without_terminal_event_is_failed()
+    && zero_exit_without_terminal_event_is_refused()
+    && completed_event_and_nonzero_exit_refuse_contradiction()
+    && completed_event_while_process_runs_is_not_complete()
+    && completed_event_with_absent_process_refuses()
+    && completed_event_with_unobserved_process_refuses()
+    && refused_receipt_quoting_admitted_fragments_is_not_admitted()
+    && truncated_receipt_with_admitted_prefix_is_not_admitted()
+    && forged_admission_receipt_cannot_complete_environment()
+    && persisted_staging_failure_precedes_empty_event_stream()
+    && legacy_attempt_refuses_unobserved_early_stages()
+    && readable_but_invalid_admission_receipt_refuses_progress()
+    && workflow_json_exposes_segment_and_provider_facts()
+    && failed_or_refused_stage_is_visible_without_decoding_border_style()
+}
+
+// THE VERTICAL SPECIMEN, WITH ITS NEGATIVE HALF, AND THE NEGATIVE HALF IS WHY IT EXISTS. A claim
+// that a bound receipt paints the lamp green proves the happy path and nothing else; it stays green
+// under the exact defect this lane was rewritten to remove, which is a consumer that finds a
+// receipt at a path and trusts what it finds.\n\nSO THE SPECIMEN IS ONE RECEIPT READ TWICE. Written
+// for head H, it completes the row whose subject is H, and it does NOT complete the row whose
+// subject is H2 - it refuses there, naming expected_head as the field that differs. That is the
+// review loop's real shape: a worker pushes a correction while a receipt for the earlier head is
+// still on disk, and every downstream obligation is about the new commit.\n\nAND THE SUBJECT ITSELF
+// CAN BE MISSING, which is a fifth reading rather than a phrasing of pending. An attempt whose head
+// could not be read has nothing to compare a receipt against, so the lamp refuses and says so -
+// never `pending`, which a reader would take for `not published yet`.
+
+data pub_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe"
+data pub_other: CommitSha = "d00dd00dd00dd00dd00dd00dd00dd00dd00dd00d"
+data pub_branch: NonEmptyStr = "dispatch/node-1-afeedfacefeedface" as NonEmptyStr
+
+data pub_repository: Repository = Repository {
+  owner: "gunb-ai",
+  name: "gunbc",
+  full_name: "gunb-ai/gunbc",
+  private: false,
+  default_branch: "main",
+}
+
+fn pub_subject(head: CommitSha) -> RoadmapPublicationSubject {
+  RoadmapPublicationSubject {
+    node_id: "node-1",
+    attempt_key: "feedfacefeedface",
+    repository: pub_repository,
+    branch: pub_branch,
+    expected_base: "main" as NonEmptyStr,
+    expected_head: head,
+  }
+}
+
+fn pub_pull(sha: CommitSha) -> PullRequest {
+  PullRequest {
+    number: 7552,
+    title: "publication slice",
+    body: none,
+    state: Open,
+    html_url: "https://github.com/gunb-ai/gunbc/pull/7552" as NonEmptyStr,
+    user: GitHubUser { login: "someone", id: 1, type: User },
+    head: PullRequestRef {
+      ref: pub_branch as String,
+      sha: sha,
+      label: "head",
+    },
+    base: PullRequestRef { ref: "main", sha: pub_other, label: "base" },
+    created_at: "2026-08-01T00:00:00Z",
+    updated_at: "2026-08-01T00:00:00Z",
+    merged_at: none,
+    draft: false,
+  }
+}
+
+fn pub_receipt_for(subject_head: CommitSha, pull_sha: CommitSha) -> String {
+  publication_receipt_json(
+    receipt: publication_receipt_of(
+      subject: pub_subject(head: subject_head),
+      outcome: adjudicate_publication(
+        pulls: PullRequestsRead { pulls: [pub_pull(sha: pull_sha)] },
+        remotes: RemoteBranchesRead { branches: [] },
+        remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+        branch: pub_branch,
+        expected_base: "main" as NonEmptyStr,
+        expected_head: subject_head,
+      ),
+    ),
+  )
+}
+
+fn publication_segment_of(
+  subject: PublicationSubjectObservation,
+  source: PublicationReceiptSource,
+) -> WorkflowSegment {
+  let base = fixture_evidence(events: "", process: WorkerProcessAbsent)
+  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
+    verification_source: base.verification_source,
+    publication_subject: subject,
+    publication_source: source,
+  })
+  fold(progress.segments, init: WorkflowSegment {
+    kind: PublicationWorkflowSegment,
+    state: WorkflowSegmentPending,
+    detail: "no publication segment was projected",
+  }, f: fn(acc, segment) {
+    if workflow_segment_kind_key(kind: segment.kind) == "publish" { segment } else { acc }
+  })
+}
+
+fn publication_state_at(
+  subject_head: CommitSha,
+  source: PublicationReceiptSource,
+) -> String {
+  workflow_segment_state_key(
+    state: publication_segment_of(
+      subject: PublicationSubjectObserved { subject: pub_subject(head: subject_head) },
+      source: source,
+    ).state,
+  )
+}
+
+test fn publication_at_the_expected_head_completes_where_the_old_constant_could_not() -> Bool {
+  publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  ) == "complete"
+}
+
+test fn a_receipt_for_the_previous_head_cannot_complete_the_current_one() -> Bool {
+  let receipt_for_h = pub_receipt_for(subject_head: pub_head, pull_sha: pub_head)
+  let at_h = publication_state_at(subject_head: pub_head, source: ReceiptSourcePresent { text: receipt_for_h })
+  let at_h2 = publication_state_at(subject_head: pub_other, source: ReceiptSourcePresent { text: receipt_for_h })
+  let detail_at_h2 = publication_segment_of(
+    subject: PublicationSubjectObserved { subject: pub_subject(head: pub_other) },
+    source: ReceiptSourcePresent { text: receipt_for_h },
+  ).detail
+  at_h == "complete"
+    && at_h2 == "refused"
+    && at_h2 != "complete"
+    && at_h2 != "pending"
+    && string_contains(s: detail_at_h2, pattern: "expected_head")
+}
+
+// The completed sentence an operator reads must name the head that was actually judged.
+// ReceiptBound no longer carries a head of its own, so this projection renders
+// subject.expected_head - the single copy in the document. The claim asserts BOTH directions: the
+// judged head appears, and the other fixture sha does not, because a sentence that could name a
+// second head is the same defect one layer out from the one review 46116 found in the carrier.
+
+test fn the_completed_sentence_names_the_head_that_was_judged() -> Bool {
+  let detail = publication_segment_of(
+    subject: PublicationSubjectObserved { subject: pub_subject(head: pub_head) },
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  ).detail
+  string_contains(s: detail, pattern: pub_head as String)
+    && !string_contains(s: detail, pattern: pub_other as String)
+}
+
+// A receipt the projection could not READ is not a row nobody has published (review 46148). Pending
+// invites a reader to wait; refused tells them something is broken. Both directions are asserted
+// here because the defect made them the same lamp.
+
+test fn an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published() -> Bool {
+  let unreadable = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourceUnreadable { detail: "input/output error" },
+  )
+  let absent = publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent)
+  unreadable == "refused" && absent == "pending" && unreadable != absent
+}
+
+test fn publication_at_another_head_fails_rather_than_reading_as_progress() -> Bool {
+  publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other) },
+  ) == "failed"
+}
+
+test fn an_absent_publication_receipt_is_pending_not_a_judgment() -> Bool {
+  publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent) == "pending"
+}
+
+test fn an_undecodable_publication_receipt_refuses_rather_than_pending() -> Bool {
+  let refused = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: "not a receipt" },
+  )
+  refused == "refused" && refused != "pending"
+}
+
+test fn an_attempt_with_no_readable_head_refuses_rather_than_pending() -> Bool {
+  let segment = publication_segment_of(
+    subject: PublicationSubjectUnobserved {
+      reason: "the attempt worktree is gone",
+    },
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  )
+  workflow_segment_state_key(state: segment.state) == "refused"
+    && string_contains(s: segment.detail, pattern: "no exact head")
+}
+
+test fn the_publication_readings_are_distinct_states() -> Bool {
+  let bound = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  )
+  let moved = publication_state_at(
+    subject_head: pub_head,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_other) },
+  )
+  let absent = publication_state_at(subject_head: pub_head, source: ReceiptSourceAbsent)
+  let wrong_subject = publication_state_at(
+    subject_head: pub_other,
+    source: ReceiptSourcePresent { text: pub_receipt_for(subject_head: pub_head, pull_sha: pub_head) },
+  )
+  bound != moved && moved != absent && bound != absent
+    && wrong_subject != bound && wrong_subject != moved && wrong_subject != absent
+}

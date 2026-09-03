@@ -1,5 +1,7 @@
 module v2.test.manual.program_assembly_multi_file
 
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
   Admission,
@@ -11,20 +13,24 @@ import v2.compiler.program_assembly {
   assemble_program_from_ingest,
   assemble_program_from_module_roots
 }
-import v2.compiler.source_authority {
-    DagSourceReadWitness,
-  SourceRootIngest,
-}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
-import v2.std.cross_tree.import_model { V2Tree }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.std.artifact { Artifact, SourceFile, TestClaimArtifact }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.std.node {
   Atom,
   Conj,
@@ -32,10 +38,18 @@ import v2.std.node {
   Named,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
-import v2.std.qualified_name { QnCons, QnEmpty }
+import v2.std.qualified_name { QualifiedName }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn pa_graft_module_root(root: Node) -> Node {
+  match module_header_containment_graft(root: root) {
+    Accepted { value: grafted, diagnostics: _ } => grafted
+    Rejected { diagnostics: _ } => root
+  }
+}
 
 fn pa_qn_node(seg: Symbol) -> Node {
   fold_list_node(
@@ -44,7 +58,7 @@ fn pa_qn_node(seg: Symbol) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -67,11 +81,11 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -92,54 +106,66 @@ fn pa_subject_with_import_use() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn pa_cross_file_roots() -> FreeMonoid<Node> {
-  Cons {
-    head: pa_subject_with_import_use(),
+fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
+    head: pa_graft_module_root(root: pa_subject_with_import_use()),
     tail: Cons {
-      head: pa_module_root(
-        seg: ^pa_imported_seg,
+      head: pa_graft_module_root(
+        root: pa_module_root(
+          seg: ^pa_imported_seg,
+          export_sym: ^pa_imported_decl,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
+      ),
+      tail: Empty
+    }
+  },
+    diagnostics: None
+  )
+}
+
+fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
+    head: pa_graft_module_root(
+      root: pa_module_root(
+        seg: ^pa_subject_seg,
         export_sym: ^pa_imported_decl,
         export_atom: ^dag_c3_surface_sugar_service
-      ),
-      tail: Empty
-    }
-  }
-}
-
-fn pa_duplicate_module_roots() -> FreeMonoid<Node> {
-  Cons {
-    head: pa_module_root(
-      seg: ^pa_subject_seg,
-      export_sym: ^pa_imported_decl,
-      export_atom: ^dag_c3_surface_sugar_service
+      )
     ),
     tail: Cons {
-      head: pa_module_root(
-        seg: ^pa_subject_seg,
-        export_sym: ^pa_other_export,
-        export_atom: ^dag_c3_surface_sugar_type
+      head: pa_graft_module_root(
+        root: pa_module_root(
+          seg: ^pa_subject_seg,
+          export_sym: ^pa_other_export,
+          export_atom: ^dag_c3_surface_sugar_type
+        )
       ),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn pa_cross_file_admission() -> Admission {
   Admission {
     subject: ResolutionSubject {
-      name: QnCons { head: ^pa_subject_seg, tail: QnEmpty }
+      name: Cons { head: ^pa_subject_seg, tail: Empty }
     },
     imports: Cons {
       head: Import {
-        target: QnCons { head: ^pa_imported_seg, tail: QnEmpty },
+        target: Cons { head: ^pa_imported_seg, tail: Empty },
         visibility: ImportVisible
       },
       tail: Empty
@@ -148,24 +174,32 @@ fn pa_cross_file_admission() -> Admission {
 }
 
 test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
-  match assemble_program_from_module_roots(
-    roots: pa_cross_file_roots(),
-    admission: pa_cross_file_admission(),
-    lm: dag_language_model_surface_empty_prelude()
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match pa_cross_file_roots() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted_roots, diagnostics: _ } =>
+    match assemble_program_from_module_roots(
+      roots: admitted_roots,
+      admission: pa_cross_file_admission(),
+      lm: dag_language_model_surface_empty_prelude()
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 
 test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
-  match assemble_program_from_module_roots(
-    roots: pa_duplicate_module_roots(),
-    admission: pa_cross_file_admission(),
-    lm: dag_language_model_surface_empty_prelude()
-  ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+  match pa_duplicate_module_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted_roots, diagnostics: _ } =>
+    match assemble_program_from_module_roots(
+      roots: admitted_roots,
+      admission: pa_cross_file_admission(),
+      lm: dag_language_model_surface_empty_prelude()
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
   }
 }
 
@@ -206,7 +240,7 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
     ingest: pa_ingest_non_source_ingest,
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnCons { head: ^pa_subject_seg, tail: QnEmpty }
+        name: Cons { head: ^pa_subject_seg, tail: Empty }
       },
       imports: Empty
     },

@@ -1,0 +1,99 @@
+module product.network_topology
+
+import product.placement_supply { HostIdentity }
+import std.measure { Bandwidth }
+import std.types { NonEmptyStr, Bool, List }
+import std.cache_interface { ReadLatencyClass }
+
+type NetworkLocality =
+    Loopback
+  | Lan
+  | Internet
+  | WslNat
+  | WslBridged
+  | DockerBridge
+  | TailscaleOverlay
+  | DirectAttachFabric
+
+type NetworkAddressability = Unicast | Multicast | Broadcast
+type NetworkEgressClass =
+    None
+  | CratesIo
+  | InternalMirror
+  | Unrestricted
+type NetworkInterface {
+  addressability: NetworkAddressability
+  bandwidth: Bandwidth?
+  latency_class: ReadLatencyClass?
+  locality: NetworkLocality
+}
+
+type NetworkAttachmentRole =
+    HostOperatingSystem
+  | BmcOutOfBand
+  | ContainerBridgeDefault
+  | ContainerBridgeSecondary
+  | TailscaleEndpoint
+  | LanGateway
+
+type NetworkReachabilityZone =
+    ContainerRunner
+  | HostLan
+  | BmcManagement
+  | TailscaleMesh
+
+type NetworkSegment {
+  cidr: NonEmptyStr
+  gateway: NonEmptyStr?
+  locality: NetworkLocality
+}
+
+type NetworkEndpoint {
+  label: NonEmptyStr
+  host: HostIdentity?
+  address: NonEmptyStr
+  role: NetworkAttachmentRole
+  locality: NetworkLocality
+}
+
+type NetworkTopology {
+  tailnet_domain: NonEmptyStr?
+  segments: List<NetworkSegment>
+  endpoints: List<NetworkEndpoint>
+}
+
+fn network_reachability(
+  from: NetworkReachabilityZone,
+  to: NetworkReachabilityZone
+) -> Bool {
+  match from {
+    ContainerRunner =>
+      match to {
+        BmcManagement => true
+        HostLan => false
+        ContainerRunner => true
+        TailscaleMesh => false
+      }
+    HostLan =>
+      match to {
+        BmcManagement => true
+        HostLan => true
+        ContainerRunner => true
+        TailscaleMesh => true
+      }
+    BmcManagement =>
+      match to {
+        BmcManagement => true
+        HostLan => true
+        ContainerRunner => false
+        TailscaleMesh => false
+      }
+    TailscaleMesh =>
+      match to {
+        HostLan => true
+        BmcManagement => true
+        ContainerRunner => false
+        TailscaleMesh => true
+      }
+  }
+}

@@ -1,0 +1,223 @@
+module test.claim.gha_expression_roundtrip
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn core_expr() -> Expression {
+  LogicalOr {
+    left: LogicalOr {
+      left: extdeps.github.expressions.FunctionCall {
+        function: HashFiles,
+        args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
+      },
+      right: ContextAccess { context: Github, path: ["event", "number"] },
+    },
+    right: ContextAccess { context: Runner, path: ["os"] },
+  }
+}
+
+fn core_template() -> ExpressionTemplate {
+  ExpressionTemplate {
+    segments: [
+      LiteralText { text: "cargo-ci-" },
+      Interpolation { expression: ContextAccess { context: Runner, path: ["os"] } },
+      LiteralText { text: "-" },
+      Interpolation { expression: ContextAccess { context: Runner, path: ["arch"] } },
+    ],
+  }
+}
+
+test fn witness_roundtrip_expression() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: core_expr())) {
+    Present { value: v } => v == core_expr()
+    Absent => false
+  }
+}
+
+test fn witness_roundtrip_template() -> Bool {
+  match ingest_template(src: serialize_template(template: core_template())) {
+    Present { value: v } => v == core_template()
+    Absent => false
+  }
+}
+
+// THIS IS A CANONICALIZATION ROW, NOT AN EXTERNAL-VALIDITY ROW, AND THE DISTINCTION MUST TRAVEL
+// WITH IT.
+//
+// Forcing the dot arm does NOT produce syntax GitHub rejects. The cited production admits a
+// hyphen after a valid start character, so `needs.a-b.result` is valid upstream; what the dot
+// arm violates is THIS WRITER'S CANONICAL SPELLING, which is index notation for anything outside
+// that narrow production. A reader who takes this row as evidence that GitHub refuses the dot
+// form will believe the consumer rejects something it accepts -- which is why the row is named
+// for the rendering rather than for validity.
+//
+// THREE PROPERTIES ARE IN PLAY AND ONLY ONE OF THEM IS THIS ROW: (1) a round trip proves
+// agreement between THIS writer and THIS reader; (2) a canonical-rendering check proves the
+// writer emits the chosen spelling; (3) external-grammar acceptance proves the consumer takes
+// it. (1) establishes neither of the others. This row is (2). Nothing in this module is (3),
+// and nothing here claims to be.
+//
+// THE RED IS AUTHORABLE AND SHARP: make `render_path_segment_with` always take the dot arm and
+// this row goes red on the rendering, while every other row in this file stays green -- their
+// segments (`os`, `arch`, `event`, `number`) all take the dot form, so nothing else here can see
+// the distinction. Measured: 1 red of 11.
+fn hyphenated_expr() -> Expression {
+  ContextAccess { context: Needs, path: ["required-witnesses-build", "result"] }
+}
+
+test fn witness_hyphenated_segment_renders_as_index_not_dot() -> Bool {
+  serialize_expression(expression: hyphenated_expr()) == "needs['required-witnesses-build'].result"
+}
+
+test fn witness_roundtrip_hyphenated_segment() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: hyphenated_expr())) {
+    Present { value: v } => v == hyphenated_expr()
+    Absent => false
+  }
+}
+
+// A DOT-SAFE SEGMENT MUST STILL TAKE THE DOT ARM. Without this the index form could be applied
+// unconditionally -- which would also round-trip, and would silently rewrite every existing
+// expression in the tree.
+test fn witness_dot_safe_segment_keeps_dot_form() -> Bool {
+  serialize_expression(expression: ContextAccess { context: Runner, path: ["os"] }) == "runner.os"
+}
+
+fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
+  ExpressionSpellings {
+    path_sep: path_sep,
+    call_open: default_expression_spellings.call_open,
+    call_close: default_expression_spellings.call_close,
+    arg_sep: default_expression_spellings.arg_sep,
+    string_quote: default_expression_spellings.string_quote,
+    or_op: or_op,
+    and_op: default_expression_spellings.and_op,
+    eq_op: default_expression_spellings.eq_op,
+    interp_open: default_expression_spellings.interp_open,
+    interp_close: default_expression_spellings.interp_close,
+    index_open: default_expression_spellings.index_open,
+    index_close: default_expression_spellings.index_close,
+  }
+}
+
+fn perturbed_path_sep() -> ExpressionSpellings {
+  override_spellings(path_sep: "->", or_op: default_expression_spellings.or_op)
+}
+
+fn perturbed_or_op() -> ExpressionSpellings {
+  override_spellings(path_sep: default_expression_spellings.path_sep, or_op: " OR ")
+}
+
+fn roundtrips_under(sp: ExpressionSpellings) -> Bool {
+  match ingest_expression_with(src: serialize_expression_with(expression: core_expr(), sp: sp), sp: sp) {
+    Present { value: v } => v == core_expr()
+    Absent => false
+  }
+}
+
+test fn witness_roundtrip_under_perturbed_rows() -> Bool {
+  roundtrips_under(sp: perturbed_path_sep()) && roundtrips_under(sp: perturbed_or_op())
+}
+
+fn ingest_reads(sp: ExpressionSpellings) -> Bool {
+  match ingest_expression(src: serialize_expression_with(expression: core_expr(), sp: sp)) {
+    Present { value: v } => !(v == core_expr())
+    Absent => true
+  }
+}
+
+test fn witness_ingest_reads_rows() -> Bool {
+  ingest_reads(sp: perturbed_path_sep()) && ingest_reads(sp: perturbed_or_op())
+}
+
+fn left_nested_or() -> Expression {
+  LogicalOr {
+    left: LogicalOr {
+      left: ContextAccess { context: Runner, path: ["os"] },
+      right: ContextAccess { context: Runner, path: ["arch"] },
+    },
+    right: ContextAccess { context: Runner, path: ["temp"] },
+  }
+}
+
+fn right_nested_or() -> Expression {
+  LogicalOr {
+    left: ContextAccess { context: Runner, path: ["os"] },
+    right: LogicalOr {
+      left: ContextAccess { context: Runner, path: ["arch"] },
+      right: ContextAccess { context: Runner, path: ["temp"] },
+    },
+  }
+}
+
+test fn witness_or_associativity_partition() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: left_nested_or())) {
+    Present { value: left_v } =>
+      match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+        Present { value: right_v } => (left_v == left_nested_or()) && !(right_v == right_nested_or())
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn frontier_string_with_or() -> Expression {
+  StringLiteral { value: "a || b" }
+}
+
+fn frontier_nested_multiarg_call() -> Expression {
+  extdeps.github.expressions.FunctionCall {
+    function: extdeps.github.expressions.Contains,
+    args: [
+      ContextAccess { context: Github, path: ["event"] },
+      extdeps.github.expressions.FunctionCall {
+        function: Format,
+        args: [
+          StringLiteral { value: "v" },
+          ContextAccess { context: Runner, path: ["os"] },
+          ContextAccess { context: Runner, path: ["arch"] },
+        ],
+      },
+    ],
+  }
+}
+
+test fn witness_frontier_not_roundtripped() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+    Present { value: v1 } =>
+      match ingest_expression(src: serialize_expression(expression: frontier_string_with_or())) {
+        Present { value: v2 } =>
+          match ingest_expression(src: serialize_expression(expression: frontier_nested_multiarg_call())) {
+            Present { value: v3 } =>
+              !(v1 == right_nested_or())
+                && !(v2 == frontier_string_with_or())
+                && !(v3 == frontier_nested_multiarg_call())
+            Absent => true
+          }
+        Absent => true
+      }
+    Absent => true
+  }
+}
+
+test fn witness_core_advertised_lossless() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: core_expr())) {
+    Present { value: v } => {
+      let m = source_medium_carried(carried: v, fidelity: Lossless)
+      match m.fidelity {
+        Lossless => m.carried == core_expr()
+        Lossy => false
+      }
+    }
+    Absent => false
+  }
+}
+
+test fn witness_emit_non_regression() -> Bool {
+  let e = core_expr()
+  let t = core_template()
+  (serialize_expression(expression: e) == serialize_expression_with(expression: e, sp: default_expression_spellings))
+    && (serialize_template(template: t) == serialize_template_with(template: t, sp: default_expression_spellings))
+    && (serialize_expression(expression: e) == "hashFiles('Cargo.lock', 'Cargo.toml') || github.event.number || runner.os")
+    && (serialize_template(template: t) == "cargo-ci-${{ runner.os }}-${{ runner.arch }}")
+}
+

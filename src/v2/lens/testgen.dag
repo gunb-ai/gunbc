@@ -1,27 +1,18 @@
 module v2.lens.testgen
+
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 import v2.std.collection { List }
-import v2.std.algebra {
-  FreeMonoid,
-  Empty,
-  Cons,
-  count_where,
-  filter,
-  fold_list,
-  fold_list_right,
-  length,
-  list_append,
-  non_empty,
-  list_snoc_item,
-  zip_eq
-}
+import std.algebra { FreeMonoid, Empty, Cons }
+import v2.std.algebra { count_where, filter, fold_list, fold_list_right, length, list_append, list_flat_map, list_map, non_empty, list_snoc_item, zip_eq }
 import v2.std.diagnostic {
   Outcome,
   Diagnostic,
   Locus,
   NodeLocus,
-  PortLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
   LocusAnchor,
   Extent,
   Correction,
@@ -41,6 +32,7 @@ import v2.std.diagnostic {
   Rejected,
   None,
   bind_outcome,
+  bind_outcome_accepted,
   diagnostics_merge,
   diagnostics_singleton,
   node_locus,
@@ -72,7 +64,6 @@ import v2.std.node {
   Bind,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.refinement { Refined, Validation, refine, refined_base }
 import v2.extdeps.file_system {
@@ -477,7 +468,7 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
     empty: Node {
       kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_empty_node } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 },
     snoc: fn(tail_node, h) {
       Node {
@@ -489,7 +480,7 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
             target: tail_node
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     }
   )
@@ -498,13 +489,13 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
 fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPreservationSubject> {
   let original = [stub_empty_conj]
   match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
-    Accepted { value: refined, diagnostics: None } =>
+    Accepted { value: refined, diagnostics: d } =>
       Accepted {
         value: RefinementPreservationSubject {
           refined: refined,
           original: original,
         },
-        diagnostics: None,
+        diagnostics: d,
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -664,7 +655,7 @@ fn testgen_emit_algebra_law_claim(
     }
   } else {
     match algebra_law_manual_claim_case(anchor: anchor) {
-      Accepted { value: law_case, diagnostics: None } =>
+      Accepted { value: law_case, diagnostics: d } =>
         Accepted {
           value: EqualsClaim {
             label: label,
@@ -673,7 +664,7 @@ fn testgen_emit_algebra_law_claim(
             rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs),
             classification: classification,
           },
-          diagnostics: None,
+          diagnostics: d,
         }
       Rejected { diagnostics: d } =>
         Rejected { diagnostics: d }
@@ -683,13 +674,13 @@ fn testgen_emit_algebra_law_claim(
 
 fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
   match algebra_law_subject_for_manual_anchor(anchor: anchor) {
-    Accepted { value: subject, diagnostics: None } =>
+    Accepted { value: subject, diagnostics: d } =>
       Accepted {
         value: AlgebraLawCase {
           anchor: manual_claim_anchor(anchor: anchor),
           subject: subject,
         },
-        diagnostics: None,
+        diagnostics: d,
       }
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }
@@ -767,7 +758,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
 
 fn algebra_law_subject_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -779,7 +770,7 @@ fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
       Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
       Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -790,7 +781,7 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
       Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
       Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -798,7 +789,7 @@ fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -812,7 +803,7 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
         target: witness_validity_symbol_atom_node(s: p.preservation_rule)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -826,7 +817,7 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
       },
       Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -873,7 +864,7 @@ fn witness_validity_subject_node(
               target: oracle_outcome
             }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 },
         diagnostics: None
       }
@@ -889,6 +880,8 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_ambiguous)
     ExternalContractUnknown =>
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
+    CorrectionNotModeled =>
+      witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_not_modeled)
   }
 }
 
@@ -900,7 +893,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
         children: [
           Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     Unavailable { reason: r } =>
       Node {
@@ -911,7 +904,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
             target: witness_validity_no_correction_reason_node(r: r)
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -954,11 +947,11 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
                       target: en
                     }
                   ],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: OccurrenceSynthetic
 }
               }
             ],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 },
           diagnostics: None
         }
@@ -970,21 +963,49 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
           children: [
             Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 },
         diagnostics: None
       }
-    PortLocus { anchor: a } =>
+    SourcePortLocus { anchor: a, file: f, extent: e } =>
+      bind_outcome(o: witness_validity_extent_node(e: e), f: fn(en) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Named { name: ^witness_validity_locus_tag_source_port },
+                target: witness_validity_symbol_atom_node(s: a.at)
+              },
+              Edge {
+                label: Named { name: ^witness_validity_locus_source_port_file },
+                target: witness_validity_symbol_atom_node(s: f)
+              },
+              Edge {
+                label: Named { name: ^witness_validity_locus_source_port_extent },
+                target: en
+              }
+            ],
+            occurrence_id: OccurrenceSynthetic
+},
+          diagnostics: None
+        }
+      })
+    InvariantPortLocus { anchor: a, invariant: invariant } =>
       Accepted {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: ^witness_validity_locus_tag_port },
+              label: Named { name: ^witness_validity_locus_tag_invariant_port },
               target: witness_validity_symbol_atom_node(s: a.at)
+            },
+            Edge {
+              label: Named { name: ^witness_validity_locus_invariant },
+              target: witness_validity_symbol_atom_node(s: invariant)
             }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 },
         diagnostics: None
       }
@@ -1010,7 +1031,7 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
             target: witness_validity_correction_node(c: d.correction)
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 },
       diagnostics: None
     }
@@ -1034,7 +1055,7 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
                 Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
                 Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
 },
             diagnostics: None
           }
@@ -1060,7 +1081,7 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
               target: tn
             }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 },
         diagnostics: None
       }
@@ -1086,7 +1107,7 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
                 target: ndn
               }
             ],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 },
           diagnostics: None
         }
@@ -1116,11 +1137,11 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                       target: dsn
                     }
                   ],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: OccurrenceSynthetic
 }
               }
             ],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 },
           diagnostics: None
         }
@@ -1136,7 +1157,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                 target: dn
               }
             ],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 },
           diagnostics: None
         }
@@ -1237,7 +1258,7 @@ fn append_nat_obligation_if_law_matches(
   law: Symbol
 ) -> Outcome<NatAlgebraLawObligation> {
   match found {
-    Accepted { value: _, diagnostics: None } => found
+    Accepted { value: _, diagnostics: _ } => found
     Rejected { diagnostics: _ } =>
       if obligation.law == law {
         Accepted { value: obligation, diagnostics: None }
@@ -1590,7 +1611,7 @@ fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
       connective: Atom { identity: omitted_variant }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1607,7 +1628,7 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
         )
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1676,28 +1697,18 @@ fn coproduct_exhaustiveness_generator(
 fn coproduct_exhaustiveness_generators_for_decl(
   decl: ConceptDecl
 ) -> List<Generator<TestgenConcept>> {
-  fold(
-    coproduct_arm_key_list_from_node(node: decl.node),
-    init: Empty,
-    f: fn(acc, arm) {
-      list_snoc_item(
-        xs: acc,
-        item: coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
-      )
+  list_map(
+    xs: coproduct_arm_key_list_from_node(node: decl.node),
+    f: fn(arm) {
+      coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
     }
   )
 }
 
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
-  fold(
-    enumerate_coproduct_decls(),
-    init: Empty,
-    f: fn(acc, decl) {
-      list_append(
-        left: acc,
-        right: coproduct_exhaustiveness_generators_for_decl(decl: decl)
-      )
-    }
+  list_flat_map(
+    xs: enumerate_coproduct_decls(),
+    f: fn(decl) { coproduct_exhaustiveness_generators_for_decl(decl: decl) }
   )
 }
 
@@ -1732,7 +1743,7 @@ fn cross_representation_representation_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1987,11 +1998,14 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
       )
     ManualRefinementNonEmptyListBase =>
       match refinement_preservation_subject_nonempty_list_base() {
-        Accepted { value: subject, diagnostics: None } =>
-          testgen_emit_refinement_preservation_claim(
-            anchor: ManualRefinementNonEmptyListBase,
-            label: refinement_label_nonempty_list_base,
-            subject: subject
+        Accepted { value: subject, diagnostics: d } =>
+          bind_outcome_accepted(
+            od: d,
+            inner: testgen_emit_refinement_preservation_claim(
+              anchor: ManualRefinementNonEmptyListBase,
+              label: refinement_label_nonempty_list_base,
+              subject: subject
+            )
           )
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
@@ -2094,23 +2108,23 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
       match refinement_preservation_subject_nonempty_list_base() {
-        Accepted { value: subject, diagnostics: None } =>
+        Accepted { value: subject, diagnostics: d } =>
           Accepted {
             value: RefinementPreservation {
               subject: subject,
             },
-            diagnostics: None,
+            diagnostics: d,
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
     ManualClaimAnchor { manual_anchor: manual_anchor } =>
       match algebra_law_subject_for_manual_anchor(anchor: manual_anchor) {
-        Accepted { value: subject, diagnostics: None } =>
+        Accepted { value: subject, diagnostics: d } =>
           Accepted {
             value: AlgebraLaw {
               subject: subject,
             },
-            diagnostics: None,
+            diagnostics: d,
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
@@ -2143,8 +2157,5 @@ fn bootstrap_claim_generator_for_manual_anchor(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "complete discriminating test generation is undecidable -- there is no construction that emits a test set guaranteed to catch every wrong behavior"
-  },
-  rationale: "Test generation is honest residue: a manual-anchor plus filesystem-backed shadow driver, never a complete construction; a new TestgenConcept arm is an operator STOP."
+  class: RatchetForever
 }

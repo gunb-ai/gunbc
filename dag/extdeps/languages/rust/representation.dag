@@ -1,0 +1,115 @@
+module extdeps.languages.rust.representation
+
+import std.types { List, String, Bool, NonEmptyStr }
+import std.coercion { TypeCheckpoint }
+import std.target_representation { RepresentationSpelling, SourceTypeTargetBinding }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data rust_representation_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/types.html"
+  }
+}
+
+// THE REPRESENTATIONS THIS TARGET CAN GIVE A SOURCE TYPE, named as target facts only. A row says
+// how Rust realizes a representation; WHICH source declaration takes which is the corpus's fact
+// (gunbc.rust_source_type_bindings), so no source name appears here. Two variants deliberately
+// carry no realization row: RustSymbolNewtype (`struct Symbol(std::string::String)`, nominal) and
+// RustInternedSymbol (a table index with a real intern table). They exist so the alternatives the
+// symbol-semantics decision weighed are REPRESENTABLE and a binding to either refuses loudly at
+// spelling time rather than being unwritable prose — the newtype is the declared next rung for
+// v2.std.node Symbol, triggered by the .dag checker distinguishing Symbol from String
+// (gunbc.symbol_identity_census).
+type RustRepresentation
+  = RustStdString
+  | RustSymbolNewtype
+  | RustInternedSymbol
+  | RustI64
+  | RustF64
+  | RustBool
+  | RustUnit
+  | RustVecU8
+  | RustSerdeJsonValue
+
+fn rust_representation_slug(representation: RustRepresentation) -> String {
+  match representation {
+    RustStdString => "rust_std_string"
+    RustSymbolNewtype => "rust_symbol_newtype"
+    RustInternedSymbol => "rust_interned_symbol"
+    RustI64 => "rust_i64"
+    RustF64 => "rust_f64"
+    RustBool => "rust_bool"
+    RustUnit => "rust_unit"
+    RustVecU8 => "rust_vec_u8"
+    RustSerdeJsonValue => "rust_serde_json_value"
+  }
+}
+
+fn rust_representation_eq(a: RustRepresentation, b: RustRepresentation) -> Bool {
+  rust_representation_slug(representation: a) == rust_representation_slug(representation: b)
+}
+
+// A realization is the spelling plus the three facts the old checkpoint row carried and the emitter
+// still consumes (v1.compiler.coercion is_copy / literal_suffix / default). They ride on the
+// representation, not the source name: `std::string::String` is not Copy whichever declaration it
+// realizes.
+type RustRepresentationRealization {
+  spelling: RepresentationSpelling<RustRepresentation>
+  default_expr: String?
+  is_copy: Bool
+  literal_suffix: String?
+}
+
+fn rust_realization(representation: RustRepresentation, reference_position: String, grounding_position: String, default_expr: String?, is_copy: Bool, literal_suffix: String?) -> RustRepresentationRealization {
+  RustRepresentationRealization {
+    spelling: RepresentationSpelling {
+      representation: representation,
+      reference_position: reference_position as NonEmptyStr,
+      grounding_position: grounding_position as NonEmptyStr,
+    },
+    default_expr: default_expr,
+    is_copy: is_copy,
+    literal_suffix: literal_suffix,
+  }
+}
+
+// FULLY QUALIFIED IN BOTH POSITIONS, INCLUDING WHERE THE BARE TOKEN WOULD COMPILE TODAY. The
+// motivating capture needs a bare token and an import binding the same token to coincide;
+// qualification removes the first regardless of whether the second exists yet in any module.
+// Primitive tokens (i64, f64, bool, ()) have no path form in Rust and no .dag declaration can
+// shadow them through a use-line, so they are already unshadowable as written.
+data rust_representation_realizations: List<RustRepresentationRealization> = [
+  rust_realization(representation: RustStdString, reference_position: "std::string::String", grounding_position: "std::string::String", default_expr: Present { value: "std::string::String::new()" }, is_copy: false, literal_suffix: Present { value: ".to_string()" }),
+  rust_realization(representation: RustI64, reference_position: "i64", grounding_position: "i64", default_expr: Present { value: "0" }, is_copy: true, literal_suffix: none),
+  rust_realization(representation: RustF64, reference_position: "f64", grounding_position: "f64", default_expr: Present { value: "0.0" }, is_copy: true, literal_suffix: none),
+  rust_realization(representation: RustBool, reference_position: "bool", grounding_position: "bool", default_expr: Present { value: "false" }, is_copy: true, literal_suffix: none),
+  rust_realization(representation: RustUnit, reference_position: "()", grounding_position: "()", default_expr: Present { value: "()" }, is_copy: true, literal_suffix: none),
+  rust_realization(representation: RustVecU8, reference_position: "std::vec::Vec<u8>", grounding_position: "std::vec::Vec<u8>", default_expr: Present { value: "std::vec::Vec::new()" }, is_copy: false, literal_suffix: none),
+  rust_realization(representation: RustSerdeJsonValue, reference_position: "serde_json::Value", grounding_position: "serde_json::Value", default_expr: Present { value: "serde_json::Value::Null" }, is_copy: false, literal_suffix: none)
+]
+
+fn rust_representation_realization_for(representation: RustRepresentation) -> RustRepresentationRealization? {
+  rust_representation_realizations |> filter(r => rust_representation_eq(a: r.spelling.representation, b: representation)) |> first
+}
+
+// THE DECISION SHAPE THE EMITTER AND std.reference_realization ALREADY CONSUME, produced from an
+// exact binding: a TypeCheckpoint whose dag_name is the DECLARATION's own name and whose two
+// spellings are the representation's qualified reference and grounding spellings. Absent means the
+// bound representation has no realization row on this target (RustSymbolNewtype,
+// RustInternedSymbol) — the caller refuses; nothing here invents a spelling.
+fn rust_exact_type_checkpoint(binding: SourceTypeTargetBinding<RustRepresentation>) -> TypeCheckpoint? {
+  match rust_representation_realization_for(representation: binding.representation) {
+    Present { value: r } =>
+      Present { value: TypeCheckpoint {
+        dag_name: binding.source.decl_name as String,
+        target_type: r.spelling.reference_position as String,
+        grounding_type: r.spelling.grounding_position as String,
+        default_expr: r.default_expr,
+        is_copy: Present { value: r.is_copy },
+        literal_suffix: r.literal_suffix
+      } }
+    Absent => none
+  }
+}

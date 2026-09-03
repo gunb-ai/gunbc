@@ -1,0 +1,394 @@
+module v2.compiler.self_host.wet_receipt_route_standing
+
+import tools.self_host_module_behavioral_transport_roster {
+  ModuleBehavioralTransportConfig,
+  module_behavioral_transport_config_for
+}
+import tools.self_host_curated_seed_linked_harness { cssl_pass_marker_stem }
+import v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings {
+  SelfHostWetReceiptBinding,
+  find_wet_receipt_binding
+}
+import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
+  seed_emitter_behavioral_wet_known_red_entries
+}
+import tools.self_host_logic_behavioral_transport { slb_receipt_pass_marker }
+import std.realization_schedule { ScheduleWitnessEntry }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// ROW-GRAIN ROUTE STANDING FOR THE WET SELF-HOST BEHAVIORAL RECEIPTS, and the grain is the whole
+// point of the module. std.witness_admission witness_cadence_has_scheduled_route answers at CADENCE
+// grain -- FalsifierSelfHostWet -> true or false -- the correct authority for its own question and
+// the wrong one for the question a partial executor raises. If an executor covers SOME rows and
+// that Boolean is flipped true, EVERY row classified into the cadence reads as covered, including
+// rows the executor cannot reach: the identical coverage inflation gunbc#9295 removed by cutting
+// falsifier_self_host_wet_cadence_active, re-entering through a different input -- there the fork
+// was `if active { FalsifierSelfHostWet } else { OfflineLocalRecipe }`, here it would be a true
+// Boolean spread across a population it does not describe. Operator ruling 2026-08-26: the route
+// may not go live until the scheduled row identities equal the live FalsifierSelfHostWet row
+// identities, OR the authority is strengthened to row grain. This module is that strengthening.
+//
+// WHAT A STANDING IS AND IS NOT. It answers CAN THIS ROW BE RUN, never DOES THIS ROW PASS. A row
+// with a driver, an enrolment and a derivable fault marker is WetReceiptExecutable whatever its
+// last verdict was; a row whose last measurement was red is still executable, and a row never
+// measured is not thereby unexecutable. Fusing route and verdict is what made the previous Boolean
+// unable to distinguish the two causes below.
+
+// THE CONCRETE POPULATION THIS TYPE EXISTS FOR, without which the type reads as over-modelled. The
+// 17 dag/test/claim/self_host_*_behavioral_witness_test.dag receipts are THREE causes, not one, and
+// no Boolean can say so:
+//
+//   ONE (self_host_logic) was a scheduled template row on falsifier_self_host_wet_template_entries
+//   and lost its executor when falsifier.yml was deleted at 611fd02770/#8283 on 2026-08-15. It
+//   needs no module binding -- template enrolment IS its binding -- so it is executable and
+//   unenrolled, which are different facts.
+//
+//   SIX carry an executed RED from cadence run 30126573464 on 2026-07-25 and had their bindings
+//   REVOKED for it (falsifier_self_host_wet_module_bindings_revocation_note names exactly six).
+//   They are the ExecutionWitnessKind known_red rows on gunbc.explicit_witness_admission.
+//
+//   TEN have no binding, no cadence run and no recorded verdict in either direction. Their standing
+//   is UNKNOWN, NOT RED. An earlier revision of the proposal document read the revocation note --
+//   which names six -- as covering the whole unenrolled remainder of sixteen and derived a bound
+//   from it; that is authority substitution, caught by review 56141 on gunbc#9306.
+//
+// BindingRevokedOnMeasuredRed and BindingNeverEstablished make that distinction structural. A
+// single unavailable arm would re-collapse it, and a Boolean never had it at all.
+
+type WetReceiptIdentity {
+  entry: String
+  function: String
+}
+
+// HOW A ROW IS ENROLLED, as a coproduct rather than an optional module_path, because the two
+// enrolment mechanisms are genuinely different and an Absent module_path would render a template
+// row as a module row with a missing fact.
+type WetReceiptEnrolment
+  = TemplateEnrolment
+  | ModuleBinding { module_path: String }
+
+// THE TWO CAUSES ARE NOT ONE CAUSE. They have different owners and different repairs: a revoked
+// binding is closed by the receipt greening under its own dissolution condition; a never-established
+// binding is closed by MEASURING the receipt for the first time. Collapsing them loses precisely the
+// distinction gunbc#9306 was corrected for asserting away.
+type WetReceiptUnavailableCause
+  = BindingRevokedOnMeasuredRed { cadence_run: String }
+  | BindingNeverEstablished
+
+// THE DRIVER IS NOT ALWAYS A FILE, and a String field would have hidden that. The sixteen module
+// receipts name a repo-relative witness_main.rs; the logic receipt's driver is an inline source
+// constant in its own transport module. Both are drivers; only one has a path. Writing the symbol
+// into a path-shaped String would be a positional/symbolic conflation in one field, so the two
+// carriers are variants -- the operator's `driver` field decomposed, not widened.
+type WetReceiptDriver
+  = DriverFile { path: String }
+  | DriverInlineSource { citation: String }
+
+type WetReceiptObsoleteCause
+  = TransportConfigAbsent
+  | PassMarkerNotDerivable
+
+type WetReceiptRouteStanding
+  = WetReceiptExecutable {
+      receipt: WetReceiptIdentity
+      driver: WetReceiptDriver
+      binding: WetReceiptEnrolment
+      expected_fault_marker: String
+    }
+  | WetReceiptBindingUnavailable {
+      receipt: WetReceiptIdentity
+      cause: WetReceiptUnavailableCause
+    }
+  | WetReceiptObsolete {
+      receipt: WetReceiptIdentity
+      cause: WetReceiptObsoleteCause
+    }
+
+data wet_receipt_measured_red_cadence_run: String = "30126573464"
+
+// THE FAULT MARKER IS DERIVED, NEVER CONFIGURED, and it is derived through the SAME function the
+// harness uses to decide whether a fault was detected (cssl_pass_marker_stem). Two derivations of one
+// marker would be two authorities that disagree exactly during drift; one function means the standing
+// cannot promise a marker the harness would not look for.
+fn wet_receipt_fault_marker(pass_marker: String) -> String {
+  let stem = cssl_pass_marker_stem(pass_marker: pass_marker)
+  if stem == "" {
+    ""
+  } else {
+    concat(stem, "FAIL")
+  }
+}
+
+fn wet_receipt_is_known_red(receipt: WetReceiptIdentity) -> Bool {
+  fold_list(
+    seed_emitter_behavioral_wet_known_red_entries,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || (row.entry == receipt.entry && row.function == receipt.function)
+    }
+  )
+}
+
+fn wet_receipt_unavailable_cause(receipt: WetReceiptIdentity) -> WetReceiptUnavailableCause {
+  if wet_receipt_is_known_red(receipt: receipt) {
+    BindingRevokedOnMeasuredRed { cadence_run: wet_receipt_measured_red_cadence_run }
+  } else {
+    BindingNeverEstablished
+  }
+}
+
+// A MODULE ROW'S STANDING IS DERIVED, not authored. Every input has exactly one home: the driver and
+// pass marker come from the transport roster, the fault marker from the harness's own stem function,
+// and binding presence from find_wet_receipt_binding. Nothing here is a second copy of a fact living
+// elsewhere, so this authority cannot drift from the mechanism it describes.
+fn wet_receipt_module_row_standing(
+  receipt: WetReceiptIdentity,
+  module_path: String
+) -> WetReceiptRouteStanding {
+  match module_behavioral_transport_config_for(module_path: module_path) {
+    Absent => WetReceiptObsolete { receipt: receipt, cause: TransportConfigAbsent }
+    Present { value: cfg } => {
+      let fault_marker = wet_receipt_fault_marker(pass_marker: cfg.pass_marker)
+      if fault_marker == "" {
+        WetReceiptObsolete { receipt: receipt, cause: PassMarkerNotDerivable }
+      } else {
+        match find_wet_receipt_binding(module_path: module_path) {
+          Absent => WetReceiptBindingUnavailable {
+            receipt: receipt,
+            cause: wet_receipt_unavailable_cause(receipt: receipt)
+          }
+          Present { value: _ } => WetReceiptExecutable {
+            receipt: receipt,
+            driver: DriverFile { path: cfg.driver_rel },
+            binding: ModuleBinding { module_path: module_path },
+            expected_fault_marker: fault_marker
+          }
+        }
+      }
+    }
+  }
+}
+
+// A TEMPLATE ROW NEEDS NO BINDING, so asking find_wet_receipt_binding about it would answer Absent and
+// report a missing fact that is not missing. Template enrolment IS the binding; what such a row lacks
+// is a SCHEDULED EXECUTOR, which is a cadence fact and deliberately not this row's to answer.
+fn wet_receipt_template_row_standing(
+  receipt: WetReceiptIdentity,
+  driver: WetReceiptDriver,
+  pass_marker: String
+) -> WetReceiptRouteStanding {
+  let fault_marker = wet_receipt_fault_marker(pass_marker: pass_marker)
+  if fault_marker == "" {
+    WetReceiptObsolete { receipt: receipt, cause: PassMarkerNotDerivable }
+  } else {
+    WetReceiptExecutable {
+      receipt: receipt,
+      driver: driver,
+      binding: TemplateEnrolment,
+      expected_fault_marker: fault_marker
+    }
+  }
+}
+
+data wet_receipt_route_standings: List<WetReceiptRouteStanding> = [
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag",
+      function: "self_host_00_compile_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/00_compile.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag",
+      function: "self_host_01_tokenize_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/01_tokenize.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_02_parse_behavioral_witness_test.dag",
+      function: "self_host_02_parse_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/02_parse.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag",
+      function: "self_host_03_ingest_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/03_ingest.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+      function: "self_host_03_normalize_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/03_normalize.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag",
+      function: "self_host_03_resolve_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/03_resolve.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_04_infer_behavioral_witness_test.dag",
+      function: "self_host_04_infer_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/04_infer.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+      function: "self_host_body_producer_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/03_body_producer.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+      function: "self_host_discovery_enumeration_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/discovery_enumeration.dag"
+  ),
+  wet_receipt_template_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
+      function: "self_host_logic_behavioral_receipt_holds"
+    },
+    driver: DriverInlineSource {
+      citation: "tools.self_host_logic_behavioral_transport slb_driver_main_source"
+    },
+    pass_marker: slb_receipt_pass_marker
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag",
+      function: "self_host_materialization_carriers_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/materialization_carriers.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+      function: "self_host_parse_engine_hooks_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/parse_engine_hooks.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag",
+      function: "self_host_program_assembly_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/program_assembly.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag",
+      function: "self_host_program_partition_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/program_partition.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_source_authority_behavioral_witness_test.dag",
+      function: "self_host_source_authority_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/source_authority.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+      function: "self_host_target_carriers_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/07_target_carriers.dag"
+  ),
+  wet_receipt_module_row_standing(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+      function: "self_host_use_site_verdict_behavioral_receipt_holds"
+    },
+    module_path: "src/v2/compiler/use_site_verdict.dag"
+  )
+]
+
+fn wet_receipt_standing_is_executable(standing: WetReceiptRouteStanding) -> Bool {
+  match standing {
+    WetReceiptExecutable { receipt: _, driver: _, binding: _, expected_fault_marker: _ } => true
+    WetReceiptBindingUnavailable { receipt: _, cause: _ } => false
+    WetReceiptObsolete { receipt: _, cause: _ } => false
+  }
+}
+
+fn wet_receipt_standing_receipt(standing: WetReceiptRouteStanding) -> WetReceiptIdentity {
+  match standing {
+    WetReceiptExecutable { receipt: r, driver: _, binding: _, expected_fault_marker: _ } => r
+    WetReceiptBindingUnavailable { receipt: r, cause: _ } => r
+    WetReceiptObsolete { receipt: r, cause: _ } => r
+  }
+}
+
+// THE MARKER DERIVATION IS ASKABLE WITHOUT A BINDING, and has to be. expected_fault_marker is
+// carried only on the Executable arm, so with the binding roster empty no row exposes one and the
+// derivation would be untestable exactly when it most needs a control. "What marker would this
+// module's driver print on the fault path" is a property of the transport, not the enrolment, so
+// it is answerable for all sixteen module rows today.
+fn wet_receipt_expected_fault_marker_for_module(module_path: String) -> String {
+  match module_behavioral_transport_config_for(module_path: module_path) {
+    Absent => ""
+    Present { value: cfg } => wet_receipt_fault_marker(pass_marker: cfg.pass_marker)
+  }
+}
+
+fn wet_receipt_standing_for(receipt: WetReceiptIdentity) -> Optional<WetReceiptRouteStanding> {
+  fold_list(
+    wet_receipt_route_standings,
+    empty: optional_absent(),
+    cons: fn(acc, standing) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => {
+          let r = wet_receipt_standing_receipt(standing: standing)
+          if r.entry == receipt.entry && r.function == receipt.function {
+            optional_present(value: standing)
+          } else {
+            optional_absent()
+          }
+        }
+      }
+    }
+  )
+}
+
+fn wet_receipt_standing_is_revoked_on_measured_red(standing: WetReceiptRouteStanding) -> Bool {
+  match standing {
+    WetReceiptExecutable { receipt: _, driver: _, binding: _, expected_fault_marker: _ } => false
+    WetReceiptObsolete { receipt: _, cause: _ } => false
+    WetReceiptBindingUnavailable { receipt: _, cause: c } => {
+      match c {
+        BindingRevokedOnMeasuredRed { cadence_run: _ } => true
+        BindingNeverEstablished => false
+      }
+    }
+  }
+}
+
+fn wet_receipt_standing_is_never_established(standing: WetReceiptRouteStanding) -> Bool {
+  match standing {
+    WetReceiptExecutable { receipt: _, driver: _, binding: _, expected_fault_marker: _ } => false
+    WetReceiptObsolete { receipt: _, cause: _ } => false
+    WetReceiptBindingUnavailable { receipt: _, cause: c } => {
+      match c {
+        BindingRevokedOnMeasuredRed { cadence_run: _ } => false
+        BindingNeverEstablished => true
+      }
+    }
+  }
+}

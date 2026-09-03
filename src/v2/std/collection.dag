@@ -1,6 +1,9 @@
 module v2.std.collection
 
-import v2.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
+import std.algebra { FreeMonoid, PointwisePower }
+import std.primitives { empty_map_contract, map_insert_contract, PrimitiveContract }
+import v2.std.algebra { fold_list, is_empty }
+import std.types { Set, Map }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -8,47 +11,35 @@ import v2.std.diagnostic {
   Unavailable,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present,
+  optional_prefer_first_present
+}
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
-type Optional<T>
-  = Absent
-  | Present { value: T }
-fn optional_absent<T>() -> Optional<T> {
-  Absent
-}
-fn optional_present<T>(value: T) -> Optional<T> {
-  Present { value: value }
-}
-fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Optional<T> {
-  match left {
-    Present { value: _ } => left
-    Absent => right
-  }
-}
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^optional_absent_unwrap,
-    at: port_locus(port: ^optional_present_witness_port),
+    at: invariant_port_locus(port: ^optional_present_witness_port, invariant: ^optional_absent_unwrap),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
-  match opt {
-    Present { value: v } => Holds { value: v }
-    Absent => Violates { diagnostic: optional_absent_unwrap_diagnostic() }
-  }
+  witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
 }
 
-type List<T> = FreeMonoid<T>
-type Set<T> = PointwisePower<T>
+type List<T> = std.algebra.FreeMonoid<T>
 
-type Map<K, V> {
-  lookup: fn(K) -> Witness<V>
-}
+data empty_map_host_binding: PrimitiveContract = empty_map_contract
+data map_insert_host_binding: PrimitiveContract = map_insert_contract
 
 type IndexedLookup<T> {
   index: Int
@@ -58,41 +49,38 @@ type IndexedLookup<T> {
 type ListAtLookup<T>
   = ListAtMissing { remaining: Int }
   | ListAtFound { value: T }
-fn map_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^map_key_absent,
-    at: port_locus(port: ^map_lookup_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
+fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
+  empty_map_primitive_delegate()
 }
 fn empty_map<K, V>() -> Map<K, V> {
-  Map {
-    lookup: fn(_) {
-      Violates { diagnostic: map_absent_diagnostic() }
-    }
-  }
+  empty_map_primitive_delegate()
 }
 fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   Map {
     lookup: fn(candidate) {
       match candidate == key {
-        true => Holds { value: value }
+        true => Present { value: value }
         false => m.lookup(candidate)
       }
     }
   }
 }
 
+// LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no
+// third state in which the map fails to say. So the total form is the primitive and the
+// Outcome-wrapped form below is a projection of it, not the other way round.
+//
+// The direction matters at the consumer. A caller reaching for `map_get` must match a
+// `Rejected` arm that no producer can construct, and the only arms available to it are the
+// caller's own domain answers — so the unreachable arm gets bound to whichever domain answer is
+// nearest, and a substrate failure would report as a domain fact. Exposing the total lookup
+// removes the arm rather than asking every caller to dispose of it honestly.
+fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  m.lookup(key)
+}
+
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
-  match m.lookup(key) {
-    Holds { value: v } => outcome_accepted(value: Present { value: v })
-    Violates { diagnostic: d } =>
-      if d.reason == ^map_key_absent {
-        outcome_accepted(value: Absent)
-      } else {
-        outcome_rejected(d: d)
-      }
-  }
+  outcome_accepted(value: map_lookup(m: m, key: key))
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
   fold_list(
@@ -138,9 +126,4 @@ type FiniteSet<T> {
   head: T
   tail: List<T>
 }
-type TotalMap<K, V> {
-  lookup: fn(K) -> V
-}
-type TotalPolicy<K, Context, RowTemplate> {
-  lookup: fn(K, Context) -> RowTemplate
-}
+

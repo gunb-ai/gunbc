@@ -1,0 +1,108 @@
+module extdeps.cloud.gcp.sts
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Int, NonEmptyStr, Secret }
+import v2.std.network { GET, POST }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/iam/docs/reference/sts/rest"
+  }
+}
+
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+
+type StsTokenResponse {
+  access_token: Secret
+  issued_token_type: String
+  token_type: String
+  expires_in: Int
+}
+
+type GitHubOidcToken200Body {
+  value: Secret
+  count: Int
+}
+
+type MetadataRuntime {}
+
+data metadata_runtime: MetadataRuntime = {}
+
+data sts_endpoint: NonEmptyStr = "https://sts.googleapis.com/v1/token"
+
+data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
+
+data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
+
+data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
+
+service gcp.STS {
+  config {
+    endpoint: "https://sts.googleapis.com"
+
+    rate_limit: { requests: 1000, per: minute, scope: sts }
+  }
+
+  operation Exchange {
+    input {
+      subject_token: Secret
+      audience: NonEmptyStr
+    }
+    output {
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
+    }
+
+    idempotent
+    transport rest { method: POST, path: "/v1/token" }
+    response {
+      200 => StsTokenResponse
+      400 => GcpOAuth2ErrorShape
+      401 => GcpOAuth2ErrorShape
+      403 => GcpOAuth2ErrorShape
+      429 => GcpOAuth2ErrorShape
+      5xx => GcpOAuth2ErrorShape
+    }
+  }
+}
+
+service github.OIDC {
+
+  operation GetToken {
+    input {
+      audience: NonEmptyStr
+      request_url: String
+      request_token: Secret
+    }
+    output { subject_token: Secret from "value" }
+    readonly
+    transport rest { method: GET, path: "/\{audience\}" }
+    response {
+      200 => GitHubOidcToken200Body
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+service gcp.Metadata {
+  config { endpoint: "http://metadata.google.internal" }
+
+  operation GetIdentityToken {
+    input { audience: NonEmptyStr }
+    output { subject_token: Secret }
+
+    readonly
+    transport rest { method: GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" }
+    response {
+      200 => String
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}

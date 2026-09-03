@@ -1,0 +1,453 @@
+module gunbc.build_cache_instance
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.measure { ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size }
+import std.cache_identity { CacheInterfaceId }
+import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
+import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, sccache_local_id }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.host_layout {
+  gunbc_managed_compile_pool_slice,
+  CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
+  gunbc_compile_pool_placement,
+}
+
+data build_cache_instance_scope_disposition: Disposition = SingleAuthority
+
+// CATALOG IDENTITY IS NOT DEPLOYED-INSTANCE IDENTITY, and conflating them is why a host carrying
+// two differently-configured uses of one implementation could not be described.
+// gunbc.host_build_cache_provision speaks of provisioning `the sccache_local catalog` on a host;
+// extdeps.cache.sccache.sccache_local_id names sccache's cache SEMANTICS and its pinned binary.
+// Neither identifies a running daemon. srv1 and srv2 each run TWO sccache servers from that one
+// catalog row — a CI server (principal ghrunner, /var/lib/ctrl/sccache-ci, endpoint
+// /var/lib/ctrl/sccache-ci/server.sock) and a session server (principal briansrls,
+// /var/lib/ctrl/sccache, 50G, endpoint /var/lib/ctrl/sccache/server.sock) — so 'provision the
+// catalog on this host' names neither of them and cannot express that one is correctly placed while
+// the other is not. BuildCacheInstance is the deployed grain: one row per (host, consumer class,
+// instance name), carrying the endpoint and the INTENDED unit, principal, storage, capacity and
+// compile pool that an observation is checked against. One concept with multiple data rows, never a
+// second provisioning mechanism per use (DESIGN section 2 horizontal).
+
+type BuildCacheConsumerClass
+  = ContinuousIntegrationCompiles
+  | InteractiveSessionCompiles
+
+type BuildCacheInstanceId {
+  host: HostIdentity
+  consumer_class: BuildCacheConsumerClass
+  instance_name: NonEmptyStr
+}
+
+type BuildCacheInstance {
+  identity: BuildCacheInstanceId
+  implementation: CacheInterfaceId
+  endpoint: SccacheServerEndpoint
+  intended_unit: NonEmptyStr
+  intended_principal: NonEmptyStr
+  intended_storage: NonEmptyStr
+  intended_capacity: ByteSize?
+  intended_compile_pool: CompilePoolPlacement
+}
+
+// STORAGE ROOT AND CAPACITY ARE TWO OBSERVED CONFIGURATION AXES, and each observation is bound to
+// both the exact deployed BuildCacheInstance and the ProcessIdentity whose environment was read. A
+// path or byte count without both subjects could be replayed across hosts, across the CI and
+// session instances that share one sccache implementation, or across two processes after pid reuse.
+// The owner is the process already proven to hold the instance endpoint; a unit file would answer
+// what systemd WOULD start, not how the live server is configured, and every host in the incident
+// population currently runs a server systemd did not start.
+//
+// UNSET AND READ UNAVAILABLE ARE DIFFERENT OBSERVATIONS WITH DIFFERENT REMEDIES. Unset means the
+// owner environment was read and carries no assignment; unavailable means the read did not answer,
+// and must never narrow to unset. Endpoint or owner absence does not appear as a third arm here:
+// without the prerequisite endpoint-owner observation there is no configuration subject, so these
+// carriers are not constructed at all. That is not-applicability at the join rather than malformed
+// configuration.
+//
+// CAPACITY ALSO RETAINS CONFIGURED TEXT THAT CANNOT YET BE GROUNDED AS BYTES.
+// gunbc.build_cache_unit emits a plain decimal byte count, which has one exact decoding. sccache
+// also accepts suffixed text such as its documented 10G default, but this repository has no cited
+// rule deciding whether G denotes 10^9 or 2^30. Choosing either would fabricate a magnitude whose
+// seven-percent difference could silently pass or refuse convergence.
+// BuildCacheCapacityConfiguredUngrounded therefore carries the text verbatim; it narrows when
+// extdeps.cache.sccache cites and models the accepted size grammar. The instance itself retains
+// whether capacity intent is declared, so gunbc.build_cache_instance_readiness refuses
+// intended_capacity Absent rather than freezing a vendor default as a decision.
+//
+// These carriers are consumed by gunbc.build_cache_instance_readiness, whose producer preserves
+// unavailable separately from observed mismatch and is the only function that mints the
+// proof-shaped BuildCacheInstanceReady receipt.
+
+type BuildCacheStorageConfiguration
+  = BuildCacheStorageRootConfigured { root: NonEmptyStr }
+  | BuildCacheStorageRootUnset
+
+type BuildCacheStorageObservation
+  = BuildCacheStorageObserved {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      configuration: BuildCacheStorageConfiguration
+    }
+  | BuildCacheStorageObservationUnavailable {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      detail: NonEmptyStr
+    }
+
+type BuildCacheCapacityConfiguration
+  = BuildCacheCapacityConfigured { capacity: ByteSize }
+  | BuildCacheCapacityConfiguredUngrounded { configured_text: NonEmptyStr }
+  | BuildCacheCapacityUnset
+
+type BuildCacheCapacityObservation
+  = BuildCacheCapacityObserved {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      configuration: BuildCacheCapacityConfiguration
+    }
+  | BuildCacheCapacityObservationUnavailable {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      detail: NonEmptyStr
+    }
+
+// A BARE PID IS NOT AN IDENTITY: the kernel reuses pids, so a pid recorded in one observation and
+// re-read in the next may name a different process, and a receipt that says 'pid 3975946 is the
+// endpoint owner' is only true relative to a boot and a start time. boot_id distinguishes across
+// reboots; start_time (the process's own start, monotonic within a boot) distinguishes across pid
+// reuse within one. The triple is what makes two consecutive observations comparable, which is
+// exactly what the non-mutation control asserts.
+
+type ProcessIdentity {
+  boot_id: NonEmptyStr
+  pid: Nat
+  start_time: NonEmptyStr
+}
+
+// A RETIRED SLOT IS A CURRENT-INTENT FACT, NOT AN ARCHAEOLOGICAL ONE. Whether srv1-10 is retired is
+// decided by asking whether it appears in the fleet's desired runner slots today — not by
+// explaining how the fleet once had ten. The lifecycle distinction is kept in the receipt because
+// it names WHICH construction wall failed: an ACTIVE runner owning the endpoint means birth
+// ordering failed (a runner ran before a managed cache existed); a RETIRED runner owning it means
+// birth ordering AND retirement both failed (the slot's unit was disabled while its cgroup stayed
+// computationally alive, still owning an endpoint and still parenting new compiler children under
+// its ceiling). Both refuse.
+
+type RunnerSlotIdentity {
+  host: HostIdentity
+  slot_index: Nat
+}
+
+// EQUALITY LIVES WITH THE IDENTITY IT IS ABOUT. Two consumers had each grown their own spelling --
+// runner_capacity_plan slot_identity_eq and runner_slot_allocation runner_slot_identity_equal --
+// which is one concept under two names, the nicknaming DESIGN section 3 forbids. Comparing on BOTH
+// coordinates is the substance: an equality blind to slot_index would report any slot on a host as
+// the host's fabric member.
+// THE TWO-DIGIT SUFFIX IS ONE RULE AND IT WAS THREE IMPLEMENTATIONS, ONE OF WHICH WAS WRONG.
+// runner_lifecycle and runner_host_deploy each derived it arithmetically; runner_incarnation
+// ENUMERATED it -- if index == 1 then "01", up to 8 -- with an else arm returning the literal "00".
+// So above index 8 the three disagreed, measured: srv3-09 from the derived pair, srv3-00 from the
+// enumerator. That is not a wrong name, it is a COLLISION -- every index above 8 mapped to the same
+// string, so two slots would contend for one registration in the GitHub runner namespace.
+//
+// IT WAS UNREACHABLE ONLY BY ACCIDENT, AND THE ACCIDENT WAS ANOTHER DEFECT. Nothing could hand the
+// enumerator an index above 8 because the widths were capped -- first by a bucketed slot-index
+// enumerator, then by host_memory_admitted_width's else arm, which answers zero for every host it
+// does not enumerate. The second of those is being repaired in this same change, which is exactly
+// why the suffix is repaired WITH it: widening that arm removes the guard, so landing it alone would
+// convert a dormant collision into a live one.
+//
+// THE REACHABLE POPULATION OF THAT ARM IS EMPTY TODAY, AND TWO EARLIER REVISIONS OF THIS BLOCK GOT
+// IT WRONG IN OPPOSITE DIRECTIONS. The first dated the risk to the commit that first lets a rented
+// host exist, which names a future event and the wrong subject. The second, correcting it, said srv5
+// and srv6 reach the arm right now -- also false, and false in the more dangerous direction, because
+// it reads as a live defect. Measured: gunbc.fleet_intent_network declares six host rows, but every
+// call that reaches this table draws its argument from gunbc.fleet_runner_connectivity fleet_hosts,
+// which enumerates four. srv5 and srv6 are the DGX Spark inference pair; nothing on the runner path
+// ever hands them to a width function, so they are not answered zero -- they are not asked.
+//
+// THE CORRECTION THAT MATTERS IS THAT ZERO IS THE WRONG ANSWER SHAPE, NOT THAT IT IS REACHED.
+// Were srv5 to arrive here it would be told it has a CI capacity of zero, when the truth is that the
+// question does not apply to an inference appliance. gunbc.host_phase_status fleet_subsumption_enrollments
+// already carries that distinction as a participation per host, so the fact exists and this table
+// cannot see it.
+//
+// THE STRUCTURAL TRIGGER, recorded as a property of the call sites rather than as a date:
+// the first width read whose host argument is not drawn from a closed roster.
+// Until such a read exists the arm is unreachable in practice; the moment one does, it answers zero
+// for a real host and that zero is indistinguishable from a measured one. The nearest candidate is
+// gunbc.build_cache_endpoint_observe runner_slot_lifecycle_for, whose host arrives on an observed
+// instance identity rather than from an enumeration -- NOT VERIFIED to be open, named here so the
+// next reader checks it instead of re-deriving that it is the place to look.
+//
+// DERIVED RATHER THAN REFUSED, because a refusal would still be a second representation of a rule
+// the arithmetic already states -- it concedes the bad state is writable and then guards it.
+// Deriving leaves no fall-through to route, so there is nothing to guard and nothing to forget.
+//
+// THIS FUNCTION IS TOTAL ON PURPOSE AND ITS TOTALITY IS NOT A MISSING BOUND. Index 99 gets a
+// well-formed name here, for a slot that should not exist, and that is CORRECT: whether index 99
+// exists is the ADMISSION CEILING's question, answered by gunbc.runner_slot_allocation from the
+// host's memory and disk admissions. Naming names; admission admits. A bound added here would be a
+// second representation of the ceiling, free to disagree with it, and it would re-create in this
+// function exactly the fall-through this change removed -- because any bound needs an else arm, and
+// that arm has no honest answer to return. If you are reading this because a name looked wrong for
+// an index that should not exist, the defect is upstream at the ceiling, not here.
+fn runner_slot_index_suffix(index: Nat) -> String {
+  if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
+}
+
+fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
+  join([slot.host as String, "-", runner_slot_index_suffix(index: slot.slot_index)], "")
+}
+
+fn runner_slot_identity_equal(a: RunnerSlotIdentity, b: RunnerSlotIdentity) -> Bool {
+  (a.host as String) == (b.host as String) && a.slot_index == b.slot_index
+}
+
+type RunnerSlotLifecycle
+  = DesiredRunnerSlot
+  | RetiredRunnerSlot
+
+type CgroupMemoryLimits {
+  memory_max: ByteSize
+  memory_high: ByteSize
+  memory_current: ByteSize
+}
+
+type CgroupMemoryEvents {
+  low: Nat
+  high: Nat
+  max: Nat
+  oom: Nat
+  oom_kill: Nat
+}
+
+data endpoint_ownership_note: String = "ENDPOINT OWNERSHIP IS THE PRIMARY OBSERVATION; PROCESS NAME PLUS CGROUP IS NOT ENOUGH. The sccache binary is both client and server, so under RUSTC_WRAPPER every in-flight compile also runs a process named 'sccache' inside the cgroup of the runner that issued it. Those clients are HEALTHY and expected — srv1 carried three of them (ages 296s, 112s, 86s, under live slots 01/04/05) at the moment the receipt was taken — so a probe that selects sccache processes by name and reads a cgroup samples a client and reports the WRONG placement, and a probe that refuses on 'multiple sccache processes' produces a FALSE refusal in the ordinary case. The server is identified positively and uniquely as the process HOLDING THE LISTEN on the instance's configured endpoint. For the UDS shape the whole chain is non-mutating and needs no sccache invocation: the exact endpoint path in /proc/net/unix yields the listening socket inode, /proc/*/fd resolves that inode to one owning pid, and /proc/pid/\{exe,environ,cgroup,stat\} yields executable, principal, unit and cgroup. It depends on no pgrep, head -1, ss or lsof, and it refuses naturally when the path, the inode, or the owner is not exactly one."
+
+type EndpointObservationUnavailableReason
+  = ReachRefused { detail: NonEmptyStr }
+  | ProcTableUnreadable { detail: NonEmptyStr }
+  | EndpointPathUnreadable { detail: NonEmptyStr }
+
+// WHAT THE OWNER'S CGROUP RESOLVES TO IS ONE FACT WITH THREE SHAPES, not three fields that happen
+// to agree. The first version of this carrier spelled it as a bare `unit` beside
+// `owning_runner_slot: RunnerSlotIdentity?` and `runner_slot_lifecycle: RunnerSlotLifecycle?`,
+// which admitted states no observation can produce and no reader can interpret: a slot with no
+// lifecycle, a lifecycle with no slot, or a unit contradicting both. The lifecycle-without-slot
+// case was the dangerous one — the derivation matched on the slot first, so an Absent slot carrying
+// a Present lifecycle fell straight through to the unit comparison and could return
+// ServerManagedUnitOwned, converging on a runner-owned endpoint from inconsistent substrate data
+// (review 46217). Guarding that with a check would have conceded the state is writable; the
+// coproduct makes it unwritable instead (DESIGN section 5, construction over validation). A slot
+// cannot be recorded without deciding its lifecycle against current fleet intent, because deciding
+// it is the same act as finding it. When the chain reaches a cgroup it cannot classify — an
+// unreadable unit, a slot index that does not parse, a desired-slot roster the observer could not
+// read — that is its own positive arm carrying the located reason, never a half-filled record.
+//
+// SECOND REPAIR (operator review, post-merge): the raw cgroup path now lives INSIDE each arm as
+// observed_cgroup rather than beside the context as its own field on EndpointOwnerObserved. Those
+// two were independently writable and could disagree — a record could carry a cgroup naming a
+// runner slice while its context said OwnerInSystemdUnit, and placement trusted the context, so the
+// contradiction was silent. They are not two facts: the context IS the classification of that
+// cgroup, so the string travels with the classification derived from it and the disagreement has
+// nowhere to live. The path is retained because a refusal must be located — ServerUnsupervised
+// quotes it so an operator sees WHICH cgroup was found — but it is diagnostic evidence carried by
+// the decision, never a second input a reader could consult instead.
+
+type EndpointOwnerContext
+  = OwnerInRunnerSlot {
+      slot: RunnerSlotIdentity
+      lifecycle: RunnerSlotLifecycle
+      observed_cgroup: NonEmptyStr
+    }
+  | OwnerInSystemdUnit { unit: NonEmptyStr, observed_cgroup: NonEmptyStr }
+  | OwnerContextUndecided { detail: NonEmptyStr, observed_cgroup: NonEmptyStr }
+
+type BuildCacheEndpointObservation
+  = EndpointAbsent { instance: BuildCacheInstance }
+  | EndpointOwnerObserved {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      executable: NonEmptyStr
+      principal: NonEmptyStr
+      owner_context: EndpointOwnerContext
+      memory_limits: CgroupMemoryLimits?
+      memory_events: CgroupMemoryEvents?
+    }
+  | EndpointOwnershipAmbiguous { instance: BuildCacheInstance, candidate_count: Nat }
+  | EndpointObservationUnavailable {
+      instance: BuildCacheInstance
+      reason: EndpointObservationUnavailableReason
+    }
+
+// THE SINGLE PLACEMENT AUTHORITY, homed here rather than in gunbc.host_build_cache_provision because placement is derived from an OBSERVATION of a deployed instance, and the verdict fold is a CONSUMER of it. Keeping the type beside the observation it is derived from means there is exactly one definition of what 'correctly placed' is, and the provisioning fold cannot drift a second opinion. Placement is a verdict axis and not a detail because extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS: the server's cgroup is the cgroup every compile on the host runs in, so the server's caps bound every compile on the host and not merely the caps of the job that issued them. A responsive daemon proves nothing about where it runs.
+type BuildCacheServerPlacement
+  = ServerManagedUnitOwned { unit: NonEmptyStr }
+  | ServerRunnerOwned { slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle }
+  | ServerUnsupervised { cgroup: NonEmptyStr }
+  | ServerPlacementAbsent
+  | ServerPlacementUnknown { detail: NonEmptyStr }
+
+fn placement_of_owner(
+  instance: BuildCacheInstance,
+  owner_context: EndpointOwnerContext,
+) -> BuildCacheServerPlacement {
+  match owner_context {
+    OwnerInRunnerSlot { slot: s, lifecycle: lc, observed_cgroup: _ } =>
+      ServerRunnerOwned { slot: s, lifecycle: lc }
+    OwnerInSystemdUnit { unit: u, observed_cgroup: cg } =>
+      match (u as String) == (instance.intended_unit as String) {
+        true => ServerManagedUnitOwned { unit: u }
+        false => ServerUnsupervised { cgroup: cg }
+      }
+    OwnerContextUndecided { detail: d, observed_cgroup: _ } =>
+      ServerPlacementUnknown { detail: d }
+  }
+}
+
+fn placement_of_endpoint_observation(
+  observed: BuildCacheEndpointObservation,
+) -> BuildCacheServerPlacement {
+  match observed {
+    EndpointAbsent { instance: _ } => ServerPlacementAbsent
+    EndpointOwnerObserved {
+      instance: inst,
+      owner: _,
+      executable: _,
+      principal: _,
+      owner_context: ctx,
+      memory_limits: _,
+      memory_events: _,
+    } =>
+      placement_of_owner(instance: inst, owner_context: ctx)
+    EndpointOwnershipAmbiguous { instance: _, candidate_count: n } =>
+      ServerPlacementUnknown {
+        detail: concat(
+          "the configured endpoint did not resolve to exactly one listening owner; candidate count ",
+          to_string(n),
+        ) as NonEmptyStr,
+      }
+    EndpointObservationUnavailable { instance: _, reason: r } =>
+      ServerPlacementUnknown { detail: unavailable_reason_detail(reason: r) }
+  }
+}
+
+fn unavailable_reason_detail(reason: EndpointObservationUnavailableReason) -> NonEmptyStr {
+  match reason {
+    ReachRefused { detail: d } =>
+      concat("the host could not be reached, so placement is unobserved rather than absent: ", d as String) as NonEmptyStr
+    ProcTableUnreadable { detail: d } =>
+      concat("the process table could not be read, so the endpoint owner is unresolved: ", d as String) as NonEmptyStr
+    EndpointPathUnreadable { detail: d } =>
+      concat("the endpoint path could not be read, so listener ownership is unresolved: ", d as String) as NonEmptyStr
+  }
+}
+
+// THE DESIRED DEPLOYED INSTANCES, one row per (host, consumer class). These state INTENT and are
+// deliberately not a description of the live hosts: the whole point of the observer is that intent
+// and observation are different things and their difference is refusable. As of the 2026-08-01
+// reads NO host satisfies intended_unit for its CI instance, and the four hosts fail in four
+// DIFFERENT ways rather than along one ladder — srv1's endpoint is owned by a 31-day process in
+// RETIRED slot srv1-10, srv2's by a process in an ACTIVE slot, srv3 had an owner in an active slot
+// that later vanished with its runner cgroup, and srv4 has no owner at all because a stale socket
+// makes every new server fail to bind. Every row below refused against those reads, which is the
+// correct and intended reading rather than a defect in the rows.
+//
+// THE FOUR-DIFFERENT-WAYS SENTENCE IS A RECEIPT OF 2026-08-01 AND THE FLEET HAS SINCE CONVERGED ON
+// ONE WAY, which is worth stating because the variety was the argument for the observer. Measured
+// 2026-08-25T18:43Z on all four hosts: /var/lib/ctrl/sccache-ci/server.sock EXISTS with ZERO
+// listeners behind it, no sccache process holds it anywhere (srv3 runs one user-session sccache
+// under user@1000.service that does not touch this path), and no host has a
+// gunbc-build-cache-ci.service unit at all. So every row still refuses, and now for the same reason
+// on every host -- the srv4 shape of 2026-08-01 generalised to the fleet.
+//
+// CI intended_capacity stays Absent on purpose and that is now the ONLY Absent here: the 10 GiB the
+// CI servers ran under was sccache's built-in default rather than a chosen number, and choosing one
+// is a later increment, so declaring it would fabricate a decision nobody has made.
+//
+// THE SESSION ROWS' 50G IS FLAGGED RATHER THAN CORRECTED, BECAUSE ITS PREMISE IS GONE AND ONLY THE
+// OPERATOR CAN REPLACE IT. This note used to record a correction: the session rows carried Absent
+// while the note claimed 50G, the two disagreed, and the note was judged the true half on the
+// strength of ctrl-sccache.service really setting 50G -- so the VALUE was changed to match the
+// note. Measured 2026-08-25T18:43Z, ctrl-sccache.service DOES NOT EXIST on any of the four hosts:
+// is-enabled returns not-found and no unit file matches. The evidence that decided that correction
+// has no subject, so the 50G now stands on nothing, and re-deriving it from a unit nobody can read
+// would be inventing the decision this paragraph refuses to invent for CI. An Absent capacity
+// cannot be read back or converged against, which is why the CI Absent is a tracked gap rather than
+// a resting state; the session 50G is now a tracked claim of the same kind, pointing the other way.
+
+fn ci_cache_instance(host: HostIdentity) -> BuildCacheInstance {
+  BuildCacheInstance {
+    identity: BuildCacheInstanceId {
+      host: host,
+      consumer_class: ContinuousIntegrationCompiles,
+      instance_name: "sccache-ci" as NonEmptyStr,
+    },
+    implementation: sccache_local_id,
+    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache-ci/server.sock" as NonEmptyStr },
+    intended_unit: "gunbc-build-cache-ci.service" as NonEmptyStr,
+    intended_principal: "ghrunner" as NonEmptyStr,
+    intended_storage: "/var/lib/ctrl/sccache-ci" as NonEmptyStr,
+    intended_capacity: none,
+    intended_compile_pool: gunbc_compile_pool_placement,
+  }
+}
+
+fn session_cache_instance(host: HostIdentity) -> BuildCacheInstance {
+  BuildCacheInstance {
+    identity: BuildCacheInstanceId {
+      host: host,
+      consumer_class: InteractiveSessionCompiles,
+      instance_name: "sccache-session" as NonEmptyStr,
+    },
+    implementation: sccache_local_id,
+    endpoint: SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache/server.sock" as NonEmptyStr },
+    intended_unit: "gunbc-build-cache-session.service" as NonEmptyStr,
+    intended_principal: "briansrls" as NonEmptyStr,
+    intended_storage: "/var/lib/ctrl/sccache" as NonEmptyStr,
+    intended_capacity: Present { value: gibibyte_to_byte_size(g: gibibyte(50)) },
+    intended_compile_pool: gunbc_compile_pool_placement,
+  }
+}
+
+// srv4 JOINED THE DESIRED ROSTER ON AN OBSERVATION, and the sequence is the argument for the row.
+// When this authority first landed, srv4 was unreachable (ssh returned Permission denied
+// (publickey)) and it appeared in this module only as diagnostic prose — so the fleet's intent was
+// silently four-fifths stated, and a typed unavailability had no SUBJECT to attach to. That is the
+// state-space conflation one level up: a host absent from the desired roster is indistinguishable
+// from a host with nothing desired on it, and only one of those was true.
+//
+// The reachability was never the blocker it looked like. srv4 carries exactly the two declared
+// fleet keys and deliberately NOT the session-bootstrap keys other hosts were hand-keyed with, so
+// it is the CONVERGED control of gunbc.host_authorized_keys_reconcile, not a mis-keyed host; the
+// missing piece was materializing the fleet-automation private key for a session, which is the A1
+// gap in gunbc.plans.fleet_subsumption_manual_gaps. Once the operator supplied it the read took
+// under a minute over the ordinary route.
+//
+// WHAT THAT READ FOUND ON 2026-08-01, recorded because it is the reason this row is not a
+// formality: srv4 held NO listener on its configured endpoint, ran no sccache process and had no
+// unit, yet a STALE server.sock remained on disk and its error log's entire contents were one line,
+// Address in use (os error 98). A server born in a runner cgroup died with that cgroup without
+// unlinking its socket, so every later server failed to bind and compiles ran uncached. Its
+// placement therefore derives ServerPlacementAbsent and refuses, which is correct, but the CAUSE
+// was a distinct defect from srv1's stranded owner and the managed unit must clear a stale endpoint
+// on start or it will inherit the same trap.
+//
+// THAT SHAPE IS NO LONGER srv4'S ALONE, WHICH IS WHY THE PARAGRAPH IS DATED RATHER THAN LEFT IN THE
+// PRESENT TENSE. Measured 2026-08-25T18:43Z, all four hosts carry the socket with zero listeners
+// and no sccache process holding it, and srv1's stranded owner -- the contrast this paragraph drew
+// -- is gone. The distinctness of the CAUSES stands as history and no longer distinguishes the
+// hosts.
+
+data build_cache_desired_instances: List<BuildCacheInstance> = [
+  ci_cache_instance(host: operator_host_srv1),
+  session_cache_instance(host: operator_host_srv1),
+  ci_cache_instance(host: operator_host_srv2),
+  session_cache_instance(host: operator_host_srv2),
+  ci_cache_instance(host: operator_host_srv3),
+  ci_cache_instance(host: operator_host_srv4),
+]

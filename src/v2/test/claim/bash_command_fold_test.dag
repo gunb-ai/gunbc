@@ -1,0 +1,780 @@
+module v2.test.claim.bash_command_fold
+
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.bash {
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_negation_emitted,
+  bash_stmt_with_redir_emitted,
+  bash_word_pass_emitted
+}
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign_lit,
+  bash_build_assign_var,
+  bash_build_command_from_lits,
+  bash_build_command_from_word_nodes,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_or_else,
+  bash_build_pipe,
+  bash_build_subshell_from_stmts,
+  bash_build_with_redir,
+  bash_build_with_redir_to_file,
+  bash_build_word_var
+}
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_and_then_true_false_emitted,
+  bash_fold_assign_foo_bar_emitted,
+  bash_fold_assign_wrong_target_model_witness,
+  bash_fold_cmd_echo_hi_emitted,
+  bash_fold_cmd_true_emitted,
+  bash_fold_cmd_true_wrong_emitted,
+  bash_fold_cmd_true_wrong_target_model_witness,
+  bash_fold_cmd_var_x_emitted,
+  bash_fold_cmd_wc_minus_c_emitted,
+  bash_fold_stmt_kind_sentinel,
+  bash_fold_word_lit_sentinel,
+  bash_fold_word_var_sentinel,
+  bash_fold_word_concat_sentinel,
+  bash_fold_word_cmdsubst_sentinel,
+  bash_fold_env_prefixed_wrong_target_model_witness,
+  bash_fold_exit_42_emitted,
+  bash_fold_exit_wrong_target_model_witness,
+  bash_fold_heredoc_wrong_target_model_witness,
+  bash_fold_negation_wrong_target_model_witness,
+  bash_fold_pipe_echo_hi_wc_emitted,
+  bash_fold_raw_line_wrong_target_model_witness,
+  bash_fold_relation_row_witness,
+  bash_fold_target_model_for_emitted_witness,
+  bash_fold_with_redir_wrong_target_model_witness
+}
+import v2.workflow.bash_emit {
+  BashEmitStmt,
+  bash_emit_env_prefixed,
+  bash_emit_from_target,
+  bash_emit_heredoc,
+  bash_emit_matches_golden,
+  bash_emit_negation,
+  bash_emit_negation_spelling,
+  bash_emit_raw_line_matches_golden,
+  bash_emit_wrong_spelling_oracle_holds,
+  bash_emit_wrong_target_oracle_holds
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Goldens below are hand-authored expected bytes, deliberately independent of
+// extdeps.languages.bash.program serialize_stmt and of the grammar rows/segment spellings. Each
+// fold test compares bash_emit (row-emit) against its golden only (PR #6467
+// ci_cargo_eagain_retry_core_golden pattern).
+
+data bash_fold_and_then_golden: String = "'true' && 'false'"
+data bash_fold_assign_foo_golden: String = "FOO='bar'"
+data bash_fold_assign_home_golden: String = "X=\"$HOME\""
+data bash_fold_assign_quote_golden: String = "VAR='a'\\''b'"
+data bash_fold_cmd_echo_hi_golden: String = "'echo' 'hi'"
+data bash_fold_cmd_grep_golden: String = "'grep' '-rn' 'foo_bar.baz'"
+data bash_fold_cmd_home_golden: String = "\"$HOME\""
+data bash_fold_cmd_quote_golden: String = "'a'\\''b'"
+data bash_fold_cmd_true_golden: String = "'true'"
+data bash_fold_cmd_var_x_golden: String = "\"$X\""
+data bash_fold_env_prefixed_golden: String = "TMPDIR='/t' 'true'"
+data bash_fold_exit_0_golden: String = "exit 0"
+data bash_fold_exit_42_golden: String = "exit 42"
+data bash_fold_heredoc_golden: String = "cat > 'out' <<'EOF'\nhello\nEOF"
+data bash_fold_if_echo_golden: String = "if 'true'; then 'echo' 'hi'; fi"
+data bash_fold_if_multi_golden: String = "if 'true'; then 'echo' 'hi'; 'false'; fi"
+data bash_fold_if_pipe_golden: String = "if 'true'; then 'echo' 'hi' | 'wc' '-c'; fi"
+data bash_fold_negation_golden: String = "! ('false')"
+data bash_fold_negation_raw_golden: String = "! (do_verify\nmore)"
+data bash_fold_or_else_golden: String = "'true' || 'false'"
+data bash_fold_pipe_golden: String = "'echo' 'hi' | 'wc' '-c'"
+data bash_fold_pipe_and_then_golden: String = "'true' && 'false' | 'wc' '-c'"
+data bash_fold_pipe_three_golden: String = "'echo' 'hi' | 'wc' '-c' | 'tr' '-d' ' '"
+data bash_fold_raw_cmdsubst_golden: String = "$(a)"
+data bash_fold_raw_mktemp_golden: String = "TMPDIR=$('mktemp' '-d')"
+data bash_fold_raw_nl_golden: String = "ab\n"
+data bash_fold_raw_orch_golden: String = "! ( foo )"
+data bash_fold_raw_paren_golden: String = "a)b"
+data bash_fold_raw_quoted_golden: String = "'q'"
+data bash_fold_raw_xeq_golden: String = "x=y"
+data bash_fold_redir_both_golden: String = "'true' >/dev/null 2>&1"
+data bash_fold_redir_file_golden: String = "'true' > \"$PROBE_BIN\""
+data bash_fold_redir_pipe_golden: String = "'echo' 'hi' | 'wc' '-c' 2>/dev/null"
+data bash_fold_redir_stderr_golden: String = "'true' 2>/dev/null"
+data bash_fold_redir_stdout_stderr_golden: String = "'true' >&2"
+data bash_fold_subshell_golden: String = "('true')"
+data bash_fold_subshell_multi_golden: String = "('true'; 'false')"
+data bash_fold_subshell_nested_golden: String = "('true' && 'false')"
+
+fn bash_fold_command_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  }
+}
+
+fn bash_fold_assign_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_assign,
+    rule_name: ^bash_relation_rule_fold_assign
+  }
+}
+
+fn bash_fold_exit_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_exit,
+    rule_name: ^bash_relation_rule_fold_exit
+  }
+}
+
+fn bash_fold_and_then_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_and_then,
+    rule_name: ^bash_relation_rule_fold_and_then
+  }
+}
+
+fn bash_fold_or_else_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_or_else,
+    rule_name: ^bash_relation_rule_fold_or_else
+  }
+}
+
+fn bash_fold_pipe_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_pipe,
+    rule_name: ^bash_relation_rule_fold_pipe
+  }
+}
+
+fn bash_fold_subshell_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_subshell,
+    rule_name: ^bash_relation_rule_fold_subshell
+  }
+}
+
+fn bash_fold_if_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_if,
+    rule_name: ^bash_relation_rule_fold_if
+  }
+}
+
+fn bash_fold_with_redir_stmt(node: Node) -> BashEmitStmt {
+  BashEmitStmt {
+    node: node,
+    production_binding: ^bash_production_fold_with_redir,
+    rule_name: ^bash_relation_rule_fold_with_redir
+  }
+}
+
+fn bash_fold_direct_serialize_matches_golden(emitted: Node, target: TargetModel, golden: String) -> Bool {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == golden) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_relation_row_true_witness_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_cmd_true_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_command_single_lit_true_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(node: bash_fold_cmd_true_emitted),
+    golden: bash_fold_cmd_true_golden
+  )
+}
+
+test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
+  bash_fold_stmt_kind_sentinel == from_code_point(cp: 2)
+    && bash_fold_word_lit_sentinel == from_code_point(cp: 0)
+    && bash_fold_word_var_sentinel == from_code_point(cp: 1)
+    && bash_fold_word_concat_sentinel == from_code_point(cp: 3)
+    && bash_fold_word_cmdsubst_sentinel == from_code_point(cp: 4)
+    && bash_emit_matches_golden(
+      stmt: bash_fold_command_stmt(node: bash_fold_cmd_echo_hi_emitted),
+      golden: bash_fold_cmd_echo_hi_golden
+    )
+}
+
+test fn bash_fold_command_var_ref_x_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(node: bash_fold_cmd_var_x_emitted),
+    golden: bash_fold_cmd_var_x_golden
+  )
+}
+
+test fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(
+      node: bash_build_command_from_lits(lits: ["grep", "-rn", "foo_bar.baz"])
+    ),
+    golden: bash_fold_cmd_grep_golden
+  )
+}
+
+test fn bash_fold_command_arbitrary_var_home_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(
+      node: bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "HOME")])
+    ),
+    golden: bash_fold_cmd_home_golden
+  )
+}
+
+test fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(
+      node: bash_build_command_from_lits(lits: ["a'b"])
+    ),
+    golden: bash_fold_cmd_quote_golden
+  )
+}
+
+test fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_emit_wrong_target_oracle_holds(
+    emitted: bash_fold_cmd_true_emitted,
+    golden: bash_fold_cmd_true_golden,
+    wrong_target_witness: bash_fold_cmd_true_wrong_target_model_witness()
+  )
+}
+
+test fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
+  match bash_fold_target_model_for_emitted_witness(
+    emitted: bash_fold_cmd_true_emitted,
+    source_literal: ^bash_fold_dynamic_source_literal,
+    source_text: bash_fold_cmd_true_golden,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  ) {
+    Holds { value: target } =>
+      bash_fold_direct_serialize_matches_golden(
+        emitted: bash_fold_cmd_true_emitted,
+        target: target,
+        golden: bash_fold_cmd_true_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
+  match bash_fold_target_model_for_emitted_witness(
+    emitted: bash_fold_cmd_echo_hi_emitted,
+    source_literal: ^bash_fold_dynamic_source_literal,
+    source_text: bash_fold_cmd_echo_hi_golden,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  ) {
+    Holds { value: target } =>
+      bash_fold_direct_serialize_matches_golden(
+        emitted: bash_fold_cmd_echo_hi_emitted,
+        target: target,
+        golden: bash_fold_cmd_echo_hi_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
+  match bash_fold_target_model_for_emitted_witness(
+    emitted: bash_fold_cmd_var_x_emitted,
+    source_literal: ^bash_fold_dynamic_source_literal,
+    source_text: bash_fold_cmd_var_x_golden,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  ) {
+    Holds { value: target } =>
+      bash_fold_direct_serialize_matches_golden(
+        emitted: bash_fold_cmd_var_x_emitted,
+        target: target,
+        golden: bash_fold_cmd_var_x_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
+  bash_fold_cmd_true_emitted != bash_fold_cmd_true_wrong_emitted
+}
+
+test fn bash_fold_exit_code_42_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_exit_stmt(node: bash_fold_exit_42_emitted),
+    golden: bash_fold_exit_42_golden
+  )
+}
+
+test fn bash_fold_exit_code_0_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_exit_stmt(node: bash_build_exit(code: "0")),
+    golden: bash_fold_exit_0_golden
+  )
+}
+
+test fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_emit_wrong_target_oracle_holds(
+    emitted: bash_fold_exit_42_emitted,
+    golden: bash_fold_exit_42_golden,
+    wrong_target_witness: bash_fold_exit_wrong_target_model_witness()
+  )
+}
+
+test fn bash_fold_assign_lit_foo_bar_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_assign_stmt(node: bash_fold_assign_foo_bar_emitted),
+    golden: bash_fold_assign_foo_golden
+  )
+}
+
+test fn bash_fold_assign_var_x_home_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_assign_stmt(
+      node: bash_build_assign_var(name: "X", var_name: "HOME")
+    ),
+    golden: bash_fold_assign_home_golden
+  )
+}
+
+test fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_assign_stmt(
+      node: bash_build_assign_lit(name: "VAR", text: "a'b")
+    ),
+    golden: bash_fold_assign_quote_golden
+  )
+}
+
+test fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_emit_wrong_target_oracle_holds(
+    emitted: bash_fold_assign_foo_bar_emitted,
+    golden: bash_fold_assign_foo_golden,
+    wrong_target_witness: bash_fold_assign_wrong_target_model_witness()
+  )
+}
+
+test fn bash_fold_and_then_true_false_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_and_then_stmt(node: bash_fold_and_then_true_false_emitted),
+    golden: bash_fold_and_then_golden
+  )
+}
+
+test fn bash_fold_or_else_true_false_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_or_else_stmt(
+      node: bash_build_or_else(
+        left: bash_fold_cmd_true_emitted,
+        right: bash_build_command_from_lits(lits: ["false"])
+      )
+    ),
+    golden: bash_fold_or_else_golden
+  )
+}
+
+test fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_pipe_stmt(node: bash_fold_pipe_echo_hi_wc_emitted),
+    golden: bash_fold_pipe_golden
+  )
+}
+
+test fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_and_then_true_false_emitted,
+    lhs: ^bash_production_fold_or_else
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_pipe_echo_hi_wc_emitted,
+    lhs: ^bash_production_fold_and_then
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_pipe_and_then_left_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_pipe_stmt(
+      node: bash_build_pipe(
+        left: bash_fold_and_then_true_false_emitted,
+        right: bash_fold_cmd_wc_minus_c_emitted
+      )
+    ),
+    golden: bash_fold_pipe_and_then_golden
+  )
+}
+
+test fn bash_fold_pipe_three_stage_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_pipe_stmt(
+      node: bash_build_pipe(
+        left: bash_build_pipe(
+          left: bash_fold_cmd_echo_hi_emitted,
+          right: bash_fold_cmd_wc_minus_c_emitted
+        ),
+        right: bash_build_command_from_lits(lits: ["tr", "-d", " "])
+      )
+    ),
+    golden: bash_fold_pipe_three_golden
+  )
+}
+
+test fn bash_fold_subshell_true_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_subshell_stmt(
+      node: bash_build_subshell_from_stmts(stmts: [bash_fold_cmd_true_emitted])
+    ),
+    golden: bash_fold_subshell_golden
+  )
+}
+
+test fn bash_fold_subshell_multi_stmt_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_subshell_stmt(
+      node: bash_build_subshell_from_stmts(
+        stmts: [
+          bash_fold_cmd_true_emitted,
+          bash_build_command_from_lits(lits: ["false"])
+        ]
+      )
+    ),
+    golden: bash_fold_subshell_multi_golden
+  )
+}
+
+test fn bash_fold_subshell_nested_and_then_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_subshell_stmt(
+      node: bash_build_subshell_from_stmts(stmts: [bash_fold_and_then_true_false_emitted])
+    ),
+    golden: bash_fold_subshell_nested_golden
+  )
+}
+
+test fn bash_fold_if_true_then_echo_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_if_stmt(
+      node: bash_build_if_from_stmts(
+        cond: bash_fold_cmd_true_emitted,
+        then_stmts: [bash_fold_cmd_echo_hi_emitted]
+      )
+    ),
+    golden: bash_fold_if_echo_golden
+  )
+}
+
+test fn bash_fold_if_multi_then_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_if_stmt(
+      node: bash_build_if_from_stmts(
+        cond: bash_fold_cmd_true_emitted,
+        then_stmts: [
+          bash_fold_cmd_echo_hi_emitted,
+          bash_build_command_from_lits(lits: ["false"])
+        ]
+      )
+    ),
+    golden: bash_fold_if_multi_golden
+  )
+}
+
+test fn bash_fold_if_then_pipe_soundness_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_if_stmt(
+      node: bash_build_if_from_stmts(
+        cond: bash_fold_cmd_true_emitted,
+        then_stmts: [bash_fold_pipe_echo_hi_wc_emitted]
+      )
+    ),
+    golden: bash_fold_if_pipe_golden
+  )
+}
+
+test fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_build_subshell_from_stmts(stmts: [bash_fold_cmd_true_emitted]),
+    lhs: ^bash_production_fold_if
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_build_if_from_stmts(
+      cond: bash_fold_cmd_true_emitted,
+      then_stmts: [bash_fold_cmd_echo_hi_emitted]
+    ),
+    lhs: ^bash_production_fold_subshell
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_with_redir_stderr_null_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_with_redir_stmt(
+      node: bash_build_with_redir(
+        inner: bash_fold_cmd_true_emitted,
+        redir: ^bash_production_fold_redir_stderr_null
+      )
+    ),
+    golden: bash_fold_redir_stderr_golden
+  )
+}
+
+test fn bash_fold_with_redir_stdout_and_stderr_null_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_with_redir_stmt(
+      node: bash_build_with_redir(
+        inner: bash_fold_cmd_true_emitted,
+        redir: ^bash_production_fold_redir_stdout_and_stderr_null
+      )
+    ),
+    golden: bash_fold_redir_both_golden
+  )
+}
+
+test fn bash_fold_with_redir_stdout_to_stderr_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_with_redir_stmt(
+      node: bash_build_with_redir(
+        inner: bash_fold_cmd_true_emitted,
+        redir: ^bash_production_fold_redir_stdout_to_stderr
+      )
+    ),
+    golden: bash_fold_redir_stdout_stderr_golden
+  )
+}
+
+test fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_with_redir_stmt(
+      node: bash_build_with_redir_to_file(
+        inner: bash_fold_cmd_true_emitted,
+        path: bash_build_word_var(name: "PROBE_BIN")
+      )
+    ),
+    golden: bash_fold_redir_file_golden
+  )
+}
+
+test fn bash_fold_heredoc_holds() -> Bool {
+  match bash_emit_heredoc(path_spelling: "'out'", delimiter: "EOF", body: "hello") {
+    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_heredoc_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_with_redir_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match bash_fold_with_redir_wrong_target_model_witness() {
+    Holds { value: target } =>
+      bash_emit_wrong_spelling_oracle_holds(
+        emit_o: bash_emit_from_target(emitted: bash_stmt_with_redir_emitted, target: target),
+        golden: bash_fold_redir_stderr_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_heredoc_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match bash_fold_heredoc_wrong_target_model_witness() {
+    Holds { value: target } =>
+      target.authority_source_text != bash_fold_heredoc_golden
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_with_redir_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_with_redir_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_heredoc_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_heredoc_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_with_redir_pipe_soundness_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_with_redir_stmt(
+      node: bash_build_with_redir(
+        inner: bash_fold_pipe_echo_hi_wc_emitted,
+        redir: ^bash_production_fold_redir_stderr_null
+      )
+    ),
+    golden: bash_fold_redir_pipe_golden
+  )
+}
+
+test fn bash_fold_raw_line_orch_emit_holds() -> Bool {
+  bash_emit_raw_line_matches_golden(text: "! ( foo )", golden: bash_fold_raw_orch_golden)
+}
+
+test fn bash_fold_raw_line_x_eq_holds() -> Bool {
+  bash_emit_raw_line_matches_golden(text: "x=y", golden: bash_fold_raw_xeq_golden)
+}
+
+test fn bash_fold_raw_line_cmdsubst_holds() -> Bool {
+  bash_emit_raw_line_matches_golden(text: "$(a)", golden: bash_fold_raw_cmdsubst_golden)
+}
+
+test fn bash_fold_raw_line_paren_holds() -> Bool {
+  bash_emit_raw_line_matches_golden(text: "a)b", golden: bash_fold_raw_paren_golden)
+}
+
+test fn bash_fold_raw_line_quoted_holds() -> Bool {
+  bash_emit_raw_line_matches_golden(text: "'q'", golden: bash_fold_raw_quoted_golden)
+}
+
+test fn bash_fold_raw_line_mktemp_holds() -> Bool {
+  bash_emit_raw_line_matches_golden(
+    text: "TMPDIR=$('mktemp' '-d')",
+    golden: bash_fold_raw_mktemp_golden
+  )
+}
+
+test fn bash_fold_raw_line_trailing_nl_holds() -> Bool {
+  bash_emit_raw_line_matches_golden(text: "ab\n", golden: bash_fold_raw_nl_golden)
+}
+
+test fn bash_fold_raw_line_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match bash_fold_raw_line_wrong_target_model_witness() {
+    Holds { value: target } =>
+      bash_emit_wrong_spelling_oracle_holds(
+        emit_o: bash_emit_from_target(emitted: bash_word_pass_emitted, target: target),
+        golden: bash_fold_raw_orch_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_raw_line_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_word_pass_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_negation_subshell_false_holds() -> Bool {
+  match bash_emit_negation(
+    inner: bash_build_subshell_from_stmts(stmts: [bash_build_command_from_lits(lits: ["false"])])
+  ) {
+    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_negation_subshell_rawline_holds() -> Bool {
+  match bash_emit_negation_spelling(inner_spelling: "(do_verify\nmore)") {
+    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_raw_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_negation_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match bash_fold_negation_wrong_target_model_witness() {
+    Holds { value: target } =>
+      bash_emit_wrong_spelling_oracle_holds(
+        emit_o: bash_emit_from_target(emitted: bash_stmt_negation_emitted, target: target),
+        golden: bash_fold_negation_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_negation_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_negation_emitted,
+    lhs: ^bash_production_fold_subshell
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_env_prefixed_lit_t_holds() -> Bool {
+  match bash_emit_env_prefixed(
+    name: "TMPDIR",
+    value_spelling: "'/t'",
+    command_spelling: "'true'"
+  ) {
+    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_env_prefixed_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match bash_fold_env_prefixed_wrong_target_model_witness() {
+    Holds { value: target } =>
+      target.authority_source_text != bash_fold_env_prefixed_golden
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_env_prefixed_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_env_prefixed_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_heredoc_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}

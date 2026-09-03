@@ -1,20 +1,43 @@
-use std::collections::HashMap;
+// CLIPPY ROSTER -- 16 finding(s) this module trips today, listed one lint per line with
+// its count. Until this commit the generated crate root allowed `clippy::all` plus six
+// rustc groups on behalf of every module under it, so `cargo clippy --all-targets -- -D
+// warnings` decided nothing here; the root now excuses only the generated modules it
+// speaks for (v1.compiler.emit_rust generated_rust_lint_relaxations), and this is what
+// that leaves visible. The list is MONOTONE NON-INCREASING: a name leaves when its last
+// site is repaired, and a lint not named below reds the build, which is the whole point.
+#![allow(
+    clippy::disallowed_macros,  // 2
+    clippy::missing_const_for_thread_local,  // 2
+    clippy::question_mark,  // 1
+    clippy::type_complexity,  // 2
+    clippy::unnecessary_to_owned,  // 8
+    unused_imports,  // 1
+)]
+
+use crate::v1_rt::VecCompat;
+use im::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::v1_compiler_infer_items::ItemKind;
+use crate::cli_run::{
+    collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
+};
+use crate::module_path_index::parsed_dag_file::{parse_dag_content, parse_dag_file};
+use crate::v1_compiler_infer_env::lookup_binding_by_name;
+use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
-    fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
+    fields_get, sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
-pub(crate) const NULLARY_PAYLOAD_TYPE_NAME: &str = "coproduct_nullary_payload";
+type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
 
 fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a str> {
     match value {
-        Some(Value::Str(s)) => Ok(s.as_str()),
+        Some(Value::Str(s)) => Ok(s.as_ref()),
         _ => Err(InterpError::TypeError {
             msg: format!("{what} requires a Symbol argument"),
         }),
@@ -26,7 +49,7 @@ fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<Strin
         msg: format!("{what} requires a lexeme argument"),
     })?;
     match val {
-        Value::Str(s) => Ok(s.clone()),
+        Value::Str(s) => Ok(s.to_string()),
         _ => {
             let items = crate::v1_interpreter::free_monoid_to_vec(val).ok_or_else(|| {
                 InterpError::TypeError {
@@ -58,7 +81,15 @@ pub fn eval_symbol_intern_lexeme(
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let spelling = expect_string_lexeme(args.first().map(|(_, v)| v), "symbol_intern_lexeme")?;
-    Ok(Value::Str(spelling))
+    Ok(str_value(spelling))
+}
+
+pub fn eval_symbol_lexeme(
+    _ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let sym = expect_symbol(args.first().map(|(_, v)| v), "symbol_lexeme")?;
+    Ok(str_value(sym))
 }
 
 pub(crate) fn type_item_by_name<'a>(
@@ -104,10 +135,7 @@ fn atom_connective_variant(ctx: &InterpContext, identity: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym("Atom"),
-        fields: Rc::new(vec![(
-            ctx.sym("identity"),
-            Value::Str(identity.to_string()),
-        )]),
+        fields: Rc::new(vec![(ctx.sym("identity"), str_value(identity.to_string()))]),
     }
 }
 
@@ -121,8 +149,8 @@ fn node_kind_type_node(ctx: &InterpContext, connective: Value) -> Value {
 
 fn synthetic_occurrence(ctx: &InterpContext) -> Value {
     Value::Variant {
-        type_name: ctx.sym("NodeOccurrenceId"),
-        variant_name: ctx.sym("SyntheticOccurrence"),
+        type_name: ctx.sym("NodeOccurrenceIdentity"),
+        variant_name: ctx.sym("OccurrenceSynthetic"),
         fields: Rc::new(vec![]),
     }
 }
@@ -150,7 +178,7 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Named"),
-                    fields: Rc::new(vec![(ctx.sym("name"), Value::Str(name.to_string()))]),
+                    fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -166,8 +194,16 @@ fn unit_type_node(ctx: &InterpContext) -> Value {
     )
 }
 
-fn type_expr_authored_name(ctx: &InterpContext, type_expr: &Rc<Node>) -> String {
-    let si = ctx.source_indices();
+fn type_expr_authored_name(
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: &Rc<Node>,
+) -> String {
+    if type_expr.connective == Connective::Conj
+        && type_expr.type_annotation.is_some()
+        && type_expr.children.len() == 1
+    {
+        return type_expr_authored_name(si, &type_expr.children[0]);
+    }
     let name = authored_name_at(si.clone(), type_expr.clone());
     if !name.is_empty() {
         return name;
@@ -191,8 +227,12 @@ fn type_expr_authored_name(ctx: &InterpContext, type_expr: &Rc<Node>) -> String 
     String::new()
 }
 
-fn marshal_type_expr_ref(ctx: &InterpContext, type_expr: &Rc<Node>) -> InterpResult<Value> {
-    let name = type_expr_authored_name(ctx, type_expr);
+fn marshal_type_expr_ref(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: &Rc<Node>,
+) -> InterpResult<Value> {
+    let name = type_expr_authored_name(si, type_expr);
     if name.is_empty() {
         return Err(InterpError::TypeError {
             msg: "marshal_type_expr_ref: empty authored type name".to_string(),
@@ -205,11 +245,14 @@ fn marshal_type_expr_ref(ctx: &InterpContext, type_expr: &Rc<Node>) -> InterpRes
     ))
 }
 
-fn marshal_variant_arm_target(ctx: &InterpContext, variant: &Rc<Node>) -> InterpResult<Value> {
+fn marshal_variant_arm_target(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant: &Rc<Node>,
+) -> InterpResult<Value> {
     if variant.children.is_empty() {
         return Ok(unit_type_node(ctx));
     }
-    let si = ctx.source_indices();
     let mut edges = Vec::with_capacity(variant.children.len());
     for field in variant.children.iter() {
         let field_name = authored_name_at(si.clone(), field.clone());
@@ -218,7 +261,7 @@ fn marshal_variant_arm_target(ctx: &InterpContext, variant: &Rc<Node>) -> Interp
             .as_ref()
             .and_then(|inf| inferred_to_node(inf.clone()))
             .unwrap_or_else(|| field_node_type_expr(field.clone()));
-        let target = marshal_type_expr_ref(ctx, &type_expr)?;
+        let target = marshal_type_expr_ref(ctx, si, &type_expr)?;
         edges.push(edge_named(ctx, &field_name, target));
     }
     Ok(node_record(
@@ -228,17 +271,20 @@ fn marshal_variant_arm_target(ctx: &InterpContext, variant: &Rc<Node>) -> Interp
     ))
 }
 
-pub fn marshal_disj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
+pub fn marshal_disj_type_item(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
             msg: "resolve_type_node: type is not a closed coproduct (Disj)".to_string(),
         });
     }
-    let si = ctx.source_indices();
     let mut edges = Vec::with_capacity(item.children.len());
     for child in item.children.iter() {
         let label = authored_name_at(si.clone(), child.clone());
-        let target = marshal_variant_arm_target(ctx, child)?;
+        let target = marshal_variant_arm_target(ctx, si, child)?;
         edges.push(edge_named(ctx, &label, target));
     }
     Ok(node_record(
@@ -248,221 +294,460 @@ pub fn marshal_disj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpRes
     ))
 }
 
-fn source_text_from_ctx(ctx: &InterpContext, file: &str) -> InterpResult<String> {
-    let indices = ctx.source_indices();
-    let index = indices.get(file).ok_or_else(|| InterpError::TypeError {
-        msg: format!("syntactic coproduct arm keys: no in-memory source for `{file}`"),
-    })?;
-    let len = index.char_codes.len() as i64;
-    Ok(crate::v1_rt::chars_to_string(&index.char_codes, 0, len))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CoproductArmSurface {
-    pub label: String,
-    pub payload_type_name: String,
-}
-
-pub fn syntactic_coproduct_arm_labels(
-    ctx: &InterpContext,
-    file: &str,
-    type_name: &str,
-) -> InterpResult<Vec<String>> {
-    let content = source_text_from_ctx(ctx, file)?;
-    extract_type_sum_arm_labels(&content, type_name).map_err(|msg| InterpError::TypeError { msg })
-}
-
-pub fn syntactic_coproduct_arm_pairs(
-    ctx: &InterpContext,
-    file: &str,
-    type_name: &str,
-) -> InterpResult<Vec<CoproductArmSurface>> {
-    let content = source_text_from_ctx(ctx, file)?;
-    extract_type_sum_arm_pairs(&content, type_name).map_err(|msg| InterpError::TypeError { msg })
-}
-
-fn same_line_leading_comment(s: &str) -> bool {
-    match s.find('\n') {
-        Some(0) => false,
-        Some(nl) => s[..nl].trim().starts_with("//"),
-        None => s.trim().starts_with("//"),
-    }
-}
-
-fn read_identifier_prefix(s: &str) -> Option<(String, &str)> {
-    let mut end = 0;
-    for (i, ch) in s.char_indices() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            end = i + ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    if end == 0 {
-        return None;
-    }
-    Some((s[..end].to_string(), &s[end..]))
-}
-
-fn skip_braced(s: &str) -> Option<&str> {
-    let mut depth = 0usize;
-    for (i, ch) in s.char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return Some(&s[i + 1..]);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn payload_type_name_from_rest(rest: &str) -> Result<(String, &str), String> {
-    let rest = rest.trim_start();
-    if rest.starts_with('{') {
-        let after = skip_braced(rest).ok_or_else(|| {
-            "syntactic coproduct arm pairs: unclosed `{` in arm payload".to_string()
-        })?;
-        let payload_len = rest.len() - after.len();
-        let payload = rest[..payload_len].trim().to_string();
-        Ok((payload, after))
-    } else {
-        Ok((NULLARY_PAYLOAD_TYPE_NAME.to_string(), rest))
-    }
-}
-
-fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
-    let needle = format!("type {type_name}");
-    let mut search_from = 0usize;
-    while let Some(rel) = source[search_from..].find(&needle) {
-        let start = search_from + rel;
-        let after = start + needle.len();
-        let boundary_ok = source[after..]
-            .chars()
-            .next()
-            .is_none_or(|c| c.is_whitespace() || c == '=' || c == '{');
-        let prefix_ok = start == 0
-            || source
-                .as_bytes()
-                .get(start.saturating_sub(1))
-                .is_some_and(|b| b.is_ascii_whitespace());
-        if boundary_ok && prefix_ok {
-            return Some(start);
-        }
-        search_from = start + 1;
-    }
-    None
-}
-
-fn extract_type_sum_arm_pairs(
-    source: &str,
-    type_name: &str,
-) -> Result<Vec<CoproductArmSurface>, String> {
-    let start = find_type_decl_start(source, type_name).ok_or_else(|| {
-        format!("syntactic coproduct arm pairs: `{type_name}` not found in source")
-    })?;
-    let needle = format!("type {type_name}");
-    let after_type = &source[start + needle.len()..];
-    let eq_rel = after_type
-        .find('=')
-        .ok_or_else(|| format!("syntactic coproduct arm pairs: `{type_name}` missing `=`"))?;
-    let mut rest = after_type[eq_rel + 1..].trim_start();
-    let mut arms = Vec::new();
-    loop {
-        rest = rest.trim_start();
-        if rest.is_empty() {
-            break;
-        }
-        if rest.starts_with('|') {
-            rest = rest[1..].trim_start();
-        }
-        let arm_name = read_identifier_prefix(rest).ok_or_else(|| {
-            format!("syntactic coproduct arm pairs: expected arm identifier for `{type_name}`")
-        })?;
-        rest = arm_name.1;
-        if same_line_leading_comment(rest) {
-            return Err(format!(
-                "syntactic coproduct arm pairs: unexpected `//` comment mid-declaration for `{type_name}`"
-            ));
-        }
-        rest = rest.trim_start();
-        let (payload_type_name, after_payload) = payload_type_name_from_rest(rest)?;
-        arms.push(CoproductArmSurface {
-            label: arm_name.0,
-            payload_type_name,
-        });
-        rest = after_payload.trim_start();
-        if rest.is_empty() {
-            break;
-        }
-        if rest.starts_with("//") {
-            break;
-        }
-        if !rest.starts_with('|') {
-            let suffix = rest.trim_start();
-            if suffix.starts_with("//")
-                || suffix.starts_with("type ")
-                || suffix.starts_with("fn ")
-                || suffix.starts_with("module ")
-                || suffix.starts_with("import ")
-            {
-                break;
-            }
-            let peek = rest.chars().next().unwrap_or('\0');
-            return Err(format!(
-                "syntactic coproduct arm pairs: unexpected token `{peek}` mid-declaration for `{type_name}`"
-            ));
-        }
-    }
-    if arms.is_empty() {
-        return Err(format!(
-            "syntactic coproduct arm pairs: `{type_name}` has no arms"
-        ));
-    }
-    Ok(arms)
-}
-
-fn extract_type_sum_arm_labels(source: &str, type_name: &str) -> Result<Vec<String>, String> {
-    extract_type_sum_arm_pairs(source, type_name)
-        .map(|pairs| pairs.into_iter().map(|p| p.label).collect())
-}
-
 pub fn eval_resolve_type_node(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "resolve_type_node")?;
     let (item, _) = type_item_by_name(ctx, type_name)?;
-    marshal_disj_type_item(ctx, item)
+    marshal_disj_type_item(ctx, &ctx.source_indices(), item)
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
-    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
-    if logical.is_empty() {
+    // Concept-index reflection keeps the authored module path (including `v2.`).
+    // Decl-index uses `decl_logical_qualified_name` instead (strips `v2.`).
+    if module_name.is_empty() {
         name.to_string()
     } else {
-        format!("{logical}.{name}")
+        format!("{module_name}.{name}")
     }
 }
 
-fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
+#[derive(Debug, Clone)]
+struct ParsedTypeDecl {
+    module_path: String,
+    rel_path: String,
+    name: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+}
+
+use std::cell::RefCell;
+use std::collections::BTreeMap as StdDeclParseMemoMap;
+
+thread_local! {
+    static FLOOR_DECL_PARSE_MEMO: RefCell<
+        Option<StdDeclParseMemoMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>>,
+    > = RefCell::new(None);
+}
+
+thread_local! {
+    /// THE `decl_facts` CENSUS AS A SHARED ARTIFACT, keyed by the canonical pool-root set and
+    /// alive exactly as long as the floor's prepared authority (registered and cleared beside
+    /// `FLOOR_DECL_PARSE_MEMO`). Every witness that names the same roots reads one walk.
+    ///
+    /// WHY. The walk re-parsed every non-test file under the roots on every call, and each
+    /// required-floor witness evaluates its module's `data` rows alone, so a file of four
+    /// witnesses over one pool paid the same parse four times — and the FIRST evaluation of any
+    /// of them paid it inside the 500ms CPU refusal. Measured on run 33311256002: the four
+    /// `bmc_onboarding_quarantine_witness_test` rows, 196–225ms cpu solo on the BuildBuddy
+    /// runner with the census at 138ms of that, were all BUDGET-REFUSED at 503–512ms on the CI
+    /// host. The walk is a function of the roots and the prepared tree, not of the witness, so
+    /// it is the floor's shared-build attribution defect at memo grain — the same class
+    /// `compile_dag_diagnostic_census` closes with its memo — and it is closed the same way:
+    /// the miss is bracketed as shared-artifact fill on both clocks, which `budgeted_cpu_nanos`
+    /// nets from the deadline and `run_claim_measured` reports, never drops. Same roots, same
+    /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
+    /// same marshaled rows; different ownership of the shared construction cost.
+    ///
+    /// Outside the floor there is no prepared authority to bound the memo's lifetime, so the
+    /// cell is `None` and every call walks — the existing behaviour, unchanged.
+    static FLOOR_DECL_FACTS_MEMO: RefCell<
+        Option<StdDeclParseMemoMap<Vec<String>, Rc<Vec<DeclFactRaw>>>>,
+    > = RefCell::new(None);
+}
+
+pub fn register_floor_decl_parse_memo() {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
+    });
+    FLOOR_DECL_FACTS_MEMO.with(|cell| {
+        *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
+    });
+}
+
+pub fn clear_floor_decl_parse_memo() {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| *cell.borrow_mut() = None);
+    FLOOR_DECL_FACTS_MEMO.with(|cell| *cell.borrow_mut() = None);
+}
+
+/// The canonical pool-root MULTISET: order-free because the walk sorts its output by
+/// (rel_path, name, kind), but NOT duplicate-free, because the walk visits every supplied root
+/// and appends what it finds — `[r, r]` yields every declaration twice, so it is a different
+/// population from `[r]` and must be a different key. A dedup here made the memo's answer a
+/// function of call order (whichever spelling filled first served the other).
+fn decl_facts_memo_key(pool_roots: &[String]) -> Vec<String> {
+    let mut key = pool_roots.to_vec();
+    key.sort();
+    key
+}
+
+/// `decl_facts_for_roots` through the floor-lifetime memo: one walk per canonical root set per
+/// prepared authority, the miss recorded as shared-artifact fill. See `FLOOR_DECL_FACTS_MEMO`.
+pub fn decl_facts_for_roots_shared(pool_roots: &[String]) -> Rc<Vec<DeclFactRaw>> {
+    let registered = FLOOR_DECL_FACTS_MEMO.with(|cell| cell.borrow().is_some());
+    if !registered {
+        return Rc::new(decl_facts_for_roots(pool_roots));
+    }
+    let key = decl_facts_memo_key(pool_roots);
+    let hit = FLOOR_DECL_FACTS_MEMO.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .and_then(|memo| memo.get(&key).cloned())
+    });
+    if let Some(facts) = hit {
+        return facts;
+    }
+    // A MISS FILLS A SHARED ARTIFACT: measured on the same thread clock the claim loop enforces
+    // against, recorded on both clocks so it can never be counted on one and not the other.
+    let fill_started = crate::v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
+    let facts = Rc::new(decl_facts_for_roots(pool_roots));
+    crate::cli_run::record_shared_artifact_fill_cpu(
+        crate::v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
+    crate::cli_run::record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
+    FLOOR_DECL_FACTS_MEMO.with(|cell| {
+        if let Some(memo) = cell.borrow_mut().as_mut() {
+            memo.insert(key, Rc::clone(&facts));
+        }
+    });
+    facts
+}
+
+fn floor_decl_parse_memo_lookup(
+    roots: &[String],
+    want_kind: ItemKind,
+) -> Option<(Vec<ParsedTypeDecl>, usize)> {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        let slot = cell.borrow();
+        let Some(map) = slot.as_ref() else {
+            return None;
+        };
+        map.get(&(roots.to_vec(), want_kind)).cloned()
+    })
+}
+
+fn floor_decl_parse_memo_store(
+    roots: &[String],
+    want_kind: ItemKind,
+    result: &(Vec<ParsedTypeDecl>, usize),
+) {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if let Some(map) = slot.as_mut() {
+            map.insert((roots.to_vec(), want_kind), result.clone());
+        }
+    });
+}
+
+fn inventory_entry_under_abs_roots(
+    rel_path: &str,
+    abs_roots: &[String],
+    ws: &std::path::Path,
+) -> bool {
+    let abs = ws.join(rel_path.replace('\\', "/"));
+    abs_roots.iter().any(|root| {
+        let root_path = std::path::Path::new(root);
+        abs == *root_path || abs.starts_with(root_path)
+    })
+}
+
+fn decls_parse_only_from_inventory(
+    inventory: &[crate::cli_run::PreparedSourceView],
+    roots: &[String],
+    want_kind: ItemKind,
+    caller: &str,
+) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
+    let ws = workspace_root();
+    let mut entries: Vec<&crate::cli_run::PreparedSourceView> = inventory
+        .iter()
+        .filter(|e| inventory_entry_under_abs_roots(&e.source.path, roots, &ws))
+        .collect();
+    entries.sort_by(|a, b| a.source.path.cmp(&b.source.path));
+    let module_count = entries.len();
+    let mut out = Vec::new();
+    for entry in entries {
+        let filename = entry
+            .source
+            .path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&entry.source.path);
+        let parsed = parse_dag_content(&entry.source.content, filename).ok_or_else(|| {
+            format!(
+                "{caller}: failed to parse `{path}` from prepared inventory (fail-closed; no silent skip)",
+                path = entry.source.path
+            )
+        })?;
+        let si = parsed.source_indices;
+        for item in parsed.items.iter() {
+            if item_kind(item.clone()) != want_kind {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            out.push(ParsedTypeDecl {
+                module_path: entry.module_path.clone(),
+                rel_path: entry.source.path.clone(),
+                name,
+                item: item.clone(),
+                source_indices: si.clone(),
+            });
+        }
+    }
+    Ok((out, module_count))
+}
+
+/// Measurement harness (`floor_prepared_toll_receipt` bin): wall time for pool-root parse-only
+/// decl extraction. `inventory` selects the floor prepared path; `None` is the legacy disk walk.
+pub fn pool_decl_parse_wall_ms(
+    pool_roots: &[String],
+    want_kind: ItemKind,
+    inventory: Option<&[crate::cli_run::PreparedSourceView]>,
+) -> Result<(u128, usize), String> {
+    let started = std::time::Instant::now();
+    let (_, module_count) = if let Some(inv) = inventory {
+        decls_parse_only_from_inventory(inv, pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+    } else {
+        decls_parse_only_from_disk(pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+    };
+    Ok((started.elapsed().as_millis(), module_count))
+}
+
+fn decls_parse_only_from_disk(
+    roots: &[String],
+    want_kind: ItemKind,
+    caller: &str,
+) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
+    let ws = workspace_root();
+    let index = crate::cli_run::build_module_path_index(roots);
+    let mut modules: Vec<(String, String)> = index.into_iter().collect();
+    modules.sort();
+    let module_count = modules.len();
+    let mut out = Vec::new();
+    for (module_path, rel_path) in modules {
+        let abs = ws.join(&rel_path);
+        let parsed = parse_dag_file(&abs).ok_or_else(|| {
+            format!("{caller}: failed to parse `{rel_path}` (fail-closed; no silent skip)")
+        })?;
+        let si = parsed.source_indices;
+        for item in parsed.items.iter() {
+            if item_kind(item.clone()) != want_kind {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            out.push(ParsedTypeDecl {
+                module_path: module_path.clone(),
+                rel_path: rel_path.clone(),
+                name,
+                item: item.clone(),
+                source_indices: si.clone(),
+            });
+        }
+    }
+    Ok((out, module_count))
+}
+
+/// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
+/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
+/// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
+/// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
+/// on a walk that silently skips a file, so both callers share this one.
+fn decls_parse_only_fail_closed(
+    roots: &[String],
+    want_kind: ItemKind,
+    caller: &str,
+) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
+    if let Some(cached) = floor_decl_parse_memo_lookup(roots, want_kind) {
+        return Ok(cached);
+    }
+    let result = if let Some(inventory) = crate::cli_run::floor_prepared_inventory_snapshot() {
+        decls_parse_only_from_inventory(&inventory, roots, want_kind, caller)?
+    } else {
+        decls_parse_only_from_disk(roots, want_kind, caller)?
+    };
+    floor_decl_parse_memo_store(roots, want_kind, &result);
+    Ok(result)
+}
+
+fn concept_decl_node(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
     match item.connective {
-        Connective::Disj => marshal_disj_type_item(ctx, item),
-        Connective::Conj => marshal_variant_arm_target(ctx, item),
+        Connective::Disj => marshal_disj_type_item(ctx, si, item),
+        Connective::Conj => marshal_variant_arm_target(ctx, si, item),
         _ => Ok(unit_type_node(ctx)),
     }
 }
 
-pub fn eval_concept_decl_facts_live(
+pub fn eval_qualified_name_from_dotted_string(
     ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
+    args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let si = ctx.source_indices();
+    let dotted = expect_string_lexeme(
+        args.first().map(|(_, v)| v),
+        "qualified_name_from_dotted_string",
+    )?;
+    Ok(crate::cli_run::free_monoid_symbol_value_from_dotted_string(
+        ctx, &dotted,
+    ))
+}
+
+fn concept_decl_record(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: &str,
+    name: &str,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
+    let qualified_name = logical_qualified_name(module_name, name);
+    let node = concept_decl_node(ctx, si, item)?;
+    Ok(Value::Record {
+        type_name: ctx.sym("ConceptDecl"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("qualified_name"), str_value(qualified_name)),
+            (ctx.sym("name"), str_value(name.to_string())),
+            (ctx.sym("node"), node),
+        ])),
+    })
+}
+
+pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "concept_decl_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (type_decls, module_count) =
+        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::TypeItem, "concept_decl_facts")
+            .map_err(|msg| InterpError::TypeError { msg })?;
+    let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
+    for decl in type_decls {
+        let qualified_name = logical_qualified_name(&decl.module_path, &decl.name);
+        let row = concept_decl_record(
+            ctx,
+            &decl.source_indices,
+            &decl.module_path,
+            &decl.name,
+            &decl.item,
+        )
+        .map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "concept_decl_facts: failed to marshal `{qualified_name}` in `{}`: {e}",
+                decl.rel_path
+            ),
+        })?;
+        rows.push(row);
+    }
+    eprintln!(
+        "concept_decl_facts: {} type concepts from {module_count} modules ({files_parsed} files parsed)",
+        rows.len()
+    );
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+/// The authored declared-type head name of a top-level `data` declaration.
+///
+/// `decl_facts` marshals a `DataItem` through the initializer projection, which drops
+/// `type_annotation`, so the declared type is unreachable from that producer. This projects the
+/// annotation's head name (`String`, `NonEmptyStr`, `List`, ...) only: the sole consumer asks
+/// whether a declaration is still a bare string, and a second type-printer would nickname a
+/// rendering the emitter already owns.
+///
+/// An absent annotation yields the empty string, not a guess. `data` requires an annotation, so
+/// empty means the parse did not carry one; treating unknown as "not a string" would
+/// under-report exactly the survivors a census exists to find.
+fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
+    match decl.item.type_annotation.as_ref() {
+        Some(ann) => {
+            let authored = authored_name_at(decl.source_indices.clone(), ann.clone());
+            if authored.is_empty() {
+                ann.name.clone()
+            } else {
+                authored
+            }
+        }
+        None => String::new(),
+    }
+}
+
+/// Corpus-wide top-level `data` declarations with their declared type, keyed at declaration
+/// identity (`module_path` + `decl_name`).
+///
+/// `module_path` is the module's own authored path, UNSTRIPPED (`v2.` retained), because a
+/// `DeclarationRef` names the module as authored; `decl_facts`'s stripped `qualified_name`
+/// cannot be un-stripped back into a module identity.
+pub fn eval_data_decl_type_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "data_decl_type_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (data_decls, module_count) =
+        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::DataItem, "data_decl_type_facts")
+            .map_err(|msg| InterpError::TypeError { msg })?;
+    let mut rows: Vec<Value> = Vec::with_capacity(data_decls.len());
+    for decl in data_decls.iter() {
+        rows.push(Value::Record {
+            type_name: ctx.sym("DataDeclTypeFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("module_path"), str_value(decl.module_path.clone())),
+                (ctx.sym("decl_name"), str_value(decl.name.clone())),
+                (ctx.sym("type_name"), str_value(data_decl_type_name(decl))),
+                (ctx.sym("rel_path"), str_value(decl.rel_path.clone())),
+            ])),
+        });
+    }
+    eprintln!(
+        "data_decl_type_facts: {} data declarations from {module_count} modules",
+        rows.len()
+    );
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+/// Shared live-corpus item walk for reflection builtins (`*_decl_facts_live`).
+/// Resolves authored names through each module's `item_registry` and filters by kind.
+fn for_each_live_registry_item<F>(
+    ctx: &InterpContext,
+    kind_ok: impl Fn(ItemKind) -> bool,
+    mut f: F,
+) -> InterpResult<()>
+where
+    F: FnMut(&str, &str, &Rc<Node>) -> InterpResult<()>,
+{
+    let si = ctx.source_indices();
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
             let name = authored_name_at(si.clone(), item.clone());
@@ -474,21 +759,29 @@ pub fn eval_concept_decl_facts_live(
                 .get(&name)
                 .or_else(|| module.item_registry.get(&item.name));
             let Some(info) = info else { continue };
-            if info.kind != ItemKind::TypeItem {
+            if !kind_ok(info.kind) {
                 continue;
             }
-            let qualified_name = logical_qualified_name(&info.module_name, &name);
-            let node = concept_decl_node(ctx, item)?;
-            rows.push(Value::Record {
-                type_name: ctx.sym("ConceptDecl"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("node"), node),
-                ])),
-            });
+            f(&info.module_name, &name, item)?;
         }
     }
+    Ok(())
+}
+
+pub fn eval_concept_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for_each_live_registry_item(
+        ctx,
+        |k| k == ItemKind::TypeItem,
+        |module_name, name, item| {
+            rows.push(concept_decl_record(ctx, &si, module_name, name, item)?);
+            Ok(())
+        },
+    )?;
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
@@ -525,12 +818,11 @@ fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>
     }
 }
 
-// Does this node REFERENCE a declared parameter `name`? Two body forms reference a value
-// parameter: an `ExprVar` value read (`x`) -- resolved to a `LocalValueBinding`, so a
-// `FunctionValueBinding` global or `VariantValueBinding` constructor sharing the name is
-// excluded; and an `ExprCall` whose callee IS the parameter (a fn-valued param applied:
-// `predicate(x)`) -- the callee is the call node's own name, not a child, so it is invisible
-// to a children-only walk. Both are genuine uses of a value parameter.
+// Does this node REFERENCE a declared parameter `name`? Two body forms do: an `ExprVar` value
+// read (`x`) resolved to a `LocalValueBinding` (so a `FunctionValueBinding` global or
+// `VariantValueBinding` constructor sharing the name is excluded); and an `ExprCall` whose
+// callee IS the parameter (`predicate(x)`) -- the callee is the call node's own name, not a
+// child, invisible to a children-only walk.
 fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
     if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
         return false;
@@ -546,14 +838,13 @@ fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) ->
     }
 }
 
-// Does this node REFERENCE some local binding (param OR let/lambda-local), by name? This is
-// the PERMISSIVE companion of `node_references_param`: it captures every value read
-// (`ExprVar`, any binding kind) and call-callee name, used ONLY to thread the data-flow
-// reference set that decides let-liveness (below). It is deliberately over-inclusive --
-// counting a name that is actually a global as "referenced" can only keep a `let` LIVE
-// (graft its RHS), so it can never manufacture a false dead-wire RED; it merely forgoes a
-// dead-wire it cannot prove. Atom EMISSION stays on the strict `node_references_param`
-// (LocalValueBinding-only), so the reachability query itself is unchanged.
+// Does this node REFERENCE some local binding (param OR let/lambda-local), by name? The
+// PERMISSIVE companion of `node_references_param`: every value read (`ExprVar`, any binding
+// kind) and call-callee name, used ONLY to thread the data-flow reference set deciding
+// let-liveness (below). Over-inclusion is safe: counting a global as "referenced" can only
+// keep a `let` LIVE (graft its RHS), never manufacture a false dead-wire RED; it merely forgoes
+// a dead-wire it cannot prove. Atom EMISSION stays on the strict `node_references_param`
+// (LocalValueBinding-only), so the reachability query is unchanged.
 fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
     if name.is_empty() {
         return None;
@@ -564,10 +855,9 @@ fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
     }
 }
 
-// The lambda's own parameters (children[1..]; child 0 is the body) are bound WITHIN it, so a
-// reference to one of them is not a free reference of the enclosing scope -- subtract them
-// from a lambda subtree's reference set so a `let` named like a lambda param is not kept
-// spuriously live by the lambda's shadowing use.
+// The lambda's own parameters (children[1..]; child 0 is the body) are bound WITHIN it, so
+// subtract them from its reference set: a `let` named like a lambda param must not be kept
+// live by the lambda's shadowing use.
 fn lambda_param_names_of(
     node: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -580,24 +870,21 @@ fn lambda_param_names_of(
         .collect()
 }
 
-// Project a fn body's internal expression tree onto a substrate Node skeleton AND return the
-// set of local names the projected skeleton actually references. Each node becomes a neutral
-// `Conj` container whose positional children are the marshaled sub-expressions, and a node
-// that references a declared parameter additionally carries an identity-bearing `Atom` leaf
-// -- byte-identical to the declared-input atom `eval_fn_arrow_decl_facts_live` emits, so
-// `v2.lens.wiring_liveness` matches it under Node equality. Identity lives ONLY on genuine
-// parameter-reference sites, so a declared parameter is structurally reachable from the body
-// output iff it is genuinely used.
+// Project a fn body's expression tree onto a substrate Node skeleton AND return the set of
+// local names the skeleton references. Each node becomes a neutral `Conj` whose positional
+// children are the marshaled sub-expressions; a node referencing a declared parameter also
+// carries an identity-bearing `Atom` leaf byte-identical to the declared-input atom
+// `eval_fn_arrow_decl_facts_live` emits, so `v2.lens.wiring_liveness` matches it under Node
+// equality. Identity lives ONLY on genuine parameter-reference sites, so a parameter is
+// structurally reachable from the body output iff it is genuinely used.
 //
 // DATA-FLOW DIRECTED AT THE RETURN (closes the wiring_liveness construction_justification
-// HONEST BOUNDARY (2)): statement sequences (blocks, and the let-continuation chain) are
-// projected so a `let b = rhs` grafts `rhs`'s skeleton ONLY when `b` is referenced
-// downstream of the binding in code that itself reaches the return -- the reverse-fold over
-// statements in `marshal_stmt_sequence` carries the live reference set toward the binding.
-// A param referenced ONLY inside a DEAD let RHS (its bound name never reaches the return,
-// possibly transitively through a chain of dead lets) is therefore absent from the grafted
-// skeleton and correctly flagged as a dead wire. (Residue: a `let`/lambda local, or a global
-// fn called as `name(..)`, that shadows a parameter name; see the lens
+// HONEST BOUNDARY (2)): statement sequences (blocks, let-continuation chains) graft a
+// `let b = rhs`'s skeleton ONLY when `b` is referenced downstream in code that reaches the
+// return -- `marshal_stmt_sequence`'s reverse-fold carries the live reference set toward the
+// binding. A param referenced ONLY inside a DEAD let RHS (transitively through dead lets) is
+// absent from the skeleton and correctly flagged as a dead wire. (Residue: a `let`/lambda
+// local, or a global fn called as `name(..)`, shadowing a parameter name; see the lens
 // construction_justification boundary (3).)
 fn marshal_fn_body_skeleton(
     ctx: &InterpContext,
@@ -623,12 +910,60 @@ fn marshal_skeleton(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> (Value, std::collections::BTreeSet<String>) {
     match node.expr_data.as_ref() {
-        ExprData::ExprBlock => marshal_stmt_sequence(ctx, &node.children, param_names, si),
+        ExprData::ExprBlock => marshal_stmt_sequence(
+            ctx,
+            &node.children.iter().cloned().collect::<std::vec::Vec<_>>(),
+            param_names,
+            si,
+        ),
         ExprData::ExprLet => {
             marshal_stmt_sequence(ctx, std::slice::from_ref(node), param_names, si)
         }
         _ => marshal_generic(ctx, node, param_names, si),
     }
+}
+
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
+// (`marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, callee atoms on
+// `ExprCall`) — see `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`.
+// Host SOURCE half for P1 G2 call-reachability (live-read-witness-classification-design (plan doc deleted 2026-08-28) §9 P1 / §14).
+// Dissolves when fn-arrow body projection is a modeled substrate fold (same #5364 corridor as
+// `eval_fn_arrow_decl_facts_live`) rather than hand-Rust marshal in this module.
+fn marshal_string_literal_atom(ctx: &InterpContext, node: &Rc<Node>) -> Option<Value> {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                Some(edge_positional(ctx, atom_identity_node(ctx, s)))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn hoist_call_arg_string_literal_edges(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    edges: &mut Vec<Value>,
+) {
+    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
+        edges.push(literal_edge);
+        return;
+    }
+    if let Some(child0) = node.children.first() {
+        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+            edges.push(literal_edge);
+        } else {
+            hoist_call_arg_string_literal_edges(ctx, child0, edges);
+        }
+    }
+}
+
+fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
+    matches!(
+        binding_kind,
+        Some(bk) if matches!(bk.as_ref(), VarBindingKind::VariantValueBinding { .. })
+    )
 }
 
 fn marshal_generic(
@@ -640,8 +975,33 @@ fn marshal_generic(
     let name = node_authored_name(node, si);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    if node_references_param(node, &name, param_names) {
+    if matches!(node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) && !name.is_empty() {
+        // Outer record-constructor SPELLING (OuterRecordConstructorLexeme) from ExprRecordLit
+        // authored name — not resolved parent-variant identity; see
+        // `v2.std.decl_facts_skeleton` `decl_facts_outer_record_constructor_lexeme_authority_note`.
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+        // Named edge discriminates construction from string-literal/callee atoms spelling the
+        // same lexeme (record_construction_census_witness_test).
+        edges.push(edge_named(
+            ctx,
+            "record_construction_spelling",
+            atom_identity_node(ctx, &name),
+        ));
+    } else if node_references_param(node, &name, param_names) {
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
+        // G2 live-read call reachability: callee atoms make cross-fn carrier chains
+        // visible in the fn-arrow skeleton (live-read-witness-classification-design (plan doc deleted 2026-08-28) P1).
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    } else if !name.is_empty() {
+        if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
+            if should_emit_nullary_variant_value_atom(binding_kind.as_ref()) {
+                edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+            }
+        }
+    }
+    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
+        edges.push(literal_edge);
     }
     if let Some(ref_name) = node_local_reference_name(node, &name) {
         refs.insert(ref_name);
@@ -650,6 +1010,11 @@ fn marshal_generic(
         let (child_skel, child_refs) = marshal_skeleton(ctx, child, param_names, si);
         edges.push(edge_positional(ctx, child_skel));
         refs.extend(child_refs);
+    }
+    if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) {
+        for child in node.children.iter() {
+            hoist_call_arg_string_literal_edges(ctx, child, &mut edges);
+        }
     }
     if let Some(inner) = node.body.as_ref() {
         let (inner_skel, inner_refs) = marshal_skeleton(ctx, inner, param_names, si);
@@ -664,14 +1029,12 @@ fn marshal_generic(
     (conj_record(ctx, edges), refs)
 }
 
-// A statement sequence -- a block's children, or a single standalone `let` (whose optional
-// children[1] is its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows
-// from the return (the last statement) back toward each binding. A `let b = rhs` grafts
-// `rhs` iff `b` is in the live set accumulated from the statements that follow it (the
-// downstream that reaches the return); a dead `let` drops its `rhs`, and because its bound
-// name's references are dropped with it, deadness propagates transitively to earlier lets
-// that fed only the dead one. A terminal `let` with no continuation is the result position,
-// so its value is always grafted (never a false RED on a degenerate body).
+// A statement sequence -- a block's children, or a standalone `let` (optional children[1] is
+// its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows from the return
+// back toward each binding. A `let b = rhs` grafts `rhs` iff `b` is in the live set of the
+// statements after it; a dead `let` drops its `rhs` and its references, so deadness
+// propagates to earlier lets that fed only it. A terminal `let` with no continuation is the
+// result position, always grafted (never a false RED on a degenerate body).
 fn marshal_stmt_sequence(
     ctx: &InterpContext,
     stmts: &[Rc<Node>],
@@ -692,12 +1055,11 @@ fn marshal_stmt_sequence(
                     live_refs.extend(cont_refs);
                 }
                 let bound_is_live = !bound.is_empty() && live_refs.contains(&bound);
-                // A `_`-prefixed binding (`let _width = width`) is the established declared-inert
-                // convention (boundary (4)) applied to a local: the author DELIBERATELY consumes
-                // and discards the RHS, so it is a sink, not an accidental dead wire. Graft it so
-                // a param flowing only into a `_`-sink stays GREEN, while a normally-named dead
-                // `let` (accidental) still drops its RHS and flags its sole-feeding param. A
-                // terminal `let` with no continuation is the result position, always grafted.
+                // A `_`-prefixed binding (`let _width = width`) is the declared-inert convention
+                // (boundary (4)) on a local: a deliberate sink, not an accidental dead wire.
+                // Graft it so a param flowing only into a `_`-sink stays GREEN, while a
+                // normally-named dead `let` still drops its RHS and flags its sole-feeding param.
+                // A terminal `let` with no continuation is the result position, always grafted.
                 let force_live = (is_terminal && cont.is_none()) || bound.starts_with('_');
                 if bound_is_live || force_live {
                     if let Some(value) = stmt.children.first() {
@@ -722,13 +1084,12 @@ fn marshal_stmt_sequence(
 }
 
 // A generic type parameter (`<T>`) and a value parameter (`(xs: List<T>)`) both land in the
-// runtime item's `params` (parser: `all_params = concat(type_params, value_params)`). They
-// are NOT value inputs and never appear as body value-expressions, so they must be excluded
-// from the wiring check. A type parameter is built as `make_param_node(name,
-// leaf_type_node(name), ..)` -- its sole type-expr child is a leaf named after the parameter
-// itself (`T : T`) -- whereas a value parameter's type-expr names a different type
-// (`xs : List`). So: a parameter is a type parameter iff its first child's authored name
-// equals its own.
+// runtime item's `params` (parser: `all_params = concat(type_params, value_params)`). Type
+// params are not value inputs and never appear as body value-expressions, so exclude them. A
+// type parameter is built as `make_param_node(name, leaf_type_node(name), ..)` -- its sole
+// type-expr child is a leaf named after itself (`T : T`), whereas a value parameter's names
+// a different type (`xs : List`). So: type parameter iff first child's authored name equals
+// its own.
 fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     let pname = authored_name_at(si.clone(), p.clone());
     if pname.is_empty() {
@@ -744,10 +1105,62 @@ fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
     Value::Record {
         type_name: ctx.sym("FnArrowParam"),
         fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("name"), Value::Str(param_name.to_string())),
+            (ctx.sym("name"), str_value(param_name.to_string())),
             (ctx.sym("node"), atom_identity_node(ctx, param_name)),
         ])),
     }
+}
+
+fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
+    let mut param_names = Vec::new();
+    for p in item.params.iter() {
+        if param_is_type_param(p, si) {
+            continue;
+        }
+        let pn = param_node_name_at(p.clone(), si.clone());
+        // A `_`-prefixed name is the declared-inert convention (e.g. node.dag
+        // `step: fn(acc, _edge, sub)`): declared irrelevant, not a dead wire (plan section 4).
+        if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
+            continue;
+        }
+        param_names.push(pn);
+    }
+    param_names
+}
+
+fn fn_arrow_output_skeleton(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let body = item.body.as_ref()?;
+    let param_names = fn_item_param_names(item, si);
+    Some(marshal_fn_body_skeleton(ctx, body, &param_names, si))
+}
+
+fn fn_arrow_decl_record(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    module_name: &str,
+    name: &str,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let output = fn_arrow_output_skeleton(ctx, si, item)?;
+    let param_names = fn_item_param_names(item, si);
+    let params: Vec<Value> = param_names
+        .iter()
+        .map(|pn| fn_arrow_param_record(ctx, pn))
+        .collect();
+    let qualified_name = logical_qualified_name(module_name, name);
+    Some(Value::Record {
+        type_name: ctx.sym("FnArrowDecl"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("qualified_name"), str_value(qualified_name)),
+            (ctx.sym("name"), str_value(name.to_string())),
+            (ctx.sym("output"), output),
+            (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
+        ])),
+    })
 }
 
 // Corpus-wide fn/arrow reflection: the gunbc#5364 widen trigger named in
@@ -764,342 +1177,497 @@ pub fn eval_fn_arrow_decl_facts_live(
 ) -> InterpResult<Value> {
     let si = ctx.source_indices();
     let mut rows: Vec<Value> = Vec::new();
-    for module in ctx.modules.iter() {
-        for item in module.items.iter() {
+    for_each_live_registry_item(
+        ctx,
+        |k| k == ItemKind::FnItem || k == ItemKind::FuncItem,
+        |module_name, name, item| {
+            if let Some(row) = fn_arrow_decl_record(ctx, &si, module_name, name, item) {
+                rows.push(row);
+            }
+            Ok(())
+        },
+    )?;
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+/// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
+pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    Ok(Value::Bool(
+        crate::cli_run::fn_arrow_decl_substrate_is_whole_tree_for_census(ctx.modules.len()),
+    ))
+}
+
+pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(
+    _ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    Err(InterpError::TypeError {
+        msg: "corpus_dependency_view per-PR execution refused: fn_arrow_decl_substrate_is_whole_tree is false (blocked-on-#6239)".to_string(),
+    })
+}
+
+fn literal_source_lexeme(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    let index = si.get(&node.span.file)?;
+    let text = source_text_at(index.clone(), node.span.clone());
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn data_init_literal_fingerprint(
+    body: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    // Encoding must match `v2.std.data_index` (`literal_fingerprint_*_lexeme`).
+    let lexeme = literal_source_lexeme(body, si)?;
+    match body.expr_data.as_ref() {
+        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+            crate::std_syntax::LiteralValue::LitInt { .. }
+            | crate::std_syntax::LiteralValue::LitFloat { .. } => Some(format!("num:{lexeme}")),
+            crate::std_syntax::LiteralValue::LitBool { .. } => Some(format!("bool:{lexeme}")),
+            // Str uses decoded content, not source lexeme: witness RHS is a skeleton atom
+            // name (bare content), so this matches `literal_fingerprint_str_content` when the
+            // initializer is a plain quoted literal without escapes.
+            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                Some(format!("str:\"{s}\""))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn data_init_decl_record(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    module_name: &str,
+    name: &str,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let body = item.body.as_ref()?;
+    let literal_fp = data_init_literal_fingerprint(body, si)?;
+    let qualified_name = logical_qualified_name(module_name, name);
+    Some(Value::Record {
+        type_name: ctx.sym("DataInitDecl"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("qualified_name"), str_value(qualified_name)),
+            (ctx.sym("module"), str_value(module_name.to_string())),
+            (ctx.sym("name"), str_value(name.to_string())),
+            (ctx.sym("literal_fp"), str_value(literal_fp)),
+        ])),
+    })
+}
+
+// Corpus-wide data-init reflection: sibling of `eval_fn_arrow_decl_facts_live` and
+// `eval_concept_decl_facts_live`. Yields one `DataInitDecl` per `ItemKind::DataItem` whose
+// initializer is a literal, carrying `literal_fp` for literal-mirror detection in
+// `v2.lens.no_dual_representation_test`. Host SOURCE half; dissolves with
+// `fn_arrow_decl_facts_live` / `concept_decl_facts_live` on the same gunbc#5364
+// corpus-as-node accessor widen trigger named in `v2.lens.wiring_liveness`'s
+// construction_justification. Fingerprint encoding spec: `v2.std.data_index`
+// (`literal_fingerprint_*_lexeme`); this host block is a transient SOURCE projection on
+// the gunbc#5364 corpus-accessor widen — not an independent authority.
+pub fn eval_data_init_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for_each_live_registry_item(
+        ctx,
+        |k| k == ItemKind::DataItem,
+        |module_name, name, item| {
+            if let Some(row) = data_init_decl_record(ctx, &si, module_name, name, item) {
+                rows.push(row);
+            }
+            Ok(())
+        },
+    )?;
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+/// Locked whole-tree declaration-fact carrier (neat-fox-279 / #5966 follow-up).
+#[derive(Debug, Clone)]
+pub struct DeclFactRaw {
+    pub qualified_name: String,
+    pub name: String,
+    pub kind: ItemKind,
+    pub node: Rc<Node>,
+    pub rel_path: String,
+    pub source_indices: SourceIndices,
+}
+
+/// Qualified name for `decl_facts` / `decl_index` — strips the `v2.` layer prefix to match
+/// `v2.std.decl_index.logical_qualified_name_from_module` (concept reflection keeps the
+/// full module path including `v2.` for `concept_index` consumers).
+fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
+    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
+    if logical.is_empty() {
+        name.to_string()
+    } else {
+        format!("{logical}.{name}")
+    }
+}
+
+/// Why a declared pool root contributed no `.dag` files. THREE STATES, NOT ONE: different
+/// causes, different fixes; one "contributed zero files" answer would re-commit the state-space
+/// conflation this refusal exists to close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolRootDefect {
+    /// The path does not exist. A typo, or a directory that moved out from under the root.
+    Missing,
+    /// The path exists and is a FILE. By far the likeliest mistake: an author writes a module's
+    /// path without `.dag`, or means one module where a root can only be a directory.
+    /// `dag/extdeps/external_authority` was exactly this, inert since written, and nothing could
+    /// say so.
+    NamesFile,
+    /// The path is a directory and holds no `.dag` file anywhere beneath it.
+    DirectoryHasNoDagFiles,
+}
+
+impl PoolRootDefect {
+    fn cause(self) -> &'static str {
+        match self {
+            PoolRootDefect::Missing => "the path does not exist",
+            PoolRootDefect::NamesFile => {
+                "this names a FILE; a pool root must be a directory (a module path with `.dag`                  omitted is the usual cause -- name the directory that contains it)"
+            }
+            PoolRootDefect::DirectoryHasNoDagFiles => {
+                "the directory exists but holds no .dag file beneath it"
+            }
+        }
+    }
+}
+
+/// Classify one declared pool root. `None` means it contributes at least one `.dag` file.
+pub fn classify_pool_root(root: &str) -> Option<PoolRootDefect> {
+    let root_path = workspace_root().join(root);
+    if !root_path.exists() {
+        return Some(PoolRootDefect::Missing);
+    }
+    if !root_path.is_dir() {
+        return Some(PoolRootDefect::NamesFile);
+    }
+    if !crate::cli_run::dag_tree_holds_any_file(&root_path) {
+        return Some(PoolRootDefect::DirectoryHasNoDagFiles);
+    }
+    None
+}
+
+/// The refusal every parse-only pool walk takes before it walks: typed, located, counted.
+///
+/// LOCATED is the root string the author wrote (the thing they can fix); COUNTED is every
+/// offending root in one answer, so three bad roots take one round-trip. Returns `None` when
+/// every root contributes.
+///
+/// THE DEFECTS CROSS THE SEAM. The earlier shape returned `Option<String>`: the three states were
+/// formatted into prose here and no consumer could match on them -- a carrier named for a rung it
+/// did not occupy, the enum's distinction unavailable to every reader of the error. The prose is
+/// now DERIVED from the defects at display time (`InterpError::PoolRootContributesNothing`), the
+/// one direction that cannot lose them.
+pub fn pool_root_defects(pool_roots: &[String]) -> Vec<(String, PoolRootDefect)> {
+    pool_roots
+        .iter()
+        .filter_map(|r| classify_pool_root(r).map(|d| (r.clone(), d)))
+        .collect()
+}
+
+/// Render the defects a caller collected. One row per offending root, cause included, so the
+/// message names what to fix rather than that something is wrong.
+pub fn pool_root_refusal_message(
+    defects: &[(String, PoolRootDefect)],
+    declared: usize,
+    caller: &str,
+) -> String {
+    let rows: Vec<String> = defects
+        .iter()
+        .map(|(r, d)| format!("  root {:?}: {:?} -- {}", r, d, d.cause()))
+        .collect();
+    format!(
+        "{caller} was given {declared} declared pool root(s), {bad} of which contribute no .dag files. A root that contributes nothing is not a narrower pool -- it is a pool that silently lost part of its subject, so every row over it keeps passing on a population smaller than its author declared, and nothing says so. Fix or delete each root named below.\n{rows}",
+        bad = defects.len(),
+        rows = rows.join("\n")
+    )
+}
+
+fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
+    let ws = workspace_root();
+    let mut files = Vec::new();
+    for root in roots {
+        let root_path = ws.join(root);
+        if root_path.is_dir() {
+            collect_dag_files_tolerant(&root_path, &mut files);
+        }
+    }
+    files.sort();
+    files
+}
+
+/// Whole-tree declaration-fact walk with corpus file counters (parse-only, non-test boundary).
+#[derive(Debug, Clone)]
+pub struct DeclFactsCorpusWalk {
+    pub facts: Vec<DeclFactRaw>,
+    /// Non-test `.dag` files visited (includes unparseable and zero-decl files).
+    pub files_scanned: usize,
+    /// Subset of `files_scanned` that parsed successfully.
+    pub files_parsed: usize,
+}
+
+// decl_facts_corpus_walk parses every .dag under every pool_root independently,
+// taking module_path from each file's own module declaration. It does not consult
+// dependency-pool-index / the module source index used by compile/load. Where roots
+// shadow the same module path, this producer may emit facts for both the winning
+// source and the shadowed stub; compile binds only the winner.
+pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
+    let mut out = Vec::new();
+    let mut files_scanned = 0usize;
+    let mut files_parsed = 0usize;
+    for file in corpus_dag_files_for_roots(pool_roots) {
+        let rel = repo_rel(&file);
+        if is_test_dag(&rel) {
+            continue;
+        }
+        files_scanned += 1;
+        let content = std::fs::read_to_string(&file).ok();
+        let module_path = content
+            .as_ref()
+            .and_then(|c| extract_module_path(c))
+            .unwrap_or_default();
+        let Some(parsed) = parse_dag_file(&file) else {
+            continue;
+        };
+        files_parsed += 1;
+        let si = parsed.source_indices;
+        for item in parsed.items.iter() {
             let name = authored_name_at(si.clone(), item.clone());
             if name.is_empty() {
                 continue;
             }
-            let info = module
-                .item_registry
-                .get(&name)
-                .or_else(|| module.item_registry.get(&item.name));
-            let Some(info) = info else { continue };
-            if info.kind != ItemKind::FnItem && info.kind != ItemKind::FuncItem {
-                continue;
-            }
-            let Some(body) = item.body.as_ref() else {
-                continue;
-            };
-            let mut param_names: Vec<String> = Vec::new();
-            for p in item.params.iter() {
-                if param_is_type_param(p, &si) {
-                    continue;
-                }
-                let pn = param_node_name_at(p.clone(), si.clone());
-                // A `_`-prefixed name is the established declared-inert convention (e.g.
-                // node.dag `step: fn(acc, _edge, sub)`): the author has declared the input
-                // genuinely irrelevant, so it is not a dead wire (plan section 4). Skip it.
-                if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
-                    continue;
-                }
-                param_names.push(pn);
-            }
-            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
-            let params: Vec<Value> = param_names
-                .iter()
-                .map(|pn| fn_arrow_param_record(ctx, pn))
-                .collect();
-            let qualified_name = logical_qualified_name(&info.module_name, &name);
-            rows.push(Value::Record {
-                type_name: ctx.sym("FnArrowDecl"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("output"), output),
-                    (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
-                ])),
+            let kind = item_kind(item.clone());
+            out.push(DeclFactRaw {
+                qualified_name: decl_logical_qualified_name(&module_path, &name),
+                name,
+                kind,
+                node: item.clone(),
+                rel_path: rel.clone(),
+                source_indices: si.clone(),
             });
         }
+    }
+    out.sort_by(|a, b| {
+        let kind_ord = |k: ItemKind| match k {
+            ItemKind::FnItem => 0,
+            ItemKind::FuncItem => 1,
+            ItemKind::TypeItem => 2,
+            ItemKind::DataItem => 3,
+            ItemKind::ServiceItem => 4,
+            ItemKind::OtherItem => 5,
+        };
+        (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
+            b.rel_path.as_str(),
+            b.name.as_str(),
+            kind_ord(b.kind),
+        ))
+    });
+    DeclFactsCorpusWalk {
+        facts: out,
+        files_scanned,
+        files_parsed,
+    }
+}
+
+/// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).
+pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
+    decl_facts_corpus_walk(pool_roots).facts
+}
+
+fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
+    let variant = match kind {
+        ItemKind::FnItem => "FnItem",
+        ItemKind::FuncItem => "FuncItem",
+        ItemKind::TypeItem => "TypeItem",
+        ItemKind::DataItem => "DataItem",
+        ItemKind::ServiceItem => "ServiceItem",
+        ItemKind::OtherItem => "OtherItem",
+    };
+    Value::Variant {
+        type_name: ctx.sym("ItemKind"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn marshal_decl_fact_node(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    kind: ItemKind,
+    si: &SourceIndices,
+    qualified_name: &str,
+) -> InterpResult<Value> {
+    match kind {
+        ItemKind::TypeItem => concept_decl_node(ctx, si, item),
+        ItemKind::FnItem | ItemKind::FuncItem => {
+            Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
+        }
+        ItemKind::DataItem => {
+            crate::data_initializer_identity::marshal_data_initializer_projection(
+                ctx,
+                qualified_name,
+            )
+        }
+        _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): see
+// `v2.std.decl_index::export_signature_facts_host_scaffold_dissolution_trigger`.
+// Host SOURCE half for `export_signature_facts`; strict sibling of `marshal_decl_fact_node` /
+// `eval_decl_facts`. Reuses `decl_facts_for_roots` (#5966 neat-fox-279) — no new corpus walk.
+// Dissolves per `dag/std/interface_summary.dag::interface_summary_v0_dissolution_trigger`.
+fn marshal_fn_export_signature_node(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
+    let mut edges = Vec::new();
+    for p in item.params.iter() {
+        if param_is_type_param(p, si) {
+            continue;
+        }
+        let ty = param_node_type_expr(p.clone());
+        edges.push(edge_positional(ctx, marshal_type_expr_ref(ctx, si, &ty)?));
+    }
+    let ret_val = item
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))
+        .map(|ret| marshal_type_expr_ref(ctx, si, &ret))
+        .transpose()?
+        .unwrap_or_else(|| unit_type_node(ctx));
+    edges.push(edge_positional(ctx, ret_val));
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Arrow")),
+        edges,
+    ))
+}
+
+fn marshal_export_signature_node(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    kind: ItemKind,
+    si: &SourceIndices,
+) -> InterpResult<Value> {
+    match kind {
+        ItemKind::TypeItem => concept_decl_node(ctx, si, item),
+        ItemKind::FnItem | ItemKind::FuncItem => marshal_fn_export_signature_node(ctx, si, item),
+        ItemKind::DataItem => match item
+            .inferred
+            .as_ref()
+            .and_then(|inf| inferred_to_node(inf.clone()))
+        {
+            Some(ty) => marshal_type_expr_ref(ctx, si, &ty),
+            None => Ok(unit_type_node(ctx)),
+        },
+        _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+pub fn eval_export_signature_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "export_signature_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let facts = decl_facts_for_roots(pool_roots);
+    let mut rows = Vec::with_capacity(facts.len());
+    for fact in facts {
+        let node = marshal_export_signature_node(ctx, &fact.node, fact.kind, &fact.source_indices)
+            .map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "export_signature_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                    fact.qualified_name, fact.kind, fact.rel_path
+                ),
+            })?;
+        rows.push(Value::Record {
+            type_name: ctx.sym("DeclFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("qualified_name"), str_value(fact.qualified_name)),
+                (ctx.sym("name"), str_value(fact.name)),
+                (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
+                (ctx.sym("node"), node),
+                (ctx.sym("rel_path"), str_value(fact.rel_path)),
+            ])),
+        });
     }
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
-pub fn eval_syntactic_coproduct_arm_keys(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let type_name = expect_symbol(args.first().map(|(_, v)| v), "syntactic_coproduct_arm_keys")?;
-    let (_, file) = type_item_by_name(ctx, type_name)?;
-    let labels = syntactic_coproduct_arm_labels(ctx, &file, type_name)?;
-    let items: Vec<Value> = labels
-        .iter()
-        .map(|label| Value::Str(label.clone()))
-        .collect();
-    Ok(crate::v1_interpreter::list_value(items))
+pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
+    // THE LINE STOPS BEFORE THE WALK. A root contributing nothing is invisible in the walk's
+    // OUTPUT -- a smaller fact list is what a legitimately narrow pool produces -- so the two are
+    // distinguishable only here, against the declared roots.
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "decl_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let facts = decl_facts_for_roots_shared(pool_roots);
+    eval_decl_facts_rows(ctx, &facts)
 }
 
-pub fn eval_syntactic_coproduct_arm_pairs(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let type_name = expect_symbol(
-        args.first().map(|(_, v)| v),
-        "syntactic_coproduct_arm_pairs",
-    )?;
-    let (_, file) = type_item_by_name(ctx, type_name)?;
-    let pairs = syntactic_coproduct_arm_pairs(ctx, &file, type_name)?;
-    let items: Vec<Value> = pairs
-        .iter()
-        .map(|pair| Value::Record {
-            type_name: ctx.sym("CoproductArmPayloadPair"),
+fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {
+    let mut rows = Vec::with_capacity(facts.len());
+    for fact in facts {
+        let node = marshal_decl_fact_node(
+            ctx,
+            &fact.node,
+            fact.kind,
+            &fact.source_indices,
+            &fact.qualified_name,
+        )
+        .map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                fact.qualified_name, fact.kind, fact.rel_path
+            ),
+        })?;
+        rows.push(Value::Record {
+            type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("label"), Value::Str(pair.label.clone())),
                 (
-                    ctx.sym("payload_type_name"),
-                    Value::Str(pair.payload_type_name.clone()),
+                    ctx.sym("qualified_name"),
+                    str_value(fact.qualified_name.clone()),
                 ),
+                (ctx.sym("name"), str_value(fact.name.clone())),
+                (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
+                (ctx.sym("node"), node),
+                (ctx.sym("rel_path"), str_value(fact.rel_path.clone())),
             ])),
-        })
-        .collect();
-    Ok(crate::v1_interpreter::list_value(items))
-}
-
-pub fn arm_payload_pairs_from_marshaled_node(
-    ctx: &InterpContext,
-    node: &Value,
-) -> InterpResult<Vec<CoproductArmSurface>> {
-    let Value::Record { fields, .. } = node else {
-        return Err(InterpError::TypeError {
-            msg: "expected Node record".to_string(),
-        });
-    };
-    let children =
-        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "Node missing children".to_string(),
-        })?;
-    let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
-        InterpError::TypeError {
-            msg: "children not a list".to_string(),
-        }
-    })?;
-    let mut pairs = Vec::with_capacity(edges.len());
-    for edge in edges {
-        let Value::Record { fields: ef, .. } = edge else {
-            return Err(InterpError::TypeError {
-                msg: "expected Edge record".to_string(),
-            });
-        };
-        let label_v = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
-            msg: "Edge missing label".to_string(),
-        })?;
-        let target = fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
-            msg: "Edge missing target".to_string(),
-        })?;
-        let Value::Variant {
-            variant_name,
-            fields: lf,
-            ..
-        } = label_v
-        else {
-            continue;
-        };
-        if ctx.resolve(*variant_name) != "Named" {
-            continue;
-        }
-        let Some(Value::Str(label)) = fields_get(&lf, ctx.sym("name")) else {
-            continue;
-        };
-        let payload_type_name = payload_type_name_from_target_node(ctx, target)?;
-        pairs.push(CoproductArmSurface {
-            label: label.clone(),
-            payload_type_name,
         });
     }
-    Ok(pairs)
-}
-
-fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> InterpResult<String> {
-    let Value::Record { fields, .. } = target else {
-        return Err(InterpError::TypeError {
-            msg: "expected Node target record".to_string(),
-        });
-    };
-    let kind = fields_get(fields, ctx.sym("kind")).ok_or_else(|| InterpError::TypeError {
-        msg: "target missing kind".to_string(),
-    })?;
-    let children =
-        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "target missing children".to_string(),
-        })?;
-    let Value::Variant {
-        variant_name: kind_variant,
-        fields: kf,
-        ..
-    } = kind
-    else {
-        return Err(InterpError::TypeError {
-            msg: "expected TypeNode kind".to_string(),
-        });
-    };
-    if ctx.resolve(*kind_variant) != "TypeNode" {
-        return Err(InterpError::TypeError {
-            msg: "expected TypeNode".to_string(),
-        });
-    }
-    let connective =
-        fields_get(&kf, ctx.sym("connective")).ok_or_else(|| InterpError::TypeError {
-            msg: "TypeNode missing connective".to_string(),
-        })?;
-    match connective {
-        Value::Variant {
-            variant_name: conn, ..
-        } if ctx.resolve(*conn) == "Conj" => {
-            let edge_items =
-                crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
-                    InterpError::TypeError {
-                        msg: "children not list".to_string(),
-                    }
-                })?;
-            if edge_items.is_empty() {
-                return Ok(NULLARY_PAYLOAD_TYPE_NAME.to_string());
-            }
-            let mut parts = Vec::new();
-            for edge in edge_items {
-                let Value::Record { fields: ef, .. } = edge else {
-                    continue;
-                };
-                let field_name = fields_get(&ef, ctx.sym("label"))
-                    .and_then(|label| {
-                        let Value::Variant { fields: lf, .. } = label else {
-                            return None;
-                        };
-                        fields_get(&lf, ctx.sym("name")).and_then(|v| match v {
-                            Value::Str(s) => Some(s.clone()),
-                            _ => None,
-                        })
-                    })
-                    .ok_or_else(|| InterpError::TypeError {
-                        msg: "named edge missing label".to_string(),
-                    })?;
-                let field_target =
-                    fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
-                        msg: "edge missing target".to_string(),
-                    })?;
-                let type_name = payload_type_name_from_target_node(ctx, field_target)?;
-                parts.push(format!("{field_name}: {type_name}"));
-            }
-            Ok(format!("{{ {} }}", parts.join(", ")))
-        }
-        Value::Variant {
-            variant_name: conn,
-            fields: cf,
-            ..
-        } if ctx.resolve(*conn) == "Atom" => {
-            let Some(Value::Str(name)) = fields_get(&cf, ctx.sym("identity")) else {
-                return Err(InterpError::TypeError {
-                    msg: "Atom missing identity".to_string(),
-                });
-            };
-            Ok(name.clone())
-        }
-        _ => Err(InterpError::TypeError {
-            msg: "unsupported payload target shape".to_string(),
-        }),
-    }
-}
-
-pub fn arm_labels_from_marshaled_node(
-    ctx: &InterpContext,
-    node: &Value,
-) -> InterpResult<Vec<String>> {
-    let Value::Record { fields, .. } = node else {
-        return Err(InterpError::TypeError {
-            msg: "expected Node record".to_string(),
-        });
-    };
-    let children =
-        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "Node missing children".to_string(),
-        })?;
-    let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
-        InterpError::TypeError {
-            msg: "children not a list".to_string(),
-        }
-    })?;
-    let mut labels = Vec::with_capacity(edges.len());
-    for edge in edges {
-        let Value::Record { fields: ef, .. } = edge else {
-            return Err(InterpError::TypeError {
-                msg: "expected Edge record".to_string(),
-            });
-        };
-        let label = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
-            msg: "Edge missing label".to_string(),
-        })?;
-        let Value::Variant {
-            variant_name,
-            fields: lf,
-            ..
-        } = label
-        else {
-            continue;
-        };
-        if ctx.resolve(*variant_name) != "Named" {
-            continue;
-        }
-        let Some(Value::Str(name)) = fields_get(&lf, ctx.sym("name")) else {
-            continue;
-        };
-        labels.push(name.clone());
-    }
-    Ok(labels)
-}
-
-pub fn eval_resolve_type_node_with_dropped_last_arm(
-    ctx: &InterpContext,
-    type_name: &str,
-) -> InterpResult<Value> {
-    let (item, _) = type_item_by_name(ctx, type_name)?;
-    let node = marshal_disj_type_item(ctx, item)?;
-    let Value::Record { fields, .. } = node else {
-        return Err(InterpError::TypeError {
-            msg: "resolve_type_node: expected Node record".to_string(),
-        });
-    };
-    let children =
-        fields_get(&fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "resolve_type_node: Node missing children".to_string(),
-        })?;
-    let Some(items) = crate::v1_interpreter::free_monoid_to_vec(children) else {
-        return Err(InterpError::TypeError {
-            msg: "resolve_type_node: children not a list".to_string(),
-        });
-    };
-    if items.is_empty() {
-        return Err(InterpError::TypeError {
-            msg: "resolve_type_node: Disj has no arms".to_string(),
-        });
-    }
-    let mut trimmed = items[..items.len() - 1].to_vec();
-    if trimmed.is_empty() {
-        trimmed = vec![];
-    }
-    Ok(Value::Record {
-        type_name: ctx.sym("Node"),
-        fields: Rc::new(sorted_fields(vec![
-            (
-                ctx.sym("kind"),
-                fields_get(&fields, ctx.sym("kind"))
-                    .cloned()
-                    .ok_or_else(|| InterpError::TypeError {
-                        msg: "resolve_type_node: Node missing kind".to_string(),
-                    })?,
-            ),
-            (
-                ctx.sym("children"),
-                crate::v1_interpreter::list_value(trimmed),
-            ),
-            (
-                ctx.sym("occurrence_id"),
-                fields_get(&fields, ctx.sym("occurrence_id"))
-                    .cloned()
-                    .ok_or_else(|| InterpError::TypeError {
-                        msg: "resolve_type_node: Node missing occurrence_id".to_string(),
-                    })?,
-            ),
-        ])),
-    })
+    Ok(crate::v1_interpreter::list_value(rows))
 }
 
 fn variant_is_nullary(variant: &Rc<Node>) -> bool {
@@ -1118,23 +1686,161 @@ fn nullary_coproduct_variant_value(
     }
 }
 
+// DESIGN section 7 seed-retained repair. This bridge retires with
+// `coproduct_reflection` under ROADMAP "Drain the hand-maintained v1 product
+// queue" (`dag/gunbc/v1/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
+// Checkable receipt: the imported-named-coproduct generic-wrapper witness must
+// resolve, while the wrong-A/context-B and payload-bearing controls must refuse.
+struct TypedNullaryCoproductWitness {
+    declaration: Rc<Node>,
+    resolution_owner: Rc<Node>,
+}
+
+fn typed_nullary_coproduct_item_from_call(
+    ctx: &InterpContext,
+    call: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<TypedNullaryCoproductWitness> {
+    let discriminator_expr = call
+        .children
+        .get(1)
+        .and_then(|arg| arg.children.first())
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: typed discriminator argument missing".to_string(),
+        })?;
+    let callable = discriminator_expr
+        .inferred
+        .as_ref()
+        .and_then(|inferred| inferred_to_node(inferred.clone()))
+        .filter(|node| node.connective == Connective::Arrow)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: discriminator is not a typed function".to_string(),
+        })?;
+    let parameter = callable
+        .params
+        .first()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: discriminator parameter missing".to_string(),
+        })?;
+    let parameter_type = param_node_type_expr(parameter.clone());
+    let parameter_type_name = authored_name_at(ctx.source_indices(), parameter_type);
+    match visible_coproduct_declaration_from_syntax_node(ctx, call, &parameter_type_name) {
+        Ok(declaration) => Ok(TypedNullaryCoproductWitness {
+            declaration,
+            resolution_owner: call.clone(),
+        }),
+        Err(_) => {
+            let runtime_discriminator = args
+                .iter()
+                .find(|(name, _)| name.as_deref() == Some("discriminant_of"))
+                .or_else(|| args.get(1))
+                .map(|(_, value)| value)
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "coproduct_nullary_inhabitants: runtime discriminator missing".to_string(),
+                })?;
+            let runtime_fn = match runtime_discriminator {
+                Value::Fn { node } => node,
+                _ => {
+                    return Err(InterpError::TypeError {
+                        msg: "coproduct_nullary_inhabitants: generic discriminator lacks a declaration-backed function witness"
+                            .to_string(),
+                    });
+                }
+            };
+            let runtime_parameter =
+                runtime_fn
+                    .params
+                    .first()
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg:
+                            "coproduct_nullary_inhabitants: runtime discriminator parameter missing"
+                                .to_string(),
+                    })?;
+            let runtime_parameter_type = param_node_type_expr(runtime_parameter.clone());
+            let runtime_parameter_type_name =
+                authored_name_at(ctx.source_indices(), runtime_parameter_type);
+            let declaration = visible_coproduct_declaration_from_syntax_node(
+                ctx,
+                runtime_fn,
+                &runtime_parameter_type_name,
+            )?;
+            Ok(TypedNullaryCoproductWitness {
+                declaration,
+                resolution_owner: runtime_fn.clone(),
+            })
+        }
+    }
+}
+
+fn syntax_tree_contains_node(root: &Rc<Node>, needle: &Rc<Node>) -> bool {
+    Rc::ptr_eq(root, needle)
+        || root
+            .children
+            .iter()
+            .any(|child| syntax_tree_contains_node(child, needle))
+        || root
+            .body
+            .as_ref()
+            .is_some_and(|body| syntax_tree_contains_node(body, needle))
+}
+
+fn visible_coproduct_declaration_from_syntax_node(
+    ctx: &InterpContext,
+    syntax_node: &Rc<Node>,
+    type_name: &str,
+) -> InterpResult<Rc<Node>> {
+    let module = ctx
+        .modules
+        .iter()
+        .find(|module| {
+            module
+                .items
+                .iter()
+                .any(|item| syntax_tree_contains_node(item, syntax_node))
+        })
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: typed syntax owner missing".to_string(),
+        })?;
+    lookup_binding_by_name(module.type_env.clone(), type_name.to_string())
+        .map(|binding| binding.resolved.clone())
+        .filter(|node| node.connective == Connective::Disj)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "coproduct_nullary_inhabitants: `{type_name}` is not a visible closed coproduct"
+            ),
+        })
+}
+
 pub fn eval_coproduct_nullary_inhabitants(
     ctx: &InterpContext,
+    call: &Rc<Node>,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(
         args.first().map(|(_, v)| v),
         "coproduct_nullary_inhabitants",
     )?;
-    let (item, _) = type_item_by_name(ctx, type_name)?;
-    if item.connective != Connective::Disj {
+    let typed_witness = typed_nullary_coproduct_item_from_call(ctx, call, args)?;
+    let requested_declaration = visible_coproduct_declaration_from_syntax_node(
+        ctx,
+        &typed_witness.resolution_owner,
+        type_name,
+    )?;
+    if !Rc::ptr_eq(&requested_declaration, &typed_witness.declaration) {
+        return Ok(outcome_rejected_value(
+            ctx,
+            "coproduct_nullary_inhabitants: requested type does not match typed discriminator",
+        ));
+    }
+    if requested_declaration.connective != Connective::Disj {
         return Err(InterpError::TypeError {
             msg: "coproduct_nullary_inhabitants: not a closed coproduct".to_string(),
         });
     }
     let si = ctx.source_indices();
-    let mut inhabitants = Vec::with_capacity(item.children.len());
-    for variant in item.children.iter() {
+    let reflected_type_name = authored_name_at(si.clone(), requested_declaration.clone());
+    let mut inhabitants = Vec::with_capacity(requested_declaration.children.len());
+    for variant in requested_declaration.children.iter() {
         if !variant_is_nullary(variant) {
             return Ok(outcome_rejected_value(
                 ctx,
@@ -1142,7 +1848,7 @@ pub fn eval_coproduct_nullary_inhabitants(
             ));
         }
         let label = authored_name_at(si.clone(), variant.clone());
-        let value = nullary_coproduct_variant_value(ctx, type_name, &label);
+        let value = nullary_coproduct_variant_value(ctx, &reflected_type_name, &label);
         if discriminant_symbol(ctx, &value)? != label {
             return Ok(outcome_rejected_value(
                 ctx,
@@ -1186,112 +1892,215 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
             ctx.sym("diagnostics"),
             crate::v1_interpreter::list_value(vec![Value::Record {
                 type_name: ctx.sym("Diagnostic"),
-                fields: Rc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
+                fields: Rc::new(vec![(ctx.sym("reason"), str_value(reason.to_string()))]),
             }]),
         )]),
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod decl_facts_shared_memo_tests {
     use super::*;
 
-    #[test]
-    fn marshaled_connective_payload_pairs_match_syntactic() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let syntactic = extract_type_sum_arm_pairs(&source, "Connective").expect("syntactic pairs");
-        assert_eq!(syntactic[0].payload_type_name, "{ identity: Symbol }");
-        assert_eq!(syntactic[1].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
-    }
-
-    #[test]
-    fn syntactic_extractor_finds_connective_arms() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let arms = extract_type_sum_arm_labels(&source, "Connective").expect("Connective arms");
-        assert_eq!(
-            arms,
-            vec![
-                "Atom",
-                "Conj",
-                "Disj",
-                "Arrow",
-                "Cardinality",
-                "Instantiation"
-            ]
-        );
-    }
-
-    #[test]
-    fn syntactic_extractor_finds_behavior_arms() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let arms = extract_type_sum_arm_labels(&source, "Behavior").expect("Behavior arms");
-        assert_eq!(
-            arms,
-            vec!["Value", "Transform", "Branch", "Loop", "Bind", "Match"]
-        );
-    }
-
-    #[test]
-    fn syntactic_pair_extractor_nullary_and_typed_connective() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let pairs = extract_type_sum_arm_pairs(&source, "Connective").expect("Connective pairs");
-        assert_eq!(pairs[0].label, "Atom");
-        assert_eq!(pairs[0].payload_type_name, "{ identity: Symbol }");
-        assert_eq!(pairs[1].label, "Conj");
-        assert_eq!(pairs[1].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
-        assert_eq!(pairs[2].label, "Disj");
-        assert_eq!(pairs[2].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
-    }
-
-    #[test]
-    fn syntactic_pair_extractor_all_nullary_behavior() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let pairs = extract_type_sum_arm_pairs(&source, "Behavior").expect("Behavior pairs");
-        assert!(pairs
+    fn names(facts: &[DeclFactRaw]) -> Vec<(String, String, String)> {
+        facts
             .iter()
-            .all(|p| p.payload_type_name == NULLARY_PAYLOAD_TYPE_NAME));
+            .map(|f| {
+                (
+                    f.qualified_name.clone(),
+                    format!("{:?}", f.kind),
+                    f.rel_path.clone(),
+                )
+            })
+            .collect()
     }
 
+    /// The memo is an ownership change, not a population change: with the floor memo registered,
+    /// two ORDERINGS of one root multiset share one walk, two MULTIPLICITIES do not alias, each
+    /// shared walk is identical — by declaration identity, kind and path — to its unmemoized
+    /// walk, and clearing the authority drops the artifact.
     #[test]
-    fn syntactic_extractor_rejects_connective_prefix_of_longer_type_name() {
-        let source = "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
-        assert_eq!(
-            extract_type_sum_arm_labels(source, "ConnectiveCoproductVariant").expect("variant"),
-            vec!["Foo", "Bar"]
-        );
-        assert_eq!(
-            extract_type_sum_arm_labels(source, "Connective").expect("Connective"),
-            vec!["Atom", "Conj"]
-        );
-    }
-
-    #[test]
-    fn syntactic_extractor_fails_loud_on_mid_decl_comment() {
-        let source = "type Connective = Atom | Conj // trailing\n";
-        let err = extract_type_sum_arm_labels(source, "Connective").unwrap_err();
+    fn shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once() {
+        let roots = vec![
+            "dag/std".to_string(),
+            "dag/gunbc/machine_intake".to_string(),
+        ];
+        let reordered = vec![
+            "dag/gunbc/machine_intake".to_string(),
+            "dag/std".to_string(),
+        ];
+        let duplicated = vec!["dag/std".to_string(), "dag/std".to_string()];
+        let singleton = vec!["dag/std".to_string()];
+        let cold = decl_facts_for_roots(&roots);
+        let cold_duplicated = decl_facts_for_roots(&duplicated);
+        let cold_singleton = decl_facts_for_roots(&singleton);
         assert!(
-            err.contains("//"),
-            "expected mid-decl comment diagnostic, got: {err}"
+            !cold.is_empty(),
+            "the roots must yield declarations or this decides nothing"
+        );
+        assert_ne!(
+            names(&cold_singleton),
+            names(&cold_duplicated),
+            "the walk visits every supplied root, so [r, r] is a different population from [r]"
+        );
+        clear_floor_decl_parse_memo();
+        let unregistered = decl_facts_for_roots_shared(&roots);
+        assert_eq!(names(&cold), names(&unregistered));
+        register_floor_decl_parse_memo();
+        let first = decl_facts_for_roots_shared(&roots);
+        let second = decl_facts_for_roots_shared(&reordered);
+        let shared_singleton = decl_facts_for_roots_shared(&singleton);
+        let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
+        clear_floor_decl_parse_memo();
+        assert!(
+            Rc::ptr_eq(&first, &second),
+            "a reordering of the same root multiset must read the same walk"
+        );
+        assert_eq!(names(&cold), names(&first));
+        assert!(
+            !Rc::ptr_eq(&shared_singleton, &shared_duplicated),
+            "[r] and [r, r] must not alias"
+        );
+        assert_eq!(names(&cold_singleton), names(&shared_singleton));
+        assert_eq!(names(&cold_duplicated), names(&shared_duplicated));
+        let after_clear = decl_facts_for_roots_shared(&roots);
+        assert!(
+            !Rc::ptr_eq(&first, &after_clear),
+            "clearing the prepared authority must drop the memo"
+        );
+    }
+}
+
+#[cfg(test)]
+mod parse_only_uppercase_variant_regression_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use crate::v1_std_core::{
+        empty_node_list, make_named_expr_node, ExprData, SourceSpan, VarBindingKind,
+    };
+
+    use super::marshal_generic;
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn dummy_span() -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start: 0,
+            end: 1,
+        })
+    }
+
+    fn uppercase_var_without_binding() -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "SharedArm".to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn uppercase_var_with_variant_binding() -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "SharedArm".to_string(),
+            Rc::new(ExprData::ExprVar {
+                binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
+                    parent_enum: "Parent".to_string(),
+                })),
+            }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn skeleton_children_len(ctx: &InterpContext, skel: &Value) -> usize {
+        match skel {
+            Value::Record { fields, .. } => {
+                let children_key = ctx.sym("children");
+                fields
+                    .iter()
+                    .find(|(k, _)| *k == children_key)
+                    .map(|(_, v)| match v {
+                        Value::List(items) => items.len(),
+                        _ => 0,
+                    })
+                    .unwrap_or(0)
+            }
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn uppercase_nullary_without_variant_binding_emits_no_parse_only_skeleton_atom() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &uppercase_var_without_binding(), &[], &si);
+        assert_eq!(
+            skeleton_children_len(&ctx, &skel),
+            0,
+            "capitalization alone must not mint a variant-value skeleton atom"
         );
     }
 
     #[test]
-    fn syntactic_extractor_fails_loud_on_unexpected_token_mid_decl() {
-        let source = "type Connective = Atom , Conj\n";
-        let err = extract_type_sum_arm_labels(source, "Connective").unwrap_err();
+    fn infer_stamped_variant_binding_still_emits_parse_only_skeleton_atom() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &uppercase_var_with_variant_binding(), &[], &si);
+        assert_eq!(
+            skeleton_children_len(&ctx, &skel),
+            1,
+            "infer-stamped VariantValueBinding must still emit the skeleton atom"
+        );
+    }
+
+    #[test]
+    fn capitalization_heuristic_not_used_on_parse_only_path() {
+        let source = include_str!("coproduct_reflection.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
         assert!(
-            err.contains("unexpected token"),
-            "expected unexpected-token diagnostic, got: {err}"
+            !production.contains("is_uppercase_variant_spelling"),
+            "parse-only skeleton path must not reintroduce capitalization classification"
+        );
+        assert!(
+            production.contains("should_emit_nullary_variant_value_atom"),
+            "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
+        );
+    }
+}
+
+#[cfg(test)]
+mod inventory_root_prefix_tests {
+    use super::inventory_entry_under_abs_roots;
+    use std::path::Path;
+
+    #[test]
+    fn sibling_directory_sharing_a_prefix_is_not_under_the_root() {
+        let ws = Path::new("/repo");
+        let roots = vec!["/repo/dag".to_string()];
+        assert!(inventory_entry_under_abs_roots("dag/mod.dag", &roots, ws));
+        assert!(
+            !inventory_entry_under_abs_roots("dag_something/foo.dag", &roots, ws),
+            "a sibling whose name merely starts with the root basename must not be counted"
         );
     }
 }

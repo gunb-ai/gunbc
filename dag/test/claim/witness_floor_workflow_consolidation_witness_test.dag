@@ -1,0 +1,393 @@
+module test.claim.witness_floor_workflow_consolidation_witness_test
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id, witness_floor_workflow_job_id }
+import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
+import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
+import v2.std.diagnostic { Outcome }
+import extdeps.languages.yaml.gha_workflow { pr_activity_string }
+import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed }
+
+// THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
+// "i would much prefer if it was all handled within the witnesses step and within the gunbc
+// binary, not at a github actions job level").
+//
+// THAT DIRECTIVE IS NOW PARTLY SUPERSEDED AND THIS FILE'S SUBJECT NARROWED ACCORDINGLY
+// (operator ruling, 2026-08-25: "basically i would put regen + v2 full compile in one job, and
+// witnesses into another one"). The required run is TWO parallel jobs, so "not at a job level"
+// no longer holds -- parallelism is not expressible inside one process, which is the whole
+// reason the lane boundary is a job boundary.
+//
+// WHAT SURVIVES IS WHAT THESE WITNESSES ACTUALLY ASSERT, and it is why they are re-pointed
+// rather than retired: no step ladder, no retired invocation grown back, and no step's
+// precondition reading another PHASE's verdict. A job carries a lane word and nothing else, so
+// the sequencing the directive protected never left the binary. The rows below add the split's
+// own claims -- two jobs, and no `needs` edge between them -- because a file that only checked
+// for the ABSENCE of a ladder would stay green over one job, over two, and over a serial pair.
+//
+// WHAT THESE ASSERT AND WHAT THEY CANNOT. The subject is the EMITTED workflow text, so these
+// witnesses decide the shape of what CI is asked to run. They say nothing about whether the
+// composed run then executes its four phases correctly — that is the binary's own behaviour and
+// it is not observable from here. Two separate claims, and conflating them would let a correctly
+// shaped one-step workflow stand in for evidence that the phases run.
+//
+// Stated so a reader does not over-read the green: this is the CHEAP half of the pair.
+
+// The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was
+// its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's
+// `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the
+// regen process had written — a process boundary standing where a function call belonged, since
+// run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed
+// None.
+
+// NO RETIRED INVOCATION HAS GROWN BACK, and the required mode token is present. That is the
+// whole of what this row proves, and the heading is narrowed to say so: the two positive
+// substring checks are INDEPENDENT, so they do not join. `claim_executor` already appears in the
+// build step as a binary name, so this row would stay green if the run step were replaced by
+// something unrelated that merely contained `--required-ci`. An earlier revision of this comment
+// claimed the row establishes that one run step reaches the binary AND names the composed mode;
+// it does not, and a comment asserting what the code omits is the failure this file exists to
+// prevent one level down (raised in side-chat review, 2026-08-20).
+//
+// The join is proved elsewhere, one authority per proposition, and this row does not restate any
+// of them:
+//   fabric_witness_run_test workflow_step_renders_the_fabric_command_and_does_not_respell_it
+//     -- the exact rendering of the witnesses lane command reaches the step
+//   fabric_witness_run_test fabric_command_names_the_consolidated_mode
+//     -- the command selects --required-ci and not --required-floor
+//   this row
+//     -- no retired external invocation returned
+//
+// The negative half is what makes THIS row discriminating: if any of the three retired
+// invocations reappears as its own step, the ladder has grown back and this reds.
+//
+// THE CLAUSES WERE COUPLED TO ONE SPELLING OF THE INVOCATION AND ARE NOT ANY MORE. They matched
+// `claim_executor" --required-ci` -- the double quote is the tail of the hand-built
+// "$ROOT/target/release/claim_executor", so every clause silently depended on the argv being
+// spelled that exact way. #8629 renders the step from the fabric's ArgvCommand through
+// shell_command_render, which single-quotes every word per IEEE 1003.1-2017, so the emitted text
+// became 'target/release/claim_executor' '--required-ci' and the positive clause stopped
+// matching. That red was correct and is what brought me here.
+//
+// The repair is not to re-spell the pattern for the new renderer, because the NEGATIVE clauses
+// carried the same coupling and would have failed in the direction that does not announce
+// itself: a `--required-floor` step growing back would be emitted as '--required-floor', which
+// `claim_executor" --required-floor` cannot match, so all three negatives would have gone
+// permanently, vacuously green -- an inert assertion that still reads as coverage. Matching the
+// flag tokens alone is spelling-independent, and strictly stronger as a negative, since it now
+// catches a retired invocation under ANY quoting. Verified against the emitted file: it contains
+// exactly one of these four tokens.
+test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: "claim_executor")
+        && string_contains(s: yml, pattern: "--required-ci")
+        && !string_contains(s: yml, pattern: "--required-floor")
+        && !string_contains(s: yml, pattern: "--required-regen")
+        && !string_contains(s: yml, pattern: "target/release/v1_src_dag_parse")
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// NO STEP'S PRECONDITION READS ANOTHER STEP'S VERDICT — except the one that guards on the BUILD,
+// which is a different fact: a step cannot run a binary that failed to compile, and that is the
+// job's business rather than the program's. What is gone is `steps.required_regen.outcome`, the
+// data dependency that now lives in the binary as an in-memory digest handoff.
+test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      !string_contains(s: yml, pattern: "steps.required_regen.outcome")
+        && string_contains(s: yml, pattern: "steps.build_witness_fold.outcome == 'success'")
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE REQUIRED WORKFLOW NO LONGER BUILDS THE PARSE BINARY -- scoped to this workflow, because
+// fleet-converge.yml still builds it from witness_declared_release_bins and a heading reading
+// "no longer built" would be false of the repository while true of its subject.
+//
+// This replaces a claim that was quietly wrong.
+//
+// It read "the parse sweep still has an executing consumer" and asserted the yml contained
+// `--bin v1_src_dag_parse`. That used "CI compiles the standalone parse binary" as a proxy for
+// "the parse sweep still runs" -- and the two came apart the moment the consolidation landed,
+// because the sweep moved INTO the composed run while the binary stopped being invoked at all.
+// The witness was therefore pinning a surplus compile in place as a requirement, which is the
+// opposite of what it was named for. Found in review of gunbc#8647.
+//
+// WHAT THIS FILE CAN AND CANNOT DECIDE. The subject here is emitted workflow text, so it can
+// see that the retired binary is not built and that the composed mode is invoked. It CANNOT
+// see that the parse phase runs -- that lives in the binary and is established by execution
+// (`required-ci: parse OK 50 file(s) parse-clean`, run 32371293567). Naming the boundary is
+// the point: a static witness that claimed the phase runs would be asserting something its
+// subject does not contain.
+test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: "--required-ci")
+        && string_contains(s: yml, pattern: "--bin claim_executor")
+        && !string_contains(s: yml, pattern: "--bin v1_src_dag_parse")
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// RED CONTROL ON A DIFFERENT AXIS FROM THE INVOCATIONS ABOVE: the retired steps' NAMES.
+//
+// The first witness reads the run commands; this one reads the step names GitHub renders, which
+// is what a person re-adding a step would write first. The two can disagree — a step named
+// "Regen determinism" whose command was folded into the composed run would pass the command
+// check and fail this one — and that disagreement is the point of having both.
+//
+// An earlier revision of this file put a near-impossible literal here instead. It would have
+// gone green forever without ever being able to fail, which is worse than having no control:
+// a vacuous assertion reads as coverage on the roster.
+//
+// THE POSITIVE CONTROL PINS THE COMPOSED STEP'S IDENTITY, NOT ITS PHASE LIST.
+//
+// It read the full name -- "...regen determinism, witness floor" -- until the behavioral
+// receipt became a phase inside the same invocation and the step name grew to say so. That
+// reddened this witness, which is about RETIRED STEP NAMES and has nothing to say about how
+// many phases the composed run has. A control that breaks whenever an unrelated phase is
+// added is measuring the wrong thing: it makes every phase addition edit a witness that does
+// not own the fact. Keying on the step-name PREFIX keeps exactly the property this control
+// needs -- the composed step exists and was read -- and still fails loudly if the composed
+// step is removed or renamed out of its family, which is the state the negative arms below
+// exist to detect.
+test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      let positive_control = string_contains(s: yml, pattern: "Required CI:")
+      positive_control
+        && !string_contains(s: yml, pattern: "name: src/v1 .dag sources parse")
+        && !string_contains(s: yml, pattern: "Regen fixed point:")
+        && !string_contains(s: yml, pattern: "Regen determinism:")
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE SPLIT IS TWO LANES PLUS THE JOB THAT GATES, AND ALL THREE REACH THE EMITTED FILE.
+//
+// This is the positive half the negatives above cannot supply: every clause in this file up to
+// here is satisfied by a ONE-job workflow, so without this row the split could be reverted to a
+// single serial job and nothing here would notice. The lane words and job ids are read from
+// their own declarations rather than spelled, so a rename moves both sides together.
+test fn w_the_required_workflow_carries_both_lanes() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: concat("--required-lane' '", concat(required_ci_lane_build, "'")))
+        && string_contains(s: yml, pattern: concat("--required-lane' '", concat(required_ci_lane_witnesses, "'")))
+        && string_contains(s: yml, pattern: concat("  ", concat(build_lane_job_id, ":")))
+        && string_contains(s: yml, pattern: concat("  ", concat(floor_lane_job_id, ":")))
+        && string_contains(s: yml, pattern: concat("  ", concat(witness_floor_workflow_job_id, ":")))
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// A REQUIRED CONTEXT IS A JOB NAME AND NOTHING ELSE, SO THE LANE NAMES MUST BE UNIQUE ACROSS
+// EVERY WORKFLOW THIS REPOSITORY EMITS.
+//
+// GitHub matches a required status check by CONTEXT, and the context is the job's name --
+// which workflow the job belongs to is not part of it. So two workflows publishing a job
+// called `build` publish ONE context name, and a rule naming it is answered by whichever
+// green arrives. That is why the lane jobs cannot be enforced directly under bare lane words,
+// and it is not hypothetical: `gunbc.fleet_converge_workflow` declares a job whose id is
+// exactly `build`, which is the collision this row measures.
+//
+// THE JOIN IS AGAINST THE OTHER WORKFLOW'S OWN AUTHORITY rather than a spelled string, so the
+// row keeps discriminating if that workflow renames its jobs. The RED is authorable in the
+// direction that matters: restoring `build_lane_job_id` to the lane word collides with
+// fleet-converge's `build` again, and this row goes red where nothing else in this file would
+// notice -- every other clause here reads the job ids from their declarations, so all of them
+// stay green under a rename that reintroduces the collision.
+test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
+  !any(fleet_converge_workflow.jobs, j => j.id == build_lane_job_id)
+    && !any(fleet_converge_workflow.jobs, j => j.id == floor_lane_job_id)
+    && build_lane_job_id != floor_lane_job_id
+    && build_lane_job_id != witness_floor_workflow_job_id
+    && floor_lane_job_id != witness_floor_workflow_job_id
+}
+
+// NEITHER LANE WAITS ON THE OTHER, WHICH IS THE ENTIRE CONTENT OF "PARALLEL" -- and the
+// aggregation job waits on both, which is what keeps the split fail-closed.
+//
+// THE EARLIER FORM OF THIS ROW ASSERTED THAT THE FILE CONTAINED NO `needs:` AT ALL, and that
+// was the right claim for a workflow shape that was WRONG. Review of gunbc#9203 found it: the
+// repository's ruleset names exactly one required check, `witnesses`, and a GitHub context is
+// produced by the JOB, so a second job's failure could not block a merge. The fix is an
+// aggregation job that keeps the required name and refuses unless both lanes succeeded -- which
+// necessarily carries a `needs` edge, so a row forbidding the token outright would have made
+// the fail-closed repair unrepresentable.
+//
+// The claim is therefore stated at the grain that actually matters. A lane waiting on the other
+// renders as that lane's job carrying `needs: [<other lane>]`, so both single-lane forms are
+// refused; the aggregator's two-lane edge is required to be present. That is a strictly sharper
+// discriminator than the token count was, because it distinguishes the serialization being
+// forbidden from the aggregation being demanded, which "no needs anywhere" could not.
+//
+// It is a RED that can be authored in both directions: giving either lane job a `needs` row
+// fails the negatives, and dropping the aggregator's fails the positive.
+test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, "]")))))
+        && !string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, "]")))
+        && !string_contains(s: yml, pattern: concat("needs: [", concat(floor_lane_job_id, "]")))
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.
+//
+// It replaces w_RED_fabric_evidence_failure_reaches_required_context, whose subject was the
+// gating edge that gunbc.rung_drop `fabric_evidence_gating` withdraws. That row is not
+// retired as obsolete -- its subject is real and its restoration is the drop's trigger -- it is
+// asserting a fact that is deliberately no longer true, so keeping it would have been a red
+// against the declared state rather than evidence about it.
+//
+// What survives is the half the drop does NOT withdraw: the calibration keeps executing on every
+// push and pull request, so the evidence stream is unbroken and only the merge block is gone. A
+// diff that deletes the job to "finish" the drop authors RED here; so does one that restores the
+// needs edge or the FABRIC_EVIDENCE binding without also retiring the drop, because the second
+// and third conjuncts forbid exactly the two spellings the gating form emits.
+test fn w_RED_fabric_evidence_executes_without_gating() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: concat("  ", concat(fabric_evidence_job_id, ":")))
+        && string_contains(s: yml, pattern: "bash tools/fabric_ci_evidence_calibration.sh")
+        && !string_contains(s: yml, pattern: "FABRIC_EVIDENCE")
+        && !string_contains(s: yml, pattern: concat(", ", concat(fabric_evidence_job_id, "]")))
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE GATE RUNS FOR EVERY ATTEMPT, INCLUDING A CANCELLED ONE, AND THEN REFUSES A NON-SUCCESS
+// LANE.
+//
+// THE DEFECT IT MISSED, kept here because the row is only trustworthy if its own blind spot is
+// on the record. It asserted `if: always()` appeared SOMEWHERE in the file. It did -- on the
+// STEP -- while the JOB carried `needs` and no condition at all. GitHub SKIPS a job whose
+// needed job failed, a skipped job never reaches its steps, and a skipped required check does
+// not stop a merge. So the aggregator introduced to close the fail-open was itself fail-open,
+// the guard was present in the file and read as correct, and this row confirmed it. That is
+// DESIGN's total-at-the-level-examined failure: the assertion was true, and about the wrong
+// level. Found by two independent readers (review 55795 and a peer session) within minutes,
+// neither of them this row.
+//
+// SO THE CLAIM IS NOW STATED AT THE JOB GRAIN, and the discriminator is the emitted
+// INDENTATION, because that is the only thing in the text that distinguishes the two levels: a
+// job-level key sits at four spaces and a step-level key at eight. A leading newline plus four
+// spaces cannot be satisfied by the step's condition, which is the exact substitution that
+// produced the green above.
+//
+// THE NEGATIVE CLAUSE IS NEW AND IT IS THE LOAD-BEARING ONE. gunbc#9339 landed a job-level
+// exclusion of cancelled lanes here -- `always() && needs.build.result != 'cancelled' && ...` --
+// under a declared rung drop whose own restoration trigger named this construction. That
+// exclusion is dissolved in the same change that lands this clause, and DESIGN 4b(4) says the
+// EVIDENCE stays enrolled when the production machinery beside it goes: so this witness is
+// RE-POINTED rather than deleted, and becomes the regression control that the exclusion does not
+// return. Asserting the presence of `always()` alone would not do that -- the excluded form
+// CONTAINS `always()` as a substring, so a presence-only probe goes green over exactly the shape
+// it exists to refuse. Pinning the absence of `!= 'cancelled'` is what makes it discriminating,
+// and the trailing newline in the positive pattern is what stops it matching the longer form.
+//
+// THE THIRD AND FOURTH CLAUSES ARE THE REFUSAL ITSELF. A job that runs and reports success
+// regardless would satisfy the first two, so the nonzero exit and the strict inequality against
+// `success` are what turn a read of two results into a verdict -- and the strictness is
+// load-bearing in its own right: `cancelled` and `skipped` are not `success`, so a lane that
+// never produced a verdict refuses here rather than passing.
+//
+// (THE COMPARISON'S SPELLING CHANGED WITH ITS PRODUCER, NOT ITS MEANING. The gate is now built
+// as Nodes in `gunbc.required_lanes_gate` and serialized through the bash grammar rows, which
+// quote every word, so the emitted text is `'!=' 'success'` rather than `!= "success"`. The
+// clause is re-pointed at the serializer's spelling rather than relaxed to a substring both
+// forms share: a pattern loose enough to survive any producer is a pattern that stops
+// discriminating, which is exactly how the job-level guard defect above went green.)
+//
+// THIS IS EMITTED-SHAPE EVIDENCE, NOT A BEHAVIOURAL GITHUB RECEIPT, and the caveat survives the
+// re-pointing unchanged. It proves the job condition and the live-attempt refusal are present at
+// their distinct YAML grains. It does not prove what GitHub does with a required context on a
+// cancelled run, nor what branch protection does with a skipped one.
+// `gunbc.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger` carries the half
+// that is still unobserved; a string_contains witness must not be cited as having closed it.
+test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: "\n    if: always()\n")
+        && !string_contains(s: yml, pattern: "!= 'cancelled'")
+        && string_contains(s: yml, pattern: "\n        if: always()")
+        && string_contains(s: yml, pattern: "exit 1")
+        && string_contains(s: yml, pattern: "'!=' 'success'")
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE UNRENDERABLE-GATE REFUSAL IS EXECUTED, NOT DESCRIBED.
+//
+// This arm exists because the receipt was once WRONG about it in a way nothing executed could
+// have caught: the refusal program was declared `-> List<Node>` while returning a single
+// stmt-list `Node`, so the middle rung of the gate's three-state argument -- "gate rejects, the
+// refusal still serializes, and the run stops loudly" -- was dead in exactly the arm the
+// argument is about (review 55928). The prose said it was Nodes through the same fold; what
+// executed was the wrong shape.
+//
+// So the property is asserted by running the fold over it and reading the program back: it must
+// SERIALIZE, and the text must carry both halves of the refusal -- the annotation the operator
+// sees and the nonzero exit that actually stops the line. An empty or exit-0 program here would
+// publish the required context green over lanes it never read.
+test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
+  match bash_fold_serialize_program(stmts: required_lanes_gate_unrenderable_stmts(), set_e: false) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "::error::")
+        && string_contains(s: script, pattern: "could not be serialized")
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE PULL-REQUEST ACTIVITY SET IS EXACTLY THE THREE THAT CAN CARRY A NEW SUBJECT.
+//
+// gunbc#9361 deleted `ready_for_review` from this workflow's trigger. Nothing in the tree
+// asserted the activity set at all, so the deletion was a +3/-3 diff over an unwitnessed fact --
+// and the reverse deletion, or a re-add, would have been equally invisible.
+//
+// BOTH HALVES ARE ASSERTED AND THAT IS THE POINT. An absence-only row greens if the whole
+// activity list is deleted, which is a DIFFERENT defect (the workflow would then run on every
+// PR activity GitHub defines) passing the same check. So the surviving three are read by name,
+// through the same `pr_activity_string` mapping the emitter uses, so a respelling moves both
+// sides together rather than silently vacating the negative.
+//
+// WHY ready_for_review IS THE ONE THAT GOES, stated at the grain that is actually true: the
+// question that matters is whether a HEAD has been verified against the relevant BASE; the
+// event being consumed is whether the PR moved from draft to ready. Those correlate and are not
+// equivalent. `ready_for_review` accidentally catches some base movement that happened before
+// the undraft, misses base movement after it, misses drafts that stay drafts, and reruns
+// subjects where neither head nor base moved. Since this workflow already tests drafts from
+// `Opened`, what remains of it is duplicate runs against a fixed runner pool. This row does NOT
+// claim the trigger can never observe anything new -- main may move while the head is unchanged,
+// so an undraft can face a base it has genuinely not been tested against. A future
+// base-congruence requirement therefore needs a carrier naming the base sha or merge subject
+// directly; a lifecycle event cannot stand in for it, which is the limitation rather than an
+// incapacity.
+//
+// EXECUTED, BOTH DIRECTIONS, ON THE HEAD THIS LANDS WITH. GREEN on the tree as authored. RED on
+// two mutations of the authority, run separately: re-adding ReadyForReview to the activity set
+// (the reversion this row exists to catch) and emptying the activity list entirely (the
+// over-deletion an absence-only row would have passed). Both went FAIL; the unmutated tree went
+// PASS.
+test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(
+        s: yml,
+        pattern: concat("    types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
+      )
+        && !string_contains(s: yml, pattern: pr_activity_string(a: ReadyForReview))
+        && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}

@@ -3,12 +3,20 @@ module v1.compiler.emit_core_support
 import v1.std.core {
   Node, ErrorNode, TextFile, NewlineIndex,
   authored_name_at, field_init_node_name_at,
+  make_error_node, ModuleFilenameCollision,
   Connective, NoConnective
 }
+
 import v1.compiler.artifact { RenderTarget }
-import v1.compiler.infer_items { ResolvedGraph }
+
+import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+
 import v1.compiler.infer_service { UniqueAccum }
+
 import v1.compiler.infer_types { resolved_type, emit_map_has }
+
+import v1.compiler.infer_env { TypeEnv }
+
 import v1.compiler.languages {
   LanguageSpec, SnakeCaseTestNames, PascalCaseTestNames,
   language_spec_for_target, test_conventions_for_target
@@ -27,6 +35,7 @@ type TestProjection {
   params: List<Node>
   mock_field_inits: List<Node>
   source_indices: Map<String, NewlineIndex>
+  type_env: TypeEnv
 }
 
 fn escape_json_string(s: String) -> String {
@@ -38,6 +47,41 @@ fn escape_json_string(s: String) -> String {
 
 fn module_to_filename(name: String) -> String {
   name |> split(delimiter: ".") |> join(separator: "_")
+}
+
+type ModuleFilenameOwners {
+  owners: Map<String, String>
+  diagnostics: List<ErrorNode>
+}
+
+// module_to_filename maps '.' to '_', which is MANY-TO-ONE: `a.b_c` and `a_b.c` both render
+// `a_b_c`. Every target emits one file per module at that path, so two colliding modules write
+// the same path and the second silently overwrites the first -- a wrong artifact with no
+// diagnostic. The mapping cannot be made injective without changing every emitted path and
+// every cross-module reference derived from it, so the residue is refused rather than absorbed
+// (DESIGN.md section 5: a failure arm refuses, never widens). Every target emitter calls this
+// over the whole module population before it emits, since the collision is a fact about the
+// module set and not about any one target's rendering.
+fn module_filename_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
+  let result = typed.modules |> fold(init: ModuleFilenameOwners { owners: empty_map(), diagnostics: [] }, f: fn(acc, tm) {
+    let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
+    let filename = module_to_filename(name: module_name)
+    match map_get(acc.owners, filename) {
+      Present { value: owner } =>
+        if owner == module_name {
+          acc
+        } else {
+          ModuleFilenameOwners {
+            owners: acc.owners,
+            diagnostics: list_push(acc.diagnostics, make_error_node(
+              diagnostic: ModuleFilenameCollision { filename: filename, modules: [owner, module_name], span: tm.module.span },
+              module_name: module_name))
+          }
+        }
+      Absent => ModuleFilenameOwners { owners: map_insert(acc.owners, filename, module_name), diagnostics: acc.diagnostics }
+    }
+  })
+  result.diagnostics
 }
 
 fn make_indent(level: Int) -> String {
@@ -222,6 +266,22 @@ fn language_spec(target: RenderTarget) -> LanguageSpec {
   language_spec_for_target(target: target)
 }
 
+// TWO defects, one in each half of the CR step. The DELIMITER used to be "\r", but this language's
+// tokenizer has no \r escape (its table is \" \\ \n \t \{ \} and \xHH), so that delimiter was the
+// two characters backslash and r, not a carriage return: carriage returns have passed through
+// unescaped into every emitted target for as long as the function has existed, dead in practice
+// only because no corpus string carried one. The first that did turned it into a hard emit failure.
+// The REPLACEMENT was then briefly \r and \0, which is a second, subtler version of the same
+// mistake: this function is TARGET-INDEPENDENT — emit_string_literal invokes it for Rust, Dag, Go
+// and Python alike, and never sees a RenderTarget — so a Rust-shaped escape is only correct for one
+// of the four projections, and \r emitted into a Dag literal reproduces the exact backslash-r bug
+// the delimiter half just fixed (review 2026-07-30). The spelling is therefore \x0d and \x00, the
+// hex form all four target grammars accept, and the acceptance is a round trip through every target
+// rather than a Rust regen fixed point, which proves only the Rust projection. Recorded rather than
+// quietly respelled because the class is the point: a target-specific escape inside a
+// target-independent function is invisible until a projection other than the one under test carries
+// the character.
+
 fn escape_string_literal_body(s: String) -> String {
   let escaped_backslash = s
     |> split(delimiter: "\\") |> join(separator: "\\\\")
@@ -230,8 +290,10 @@ fn escape_string_literal_body(s: String) -> String {
   let escaped_newline = escaped_quote
     |> split(delimiter: "\n") |> join(separator: "\\n")
   let escaped_return = escaped_newline
-    |> split(delimiter: "\r") |> join(separator: "\\r")
-  escaped_return
+    |> split(delimiter: "\x0d") |> join(separator: "\\x0d")
+  let escaped_nul = escaped_return
+    |> split(delimiter: "\x00") |> join(separator: "\\x00")
+  escaped_nul
     |> split(delimiter: "\t") |> join(separator: "\\t")
 }
 
@@ -254,7 +316,8 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
             inferred: resolved_type(n: c),
             params: c.params,
             mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))),
-            source_indices: tm.type_env.source_indices
+            source_indices: tm.type_env.source_indices,
+            type_env: tm.type_env
           })
       )
   )

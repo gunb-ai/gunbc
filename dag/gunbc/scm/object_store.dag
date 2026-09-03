@@ -1,0 +1,1097 @@
+module gunbc.scm.object_store
+
+import std.types { List, Bool, Int, String, NonEmptyStr }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural }
+import v2.std.node {
+  Hash,
+  Node,
+  NodeKind,
+  TypeNode,
+  Connective,
+  Atom,
+  Conj,
+  Edge,
+  EdgeLabel,
+  Named,
+  Symbol,
+  content_hash,
+  node_synthetic,
+  canonicalize_node_for_content_hash,
+  canonicalize_labeled_for_content_hash,
+  LabeledChildHash,
+  content_hash_of_children,
+}
+
+// WHY A NODE IS STORED DECOMPOSED RATHER THAN WHOLE, which is the whole point of the slice and not
+// an implementation preference. Storing each node as (kind, [(label, child identity)]) is what makes
+// a commit a CLOSURE: checkout follows exact identities and can therefore refuse when one is absent,
+// which is the discriminating behaviour the reconstruction claim rests on. A store that kept whole
+// node values per identity would round-trip perfectly and prove nothing, because there would be no
+// links to follow and no reachable object that could be missing.
+//
+// THE IDENTITY IS CONSUMED, NOT MINTED. v2.std.node content_hash already folds kind, edge labels and
+// child digests canonically, through canonical_hash_of_node_kind and canonical_hash_of_edge_label.
+// Re-deriving a second structural digest here would be the section 3 fork this repository consolidates
+// everywhere else, and it would be a WORSE fork than usual: two structural hashes over one node type
+// disagreeing is undetectable until something compares them.
+//
+// DECLARED RUNG, stated rather than left for a reader to discover. ObjectId is that digest, and that
+// digest is fnv1a64 -- 64-bit and non-cryptographic. It is adequate for THIS slice's claims, which are
+// about stability, reconstruction and identity-free combination, and it is NOT adequate as a durable
+// intersubjective content identity for cross-party agreement: a 64-bit non-cryptographic digest is a
+// locator, and treating a locator as an identity witness is a defect class this repository has already
+// met elsewhere. No stronger option exists in .dag today -- the sha256 surfaces in std.content_hash and
+// extdeps.crypto.hash VALIDATE hex rather than computing it, and the v1 seed's builtin registry is
+// frozen against new rows. dissolve-on: a computing cryptographic digest reachable from .dag, at which
+// point ObjectId changes family and this note deletes.
+//
+// ObjectId IS v2.std.node's Hash rather than a parallel alias over the same underlying digest type.
+// The typechecker treats two aliases of one primitive as distinct, so the first cut -- ObjectId
+// aliasing Fnv1a64Structural directly -- refused every content_hash result at the store boundary.
+// That refusal was correct and worth keeping the shape it forced: an object's identity is not merely
+// the same SHAPE as a node's content hash, it is that hash, and saying so in the type means no
+// conversion exists to get them out of step.
+type ObjectId = Hash
+
+// THE LOCATOR IS NOT THE REFERENCE, AND CONFLATING THEM WAS THE MODEL'S CENTRAL DEFECT.
+//
+// `ObjectId` above is one untyped address. While it was also the type standing in every position
+// that REQUIRES A PROGRAM -- a node's child edge, a commit's root -- an authored-source identity
+// inhabited those positions perfectly well, and the model's answer was to notice afterwards:
+// find_node_record at a mint, at a log row, at a checkout, each one detecting a wrong kind that the
+// type had already admitted. That is validation standing exactly where construction was available,
+// which DESIGN section 5 names as the tell that a check is a second representation of a constraint
+// the model should carry. Found by external review of gunbc#9891, which also named the shape.
+//
+// So a REFERENCE is branded by the kind of object it was minted against, and only this module can
+// mint one: `sole_constructor` refuses cross-module construction and cast, so no caller can brand a
+// locator it merely holds. The producers below hand back the brand they derived -- store_node a
+// node reference, store_authored_source a source reference.
+//
+// THIS PARAGRAPH ONCE ENDED "and every node-requiring position takes the node brand; a file in a
+// child edge is then not refused, it is UNWRITABLE." THAT WAS TRUE OF A DESIGN THIS MODULE NO LONGER
+// HAS, and leaving it would have been the worst kind of stale comment -- one asserting a SAFETY
+// property, which a reader plans against. An external review restated it back as the module's
+// guarantee, which is how a false comment becomes a false shared premise.
+//
+// What is actually true: StoredEdge.target carries SemanticNodeTarget, a PUBLICLY CONSTRUCTIBLE
+// proposition, because a partial closure must reference an object it does not carry and branding that
+// would need a mint recording a CLAIM rather than evidence -- the exported forge factory that reopens
+// a sole_constructor wall. So a child edge naming a file's locator IS writable. What no consumer will
+// do is act on it: resolve_node_target answers three ways, and partial admission, completeness, both
+// closure writers, encode_repository_checked and loaded_closure_standing each refuse the wrong-kind
+// arm by name. That is section 4b rung 3, structurally guaranteed -- not rung 4, and reporting it as
+// rung 4 would be the inflation section 4b(1) forbids. Three real defects were found in this exact
+// seam AFTER the brands landed; had the state been unwritable, none of them could have existed.
+//
+// The one thing that IS unwritable is a CONTAINED WIRE REFERENCE to a file: the encoder's target index
+// carries semantic nodes only, so there is no entry to find.
+//
+// WHAT THE BRAND DOES NOT CLAIM, stated because a wrapper that overclaims is the hollow alias this
+// repository rosters. It says: this locator was minted against an object of this kind IN SOME
+// STORE. It does not carry which store, so a reference minted against one store and resolved
+// against another can still find nothing, or find the other kind -- and checkout's two refusal arms
+// therefore remain, honestly, as the boundary between stores. The brand removes the AUTHORING
+// mistake, not the cross-store one, and the residual is a typed refusal rather than a silence.
+//
+// THE NAME `ObjectId` STAYS ON THE LOCATOR rather than becoming `ObjectLocator`. Its own declared
+// rung note above already says what it is -- a 64-bit non-cryptographic locator, explicitly not a
+// durable identity witness -- so the rename would move ~170 call sites to restate a fact the type
+// already carries, and DESIGN section 2 prices churn that adds no concept as redundant work.
+type SemanticNodeObjectRef sole_constructor {
+  locator: ObjectId
+}
+
+type AuthoredSourceObjectRef sole_constructor {
+  locator: ObjectId
+}
+
+// THE JOIN, so a consumer that genuinely handles both kinds -- persistence, a copy between stores,
+// a resolver at a document boundary -- says so in one type instead of taking a bare locator and
+// re-deciding. It is a sum rather than a supertype for the reason ScmObject is: a shared shape with
+// an optional discriminator lets a consumer read past the distinction, which is the empty
+// observation narrow.
+type ScmObjectRef
+  = SemanticNodeRef(SemanticNodeObjectRef)
+  | AuthoredSourceRef(AuthoredSourceObjectRef)
+
+fn scm_object_ref_locator(reference: ScmObjectRef) -> ObjectId {
+  match reference {
+    SemanticNodeRef(r) => r.locator
+    AuthoredSourceRef(r) => r.locator
+  }
+}
+
+// A CHILD EDGE CARRIES A REQUIREMENT, NOT EVIDENCE ABOUT SOME STORE.
+//
+// An earlier revision of this module made the target a two-armed sum -- Resolved(SemanticNodeObjectRef)
+// beside Unresolved(ObjectId) -- reasoning that a partial closure must be able to reference an object
+// it does not carry, so one brand could not cover both states. The premise was right and the
+// conclusion was wrong, and external review (the designated SCM reviewer, at 5ba7ade) is what made
+// the difference visible.
+//
+// What a child edge states is a PROPOSITION: "a semantic node is required at locator L." Whether any
+// particular store satisfies it is an OBSERVATION, and observations do not belong inside the object
+// whose identity is derived from its content. The four facts that were offered here as evidence the
+// resolved arm was harmless are in fact the proof it never belonged: the content hash ignores which
+// arm was stored, records_equal must ignore it to avoid fabricating collisions, the wire has no
+// spelling for it, and every safe consumer re-resolves both arms against the store anyway. A
+// dimension that identity, equality, serialization and every consumer all erase is not record
+// content -- it is transient store-relative provenance that was being carried inside the record.
+//
+// Carrying it there was not merely redundant, it was WRONG, and the defect it produced is executed by
+// test.claim.scm_commit_closure_witness `a_node_requirement_over_a_file_is_not_a_fetchable_absence`:
+// an authored source occupying L made the requirement unsatisfied, the Bool that consumers read
+// reported it as simply absent, completeness called it fetchable, and the kind-blind encoder emitted
+// the CONTAINED spelling for it -- so an admitted partial closure produced bytes this same build
+// refuses at decode. No fetch could repair it, because L was occupied rather than empty.
+//
+// So the proposition is a plain record, publicly constructible because stating a requirement forges
+// nothing, and the store alone answers it -- through find_node_record, whose three arms already
+// separate "no object here" from "a file is here" from "here is the program".
+type SemanticNodeTarget {
+  locator: ObjectId
+}
+
+fn node_target_locator(target: SemanticNodeTarget) -> ObjectId {
+  target.locator
+}
+
+fn node_target_of(reference: SemanticNodeObjectRef) -> SemanticNodeTarget {
+  SemanticNodeTarget { locator: reference.locator }
+}
+
+type StoredEdge {
+  label: EdgeLabel
+  target: SemanticNodeTarget
+}
+
+type ObjectRecord sole_constructor {
+  identity: SemanticNodeObjectRef
+  kind: NodeKind
+  children: List<StoredEdge>
+}
+
+// AUTHORED SOURCE IS A SECOND KIND OF OBJECT, NOT A NODE WEARING A COSTUME.
+//
+// A file's bytes are not a semantic node, and the only way to push them through the node carrier is
+// to intern them as an Atom's Symbol -- which makes the symbol table a content store and gives one
+// name two materially different meanings. That is the meaning fork DESIGN section 3 names, and it
+// was the wrong model for the srv2 mirror for exactly this reason. So authored source gets its own
+// arm, under ONE content identity family shared with semantic objects, because a store that held
+// two identity kinds would make `store_contains` ambiguous about what it contains.
+//
+// THE EMPTY FILE HAS ITS OWN CONSTRUCTOR RATHER THAN AN EMPTY STRING. content_hash_atom takes a
+// NonEmptyStr, so an empty file has no digest through that route -- and the tempting repair, hashing
+// "" through some other path, would give the empty file an identity minted by a different rule than
+// every other file. An arm makes the distinction at authoring time instead of validating it later,
+// which is the carrier choice DESIGN section 5 asks for: the degenerate case is unwritable as a
+// degenerate NonEmptyStr rather than admitted and checked.
+type AuthoredSourceContent
+  = AuthoredSourceEmpty
+  | AuthoredSourceText(NonEmptyStr)
+
+// THE TAGS DOMAIN-SEPARATE THE PREIMAGES, AND THAT IS A WEAKER CLAIM THAN THE ONE THIS COMMENT
+// FIRST MADE. It said tagging makes the families "disjoint by construction under the hash rule",
+// which overstates what a 64-bit digest can deliver: the canonical PREIMAGES are separated, the
+// OUTPUTS are not mathematically disjoint. So an honest collision between an authored source and a
+// node remains possible at the declared fnv1a64 rung, exactly as a collision within one family
+// does, and insert_admission refuses it identically. Corrected on external review of gunbc#9891, which
+// also disproved the payload rationale below.
+data authored_source_text_tag: NonEmptyStr = "gunbc.scm.authored_source.text"
+data authored_source_empty_tag: NonEmptyStr = "gunbc.scm.authored_source.empty"
+
+// THE GUARD IS AN EQUALITY, NOT A CAST. `text as NonEmptyStr` on a computed value refuses at
+// runtime rather than answering, so it cannot be the discriminator for a total function whose whole
+// job is to decide which arm an arbitrary file's bytes inhabit. The cast is applied only inside the
+// arm the guard has already established, where it cannot refuse.
+fn authored_source_content(text: String) -> AuthoredSourceContent {
+  if text == "" {
+    AuthoredSourceEmpty
+  } else {
+    AuthoredSourceText(text as NonEmptyStr)
+  }
+}
+
+// ONE RULE, APPLIED TWICE, AND THE FIRST CUT DID NOT DO THAT. The empty arm hashed its tag directly
+// through content_hash_atom while the text arm went through content_hash_tagged_structural, so the
+// tagging invariant the comment above states held for one arm and not the other -- an untagged
+// digest sitting in a family whose whole claim is that its members are tagged. Named by external
+// review 58068 on gunbc#9891 as a consistency nit; it is fixed rather than argued because a stated
+// invariant with one exception is worse than no invariant, and the exception is the arm a reader is
+// least likely to check.
+//
+// WHAT THE EMPTY PAYLOAD IS NOT DOING, because the first repair claimed a reason that is false.
+// It said the payload must not be some file's content, or an empty file and a file holding that
+// content would collide BY CONSTRUCTION. That is wrong: content_hash_tagged_structural combines the
+// OUTER TAG and the payload as distinct inputs, so the empty arm's preimage carries E and a text
+// arm's carries T no matter what either payload is. The self-tag payload is therefore harmless and
+// also unnecessary -- any fixed domain constant would do. It is kept because a constant that names
+// the arm reads better than an arbitrary one, not because it prevents a collision. Disproved by
+// external review of gunbc#9891, which constructed the inverse the original claim ruled out.
+fn authored_source_identity(content: AuthoredSourceContent) -> ObjectId {
+  match content {
+    AuthoredSourceEmpty =>
+      content_hash_tagged_structural(
+        tag: authored_source_empty_tag,
+        payload: content_hash_atom(value: authored_source_empty_tag),
+      )
+    AuthoredSourceText(text) =>
+      content_hash_tagged_structural(
+        tag: authored_source_text_tag,
+        payload: content_hash_atom(value: text),
+      )
+  }
+}
+
+type AuthoredSourceRecord sole_constructor {
+  identity: AuthoredSourceObjectRef
+  content: AuthoredSourceContent
+}
+
+// ONE STORED THING, TWO KINDS. Every consumer that reaches into a stored object now has to say which
+// kind it can act on -- checkout reconstructs a node and cannot reconstruct a file, a closure walk
+// follows edges an authored source does not have -- and saying so is the point. A shared supertype
+// with an optional children list would have let each of those consumers read an empty list and
+// proceed, which is the empty-observation narrow.
+type ScmObject
+  = SemanticNodeObject(ObjectRecord)
+  | AuthoredSourceObject(AuthoredSourceRecord)
+
+fn scm_object_identity(object: ScmObject) -> ObjectId {
+  scm_object_ref_locator(reference: scm_object_ref(object: object))
+}
+
+// THE STORED OBJECT'S OWN BRANDED REFERENCE. This is the only route by which a caller outside this
+// module obtains a brand for an object it did not itself store, and it derives the brand from the
+// arm rather than from anything the caller supplied.
+fn scm_object_ref(object: ScmObject) -> ScmObjectRef {
+  match object {
+    SemanticNodeObject(record) => SemanticNodeRef(record.identity)
+    AuthoredSourceObject(record) => AuthoredSourceRef(record.identity)
+  }
+}
+
+// The store is a LIST rather than a map, deliberately and temporarily. std.determinism refuses the
+// uniquely named Map projections whose traversal order is host-unspecified, and a store whose
+// iteration order leaked into a digest would make one program hash two ways. A list keeps ordering
+// authored and observable.
+//
+// WHY THIS IS A REPRESENTATION AND NOT A SCAFFOLD, and what had to change to make that true.
+// `sole_constructor` seals CONSTRUCTION but not field reads, so an earlier revision's claim that
+// "the lookup below is the only site that would change" was false while any consumer could read
+// `.objects` -- and this module's own witness did, four times, to count stored objects. A swap to a
+// keyed collection would have broken those reads, which is precisely what a below-boundary
+// representation is not supposed to do. `store_object_count` exists so that no consumer outside this
+// module names the carrier's shape; with construction sealed and reads routed, the field is genuinely
+// interior and the claim is structural rather than aspirational.
+// dissolve-on: a determinism-admitted keyed collection; find_object and insert_derived are then the
+// only sites that change.
+type ObjectStore sole_constructor {
+  objects: List<ScmObject>
+}
+
+// How many objects a store holds, without naming how it holds them.
+// ONE LABELLED CHILD, and one place that says how a StoredEdge becomes one.
+//
+// Both identity assemblies below built this list with concat-at-end inside a fold, which copies the
+// whole accumulator per child -- the quadratic accumulator shape DESIGN section 6's bare-minimum-cost
+// rule says is ALWAYS fixed regardless of the realized n. Edge counts per record are small, and that
+// is exactly the "n is small here" argument the rule rejects: n is not a time-stable fact, and this
+// module's own consumers already re-enter it once per node of a whole program.
+//
+// It is a named function rather than an inline lambda because a lambda whose parameter type must be
+// inferred from a field access has refused in this corpus with `no field ... on type 'T'`; routing
+// the element through a typed parameter is the spelling that resolves.
+fn labeled_child_of_stored(stored: StoredEdge) -> LabeledChildHash {
+  LabeledChildHash { label: stored.label, hash: node_target_locator(target: stored.target) }
+}
+
+// A NAMED TOP-LEVEL PROJECTION rather than an inline lambda, for the reason std.node records beside
+// its own: a lambda in that generic argument position does not infer its parameter type.
+fn stored_edge_label_of(e: StoredEdge) -> EdgeLabel {
+  e.label
+}
+
+fn labeled_children_of_stored(children: List<StoredEdge>) -> List<LabeledChildHash> {
+  map(children, s => labeled_child_of_stored(stored: s))
+}
+
+fn store_object_count(store: ObjectStore) -> Int {
+  length(store.objects)
+}
+
+// THE OBJECTS IN DEPENDENCY ORDER: children before every parent that references them.
+//
+// This is an INTERFACE fact, not a representation leak, and the distinction is what keeps the
+// sole_constructor boundary above honest. A consumer that read `.objects` would be naming the
+// carrier's shape and would break when the dissolve-on above swaps in a keyed collection; a
+// consumer that asks for dependency order is asking for something the store can always answer,
+// by construction here and by a topological walk under any later representation.
+//
+// The order is not incidental. store_node recurses into an edge's target before insert_derived
+// appends the parent, so a record is appended only after every record it references. Persistence
+// depends on that: an image whose edges point at EARLIER positions can be decoded in one forward
+// pass with no forward references to resolve and no identities to trust.
+// DEPENDENCY ORDER IS DERIVED, NOT ASSUMED FROM INSERTION ORDER.
+//
+// This used to return store.objects, and the note above argued that insertion order IS dependency
+// order because store_node recurses into a target before appending its parent. That is true for
+// store_node and FALSE for the graft route: copy_object appends one record without its children, so
+// copying a parent and then its child leaves the parent EARLIER than the object it references.
+//
+// Completeness never noticed, because both objects are present. The encoder did: it assigns positions
+// in this order, so it reached the parent before the child had one and spelled the target UNCONTAINED
+// while the document went on to carry that very object a few entries later -- contradicting the
+// declared wire meaning of uncontained and letting a complete closure emit a partial spelling.
+//
+// A post-order walk emits every referenced record before the record referencing it, for any insertion
+// history. The store is acyclic by construction -- a locator is derived from content that already
+// includes its children's locators, so a cycle would have to hash itself -- which is what makes the
+// walk terminate without a separate descent argument.
+//
+// ON COST, because DESIGN section 6 refuses "n is small here": emitted_holds is a linear scan, so
+// this is quadratic in the object count. That is the SAME shape find_object already has, since the
+// carrier is a List, and it is bounded by the same dissolve-on already recorded above for that
+// carrier -- a keyed collection retires both at once. Fixing it here alone would leave the store's
+// own lookup quadratic while adding a second index to maintain.
+type OrderAcc {
+  emitted: List<ScmObject>
+}
+
+fn emitted_holds(acc: OrderAcc, identity: ObjectId) -> Bool {
+  fold(
+    acc.emitted,
+    init: false,
+    f: fn(seen, object) {
+      seen || object_id_eq(left: scm_object_identity(object: object), right: identity)
+    }
+  )
+}
+
+fn emit_in_dependency_order(store: ObjectStore, acc: OrderAcc, object: ScmObject) -> OrderAcc {
+  if emitted_holds(acc: acc, identity: scm_object_identity(object: object)) {
+    acc
+  } else {
+    let after_children = match object {
+      AuthoredSourceObject(_) => acc
+      SemanticNodeObject(record) =>
+        fold(
+          record.children,
+          init: acc,
+          f: fn(inner, child) {
+            emit_dependency(store: store, acc: inner, identity: child.target.locator)
+          }
+        )
+    }
+    OrderAcc { emitted: concat(after_children.emitted, [object]) }
+  }
+}
+
+// A target whose object this store does not hold contributes nothing -- it is exactly the uncontained
+// case, and the encoder spells it from the digest rather than from a position.
+fn emit_dependency(store: ObjectStore, acc: OrderAcc, identity: ObjectId) -> OrderAcc {
+  match find_object(store: store, identity: identity) {
+    Absent => acc
+    Present { value: object } => emit_in_dependency_order(store: store, acc: acc, object: object)
+  }
+}
+
+fn store_records_in_dependency_order(store: ObjectStore) -> List<ScmObject> {
+  fold(
+    store.objects,
+    init: OrderAcc { emitted: [] },
+    f: fn(acc, object) { emit_in_dependency_order(store: store, acc: acc, object: object) }
+  ).emitted
+}
+
+fn empty_store() -> ObjectStore {
+  ObjectStore { objects: [] }
+}
+
+fn object_id_eq(left: ObjectId, right: ObjectId) -> Bool {
+  (left.digest as String) == (right.digest as String)
+}
+
+fn find_object(store: ObjectStore, identity: ObjectId) -> ScmObject? {
+  fold(store.objects, init: none, f: fn(acc, object) {
+    if object_id_eq(left: scm_object_identity(object: object), right: identity) {
+      Present { value: object }
+    } else {
+      acc
+    }
+  })
+}
+
+// A CONSUMER THAT NEEDS A NODE ASKS FOR ONE, AND IS TOLD WHEN WHAT IS THERE IS NOT A NODE.
+//
+// The three arms are not two: an identity nothing holds and an identity holding a FILE are
+// different facts with different remedies -- "you named something that is not here" versus "you
+// named a file where a program was required" -- and folding them into one absent arm is the
+// state-space conflation this module keeps refusing. A caller that only needs presence still calls
+// store_contains, which is deliberately kind-agnostic: it answers about the locator.
+type NodeRecordLookup
+  = NodeRecordFound(ObjectRecord)
+  | NodeRecordAbsent { identity: ObjectId }
+  | NodeRecordIsAuthoredSource { identity: ObjectId }
+
+fn find_node_record(store: ObjectStore, identity: ObjectId) -> NodeRecordLookup {
+  match find_object(store: store, identity: identity) {
+    Absent => NodeRecordAbsent { identity: identity }
+    Present { value: object } =>
+      match object {
+        SemanticNodeObject(record) => NodeRecordFound(record)
+        AuthoredSourceObject(_) => NodeRecordIsAuthoredSource { identity: identity }
+      }
+  }
+}
+
+// A CHILD EDGE IS RESOLVED THREE WAYS, NEVER TWO.
+//
+// This replaces store_contains_node_target, which answered Bool. That Bool is the whole defect the
+// branded-reference recut was supposed to close and did not: "false" meant BOTH "no object is here"
+// and "a file is here", and every consumer read it as the first. Completeness put a wrong-kind
+// locator into the fetchable population, and encoding -- whose position index is over objects, not
+// over nodes -- then found something at that locator and emitted the CONTAINED spelling. The two
+// answers must not be merged, so the Bool is deleted rather than kept beside this: a caller that only
+// needs presence at a LOCATOR calls store_contains, which is honestly kind-agnostic.
+//
+// find_node_record already carries the three arms, so this mints no second authority for the
+// question -- it is the same observation asked of a requirement rather than of a bare identity.
+fn resolve_node_target(store: ObjectStore, target: SemanticNodeTarget) -> NodeRecordLookup {
+  find_node_record(store: store, identity: target.locator)
+}
+
+fn store_contains(store: ObjectStore, identity: ObjectId) -> Bool {
+  match find_object(store: store, identity: identity) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// WRITING IS IDEMPOTENT FOR THE SAME CANONICAL RECORD, and refuses for a different one under the
+// same locator. An earlier revision of this note said an identity already present is "the same
+// content by definition of a content address" -- that sentence is FALSE at the declared fnv1a64
+// rung, and the collision arm below exists precisely because it is. Re-inserting the same canonical
+// record returns the store unchanged; the same locator carrying a DIFFERENT canonical record is a
+// typed refusal. Idempotence is what lets one object appear at many positions in a program while
+// being stored once -- content is fungible, positions are not.
+// NO CALLER CAN INTRODUCE A RECORD, AND THE WALL IS THE `sole_constructor` ON ObjectRecord AND
+// ObjectStore ABOVE -- not any function's name.
+//
+// Two corrections are recorded here because both were mine and both were the same mistake. First,
+// `put_object(store, record)` once took a record whose `identity` was caller-supplied and unrelated
+// to its `kind`/`children`, so a record could be stored under a lying key and every checkout would
+// faithfully return the lie. Second -- caught by external review AFTER I had already declared that
+// hole closed -- I claimed the repaired insert was "private to the one function that derives the
+// key". THE LANGUAGE HAS NO MODULE PRIVACY. `insert_derived` is importable, and `ObjectRecord { .. }`
+// and `ObjectStore { .. }` were constructible from any module, so the wall I described did not exist
+// and a forged pairing was still writable by a caller who simply built one.
+//
+// `sole_constructor` is the wall that does exist: it refuses cross-module construction and cast.
+// Verified by execution, not by reading -- a probe module building both carriers is refused with
+// "sole_constructor type 'ObjectRecord' cannot be constructed outside its defining module".
+//
+// THE WALL DOES NOT COVER COLLISIONS, AND CONFLATING THE TWO WAS THE DEEPER ERROR. A forged pairing
+// is a caller ASSERTING an identity it did not derive; construction removes it. A locator collision
+// is two records that both DERIVED their identity honestly and landed on the same 64-bit value.
+// Nothing about construction prevents that, because nothing about it is illegitimate. At the
+// declared fnv1a64 rung the domain is larger than the codomain, so `store_contains(identity)` does
+// NOT mean "same content" -- and an insert that treated presence as identity of content would
+// silently drop the second record and hand back a commit that reconstructs the first. That is the
+// fabricated plausible output, reached without any adversary.
+//
+// So the two are handled by two different mechanisms, which is the point: construction for the
+// forged pairing, a TYPED REFUSAL for the collision. Comparing the two records here is not the
+// validation-standing-where-construction-was-available tell, because there is no single authority
+// from which the answer could have been derived instead -- both records are legitimate and the
+// question is whether they are the same one.
+// TWO PRODUCERS, TWO OUTCOMES, BECAUSE THEY HAND BACK TWO DIFFERENT BRANDS. One shared outcome
+// carrying an `ScmObjectRef` would force store_node's caller to match an authored-source arm that
+// store_node cannot produce -- the same state-space widening the CopyOutcome note below refuses --
+// and the only way to avoid that would be to hand back a bare locator, which is the conflation
+// these types exist to end. The admission decision itself is NOT duplicated: both route through
+// insert_admission, so there is one rule about what a store does with an incoming object.
+type StoreOutcome
+  = Stored { store: ObjectStore, node: SemanticNodeObjectRef }
+  | LocatorCollision { identity: ObjectId, existing: ScmObject, incoming: ScmObject }
+
+type SourceStoreOutcome
+  = SourceStored { store: ObjectStore, source: AuthoredSourceObjectRef }
+  | SourceLocatorCollision { identity: ObjectId, existing: ScmObject, incoming: ScmObject }
+
+// WHAT A STORE DOES WITH AN INCOMING OBJECT, ASKED ONCE. Present-and-equal is idempotent, present-
+// and-different is a refusal, absent is an append -- and the first two collapse into one arm here
+// because the caller does nothing different with them: it hands back the brand it derived either
+// way. This helper is what keeps the two branded producers above from being two copies of the
+// admission rule (DESIGN section 3).
+type InsertAdmission
+  = AdmitStored(ObjectStore)
+  | AdmitCollision { existing: ScmObject }
+
+fn insert_admission(store: ObjectStore, object: ScmObject) -> InsertAdmission {
+  match find_object(store: store, identity: scm_object_identity(object: object)) {
+    Absent => AdmitStored(ObjectStore { objects: concat(store.objects, [object]) })
+    Present { value: existing } =>
+      if objects_equal(left: existing, right: object) {
+        AdmitStored(store)
+      } else {
+        AdmitCollision { existing: existing }
+      }
+  }
+}
+
+// Record equality is the substrate's own structural equality over both fields. StoredEdge is a
+// label and a derived child identity, so comparing the child LISTS compares the whole subtree by
+// its already-derived identities -- no re-walk, no digest projection, no hand-written pairwise fold.
+// EQUALITY IS OVER WHAT THE IDENTITY IS DERIVED FROM.
+//
+// This was `left.children == right.children`, the substrate's structural equality, which was right
+// while a StoredEdge held a bare locator. It stopped being right when the target briefly became a
+// two-armed sum: Resolved(r) and Unresolved(l) over the SAME locator were structurally different and
+// the same object by content, because content_hash_of_children consumes only the locator. Structural
+// equality reported "different record" for two records the identity rule cannot distinguish, and
+// insert_admission turned that into a LocatorCollision -- a fabricated refusal for an ordinary write.
+//
+// THE SUM IS GONE NOW and the projection below is kept anyway, deliberately. It is no longer
+// defending against the arm; it is stating that equality is over the identity PREIMAGE, which is what
+// content_hash_of_children folds. Comparing the final digest instead would suppress the honest
+// hash-collision refusal, and comparing raw structure again would re-admit any future field that the
+// preimage does not consume.
+//
+// Found by a control, not by review: the file arm of the merge role claim passed and its NODE
+// control failed, because merge reassembles the root from resolved children and re-inserts it over a
+// record whose children were unresolved.
+//
+// So the comparison is over the label and the LOCATOR -- the same two things
+// labeled_children_of_stored hands to the identity fold, which is what keeps this from being a
+// second, drifting definition of what makes two records the same.
+fn records_equal(left: ObjectRecord, right: ObjectRecord) -> Bool {
+  (left.kind == right.kind)
+    && (labeled_children_of_stored(children: left.children)
+      == labeled_children_of_stored(children: right.children))
+}
+
+// CROSS-KIND IS A COLLISION, NOT AN EQUALITY. A node and a file under one locator are two different
+// canonical objects, so the answer here is false and insert_derived refuses -- the same treatment as
+// two different nodes. Answering true would let a file silently satisfy a checkout that wanted a
+// program, which is the fabricated plausible output this module's collision arm exists to remove.
+fn objects_equal(left: ScmObject, right: ScmObject) -> Bool {
+  match left {
+    SemanticNodeObject(l) =>
+      match right {
+        SemanticNodeObject(r) => records_equal(left: l, right: r)
+        AuthoredSourceObject(_) => false
+      }
+    AuthoredSourceObject(l) =>
+      match right {
+        SemanticNodeObject(_) => false
+        AuthoredSourceObject(r) => l.content == r.content
+      }
+  }
+}
+
+fn insert_derived(store: ObjectStore, record: ObjectRecord) -> StoreOutcome {
+  let object = SemanticNodeObject(record)
+  match insert_admission(store: store, object: object) {
+    AdmitStored(next) => Stored { store: next, node: record.identity }
+    AdmitCollision { existing: existing } =>
+      LocatorCollision {
+        identity: record.identity.locator,
+        existing: existing,
+        incoming: object,
+      }
+  }
+}
+
+// THE AUTHORED-SOURCE PRODUCER, AND IT DERIVES ITS IDENTITY EXACTLY AS THE OTHER TWO DO. A caller
+// supplies bytes and nothing else; the identity follows from those bytes by the one rule above, so
+// there is no argument through which a caller could assert an identity it did not derive. This is
+// the same wall store_node and insert_from_structure stand behind, reached by a third producer
+// rather than by a second identity authority.
+fn store_authored_source(store: ObjectStore, text: String) -> SourceStoreOutcome {
+  let content = authored_source_content(text: text)
+  let reference = AuthoredSourceObjectRef {
+    locator: authored_source_identity(content: content),
+  }
+  let object = AuthoredSourceObject(
+    AuthoredSourceRecord { identity: reference, content: content },
+  )
+  match insert_admission(store: store, object: object) {
+    AdmitStored(next) => SourceStored { store: next, source: reference }
+    AdmitCollision { existing: existing } =>
+      SourceLocatorCollision {
+        identity: reference.locator,
+        existing: existing,
+        incoming: object,
+      }
+  }
+}
+
+// Grafting an entry between stores cannot forge, because it can only move a pairing some earlier
+// store_node already derived. This is what lets a caller build a deliberately INCOMPLETE closure --
+// a root without its children -- without ever being able to build a DISHONEST one.
+//
+// ITS OWN OUTCOME TYPE, AND THE ABSENT ARM IS A REFUSAL. An earlier revision answered
+// `Stored { store: to, identity }` when the source store did not hold the object -- reporting that
+// an object had been stored when nothing had been, so a caller reading `Stored` would believe `to`
+// now contained that identity. That is the fabricated plausible output this whole module exists to
+// remove, and it survived because the witness only ever grafted a root that was present: the corpus
+// never presented the discriminating input. Caught by external review.
+//
+// The type is separate from StoreOutcome rather than reusing it, because store_node cannot produce
+// a source-absent result. Folding the two together would force every store_node consumer to handle
+// an arm that cannot occur, which widens the state space instead of describing it.
+// COPY CARRIES THE JOIN, NOT A BRAND, and that is the one place ScmObjectRef is the right answer
+// rather than a way to dodge the distinction: a graft moves whatever the source store held, so the
+// kind is discovered here and reported rather than required up front.
+type CopyOutcome
+  = Copied { store: ObjectStore, reference: ScmObjectRef }
+  | CopySourceAbsent { identity: ObjectId }
+  | CopyLocatorCollision { identity: ObjectId, existing: ScmObject, incoming: ScmObject }
+
+fn copy_object(from: ObjectStore, to: ObjectStore, identity: ObjectId) -> CopyOutcome {
+  match find_object(store: from, identity: identity) {
+    Absent => CopySourceAbsent { identity: identity }
+    Present { value: object } =>
+      match insert_admission(store: to, object: object) {
+        AdmitStored(store) => Copied { store: store, reference: scm_object_ref(object: object) }
+        AdmitCollision { existing: existing } =>
+          CopyLocatorCollision {
+            identity: identity,
+            existing: existing,
+            incoming: object,
+          }
+      }
+  }
+}
+
+type StoreEdgeAcc {
+  store: ObjectStore
+  edges: List<StoredEdge>
+  collision: StoreOutcome?
+}
+
+// THE STORED RECORD IS THE CANONICAL ONE, and this is not defensive tidying -- it closes a real
+// ambiguity found by review and initially, wrongly, dismissed by the author.
+//
+// `content_hash` does NOT hash a node as authored: fold_node_content_hash canonicalizes first, and
+// canonicalize_node_for_content_hash SORTS named edges under LabeledEdges. So two authored orders of
+// the same named bindings are ONE identity. An earlier revision keyed on that canonical identity
+// while persisting `n.children` in AUTHORED order, so the key identified the canonical equivalence
+// CLASS while the payload stored an arbitrary FIRST-OBSERVED REPRESENTATIVE of it: whichever order
+// arrived first won, and reconstruction became insertion-history dependent.
+//
+// Storing the canonical form makes that unrepresentable rather than checked. The consequence is a
+// real semantic commitment and not an implementation detail: CHECKOUT RETURNS THE CANONICAL PROGRAM,
+// not the authored one. Named-edge order is not a fact this store preserves, because it is not a
+// fact the substrate's own identity preserves.
+//
+// The canonicalization is applied at EVERY node, not once at the root -- the recursion below
+// re-enters store_node for each child, and each call canonicalizes its own subject. Canonicalizing
+// only at the root would leave the identical defect one level down.
+//
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, then handed to insert_from_structure -- which
+// is the SAME assembly this function used to spell out inline. Collapsing the two removes a second
+// copy of the identity rule (DESIGN section 3): there is now one place that turns a kind plus
+// ordered children into a stored record, and store_node and the decoder are both its callers rather
+// than two spellings that agree until one is edited.
+//
+// The reverse is load-bearing and must land exactly once. These children feed
+// content_hash_of_children, so dropping it or doubling it changes every derived ObjectId silently
+// and leaves objects unreachable by the identity they were stored under.
+//
+// THE IDENTITY IS ASSEMBLED FROM CHILD IDENTITIES ALREADY IN HAND, NOT BY RE-WALKING. An earlier
+// revision ended this function with `content_hash(n: canonical)`, which walks the entire subtree a
+// second time -- once by the recursion that stored the children, once by the hash. On a chain that
+// is quadratic, and DESIGN section 6's bare-minimum-cost rule fixes a proven cost shape regardless
+// of the realized n, because `n is small here` is not a time-stable fact.
+//
+// The repair is NOT a hash-combine written here: that would be a second identity authority beside
+// v2.std.node, agreeing until one of them is edited, and the disagreement would surface as objects
+// unreachable by the identity they were stored under. Instead `content_hash_of_children` is the same
+// fold `content_hash` performs, exposed there and consumed here, so the assembly rule has one home
+// and two callers. `acc.edges` already holds exactly what it wants -- StoredEdge carries the child's
+// ObjectId, and ObjectId IS the child's Hash -- so nothing is recomputed.
+fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
+  let canonical = canonicalize_node_for_content_hash(n: n)
+  let acc = fold(
+    canonical.children,
+    init: StoreEdgeAcc { store: store, edges: [], collision: none },
+    f: fn(acc, edge) {
+      match acc.collision {
+        Present { value: _ } => acc
+        Absent =>
+          match store_node(store: acc.store, n: edge.target) {
+            LocatorCollision { identity: i, existing: e, incoming: c } =>
+              StoreEdgeAcc {
+                store: acc.store,
+                edges: acc.edges,
+                collision: Present {
+                  value: LocatorCollision { identity: i, existing: e, incoming: c },
+                },
+              }
+            Stored { store: child_store, node: child_node } =>
+              StoreEdgeAcc {
+                store: child_store,
+                edges: concat(
+                  [StoredEdge { label: edge.label, target: node_target_of(reference: child_node) }],
+                  acc.edges,
+                ),
+                collision: none,
+              }
+          }
+      }
+    },
+  )
+  match acc.collision {
+    Present { value: collision } => collision
+    Absent =>
+      insert_from_structure(store: acc.store, kind: canonical.kind, children: reverse(acc.edges))
+  }
+}
+
+// THE SECOND PRODUCER, AND WHY IT DERIVES RATHER THAN TRUSTS.
+//
+// store_node is the producer for a Node in hand. A DECODER has no Node -- materializing one would
+// expand every shared subgraph once per reference, which is the exponential blowup content
+// addressing exists to avoid -- but it does have a kind and the already-derived identities of the
+// children it references. That is exactly the input content_hash_of_children consumes, so the
+// identity is assembled from child identities already in hand, by the SAME fold store_node uses and
+// v2.std.node owns. No digest is read from the decoder's input and no hash rule is written here.
+//
+// This is what lets the image carry no identities at all. A caller cannot use this to forge, because
+// it cannot supply an identity: the only thing it chooses is structure, and the identity follows
+// from that structure by the one authority. Supplying a dishonest STRUCTURE is possible and is not
+// forgery -- it names a different program, honestly identified.
+//
+// WHAT IS DELIBERATELY NOT DONE HERE: this does not re-canonicalize the child order. store_node
+// canonicalizes its Node first, so every record this store ever emitted is already canonical and a
+// well-formed image round-trips exactly. An image whose named edges were hand-permuted therefore
+// decodes to a DIFFERENT identity rather than being normalized back. That is honest -- the identity
+// still describes what the image presents -- but it is a real boundary, and closing it by sorting
+// labeled children here would mint a second canonicalization authority beside
+// canonicalize_node_for_content_hash, which is the fork the identity comment above refuses.
+// dissolve-on: canonicalization exposed over labeled children in v2.std.node, callable without a
+// Node in hand; this function then routes through it.
+// THE STORED CHILDREN ARE CANONICAL HERE TOO, and this route is where that had been missed.
+//
+// store_node already canonicalizes before persisting, and the note above it explains why: the
+// identity rule SORTS named edges, so keying on the canonical identity while persisting the authored
+// order stores an arbitrary first-observed representative of an equivalence class. This function is
+// the OTHER public way to make a record, and it derived the locator from the canonicalized children
+// and then persisted `children` AS SUPPLIED -- the same defect surviving on the sibling route.
+//
+// The consequence was a FABRICATED REFUSAL rather than a missed one, which is why it went unnoticed:
+// writing [alpha, beta] and then [beta, alpha] derives ONE locator, so the second write found the
+// first record, records_equal compared the labeled children in supplied order, they differed, and
+// insert_admission reported a LocatorCollision for a store being asked to do something ordinary.
+// Nothing had collided. Executed by test.claim.scm_commit_closure_witness
+// `re_writing_the_same_bindings_in_another_order_is_idempotent`, with
+// `swapping_which_target_each_label_names_is_a_different_object` as the control that keeps this from
+// being satisfied by collapsing genuinely different label-to-target associations.
+//
+// The canonicalization reuses std's own canonicalize_labeled_for_content_hash rather than sorting
+// here: the ordering rule belongs to the identity authority, and a second sort in this module would
+// be the same rule written twice, free to drift from the one the hash actually uses.
+fn insert_from_structure(
+  store: ObjectStore,
+  kind: NodeKind,
+  children: List<StoredEdge>
+) -> StoreOutcome {
+  let canonical = canonicalize_labeled_for_content_hash(
+    kind: kind,
+    items: children,
+    label_of: stored_edge_label_of,
+  )
+  insert_derived(
+    store: store,
+    record: ObjectRecord {
+      identity: SemanticNodeObjectRef {
+        locator: content_hash_of_children(
+          kind: kind,
+          children: labeled_children_of_stored(children: canonical),
+        ),
+      },
+      kind: kind,
+      children: canonical,
+    },
+  )
+}
+
+// ================================================================================================
+// THE COLLISION ARM, EXECUTED.
+//
+// These claim bodies live in the defining module and their `test fn` wrappers live in
+// dag/test/claim/scm_object_store_collision_witness_test.dag. The split is forced by three rules
+// pulling against each other, and getting it wrong twice is why it is written down:
+//
+//   - `ObjectRecord` is `sole_constructor`, so a record whose identity disagrees with its content
+//     can be authored ONLY inside this module. That is the point of the seal and the reason these
+//     fixtures cannot be built anywhere else.
+//   - Floor discovery collects witnesses from files whose PATH ends `_test.dag` (v1 cli_run
+//     `is_test_dag`). A `test fn` in this file would never be discovered and never run -- which
+//     would recreate the exact hole these claims close: a typed refusal arm with no executing
+//     consumer, invisible to CI while looking covered.
+//   - DESIGN §3 forbids two files declaring one module. A second file named `*_test.dag` declaring
+//     `module gunbc.scm.object_store` is refused outright: "one module, one authority ... silent
+//     last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01)".
+//
+// So the bodies are ordinary functions here, where the seal lets them build an impostor, and the
+// enrolled `test fn` declarations are in the witness file, where discovery finds them. What crosses
+// the module boundary is a Bool verdict, never forged material, so no forge path is exported.
+//
+// WHY THEY EXIST AT ALL: `LocatorCollision` was modeled and never executed, and the witness's own
+// `no_fixture_collides` claim actively PROVED the arm was unexercised -- a useful denominator
+// control that also documented a specification-without-execution hole, which DESIGN §5 names as the
+// deepest trap.
+//
+// WHAT IS NOT CLAIMED: these do not find an fnv1a64 collision, which would need a preimage search.
+// They construct the STATE a collision produces -- one locator, two different canonical records --
+// and assert the store refuses it. The arm is under test, not the digest's collision resistance.
+
+fn collision_probe_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn collision_probe_parent(child: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: ^only_child }, target: child }],
+  )
+}
+
+fn collision_probe_stored(outcome: StoreOutcome) -> ObjectStore {
+  match outcome {
+    Stored { store: store, node: _ } => store
+    LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+}
+
+fn collision_probe_node(outcome: StoreOutcome, fallback: ObjectId) -> SemanticNodeObjectRef {
+  match outcome {
+    Stored { store: _, node: node } => node
+    LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      SemanticNodeObjectRef { locator: fallback }
+  }
+}
+
+// NO FUNCTION MINTS A FORGED RECORD, and an earlier revision of this file did exactly that.
+//
+// It had `collision_probe_impostor(identity) -> ObjectRecord`, an ordinary exported function that
+// built a record whose identity disagreed with its content. `sole_constructor` stops an external
+// caller from WRITING the literal; it does not stop them from calling a function in the defining
+// module that writes it on their behalf. So the seal was reopened by the very helper written to
+// prove the seal -- an importable forge factory, one call from the pairing the wall exists to make
+// unwritable. Caught by external review.
+//
+// The forged literals are now inline in the claim bodies below and nothing returns one. THE CENSUS
+// THAT MUST KEEP HOLDING: outside this module, every ObjectRecord value originates from find_object
+// over a real store or from another operation returning an already-derived record. No ordinary
+// function mints an arbitrary ObjectRecord from an ObjectId.
+
+// ONE LOCATOR, TWO DIFFERENT CANONICAL RECORDS -- the store must refuse, and the refusal must carry
+// both records so a caller can see what disagreed rather than merely that something did.
+fn a_different_record_under_one_locator_refuses() -> Bool {
+  let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
+  let node = collision_probe_node(
+    outcome: real,
+    fallback: content_hash(n: collision_probe_atom(identity: ^collide_a)),
+  )
+  match insert_derived(
+    store: collision_probe_stored(outcome: real),
+    record: ObjectRecord { identity: node, kind: TypeNode { connective: Conj }, children: [] },
+  ) {
+    Stored { store: _, node: _ } => false
+    LocatorCollision { identity: reported, existing: existing, incoming: incoming } =>
+      object_id_eq(left: reported, right: node.locator)
+        && !objects_equal(left: existing, right: incoming)
+  }
+}
+
+// CONTROL: re-inserting the SAME canonical record under that locator is idempotent, not a collision.
+// Without this, the claim above would pass against an insert that refused every second write.
+fn the_same_record_under_one_locator_is_idempotent() -> Bool {
+  let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
+  let store = collision_probe_stored(outcome: real)
+  match store_node(store: store, n: collision_probe_atom(identity: ^collide_a)) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } => false
+    Stored { store: again, node: _ } =>
+      store_object_count(store: again) == store_object_count(store: store)
+  }
+}
+
+// A COLLISION ON A CHILD MUST PROPAGATE OUT OF THE RECURSION. This is the arm that matters most and
+// the one nothing exercised: a parent whose child refuses must not itself be reported Stored, or the
+// store would hand back a commit whose closure was never written.
+fn a_child_collision_propagates_and_the_parent_is_not_stored() -> Bool {
+  let child = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_child))
+  let child_node = collision_probe_node(
+    outcome: child,
+    fallback: content_hash(n: collision_probe_atom(identity: ^collide_child)),
+  )
+  let seeded = insert_derived(
+    store: empty_store(),
+    record: ObjectRecord {
+      identity: child_node,
+      kind: TypeNode { connective: Conj },
+      children: [],
+    },
+  )
+  match store_node(
+    store: collision_probe_stored(outcome: seeded),
+    n: collision_probe_parent(child: collision_probe_atom(identity: ^collide_child)),
+  ) {
+    Stored { store: _, node: _ } => false
+    LocatorCollision { identity: reported, existing: _, incoming: _ } =>
+      object_id_eq(left: reported, right: child_node.locator)
+  }
+}
+
+// CONTROL for the propagation claim: the same parent stores cleanly against an UNSEEDED store, so
+// the refusal above is caused by the seeded impostor and not by the parent fixture being unstorable.
+fn the_same_parent_stores_cleanly_without_the_impostor() -> Bool {
+  match store_node(
+    store: empty_store(),
+    n: collision_probe_parent(child: collision_probe_atom(identity: ^collide_child)),
+  ) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } => false
+    Stored { store: store, node: _ } => store_object_count(store: store) == 2
+  }
+}
+
+// COPY'S OWN COLLISION ARM, EXECUTED. `CopyLocatorCollision` was modeled when copy_object got its
+// own outcome type and then never reached -- the same specification-without-execution pattern this
+// file already names for LocatorCollision, repeated on the arm added immediately after it. Every
+// mention of it in the witness was a match arm REJECTING an unexpected result; nothing constructed
+// the state that produces it. Caught by external review, and the lesson is that naming a pattern is
+// not the same as checking for it again.
+//
+// The existing present-source and absent-source claims are the controls: together they establish
+// that copy_object does not always answer collision.
+fn a_copy_into_a_colliding_destination_refuses() -> Bool {
+  let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_copy))
+  let node = collision_probe_node(
+    outcome: real,
+    fallback: content_hash(n: collision_probe_atom(identity: ^collide_copy)),
+  )
+  let seeded = insert_derived(
+    store: empty_store(),
+    record: ObjectRecord { identity: node, kind: TypeNode { connective: Conj }, children: [] },
+  )
+  match copy_object(
+    from: collision_probe_stored(outcome: real),
+    to: collision_probe_stored(outcome: seeded),
+    identity: node.locator,
+  ) {
+    Copied { store: _, reference: _ } => false
+    CopySourceAbsent { identity: _ } => false
+    CopyLocatorCollision { identity: reported, existing: existing, incoming: incoming } =>
+      object_id_eq(left: reported, right: node.locator)
+        && !objects_equal(left: existing, right: incoming)
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// AUTHORED SOURCE, EXECUTED. Same split as the collision bodies above and for the same reason: the
+// impostor fixtures need this module's seal, and floor discovery only finds `test fn` in a path
+// ending `_test.dag`, so the bodies live here and the enrolled wrappers live in
+// dag/test/claim/scm/scm_object_store_collision_witness_test.dag.
+// ------------------------------------------------------------------------------------------------
+
+// THE SAME BYTES ARE THE SAME OBJECT, AND DIFFERENT BYTES ARE NOT. Without the second half this
+// would pass against a producer that returned one fixed identity for every file.
+fn authored_source_identity_follows_its_bytes() -> Bool {
+  let one = store_authored_source(store: empty_store(), text: "hello\n")
+  let two = store_authored_source(store: empty_store(), text: "hello\n")
+  let other = store_authored_source(store: empty_store(), text: "goodbye\n")
+  match one {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: _, source: a } =>
+      match two {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+        SourceStored { store: _, source: b } =>
+          match other {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+            SourceStored { store: _, source: c } =>
+              object_id_eq(left: a.locator, right: b.locator)
+                && !object_id_eq(left: a.locator, right: c.locator)
+          }
+      }
+  }
+}
+
+// STORING THE SAME FILE TWICE IS IDEMPOTENT, exactly as it is for a node -- content is fungible.
+fn the_same_authored_source_stores_once() -> Bool {
+  match store_authored_source(store: empty_store(), text: "hello\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: first, source: _ } =>
+      match store_authored_source(store: first, text: "hello\n") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+        SourceStored { store: again, source: _ } =>
+          (store_object_count(store: first) == 1) && (store_object_count(store: again) == 1)
+      }
+  }
+}
+
+// THE EMPTY FILE IS AN OBJECT, NOT AN ABSENCE, and it is not the same object as any nonempty one.
+// The tempting implementation -- treat empty content as nothing stored -- is the empty-observation
+// narrow, and it would make `add` on an empty file silently do nothing.
+fn the_empty_file_is_its_own_object() -> Bool {
+  match store_authored_source(store: empty_store(), text: "") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: store, source: empty_source } =>
+      match store_authored_source(store: empty_store(), text: " ") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+        SourceStored { store: _, source: blank_source } =>
+          (store_object_count(store: store) == 1)
+            && !object_id_eq(left: empty_source.locator, right: blank_source.locator)
+      }
+  }
+}
+
+// A FILE UNDER A NODE'S LOCATOR REFUSES, WHICH IS THE ARM THE TWO-KIND STORE ADDS. objects_equal
+// answers false across arms, so insert_admission refuses rather than treating a present locator as
+// identity of content -- and a checkout that wanted the node would otherwise have been handed a
+// file. Built from an impostor because a real cross-kind fnv1a64 collision needs a preimage search:
+// what is under test is the arm, not the digest.
+fn a_file_under_a_nodes_locator_refuses() -> Bool {
+  let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_kind))
+  let node = collision_probe_node(
+    outcome: real,
+    fallback: content_hash(n: collision_probe_atom(identity: ^collide_kind)),
+  )
+  let content = authored_source_content(text: "not a program\n")
+  let impostor = AuthoredSourceObject(
+    AuthoredSourceRecord {
+      identity: AuthoredSourceObjectRef { locator: node.locator },
+      content: content,
+    },
+  )
+  match insert_admission(store: collision_probe_stored(outcome: real), object: impostor) {
+    AdmitStored(_) => false
+    AdmitCollision { existing: existing } => !objects_equal(left: existing, right: impostor)
+  }
+}
+
+// CONTROL for the arm above: the same file stores cleanly under its OWN derived identity, so the
+// refusal is caused by the locator clash and not by authored source being unstorable.
+fn the_same_file_stores_cleanly_under_its_own_identity() -> Bool {
+  match store_authored_source(store: empty_store(), text: "not a program\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: store, source: _ } => store_object_count(store: store) == 1
+  }
+}
+
+// THE TAGGING INVARIANT, EXECUTED RATHER THAN ASSERTED IN PROSE. Every authored identity is the
+// tagged combination, so no arm's identity equals the bare atom digest of its own tag. This is the
+// discriminating claim for review 58068's nit: against the first cut, where the empty arm WAS that
+// bare digest, it goes red -- which is what makes it evidence rather than a restatement of the
+// comment above authored_source_identity.
+fn every_authored_identity_is_tagged() -> Bool {
+  let empty = authored_source_identity(content: AuthoredSourceEmpty)
+  let text = authored_source_identity(content: authored_source_content(text: "hello\n"))
+  !object_id_eq(left: empty, right: content_hash_atom(value: authored_source_empty_tag))
+    && !object_id_eq(left: text, right: content_hash_atom(value: authored_source_text_tag))
+    && !object_id_eq(left: empty, right: text)
+}

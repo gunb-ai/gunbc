@@ -1,0 +1,630 @@
+module gunbc.fabric_witness_run
+
+import std.types { NonEmptyStr }
+import extdeps.currency.currency { CurrencyCode, Usd }
+import std.nat { Nat }
+import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.identity {
+  FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
+  fabric_identity_eq,
+}
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ResumabilityTier, ReceiptSatisfiable,
+  ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
+  CapabilityManifestRef, TrustDomainRef,
+  ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
+  work_for,
+}
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import gunbc.required_ci_phase_roster { BuildLane, WitnessesLane, required_ci_lane_name }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash, git_sha1_object_id }
+import product.fabric.supply {
+  SupplierOffer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
+  offer_fungibility_for, offer_affordability_for,
+}
+import product.fabric.demand {
+  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
+}
+import std.types { Timestamp }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { argv_words }
+import extdeps.github.actions { ActionRef, checkout_action, setup_rust_action }
+import v2.workflow.ci_workflow_run_emit { ci_toolchain_home_isolation_script, ci_pin_rustup_default_script }
+import gunbc.claim_executor_cli { claim_executor_command }
+import gunbc.repo_self_build { repo_self_build_all_bins_command }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.types { String, List }
+
+// THE EXACT BUILD-LANE WORK, NOT ANOTHER CI COMMAND.
+//
+// The old floor model stopped at floor_work_contract(source: SourceManifestRef): its caller could
+// label any string a source manifest, and the checkout, environment, cache posture, credentials,
+// executable provenance and terminal outputs lived only in the Actions realization. That was enough
+// to price a hypothetical floor shape and not enough to answer what the fabric would run. The
+// carrier below closes only that question. It projects every execution-defining coordinate into the
+// existing product.fabric.work WorkContract, then uses work_for; WorkKey remains the one core identity
+// and no Grant, executor, cell or process-start surface is introduced here.
+//
+// Git commit and tree are separate GitObjectIds because they answer different questions: the commit
+// pins provenance/history while the verified tree pins bytes. A branch or working directory stays
+// representable at the input boundary so construction can return a typed refusal; it has no route to
+// Work. Lists are checked non-empty before hashing, so [] cannot become a plausible empty manifest.
+type VerifiedGitCommitTree sole_constructor {
+  commit: GitObjectId
+  tree: GitObjectId
+}
+
+type GitCommitTreeVerification
+  = GitCommitTreeVerified { subject: VerifiedGitCommitTree }
+  | GitCommitTreeMismatch { commit: GitObjectId, declared_tree: GitObjectId, observed_commit_tree: GitObjectId }
+
+fn verify_git_commit_tree(
+  commit: GitObjectId,
+  declared_tree: GitObjectId,
+  observed_commit_tree: GitObjectId,
+) -> GitCommitTreeVerification {
+  if declared_tree == observed_commit_tree {
+    GitCommitTreeVerified { subject: VerifiedGitCommitTree { commit: commit, tree: declared_tree } }
+  } else {
+    GitCommitTreeMismatch { commit: commit, declared_tree: declared_tree, observed_commit_tree: observed_commit_tree }
+  }
+}
+
+type RequiredBuildSource
+  = ExactGitSource { subject: VerifiedGitCommitTree }
+  | MovingGitRef { ref_name: NonEmptyStr }
+  | WorkingDirectorySource { path: NonEmptyStr }
+
+type RequiredBuildEnvironmentEntry { name: NonEmptyStr, value: NonEmptyStr }
+
+type RequiredBuildExecutionSpec {
+  source: RequiredBuildSource
+  checkout_materialization: List<NonEmptyStr>
+  toolchain_provenance: List<NonEmptyStr>
+  executable_provenance: List<NonEmptyStr>
+  command: ArgvCommand
+  environment: List<RequiredBuildEnvironmentEntry>
+  cache_policy: List<NonEmptyStr>
+  permitted_credential_refs: List<NonEmptyStr>
+  output_manifest: List<NonEmptyStr>
+  terminal_result_manifest: List<NonEmptyStr>
+}
+
+type RequiredBuildWorkRefusal
+  = RequiredBuildMovingRefRefused { ref_name: NonEmptyStr }
+  | RequiredBuildWorkingDirectoryRefused { path: NonEmptyStr }
+  | RequiredBuildCoordinateMissing { coordinate: NonEmptyStr }
+
+type RequiredBuildWorkBinding
+  = RequiredBuildWorkBound {
+      work: Work<NonEmptyStr>
+      source_tree_digest: ContentHash
+      environment_materialization_digest: ContentHash
+    }
+  | RequiredBuildWorkRefused { cause: RequiredBuildWorkRefusal }
+
+type RequiredBuildFrozenIdentities {
+  work_key: WorkKey
+  source_tree_digest: ContentHash
+  environment_materialization_digest: ContentHash
+}
+
+type RequiredBuildFrozenIdentityProjection
+  = RequiredBuildFrozenIdentitiesProjected { identities: RequiredBuildFrozenIdentities }
+  | RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildWorkRefusal }
+
+// Canonical sequence encoding. Delimiters alone are not an encoding: ["a", "b"] and
+// ["a<delimiter>b"] collapse. Every scalar is length-prefixed and every sequence carries its
+// cardinality, so arbitrary payload code points cannot move a boundary.
+fn framed_string(value: String) -> NonEmptyStr {
+  concat(to_string(value.length()), concat(":", value))
+}
+
+fn non_empty_strings_material(label: NonEmptyStr, values: List<NonEmptyStr>) -> NonEmptyStr? {
+  match values {
+    Empty {} => none
+    Cons { head: _, tail: _ } => Present {
+      value: fold(
+        values,
+        init: concat(label, concat(":", concat(to_string(values.length()), ":"))),
+        f: fn(acc, value) { concat(acc, framed_string(value: value)) },
+      )
+    }
+  }
+}
+
+fn environment_material(entries: List<RequiredBuildEnvironmentEntry>) -> NonEmptyStr? {
+  match entries {
+    Empty {} => none
+    Cons { head: _, tail: _ } => Present { value: fold(
+      entries,
+      init: concat("environment:", concat(to_string(entries.length()), ":")),
+      f: fn(acc, entry) { concat(acc, concat(framed_string(value: entry.name), framed_string(value: entry.value))) },
+    ) }
+  }
+}
+
+fn command_material(command: ArgvCommand) -> NonEmptyStr {
+  let words = argv_words(command: command)
+  fold(
+    words,
+    init: concat("argv:", concat(to_string(words.length()), ":")),
+    f: fn(acc, word) { concat(acc, framed_string(value: word)) },
+  )
+}
+
+fn action_ref_material(action: ActionRef) -> NonEmptyStr {
+  concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.ref))))
+}
+
+fn required_build_contract_from_materials(
+  source: NonEmptyStr,
+  checkout: NonEmptyStr,
+  toolchain: NonEmptyStr,
+  executable: NonEmptyStr,
+  command: NonEmptyStr,
+  environment: NonEmptyStr,
+  cache: NonEmptyStr,
+  credentials: NonEmptyStr,
+  outputs: NonEmptyStr,
+  terminal: NonEmptyStr,
+) -> WorkContract {
+  WorkContract {
+    program: concat("gunbc.required-witnesses-build.program:", framed_string(value: command)),
+    steps: [
+      WorkStep { step_id: "checkout-materialize", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "toolchain-and-executable-materialize", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable },
+    ],
+    source: concat("gunbc.required-witnesses-build.source:", concat(framed_string(value: source), framed_string(value: checkout))),
+    inputs: concat("gunbc.required-witnesses-build.inputs:", concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))),
+    runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(framed_string(value: toolchain), framed_string(value: executable))),
+    effect_contract: "gunbc.required-witnesses-build.effects.checkout-read-cache-and-permitted-credentials-only",
+    output_contract: concat("gunbc.required-witnesses-build.outputs:", concat(framed_string(value: outputs), framed_string(value: terminal))),
+  }
+}
+
+fn bind_required_witnesses_build_work(
+  principal: NonEmptyStr,
+  spec: RequiredBuildExecutionSpec,
+) -> RequiredBuildWorkBinding {
+  match spec.source {
+    MovingGitRef { ref_name } => RequiredBuildWorkRefused { cause: RequiredBuildMovingRefRefused { ref_name: ref_name } }
+    WorkingDirectorySource { path } => RequiredBuildWorkRefused { cause: RequiredBuildWorkingDirectoryRefused { path: path } }
+    ExactGitSource { subject } =>
+      match non_empty_strings_material(label: "checkout", values: spec.checkout_materialization) {
+        Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "checkout-materialization" } }
+        Present { value: checkout } => match non_empty_strings_material(label: "toolchain", values: spec.toolchain_provenance) {
+          Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "toolchain-provenance" } }
+          Present { value: toolchain } => match non_empty_strings_material(label: "executable", values: spec.executable_provenance) {
+            Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "executable-provenance" } }
+            Present { value: executable } => match environment_material(entries: spec.environment) {
+              Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "environment" } }
+              Present { value: environment } => match non_empty_strings_material(label: "cache", values: spec.cache_policy) {
+                Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "cache-policy" } }
+                Present { value: cache } => match non_empty_strings_material(label: "credentials", values: spec.permitted_credential_refs) {
+                  Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "permitted-credential-refs" } }
+                  Present { value: credentials } => match non_empty_strings_material(label: "outputs", values: spec.output_manifest) {
+                    Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "output-manifest" } }
+                    Present { value: outputs } => match non_empty_strings_material(label: "terminal", values: spec.terminal_result_manifest) {
+                      Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "terminal-result-manifest" } }
+                      Present { value: terminal } => {
+                        let source = concat("git-source:", concat(framed_string(value: git_object_id_wire_hex(oid: subject.commit)), framed_string(value: git_object_id_wire_hex(oid: subject.tree))))
+                        let command = command_material(command: spec.command)
+                        let contract = required_build_contract_from_materials(source: source, checkout: checkout, toolchain: toolchain, executable: executable, command: command, environment: environment, cache: cache, credentials: credentials, outputs: outputs, terminal: terminal)
+                        let requirements = floor_execution_requirements()
+                        let work = work_for(principal: principal, contract: contract, requirements: requirements)
+                        RequiredBuildWorkBound {
+                          work: work,
+                          source_tree_digest: git_object_id_content_hash(oid: subject.tree),
+                          environment_materialization_digest: content_hash_of_value(value: concat("environment-materialization:", concat(framed_string(value: checkout), concat(framed_string(value: toolchain), concat(framed_string(value: executable), concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))))))),
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE POSSESSED WORK FOR THE ONE TARGET LANE. Source identity is an input from the PR checkout
+// verifier, never a historical literal transcribed into production. The checkout, bootstrap, build
+// and run facts mirror the authorities the current Actions realization consumes; this value does
+// not make Actions execute through the fabric. FCI-3 owns that later authority cut.
+fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWorkBinding {
+  bind_required_witnesses_build_work(
+    principal: "gunbc",
+    spec: RequiredBuildExecutionSpec {
+          source: source,
+          checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", ci_toolchain_home_isolation_script()],
+          toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", ci_pin_rustup_default_script()],
+          executable_provenance: [repo_self_build_all_bins_command(), "target/release/claim_executor"],
+          command: build_lane_run_command(),
+          environment: [
+            RequiredBuildEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: "expected_red_roster_join.tsv" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: "required_floor_disposition.tsv" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: "long_home_storage_agreement.tsv" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: "required_floor_claim_cost.tsv" },
+            RequiredBuildEnvironmentEntry { name: "HOME", value: "derived-from-RUNNER_TEMP" },
+            RequiredBuildEnvironmentEntry { name: "CARGO_HOME", value: "derived-from-RUNNER_TEMP/cargo" },
+            RequiredBuildEnvironmentEntry { name: "RUSTUP_HOME", value: "derived-from-RUNNER_TEMP/rustup" },
+          ],
+          cache_policy: ["setup-rust-cache=false", "delete-and-recreate-RUNNER_TEMP/rustup-and-cargo", "step-reuse-permitted"],
+          permitted_credential_refs: ["github.actions.checkout-token"],
+          output_manifest: ["required-ci-phase-ledger", "required-build-lane-log"],
+          terminal_result_manifest: ["required-ci-exit-status", "required-ci-terminal-summary"],
+    },
+  )
+}
+
+fn required_witnesses_build_frozen_identities(source: RequiredBuildSource) -> RequiredBuildFrozenIdentityProjection {
+  match required_witnesses_build_work(source: source) {
+    RequiredBuildWorkRefused { cause } => RequiredBuildFrozenIdentitiesRefused { cause: cause }
+    RequiredBuildWorkBound { work, source_tree_digest, environment_materialization_digest } =>
+      RequiredBuildFrozenIdentitiesProjected {
+        identities: RequiredBuildFrozenIdentities {
+          work_key: work.id.key,
+          source_tree_digest: source_tree_digest,
+          environment_materialization_digest: environment_materialization_digest,
+        }
+      }
+  }
+}
+
+// The handoff instrument for the next serial gate. It renders only identities, never secret
+// material or environment values; a refused construction stays visibly refused.
+fn required_witnesses_build_frozen_identity_wire(
+  commit_hex: NonEmptyStr,
+  tree_hex: NonEmptyStr,
+  observed_commit_tree_hex: NonEmptyStr,
+) -> String {
+  let projection = match git_sha1_object_id(hex: commit_hex) {
+    Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
+    Present { value: commit } => match git_sha1_object_id(hex: tree_hex) {
+      Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "verified-source-tree" } }
+      Present { value: tree } => match git_sha1_object_id(hex: observed_commit_tree_hex) {
+        Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+        Present { value: observed_commit_tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: observed_commit_tree) {
+          GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "commit-tree-verification" } }
+          GitCommitTreeVerified { subject } => required_witnesses_build_frozen_identities(source: ExactGitSource { subject: subject })
+        }
+      }
+    }
+  }
+  match projection {
+    RequiredBuildFrozenIdentitiesRefused { cause: _ } => "refused"
+    RequiredBuildFrozenIdentitiesProjected { identities } => join([
+      concat("work_key=", identities.work_key),
+      concat("source_tree_digest=", serialize_content_hash(hash: identities.source_tree_digest)),
+      concat("environment_materialization_digest=", serialize_content_hash(hash: identities.environment_materialization_digest)),
+    ], "\n")
+  }
+}
+
+// THE FLOOR'S PROGRAM AND CONTRACTS. NOTHING ELSE.
+//
+// authorize_floor_run and the FloorRunRefusal coproduct moved to product.fabric.supply: comparing
+// a Work's requirements against a SupplierOffer's capabilities is provider-neutral fungibility, and
+// nothing in ShapeNotCovered / TrustDomainMismatch / CapabilitiesNotOffered was about the floor. A
+// gunbc module answering a fabric question answers it differently from the next consumer.
+//
+// THE FABRIC DEFINES THE WITNESS RUN. IT DOES NOT YET RUN IT.
+//
+// THIS PARAGRAPH PREVIOUSLY CLAIMED THE OPPOSITE AND THE CLAIM WAS FALSE. It read that the argv is
+// "PRODUCED BY THE FABRIC UNDER A GRANT" and that "no grant, no command -- so the authorization is
+// not a label beside the run, it is the only thing that can yield a run". Measured against the
+// live tree: the run command is a lane word away from NULLARY, there is no grant anywhere on the
+// workflow path, and of the ten functions in this module exactly ONE has a production consumer
+// outside it -- `required_ci_lane_command`, through its two lane bindings, imported by
+// gunbc.witness_floor_workflow to render a shell word. Work contract, execution requirements,
+// offer fungibility, affordability, buy terms, admission terms, satisfaction requirement and
+// grant duration have ZERO.
+//
+// That is rung inflation (DESIGN section 4b) in the module that IS this repository's claim to
+// running its own CI on the fabric -- worse than sitting low, because a class reported at the top
+// rung never ranks for climbing, and a reader planning the cutover would have budgeted for
+// extending an allocator never built. It cost that once already: answering "where is the fabric
+// in our CI" required measuring past this prose.
+//
+// WHAT IS TRUE: the command is DEFINED BY THE FABRIC WORK AUTHORITY and CURRENTLY TRANSPORTED BY
+// GITHUB ACTIONS. GitHub owns triggering, queueing, runner selection, concurrency, execution
+// lifecycle, logs and check publication. The fabric owns what the Work IS.
+//
+// AND THE WALL BELONGS SOMEWHERE ELSE. A Grant authorizes REALIZATION OF AN ATTEMPT, not
+// construction of a command value: inspecting, hashing, comparing, caching or rendering a command
+// spends no resource; executing it does. The invariant to build toward is:
+//
+//     no committed Grant  ->  no process and no host effect
+//
+// NOT "no grant, no command". Threading a Grant into this constructor would fuse semantic Work
+// identity with scheduling authority and make one Work compare unequal to itself depending on
+// whose Grant it ran under -- a defect, not a stricter idea. NEXT-RUNG TRIGGER: an executor that
+// holds an ExecutionGrant against a reserved slot; then the invariant becomes structural and this
+// paragraph is rewritten as an ordinary description.
+//
+// Deliberately NOT here while GitHub Actions still triggers: polling, durable state, the
+// compare-and-swap authority transition, supersession, and check publication. Those are the
+// CONTROL plane, needed only once the fabric owns triggering; building them now would put a
+// second scheduler beside a live one.
+
+// The floor's contract. Every field is a fact about WHAT is promised, never where or when it runs
+// -- scheduling facts live in ExecutionRequirements beside it, so revising a thread estimate cannot
+// mint a new semantic Work.
+//
+// ONE STEP, THREE PHASES (2026-08-20; phase list narrowed 2026-08-21). This read "Two steps, not
+// one, because the workflow gates them separately and the v1 parse gate is a blocking step in its
+// own right: collapsing them into one step would make a parse failure and a floor failure
+// indistinguishable in the receipt, which is the distinction gunbc#8466 -> #8519 was paid to
+// learn."
+//
+// THE CONCERN WAS RIGHT AND IS NOW BETTER SERVED. The operator directed that the sequencing move
+// out of the GitHub Actions step list and into the binary, so a contract listing two steps is a
+// SECOND, now-false description of a one-step job. The distinction the two steps bought survives
+// at a finer grain: `--required-ci` reports its phases and prints `FAILED PHASE <name>` per
+// failure, so parse, regen and floor are three distinguishable outcomes. Measured on the first CI
+// run of the composed step (32347573121): `phases_run=4 failed=2`, naming a regen drift AND a
+// floor failure that a step ladder would have surfaced one merge at a time. That run had four
+// phases because the 2026-08-21 ruling had not yet cut the roster to three
+// (merge-admission-capture, regen-determinism, receipt-selftest, receipt-vs-changed-authorities
+// and merge-admission-stamp are gone from the required mode); per-phase attribution in one receipt
+// is unchanged by the count.
+//
+// WHAT THIS DOES COST: resumability was per-step, so a green parse could be receipt-satisfied and
+// skipped on a rerun. One step means one receipt and the whole run repeats. Phase-grain
+// resumability that would restore it belongs with the cost basis, not here.
+fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
+  WorkContract {
+    program: "gunbc.claim_executor",
+    steps: [
+      WorkStep { step_id: "required-ci", resumability: ReceiptSatisfiable },
+    ],
+    source: source,
+    inputs: floor_inputs_manifest_ref(),
+    runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt",
+    effect_contract: "gunbc.floor.effects.read-only-corpus",
+    output_contract: "gunbc.floor.outputs.required-floor-summary",
+  }
+}
+
+// OUR FLOOR IS arm64. THE CLASS IS NOT.
+//
+// This function previously spelled the architecture INSIDE a capability tag --
+// "gunbc.capabilities.linux-aarch64-rust-toolchain" -- making an accident of our supply look like
+// a property of the execution class. Ampere is what we stock; the product must serve x86 and arm
+// at the lowest cost, and rented x86 is an anticipated supplier. A class that names its
+// architecture cannot admit one it did not -- the GitHub-vocabulary argument one layer over. So
+// the tag below names the toolchain and NOT the machine.
+//
+// WHY NO Architecture VALUE IS DECLARED HERE YET. Matching a declared architecture needs the OFFER
+// to carry one, and SupplierOffer has 25 constructors in tree, so the field and the arm that reads
+// it land together. An earlier revision declared `floor_architecture() -> Architecture = Aarch64`
+// anyway, with ZERO consumers; v2.lens.inert_carrier caught it on CI as an unrostered inert
+// carrier -- in the same commit whose message refused to add an unread field to SupplierOffer by
+// citing review 53848's declared-but-nothing-derives-it defect. Refusing the defect on one side of
+// a module boundary and authoring it on the other is the same defect.
+//
+// So the architecture decision lives in prose and in the recut plan until it has a consumer: a
+// decision recorded is not a carrier modeled, and minting it early buys only a row that lies about
+// being load-bearing.
+
+// WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
+//
+// A floor run is OUR OWN work on OUR OWN fleet, and it runs today on slots providing none of the
+// isolation guarantees -- a reused writable root by design, the host's process namespace, and
+// /home/ghrunner shared across every slot. Declaring a requirement the floor does not have would
+// invent a gap: the run modeled as ineligible for the executor it has been green on for months.
+//
+// SO THE EMPTY PROFILE HERE IS A MEASUREMENT, NOT A PLACEHOLDER: the floor asks for no tenancy
+// guarantee. The gap this model expresses belongs to CUSTOMER work -- see product.fabric.isolation
+// tenant_workload_isolation_requirement and the witness measuring today's slots against it.
+//
+// CONSUMPTION STATUS: the fold that reads this (floor_offer_fungibility -> offer_fungibility_for)
+// has NO production consumer, like its siblings ShapeNotCovered and CapabilitiesNotOffered. It is
+// the modeled decision the broker will consume, not a live wall; calling it enforcement would be
+// the rung inflation recorded above for affordability. NEXT-RUNG TRIGGER is the same: a broker
+// fold that selects an Offer for this Demand.
+fn floor_isolation_requirement() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// THE FLOOR IS CONTROL-PLANE WORK AND SAYS SO. This is the demand the capacity
+// class exists to protect: our own scheduler, reconciliation, admission and
+// receipt work, which must never be satisfied by capacity sanctioned for
+// customer execution. Declared on the side we ORIGINATE, so no supplier can
+// author it and the refusal is decided at admission rather than after ranking.
+fn floor_execution_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: floor_isolation_requirement(),
+  }
+}
+
+// THE SOURCE ROOTS ARE NOT THIS MODULE'S FACT. gunbc.ci_layer_roots witness_layer_roots is the
+// authority -- the live workflow already folds it into its --source-root flags -- so a list here
+// was a fork of it, the violation one level above the one review 53848 caught. Consumed, not
+// redeclared.
+//
+// The argv is a TOTAL fold over that authority, so adding a root changes the command with nothing
+// to remember. An earlier revision hand-expanded the pairs and declared a substrate gap with a
+// dissolution trigger, on the grounds that one-to-two expansion needs a flat-map and the substrate
+// has neither flatten nor list destructuring. Both observations were true and the conclusion was
+// wrong: `fold` is exactly the primitive required, and the workflow module two files away already
+// used it for this job -- a language-layer gap declared without enumerating the language.
+
+fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
+  concat("gunbc.floor.inputs.source-roots:", join(witness_layer_roots, "+"))
+}
+// ONE COMMAND SHAPE, TWO LANES (operator ruling, 2026-08-25: "we can add it as a parallel
+// job in github actions - we can do the same for regen now, we have more runners" /
+// "basically i would put regen + v2 full compile in one job, and witnesses into another
+// one").
+//
+// The phases composed into one process on 2026-08-20 were SERIAL yet independent: the witness
+// floor costs ~30 minutes and everything else waited behind it with no data dependency, so the
+// required check's wall clock was a SUM that could be a MAX. Two jobs with no `needs` edge make
+// it a max.
+//
+// THE LANE IS THE ONLY THING THE TRANSPORT NAMES. It does not name or order phases, or wire one
+// phase's precondition to another step's verdict -- which phases a lane owns is an exhaustive
+// match in the binary, so re-routing the roster is never a YAML edit. That is the surviving half
+// of the 2026-08-20 consolidation directive; the half the split supersedes is stated in
+// `gunbc.witness_floor_workflow`.
+//
+// WHY THIS PARTITION. `build` is the EMISSION lane -- regen compares the emitted stage0 mirrors
+// against what is committed, and v2-emission compiles a v2 entry to Rust; both ask "does the
+// compiler still produce its outputs". `witnesses` is the CORPUS lane -- the parse sweep and the
+// floor fold, asking "does the authored corpus hold". Split along the subject, not a stopwatch,
+// so it stays legible when costs move.
+//
+// A SINGLE ARGV, NOT TWO. Two hand-built invocations would be two spellings of the binary path,
+// mode flag and source roots, free to drift as #8629 removed once already; the lane is a
+// parameter of one command.
+fn required_ci_lane_command(lane: String) -> ArgvCommand {
+  claim_executor_command(
+    mode_flag: "--required-ci",
+    operands: append(
+      fold(
+        witness_layer_roots,
+        init: [],
+        f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
+      ),
+      items: ["--required-lane", lane],
+    ),
+  )
+}
+
+// THE LANE WORDS ARE THE ROSTER'S, NOT THIS MODULE'S. gunbc.required_ci_phase_roster owns lane
+// identity and the phase-to-lane partition; these two datas survive as the join point every
+// existing consumer already names, derived from that single authority rather than restating it.
+data required_ci_lane_build: String = required_ci_lane_name(l: BuildLane)
+
+data required_ci_lane_witnesses: String = required_ci_lane_name(l: WitnessesLane)
+
+// The witnesses lane: the .dag parse sweep and the witness floor fold. Named for its lane
+// rather than for the floor alone, because the parse phase rides here too and a name that
+// said `floor` would be a second, narrower account of what this command runs.
+fn witnesses_lane_run_command() -> ArgvCommand {
+  required_ci_lane_command(lane: required_ci_lane_witnesses)
+}
+
+// The build lane: regen's first-generation comparison and the v2 emission compile.
+fn build_lane_run_command() -> ArgvCommand {
+  required_ci_lane_command(lane: required_ci_lane_build)
+}
+
+// THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.
+//
+// The intent is unchanged: gunbc's own CI enters the market on the same terms as any other demand,
+// so the opportunity cost of our own work stays computable and the arbitrage -- run our CI on our
+// hardware, or sell that capacity and rent -- never degrades into a hand-maintained spreadsheet.
+// The budget ceiling is an argument for exactly that reason.
+//
+// WHAT WAS OVERSTATED: this previously read that the ceiling is an argument "precisely so that
+// there is no arm here that admits a floor run without clearing a price", as though the guard
+// were live. It is not reachable. `floor_offer_affordability` and `floor_buy_terms` have NO
+// production consumer -- the only function here any non-test module calls is
+// `required_ci_lane_command` -- so no floor run has ever cleared a price and no arm runs at all.
+// A fold with no caller enforces nothing; describing it as enforcement is the inflation the
+// header paragraph records.
+//
+// The fold stays as the modeled decision the broker will consume; deleting it would delete the
+// design, not the overstatement. It is described as UNCONSUMED, a countable gap. NEXT-RUNG
+// TRIGGER: a broker fold that selects a SupplierOffer for this Demand, putting affordability on
+// the live path.
+//
+// Control-plane work is a separately privileged class. That exclusion must not leak here: a floor
+// run is customer work that happens to be ours.
+
+fn floor_offer_fungibility<P>(offer: SupplierOffer<P>) -> OfferFungibility {
+  offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
+}
+
+// THE FLOOR'S GRANT DURATION IS AN ESTIMATE, NOT A MEASUREMENT. `~30 min wall` is the wall-clock
+// this document's "Building & checks" section records for the three consecutive green
+// `--required-ci` runs on main (32203661157 and neighbors) -- a measured receipt -- but still an
+// ESTIMATE of what THIS run will take. EstimatedGrantDuration rather than ExactGrantDuration is
+// the only honest constructor, and it lets a rate-quoted offer land on AffordableUnderEstimate
+// instead of borrowing certainty ExactGrantDuration would claim.
+fn floor_grant_duration() -> GrantDuration {
+  EstimatedGrantDuration { seconds: second(count: 1800) }
+}
+
+fn floor_offer_affordability<P>(
+  offer: SupplierOffer<P>,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+) -> DemandOfferAffordability {
+  offer_affordability_for(
+    offer: offer,
+    maximum_buy_order: maximum_buy_order,
+    budget_currency: budget_currency,
+    duration: floor_grant_duration(),
+  )
+}
+
+// THE FLOOR'S DEMAND: where "ordinary priced demand" becomes a row someone can read.
+//
+// REUSE IS A POLICY ON THE DEMAND, NOT A PROPERTY OF THE WORK. The cutover runs with
+// terminal_receipt_may_satisfy = false and new_attempt_required = true, so an identical Work with
+// an accepted receipt still executes -- deliberately conservative while the floor's purity as a
+// function of the tree is unproven -- and expressed HERE rather than in the Work key, so turning
+// reuse on later edits a policy row, not what a Work IS. The plan's section 13 and its sign-off
+// conflated the two; the carriers never did, so no new modeling was needed.
+//
+// step_reuse_permitted stays TRUE: a materialization provider may accelerate a rerun. A build
+// cache making the second attempt faster is not a receipt.
+
+fn floor_satisfaction_requirement() -> SatisfactionRequirement {
+  SatisfactionRequirement {
+    terminal_receipt_may_satisfy: false,
+    new_attempt_required: true,
+    step_reuse_permitted: true,
+  }
+}
+
+fn floor_buy_terms(
+  account: BudgetAccountId,
+  reservation_price: MoneyAmountMicro,
+  maximum_buy_order: MoneyAmountMicro,
+) -> BuyTerms {
+  BuyTerms {
+    budget_account: account,
+    currency: Usd,
+    reservation_price: reservation_price,
+    maximum_buy_order: maximum_buy_order,
+  }
+}
+
+// THE FLOOR HAS NO PRIVILEGE FIELD BECAUSE THERE IS NO LONGER A FIELD TO HAVE.
+//
+// This note used to read that priority_class is not a privilege escape -- the floor competes on
+// price, and a class orders demands that can all be afforded rather than admitting one that
+// cannot. Correct, and prose: the field was a String, nothing enforced it, and a witness could only
+// assert its spelling.
+//
+// The field is deleted (product.fabric.demand records why); product.fabric.contention derives the
+// ordering from the margin between what a buyer will pay and what serving them costs. The floor's
+// terms carry no rank, and there is no spelling in which gunbc jumps the queue: to win contention
+// it must post the better margin like every other buyer. If this ever became the field that let
+// gunbc jump the queue, the arbitrage would be lost and the opportunity cost of our own work would
+// stop being computable.
+
+fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: deadline,
+    buy: buy,
+  }
+}

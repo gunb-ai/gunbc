@@ -1,0 +1,145 @@
+module gunbc.gitignore_emit
+
+import std.types { String, List, Bool }
+import std.workspace_artifact {
+  WorkspaceFootprint, WorkspaceArtifact, FootprintProvenance,
+  footprint_display, ignore_reason_label
+}
+import gunbc.repo_workspace { repo_workspace_footprints }
+import gunbc.generated_artifact {
+  GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
+}
+import std.languages { gitignore_format }
+import std.layout {
+  Doc, DocEmpty, DocConcat,
+  LayoutProtocol,
+  doc_concat, doc_line_of, doc_blank,
+  render
+}
+import std.render { config_comment_prefix }
+
+// THE committed byte projection of gunbc.repo_workspace (tool footprints, each artifact
+// carrying its meaning and typed ignore reason) joined with the generated-artifact arm
+// derived from gunbc.generated_artifact commit policy. This module is a renderer only:
+// it declares no pattern of its own — a pattern with no declaring producer has no
+// spelling here, which is what retired the hand-coproduct model this replaced.
+
+data gitignore_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+fn gitignore_comment_line(text: String) -> Doc {
+  let prefix = config_comment_prefix(format: gitignore_format)
+  let line = if text == "" { prefix } else { concat(concat(prefix, " "), text) }
+  doc_line_of(text: line)
+}
+
+fn gitignore_section_header(title: String) -> Doc {
+  gitignore_comment_line(text: concat("--- ", concat(title, " ---")))
+}
+
+fn artifact_doc(a: WorkspaceArtifact) -> Doc {
+  let annotation = concat(ignore_reason_label(r: a.reason), concat(" — ", a.meaning))
+  doc_concat(parts: [
+    gitignore_comment_line(text: annotation),
+    doc_line_of(text: a.pattern)
+  ])
+}
+
+fn footprint_doc(f: WorkspaceFootprint) -> Doc {
+  let header = gitignore_section_header(title: footprint_display(p: f.provenance))
+  doc_concat(parts: append([header], items: map(f.artifacts, a => artifact_doc(a: a))))
+}
+
+fn gitignore_header_doc() -> Doc {
+  doc_concat(parts: [
+    gitignore_comment_line(text: "gunbc .gitignore — generated from gunbc.repo_workspace via gunbc.gitignore_emit — do not hand-edit."),
+    gitignore_comment_line(text: ""),
+    gitignore_comment_line(text: "Every pattern is declared by its producer (an extdeps product's workspace footprint, or a repo tool's own declaration) with its meaning and a typed ignore reason; the trailing section is derived from gunbc.generated_artifact commit policy."),
+    doc_blank()
+  ])
+}
+
+fn footprints_doc(footprints: List<WorkspaceFootprint>) -> Doc {
+  doc_concat(parts: fold(footprints, init: [], f: fn(acc, f) {
+    let fd = footprint_doc(f: f)
+    if count(acc) == 0 { [fd] } else { append(acc, items: [doc_blank(), fd]) }
+  }))
+}
+
+fn expected_gitignore() -> String {
+  let body = doc_concat(parts: [
+    gitignore_header_doc(),
+    footprints_doc(footprints: repo_workspace_footprints()),
+    doc_blank(),
+    generated_artifacts_section_doc()
+  ])
+  render(doc: body, proto: gitignore_protocol)
+}
+
+fn gitignore_drifted(committed: String) -> Bool {
+  !(committed == expected_gitignore())
+}
+
+fn footprint_patterns(f: WorkspaceFootprint) -> List<String> {
+  map(f.artifacts, a => a.pattern)
+}
+
+fn ignore_patterns() -> List<String> {
+  let tool_patterns = fold(repo_workspace_footprints(), init: [], f: fn(acc, f) { concat(acc, footprint_patterns(f: f)) })
+  concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
+}
+
+fn generated_artifact_ignore_pattern(a: GeneratedArtifact) -> String {
+  concat("/", artifact_path(a: a))
+}
+
+fn non_committed_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => !artifact_is_committed(a: a))
+}
+
+fn generated_artifacts_section_doc() -> Doc {
+  let header = gitignore_section_header(title: "Generated artifacts (gitignored-by-default, derived from generated_artifact_registry)")
+  let rationale = gitignore_comment_line(text: "Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).")
+  let pattern_docs = map(non_committed_artifacts(), a => doc_line_of(text: generated_artifact_ignore_pattern(a: a)))
+  doc_concat(parts: append([header, rationale], items: pattern_docs))
+}
+
+fn without_prefix(s: String, prefix: String) -> String {
+  substring(s: s, start: prefix.length(), end: s.length())
+}
+
+fn without_suffix(s: String, suffix: String) -> String {
+  substring(s: s, start: 0, end: s.length() - suffix.length())
+}
+
+fn path_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+}
+
+fn dir_pattern_matches(dir: String, path: String) -> Bool {
+  let anchored = concat(dir, "/")
+  path == dir
+    || starts_with(path, prefix: anchored)
+    || string_contains(s: path, pattern: concat("/", anchored))
+}
+
+fn strip_slashes(p: String) -> String {
+  let no_lead = if starts_with(p, prefix: "/") { without_prefix(s: p, prefix: "/") } else { p }
+  if ends_with(s: no_lead, suffix: "/") { without_suffix(s: no_lead, suffix: "/") } else { no_lead }
+}
+
+fn pattern_matches(pattern: String, path: String) -> Bool {
+  if ends_with(s: pattern, suffix: "/") {
+    dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
+  } else if starts_with(pattern, prefix: "*.") {
+    ends_with(s: path, suffix: without_prefix(s: pattern, prefix: "*"))
+  } else if starts_with(pattern, prefix: "/") {
+    let anchored = without_prefix(s: pattern, prefix: "/")
+    path == anchored || starts_with(path, prefix: concat(anchored, "/"))
+  } else {
+    path == pattern || path_basename(path: path) == pattern || ends_with(s: path, suffix: concat("/", pattern))
+  }
+}
+
+fn path_is_ignored(path: String) -> Bool {
+  any(ignore_patterns(), p => pattern_matches(pattern: p, path: path))
+}

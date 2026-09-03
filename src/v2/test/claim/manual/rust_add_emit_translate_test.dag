@@ -1,0 +1,367 @@
+module v2.test.manual.rust_add_emit_translate
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.compiler.emit { emit }
+import v2.compiler.compile {
+  CompileOutput,
+  TranslateResult,
+  TranslateTo,
+  compile_inferred
+}
+import v2.compiler.eval {
+  TestClaimEvalSubject,
+  TestClaimRun,
+  run_test_claim_assert,
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
+}
+import v2.compiler.translate {
+  coerce_grounded_node,
+  target_serialize_source_from_model,
+  translate,
+}
+import v2.extdeps.languages.rust {
+  rust_inhabitant_i32_node,
+  rust_inhabitant_atom,
+  rust_integer_facts_node,
+  rust_int_kind_node,
+  rust_int_width_node,
+  rust_overflow_node,
+  rust_fixture_emitted_add_fn,
+  rust_fixture_i32_inhabitant,
+  rust_i32_overflow_disposition_node,
+  rust_i32_scalar_node,
+  rust_binding_spellings,
+  rust_source_text,
+  rust_target_model,
+  rust_target_model_node,
+  rust_fn_add_lex,
+  rust_facts_i32,
+  Signed,
+  Bits32,
+  PanicOnOverflow,
+  TwoComplementWrap
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
+import v2.test.manual.infer_ground_add {
+  infer_receipt_context
+}
+import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.collection {
+  Map,
+  empty_map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
+import v2.std.coercion {
+  CoercionQuality,
+  Exact,
+  Identity,
+  Widened
+}
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
+}
+import v2.std.node {
+  Atom,
+  Arrow,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+}
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data rust_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
+
+
+data rust_add_emitted_root: Node = rust_fixture_emitted_add_fn
+
+data rust_add_target_model: TargetModel = rust_target_model()
+
+data rust_add_poisoned_authority_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
+  bundle: rust_target_model_node(),
+  lex: rust_fn_add_lex(),
+  binding_spellings: rust_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: rust_add_forbidden_authority_source_text,
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+data rust_add_empty_translation_rules_bundle: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data rust_add_missing_translation_rules_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
+  bundle: rust_add_empty_translation_rules_bundle,
+  lex: rust_fn_add_lex(),
+  binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: "",
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
+  target_serialize_source_from_model(
+    target: rust_add_missing_translation_rules_target,
+    emitted: rust_add_emitted_root
+  )
+}
+
+data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
+
+test fn rust_add_serialize_reject_receipt_holds() -> Bool {
+  match rust_add_serialize_reject_receipt {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d != None
+  }
+}
+
+
+fn rust_add_i32_facts_node() -> Node {
+  rust_integer_facts_node(facts: rust_facts_i32)
+}
+
+fn rust_add_canonical_grounding(
+  node: Node,
+  algebra: Node
+) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: algebra
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn rust_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+  if node == rust_fixture_emitted_add_fn {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == rust_fixture_i32_inhabitant {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_inhabitant_i32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_fixture_i32_inhabitant
+      )
+    }
+  } else if node == rust_add_i32_facts_node() {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_surface_spelling_i32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_std_projection_int32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_int_kind_node(kind: Signed) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_int_width_node(width: Bits32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_i32_overflow_disposition_node() {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == rust_i32_scalar_node() {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_i32_overflow_disposition_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_scalar_int) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_i32_scalar_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_signed) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_i32_scalar_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_bits32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_i32_scalar_node()
+      )
+    }
+  } else if node == rust_overflow_node(overflow: PanicOnOverflow) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_i32_overflow_disposition_node()
+      )
+    }
+  } else if node == rust_overflow_node(overflow: TwoComplementWrap) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_i32_overflow_disposition_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_overflow_node(overflow: PanicOnOverflow)
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_overflow_node(overflow: TwoComplementWrap)
+      )
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^rust_add_grounding_miss,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+fn rust_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+  match rust_add_canonical_grounding_for(node: node) {
+    Violates { diagnostic: d } => optional_absent()
+    Holds { value: grounding } =>
+      match termination_proof_witness_for_node(n: node) {
+        Violates { diagnostic: d } => optional_absent()
+        Holds { value: proof } =>
+          optional_present(value: claim_inferred_facts_witness(
+              grounding: grounding,
+              descent: Holds { value: proof }
+            ))
+      }
+  }
+}
+
+fn rust_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  rust_add_inferred_facts_for(node: key)
+}
+
+data rust_add_inferred_tree: InferredTree = InferredTree {
+  root: rust_add_emitted_root,
+  facts: PartialFunction {
+    lookup: rust_add_facts_lookup
+  }
+}
+
+fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {
+  emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
+}
+
+fn anchor_rust_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
+  compile_inferred(
+    inferred: rust_add_inferred_tree,
+    mode: TranslateTo { target: rust_add_poisoned_authority_target_model }
+  )
+}
+
+data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accepts()
+
+test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
+  match rust_add_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add_compile_inferred_accepts()
+
+test fn rust_add_compile_inferred_receipt_holds() -> Bool {
+  match rust_add_compile_inferred_receipt {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+
+
+
+
+
+

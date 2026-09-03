@@ -8,8 +8,7 @@ pub use crate::v1_compiler_infer_types::{
     node_type_equals, normalize_access_type_node, resolved_type,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v1_std_core::{
@@ -19,8 +18,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -36,12 +34,12 @@ pub struct KeyedCollectionParts {
 }
 
 pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
-    make_error_node(
+    crate::v1_std_core::make_error_node(
         Rc::new(CompilerDiagnostic::InternalError {
-            message: message,
-            span: span,
+            message: message.clone(),
+            span: span.clone(),
         }),
-        module_name,
+        module_name.clone(),
     )
 }
 
@@ -53,19 +51,21 @@ pub fn access_result(
 ) -> Rc<AccessCheckResultNode> {
     if ((diagnostics.clone().len() as i64) == 0) {
         Rc::new(AccessCheckResultNode {
-            inferred: Some(Rc::new(InferredNode::Resolved { node: inferred })),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: inferred.clone(),
+            })),
             diagnostics: diagnostics.clone(),
         })
     } else {
         {
             let message = match diagnostics.clone().first().cloned() {
-                Some(diag) => diagnostic_to_message(diag.diagnostic.clone()),
-                None => fallback_message,
+                Some(diag) => crate::v1_std_core::diagnostic_to_message(diag.diagnostic.clone()),
+                std::option::Option::None => fallback_message.clone(),
             };
             Rc::new(AccessCheckResultNode {
                 inferred: Some(Rc::new(InferredNode::CompilerError {
-                    message: message,
-                    span: span,
+                    message: message.clone(),
+                    span: span.clone(),
                 })),
                 diagnostics: diagnostics.clone(),
             })
@@ -77,21 +77,21 @@ pub fn keyed_collection_parts(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<KeyedCollectionParts>> {
-    if (node_is_keyed_collection(n.clone(), source_indices)
+    if (crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone())
         && ((n.children.clone().len() as i64) >= 2))
     {
         match n.children.clone().first().cloned() {
-            Some(key_child) => match n.children.clone().get(1 as usize).cloned() {
+            Some(key_child) => match n.children.clone().iter().cloned().skip(1 as usize).next() {
                 Some(value_child) => Some(Rc::new(KeyedCollectionParts {
-                    key_type: resolved_type(key_child.clone()),
-                    value_type: resolved_type(value_child.clone()),
+                    key_type: crate::v1_compiler_infer_types::resolved_type(key_child.clone()),
+                    value_type: crate::v1_compiler_infer_types::resolved_type(value_child.clone()),
                 })),
-                None => None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         }
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -103,26 +103,33 @@ pub fn check_index_access_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
-        let normed = normalize_access_type_node(base_type);
-        let normed_index = normalize_access_type_node(index_type);
-        let base_is_string =
-            node_type_equals(normed.clone(), string_type(), source_indices.clone());
-        let index_is_int =
-            node_type_equals(normed_index.clone(), int_type(), source_indices.clone());
-        if base_is_string {
+        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(base_type.clone());
+        let normed_index =
+            crate::v1_compiler_infer_types::normalize_access_type_node(index_type.clone());
+        let base_is_string = crate::v1_compiler_infer_types::node_type_equals(
+            normed.clone(),
+            string_type(),
+            source_indices.clone(),
+        );
+        let index_is_int = crate::v1_compiler_infer_types::node_type_equals(
+            normed_index.clone(),
+            int_type(),
+            source_indices.clone(),
+        );
+        if base_is_string.clone() {
             {
-                let diags = if index_is_int {
+                let diags = if index_is_int.clone() {
                     Rc::new(vec![])
                 } else {
                     Rc::new(vec![access_error(
                         "string index requires an Int index".to_string(),
                         span.clone(),
-                        module_name,
+                        module_name.clone(),
                     )])
                 };
                 access_result(
                     string_type(),
-                    diags,
+                    diags.clone(),
                     span.clone(),
                     "invalid string index access".to_string(),
                 )
@@ -130,53 +137,59 @@ pub fn check_index_access_node(
         } else {
             match keyed_collection_parts(normed.clone(), source_indices.clone()) {
                 Some(parts) => {
-                    let key_diags = if node_type_equals(
+                    let key_diags = if crate::v1_compiler_infer_types::node_type_equals(
                         parts.key_type.clone(),
                         normed_index.clone(),
                         source_indices.clone(),
                     ) {
                         Rc::new(vec![])
                     } else {
-                        Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name)])
+                        Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name.clone())])
                     };
                     access_result(
-                        with_optional_cardinality(parts.value_type.clone()),
-                        key_diags,
+                        crate::v1_std_core::with_optional_cardinality(parts.value_type.clone()),
+                        key_diags.clone(),
                         span.clone(),
                         "invalid keyed collection index access".to_string(),
                     )
                 }
-                None => {
-                    if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
+                std::option::Option::None => {
+                    if crate::v1_compiler_infer_types::node_is_keyed_collection(
+                        normed.clone(),
+                        source_indices.clone(),
+                    ) {
                         {
                             let malformed_diags = Rc::new(vec![access_error(
                                 "malformed keyed collection type in index access".to_string(),
                                 span.clone(),
-                                module_name,
+                                module_name.clone(),
                             )]);
                             access_result(
                                 unit_type(),
-                                malformed_diags,
+                                malformed_diags.clone(),
                                 span.clone(),
                                 "malformed keyed collection type in index access".to_string(),
                             )
                         }
                     } else {
-                        if ((is_ordered_element_collection(authored_name_at(
-                            source_indices.clone(),
+                        if ((crate::std_types::is_ordered_element_collection(
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                normed.clone(),
+                            ),
+                        ) && crate::v1_compiler_infer_types::node_is_element_collection(
                             normed.clone(),
-                        )) && node_is_element_collection(
-                            normed.clone(),
                             source_indices.clone(),
-                        )) && index_is_int)
+                        )) && index_is_int.clone())
                         {
                             {
-                                let elem = for_each_element_type_node(
-                                    normed.clone(),
-                                    source_indices.clone(),
-                                );
+                                let elem =
+                                    crate::v1_compiler_infer_types::for_each_element_type_node(
+                                        normed.clone(),
+                                        source_indices.clone(),
+                                    );
                                 access_result(
-                                    with_optional_cardinality(elem),
+                                    crate::v1_std_core::with_optional_cardinality(elem.clone()),
                                     Rc::new(vec![]),
                                     span.clone(),
                                     "list index access".to_string(),
@@ -184,10 +197,10 @@ pub fn check_index_access_node(
                             }
                         } else {
                             {
-                                let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name)]);
+                                let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
                                 access_result(
                                     unit_type(),
-                                    diags,
+                                    diags.clone(),
                                     span.clone(),
                                     "invalid index access".to_string(),
                                 )
@@ -209,19 +222,35 @@ pub fn check_slice_access_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
-        let normed_base = normalize_access_type_node(base_type);
-        let base_is_string = node_type_equals(normed_base, string_type(), source_indices.clone());
-        let base_diags = if base_is_string {
+        let normed_base =
+            crate::v1_compiler_infer_types::normalize_access_type_node(base_type.clone());
+        let base_is_string = crate::v1_compiler_infer_types::node_type_equals(
+            normed_base.clone(),
+            string_type(),
+            source_indices.clone(),
+        );
+        let base_is_list = (crate::std_types::is_ordered_element_collection(
+            crate::v1_std_core::authored_name_at(source_indices.clone(), normed_base.clone()),
+        ) && crate::v1_compiler_infer_types::node_is_element_collection(
+            normed_base.clone(),
+            source_indices.clone(),
+        ));
+        let base_diags = if (base_is_string.clone() || base_is_list.clone()) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![access_error(
-                "slice is only supported for String values".to_string(),
+                "slice is only supported for String and list values".to_string(),
                 span.clone(),
                 module_name.clone(),
             )])
         };
-        let normed_start = normalize_access_type_node(start_type);
-        let start_diags = if node_type_equals(normed_start, int_type(), source_indices.clone()) {
+        let normed_start =
+            crate::v1_compiler_infer_types::normalize_access_type_node(start_type.clone());
+        let start_diags = if crate::v1_compiler_infer_types::node_type_equals(
+            normed_start.clone(),
+            int_type(),
+            source_indices.clone(),
+        ) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![access_error(
@@ -230,8 +259,13 @@ pub fn check_slice_access_node(
                 module_name.clone(),
             )])
         };
-        let normed_end = normalize_access_type_node(end_type);
-        let end_diags = if node_type_equals(normed_end, int_type(), source_indices.clone()) {
+        let normed_end =
+            crate::v1_compiler_infer_types::normalize_access_type_node(end_type.clone());
+        let end_diags = if crate::v1_compiler_infer_types::node_type_equals(
+            normed_end.clone(),
+            int_type(),
+            source_indices.clone(),
+        ) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![access_error(
@@ -240,10 +274,22 @@ pub fn check_slice_access_node(
                 module_name.clone(),
             )])
         };
-        let all_diags = v1_rt::concat(v1_rt::concat(base_diags, start_diags), end_diags);
+        let all_diags = v1_rt::concat(
+            v1_rt::concat(base_diags.clone(), start_diags.clone()),
+            end_diags.clone(),
+        );
+        let slice_result_type = if base_is_string.clone() {
+            string_type()
+        } else {
+            if base_is_list.clone() {
+                normed_base.clone()
+            } else {
+                string_type()
+            }
+        };
         access_result(
-            string_type(),
-            all_diags,
+            slice_result_type.clone(),
+            all_diags.clone(),
             span.clone(),
             "invalid slice access".to_string(),
         )

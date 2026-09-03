@@ -1,0 +1,100 @@
+module std.decl_ref
+
+import std.types { NonEmptyStr }
+
+type DeclField
+  = WholeDeclaration
+  | NamedField { field_name: NonEmptyStr }
+
+type DeclarationRef {
+  module_path: NonEmptyStr
+  decl_name: NonEmptyStr
+  field: DeclField
+}
+
+// The constructors live HERE, beside the type they construct — single authority (DESIGN section 3).
+// Two parallel lanes each minted an identical fn decl_ref/decl_field_ref pair
+// (std.primitive_identity and std.roster_frontier, both 2026-08-01), and because v1-seed fn names
+// are not module-scoped, any closure containing both modules refused every bare decl_ref reference
+// as ambiguous — the collision that redded the primitive_identity_join witness closure on main.
+// Both duplicates are deleted in favor of these; a module needing a DeclarationRef imports the
+// constructor from the type's own module, never re-mints it.
+
+// WHETHER A TRUE CITATION IS EVEN ASKABLE OF THE RESOLVER. Distinct from whether it resolves:
+// `v2.std.decl_index` `decl_facts` SKIPS TEST .dag FILES DELIBERATELY (gunbc.ci_layer_roots records
+// the exclusion in the row that exists because a second walk must NOT skip them), so a declaration
+// authored in a witness module is absent from the index while its MODULE is present in
+// `module_declaration_facts_live`. A reference to it is TRUE and UNRESOLVABLE at once: resolution
+// answers "does this name a real declaration", coverage answers "is this declaration inside the
+// universe the resolver indexes".
+//
+// This exists so the second answer is CARRIED AND COUNTED rather than handled by dropping the row
+// from a population. A carrier excluding its uncitable rows would report a green meaning "nothing
+// left to check"; carrying the disposition makes it "N resolved, M outside the index, here is which
+// and why" — the number stays readable.
+// One axis, one variant per reason a declaration sits outside the index — NOT a wrapper carrying a
+// nested class enum. A single-variant coproduct is read as a type ALIAS here, the §3 hollow-alias
+// shape, and, measured, does not even export its name.
+type CitationIndexCoverage
+  = CitableThroughDeclIndex
+  | OutsideDeclIndexTestWitnessModule
+
+fn citation_is_outside_index(coverage: CitationIndexCoverage) -> Bool {
+  match coverage {
+    CitableThroughDeclIndex => false
+    OutsideDeclIndexTestWitnessModule => true
+  }
+}
+
+fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn decl_field_ref(module_path: String, decl_name: String, field_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: NamedField { field_name: field_name as NonEmptyStr },
+  }
+}
+
+fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
+  match a {
+    WholeDeclaration =>
+      match b {
+        WholeDeclaration => true
+        NamedField { field_name: _ } => false
+      }
+    NamedField { field_name: fa } =>
+      match b {
+        WholeDeclaration => false
+        NamedField { field_name: fb } => fa == fb
+      }
+  }
+}
+
+fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  a.module_path == b.module_path
+    && a.decl_name == b.decl_name
+    && decl_field_eq(a: a.field, b: b.field)
+}
+
+fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
+  fold(refs, init: false, f: fn(acc, r) { acc || declaration_ref_eq(a: target, b: r) })
+}
+
+fn declaration_ref_display_key(ref: DeclarationRef) -> String {
+  match ref.field {
+    WholeDeclaration =>
+      concat(ref.module_path as String, concat("::", ref.decl_name as String))
+    NamedField { field_name: f } =>
+      concat(
+        ref.module_path as String,
+        concat("::", concat(ref.decl_name as String, concat("::", f as String))),
+      )
+  }
+}

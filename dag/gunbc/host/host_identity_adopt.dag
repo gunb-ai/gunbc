@@ -1,0 +1,192 @@
+module gunbc.host_identity_adopt
+
+
+type HostIdentityAdoptReceipt {
+  host: HostIdentity
+  key: HostIdentityKnobKey
+  observed_short_hostname: String
+  probed_at: NonEmptyStr
+  transport_label: String
+  model_hash: ContentHash
+  deployed_intent: DeployedIntentV0
+  read_converged: Bool
+}
+
+data gunbc_host_identity_adopt_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "ADOPT-BASE phase-0 live consumer: modeled hostname -s read over host_effect SshShell transport -> HostIdentityObservation -> DeployedIntentV0 recording OBSERVED base. Adoption records actual base so a later converge diff is honest; adoption != drift correction. host_identity_adopt_*_wet runs ONCE per host and its receipt is the thing an operator hand-commits as one of the gunbc.deployed_intent_v0 persisted rows (gunbc_srv1_deployed_intent_v0_persisted, gunbc_srv2_deployed_intent_v0_persisted) — converge (gunbc.host_identity_assimilation) never calls back into this module's live functions, it takes the persisted DeployedIntentV0 as an argument."
+}
+
+data gunbc_host_identity_adopt_model_marker: NonEmptyStr = "gunbc.host_identity_adopt.v0"
+
+fn host_identity_observed_probed_at() -> NonEmptyStr {
+  clock_now_probed_at_or_unknown()
+}
+
+fn srv1_host_identity_ssh_transport() -> HostEffectTransport {
+  SshShell { ssh_host: operator_host_srv1 as NonEmptyStr }
+}
+
+fn srv1_host_identity_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+fn srv2_host_identity_ssh_transport() -> HostEffectTransport {
+  SshShell { ssh_host: operator_host_srv2 as NonEmptyStr }
+}
+
+fn srv2_host_identity_os_target() -> NodeControlPlane {
+  HostOs { node: srv2_host }
+}
+
+fn host_identity_transport_label(transport: HostEffectTransport) -> String {
+  match transport {
+    SshShell { ssh_host: h } => concat("SshShell:", h)
+    FleetSsh { target: t, context: _ } => concat("FleetSsh:", t.endpoint as String)
+    LocalShell => "LocalShell"
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => "EmitArtifactThenThinRun"
+  }
+}
+
+fn host_identity_adopt_model_hash() -> ContentHash {
+  content_hash_atom(value: gunbc_host_identity_adopt_model_marker)
+}
+
+fn host_identity_adopt_receipt(
+  fleet_slot: HostIdentity,
+  target_host: ComputeHost,
+  observation: HostIdentityObservation,
+  transport: HostEffectTransport,
+  read_converged: Bool,
+) -> HostIdentityAdoptReceipt {
+  HostIdentityAdoptReceipt {
+    host: fleet_slot,
+    key: host_identity_knob_key(host: fleet_slot),
+    observed_short_hostname: observation.short_hostname,
+    probed_at: observation.probed_at,
+    transport_label: host_identity_transport_label(transport: transport),
+    model_hash: host_identity_adopt_model_hash(),
+    deployed_intent: deployed_intent_v0_adopt_observed_base(
+      fleet_slot: fleet_slot,
+      target_host: target_host,
+      observation: observation,
+    ),
+    read_converged: read_converged,
+  }
+}
+
+fn host_identity_adopt_live(
+  fleet_slot: HostIdentity,
+  target_host: ComputeHost,
+  target: NodeControlPlane,
+  transport: HostEffectTransport,
+  probed_at: NonEmptyStr,
+) -> HostIdentityAdoptReceipt? {
+  let r = host_identity_observation_apply(target: target, transport: transport)
+  let converged = reconciliation_converged(r: r)
+  match host_identity_observation_from_apply(r: r, probed_at: probed_at) {
+    Present { value: obs } =>
+      Present {
+        value: host_identity_adopt_receipt(
+          fleet_slot: fleet_slot,
+          target_host: target_host,
+          observation: obs,
+          transport: transport,
+          read_converged: converged,
+        )
+      }
+    Absent => none
+  }
+}
+
+fn host_identity_adopt_srv1_live(probed_at: NonEmptyStr) -> HostIdentityAdoptReceipt? {
+  host_identity_adopt_live(
+    fleet_slot: operator_host_srv1,
+    target_host: srv1_host,
+    target: srv1_host_identity_os_target(),
+    transport: srv1_host_identity_ssh_transport(),
+    probed_at: probed_at,
+  )
+}
+
+fn host_identity_adopt_srv2_live(probed_at: NonEmptyStr) -> HostIdentityAdoptReceipt? {
+  host_identity_adopt_live(
+    fleet_slot: operator_host_srv2,
+    target_host: srv2_host,
+    target: srv2_host_identity_os_target(),
+    transport: srv2_host_identity_ssh_transport(),
+    probed_at: probed_at,
+  )
+}
+
+fn host_identity_adopt_receipt_is_valid(receipt: HostIdentityAdoptReceipt) -> Bool {
+  receipt.read_converged
+    && host_identity_observation_nonempty(obs: receipt.deployed_intent.observation)
+    && receipt.key.host == receipt.host
+}
+
+fn host_identity_adopt_receipt_message(receipt: HostIdentityAdoptReceipt) -> String {
+  concat(
+    concat("host_identity_adopt: PASS host=", receipt.host, " observed=", receipt.observed_short_hostname),
+    concat(" probed_at=", receipt.probed_at, " transport=", receipt.transport_label)
+  )
+}
+
+fn host_identity_receipt_emit(message: String) -> Bool {
+  reconciliation_converged(
+    r: host_effect_apply(
+      target: HostOs { node: srv1_host },
+      effect: Srv3ReceiptEmit { lines: [message] },
+      evidence: host_effect_identity_evidence,
+      transport: LocalShell,
+    )
+  )
+}
+
+fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
+  if host_identity_adopt_receipt_is_valid(receipt: receipt) {
+    let _announced = host_identity_receipt_emit(message: host_identity_adopt_receipt_message(receipt: receipt))
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: concat(
+        "host_identity_adopt: FAIL invalid adopt receipt — observed=",
+        deployed_intent_observed_short_hostname(d: receipt.deployed_intent)
+      )
+    )
+  }
+}
+
+fn host_identity_adopt_wet(
+  live: fn(NonEmptyStr) -> HostIdentityAdoptReceipt?,
+) -> ProcessExit {
+  let probed_at = host_identity_observed_probed_at()
+  match live(probed_at) {
+    Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)
+    Absent =>
+      exit_failure(
+        reason: "host_identity_adopt: FAIL hostname read did not converge to a typed observation"
+      )
+  }
+}
+
+func host_identity_adopt_srv1_wet() -> ProcessExit {
+  let probed_at = host_identity_observed_probed_at()
+  match host_identity_adopt_srv1_live(probed_at: probed_at) {
+    Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)
+    Absent =>
+      exit_failure(
+        reason: "host_identity_adopt: FAIL hostname read did not converge to a typed observation"
+      )
+  }
+}
+
+func host_identity_adopt_srv2_wet() -> ProcessExit {
+  let probed_at = host_identity_observed_probed_at()
+  match host_identity_adopt_srv2_live(probed_at: probed_at) {
+    Present { value: receipt } => host_identity_adopt_exit(receipt: receipt)
+    Absent =>
+      exit_failure(
+        reason: "host_identity_adopt: FAIL hostname read did not converge to a typed observation"
+      )
+  }
+}

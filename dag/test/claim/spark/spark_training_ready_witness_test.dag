@@ -1,0 +1,307 @@
+module test.claim.spark.spark_training_ready_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.serving_terminal_health {
+  SparkServingProbeCapture,
+  ProbeNeverRan,
+  ProbeFailed,
+  ProbeAnswered,
+}
+import gunbc.spark.training_ready {
+  SparkServingAbsence,
+  ServingAbsent,
+  ServingStillPresent,
+  ServingAbsenceUnobserved,
+  SparkServingRetirementObservation,
+  SparkUnifiedPoolObservation,
+  SparkTrainingReadiness,
+  SparkTrainingReady,
+  SparkTrainingNotReady,
+  spark_training_readiness,
+  spark_serving_absence_from_probe,
+  spark_serving_absence_refusal,
+  SparkServingAbsenceEvidence,
+  spark_serving_endpoint_absence_evidence,
+  spark_serving_unit_absence_evidence,
+  spark_serving_retirement_observation_from_probes,
+  spark_unified_pool_observation_from_capture,
+  SparkUnifiedPoolReading,
+  SparkUnifiedPoolRead,
+  SparkUnifiedPoolUnread,
+}
+
+// SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the
+// corpus can still author — an unreached probe read as absence, a reading paired with an
+// unestablished retirement, a capture whose body is not a count, a serving cell presented as
+// trainable — so none of these claims is green by construction. Three states that USED to be
+// authorable are absent from this file rather than asserted: a pool measured before the retirement,
+// a pool naming a different host than its retirement, and a capacity passed beside the capture
+// instead of parsed from it. Each lost its constructor when the carrier absorbed the fact, and the
+// refusals they used to prove moved into the producer's claims.
+
+// THE FIXTURES GO THROUGH THE PRODUCERS, BECAUSE THE CARRIERS REFUSED TO BE FABRICATED.
+//
+// The first draft of this file constructed SparkServingRetirementObservation and
+// SparkUnifiedPoolObservation directly and did not compile: both are sole_constructor, and the
+// compiler refused construction outside their defining module. That refusal is the wall doing its
+// job on its own witness, and the repair is the right one -- a fixture now assembles the same
+// probe captures a real run would, so these claims exercise the decode path rather than asserting
+// past it.
+// EACH AXIS IS HANDED THE EVIDENCE ITS OWN TOOL PRODUCES, WHICH THE FIRST DRAFT DID NOT DO.
+//
+// One helper built every axis from `ProbeFailed { exit_code: 7 }`, which is curl's vocabulary and
+// nothing else's. pgrep exits 1 to mean nothing matched, the unit query proves absence by ANSWERING
+// `not-found`, and the endpoint enumerates. So the shared fixture was asserting a retirement out of
+// three captures only one of which its decoder could read -- and the positive control was FAILING
+// while the file reported green, because it had not been re-run after the decoder was made
+// discriminating. A fixture that speaks one tool's language for three tools is the same conflation
+// the decoder itself was repaired for.
+fn w_process_absent_capture() -> SparkServingProbeCapture {
+  ProbeFailed { exit_code: 1, stderr: "" }
+}
+
+fn w_unit_absent_capture() -> SparkServingProbeCapture {
+  ProbeAnswered { stdout: "not-found" }
+}
+
+// THE ENDPOINT AXIS IS ABSENT WHEN THE ENUMERATION COMPLETED AND FOUND NOTHING, which is a
+// successful answer carrying an empty population -- not a dial that failed to connect.
+fn w_endpoint_absent_capture() -> SparkServingProbeCapture {
+  ProbeAnswered { stdout: "" }
+}
+
+fn w_retired(host: HostIdentity) -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: host,
+    endpoint_capture: w_endpoint_absent_capture(),
+    process_capture: w_process_absent_capture(),
+    unit_capture: w_unit_absent_capture(),
+  )
+}
+
+fn w_retired_srv6() -> SparkServingRetirementObservation {
+  w_retired(host: operator_host_srv6)
+}
+
+// ONE AXIS SILENT, THE OTHER TWO POSITIVELY ABSENT. The axis under test is handed a capture that
+// never ran, so a rule requiring only "no axis answered" would pass all three of these. Three
+// fixtures rather than one parameterised by axis name: selecting on a string would put a second,
+// stringly spelling of the axis beside the three fields that already name them.
+fn w_silent_capture() -> SparkServingProbeCapture {
+  ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr }
+}
+
+fn w_retired_endpoint_silent() -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: operator_host_srv6,
+    endpoint_capture: w_silent_capture(),
+    process_capture: w_process_absent_capture(),
+    unit_capture: w_unit_absent_capture(),
+  )
+}
+
+fn w_retired_process_silent() -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: operator_host_srv6,
+    endpoint_capture: w_endpoint_absent_capture(),
+    process_capture: w_silent_capture(),
+    unit_capture: w_unit_absent_capture(),
+  )
+}
+
+fn w_retired_unit_silent() -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: operator_host_srv6,
+    endpoint_capture: w_endpoint_absent_capture(),
+    process_capture: w_process_absent_capture(),
+    unit_capture: w_silent_capture(),
+  )
+}
+
+// THE FIXTURE HANDS OVER A READ, NOT A NUMBER. The stdout IS the quantity now -- a decimal
+// MemAvailable count in kibibytes -- so a claim cannot assert a capacity the capture does not carry.
+fn w_pool_or_refused(
+  meminfo_stdout: String,
+  after: SparkServingRetirementObservation,
+) -> SparkUnifiedPoolObservation? {
+  match spark_unified_pool_observation_from_capture(
+    capture: ProbeAnswered { stdout: meminfo_stdout },
+    after: after,
+  ) {
+    SparkUnifiedPoolRead { observation: o } => Present { value: o }
+    SparkUnifiedPoolUnread { cause: _ } => none
+  }
+}
+
+fn w_readiness(
+  retirement: SparkServingRetirementObservation,
+  meminfo_stdout: String,
+) -> Bool {
+  match w_pool_or_refused(meminfo_stdout: meminfo_stdout, after: retirement) {
+    Absent => false
+    Present { value: pool } =>
+      match spark_training_readiness(pool: pool) {
+        SparkTrainingReady { proof: _ } => true
+        SparkTrainingNotReady { cause: _ } => false
+      }
+  }
+}
+
+test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
+  w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "97656250")
+}
+
+// THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.
+//
+// srv5's retirement observation is deliberately WELL-FORMED and fully absent here. If role were not
+// consulted, this input would be indistinguishable from srv6's and would pass. It refuses on role
+// alone, which is what "srv5 is statically reserved" has to mean to be worth anything.
+test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() -> Bool {
+  !w_readiness(
+    retirement: w_retired(host: operator_host_srv5),
+    meminfo_stdout: "97656250",
+  )
+}
+
+// AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
+test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
+  !w_readiness(retirement: w_retired_endpoint_silent(), meminfo_stdout: "97656250")
+    && !w_readiness(retirement: w_retired_process_silent(), meminfo_stdout: "97656250")
+    && !w_readiness(retirement: w_retired_unit_silent(), meminfo_stdout: "97656250")
+}
+
+// A SERVER THAT ANSWERED IS THE LOUD ARM: the retirement did not happen.
+test fn w_a_still_serving_endpoint_refuses() -> Bool {
+  !w_readiness(
+    retirement: spark_serving_retirement_observation_from_probes(
+      host: operator_host_srv6,
+      endpoint_capture: ProbeAnswered { stdout: "LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:*" },
+      process_capture: w_process_absent_capture(),
+      unit_capture: w_unit_absent_capture(),
+    ),
+    meminfo_stdout: "97656250",
+  )
+}
+
+// A POOL READING OVER AN UNESTABLISHED RETIREMENT REFUSES, WHICH IS WHERE THE ORDERING NOW LIVES.
+//
+// The claim this replaces asserted that a pool flagged `observed_after_retirement: false` refused.
+// That state has no constructor any more: the reading carries the retirement observation it
+// followed, so a caller cannot describe a measurement taken before the retirement -- the value
+// proving the ordering did not exist until the retirement was observed. Per the dissolution rule the
+// production check went away and its discriminating RED did not: the same input is now refused one
+// stage earlier, by the producer, and this is that refusal.
+test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool {
+  match spark_unified_pool_observation_from_capture(
+    capture: ProbeAnswered { stdout: "97656250" },
+    after: w_retired_endpoint_silent(),
+  ) {
+    SparkUnifiedPoolUnread { cause: c } => length(c as String) > 0
+    SparkUnifiedPoolRead { observation: _ } => false
+  }
+}
+
+// A BODY THAT IS NOT A DECIMAL COUNT IS A READ OF SOMETHING THAT IS NOT THE POOL.
+//
+// The claim this joins is the one the previous shape could not author at all: the quantity used to
+// arrive as a ByteSize parameter, so ANY answered capture -- including this one -- certified whatever
+// number the caller passed. Now the text is the measurement, and text that does not parse refuses.
+test fn w_a_capture_whose_body_is_not_a_count_is_refused() -> Bool {
+  match spark_unified_pool_observation_from_capture(
+    capture: ProbeAnswered { stdout: "MemAvailable:   97656250 kB" },
+    after: w_retired_srv6(),
+  ) {
+    SparkUnifiedPoolUnread { cause: c } => length(c as String) > 0
+    SparkUnifiedPoolRead { observation: _ } => false
+  }
+}
+
+test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
+  !w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "0")
+}
+
+// A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A COUNT AT ALL, which is now true by construction
+// rather than by a check: there is no quantity parameter left to pass beside a probe that never ran.
+test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
+  match spark_unified_pool_observation_from_capture(
+    capture: ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr },
+    after: w_retired_srv6(),
+  ) {
+    SparkUnifiedPoolUnread { cause: _ } => true
+    SparkUnifiedPoolRead { observation: _ } => false
+  }
+}
+
+// A CONNECT FAILURE IS NOT ABSENCE, AND THIS IS THE CLAIM THE PREVIOUS EVIDENCE FAILED.
+//
+// The endpoint axis read curl exit 7 as proof that nothing was listening. curl(1) documents 7 as
+// "failed to connect to host or proxy" -- it does not separate a refused port from an unreachable
+// host, an intervening proxy, or any other connect failure. So the axis now enumerates listening
+// sockets, and these claims pin both halves: a completed enumeration with no rows establishes
+// absence, and nothing else does. Every input below was ACCEPTED as absence by the previous
+// evidence, so this claim is red against it.
+fn w_absence_established(a: SparkServingAbsence) -> Bool {
+  match spark_serving_absence_refusal(a: a) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn w_endpoint_absence(capture: SparkServingProbeCapture) -> SparkServingAbsence {
+  spark_serving_absence_from_probe(
+    subject: "endpoint" as NonEmptyStr,
+    evidence: spark_serving_endpoint_absence_evidence(),
+    capture: capture,
+  )
+}
+
+test fn w_only_a_completed_empty_enumeration_establishes_endpoint_absence() -> Bool {
+  w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "" }))
+    && w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "  \n " }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:*" }))
+}
+
+// THE CONNECT-FAILURE CODES ESTABLISH NOTHING, INCLUDING THE ONE THAT USED TO MEAN ABSENCE.
+//
+// 7 is listed first deliberately: under the superseded evidence it was the single code that PROVED
+// retirement, and it now proves no more than 6 or 28 do.
+test fn w_a_connect_failure_never_establishes_endpoint_absence() -> Bool {
+  !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "failed to connect to host" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 6, stderr: "could not resolve host" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 28, stderr: "operation timed out" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 1, stderr: "enumeration failed" }))
+}
+
+test fn w_an_enumeration_that_never_ran_establishes_no_endpoint_absence() -> Bool {
+  !w_absence_established(a: w_endpoint_absence(capture: ProbeNeverRan { cause: "host unreachable" as NonEmptyStr }))
+}
+
+// THE UNIT AXIS PROVES ABSENCE BY ANSWERING, WHICH IS WHY ONE RULE COULD NOT COVER ALL THREE.
+//
+// systemctl show exits ZERO and prints `not-found`; systemd's own authority records that a nonzero
+// there means the MANAGER was unreadable. So on this axis the old "nonzero means gone" rule was not
+// merely too broad, it was inverted -- and this claim is red under it in both directions.
+fn w_unit_absence(capture: SparkServingProbeCapture) -> SparkServingAbsence {
+  spark_serving_absence_from_probe(
+    subject: "unit" as NonEmptyStr,
+    evidence: spark_serving_unit_absence_evidence(),
+    capture: capture,
+  )
+}
+
+test fn w_the_unit_axis_establishes_absence_by_answering_not_by_failing() -> Bool {
+  w_absence_established(a: w_unit_absence(capture: ProbeAnswered { stdout: "not-found" }))
+    && !w_absence_established(a: w_unit_absence(capture: ProbeAnswered { stdout: "loaded" }))
+    && !w_absence_established(a: w_unit_absence(capture: ProbeFailed { exit_code: 1, stderr: "failed to connect to bus" }))
+}
+
+// THE REFUSAL NAMES EVERY UNSATISFIED AXIS, NOT THE FIRST. An operator deciding whether to re-probe
+// or re-run the retirement needs all of them.
+test fn w_the_refusal_carries_a_cause_rather_than_a_bare_negative() -> Bool {
+  match spark_serving_absence_refusal(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "failed to connect to host" })) {
+    Present { value: c } => length(c as String) > 0
+    Absent => false
+  }
+}

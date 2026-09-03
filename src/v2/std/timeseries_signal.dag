@@ -1,8 +1,16 @@
 module v2.std.timeseries_signal
 
-import v2.std.algebra { Cons, Empty, fold_list, fold_list_right }
-import v2.std.collection { List, Optional, Absent, Present }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, fold_list_right }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional,
+  Absent,
+  Present
+}
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, invariant_port_locus }
 import v2.std.integer { Int, int_add, int_div, int_mul }
 import v2.std.logic { Bool }
 import std.measure {
@@ -95,9 +103,19 @@ fn duration_micro_count(t: DurationMicro) -> Int {
   t.count
 }
 
+// A CIRCUIT NODE'S NAME, BRANDED. It was a substrate Symbol, which sounds stronger than String
+// and was in fact weaker for this purpose: nothing in this module or downstream read a Symbol
+// structurally, and the only route from one to text anywhere in the pipeline was a five-entry
+// lookup table in the SPICE format module, so a node name that reached emission simply had no
+// spelling. What the name has to do is BE a spelling that survives to a netlist, so it carries
+// one. The brand is nominal — it does not validate, and per-target lexical admission is the
+// target's job (v2.extdeps.formats.spice admits or refuses one) — but it keeps a node name from
+// being compared to an arbitrary String by accident, which the Symbol did not do either.
+type CircuitNodeName = String where brand("CircuitNodeName")
+
 type PotentialReference
   = GroundReference
-  | NodeReference { name: Symbol }
+  | NodeReference { name: CircuitNodeName }
 
 type AbsolutePotential {
   reference: PotentialReference
@@ -134,7 +152,7 @@ type PassiveElementValue {
 }
 
 type PassiveElementTopology {
-  name: Symbol
+  name: CircuitNodeName
   n_plus: PotentialReference
   n_minus: PotentialReference
   value: PassiveElementValue
@@ -156,7 +174,7 @@ fn potential_reference_eq(
     }
     NodeReference { name: left_name } => match right {
       GroundReference => false
-      NodeReference { name: right_name } => left_name == right_name
+      NodeReference { name: right_name } => (left_name as String) == (right_name as String)
     }
   }
 }
@@ -236,7 +254,7 @@ type StepBranchVoltage {
 }
 
 type TimeSeriesSample {
-  tick: Nat
+  tick: v2.std.nat.Nat
   microvolts: Voltage
 }
 
@@ -309,7 +327,7 @@ fn capacitor_fold_step(
   match int_div(
     a: new_charge,
     b: capacitance_micro_count(element.rating.microfarads),
-    at: port_locus(port: timeseries_passive_fold_step_locus),
+    at: invariant_port_locus(port: timeseries_passive_fold_step_locus, invariant: ^integer_div_by_zero),
   ) {
     Accepted { value: v, diagnostics: _ } =>
       Accepted {
@@ -319,7 +337,7 @@ fn capacitor_fold_step(
           }
           charge_microcoulombs: charge_micro(new_charge)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -333,7 +351,7 @@ fn fold_capacitor_transient(
 ) -> Outcome<CapacitorState> {
   fold_list(
     xs: currents,
-    empty: Accepted { value: initial, diagnostics: None },
+    empty: Accepted { value: initial, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, current) {
       match acc {
         Accepted { value: state, diagnostics: _ } =>
@@ -380,7 +398,7 @@ fn inductor_fold_step(
   match int_div(
     a: new_flux,
     b: inductance_micro_count(element.rating.microhenries),
-    at: port_locus(port: timeseries_passive_fold_step_locus),
+    at: invariant_port_locus(port: timeseries_passive_fold_step_locus, invariant: ^integer_div_by_zero),
   ) {
     Accepted { value: i, diagnostics: _ } =>
       Accepted {
@@ -390,7 +408,7 @@ fn inductor_fold_step(
           }
           flux_microwebers: flux_micro(new_flux)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }

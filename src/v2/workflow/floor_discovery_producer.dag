@@ -1,0 +1,925 @@
+module v2.workflow.floor_discovery_producer
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.algebra { trim }
+
+import v2.compiler.discovery_enumeration {
+  OwnedBoolWitnessClaimInit,
+  OwnedDataDeclInitializer,
+  OwnedDataDeclRecord,
+  OwnedNodeCorpusInit,
+  OwnedOtherInit
+}
+import v2.workflow.floor_discovery {
+  FloorDiscoveryRow,
+  FloorDiscoverySidecarKind,
+  FloorDiscoverySidecarViolation
+}
+import v2.workflow.floor_naming_hygiene {
+  floor_entry_is_barren_test_sidecar,
+  floor_test_marked_decl_allowed_in_entry,
+  floor_wire_contract_decl_allowed_in_entry,
+  floor_test_sidecar_suffix,
+  floor_wire_contract_sidecar_suffix,
+  floor_discovery_first_token_before_space,
+  floor_discovery_scan_test_decl_names
+}
+import v2.workflow.witness_admission { witness_row_excluded_from_discovery }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.algebra { any, length, fold_list }
+import v2.std.logic { Bool }
+import std.types { String, Int, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+type FloorDiscoveryProducerResult
+  = FloorDiscoveryAccepted { rows: List<FloorDiscoveryRow> }
+  | FloorDiscoveryRefused { reason: String }
+
+type FloorDiscoveryWalkState {
+  rows: List<FloorDiscoveryRow>
+  walk_failures: Int
+  walk_failure_path: Optional<String>
+  sidecar_violations: List<FloorDiscoverySidecarViolation>
+  disposition_refusal: Optional<String>
+}
+
+fn floor_discovery_walk_state_zero() -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: [],
+    walk_failures: 0,
+    walk_failure_path: optional_absent(),
+    sidecar_violations: [],
+    disposition_refusal: optional_absent()
+  }
+}
+
+fn floor_discovery_record_disposition_refusal(
+  state: FloorDiscoveryWalkState,
+  reason: String
+) -> FloorDiscoveryWalkState {
+  match state.disposition_refusal {
+    Present { value: _ } => state
+    Absent => FloorDiscoveryWalkState {
+      rows: state.rows,
+      walk_failures: state.walk_failures,
+      walk_failure_path: state.walk_failure_path,
+      sidecar_violations: state.sidecar_violations,
+      disposition_refusal: optional_present(value: reason)
+    }
+  }
+}
+
+fn floor_discovery_record_walk_failure(
+  state: FloorDiscoveryWalkState,
+  path: String
+) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: state.rows,
+    walk_failures: state.walk_failures + 1,
+    walk_failure_path: match state.walk_failure_path {
+      Present { value: _ } => state.walk_failure_path
+      Absent => optional_present(value: path)
+    },
+    sidecar_violations: state.sidecar_violations,
+    disposition_refusal: state.disposition_refusal
+  }
+}
+
+fn floor_discovery_walk_failure_refusal_reason(path_opt: Optional<String>) -> String {
+  match path_opt {
+    Present { value: path } => concat(
+      "filesystem operation failed during floor discovery walk at ",
+      path,
+      " (typed refusal, never empty roster)"
+    )
+    Absent => "filesystem operation failed during floor discovery walk (typed refusal, never empty roster)"
+  }
+}
+
+fn floor_discovery_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
+  any(
+    xs: exclude_substrings,
+    predicate: fn(sub) {
+      (sub != "") && string_contains(s: path, pattern: sub)
+    }
+  )
+}
+
+fn floor_discovery_before_first_equals(s: String) -> String {
+  fold(
+    split(s: s, delimiter: "="),
+    init: "__NONE__",
+    f: fn(acc, seg) {
+      if acc == "__NONE__" {
+        seg
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn floor_discovery_after_first_colon(s: String) -> String {
+  fold(
+    split(s: s, delimiter: ":"),
+    init: "__SKIP__",
+    f: fn(acc, seg) {
+      if acc == "__SKIP__" {
+        "__TAKE_NEXT__"
+      } else if acc == "__TAKE_NEXT__" {
+        seg
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE DECLARED TYPE OF A `data name: Type = value` LINE: the text between the first `:` and the
+// first `=`. It is read as a token, never searched for as a substring, because the first floor
+// run that consumed this fold (gunbc#9685, run 33267373258) refused
+// src/v2/test/claim/long/cwc_resolution_probe_test.dag -- a `String` data row whose VALUE is
+// probe source text spelling `: CoproductWireContract`. A substring test cannot tell a
+// declaration from a quotation of one; the declared-type position can.
+fn floor_discovery_data_line_declared_type(trimmed: String) -> String {
+  trim(
+    floor_discovery_before_first_equals(
+      s: floor_discovery_after_first_colon(s: trimmed)
+    )
+  )
+}
+
+fn floor_discovery_line_has_wire_contract_decl(line: String) -> Bool {
+  let trimmed = trim(line)
+  if starts_with(s: trimmed, prefix: "data ") {
+    let declared = floor_discovery_data_line_declared_type(trimmed: trimmed)
+    (declared == "CoproductWireContract") || (declared == "VariantEncoding")
+  } else {
+    false
+  }
+}
+
+fn floor_discovery_content_has_wire_contract_decl(content: String) -> Bool {
+  fold_list(
+    xs: split(s: content, delimiter: "\n"),
+    empty: false,
+    cons: fn(found, line) {
+      if found {
+        true
+      } else {
+        floor_discovery_line_has_wire_contract_decl(line: line)
+      }
+    }
+  )
+}
+
+fn floor_discovery_line_is_disposition_row(line: String) -> Bool {
+  let trimmed = trim(line)
+  if !starts_with(s: trimmed, prefix: "data live_tree_disposition") {
+    false
+  } else {
+    let after = substring(s: trimmed, start: 26, end: string_length(s: trimmed))
+    let head = trim(after)
+    (head != "") && (starts_with(s: head, prefix: ":") || starts_with(s: head, prefix: " "))
+  }
+}
+
+fn floor_discovery_malformed_disposition_reason(
+  entry_path: String,
+  detail: String
+) -> String {
+  concat(
+    "entry ",
+    entry_path,
+    " declares a malformed `live_tree_disposition` row (",
+    detail,
+    "); expected `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree | SubstrateInputsOnly` — no silent reclassification"
+  )
+}
+
+fn floor_discovery_after_first_equals(s: String) -> String {
+  fold(
+    split(s: s, delimiter: "="),
+    init: "__SKIP__",
+    f: fn(acc, seg) {
+      if acc == "__SKIP__" {
+        "__TAKE_NEXT__"
+      } else if acc == "__TAKE_NEXT__" {
+        seg
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn floor_discovery_last_dot_segment(s: String) -> String {
+  fold(
+    split(s: s, delimiter: "."),
+    init: "",
+    f: fn(acc, seg) {
+      if seg == "" {
+        acc
+      } else {
+        seg
+      }
+    }
+  )
+}
+
+fn floor_discovery_initializer_rest_is_strict_single_token(rest: String, token: String) -> Bool {
+  let trimmed = trim(rest)
+  if trimmed == token {
+    true
+  } else if starts_with(s: trimmed, prefix: token) {
+    let tail = trim(
+      substring(
+        s: trimmed,
+        start: string_length(s: token),
+        end: string_length(s: trimmed)
+      )
+    )
+    tail == ""
+  } else {
+    false
+  }
+}
+
+fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
+  let init_rest = trim(s: floor_discovery_after_first_equals(s: line))
+  let first_token = floor_discovery_first_token_before_space(seg: init_rest)
+  if (first_token == "")
+    || !floor_discovery_initializer_rest_is_strict_single_token(rest: init_rest, token: first_token)
+  {
+    optional_absent()
+  } else {
+    let variant = floor_discovery_last_dot_segment(s: first_token)
+    if variant == "SubstrateInputsOnly" {
+      optional_present(value: SubstrateInputsOnly)
+    } else if variant == "ReadsLiveTree" {
+      optional_present(value: ReadsLiveTree)
+    } else {
+      optional_absent()
+    }
+  }
+}
+
+type FloorDiscoveryDispositionFoldState {
+  refusal: Optional<String>
+  declared: Bool
+  disposition: Optional<LiveTreeDisposition>
+}
+
+fn floor_discovery_disposition_fold_zero() -> FloorDiscoveryDispositionFoldState {
+  FloorDiscoveryDispositionFoldState {
+    refusal: optional_absent(),
+    declared: false,
+    disposition: optional_absent()
+  }
+}
+
+fn floor_discovery_disposition_fold_line(
+  state: FloorDiscoveryDispositionFoldState,
+  entry_path: String,
+  line: String
+) -> FloorDiscoveryDispositionFoldState {
+  match state.refusal {
+    Present { value: _ } => state
+    Absent => {
+      if !floor_discovery_line_is_disposition_row(line: line) {
+        state
+      } else if !string_contains(s: line, pattern: "LiveTreeDisposition") {
+        FloorDiscoveryDispositionFoldState {
+          refusal: optional_present(
+            value: floor_discovery_malformed_disposition_reason(
+              entry_path: entry_path,
+              detail: "type annotation is not `LiveTreeDisposition`"
+            )
+          ),
+          declared: state.declared,
+          disposition: state.disposition
+        }
+      } else {
+        match floor_discovery_disposition_row_variant(line: line) {
+          Present { value: disposition } => {
+            if state.declared {
+              FloorDiscoveryDispositionFoldState {
+                refusal: optional_present(
+                  value: floor_discovery_malformed_disposition_reason(
+                    entry_path: entry_path,
+                    detail: "declared more than once in one entry"
+                  )
+                ),
+                declared: true,
+                disposition: state.disposition
+              }
+            } else {
+              FloorDiscoveryDispositionFoldState {
+                refusal: optional_absent(),
+                declared: true,
+                disposition: optional_present(value: disposition)
+              }
+            }
+          }
+          Absent => FloorDiscoveryDispositionFoldState {
+            refusal: optional_present(
+              value: floor_discovery_malformed_disposition_reason(
+                entry_path: entry_path,
+                detail: "unknown variant"
+              )
+            ),
+            declared: state.declared,
+            disposition: state.disposition
+          }
+        }
+      }
+    }
+  }
+}
+
+type FloorDiscoveryEntryLiveTreeOutcome
+  = EntryLiveTreeResolved { disposition: LiveTreeDisposition }
+  | EntryLiveTreeDispositionRefused { reason: String }
+
+fn floor_discovery_resolve_entry_live_tree(
+  entry_path: String,
+  content: String
+) -> FloorDiscoveryEntryLiveTreeOutcome {
+  let folded = fold(
+    split(s: content, delimiter: "\n"),
+    init: floor_discovery_disposition_fold_zero(),
+    f: fn(acc, line) {
+      floor_discovery_disposition_fold_line(
+        state: acc,
+        entry_path: entry_path,
+        line: line
+      )
+    }
+  )
+  match folded.refusal {
+    Present { value: reason } => EntryLiveTreeDispositionRefused { reason: reason }
+    Absent => match folded.disposition {
+      Present { value: disposition } => EntryLiveTreeResolved { disposition: disposition }
+      Absent => EntryLiveTreeResolved { disposition: ReadsLiveTree }
+    }
+  }
+}
+
+fn floor_discovery_entry_live_tree_disposition_refusal_for_content(
+  entry_path: String,
+  content: String
+) -> Optional<String> {
+  match floor_discovery_resolve_entry_live_tree(entry_path: entry_path, content: content) {
+    EntryLiveTreeDispositionRefused { reason: reason } => optional_present(value: reason)
+    EntryLiveTreeResolved { disposition: _ } => optional_absent()
+  }
+}
+
+fn floor_discovery_rows_contain_key(
+  rows: List<FloorDiscoveryRow>,
+  entry: String,
+  function: String
+) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(found, row) {
+      if found {
+        true
+      } else {
+        (row.entry == entry) && (row.function == function)
+      }
+    }
+  )
+}
+
+fn floor_discovery_append_row(
+  state: FloorDiscoveryWalkState,
+  row: FloorDiscoveryRow
+) -> FloorDiscoveryWalkState {
+  if floor_discovery_rows_contain_key(
+    rows: state.rows,
+    entry: row.entry,
+    function: row.function
+  ) {
+    state
+  } else {
+    FloorDiscoveryWalkState {
+      rows: concat(state.rows, [row]),
+      walk_failures: state.walk_failures,
+      walk_failure_path: state.walk_failure_path,
+      sidecar_violations: state.sidecar_violations,
+      disposition_refusal: state.disposition_refusal
+    }
+  }
+}
+
+fn floor_discovery_collect_sidecar_violation(
+  state: FloorDiscoveryWalkState,
+  entry_path: String,
+  kind: FloorDiscoverySidecarKind,
+  required_suffix: String
+) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: state.rows,
+    walk_failures: state.walk_failures,
+    walk_failure_path: state.walk_failure_path,
+    sidecar_violations: concat(state.sidecar_violations, [
+      FloorDiscoverySidecarViolation {
+        entry_path: entry_path,
+        kind: kind,
+        required_suffix: required_suffix
+      }
+    ]),
+    disposition_refusal: state.disposition_refusal
+  }
+}
+
+fn floor_discovery_apply_test_sidecar_rules(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  match floor_discovery_resolve_entry_live_tree(entry_path: repo_path, content: content) {
+    EntryLiveTreeDispositionRefused { reason: reason } =>
+      floor_discovery_record_disposition_refusal(state: state, reason: reason)
+    EntryLiveTreeResolved { disposition: reads_live } => {
+      let test_names = floor_discovery_scan_test_decl_names(content: content)
+      if floor_entry_is_barren_test_sidecar(entry_path: repo_path, content: content) {
+        floor_discovery_collect_sidecar_violation(
+          state: state,
+          entry_path: repo_path,
+          kind: BarrenTestSidecar,
+          required_suffix: floor_test_sidecar_suffix
+        )
+      } else if floor_test_marked_decl_allowed_in_entry(entry_path: repo_path) {
+        fold(
+          test_names,
+          init: state,
+          f: fn(acc, name) {
+            floor_discovery_append_row(
+              state: acc,
+              row: FloorDiscoveryRow {
+                label: name,
+                entry: repo_path,
+                function: name,
+                reads_live_tree: reads_live
+              }
+            )
+          }
+        )
+      } else if length(xs: test_names) > 0 {
+        floor_discovery_collect_sidecar_violation(
+          state: state,
+          entry_path: repo_path,
+          kind: TestMarkedDecl,
+          required_suffix: floor_test_sidecar_suffix
+        )
+      } else {
+        state
+      }
+    }
+  }
+}
+
+fn floor_discovery_apply_wire_contract_sidecar_rules(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  if floor_wire_contract_decl_allowed_in_entry(entry_path: repo_path) {
+    state
+  } else if floor_discovery_content_has_wire_contract_decl(content: content) {
+    floor_discovery_collect_sidecar_violation(
+      state: state,
+      entry_path: repo_path,
+      kind: WireContractDecl,
+      required_suffix: floor_wire_contract_sidecar_suffix
+    )
+  } else {
+    state
+  }
+}
+
+// THE PER-FILE AUTHORITY. Everything discovery decides about ONE source -- which test decls it
+// enrolls, whether its `test`-marked decls sit in a `*_test.dag` sidecar, whether a sidecar is
+// barren, whether its wire-contract decls sit in `*_contracts.dag`, whether its
+// live_tree_disposition row is well-formed -- is decided here, from the path and the bytes, with
+// no host effect. Both consumers compose exactly this function and nothing else per file:
+//
+//   discover_floor_corpus_rows_from_host_facts   walks the roots with Filesystem.List/Read and
+//                                                 folds this over every non-excluded `.dag` file
+//                                                 (claim_batch, the discovery-corpus mode)
+//   discover_floor_rows_for_source                the required floor, which already holds every
+//                                                 prepared source's bytes and folds this over its
+//                                                 prepared inventory (cli_run required_floor_runner)
+//
+// Before this seam existed the required floor enrolled its roster from a SECOND scanner in Rust
+// (the former cli_run.rs floor scanner), filename-blind, so a `test`-marked decl outside a
+// sidecar was refused on the claim_batch path and executed on the floor -- two authorities for
+// one fact (DESIGN section 3), measured on main 2026-08-29: five files, 39 test fns. That scanner
+// is deleted; the floor's roster is this fold's answer.
+fn floor_discovery_fold_source(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  floor_discovery_apply_wire_contract_sidecar_rules(
+    state: floor_discovery_apply_test_sidecar_rules(
+      state: state,
+      repo_path: repo_path,
+      content: content
+    ),
+    repo_path: repo_path,
+    content: content
+  )
+}
+
+fn floor_discovery_process_dag_file(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  if floor_discovery_path_excluded(path: repo_path, exclude_substrings: exclude_substrings) {
+    state
+  } else {
+    let read_out = Filesystem.Read(path: repo_path)
+    if !read_out.success {
+      floor_discovery_record_walk_failure(state: state, path: repo_path)
+    } else {
+      floor_discovery_fold_source(state: state, repo_path: repo_path, content: read_out.content)
+    }
+  }
+}
+
+// ONE SOURCE, JUDGED ALONE: the per-file authority over the zero state. The required floor calls
+// this once per prepared source and hands the outcomes, untouched, to
+// floor_discovery_finalize_source_outcomes -- the host threads values and decides nothing.
+fn discover_floor_rows_for_source(
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  floor_discovery_fold_source(
+    state: floor_discovery_walk_state_zero(),
+    repo_path: repo_path,
+    content: content
+  )
+}
+
+// THE FOLD IS A MONOID HOMOMORPHISM OVER FILES, which is what lets the floor evaluate it one
+// source at a time. Every field of the walk state combines associatively: rows and violations
+// concatenate, walk failures add, the first located failure path and the first disposition
+// refusal are kept. Folding the corpus in one pass and merging per-file outcomes therefore
+// produce the same state, with one exception stated rather than hidden: floor_discovery_append_row
+// dedupes rows by (entry, function), and that key contains the entry, so two distinct files can
+// never collide and the merge needs no second dedupe.
+fn floor_discovery_merge_walk_states(
+  left: FloorDiscoveryWalkState,
+  right: FloorDiscoveryWalkState
+) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: concat(left.rows, right.rows),
+    walk_failures: left.walk_failures + right.walk_failures,
+    walk_failure_path: match left.walk_failure_path {
+      Present { value: _ } => left.walk_failure_path
+      Absent => right.walk_failure_path
+    },
+    sidecar_violations: concat(left.sidecar_violations, right.sidecar_violations),
+    disposition_refusal: match left.disposition_refusal {
+      Present { value: _ } => left.disposition_refusal
+      Absent => right.disposition_refusal
+    }
+  }
+}
+
+// THE REQUIRED FLOOR'S ENTRY. Same finalize, same refusal reasons, same accepted row shape as
+// discover_floor_corpus_rows_from_host_facts; only the source of host facts differs (the prepared
+// inventory instead of a Filesystem walk) and the row-admission policy below is NOT applied --
+// see floor_discovery_row_admission_policy_note.
+fn floor_discovery_finalize_source_outcomes(
+  outcomes: List<FloorDiscoveryWalkState>
+) -> FloorDiscoveryProducerResult {
+  floor_discovery_finalize(
+    state: fold(
+      outcomes,
+      init: floor_discovery_walk_state_zero(),
+      f: fn(acc, outcome) { floor_discovery_merge_walk_states(left: acc, right: outcome) }
+    )
+  )
+}
+
+// ROW ADMISSION IS POLICY, NOT DISCOVERY (DESIGN section 3: interface, realization and policy
+// are three facts). witness_row_excluded_from_discovery quarantines known-red probes, the
+// falsifier long lane and the ci_layer_roots exclusion frontier -- the per-PR discovery-corpus
+// mode's admission. It is applied HERE, after the walk and before the owned-data merge, exactly
+// where it applied before the per-file seam was cut, so claim_batch's roster is unchanged. The
+// required floor deliberately does not inherit it: its admission is the static gate roster and
+// floor_prepared_subject_exclusions, and the known-red rows themselves record that the floor's
+// execution of them "is the row's real, present protection" (gunbc.explicit_witness_admission).
+// Folding this policy into the per-file authority would have dropped those witnesses from the
+// floor silently.
+data floor_discovery_row_admission_policy_note: String = "Row admission (witness_row_excluded_from_discovery) is the discovery-corpus mode's policy over the per-file authority's rows, applied by discover_floor_corpus_rows_from_host_facts only. The required floor composes the same per-file authority under its own admission (required_gate_prefixes + floor_prepared_subject_exclusions) via discover_floor_rows_for_source / floor_discovery_finalize_source_outcomes."
+
+fn floor_discovery_apply_row_admission(state: FloorDiscoveryWalkState) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: fold(
+      state.rows,
+      init: [],
+      f: fn(acc, row) {
+        if witness_row_excluded_from_discovery(entry: row.entry, function: row.function) {
+          acc
+        } else {
+          concat(acc, [row])
+        }
+      }
+    ),
+    walk_failures: state.walk_failures,
+    walk_failure_path: state.walk_failure_path,
+    sidecar_violations: state.sidecar_violations,
+    disposition_refusal: state.disposition_refusal
+  }
+}
+
+fn floor_discovery_child_is_directory_candidate(name: String) -> Bool {
+  (name != "") && !string_contains(s: name, pattern: ".")
+}
+
+fn floor_discovery_walk_dir(
+  state: FloorDiscoveryWalkState,
+  dir_path: String,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  let listed = Filesystem.List(path: dir_path)
+  if !listed.success {
+    floor_discovery_record_walk_failure(state: state, path: dir_path)
+  } else if listed.entries == "" {
+    state
+  } else {
+    fold(
+      split(s: listed.entries, delimiter: "\n"),
+      init: state,
+      f: fn(acc, name) {
+        if name == "" {
+          acc
+        } else {
+          let child = concat(dir_path, "/", name)
+          if ends_with(s: name, suffix: ".dag") {
+            floor_discovery_process_dag_file(
+              state: acc,
+              repo_path: child,
+              exclude_substrings: exclude_substrings
+            )
+          } else if floor_discovery_child_is_directory_candidate(name: name) {
+            floor_discovery_walk_dir(
+              state: acc,
+              dir_path: child,
+              exclude_substrings: exclude_substrings
+            )
+          } else {
+            acc
+          }
+        }
+      }
+    )
+  }
+}
+
+fn floor_discovery_unified_claim_label(decl_name: String) -> String {
+  if starts_with(s: decl_name, prefix: "unified_claim_") {
+    substring(
+      s: decl_name,
+      start: 14,
+      end: string_length(s: decl_name)
+    )
+  } else {
+    decl_name
+  }
+}
+
+fn floor_discovery_merge_owned_data_record(
+  state: FloorDiscoveryWalkState,
+  rec: OwnedDataDeclRecord
+) -> FloorDiscoveryWalkState {
+  match rec.initializer {
+    OwnedBoolWitnessClaimInit { witness_entry: entry, witness_function: function } =>
+      if (entry == "") || (function == "") {
+        floor_discovery_record_disposition_refusal(
+          state: state,
+          reason: concat(
+            "owned data '",
+            rec.decl_name,
+            "' has malformed BoolWitnessClaim witness (missing entry and/or function)"
+          )
+        )
+      } else {
+        let read_out = Filesystem.Read(path: entry)
+        if !read_out.success {
+          floor_discovery_record_walk_failure(state: state, path: entry)
+        } else {
+          match floor_discovery_resolve_entry_live_tree(
+            entry_path: entry,
+            content: read_out.content
+          ) {
+            EntryLiveTreeDispositionRefused { reason: reason } =>
+              floor_discovery_record_disposition_refusal(state: state, reason: reason)
+            EntryLiveTreeResolved { disposition: reads_live } =>
+              floor_discovery_append_row(
+                state: state,
+                row: FloorDiscoveryRow {
+                  label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
+                  entry: entry,
+                  function: function,
+                  reads_live_tree: reads_live
+                }
+              )
+          }
+        }
+      }
+    OwnedNodeCorpusInit => state
+    OwnedOtherInit { resolved: _ } => state
+  }
+}
+
+fn floor_discovery_paths_for_sidecar_kind(
+  violations: List<FloorDiscoverySidecarViolation>,
+  kind: FloorDiscoverySidecarKind
+) -> String {
+  fold_list(
+    xs: violations,
+    empty: "",
+    cons: fn(acc, v) {
+      if v.kind == kind {
+        if acc == "" {
+          v.entry_path
+        } else {
+          concat(acc, ", ", v.entry_path)
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+data floor_discovery_barren_test_sidecar_reason_prefix: String = "a `*_test.dag` entry must declare at least one `test fn`/`test data` decl; floor discovery enrolls nothing from: "
+
+fn floor_discovery_barren_test_sidecar_refusal_for_content(
+  repo_path: String,
+  content: String
+) -> Optional<String> {
+  if floor_entry_is_barren_test_sidecar(entry_path: repo_path, content: content) {
+    optional_present(
+      value: concat(floor_discovery_barren_test_sidecar_reason_prefix, repo_path)
+    )
+  } else {
+    optional_absent()
+  }
+}
+
+fn floor_discovery_sidecar_refusal_reason(
+  violations: List<FloorDiscoverySidecarViolation>
+) -> String {
+  let barren_paths = floor_discovery_paths_for_sidecar_kind(
+    violations: violations,
+    kind: BarrenTestSidecar
+  )
+  let barren_clause = if barren_paths == "" {
+    ""
+  } else {
+    concat(floor_discovery_barren_test_sidecar_reason_prefix, barren_paths, "; ")
+  }
+  let test_paths = floor_discovery_paths_for_sidecar_kind(
+    violations: violations,
+    kind: TestMarkedDecl
+  )
+  let wire_paths = floor_discovery_paths_for_sidecar_kind(
+    violations: violations,
+    kind: WireContractDecl
+  )
+  if test_paths == "" && wire_paths == "" {
+    barren_clause
+  } else if test_paths != "" && wire_paths != "" {
+    concat(
+      barren_clause,
+      "`test`-marked decls must live in `*_test.dag` files; found in: ",
+      test_paths,
+      "; wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
+      wire_paths
+    )
+  } else if test_paths != "" {
+    concat(
+      barren_clause,
+      "`test`-marked decls must live in `*_test.dag` files; found in: ",
+      test_paths
+    )
+  } else {
+    concat(
+      barren_clause,
+      "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
+      wire_paths
+    )
+  }
+}
+
+fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryProducerResult {
+  if state.walk_failures > 0 {
+    FloorDiscoveryRefused {
+      reason: floor_discovery_walk_failure_refusal_reason(path_opt: state.walk_failure_path)
+    }
+  } else {
+    match state.disposition_refusal {
+      Present { value: reason } => FloorDiscoveryRefused { reason: reason }
+      Absent =>
+        if length(xs: state.sidecar_violations) > 0 {
+          FloorDiscoveryRefused {
+            reason: floor_discovery_sidecar_refusal_reason(violations: state.sidecar_violations)
+          }
+        } else {
+          FloorDiscoveryAccepted { rows: state.rows }
+        }
+    }
+  }
+}
+
+fn discover_floor_corpus_rows_from_host_facts(
+  source_roots: List<String>,
+  exclude_substrings: List<String>,
+  owned_data_records: List<OwnedDataDeclRecord>
+) -> FloorDiscoveryProducerResult {
+  floor_discovery_finalize(
+    state: fold(
+      owned_data_records,
+      init: floor_discovery_apply_row_admission(
+        state: fold(
+          source_roots,
+          init: floor_discovery_walk_state_zero(),
+          f: fn(acc, root) {
+            floor_discovery_walk_dir(
+              state: acc,
+              dir_path: root,
+              exclude_substrings: exclude_substrings
+            )
+          }
+        )
+      ),
+      f: fn(acc, rec) { floor_discovery_merge_owned_data_record(state: acc, rec: rec) }
+    )
+  )
+}
+
+fn floor_discovery_wire_contract_sidecar_refusal_for_content(
+  repo_path: String,
+  content: String
+) -> Optional<String> {
+  if floor_wire_contract_decl_allowed_in_entry(entry_path: repo_path) {
+    optional_absent()
+  } else if floor_discovery_content_has_wire_contract_decl(content: content) {
+    optional_present(
+      value: concat(
+        "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
+        repo_path
+      )
+    )
+  } else {
+    optional_absent()
+  }
+}
+
+// The per-PR discovery roster is shrunk by TWO independent facts, checked at their own grains. The
+// exclude_substrings parameter carries PATH POLICY (gunbc.ci_layer_roots
+// witness_exclusion_frontier) and is applied to whole files while walking, because a directory home
+// is a statement about a place. explicit_witness_admission_covers carries EXACT ADMISSION
+// (gunbc.explicit_witness_admission) and is applied per test declaration as rows are appended,
+// because an admission is a statement about one witness and must not reach its siblings. Reading
+// the admission authority here rather than accepting it as a parameter is deliberate: it is the
+// same single authority the falsifier roster projects, so a quarantined witness cannot be scheduled
+// and discovered, or excluded and unscheduled, by two lists disagreeing. A green sibling of an
+// admitted witness stays in this roster and runs per-PR — under the previous file-grain exclusion
+// it was swept out with its neighbour, which is the defect this closes.
+
+data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
+
+data floor_discovery_surface_text_scan_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.floor_naming_hygiene",
+    decl_name: "floor_discovery_scan_test_decl_names",
+    field: WholeDeclaration
+  }
+}
+
+data floor_discovery_directory_candidate_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty).")
+
+data floor_discovery_live_tree_disposition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_live_tree_disposition — producer reads and refuses malformed/duplicate `data live_tree_disposition: LiveTreeDisposition = …` rows (undeclared = ReadsLiveTree). Effect-reach reclassification remains on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold).")
+
+data floor_discovery_surface_text_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: floor_discovery_surface_text_scan — naming hygiene recovers test-decl names (and the producer recovers live_tree_disposition rows + CoproductWireContract markers) via hand-rolled line/token splitting over raw source text (§4 grammar-owned-reads violation); DISSOLVES WHEN discovery enumeration consumes grammar-owned parse/AST facts from the same ingress surface as v2.compiler so stru")

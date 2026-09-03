@@ -1,0 +1,487 @@
+module gunbc.extdeps_scope_frontier
+
+// Staged, fail-closed enrollment of the ExternalModelScope requirement (DESIGN §3 'External
+// upstream decomposition'; operator verdicts on gunbc#7556 and gunbc#7571): every extdeps module
+// must eventually carry one extdeps_model_scope: ExternalModelScope declaration. The corpus cannot
+// be gated retroactively red in one change, so enrollment is staged at the storage grain the cover
+// witness walks: every .dag file under dag/extdeps is EXACTLY ONE of scope_carrier_paths (carries a
+// declared scope, admitted by execution), scope_machinery_exempt_paths (the citation vocabulary
+// itself plus synthetic mock corpora — the v2.lens.mandatory_tag region-1 exemption semantics), or
+// a row of the FROZEN legacy manifest (legacy_extdeps_scope_frontier_manifest_path). The live-cover
+// witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag — wet,
+// discovery-excluded per the gunbc.ci_layer_roots wet-integration posture with a documented local
+// recipe; its pure decision fns live HERE and their hermetic RED controls stay discovery-enrolled
+// in dag/test/claim/external_model_scope_witness_test.dag) walks dag/extdeps live, parses the
+// manifest, and refuses any file in none of the three. GRAIN HONESTY (codex review 46258 — the
+// enforcement grain must be stated, not implied): the per-PR MERGE-GATED half is the hermetic one —
+// every rostered path resolves on disk (roster_paths_resolve_on_disk over all three rosters via the
+// filesystem_read checkout carve-out, so a stale or fabricated roster row reds per-PR), the three
+// rosters stay disjoint, carrier files byte-declare the scope, and every pure decision fn keeps its
+// discriminating RED control. The disk-to-roster direction — a NEW dag/extdeps file enrolled in
+// none of the three — and the manifest freeze are ALSO per-PR merge-gated, at diff grain:
+// tools.extdeps_scope_placement_gate (a wet cheap-floor gate added per codex review 46281; its
+// pattern source, the publication placement gate, was later deleted by operator ruling in #7591 —
+// this gate is independent of it) reads TWO bases, one per question: it refuses any dag/extdeps
+// .dag file added by THIS CHANGE (origin/main...HEAD) outside carriers-union-machinery
+// (scope_placement_refused_paths), and refuses any manifest row naming a file added after the
+// freeze anchor over the whole post-freeze population (legacy_manifest_freeze_sha..HEAD,
+// manifest_freeze_holds), with diff failure and parse truncation as refusals, never skips.
+// Merge-base grain on the membership arm is what keeps the refusal attributable to the change that
+// caused it; feeding that arm the freeze base instead made one unrostered file refuse every open
+// branch (gunbc#7644 diagnosis), and the coverage that reading incidentally provided is declared,
+// bounded, and triggered in scope_placement_base_split_note rather than dropped silently. The wet
+// live-cover witness remains the whole-population re-verification (it walks what IS on disk rather
+// than what the diff says was added) under its documented local recipe. The storage-grain frontier
+// as a whole still dissolves into the v2.lens.mandatory_tag region promotion (compile grain,
+// module-name grain); a new file's only landing states are scope carrier or genuine machinery; it
+// does NOT join the manifest. There are no other exemption channels.
+
+data legacy_manifest_shape_note: String = "The legacy population lives OUTSIDE the semantic module as a frozen manifest artifact (operator verdict on gunbc#7571, 2026-08-01: 399 hand-listed rows plus a hand-moved count inside the .dag authority were a second, churn-heavy representation of the extdeps file population). The manifest is one repo-relative path per line; its row count is DERIVED by the parser, never hand-declared; the exact live diff (both directions) is the enforcement. Lifecycle: FROZEN, MECHANICALLY (codex review 46215 — 'review red by inspection' is not enforcement): every manifest row must name a file that already existed at legacy_manifest_freeze_sha, checked by the cover witness against git.Core.DiffNameStatus(freeze..HEAD) — a manifest row for a file added after the freeze refuses (manifest_freeze_holds over DiffAddedObservation), so a new module cannot be smuggled into the legacy population; rows are only ever REMOVED (a module migrates by adding its extdeps_model_scope declaration, moving to scope_carrier_paths, and deleting its manifest row in the same change) — enforced mechanically at line grain by the placement gate, not by review: see manifest_remove_only_note (codex review 46378). Carrier rows are content-verified by the same witness: each scope_carrier_paths file must actually declare extdeps_model_scope on disk, so an asserted-but-undeclared carrier refuses rather than passing on path membership. DISSOLVE-ON: when the manifest drains, the requirement is promoted to a second v2.lens.mandatory_tag region (required_decl_name extdeps_model_scope, required_type_name ExternalModelScope — the same compile-grain wall region 1 already runs for extdeps_external_authority_anchor), at which point the manifest, the parser, the freeze anchor, and the cover witness delete and the module-name grain replaces the storage grain. Paths are discriminators, not gospel (DESIGN §3): the storage grain exists only because the interim cover walker sees files."
+
+// The git anchor that makes the manifest's freeze mechanical: the origin/main commit whose tree
+// contains every manifest row. Any file first added AFTER this commit can never be a manifest row
+// (tools.extdeps_scope_placement_gate and the live-cover witness diff freeze..HEAD and refuse the
+// intersection); it must adopt a scope or be genuinely machinery. This anchor never advances while
+// the manifest lives — advancing it would re-open the smuggling channel the freeze closes; it
+// deletes with the manifest on region promotion. ONE recorded re-anchor, in the gate-landing change
+// itself and legitimate exactly once: the original anchor d552ff4036b48bae835f24e9ead322475895d159
+// predated the gate's existence, and dag/extdeps/languages/lean/overflow.dag (gunbc#7550) then
+// dag/extdeps/project_schedule/cpm_pert.dag (gunbc#7567) merged to main inside that wall-less
+// interim; the anchor moved to the origin/main commit the gate lands against and those rows joined
+// the manifest, because the freeze can only bind from the commit where the wall actually exists.
+// From this commit forward the gate is per-PR merge-gated and the interim class is unreachable.
+
+data legacy_manifest_freeze_sha: String = "5669d42719ba2a63439a0d3c867d963f0d9e8bc8"
+
+// The v2 red-control plants (src/v2/test/fixture/extdeps_external_authority/*/plant.dag) declare
+// extdeps.* module names outside dag/extdeps; they are outside this walk and outside the
+// requirement, exactly as they are exempt from mandatory-tag region 1.
+
+data legacy_extdeps_scope_frontier_manifest_path: String = "dag/gunbc/legacy_extdeps_scope_frontier.tsv"
+
+fn parse_frontier_manifest(content: String) -> List<String> {
+  split(content, separator: "\n") |> filter(line => line != "")
+}
+
+fn scope_frontier_strings_contain(xs: List<String>, s: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || x == s })
+}
+
+fn scope_cover_holds(walked: List<String>, union: List<String>) -> Bool {
+  all(walked, p => scope_frontier_strings_contain(xs: union, s: p))
+    && all(union, p => scope_frontier_strings_contain(xs: walked, s: p))
+}
+
+// codex review 46215, finding half 1: carrier membership was path-asserted only, so a
+// scope_carrier_paths row whose file never declares extdeps_model_scope passed the cover. Closed:
+// every carrier file's bytes must carry the declaration marker, checked by the live-cover witness.
+// This is a text presence scan — a declared scaffold (the v2.lens.mandatory_tag corpus_scan /
+// language_source_scaffold_index precedent), strictly better than path assertion, dissolving with
+// the whole storage-grain frontier into the mandatory-tag region whose parse-grain reader replaces
+// it.
+
+fn carrier_content_declares_scope(content: String) -> Bool {
+  string_contains(s: content, pattern: "data extdeps_model_scope:")
+}
+
+// codex review 46215, finding half 2: the manifest's remove-only lifecycle was review discipline,
+// not mechanics. Closed: every manifest row must name a file that already existed at
+// legacy_manifest_freeze_sha — the live-cover witness diffs freeze..HEAD with the same
+// git.Core.DiffNameStatus + parse the publication placement gate uses, and refuses any manifest row
+// in the added/copied/renamed set. Diff failure and parse truncation are typed refusal arms of
+// DiffAddedObservation, never skips (a broken freeze probe must not report frozen).
+
+type DiffAddedObservation
+  = AddedPathsObserved { paths: List<String> }
+  | DiffObserveFailed
+  | DiffParseTruncated
+
+fn manifest_freeze_holds(manifest: List<String>, observation: DiffAddedObservation) -> Bool {
+  match observation {
+    DiffObserveFailed => false
+    DiffParseTruncated => false
+    AddedPathsObserved { paths: added } =>
+      all(manifest, row => !scope_frontier_strings_contain(xs: added, s: row))
+  }
+}
+
+// The remove-only lifecycle, enforced mechanically at line grain (codex review 46378:
+// manifest_freeze_holds judges file CREATION dates, so a pre-freeze file migrated out of the
+// manifest could be re-added later and the freeze check would pass — the escape hatch re-opened
+// after migration). Closed: the placement gate also observes
+// git.Core.DiffUnified0(origin/main...HEAD) and refuses any line the change itself ADDS to the
+// manifest (manifest_line_observation; the ONE verdict surface over the observation is
+// tools.extdeps_scope_placement_gate.manifest_remove_only_exit — no parallel Bool predicate exists,
+// per codex review 46387). The one admitted arm is ManifestIntroduced — the file absent at the
+// merge base (the unified diff's /dev/null old-side), which is exactly the PR that first lands the
+// manifest and is unforgeable afterward: once the manifest exists on origin/main, a
+// delete-and-rewrite inside a branch still diffs as modification, never introduction. Unrecognized
+// structure refuses, never skips, and the refusal arm is REACHABLE FROM THE PARSER (codex review
+// 46387: an unreadable arm nothing constructs is fail-open by fall-through): any diff text that
+// mentions the manifest path without ever presenting its recognized new-side header yields
+// ManifestDiffUnreadable — which also makes a manifest DELETION refuse conservatively (its old-side
+// header mentions the path, no new-side header follows; the promotion PR that legitimately deletes
+// the manifest deletes this gate in the same change). Removals stay free (a migration deletes its
+// row), so the manifest is monotonically shrinking BY CONSTRUCTION at the merge gate, not by review
+// discipline.
+
+type ManifestLineObservation
+  = ManifestUntouched
+  | ManifestIntroduced
+  | ManifestLinesAdded { rows: List<String> }
+  | ManifestDiffUnreadable
+
+type ManifestLineFoldState {
+  in_section: Bool
+  introduced: Bool
+  added: List<String>
+  prev_was_dev_null: Bool
+  mentions_manifest: Bool
+  entered_section: Bool
+}
+
+fn manifest_diff_line_fold(acc: ManifestLineFoldState, line: String) -> ManifestLineFoldState {
+  let mentions = acc.mentions_manifest || string_contains(s: line, pattern: legacy_extdeps_scope_frontier_manifest_path)
+  if line.starts_with(prefix: "diff --git ") {
+    ManifestLineFoldState { in_section: false, introduced: acc.introduced, added: acc.added, prev_was_dev_null: false, mentions_manifest: mentions, entered_section: acc.entered_section }
+  } else {
+    if line == concat("+++ b/", legacy_extdeps_scope_frontier_manifest_path) {
+      ManifestLineFoldState { in_section: true, introduced: acc.introduced || acc.prev_was_dev_null, added: acc.added, prev_was_dev_null: false, mentions_manifest: mentions, entered_section: true }
+    } else {
+      if line == "--- /dev/null" {
+        ManifestLineFoldState { in_section: acc.in_section, introduced: acc.introduced, added: acc.added, prev_was_dev_null: true, mentions_manifest: mentions, entered_section: acc.entered_section }
+      } else {
+        if acc.in_section && line.starts_with(prefix: "+") && !line.starts_with(prefix: "+++") {
+          let row = line.substring(start: 1, end: line.length())
+          if row == "" {
+            ManifestLineFoldState { in_section: acc.in_section, introduced: acc.introduced, added: acc.added, prev_was_dev_null: false, mentions_manifest: mentions, entered_section: acc.entered_section }
+          } else {
+            ManifestLineFoldState { in_section: acc.in_section, introduced: acc.introduced, added: concat(acc.added, [row]), prev_was_dev_null: false, mentions_manifest: mentions, entered_section: acc.entered_section }
+          }
+        } else {
+          ManifestLineFoldState { in_section: acc.in_section, introduced: acc.introduced, added: acc.added, prev_was_dev_null: false, mentions_manifest: mentions, entered_section: acc.entered_section }
+        }
+      }
+    }
+  }
+}
+
+fn manifest_line_observation(diff_text: String) -> ManifestLineObservation {
+  let final_state = fold(
+    split(diff_text, separator: "\n"),
+    init: ManifestLineFoldState { in_section: false, introduced: false, added: [], prev_was_dev_null: false, mentions_manifest: false, entered_section: false },
+    f: fn(acc, line) { manifest_diff_line_fold(acc: acc, line: line) }
+  )
+  if final_state.mentions_manifest && !final_state.entered_section {
+    ManifestDiffUnreadable
+  } else {
+    if final_state.introduced {
+      ManifestIntroduced
+    } else {
+      if (final_state.added |> count) > 0 {
+        ManifestLinesAdded { rows: final_state.added }
+      } else {
+        ManifestUntouched
+      }
+    }
+  }
+}
+
+// The per-PR merge-gated disk-to-roster direction (codex review 46281: the new-file invariant must
+// not wait for the wet lane). scope_placement_refused_paths is the pure decision kernel of
+// tools.extdeps_scope_placement_gate: given the paths a diff reports as ADDED, every such
+// dag/extdeps .dag file must be a member of scope_carrier_paths or scope_machinery_exempt_paths —
+// the frozen manifest is not a landing state for a new file, so it is not consulted for admission
+// (only for the freeze check, manifest_freeze_holds). THE BASE THIS KERNEL IS FED IS THE MERGE BASE
+// origin/main...HEAD, not the freeze anchor (corrected in the gunbc#7644 follow-up; see
+// tools.extdeps_scope_placement_gate scope_placement_base_split_note for the full rationale and the
+// declared coverage narrowing). An earlier revision of this note claimed 'only paths the PR itself
+// adds are judged' while the gate fed the kernel the freeze-base population, so the sentence was
+// true of the INTENT and false of the MECHANISM — the exact defect that let one unrostered file
+// refuse every branch in the fleet. The kernel itself is base-agnostic: it judges whatever
+// added-path list it is handed, which is why the fix was a call-site base and not a change here.
+// The wet live-cover witness remains the whole-population re-verification (walks what IS on disk
+// rather than what the diff SAYS was added).
+
+fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, machinery: List<String>) -> List<String> {
+  added |> filter(p =>
+    p.starts_with(prefix: "dag/extdeps/")
+      && p.ends_with(suffix: ".dag")
+      && !scope_frontier_strings_contain(xs: carriers, s: p)
+      && !scope_frontier_strings_contain(xs: machinery, s: p)
+  )
+}
+
+data scope_carrier_paths: List<String> = [
+  "dag/extdeps/llm/anthropic_messages_api.dag",
+  "dag/extdeps/llm/anthropic_messages_api_contracts.dag",
+  "dag/extdeps/bazel/bazel.dag",
+  "dag/extdeps/bazel/label.dag",
+  "dag/extdeps/bazel/test_status.dag",
+  "dag/extdeps/bazel/build_event_stream.dag",
+  "dag/extdeps/vendor/amphenol.dag",
+  "dag/extdeps/vendor/lotes.dag",
+  "dag/extdeps/vendor/microchip_technology.dag",
+  "dag/extdeps/vendor/macronix.dag",
+  "dag/extdeps/vendor/samtec.dag",
+  "dag/extdeps/storage/amphenol_mdt420m01001.dag",
+  "dag/extdeps/memory/microchip_at24cm02.dag",
+  "dag/extdeps/memory/macronix_mx25l25673g.dag",
+  "dag/extdeps/connector/samtec_ftsh_105_01_l_dv.dag",
+  "dag/extdeps/vendor/texas_instruments.dag",
+  "dag/extdeps/vendor/tyco_electronics.dag",
+  "dag/extdeps/vendor/tyco_electronics_amp_kk.dag",
+  "dag/extdeps/storage/te_m2_ngff_connector.dag",
+  "dag/extdeps/memory/te_ddr4_dimm_socket.dag",
+  "dag/extdeps/land_pattern/types.dag",
+  "dag/extdeps/power/ti_tps3808.dag",
+  "dag/extdeps/power/ti_tps53688.dag",
+  "dag/extdeps/clock/ti_cdce913.dag",
+  "dag/extdeps/network/ti_dp83867.dag",
+  "dag/extdeps/firmware/types.dag",
+  "dag/extdeps/memory/training.dag",
+  "dag/extdeps/ampere/scp_diagnostic.dag",
+  "dag/extdeps/ampere/mt_collins_product_brief/subject.dag",
+  "dag/extdeps/ampere/mt_collins_product_brief/memory_population.dag",
+  "dag/extdeps/ampere/mt_collins_getting_started_guide/subject.dag",
+  "dag/extdeps/rust/cargo_message.dag",
+  "dag/extdeps/boards/gigabyte.dag",
+  "dag/extdeps/vendor/gigabyte.dag",
+  "dag/extdeps/climbing_holds/types.dag",
+  "dag/extdeps/climbing_holds/atomik.dag",
+  "dag/extdeps/vendor/atomik.dag",
+  "dag/extdeps/ipc/dpmx.dag",
+  "dag/extdeps/ucamco/gerber.dag",
+  "dag/extdeps/cpu/ampere_altra_memory_controller.dag",
+  "dag/extdeps/cpu/ampere_altra_package.dag",
+  "dag/extdeps/cpu/ampere_altra_package_table4_raw.dag",
+  "dag/extdeps/cpu/ampere_altra_package_contacts.dag",
+  "dag/extdeps/cpu/ampere_altra_package_contact_map.dag",
+  "dag/extdeps/cpu/ampere_altra_platform_hw_design/subject.dag",
+  "dag/extdeps/cpu/ampere_altra_platform_hw_design/platform.dag",
+  "dag/extdeps/bmc/aspeed_ast2500.dag",
+  "dag/extdeps/ocp/mt_mitchell/platform.dag",
+  "dag/extdeps/cpu_attachment/ilm4926.dag",
+  "dag/extdeps/ssh/client_options.dag",
+  "dag/extdeps/archive/format.dag",
+  "dag/extdeps/ollama/api.dag",
+  "dag/extdeps/ocp/publication.dag",
+  "dag/extdeps/ocp/mt_jade/platform.dag",
+  "dag/extdeps/ocp/mt_jade/subject.dag",
+  "dag/extdeps/ocp/mt_mitchell/subject.dag",
+  "dag/extdeps/ollama/binary_release.dag",
+  "dag/extdeps/ollama/capability.dag",
+  "dag/extdeps/ollama/gpu_support.dag",
+  "dag/extdeps/ollama/server_env.dag",
+  "dag/extdeps/automation/playwright.dag",
+  "dag/extdeps/package.dag",
+  "dag/extdeps/npm.dag",
+  "dag/extdeps/browser/chromium.dag",
+  "dag/extdeps/container/oci/digest.dag",
+  "dag/extdeps/git/publication_transport.dag",
+  "dag/extdeps/gnu/libc.dag",
+  "dag/extdeps/rust/target_triple.dag",
+  "dag/extdeps/units/iso_80000_3.dag",
+  "dag/extdeps/github/issues.dag",
+  "dag/extdeps/github/workflow_run_event.dag",
+  "dag/extdeps/languages/bash/subject.dag",
+  "dag/extdeps/languages/c/subject.dag",
+  "dag/extdeps/languages/cpp/subject.dag",
+  "dag/extdeps/languages/css/subject.dag",
+  "dag/extdeps/languages/ecmascript/subject.dag",
+  "dag/extdeps/languages/go/subject.dag",
+  "dag/extdeps/languages/html/subject.dag",
+  "dag/extdeps/languages/java/subject.dag",
+  "dag/extdeps/languages/json/subject.dag",
+  "dag/extdeps/languages/jsx/subject.dag",
+  "dag/extdeps/languages/kotlin/subject.dag",
+  "dag/extdeps/languages/lean/subject.dag",
+  "dag/extdeps/languages/llvm_ir/subject.dag",
+  "dag/extdeps/languages/markdown/subject.dag",
+  "dag/extdeps/languages/ptx/subject.dag",
+  "dag/extdeps/languages/python/subject.dag",
+  "dag/extdeps/languages/riscv/subject.dag",
+  "dag/extdeps/languages/rust/subject.dag",
+  "dag/extdeps/languages/spice/subject.dag",
+  "dag/extdeps/languages/swift/subject.dag",
+  "dag/extdeps/programmable_logic/ice40/subject.dag",
+  "dag/extdeps/programmable_logic/ice40/supply.dag",
+  "dag/extdeps/programmable_logic/ice40/configuration.dag",
+  "dag/extdeps/toolchain/icestorm/subject.dag",
+  "dag/extdeps/firmware/openbmc/subject.dag",
+  "dag/extdeps/firmware/tianocore_edk2/subject.dag",
+  "dag/extdeps/firmware/trusted_firmware_a/subject.dag",
+  "dag/extdeps/simulators/icarus_verilog/subject.dag",
+  "dag/extdeps/simulators/ngspice/subject.dag",
+  "dag/extdeps/languages/typescript/subject.dag",
+  "dag/extdeps/languages/verilog/subject.dag",
+  "dag/extdeps/languages/wasm/subject.dag",
+  "dag/extdeps/languages/yaml/subject.dag",
+  "dag/extdeps/posix/shell_command_language.dag",
+  "dag/extdeps/github/actions_environment.dag",
+  "dag/extdeps/github/actions_token.dag",
+  "dag/extdeps/github/app.dag",
+  "dag/extdeps/github/effect.dag",
+  "dag/extdeps/github/push_event.dag",
+  "dag/extdeps/instrument/pip_boy_3000.dag",
+  "dag/extdeps/instrument/pip_boy_3000_mk_v.dag",
+  "dag/extdeps/linux/proc_self_cgroup.dag",
+  "dag/extdeps/os/debian.dag",
+  "dag/extdeps/physics/bach_et_al_2013_double_slit.dag",
+  "dag/extdeps/physics/chapman_et_al_1995_atom_interferometer_which_path.dag",
+  "dag/extdeps/standards/ieee_754_2019.dag",
+  "dag/extdeps/standards/rfc_8118.dag",
+  "dag/extdeps/standards/web_annotation.dag",
+  "dag/extdeps/chassis/rosewill.dag",
+  "dag/extdeps/chassis/types.dag",
+  "dag/extdeps/cooling/dynatron.dag",
+  "dag/extdeps/cooling/types.dag",
+  "dag/extdeps/network/switch_types.dag",
+  "dag/extdeps/network/tp_link.dag",
+  "dag/extdeps/rack/navepoint.dag",
+  "dag/extdeps/rack/types.dag",
+  "dag/extdeps/power/eaton_tripp_lite.dag",
+  "dag/extdeps/power/types.dag",
+  "dag/extdeps/vendor/dynatron.dag",
+  "dag/extdeps/vendor/lattice_semiconductor.dag",
+  "dag/extdeps/vendor/eaton.dag",
+  "dag/extdeps/vendor/navepoint.dag",
+  "dag/extdeps/vendor/rosewill.dag",
+  "dag/extdeps/vendor/tp_link.dag",
+  "dag/extdeps/systemd/unit_file.dag",
+  "dag/extdeps/systems/nvidia.dag",
+  "dag/extdeps/systems/nvidia_dgx_spark_pxe.dag",
+  "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
+  "dag/extdeps/systems/nvidia_dgx_spark_setup.dag",
+  "dag/extdeps/systems/types.dag",
+  "dag/extdeps/tools/wc.dag",
+  "dag/extdeps/tools/sha512sum.dag",
+  "dag/extdeps/tools/npm.dag",
+  "dag/extdeps/tools/node.dag",
+  "dag/extdeps/vendor/alphabet.dag",
+  "dag/extdeps/vendor/amd.dag",
+  "dag/extdeps/vendor/apple.dag",
+  "dag/extdeps/vendor/arm.dag",
+  "dag/extdeps/vendor/asrock_rack.dag",
+  "dag/extdeps/vendor/aspeed.dag",
+  "dag/extdeps/vendor/chemed.dag",
+  "dag/extdeps/vendor/gitlab.dag",
+  "dag/extdeps/vendor/hubspot.dag",
+  "dag/extdeps/vendor/intel.dag",
+  "dag/extdeps/vendor/meta_platforms.dag",
+  "dag/extdeps/vendor/nvidia.dag",
+  "dag/extdeps/vendor/qualcomm.dag",
+  "dag/extdeps/vendor/rollins.dag",
+  "dag/extdeps/vendor/salesforce.dag",
+  "dag/extdeps/vendor/samsung.dag",
+  "dag/extdeps/vendor/sk_hynix.dag",
+  "dag/extdeps/vendor/verizon.dag",
+  "dag/extdeps/vendor/western_digital.dag",
+  "dag/extdeps/vendor/atlassian.dag",
+  "dag/extdeps/vendor/microsoft.dag",
+  "dag/extdeps/vendor/the_wand_company.dag",
+  "dag/extdeps/posix/rusage.dag",
+  "dag/extdeps/linux/rusage.dag",
+  "dag/extdeps/darwin/rusage.dag",
+  "dag/extdeps/darwin/sysctl.dag",
+  "dag/extdeps/linux/procfs.dag",
+  "dag/extdeps/browser/google_chrome.dag",
+  "dag/extdeps/w3c/accelerometer.dag",
+  "dag/extdeps/w3c/device_orientation_and_motion.dag",
+  "dag/extdeps/w3c/generic_sensor.dag",
+  "dag/extdeps/w3c/svg.dag",
+  "dag/extdeps/github/actions_runner.dag",
+  "dag/extdeps/llm/claude_agent_sdk_stream.dag",
+  "dag/extdeps/llm/claude_sdk.dag",
+  "dag/extdeps/llm/claude_setup_token_cli.dag",
+  "dag/extdeps/llm/codex_app_server.dag",
+  "dag/extdeps/llm/codex_app_server_stdio_session.dag",
+  "dag/extdeps/llm/cursor_sdk.dag",
+  "dag/extdeps/llm/cursor_sdk_errors.dag",
+  "dag/extdeps/llm/cursor_sdk_facts.dag",
+  "dag/extdeps/llm/cursor_stream.dag",
+  "dag/extdeps/probes/provider_interface_acquisition.dag",
+  "dag/extdeps/memory/samsung.dag",
+  "dag/extdeps/accounting/encumbrance.dag",
+  "dag/extdeps/ampere/mt_collins_product_brief/platform.dag",
+  "dag/extdeps/boards/supermicro.dag",
+  "dag/extdeps/ci_runner/blacksmith.dag",
+  "dag/extdeps/ci_runner/circleci.dag",
+  "dag/extdeps/ci_runner/depot.dag",
+  "dag/extdeps/ci_runner/github_actions.dag",
+  "dag/extdeps/ci_runner/types.dag",
+  "dag/extdeps/ci_runner/warpbuild.dag",
+  "dag/extdeps/cloud/gcp/adc_document.dag",
+  "dag/extdeps/colo/centersquare.dag",
+  "dag/extdeps/colo/colocation_america.dag",
+  "dag/extdeps/colo/coresite.dag",
+  "dag/extdeps/colo/dataverge.dag",
+  "dag/extdeps/colo/digital_realty.dag",
+  "dag/extdeps/colo/equinix.dag",
+  "dag/extdeps/colo/evocative.dag",
+  "dag/extdeps/colo/h5.dag",
+  "dag/extdeps/colo/halsey_165.dag",
+  "dag/extdeps/colo/hivelocity.dag",
+  "dag/extdeps/colo/interserver.dag",
+  "dag/extdeps/colo/iron_mountain.dag",
+  "dag/extdeps/colo/natcoweb.dag",
+  "dag/extdeps/colo/netrality.dag",
+  "dag/extdeps/colo/qts.dag",
+  "dag/extdeps/colo/summit.dag",
+  "dag/extdeps/colo/three_sixty_five.dag",
+  "dag/extdeps/colo/tierpoint.dag",
+  "dag/extdeps/colo/types.dag",
+  "dag/extdeps/cpu_attachment/lotes_azifa072.dag",
+  "dag/extdeps/energy/nj_electricity.dag",
+  "dag/extdeps/github/commits.dag",
+  "dag/extdeps/git/plumbing.dag",
+  "dag/extdeps/languages/bash/invocation.dag",
+  "dag/extdeps/languages/rust/capabilities.dag",
+  "dag/extdeps/memory/cisco_ucs.dag",
+  "dag/extdeps/ollama/model_store.dag",
+  "dag/extdeps/posix/identity.dag",
+  "dag/extdeps/posix/path_ownership.dag",
+  "dag/extdeps/posix/sh_invocation.dag",
+  "dag/extdeps/posix/signal.dag",
+  "dag/extdeps/posix/test_utility.dag",
+  "dag/extdeps/realestate/nj_industrial.dag",
+  "dag/extdeps/rust/cargo_diagnostic.dag",
+  "dag/extdeps/rust/rustc.dag",
+  "dag/extdeps/ssh/openssh_client_commands.dag",
+  "dag/extdeps/sudo/elevation.dag",
+  "dag/extdeps/systemd/journalctl.dag",
+  "dag/extdeps/systemd/loginctl.dag",
+  "dag/extdeps/systemd/systemd_run.dag",
+  "dag/extdeps/tools/chmod.dag",
+  "dag/extdeps/tools/chown.dag",
+  "dag/extdeps/tools/env.dag",
+  "dag/extdeps/tools/findutils.dag",
+  "dag/extdeps/tools/make.dag",
+  "dag/extdeps/tools/mkdir.dag",
+  "dag/extdeps/tools/stat.dag",
+  "dag/extdeps/tools/tar.dag",
+  "dag/extdeps/vendor/cisco.dag",
+  "dag/extdeps/linux/cgroup_v2.dag",
+  "dag/extdeps/linux/cgroup_v2_memory.dag"
+]
+
+data scope_machinery_exempt_paths: List<String> = [
+  "dag/extdeps/external_authority.dag",
+  "dag/extdeps/uri.dag",
+  "dag/extdeps/publication.dag",
+  "dag/extdeps/bmc/mock_corpus.dag",
+  "dag/extdeps/cloud/gcp/mock_corpus.dag",
+  "dag/extdeps/cron/mock_corpus.dag",
+  "dag/extdeps/diagnostic_mock_corpus.dag",
+  "dag/extdeps/ebay/mock_corpus.dag",
+  "dag/extdeps/filesystem/mock_corpus.dag",
+  "dag/extdeps/github/mock_corpus.dag",
+  "dag/extdeps/git/mock_corpus.dag",
+  "dag/extdeps/linux/mock_corpus.dag",
+  "dag/extdeps/llm/mock_corpus.dag",
+  "dag/extdeps/sec/mock_corpus.dag",
+  "dag/extdeps/shell_mock_corpus.dag",
+  "dag/extdeps/ssh/mock_corpus.dag",
+  "dag/extdeps/tcgplayer/mock_corpus.dag",
+  "dag/extdeps/test/mock_corpus.dag"
+]

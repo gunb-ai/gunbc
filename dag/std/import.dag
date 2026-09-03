@@ -1,0 +1,270 @@
+module std.import
+
+import std.types { FilePath, Int, List, NonEmptyStr, SourceSpan, String }
+
+// THE TYPED SOURCE REWRITE THAT REMOVES A COMPLETE IMPORT STATEMENT.
+//
+// WHY THIS IS A REWRITE AND NOT A LINE FILTER. An import statement is delimited by the PARSER --
+// it may span several lines, its member list may be braced, single-name or bare, and a line that
+// merely begins with the word `import` is not evidence that a statement starts there. So the only
+// input this operation accepts is a span the parser produced, and the span is the whole authority
+// on what gets removed. Nothing here searches the text for imports; a producer that wants to strip
+// must first ask a parse for its statements.
+//
+// WHY IT STILL CHECKS THE SOURCE AT THE SPAN, and why that check is not measure() == measure().
+// The span and the module path come out of the parse; the source is held by the caller. If the two
+// were slices of one another, agreeing would be a tautology -- so the parse observation deliberately
+// does NOT carry the statement text. It names the module the statement imports, and this operation
+// asks whether the CALLER's source, at that span, is an import statement of that module. A caller
+// holding a source the span was not taken from is refused rather than silently cutting a hole in
+// unrelated bytes, which is the only failure this operation could otherwise commit invisibly.
+
+type ParsedImportStatement {
+  span: SourceSpan
+  imported_module: String
+}
+
+// THE PARSER'S OBSERVATION OF ONE SOURCE'S IMPORT STATEMENTS. It is a coproduct rather than a list
+// because a source whose parse refused and a source with no imports are different facts with
+// opposite repairs, and a producer that stripped nothing from the first would report a clean rewrite
+// of a file it never read.
+// THE REFUSAL'S CAUSE IS A COPRODUCT BECAUSE ITS CONSUMERS PARTITION ON IT. A consumer deciding
+// whether a source belongs to a subject at all must distinguish "this file is not a module" from
+// "this module is broken" from "the parser misbehaved", and those three answers have opposite
+// dispositions: the first excludes the file, the second refuses the file, and the third refuses the
+// RUN -- a subject assembled while the instrument was malfunctioning is not a smaller subject, it is
+// an unknown one. A prose cause forces every such consumer to re-derive the distinction by matching
+// this module's sentences, which names the parser's own categories a second time and breaks silently
+// the day a diagnostic is reworded. The two module-declaration arms stay apart from the import arm
+// for the same reason they are not one repair: a malformed module path is a defect in the
+// declaration the subject is DEFINED by, while a malformed import statement is a defect in the thing
+// being STRIPPED.
+type ImportStatementParseCause
+  = SourceHasNoModuleDeclaration
+  | ModuleDeclarationPathMalformed
+  | ImportStatementMalformed
+  | ImportParseInstrumentAnomaly {
+      detail: NonEmptyStr
+    }
+
+fn import_statement_parse_cause_label(cause: ImportStatementParseCause) -> NonEmptyStr {
+  match cause {
+    SourceHasNoModuleDeclaration => "source does not open with a module declaration" as NonEmptyStr
+    ModuleDeclarationPathMalformed => "module declaration does not name a dotted module path" as NonEmptyStr
+    ImportStatementMalformed => "an import statement did not parse" as NonEmptyStr
+    ImportParseInstrumentAnomaly { detail: detail } => detail
+  }
+}
+
+type ParsedImportStatements
+  = ImportStatementsParsed {
+      statements: List<ParsedImportStatement>
+    }
+  | ImportStatementParseRefused {
+      cause: ImportStatementParseCause
+    }
+
+type ImportStripRefusal
+  = ImportSpanNamesAnotherFile {
+      span_file: FilePath
+      source_file: FilePath
+    }
+  | ImportSpanOutsideSource {
+      span: SourceSpan
+      source_length: Int
+    }
+  | ImportSpanIsEmpty {
+      span: SourceSpan
+    }
+  | ImportSpanDoesNotDelimitAnImportStatement {
+      span: SourceSpan
+      source_text: String
+    }
+  | ImportSpanDoesNotNameItsModule {
+      span: SourceSpan
+      imported_module: String
+      source_text: String
+    }
+  | ImportSpansOutOfAscendingOrder {
+      previous_end: Int
+      next_start: Int
+    }
+
+type ImportStripOutcome
+  = ImportStatementsStripped {
+      rewritten_source: String
+      removed_statements: List<String>
+      coordinate_map: List<ImportStripCoordinateSegment>
+    }
+  | ImportStripRefused {
+      refusal: ImportStripRefusal
+    }
+
+// THE HALTED ARM IS ABSORBING AND THE FIRST REFUSAL IS THE ONE REPORTED. A later statement cannot
+// repair an earlier disagreement, and continuing past one would rewrite a source whose span set was
+// already known not to describe it.
+type ImportStripProgress
+  = ImportStripScanning {
+      cursor: Int
+      rewritten_cursor: Int
+      kept_segments: List<String>
+      removed_statements: List<String>
+      coordinate_map: List<ImportStripCoordinateSegment>
+    }
+  | ImportStripHalted {
+      refusal: ImportStripRefusal
+    }
+
+type ImportStripCoordinateSegment {
+  source_file: FilePath
+  original_start: Int
+  original_end: Int
+  rewritten_start: Int
+  rewritten_end: Int
+}
+
+fn import_statement_keyword() -> String {
+  "import"
+}
+
+// THE BOUNDARY THE CHECK IS ABOUT. `starts_with` and `string_contains` are substring predicates:
+// they cannot tell `import xy` from a statement importing module `x`, nor a declaration named
+// `imported_thing` from the keyword. The span comes from the parser, so a mismatch is already a
+// typed refusal rather than a silent cut -- but a check softer than the thing it is guarding is a
+// check that would not go red on the case it exists for. These two predicates read the span's text
+// POSITIONALLY: the keyword occupies its own token, and the module path is the exact run of bytes
+// that follows it, delimited by a character that cannot continue an identifier or a dotted path.
+// The delimiter set is an ALLOWLIST, so an unanticipated following byte refuses rather than
+// widening -- the failure arm never says "close enough".
+fn is_import_whitespace(c: String) -> Bool {
+  c == " " || c == "\t" || c == "\n" || c == "\r"
+}
+
+fn is_import_module_boundary(c: String) -> Bool {
+  is_import_whitespace(c: c) || c == "{"
+}
+
+fn statement_text_opens_with_the_import_keyword(statement_text: String) -> Bool {
+  let keyword_length = string_length(s: import_statement_keyword())
+  starts_with(s: statement_text, prefix: import_statement_keyword())
+    && string_length(s: statement_text) > keyword_length
+    && is_import_whitespace(c: char_at(s: statement_text, pos: keyword_length))
+}
+
+// The whitespace run between the keyword and the module path is walked rather than assumed to be
+// one character: a source that separates them with two spaces or a newline is a legitimate import
+// statement, and refusing it would be a false refusal wearing fail-closed clothing.
+fn import_module_start(statement_text: String, at: Int, limit: Int) -> Int {
+  if at >= limit {
+    at
+  } else if is_import_whitespace(c: char_at(s: statement_text, pos: at)) {
+    import_module_start(statement_text: statement_text, at: at + 1, limit: limit)
+  } else {
+    at
+  }
+}
+
+fn statement_text_names_module(statement_text: String, imported_module: String) -> Bool {
+  let text_length = string_length(s: statement_text)
+  let module_start = import_module_start(
+    statement_text: statement_text,
+    at: string_length(s: import_statement_keyword()),
+    limit: text_length
+  )
+  let module_end = module_start + string_length(s: imported_module)
+  string_length(s: imported_module) > 0
+    && module_end <= text_length
+    && substring(s: statement_text, start: module_start, end: module_end) == imported_module
+    && (module_end == text_length || is_import_module_boundary(c: char_at(s: statement_text, pos: module_end)))
+}
+
+// Segments are accumulated and joined once. Concatenating onto a growing string per statement is
+// the copied accumulator DESIGN's bare-minimum-cost rule refuses regardless of the realized n.
+fn import_strip_step(
+  progress: ImportStripProgress,
+  source_file: FilePath,
+  source: String,
+  source_length: Int,
+  statement: ParsedImportStatement
+) -> ImportStripProgress {
+  match progress {
+    ImportStripHalted { refusal: refusal } => ImportStripHalted { refusal: refusal }
+    ImportStripScanning { cursor: cursor, rewritten_cursor: rewritten_cursor, kept_segments: kept_segments, removed_statements: removed_statements, coordinate_map: coordinate_map } =>
+      if !(statement.span.file == source_file) {
+        ImportStripHalted { refusal: ImportSpanNamesAnotherFile { span_file: statement.span.file, source_file: source_file } }
+      } else if statement.span.start < 0 || statement.span.end > source_length {
+        ImportStripHalted { refusal: ImportSpanOutsideSource { span: statement.span, source_length: source_length } }
+      } else if statement.span.end <= statement.span.start {
+        ImportStripHalted { refusal: ImportSpanIsEmpty { span: statement.span } }
+      } else if statement.span.start < cursor {
+        ImportStripHalted { refusal: ImportSpansOutOfAscendingOrder { previous_end: cursor, next_start: statement.span.start } }
+      } else {
+        let statement_text = substring(s: source, start: statement.span.start, end: statement.span.end)
+        if !statement_text_opens_with_the_import_keyword(statement_text: statement_text) {
+          ImportStripHalted { refusal: ImportSpanDoesNotDelimitAnImportStatement { span: statement.span, source_text: statement_text } }
+        } else if !statement_text_names_module(statement_text: statement_text, imported_module: statement.imported_module) {
+          ImportStripHalted { refusal: ImportSpanDoesNotNameItsModule { span: statement.span, imported_module: statement.imported_module, source_text: statement_text } }
+        } else {
+          ImportStripScanning {
+            cursor: statement.span.end,
+            rewritten_cursor: rewritten_cursor + (statement.span.start - cursor),
+            kept_segments: kept_segments |> list_push(substring(s: source, start: cursor, end: statement.span.start)),
+            removed_statements: removed_statements |> list_push(statement_text),
+            coordinate_map: coordinate_map |> list_push(ImportStripCoordinateSegment {
+              source_file: source_file,
+              original_start: cursor,
+              original_end: statement.span.start,
+              rewritten_start: rewritten_cursor,
+              rewritten_end: rewritten_cursor + (statement.span.start - cursor)
+            })
+          }
+        }
+      }
+  }
+}
+
+// THE ONE AUTHORITY. Removing several statements is not removing one several times: every removal
+// shifts the offsets of the ones after it, so a per-statement operation applied repeatedly would
+// have to re-derive spans it was not given. This fold consumes the ascending span set once and
+// rebuilds the source from the gaps between them, which is why the singular case below is this
+// operation on a one-element list rather than a second implementation beside it.
+fn strip_import_statements(
+  source_file: FilePath,
+  source: String,
+  statements: List<ParsedImportStatement>
+) -> ImportStripOutcome {
+  let source_length = string_length(s: source)
+  let scanned = statements |> fold(
+    init: ImportStripScanning { cursor: 0, rewritten_cursor: 0, kept_segments: [], removed_statements: [], coordinate_map: [] },
+    f: (progress, statement) => import_strip_step(
+      progress: progress,
+      source_file: source_file,
+      source: source,
+      source_length: source_length,
+      statement: statement
+    )
+  )
+  match scanned {
+    ImportStripHalted { refusal: refusal } => ImportStripRefused { refusal: refusal }
+    ImportStripScanning { cursor: cursor, rewritten_cursor: rewritten_cursor, kept_segments: kept_segments, removed_statements: removed_statements, coordinate_map: coordinate_map } =>
+      ImportStatementsStripped {
+        rewritten_source: join(kept_segments |> list_push(substring(s: source, start: cursor, end: source_length)), ""),
+        removed_statements: removed_statements,
+        coordinate_map: coordinate_map |> list_push(ImportStripCoordinateSegment {
+          source_file: source_file,
+          original_start: cursor,
+          original_end: source_length,
+          rewritten_start: rewritten_cursor,
+          rewritten_end: rewritten_cursor + (source_length - cursor)
+        })
+      }
+  }
+}
+
+fn strip_one_import_statement(
+  source_file: FilePath,
+  source: String,
+  statement: ParsedImportStatement
+) -> ImportStripOutcome {
+  strip_import_statements(source_file: source_file, source: source, statements: [statement])
+}

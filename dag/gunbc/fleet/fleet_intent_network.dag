@@ -1,0 +1,274 @@
+module gunbc.fleet_intent_network
+
+import product.network_topology {
+  NetworkAttachmentRole,
+  NetworkEndpoint,
+  NetworkSegment,
+  NetworkTopology,
+  HostOperatingSystem,
+  BmcOutOfBand,
+  ContainerBridgeDefault,
+  ContainerBridgeSecondary,
+  TailscaleEndpoint,
+  LanGateway,
+  Lan,
+  DockerBridge,
+  TailscaleOverlay,
+}
+import product.placement_supply { HostIdentity }
+
+data operator_host_srv1: HostIdentity = "srv1"
+data operator_host_srv2: HostIdentity = "srv2"
+data operator_host_srv3: HostIdentity = "srv3"
+data operator_host_srv4: HostIdentity = "srv4"
+
+// SPARK-LANE-A (2026-08-06). srv5/srv6 are the operator's HostIdentity slots for the two ordered NVIDIA DGX Spark units (gunbc.spark.dgx_procurement). They live here because HostIdentity naming is this module's single authority — SPARK-0 minted `srv5_reserved`/`srv6_reserved` privately inside the procurement module only because this file was mid-refactor and out of scope, which was a §3 fork of one concept (a host's fleet identity) across two homes; those private rows are deleted and the procurement module imports these. NAMING AN IDENTITY IS NOT ENROLLMENT, and that distinction is carried structurally rather than by this prose: enrollment is membership in `fleet_intent_network.endpoints` (and in gunbc.fleet_intent's ComputeHost list), and srv5/srv6 appear in neither — HALF-SUPERSEDED 2026-09-02, see the DCH-0 clause at the end of this note: the `endpoints` half is now performed and the ComputeHost half is not. Updated 2026-08-07 for the arrived state: both units are now live on the LAN and the operator has authored two static reservations for them (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, both MACs ARP-confirmed — SUPERSEDED, see the SPARK-WIFI-0 clause at the end of this note), so the missing fact is no longer the addresses. CORRECTED 2026-08-23: THE SLOT ASSIGNMENT IS ALSO NO LONGER MISSING, AND THIS NOTE WENT ON ASSERTING THAT IT WAS. It read that the operator "supplied the router table but never stated the assignment", so authoring an address here would be a 50/50 guess and thus the fabricated-plausible-output failure DESIGN §5 forbids. The decision exists and is one import away: gunbc.spark.dgx_procurement `dgx_spark_router_binding_operator_allocation` records srv5 taking spark-a3ee and srv6 taking spark-3bd5, decided 2026-08-07 under an explicit operator delegation, on an ascending-address-order basis kept precisely so the tie-break is attributable rather than looking like a measurement; `srv5_router_binding` and `srv6_router_binding` are both SlotAssigned carrying it. The two notes are the same date — the stated blocker was resolved the day it was written. THE DOCTRINE WAS INVOKED AGAINST THE WRONG TARGET, which is why this is a correction and not a refresh: §5 forbids fabricating an OBSERVATION, and an attributable ALLOCATION with a decider, a date and a basis is not one. This is the stale-citation class in its expensive form — a rotted REASON rather than a rotted line number — and it propagated: a lane read it, believed Spark work was blocked on an operator fact, and reported that upward before anyone opened the procurement carrier. WHAT WAS STILL TRUE UNTIL DCH-0, and was why no endpoint row was added here (SUPERSEDED — the clause is preserved as written because the DCH-0 clause below is a rebuttal of it rather than a refresh): srv5/srv6 remain absent from `endpoints` and from gunbc.fleet_intent's ComputeHost list, because in this module that membership IS enrollment — authoring the rows would enroll them, not merely describe them — and there is nothing to enroll into while the units are unplugged and the converge timer is retired. A PROJECTED ENDPOINT ALSO CANNOT LIVE HERE, and that is structural rather than a preference: gunbc.spark.dgx_procurement imports THIS module for operator_host_srv5/srv6, so the reverse import is refused by the import graph's one law — measured, not inferred, by adding it and compiling: `circular dependency detected: gunbc.fleet_intent_network -> gunbc.spark.dgx_procurement`. Anyone who later wants the endpoints projected from the binding starts from that constraint. Until enrollment genuinely happens, the address authority stays single because there is only ever one — the reservation rows in the procurement module. SPARK-WIFI-0 (2026-08-27): TWO THINGS IN THIS NOTE WENT STALE AT ONCE, and both are corrected in the procurement module rather than here, because that is where the address authority lives. First, the addresses: the operator moved both units onto the LAN's wireless SSID, unplugged both ethernet cables, and authored fresh CR1000A reservations keyed to the RADIO MACs — spark-a3ee is now 192.168.1.226 (F0:68:E3:B3:1A:40) and spark-3bd5 is now 192.168.1.225 (F0:68:E3:31:AB:E6). A DHCP reservation binds a MAC, and a radio has its own, so the ethernet-keyed rows could not follow the units across the medium change. Second, and more consequentially for anyone reading this note for a reason: THE UNITS ARE NO LONGER UNPLUGGED. The clause above gives "the units are unplugged and the converge timer is retired" as the standing reason there is nothing to enroll into, and the first half of that is now false — both boxes are live, reachable, and answering SSH on their enrolled host keys, which were re-scanned at the new addresses and matched exactly. Enrollment is still NOT performed here, and that is deliberate rather than leftover: membership in `endpoints` IS enrollment in this module, so authoring the rows is the act itself and belongs to the roadmap node that owns it, not to an address correction. What changed is the REASON — from "there is nothing to enroll" to "enrolling is a decision nobody has taken yet" — and that distinction is exactly the rotted-reason class this note already documents itself falling into once. DCH-0 (2026-09-02): THE ENDPOINTS HALF OF ENROLLMENT IS NOW PERFORMED — `srv5_host_lan_endpoint` and `srv6_host_lan_endpoint` are authored below and are members of `endpoints`, which retires the "enrolling is a decision nobody has taken yet" reason for this half and only this half. The decision was taken by the DCH-0 roadmap node (docs/plans/dedicated-coding-harness-plan.md), whose reasoning is that list membership was measured to have ZERO production consumers — 57 non-test modules import this one and none reads `endpoints` or `fleet_intent_network_topology()`; production reads individual rows BY NAME — so the load-bearing act is authoring rows the named-import consumers can reach, and the list is this authority's completeness statement. THE ComputeHost HALF IS DELIBERATELY NOT PERFORMED and is a decision rather than a row (DCH-0c): gunbc.fleet_intent's `fleet_intent_known_hosts` has three production consumers, it mints two RunnerHostSudoersArtifact generated artifacts, and gunbc.runner.runner_host_deploy `admit_runner_host` is a fail-closed enrollment wall returning RunnerHostUnenrolled that today protects these two machines — so enrolling there REMOVES a refusal and needs the host facts the conservation wall consumes. Every sentence in this note about the ComputeHost list therefore still stands unchanged.
+// SPARK-PAIR-1 (2026-09-02). srv7/srv8 are the operator's HostIdentity slots for the SECOND DGX
+// Spark pair -- spark-c2b1 at 192.168.1.232 and spark-ac79 at 192.168.1.233 on the wireless LAN,
+// cross-cabled to each other on dual direct-attach 200G ports. They are NAMED here and, exactly as
+// the srv5/srv6 note above sets out, naming is not enrollment: neither appears in `endpoints` or in
+// gunbc.fleet_intent's ComputeHost list, so this row describes them without admitting them. (Read
+// that note for the DISTINCTION, not for the state of srv5/srv6, which changed under DCH-0 on
+// 2026-09-02: those two are now members of `endpoints`. srv7/srv8 are members of neither list, and
+// this clause is about srv7/srv8.)
+//
+// They are named now because the fabric addressing between them is real, durable and modeled --
+// gunbc.spark.fabric_link_desired reads it back from /etc/netplan on both hosts -- and that module
+// needs an identity for each end. An address-carrying model keyed on a raw hostname string would be
+// the §3 fork this note already documents once.
+//
+// WHAT IS STILL MISSING, stated as the remaining acts rather than as a blocker: adoption is five
+// separable things -- physical adoption, host and network identity, fleet enrollment, cell-role
+// assignment, assembly membership -- and this row is the second alone. Convergence cannot manage
+// these hosts until enrollment happens, which is why the fabric on them was configured by hand.
+data operator_host_srv7: HostIdentity = "srv7"
+data operator_host_srv8: HostIdentity = "srv8"
+
+data operator_host_srv5: HostIdentity = "srv5"
+data operator_host_srv6: HostIdentity = "srv6"
+
+// 🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file
+// are still bare `"192.168.1.x"` / CIDR strings even though this same lane grounded the address
+// leaves (extdeps.network.ipv4 Ipv4Address = 4 bounded Octets, extdeps.network.address IpAddress =
+// IpV4|IpV6, and the DHCP lease rows migrated to the ipv4_address constructor). The octet
+// decomposition is half-consumed here: product.network_topology.NetworkEndpoint.address is typed
+// String, so grounding these sites means re-typing that field to extdeps.network.address.IpAddress
+// (and cidr/gateway to their grounded carriers) and migrating every NetworkEndpoint/NetworkSegment
+// consumer — a product-layer field change, not a gunbc-local edit, so it is deliberately deferred
+// rather than half-done. DISSOLVES WHEN NetworkEndpoint.address re-grounds onto IpAddress; until
+// then these literals are the §3 residual the reach lane closes, tracked here so the loop is
+// visible rather than silently forked. The grounded rows the reach lane already built —
+// gunbc.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by
+// srv3_reach) — are the CONVERGENCE TARGET these bare strings dissolve onto, not an independent
+// second grounding: srv2/srv3's address becomes those rows when the field re-types, so the
+// transitional dual representation is marked debt heading toward one authority, not a permanent
+// fork.
+
+data operator_lan_segment: NetworkSegment = NetworkSegment {
+  cidr: "192.168.1.0/24",
+  gateway: Present { value: "192.168.1.1" },
+  locality: Lan,
+}
+
+data operator_docker_bridge_default_segment: NetworkSegment = NetworkSegment {
+  cidr: "172.17.0.0/16",
+  gateway: none,
+  locality: DockerBridge,
+}
+
+data operator_docker_bridge_secondary_srv1_segment: NetworkSegment = NetworkSegment {
+  cidr: "172.18.0.0/16",
+  gateway: none,
+  locality: DockerBridge,
+}
+
+data srv1_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv1-host-lan",
+  host: Present { value: operator_host_srv1 },
+  address: "192.168.1.185",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv2_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv2-host-lan",
+  host: Present { value: operator_host_srv2 },
+  address: "192.168.1.188",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv1_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv1-bmc",
+  host: Present { value: operator_host_srv1 },
+  address: "192.168.1.183",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv2_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv2-bmc",
+  host: Present { value: operator_host_srv2 },
+  address: "192.168.1.184",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv3_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv3-bmc",
+  host: Present { value: operator_host_srv3 },
+  address: "192.168.1.192",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv4_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv4-bmc",
+  host: Present { value: operator_host_srv4 },
+  address: "192.168.1.195",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv4-host-lan",
+  host: Present { value: operator_host_srv4 },
+  address: "192.168.1.196",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+// srv3's HOST OS endpoint, absent from this topology until 2026-07-24 — only srv3_bmc_endpoint
+// (192.168.1.192) was modeled, so the model could name srv3's out-of-band controller but not the
+// machine itself. Observed live from the operator's DHCP table (192.168.1.221, MAC
+// 48:21:0B:81:C7:1D) and confirmed addressable by probe (sshd answers on :22). REACHABLE via the
+// srv2 hop (corrected 2026-07-25): ubuntu@srv3 runs commands today authenticated by srv2's local
+// node-orch key (proven live — hostname=srv3, aarch64, 128 cores). What is NOT yet present is the
+// FLEET identity: the fleet-automation-ssh-key is authorized for no user on srv3 (born Jul 13 with
+// ssh.authorized-keys EMPTY, hand-keyed post-install with node-orch@srv2 / briansrls@srv1 / macbook
+// only), the B2 runner-user + A1 secret-materialization gap in
+// gunbc.plans.fleet_subsumption_manual_gaps — a one-time host_authorized_keys_reconcile upsert over
+// the working node-orch hop, not a networking fact and not an unreachable host. LEASE STATUS: as of
+// 2026-07-24 the operator converted this to a STATIC reservation (192.168.1.221 ↔ MAC
+// 48:21:0B:81:C7:1D), so the literal is now a fact rather than a lease-lifetime observation —
+// matching the srv1/srv2 hosts and the srv1/srv2/srv3 BMCs. STILL DYNAMIC and therefore
+// provisional: srv4's host (192.168.1.196) and srv4's BMC (192.168.1.195); those two literals
+// remain only as stable as their leases until the operator reserves them. The DHCP-reservation act
+// itself is an unmodeled manual step for srv1..4 — a static-lease intent (MAC ↔ address binding on
+// the operator's router) has no carrier for those hosts; see
+// gunbc.plans.fleet_subsumption_manual_gaps for where that gap is tracked. PARTIAL CLOSURE
+// (SPARK-LANE-A, 2026-08-07): gunbc.spark.dgx_procurement's DgxSparkRouterBinding is that carrier
+// for srv5/srv6, holding the cited extdeps.router.verizon_cr1000a reservation row Optionally and
+// refusing deployment admission while it is Absent — and the two reservations the operator authored
+// for the DGX Spark units ARE modeled there as observed router rows, held apart from the slot
+// bindings until the operator states which box serves which slot. It is deliberately NOT
+// retrofitted to srv1..4 in the same change: those four hosts are already reserved and enrolled, so
+// a binding row for them would be authored from the live router rather than ahead of arrival, and
+// that is a read-transport question (the cr1000a lease-table transport is itself an open extdeps
+// frontier row) rather than the pre-arrival intent question srv5/srv6 pose.
+
+data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv3-host-lan",
+  host: Present { value: operator_host_srv3 },
+  address: "192.168.1.221",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+// DCH-0 (2026-09-02). THE TWO ROWS BELOW ARE THE ENROLMENT ACT, and this note says what they do and
+// what they deliberately do not do, because in this module authoring the row IS the act rather than
+// a description of one.
+//
+// ADDRESS PROVENANCE. Both literals are the wireless-keyed CR1000A static reservations transcribed in
+// gunbc.spark.dgx_procurement -- srv5 holds spark_a3ee_reservation (192.168.1.226) and srv6 holds
+// spark_3bd5_reservation (192.168.1.225), joined to these slots by
+// dgx_spark_router_binding_operator_allocation, an attributable OperatorAllocation and not a
+// measurement. THIS IS A SECOND SPELLING OF ONE ADDRESS AND IT IS ADMITTED RATHER THAN HIDDEN: the
+// procurement module imports THIS one for operator_host_srv5/srv6, so a projection from the binding
+// is refused by the import graph's one law -- measured by adding it and compiling, `circular
+// dependency detected: gunbc.fleet_intent_network -> gunbc.spark.dgx_procurement`. The duplication
+// therefore dissolves with the 🟡 dissolve-on note above it: when NetworkEndpoint.address re-grounds
+// onto extdeps.network.address.IpAddress, these two rows converge onto the SAME Ipv4Address value the
+// reservation rows already carry, exactly as srv2/srv3 converge onto gunbc.fleet_reach's rows. Until
+// then the reservation is the authority and this is a transcription of it, marked as one.
+//
+// WHAT ENROLMENT HERE DOES NOT DO, stated because the adjacent act is the dangerous one. Membership in
+// gunbc.fleet_intent's ComputeHost / fleet_intent_known_hosts list is a SEPARATE act with three
+// production consumers, one of which -- gunbc.runner.runner_host_deploy `admit_runner_host` -- is a
+// fail-closed enrolment wall that currently protects these two machines by returning
+// RunnerHostUnenrolled. Nothing here touches that list, so that wall still stands for srv5/srv6.
+//
+// THE LIVE RECONCILIATION IS OUTSTANDING, AND IT IS ALREADY REPRESENTABLE RATHER THAN PROSE. No
+// observed-vs-desired readback of the rendered serving unit has been performed on either host. That
+// obligation needs no new carrier: gunbc.spark.serving_observation_scope derives its observation
+// denominator from dgx_spark_reserved_identities(), which already names srv5 and srv6, so
+// spark_observation_coverage answers SparkObservationIncomplete with both hosts in `missing` until a
+// probe transaction supplies them. The readback needs host access this lane does not hold; the gap is
+// therefore reported by that join and not asserted here.
+data srv5_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv5-host-lan",
+  host: Present { value: operator_host_srv5 },
+  address: "192.168.1.226",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv6_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv6-host-lan",
+  host: Present { value: operator_host_srv6 },
+  address: "192.168.1.225",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv1-tailscale",
+  host: Present { value: operator_host_srv1 },
+  address: "100.69.18.126",
+  role: TailscaleEndpoint,
+  locality: TailscaleOverlay,
+}
+
+data srv2_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv2-tailscale",
+  host: Present { value: operator_host_srv2 },
+  address: "100.73.169.40",
+  role: TailscaleEndpoint,
+  locality: TailscaleOverlay,
+}
+
+data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "operator-lan-gateway",
+  host: none,
+  address: "192.168.1.1",
+  role: LanGateway,
+  locality: Lan,
+}
+
+data fleet_intent_network: NetworkTopology = NetworkTopology {
+  tailnet_domain: Present { value: "tailecbe08.ts.net" },
+  segments: [
+    operator_lan_segment,
+    operator_docker_bridge_default_segment,
+    operator_docker_bridge_secondary_srv1_segment,
+  ],
+  endpoints: [
+    operator_lan_gateway_endpoint,
+    srv1_host_lan_endpoint,
+    srv2_host_lan_endpoint,
+    srv3_host_lan_endpoint,
+    srv4_host_lan_endpoint,
+    srv5_host_lan_endpoint,
+    srv6_host_lan_endpoint,
+    srv1_bmc_endpoint,
+    srv2_bmc_endpoint,
+    srv3_bmc_endpoint,
+    srv4_bmc_endpoint,
+    srv1_tailscale_endpoint,
+    srv2_tailscale_endpoint,
+  ],
+}
+
+fn fleet_intent_network_topology() -> NetworkTopology {
+  fleet_intent_network
+}

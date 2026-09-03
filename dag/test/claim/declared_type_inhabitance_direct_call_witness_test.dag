@@ -1,0 +1,318 @@
+module test.claim.declared_type_inhabitance_direct_call_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SUBSTRATE-ONLY BY DELIBERATE CHOICE, AND THE SIBLING FILE EXPLAINS WHY IN ITS OWN VOICE.
+// test.claim.direct_call_argument_type_witness records that an assertion authored in a
+// ReadsLiveTree module is "enrolled and inert -- the specification-without-execution state
+// DESIGN 5 names, wearing the costume of a populated probe corpus", because a ReadsLiveTree
+// witness is discovered, counted in declined_live, and never folded. These arms are the
+// regression control for a discrimination that must not decay, so they are authored where the
+// floor actually folds them.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE PAIR THIS FILE EXISTS FOR. std.nat and v2.std.nat both declare a type spelled Nat and they
+// are NOT the same concept: std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively
+// as a kernel integer, while v2.std.nat.Nat is the Peano coproduct Zero | Succ { prev: Nat }.
+// v1.compiler.coercion numeric_realization_identity_note names this exact pair as the hazard a
+// bare-name rule gets wrong.
+//
+// declared_type_inhabitance admits a kernel numeric at the FIRST by consulting
+// decl_file_realizes_natively, which is keyed on the resolved DECLARING MODULE. If that
+// discrimination ever decays to a spelling comparison, the RED arm below admits and goes green,
+// which is the whole point of enrolling it: DESIGN 4b(4) keeps the evidence after a climb
+// precisely so the higher rung stays real.
+
+// A kernel integer at the PEANO Nat -- RULED ADMITTED THROUGH THE DECLARED HOMOMORPHISM, and this
+// row's claim changed with the ruling (XL-0N, adhoc-aec65f93-b00, operator ruling 2026-08-30).
+// This row used to assert a refusal (5 is not Zero and not Succ) and sat in
+// v2.workflow.floor_expected_red with the trigger "the expected-type-directed literal introduction
+// judgment -- the MODEL half -- is NOT built". It is built: std.literal_elaboration elaborates the
+// kernel literal at the exact v2.std.nat.Nat boundary through the ONE declared Peano homomorphism
+// (gunbc.structural_realization_bindings) into Succ^5(Zero), typed as the destination, so the
+// value the inhabitance judgment sees IS a Nat. Admission here is therefore the ruled answer, and
+// this row is the positive control for it. The DISCRIMINATING evidence -- that the literal is
+// elaborated rather than merely waved through -- is the emitted-bytes witness
+// test.claim.self_host_peano_literal_operator_realization_witness_test
+// w_literal_at_peano_argument_boundary_emits_its_image, whose forbidden token is exactly the bare
+// digit this probe used to carry; the two rows are read together. DESIGN 4b(4): the probe flips
+// to a permanent regression control, it does not retire.
+data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport v2.std.nat { Nat }\nfn takes_peano(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
+
+test fn w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism() -> Bool {
+  violation_count(source: peano_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// GREEN -- the same literal at the NATIVE Nat. Structurally this is a kernel value at an
+// algebraic record and reads identically to the arm above; only the declaring module differs.
+// It must be admitted, and admitted SILENTLY: the class is decidable, so there is no residue to
+// count and nothing here asserts one.
+data native_nat_arg_source: String = "module probe_inhabit_native\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: 40) }\n"
+
+test fn w_kernel_numeric_at_the_natively_realized_nat_is_admitted() -> Bool {
+  violation_count(source: native_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE ADMISSION IS WRITTEN AS A CONJUNCTION -- the declared side must realize natively AND the
+// produced value must be a kernel numeric -- and this arm is the control for the second half.
+// IT IS CURRENTLY FAILING AND ENROLLED AS A KNOWN RED. A String at the natively-realized Nat is
+// admitted, by this branch and by main alike, so the second half of the conjunction is not
+// enforced anywhere downstream of declared_type_inhabitance: the consumed predicate
+// kernel_value_declared_type_mismatch does not fire for a kernel value at ANY type application.
+// Nat is not the specimen that makes this legible -- a String reaching a List<Int> parameter is,
+// and Map<String, Int> admits one too, so it is not about arity and not about algebra. That is a
+// pre-existing gap, older than this branch, and the enrolment row in v2.workflow.floor_expected_red
+// carries the five-probe table and names it as this class's next-rung trigger.
+data string_at_native_nat_source: String = "module probe_inhabit_native_str\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: \"forty\") }\n"
+
+test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> Bool {
+  violation_count(source: string_at_native_nat_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// REACHABILITY, ON A DIFFERENT CLASS THAN THE WALL'S. An undefined name at the same argument
+// position must be refused by SOMETHING, or the two accepting arms above cannot distinguish "the
+// position is judged and the value was admitted" from "the position is never reached". An
+// unresolved value name is refused through inference_error, which constructs
+// InternalError { message } -- measured, not assumed.
+data undefined_name_arg_source: String = "module probe_inhabit_dc_reach\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: nosuchname_zzz_dc) }\n"
+
+test fn w_undefined_name_at_the_direct_call_position_still_refuses() -> Bool {
+  violation_count(source: undefined_name_arg_source, wanted: "InternalError") > 0
+}
+
+// THE TOP-LEVEL COLLECTION/NON-COLLECTION DISJOINTNESS ARM. Before this arm landed, a value
+// already inferred as List<String> bound to a NonEmptyStr parameter with no blocking diagnostic:
+// the kernel mismatch arm only judges a kernel ACTUAL, while the nominal-product arm explicitly
+// excludes containers. This is deliberately a variable rather than a list literal, so the
+// fixture reaches application with the produced List type and cannot pass on the list-literal
+// element judgment. A collection and a non-collection cannot be two representations of one
+// value, so the shared declared_type_inhabitance relation can refuse this pair without a
+// target-specific realization rule.
+data list_value_at_non_empty_str_source: String = "module probe_inhabit_list_at_text\nimport std.types { Int, String, NonEmptyStr, List }\nfn takes_text(text: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int {\n  let words: List<String> = [\"forty\"]\n  takes_text(text: words)\n}\n"
+
+test fn w_list_typed_value_at_non_empty_str_argument_is_refused() -> Bool {
+  violation_count(source: list_value_at_non_empty_str_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data collection_disjointness_positive_source: String = "module probe_inhabit_list_text_ok\nimport std.types { Int, String, NonEmptyStr, List }\nfn takes_text(text: NonEmptyStr) -> Int { 1 }\nfn takes_words(words: List<String>) -> Int { 1 }\nfn probe() -> Int {\n  let words: List<String> = [\"forty\"]\n  takes_text(text: \"forty\" as NonEmptyStr) + takes_words(words: words)\n}\n"
+
+test fn w_collection_disjointness_keeps_conforming_arguments_admitted() -> Bool {
+  violation_count(source: collection_disjointness_positive_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data record_value_at_scalar_source: String = "module probe_inhabit_record_at_scalar\nimport std.types { Int, String }\ntype Box { value: String }\nfn make_box() -> Box { Box { value: \"forty\" } }\nfn takes_text(text: String) -> Int { 1 }\nfn probe() -> Int { takes_text(text: make_box()) }\n"
+
+test fn w_record_typed_value_at_scalar_argument_is_counted_until_identity_is_grounded() -> Bool {
+  violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
+    && violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data coproduct_value_at_record_source: String = "module probe_inhabit_coproduct_at_record\nimport std.types { Int, String }\ntype Box { value: String }\ntype Choice = | ChoiceA { value: String } | ChoiceB\nfn make_choice() -> Choice { ChoiceA { value: \"forty\" } }\nfn takes_box(box: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(box: make_choice()) }\n"
+
+test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool {
+  violation_count(source: coproduct_value_at_record_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data optional_value_at_required_source: String = "module probe_inhabit_optional_at_required\nimport std.types { Int, String }\nfn maybe_text() -> String? { none }\nfn takes_text(text: String) -> Int { 1 }\nfn probe() -> Int { takes_text(text: maybe_text()) }\n"
+
+test fn w_optional_value_at_required_binding_is_admitted_only_at_the_counted_boundary() -> Bool {
+  violation_count(source: optional_value_at_required_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
+    && violation_count(source: optional_value_at_required_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// The syntax contrast that exposed the application hole. The cast seam already refused the same
+// optional-to-required transition; keep that independently typed refusal beside the binding RED
+// so neither seam can accidentally stand in as evidence for the other.
+data optional_value_cast_to_required_source: String = "module probe_inhabit_optional_cast_required\nimport std.types { String }\nfn maybe_text() -> String? { none }\nfn probe() -> String { maybe_text() as String }\n"
+
+test fn w_optional_value_cast_to_required_is_independently_refused() -> Bool {
+  violation_count(source: optional_value_cast_to_required_source, wanted: "OptionalCastNotEliminated") > 0
+}
+
+// DECLARED COUNTED BOUNDARY. A generic formal has no instantiated type evidence at this seam, so
+// this cut still admits it. Admission is not silence: the diagnostic census exposes one
+// DeclaredTypeInhabitanceUndecided obligation to consumers on every execution of this fixture.
+data generic_formal_counted_boundary_source: String = "module probe_inhabit_generic_boundary\nimport std.types { String }\nfn identity<T>(value: T) -> T { value }\nfn probe() -> String { identity(value: \"forty\") }\n"
+
+test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool {
+  violation_count(source: generic_formal_counted_boundary_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
+}
+
+// THE LIST-ELEMENT GAP, AUTHORED AS A FIXTURE SO THE PRODUCTION SITE CAN BE REPAIRED.
+// dag/gunbc/heal_revalidation.dag passed List<Fnv1a64Structural> into check_coverage_admits's
+// required_gates: List<ContentHash> -- the same mismatch as the argument beside it, one level
+// inside a list -- and this relation did NOT name it. That silence was the only evidence the
+// gap existed, which made repairing the production site look like consuming the evidence.
+// DESIGN 4b(4) separates those: a climb deletes the redundant PRODUCTION handling and KEEPS the
+// discriminating RED as enrolled evidence. So the evidence lives here, where it is reproducible
+// on demand, and the live wrong argument in an admission path is repaired.
+//
+// GREEN, AND THE CLAIM IT WAS BUILT TO DOCUMENT IS WITHDRAWN. A kernel String at a coproduct
+// element type inside a list at a direct-call argument IS REFUSED. Measured, run 32667623528.
+//
+// THIS PAIR WAS AUTHORED TO DOCUMENT A GAP THAT DOES NOT EXIST. The relation descends into a
+// list literal's elements at this position and always did; it is kept as a permanent regression
+// control over that fact rather than deleted, per DESIGN 4b(4) -- evidence stays enrolled as
+// evidence once a wall is shown real.
+//
+// WHY IT LOOKED LIKE A GAP, and the distinction is the whole correction: the site that started
+// this was dag/gunbc/heal_revalidation.dag passing a List<Fnv1a64Structural> VARIABLE into a
+// List<ContentHash> parameter. That is list-typed-value compatibility, and the relation answers
+// Undecidable for a generic carrier BY DESIGN. This probe instead passes a list LITERAL with a
+// wrong element, which is a different judgment and one the relation makes. I inferred the second
+// from the silence on the first. THE LIST-TYPED-VALUE CASE REMAINS UNMEASURED and no arm here
+// claims anything about it.
+//
+// THE PRODUCED VALUE IS A KERNEL STRING BECAUSE THE FIRST VERSION OF THIS PAIR USED A RECORD
+// LITERAL AND ITS CONTROL WENT RED, which is the only reason the mis-design was caught rather
+// than enrolled. kernel_value_declared_type_mismatch judges only a KERNEL produced value --
+// is_kernel_type(actual_name) gates its whole body -- so a record literal at a coproduct is not
+// judged AT ANY POSITION, list or not. The old pair therefore measured "records are never
+// judged" and would have been enrolled as evidence about lists. A String is judged at this
+// position by execution (measured: a String at a closed coproduct REFUSES), so the list is now
+// the only difference between the two arms.
+data record_element_in_list_arg_source: String = "module probe_inhabit_dc_list_elem\nimport std.types { Int, String, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\nfn takes_list(xs: List<Cop>) -> Int { 1 }\nfn probe() -> Int { takes_list(xs: [\"forty\"]) }\n"
+
+test fn w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused() -> Bool {
+  violation_count(source: record_element_in_list_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE CONTROL THAT MAKES THAT RED READABLE, and it separates "the relation cannot judge this
+// pair" from "the relation cannot see inside a list". SAME two types, SAME direct-call argument
+// position, the String passed DIRECTLY rather than wrapped in a list. If this refuses and the
+// arm above does not, the list is the whole difference. If this also admits, the probe proves
+// nothing about lists and the arm above is measuring the wrong thing -- which is exactly what
+// happened to this pair's first version, so this arm is not a formality.
+data record_directly_at_coproduct_arg_source: String = "module probe_inhabit_dc_bare_elem\nimport std.types { Int, String, List }\ntype Cop = | CopA { v: Int } | CopB { w: Int }\nfn takes_one(x: Cop) -> Int { 1 }\nfn probe() -> Int { takes_one(x: \"forty\") }\n"
+
+test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool {
+  violation_count(source: record_directly_at_coproduct_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE NOMINAL-PRODUCT ARM, AND THE THREE SHAPES IT WAS BUILT FROM. Each source below was
+// measured on a compiler built from this tree BEFORE the arm landed, as its own entry compile,
+// and each reported ZERO blocking diagnostics -- so these are discriminating REDs against the
+// prior compiler, not restatements of behaviour that already held. They are kept enrolled after
+// the climb, per DESIGN 4b(4): the evidence that a wall stays real is not the production
+// handling it replaced.
+//
+// WHY THE ACTUAL IS A CALL AND NOT A RECORD LITERAL, in every red arm here. A record literal at
+// a non-generic formal was ALREADY refused, by structured_application_site_type_mismatch, which
+// judges only an actual whose EXPRESSION is a record literal. Writing these probes with literals
+// would therefore have measured that older producer and enrolled its answer as evidence about
+// this one -- the mis-design the list-element pair above records having made once. A call is the
+// spelling no producer judged.
+
+// RED BEFORE, GREEN NOW -- DISTINCT APPLIED CONSTRUCTORS. Alpha<String> reaching a Beta<String>
+// parameter. Both sides are applications, both constructors resolve to declared products, and
+// the two constructors are unrelated by alias, brand or cast.
+data applied_distinct_constructor_source: String = "module probe_inhabit_applied_ctor\nimport std.types { String }\ntype Alpha<P> { a: P }\ntype Beta<P> { b: P }\nfn mk_alpha() -> Alpha<String> { Alpha { a: \"z\" } }\nfn takes_beta(x: Beta<String>) -> String { x.b }\nfn probe() -> String { takes_beta(x: mk_alpha()) }\n"
+
+test fn w_distinct_applied_constructors_at_a_direct_call_argument_are_refused() -> Bool {
+  violation_count(source: applied_distinct_constructor_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// RED BEFORE, GREEN NOW -- ONE CONSTRUCTOR, DISTINCT TYPE ARGUMENTS. Wrapper<KindB> reaching a
+// Wrapper<KindA> parameter. THIS IS THE ARM THAT ISOLATES THE CAUSE: no brand and no refinement
+// is involved anywhere in the source, so admitting it could not have been a brand-specific
+// deficit. K is phantom -- Wrapper's only field is a String -- which is exactly the shape whose
+// separation nothing downstream can recover: a runtime equality over the stored fields cannot
+// see the lost K and would CONFIRM a match the types deny.
+data applied_distinct_type_argument_source: String = "module probe_inhabit_applied_arg\nimport std.types { String }\ntype KindA { ka: String }\ntype KindB { kb: String }\ntype Wrapper<K> { v: String }\nfn mk_b() -> Wrapper<KindB> { Wrapper { v: \"z\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn probe() -> String { takes_a(x: mk_b()) }\n"
+
+test fn w_distinct_applied_type_arguments_at_a_direct_call_argument_are_refused() -> Bool {
+  violation_count(source: applied_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// RED BEFORE, GREEN NOW -- AND IT IS WHY THIS ARM IS NOT NAMED FOR GENERICS. The same distinct
+// constructors with no type parameters anywhere, the actual a call. The class was never about
+// application: it was about which PRODUCER sees the pair, and the record-literal producer is the
+// only one that ever did.
+data unapplied_distinct_constructor_source: String = "module probe_inhabit_unapplied_ctor\nimport std.types { String }\ntype Alpha { a: String }\ntype Beta { b: String }\nfn mk_alpha() -> Alpha { Alpha { a: \"z\" } }\nfn takes_beta(x: Beta) -> String { x.b }\nfn probe() -> String { takes_beta(x: mk_alpha()) }\n"
+
+test fn w_distinct_unapplied_product_constructors_through_a_call_are_refused() -> Bool {
+  violation_count(source: unapplied_distinct_constructor_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE ANTI-REFUSE-EVERYTHING CONTROL, and it is not a formality: an arm that refused every
+// applied product would make all three reds above pass while destroying the corpus. Identical
+// constructor, identical type argument, same call spelling as the reds.
+data applied_matching_source: String = "module probe_inhabit_applied_match\nimport std.types { String }\ntype KindA { ka: String }\ntype Wrapper<K> { v: String }\nfn mk_a() -> Wrapper<KindA> { Wrapper { v: \"z\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn probe() -> String { takes_a(x: mk_a()) }\n"
+
+test fn w_matching_applied_product_at_a_direct_call_argument_is_admitted() -> Bool {
+  violation_count(source: applied_matching_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE SECOND CONTROL, over the guard that keeps this arm from reaching a class it cannot decide.
+// A type argument that is still a TYPE VARIABLE resolves to no declared type and is not a kernel
+// type, so the argument scan leaves the position unjudged rather than reading P and String as a
+// disagreement. If that guard is ever dropped, this admits nothing and goes red -- which is the
+// only way a false-positive class of that shape becomes visible here rather than in the corpus.
+data applied_type_variable_argument_source: String = "module probe_inhabit_applied_tyvar\nimport std.types { String }\ntype Wrapper<K> { v: String }\nfn takes_w<T>(x: Wrapper<T>) -> String { x.v }\nfn mk_s() -> Wrapper<String> { Wrapper { v: \"z\" } }\nfn probe() -> String { takes_w(x: mk_s()) }\n"
+
+test fn w_a_type_variable_type_argument_is_not_read_as_a_disagreement() -> Bool {
+  violation_count(source: applied_type_variable_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE PHANTOM ARM, AND IT IS NOT THE Wrapper ARM TWICE -- THE TWO FAIL ON DIFFERENT BUGS, which
+// is the test for whether a second control earns its place. In the Wrapper probe above the two
+// candidate arguments are KindA and KindB, DISTINCT RECORDS with distinct fields, so any
+// comparison that reaches representation at all sees a difference. Here the two candidates are
+// representationally IDENTICAL -- DemandKey and WorkKey have the same single String field -- and
+// the parameter they occupy is PHANTOM: K appears in the parameter list and in no field. The two
+// instantiations therefore differ ONLY nominally, at every level below the type.
+//
+// THE BUG THIS CATCHES AND THE OTHER DOES NOT: "a type argument that does not affect layout
+// cannot affect inhabitance" is a reasonable-sounding optimization that would leave the Wrapper
+// arm green while silently reopening this class whole. Enrolled at the request of the lane that
+// found the original defect (zesty-crane-477), whose objection to omitting it was correct.
+//
+// WHY THIS SHAPE IS THE PRODUCTION ONE. product.fabric's demand/work/attempt/grant/offer/receipt
+// identities are non-interchangeable ONLY because of a phantom K in FabricIdentity<P,K>, and
+// there is NO runtime fallback: the carrier stores principal and key, fabric_identity_eq compares
+// exactly those two, so a wrong-kind identity admitted at a parameter is not merely uncaught
+// downstream -- the equality CONFIRMS it on equal principal and key. This arm is the only thing
+// standing between that and a silent false match.
+data phantom_distinct_type_argument_source: String = "module probe_inhabit_phantom\nimport std.types { String }\ntype DemandKey { v: String }\ntype WorkKey { v: String }\ntype FabricIdentity<P, K> { principal: P, key: String }\nfn mk_work() -> FabricIdentity<String, WorkKey> { FabricIdentity { principal: \"p\", key: \"k\" } }\nfn takes_demand(x: FabricIdentity<String, DemandKey>) -> String { x.key }\nfn probe() -> String { takes_demand(x: mk_work()) }\n"
+
+// examples.nominal_distinctness_witness and examples.nominal_distinctness_twin were deleted when
+// this arm landed: the RED half was a corpus module that must not compile, and its discrimination
+// is carried by the enrolled fixture arms in this file.
+
+// WHERE THE examples.nominal_distinctness_witness PAIR WENT, recorded here because deleting a
+// module takes its evidence with it unless the evidence is named first. That pair was
+// dag/examples/nominal_distinctness_witness/{witness,twin}.dag: witness.dag passed an AccountId
+// to a parameter declared UserId and twin.dag passed a UserId, an ordinary RED/GREEN discriminator
+// over exactly this class, authored long before this arm.
+//
+// IT WAS INERT, AND ITS INERTNESS WAS THIS DEFECT. Consumed by nothing (it appears in the
+// unconsumed-module census with no consumer), the RED half COMPILED CLEAN -- so the pair recorded
+// a distinction the compiler was not making, and nothing anywhere reported that. The moment this
+// arm landed, witness.dag stopped compiling, which is the pair finally working and also the reason
+// it can no longer live in the corpus: strict preparation compiles every module, so a module that
+// must not compile stops the line.
+//
+// A DELIBERATELY INVALID PROGRAM BELONGS AT THE FIXTURE BOUNDARY, NOT IN THE CORPUS -- DESIGN 4b's
+// distinction between what an Accepted program may contain and what a fixture may author. The
+// discrimination the pair carried is exactly w_distinct_unapplied_product_constructors_through_a
+// _call_are_refused above plus w_matching_applied_product_at_a_direct_call_argument_is_admitted,
+// both of which EXECUTE on every floor run. So the evidence did not move to a weaker home; it
+// moved from a home where it could never fire to one where it fires every run.
+test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool {
+  violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
+}

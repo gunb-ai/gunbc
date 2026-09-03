@@ -1,0 +1,34 @@
+module v2.std.data_index
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type DataInitDecl {
+  qualified_name: String
+  module: String
+  name: String
+  literal_fp: String
+}
+
+fn literal_fingerprint_num_lexeme(lexeme: String) -> String {
+  concat("num:", lexeme)
+}
+
+fn literal_fingerprint_bool_lexeme(lexeme: String) -> String {
+  concat("bool:", lexeme)
+}
+
+fn literal_fingerprint_str_content(content: String) -> String {
+  concat("str:\"", concat(content, "\""))
+}
+
+fn lexeme_matches_literal_fp(lexeme: String, literal_fp: String) -> Bool {
+  (literal_fp == literal_fingerprint_num_lexeme(lexeme: lexeme))
+    || (literal_fp == literal_fingerprint_bool_lexeme(lexeme: lexeme))
+    || (literal_fp == literal_fingerprint_str_content(content: lexeme))
+}
+
+fn data_init_decl_facts_live() -> List<DataInitDecl> {
+  data_init_decl_facts_live()
+}

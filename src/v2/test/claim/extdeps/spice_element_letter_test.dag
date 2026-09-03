@@ -1,0 +1,111 @@
+module v2.test.extdeps.spice_element_letter
+
+import std.algebra { Cons, Empty }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  Ground,
+  Named,
+  NamedNode,
+  Resistor,
+  SpiceNetlist,
+  SpiceValue,
+  VoltageSource,
+  spice_emit,
+  spice_identifier,
+  spice_identifier_is_admissible,
+}
+import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn one_resistor(name: String) -> SpiceNetlist {
+  SpiceNetlist {
+    title: "",
+    body: Cons {
+      head: DeckComponent {
+        component: Resistor {
+          name: name,
+          n_plus: Named { node: NamedNode { name: "hot" } },
+          n_minus: Ground,
+          value: SpiceValue { lexeme: "1k" },
+        },
+      },
+      tail: Empty,
+    },
+  }
+}
+
+fn one_capacitor(name: String) -> SpiceNetlist {
+  SpiceNetlist {
+    title: "",
+    body: Cons {
+      head: DeckComponent {
+        component: Capacitor {
+          name: name,
+          n_plus: Named { node: NamedNode { name: "hot" } },
+          n_minus: Ground,
+          value: SpiceValue { lexeme: "1k" },
+        },
+      },
+      tail: Empty,
+    },
+  }
+}
+
+// THE ELEMENT LETTER IS A FUNCTION OF THE CONSTRUCTOR. Before this, the letter arrived inside the
+// name's spelling and the constructor contributed nothing to the emitted bytes — a Resistor named
+// c1 emitted "C1 ..." and ngspice simulated a capacitor. Same name, different constructor, and
+// the two decks must now differ in exactly the first character.
+test fn w_the_constructor_decides_the_element_letter() -> Bool {
+  spice_emit(netlist: one_resistor(name: "x")) == "Rx hot 0 1k"
+    && spice_emit(netlist: one_capacitor(name: "x")) == "Cx hot 0 1k"
+}
+
+// A NAME NO TABLE ANTICIPATED. The previous emitter answered Absent for anything outside
+// r1/c1/v1/n1/n2, and spice_emit rendered Absent as the empty string — so a deck naming a sixth
+// node emitted nothing at all rather than refusing. This is the claim that the emitter is a
+// function of the netlist rather than of a fixture.
+test fn w_an_unanticipated_name_emits_rather_than_vanishing() -> Bool {
+  spice_emit(netlist: one_resistor(name: "pg_cond_47")) == "Rpg_cond_47 hot 0 1k"
+}
+
+// Admission REFUSES rather than sanitizing. A name with a space silently stripped is a different
+// node, and the deck would simulate cleanly while describing a different circuit.
+test fn w_an_inadmissible_name_is_refused_not_repaired() -> Bool {
+  match spice_identifier(spelling: "pg cond") {
+    Present { value: _ } => false
+    Absent =>
+      match spice_identifier(spelling: "pg_cond") {
+        Present { value: v } => (v as String) == "pg_cond"
+        Absent => false
+      }
+  }
+}
+
+test fn w_the_empty_name_is_not_an_identifier() -> Bool {
+  !spice_identifier_is_admissible(spelling: "")
+}
+
+// A voltage source and a resistor with one name are different elements, and the deck says so.
+test fn w_a_source_and_a_resistor_do_not_collide() -> Bool {
+  let src = SpiceNetlist {
+    title: "",
+    body: Cons {
+      head: DeckComponent {
+        component: VoltageSource {
+          name: "x",
+          n_plus: Named { node: NamedNode { name: "hot" } },
+          n_minus: Ground,
+          value: SpiceValue { lexeme: "1k" },
+        },
+      },
+      tail: Empty,
+    },
+  }
+  spice_emit(netlist: src) == "Vx hot 0 1k"
+    && spice_emit(netlist: src) != spice_emit(netlist: one_resistor(name: "x"))
+}

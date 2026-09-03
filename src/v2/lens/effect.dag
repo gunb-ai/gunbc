@@ -1,20 +1,24 @@
 module v2.lens.effect
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.common.algebraic_composition { EffectClassification, effect_classifier }
 import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.infer { InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.algebra { bag_eq, list_snoc_item, non_empty }
 import v2.std.collection {
   List,
+  optional_present_witness
+}
+import v2.std.optional {
   Optional,
   optional_absent,
   optional_prefer_first_present,
-  optional_present,
-  optional_present_witness
+  optional_present
 }
 import v2.std.dependency {
   ClassifiedDependencyView,
   DependencyView,
+  classify_dependency_view,
   classified_dependency_view_eq
 }
 import v2.std.diagnostic {
@@ -26,9 +30,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
-
-type EffectClassification {}
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 type EffectFact {
   dependencies: List<ClassifiedDependencyView<EffectClassification>>
@@ -38,10 +40,7 @@ fn effect_classify(
   tree: InferredTree,
   view: DependencyView
 ) -> ClassifiedDependencyView<EffectClassification> {
-  ClassifiedDependencyView {
-    dependency: view,
-    classification: EffectClassification {}
-  }
+  classify_dependency_view(classifier: effect_classifier, view: view)
 }
 
 fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
@@ -53,7 +52,7 @@ fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Effect
 }
 
 fn effect_usage_facts_witness(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
-  tree.facts.lookup(source)
+  witness_from_optional(opt: tree.facts.lookup(source), absent: infer_facts_lookup_miss_diagnostic(key: source))
 }
 
 fn effect_first_upstream_diagnostic(
@@ -114,6 +113,5 @@ fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Effects are a decidable projection of type-signature shape; the lens is a per-edge ratchet until the signature-derived effect-kind set is closed (re-authoring from DependencyKind would be a second authority). Grounding authority: the signature-derived closed effect-kind set (#3468 BLOCKING follow-up). Dissolves on: effect kinds are derived from the type signature by construction (single authority, B3), closing the per-edge classification ratchet"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

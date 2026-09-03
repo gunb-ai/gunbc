@@ -1,0 +1,301 @@
+module v2.test.claim.rust_crate_partition_witness
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
+import std.types { NonEmptyStr }
+import v2.std.collection { Absent, Present, empty_map, map_insert }
+import v2.std.compilers.compilation_unit {
+  CompilationUnit,
+  CompilationUnitId,
+  HandExplicit,
+  ModuleDag,
+  ModuleDagEdge,
+  ModuleId,
+  PolicyDerived,
+  PartitionFoldOk,
+  PartitionFoldOutcome,
+  PartitionFoldRefused,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  ByValueTypeCycle,
+  LinkageCycle,
+  SccSplit,
+  UnitGraphCycle,
+  partition_fold_outcome,
+  partition_provenance_eq,
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived,
+  partition_unit_by_id
+}
+import v2.workflow.rust_crate_partition {
+  PolicyPartitionParam,
+  PolicyResolverUnimplemented,
+  PartitionPolicy,
+  ResolvePartitionRefused,
+  ResolvePartitionOk,
+  resolve_partition_outcome,
+  rust_crate_partition_declared_core_target,
+  rust_crate_partition_module_bearing_unit_target,
+  stage0_interim_explicit_assignment,
+  stage0_module_dag,
+  stage0_module_dag_interface_grounding_is_debt,
+  stage0_module_bearing_unit_count,
+  stage0_module_id,
+  stage0_v1_infer_modules,
+  stage0_partition_fold_ok,
+  stage0_partition_member_coverage_consistent,
+  Stage0PartitionReceiptFoldRefused,
+  Stage0PartitionReceiptOk,
+  Stage0PartitionReceiptResolveRefused,
+  stage0_partition_receipt_outcome,
+  stage0_physical_crate_count,
+  stage0_partition_row_lookups_resolved,
+  stage0_single_crate_fold_outcome,
+  stage0_partition_parameter,
+  stage0_partition_provenance,
+  stage0_partition_r4_valid,
+  stage0_unit_runtime,
+  stage0_unit_v1_infer,
+  stage0_unit_v1_artifact,
+  validate_partition_r4
+}
+
+data witness_red_control_note: String = "Discriminating RED: (1) assign std_algebra and std_nat to different units while keeping std_nat -> std_algebra edge → validate_partition_r4 returns SccSplit refusal; (2) fabricate a cyclic unit dep graph → UnitGraphCycle refusal; (3) drop a module from explicit assignment → partition_fold_outcome refuses or unit member count diverges."
+
+data witness_mod_a: ModuleId = "witness.scc.a" as NonEmptyStr
+data witness_mod_b: ModuleId = "witness.scc.b" as NonEmptyStr
+data witness_mod_c: ModuleId = "witness.scc.c" as NonEmptyStr
+data witness_unit_x: CompilationUnitId = "witness-unit-x" as CompilationUnitId
+data witness_unit_y: CompilationUnitId = "witness-unit-y" as CompilationUnitId
+
+data witness_unit_p: CompilationUnitId = "witness-unit-p" as CompilationUnitId
+data witness_unit_q: CompilationUnitId = "witness-unit-q" as CompilationUnitId
+data witness_mod_p: ModuleId = "witness.unit.p" as NonEmptyStr
+data witness_mod_q: ModuleId = "witness.unit.q" as NonEmptyStr
+
+fn witness_triangle_scc_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b, witness_mod_c],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+    ],
+    exports: empty_map(),
+    type_definitions: empty_map(),
+  }
+}
+
+fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_a, witness_unit_x)
+    |> map_insert(witness_mod_b, witness_unit_x)
+    |> map_insert(witness_mod_c, witness_unit_y)
+}
+
+test fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
+  let dag = witness_triangle_scc_dag()
+  let assignment = witness_forced_scc_split_assignment()
+  let units = match partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    PartitionFoldOk { units: units } => units
+    PartitionFoldRefused { cause: _ } => []
+  }
+  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
+    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => false
+    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
+    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
+    PartitionR4Valid => false
+  }
+}
+
+fn witness_acyclic_module_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_p, witness_mod_q],
+    edges: [ModuleDagEdge { from: witness_mod_p, to: witness_mod_q }],
+    exports: empty_map(),
+    type_definitions: empty_map(),
+  }
+}
+
+fn witness_two_unit_assignment_no_scc_split() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_p, witness_unit_p)
+    |> map_insert(witness_mod_q, witness_unit_q)
+}
+
+fn witness_cyclic_unit_graph() -> List<CompilationUnit> {
+  [
+    CompilationUnit {
+      id: witness_unit_p,
+      members: [witness_mod_p],
+      interface: [],
+      deps: [witness_unit_q]
+    },
+    CompilationUnit {
+      id: witness_unit_q,
+      members: [witness_mod_q],
+      interface: [],
+      deps: [witness_unit_p]
+    }
+  ]
+}
+
+test fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
+  let dag = witness_acyclic_module_dag()
+  let assignment = witness_two_unit_assignment_no_scc_split()
+  let units = witness_cyclic_unit_graph()
+  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => true
+    PartitionR4Refused { cause: SccSplit { detail: _ } } => false
+    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
+    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
+    PartitionR4Valid => false
+  }
+}
+
+test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
+  let coverage_same = stage0_partition_member_coverage_consistent(
+    left: stage0_single_crate_fold_outcome(),
+    right: stage0_partition_receipt_outcome()
+  )
+  perturbation_consistent(
+    reading: ForwardSameInSameOut,
+    output_responded: !coverage_same
+  )
+}
+
+test fn witness_interim_physical_crate_count_holds() -> Bool {
+  stage0_physical_crate_count() == rust_crate_partition_declared_core_target
+}
+
+test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
+  stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
+}
+
+test fn witness_policy_partition_refuses_holds() -> Bool {
+  let dag = stage0_module_dag()
+  match resolve_partition_outcome(
+    parameter: PolicyPartitionParam {
+      policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
+    },
+    module_dag: dag
+  ) {
+    ResolvePartitionRefused { cause: PolicyResolverUnimplemented { policy: _ } } => true
+    ResolvePartitionOk { assignment: _ } => false
+  }
+}
+
+test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
+  match stage0_partition_provenance() {
+    HandExplicit => true
+    PolicyDerived { policy: _ } => false
+  }
+}
+
+test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
+  let explicit = partition_provenance_hand_explicit()
+  let derived = partition_provenance_policy_derived(
+    policy: DeclarationRef {
+      module_path: "v2.workflow.rust_crate_partition" as NonEmptyStr,
+      decl_name: "resolve_partition" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  )
+  !partition_provenance_eq(left: explicit, right: derived)
+}
+
+test fn witness_runtime_unit_members_holds() -> Bool {
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
+      match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
+        Present { value: unit } =>
+          (unit.members |> count) == 1
+        Absent => false
+      }
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+  }
+}
+
+// THIS WAS `== 9` AND THE 9 WAS THE WHOLE ASSERTION, which is why it is not `== 10` now.
+// #9689 added three modules to stage0 and the v1-infer roster gained one of them
+// (gunbc_rust_source_type_bindings), so the literal went stale the moment the roster it
+// measures changed -- and the only available repair for a literal is to retype it, which
+// DESIGN section 5 names exactly: if automating the update collapses the assertion to
+// measure() == measure(), the manual update was the test's entire content.
+//
+// The join below is not that collapse, and the reason is which side each half comes from.
+// stage0_v1_infer_modules() is the DECLARED roster, a list in the partition authority.
+// unit.members is what came back through stage0_assign_modules_to_unit and then through
+// partition_fold_outcome -- the assignment map keyed by ModuleId, folded and grouped. So
+// this asserts the fold routed exactly the declared modules to this unit and invented,
+// dropped and misfiled none, which is a property of the plumbing rather than of the list.
+// It is honest about its blind spot: an error in the ROSTER ITSELF is invisible here, as it
+// was to the count, because both sides then move together. That class is the required build
+// lane's (gunbc.repo_self_build repo_self_build_partition_crates_command), where rustc is
+// the oracle.
+//
+// The sibling unit witnesses still carry count literals with the same defect. They are left
+// alone deliberately: this one is converted because this change broke it, and converting the
+// rest is a separate diff rather than a rider on an unbreak.
+test fn witness_v1_infer_unit_members_holds() -> Bool {
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
+      match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
+        Present { value: unit } => {
+          let declared = stage0_v1_infer_modules()
+            |> map(basename => stage0_module_id(basename: basename))
+          (unit.members |> count) == (declared |> count)
+            && declared |> all(d => unit.members |> any(m => m == d))
+            && unit.members |> all(m => declared |> any(d => d == m))
+        }
+        Absent => false
+      }
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+  }
+}
+
+test fn witness_v1_artifact_unit_members_holds() -> Bool {
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
+      match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
+        Present { value: unit } =>
+          (unit.members |> count) == 2
+        Absent => false
+      }
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+  }
+}
+
+test fn witness_partition_fold_unit_count_holds() -> Bool {
+  stage0_partition_fold_ok()
+}
+
+test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
+  stage0_partition_r4_valid()
+}
+
+test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
+  let dag = stage0_module_dag()
+  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
+    ResolvePartitionOk { assignment: resolved } => {
+      let expected = stage0_interim_explicit_assignment()
+      (resolved |> count) == (expected |> count)
+    }
+    ResolvePartitionRefused { cause: _ } => false
+  }
+}
+
+test fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool {
+  stage0_partition_row_lookups_resolved()
+}
+
+
+test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
+  stage0_module_dag_interface_grounding_is_debt()
+}
+
+

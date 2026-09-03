@@ -1,0 +1,57 @@
+module extdeps.colo.coresite
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.coresite.com/data-center/ny2-secaucus-nj"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.coresite",
+      decl_name: "coresite_ny2",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data coresite_ny2: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "CoreSite",
+  facility_label: "CoreSite NY2 Secaucus",
+  address: AddressListed {
+    street: "2 Emerson Lane, Secaucus, NJ 07094",
+    citation: "coresite.com NY2 page and datacentermap profile, read 2026-08-18",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Roughly 256,000 square feet per the operator's page read 2026-08-18; retail cabinets through cages and suites; on-ramps to the Any2Exchange, NYIIX and DE-CIX New York with about 54 network providers listed. American Tower is the parent.",
+}
+
+data coresite_ny3: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "CoreSite",
+  facility_label: "CoreSite NY3 Secaucus",
+  address: AddressUnread {
+    obligation: "coresite.com lists NY3 as a Secaucus facility (read 2026-08-18) but the street address was not captured in this sweep; read the spec sheet before treating it as a distinct candidate.",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Second Secaucus building on the operator's New York campus listing, read 2026-08-18.",
+}
+
+data coresite_facilities: List<ColoFacilityRow> = [coresite_ny2, coresite_ny3]
+
+data coresite_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "coresite.com sales",
+  obligation: "No published cabinet pricing (read 2026-08-18). A prior private planning note carried a from-knowledge claim that CoreSite quotes land 15 to 25 percent below Equinix in this metro; that claim has no receipt and only a pair of quotes can ground it.",
+}

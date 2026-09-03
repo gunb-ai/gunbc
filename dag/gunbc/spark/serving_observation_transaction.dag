@@ -1,0 +1,800 @@
+module gunbc.spark.serving_observation_transaction
+
+import std.types { Bool, List, NonEmptyStr, String, Int }
+import std.content_hash { serialize_content_hash }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshAttemptIdentity,
+  FleetSshCredentialBinding,
+  fleet_ssh_credential_identity,
+  fleet_ssh_credential_locus_label,
+}
+import extdeps.ssh.session { SshSessionExecResult }
+
+// ONE HOST, ONE ATTEMPT, ONE LOCUS, ONE CAPTURE PER LEG.
+//
+// Before this carrier existed the observation was a pile of independent SSH legs whose only
+// relationship was that the same expression happened to pass the same `host` to each of them. Three
+// consequences, all of them live:
+//
+//   1. `spark_serving_active_probe_words()` was executed TWICE per host -- once for the readback's
+//      is_active field and again inside the user-unit pair observer -- so one host could report
+//      active in the readback and inactive in the unit, from two different instants, and nothing in
+//      the value said they were different instants.
+//   2. `spark_serving_observe_host_via_locus` ran its own legs through the locus transport but then
+//      called the model-store, user-unit and runtime observers, each of which reached for the OTHER
+//      adapter. A caller that asked for a locus observation silently got a mixture of two credential
+//      paths, and the value it received could not be asked which.
+//   3. Every derivation could reach for another leg, so "how many times did we touch this host" was
+//      not answerable from any value -- only by reading every function transitively.
+//
+// The carrier makes the captures the subject. Acquisition happens once, in one place, through one
+// transport; every derivation afterwards is a pure read of a captured result. A derivation that
+// wants a fact nobody captured cannot invent a leg for it -- there is no transport in scope -- so it
+// refuses, which is how a missing leg becomes visible instead of becoming an extra round trip.
+// THE CAPTURE CARRIES THE REQUEST, SO THERE IS NO LABEL TO GET WRONG.
+//
+// The first cut had the mint take (leg, argv) as independent arguments, which meant a capture could
+// be MISLABELLED -- run the is-active argv and file it under ProbeLoadState -- and every downstream
+// reader would trust it, because the label was the only claim about what ran. The review found the
+// counterexample inside this repository's own witness, which is the sharpest possible demonstration
+// that the pair was authorable: the fixture supplied ["systemctl","is-active"] for every leg it
+// named, including ProbeLoadState, and the transaction admitted it.
+//
+// So there is no pair any more. A capture carries a REQUEST, the leg name is projected from it, and
+// the argv is projected from it by the module that owns each argv authority. One value, two
+// projections, nothing for a caller to make disagree.
+//
+// ModelBlobDigestsRequest carries its digest population because it is the one request whose command
+// depends on an earlier capture. Carrying the digests IN the request is what keeps that dependency
+// visible: a blob-digest request with no digests is a different request from one with three, and the
+// prerequisite arm below refuses rather than executing a bare sha256sum over nothing.
+type SparkServingProbeRequest
+  = LoadStateRequest
+  | IsActiveRequest
+  | VersionRequest
+  | TagsRequest
+  | NvidiaDriverRequest
+  | RuntimeReceiptRequest
+  | ActiveEnterRequest
+  | DefaultTargetEnterRequest
+  | UptimeRequest
+  | GrantsRequest
+  | PasswdRequest
+  | AuthorizedKeysRequest
+  | LingerRequest
+  | ModelManifestRequest
+  | ModelBlobsListingRequest
+  | ModelManifestDigestRequest
+  | ModelBlobDigestsRequest { digests: List<NonEmptyStr> }
+  | UserUnitReadRequest
+  | UserUnitIsEnabledRequest
+  | RunningDefinitionRequest
+  | InvocationIdentityRequest
+  | RuntimeRootRequest
+  | RuntimeExecutableRequest
+  | RuntimeExecutableBitRequest
+  | RuntimeRootListingRequest
+
+fn spark_serving_probe_request_leg(request: SparkServingProbeRequest) -> SparkServingProbeLeg {
+  match request {
+    LoadStateRequest => ProbeLoadState
+    IsActiveRequest => ProbeIsActive
+    VersionRequest => ProbeVersion
+    TagsRequest => ProbeTags
+    NvidiaDriverRequest => ProbeNvidiaDriver
+    RuntimeReceiptRequest => ProbeRuntimeReceipt
+    ActiveEnterRequest => ProbeActiveEnter
+    DefaultTargetEnterRequest => ProbeDefaultTargetEnter
+    UptimeRequest => ProbeUptime
+    GrantsRequest => ProbeGrants
+    PasswdRequest => ProbePasswd
+    AuthorizedKeysRequest => ProbeAuthorizedKeys
+    LingerRequest => ProbeLinger
+    ModelManifestRequest => ProbeModelManifest
+    ModelBlobsListingRequest => ProbeModelBlobsListing
+    ModelManifestDigestRequest => ProbeModelManifestDigest
+    ModelBlobDigestsRequest { digests: _ } => ProbeModelBlobDigests
+    UserUnitReadRequest => ProbeUserUnitRead
+    UserUnitIsEnabledRequest => ProbeUserUnitIsEnabled
+    RunningDefinitionRequest => ProbeRunningDefinition
+    InvocationIdentityRequest => ProbeInvocationIdentity
+    RuntimeRootRequest => ProbeRuntimeRoot
+    RuntimeExecutableRequest => ProbeRuntimeExecutable
+    RuntimeExecutableBitRequest => ProbeRuntimeExecutableBit
+    RuntimeRootListingRequest => ProbeRuntimeRootListing
+  }
+}
+
+type SparkServingProbeLeg
+  = ProbeLoadState
+  | ProbeIsActive
+  | ProbeVersion
+  | ProbeTags
+  | ProbeNvidiaDriver
+  | ProbeRuntimeReceipt
+  | ProbeActiveEnter
+  | ProbeDefaultTargetEnter
+  | ProbeUptime
+  | ProbeGrants
+  | ProbePasswd
+  | ProbeAuthorizedKeys
+  | ProbeLinger
+  | ProbeModelManifest
+  | ProbeModelBlobsListing
+  | ProbeModelManifestDigest
+  | ProbeModelBlobDigests
+  | ProbeUserUnitRead
+  | ProbeUserUnitIsEnabled
+  | ProbeRunningDefinition
+  | ProbeInvocationIdentity
+  | ProbeRuntimeRoot
+  | ProbeRuntimeExecutable
+  | ProbeRuntimeExecutableBit
+  | ProbeRuntimeRootListing
+
+fn spark_serving_probe_leg_key(leg: SparkServingProbeLeg) -> NonEmptyStr {
+  match leg {
+    ProbeLoadState => "load_state" as NonEmptyStr
+    ProbeIsActive => "is_active" as NonEmptyStr
+    ProbeVersion => "version" as NonEmptyStr
+    ProbeTags => "tags" as NonEmptyStr
+    ProbeNvidiaDriver => "nvidia_driver" as NonEmptyStr
+    ProbeRuntimeReceipt => "runtime_receipt" as NonEmptyStr
+    ProbeActiveEnter => "active_enter" as NonEmptyStr
+    ProbeDefaultTargetEnter => "default_target_enter" as NonEmptyStr
+    ProbeUptime => "uptime" as NonEmptyStr
+    ProbeGrants => "grants" as NonEmptyStr
+    ProbePasswd => "passwd" as NonEmptyStr
+    ProbeAuthorizedKeys => "authorized_keys" as NonEmptyStr
+    ProbeLinger => "linger" as NonEmptyStr
+    ProbeModelManifest => "model_manifest" as NonEmptyStr
+    ProbeModelBlobsListing => "model_blobs_listing" as NonEmptyStr
+    ProbeModelManifestDigest => "model_manifest_digest" as NonEmptyStr
+    ProbeModelBlobDigests => "model_blob_digests" as NonEmptyStr
+    ProbeUserUnitRead => "user_unit_read" as NonEmptyStr
+    ProbeUserUnitIsEnabled => "user_unit_is_enabled" as NonEmptyStr
+    ProbeRunningDefinition => "running_definition" as NonEmptyStr
+    ProbeInvocationIdentity => "invocation_identity" as NonEmptyStr
+    ProbeRuntimeRoot => "runtime_root" as NonEmptyStr
+    ProbeRuntimeExecutable => "runtime_executable" as NonEmptyStr
+    ProbeRuntimeExecutableBit => "runtime_executable_bit" as NonEmptyStr
+    ProbeRuntimeRootListing => "runtime_root_listing" as NonEmptyStr
+  }
+}
+
+fn spark_serving_probe_leg_eq(a: SparkServingProbeLeg, b: SparkServingProbeLeg) -> Bool {
+  spark_serving_probe_leg_key(leg: a) == spark_serving_probe_leg_key(leg: b)
+}
+
+// THE CAPTURE CARRIES THE ARGV IT RAN, NOT JUST THE ANSWER.
+//
+// A result with no argv beside it cannot be audited: two legs that differ only in their arguments
+// -- the blob-digest leg is literally one of them, its argv derived from an earlier capture -- would
+// be indistinguishable receipts. The argv is what makes the capture a receipt of a specific act
+// rather than an opaque string that arrived from somewhere.
+// A TRANSPORT THAT REFUSED IS NOT A COMMAND THAT EXITED 127.
+//
+// The first cut manufactured an SshSessionExecResult with exit_code 127 when the transport refused
+// the leg, so "we never reached the host" and "the host ran the command and it exited 127" became
+// the same value. That is the fabricated-plausible-output failure in miniature: a reader asking
+// "did it run?" got yes, and a reader asking "what happened?" got a number the far side never
+// produced. Three arms, because there are three genuinely different situations, and the third --
+// prerequisite refused -- is where the blob-digest request goes when the manifest named no digests
+// to verify. Executing a bare sha256sum over an empty list would have "verified" every blob it was
+// asked about by being asked about none.
+type SparkServingProbeOutcome
+  = SparkServingProbeExecuted { result: SshSessionExecResult }
+  | SparkServingProbeTransportRefused { cause: NonEmptyStr }
+  | SparkServingProbePrerequisiteRefused { cause: NonEmptyStr }
+
+type SparkServingProbeLegCapture sole_constructor {
+  request: SparkServingProbeRequest
+  outcome: SparkServingProbeOutcome
+}
+
+// The manifest body the blob-digest request is derived from. An unexecuted capture yields the empty
+// body, which flows into an EMPTY digest population and therefore into the prerequisite refusal --
+// so a manifest leg that never ran cannot produce a blob-digest command that appears to have
+// verified everything.
+fn spark_serving_capture_stdout(c: SparkServingProbeLegCapture) -> String {
+  match c.outcome {
+    SparkServingProbeExecuted { result: r } => r.stdout
+    SparkServingProbeTransportRefused { cause: _ } => ""
+    SparkServingProbePrerequisiteRefused { cause: _ } => ""
+  }
+}
+
+fn spark_serving_capture_leg(c: SparkServingProbeLegCapture) -> SparkServingProbeLeg {
+  spark_serving_probe_request_leg(request: c.request)
+}
+
+// THE IDENTITY OF AN OBSERVATION THAT WAS ATTEMPTED, WHETHER OR NOT IT SUCCEEDED.
+//
+// Host, fleet attempt and phase are the three facts that name WHICH observation this is, and they
+// are the same three whether the transaction admitted or refused. Carrying them as three loose
+// parameters on both paths meant the refused projector took host, fleet_attempt and phase
+// independently -- three arguments nothing joins, on the path where there is no transaction to join
+// them back to. One value travels instead, minted once at the top of acquisition, so a refusal names
+// the same observation the attempt did rather than a plausible reconstruction of it.
+type SparkServingObservationRequest sole_constructor {
+  host: HostIdentity
+  fleet_attempt: FleetSshAttemptIdentity
+  phase: SparkServingObservationPhase
+}
+
+fn spark_serving_observation_request(
+  host: HostIdentity,
+  fleet_attempt: FleetSshAttemptIdentity,
+  phase: SparkServingObservationPhase,
+) -> SparkServingObservationRequest
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_acquire_observation_transaction",
+    ),
+    decl_ref(
+      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
+      decl_name: "hermetic_request",
+    ),
+  ]
+{
+  SparkServingObservationRequest { host: host, fleet_attempt: fleet_attempt, phase: phase }
+}
+
+// THE TRANSACTION IS sole_constructor SO A DERIVED OBSERVATION CANNOT BE ASSEMBLED FROM NOWHERE,
+// AND ITS IDENTITY FIELDS ARE TYPED AND DERIVED RATHER THAN FLAT STRINGS SUPPLIED BESIDE EACH OTHER.
+//
+// The first cut carried `attempt: NonEmptyStr` and `locus: NonEmptyStr`, and the provenance
+// projector took fleet_attempt, phase and credential AGAIN as independent arguments. Nothing joined
+// those back to the transaction's own attempt, so this was constructible:
+//
+//     txn.attempt             = attempt-A/srv5/report
+//     projected fleet_attempt = attempt-B
+//     projected phase         = post-apply
+//
+// The production caller passed agreeing values, which is exactly the producer coincidence this
+// carrier exists to remove -- the same shape as the host-carried-twice class, one layer up. Now the
+// three facts that NAME the observation travel as one SparkServingObservationRequest, the observation
+// attempt is DERIVED from that request at the mint rather than stored beside it, and every projector
+// below takes ONLY the transaction.
+//
+// The whole sealed FleetSshCredentialBinding travels rather than fleet_locus_label's rendering of
+// it, for the reason the bound axis plan carries the whole provenance value: a presentation string
+// is not semantic evidence, and the receipt can derive both the credential identity and the locus
+// label at the boundary where rendering belongs.
+type SparkServingObservationTransaction sole_constructor {
+  request: SparkServingObservationRequest
+  observation_attempt: SparkServingObservationAttemptIdentity
+  credential: FleetSshCredentialBinding
+  captures: List<SparkServingProbeLegCapture>
+}
+
+// THE PHASE IS PART OF THE IDENTITY BECAUSE ONE SSH ATTEMPT CONTAINS SEVERAL OBSERVATIONS.
+//
+// A fleet attempt identifies an invocation, not an observation: the converge slice observes a host
+// to plan, actuates, and observes it again to verify, all inside one attempt. Stamping all three
+// with the attempt alone makes the pre-apply and post-apply readings indistinguishable, which is the
+// join this carrier exists to prevent -- and the first cut was worse, because every acquisition
+// passed the same constant string.
+type SparkServingObservationPhase
+  = SparkServingPlanObservation
+  | SparkServingPostApplyObservation
+  | SparkServingReportObservation
+
+fn spark_serving_observation_phase_key(phase: SparkServingObservationPhase) -> NonEmptyStr {
+  match phase {
+    SparkServingPlanObservation => "plan" as NonEmptyStr
+    SparkServingPostApplyObservation => "post-apply" as NonEmptyStr
+    SparkServingReportObservation => "report" as NonEmptyStr
+  }
+}
+
+// THE JOINED IDENTITY IS BRANDED, SO IT DOES NOT DECAY INTO AN INTERCHANGEABLE LABEL.
+//
+// As a bare NonEmptyStr this value was assignable from, and to, any other non-empty string in the
+// corpus -- so downstream the one fact that says WHICH observation a receipt belongs to was typed
+// the same as a hostname, a cause, or a fixture identity. The brand is what keeps the guarantee
+// structural rather than merely true of the values that happen to flow today.
+type SparkServingObservationAttemptIdentity =
+  NonEmptyStr where brand("SparkServingObservationAttemptIdentity")
+
+// It takes the ONE request rather than reopening its three components as parameters. That is the
+// stronger shape for the same reason the projectors take only the transaction: three parameters can
+// disagree with the request they were read out of, and one value cannot disagree with itself.
+fn spark_serving_observation_attempt_of(
+  request: SparkServingObservationRequest,
+) -> SparkServingObservationAttemptIdentity {
+  join([
+    request.fleet_attempt as String,
+    "/",
+    request.host as String,
+    "/",
+    spark_serving_observation_phase_key(phase: request.phase) as String,
+  ], "") as SparkServingObservationAttemptIdentity
+}
+
+// PROVENANCE SURVIVES THE PROJECTION, OR THE CARRIER BOUGHT NOTHING.
+//
+// A transaction that pins one host, one attempt and one locus during acquisition, and then hands
+// back a value that has forgotten all three, has moved the problem rather than solved it: two
+// observations of one host from two attempts are again indistinguishable downstream, and "which
+// credential path produced this" is again unanswerable from the value.
+//
+// IT IS A SUM BECAUSE THE REFUSED CASE IS NOT A WEAKER VERSION OF THE ACQUIRED ONE. The first cut
+// answered a refused transaction with a positive provenance record whose attempt and locus were the
+// prose strings "unreached: ..." -- a well-formed provenance minted at exactly the moment no
+// observation existed. Every consumer reading .attempt got a plausible answer, which is the
+// fabricated-plausible-output failure wearing the carrier's own vocabulary. Now a refusal inhabits
+// its own arm, planning accepts only the acquired one, and coverage can still hold a row for a host
+// whose transaction refused without that row pretending to be an observation.
+//
+// fleet_attempt and phase stay as typed fields beside the joined identity. The joined string is the
+// canonical identity for equality, but it must not be the only surviving representation of its
+// components: a consumer asking "which phase was this" should not have to parse prose back out.
+type SparkServingObservationProvenance
+  = SparkServingObservationAcquired {
+      host: HostIdentity
+      fleet_attempt: FleetSshAttemptIdentity
+      phase: SparkServingObservationPhase
+      observation_attempt: SparkServingObservationAttemptIdentity
+      credential: FleetSshCredentialBinding
+      receipt: SparkServingAcquiredCoverageReceipt
+    }
+  | SparkServingObservationTransactionRefused {
+      request: SparkServingObservationRequest
+      cause: NonEmptyStr
+    }
+  | SparkServingObservationHermeticFixture {
+      host: HostIdentity
+      fixture_identity: NonEmptyStr
+    }
+
+// THE ACQUISITION RECEIPT: COVERAGE AND OUTCOME SHAPE, CARRIED RATHER THAN RENDERED SEPARATELY.
+//
+// A standalone `spark_serving_transaction_receipt_line` stood here, and it was an ORPHANED RENDERER:
+// exercised directly by its witness and consumed by no production path, so the coverage facts it
+// described never reached a receipt anybody reads. A renderer with no final consumer is residue --
+// and worse than absent, because its witness reads as coverage for a fact the report never carries.
+//
+// It is now a VALUE with three arms, minted at the same moment the provenance is, and rendered by
+// `spark_serving_provenance_receipt_line` -- which the production per-host renderer already calls.
+// The three arms are the three arms of the provenance, so a hermetic or refused observation cannot
+// present coverage counts it never measured: there is no field to put them in.
+//
+// The counts are per outcome ARM rather than a single total, because "23 captures" is equally true
+// of a transaction whose every leg the transport refused. A reader needs the shape.
+// A RECORD, NOT A SUM, BECAUSE THE OUTER PROVENANCE ALREADY OWNS THE DISTINCTIONS.
+//
+// The first cut made this a three-armed sum mirroring the provenance's arms. Only the ACQUIRED arm
+// ever had a receipt field, the mint only ever built the acquired variant, and the other two
+// variants' renderer branches returned the empty string -- a parallel, unconsumed representation of
+// distinctions the enclosing sum already carries. The refused arm has its request and cause; the
+// hermetic arm has its fixture identity; neither needs a second receipt variant to say so.
+//
+// It carries the COUNTS ONLY. observation_attempt and credential live on the acquired arm this
+// record is a field of, and copying them in would put one fact in two places on one value and mint a
+// new equality obligation between them.
+//
+// Per outcome ARM rather than a single total, because "23 captures" is equally true of a transaction
+// whose every leg the transport refused. A reader needs the shape.
+type SparkServingAcquiredCoverageReceipt sole_constructor {
+  required: Int
+  captured: Int
+  missing: List<NonEmptyStr>
+  duplicated: List<NonEmptyStr>
+  executed: Int
+  transport_refused: Int
+  prerequisite_refused: Int
+}
+
+// THE OUTCOME CENSUS IS ONE TRAVERSAL, NOT ONE PER COUNTER.
+//
+// This stood as three Bool predicates, each an exhaustive match over the same closed outcome, each
+// consumed by its own `length(filter(...))` over the same capture list. That is three passes and
+// three matches to answer one question -- the copied-accumulator shape DESIGN section 6 says is
+// always fixed regardless of the realized n, precisely because n is not a time-stable fact and this
+// list grows with the probe roster. One fold answers all three, and the match stays exhaustive so a
+// fourth outcome arm still fails to compile rather than being silently counted as neither.
+type SparkServingProbeOutcomeCensus {
+  executed: Int
+  transport_refused: Int
+  prerequisite_refused: Int
+}
+
+fn spark_serving_outcome_census_of(
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingProbeOutcomeCensus {
+  fold(
+    captures,
+    init: SparkServingProbeOutcomeCensus {
+      executed: 0,
+      transport_refused: 0,
+      prerequisite_refused: 0,
+    },
+    f: fn(acc, c) {
+      match c.outcome {
+        SparkServingProbeExecuted { result: _ } => SparkServingProbeOutcomeCensus {
+          executed: acc.executed + 1,
+          transport_refused: acc.transport_refused,
+          prerequisite_refused: acc.prerequisite_refused,
+        }
+        SparkServingProbeTransportRefused { cause: _ } => SparkServingProbeOutcomeCensus {
+          executed: acc.executed,
+          transport_refused: acc.transport_refused + 1,
+          prerequisite_refused: acc.prerequisite_refused,
+        }
+        SparkServingProbePrerequisiteRefused { cause: _ } => SparkServingProbeOutcomeCensus {
+          executed: acc.executed,
+          transport_refused: acc.transport_refused,
+          prerequisite_refused: acc.prerequisite_refused + 1,
+        }
+      }
+    },
+  )
+}
+
+// Sealed to the acquired-provenance mint, so a receipt claiming coverage cannot be authored beside a
+// transaction that did not produce it.
+fn spark_serving_acquisition_receipt_of(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingAcquiredCoverageReceipt
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observation_transaction",
+      decl_name: "spark_serving_acquired_provenance_of",
+    ),
+  ]
+{
+  let census = spark_serving_outcome_census_of(captures: txn.captures)
+  SparkServingAcquiredCoverageReceipt {
+    required: length(spark_serving_required_probe_legs()),
+    captured: length(txn.captures),
+    missing: map(spark_serving_transaction_missing_legs(txn: txn), k => k),
+    duplicated: map(spark_serving_transaction_duplicated_legs(txn: txn), k => k),
+    executed: census.executed,
+    transport_refused: census.transport_refused,
+    prerequisite_refused: census.prerequisite_refused,
+  }
+}
+
+fn spark_serving_acquired_provenance_of(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingObservationProvenance
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_transaction_provenance",
+    ),
+  ]
+{
+  SparkServingObservationAcquired {
+    host: txn.request.host,
+    fleet_attempt: txn.request.fleet_attempt,
+    phase: txn.request.phase,
+    observation_attempt: txn.observation_attempt,
+    credential: txn.credential,
+    receipt: spark_serving_acquisition_receipt_of(txn: txn),
+  }
+}
+
+fn spark_serving_refused_provenance_of(
+  refusal: SparkServingTransactionRefusal,
+) -> SparkServingObservationProvenance
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_host_observation_from_refused_transaction",
+    ),
+  ]
+{
+  SparkServingObservationTransactionRefused { request: refusal.request, cause: refusal.cause }
+}
+
+// The fixture arm is its own constructor precisely so a hermetic value cannot be mistaken for an
+// acquired one: it has no observation attempt and no credential, so nothing downstream that requires
+// those can accept it. Planning takes the acquired arm only.
+fn spark_serving_hermetic_provenance_of(
+  host: HostIdentity,
+  fixture_identity: NonEmptyStr,
+) -> SparkServingObservationProvenance {
+  SparkServingObservationHermeticFixture { host: host, fixture_identity: fixture_identity }
+}
+
+fn spark_serving_provenance_host(p: SparkServingObservationProvenance) -> HostIdentity {
+  match p {
+    SparkServingObservationAcquired { host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _, receipt: _ } => h
+    SparkServingObservationTransactionRefused { request: r, cause: _ } => r.host
+    SparkServingObservationHermeticFixture { host: h, fixture_identity: _ } => h
+  }
+}
+
+// The identity a consumer joins on. A refused transaction and a fixture have no observation attempt,
+// which is the point: there is nothing to join them to.
+fn spark_serving_provenance_observation_attempt(
+  p: SparkServingObservationProvenance,
+) -> SparkServingObservationAttemptIdentity? {
+  match p {
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: a, credential: _, receipt: _ } =>
+      Present { value: a }
+    SparkServingObservationTransactionRefused { request: _, cause: _ } => none
+    SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
+  }
+}
+
+fn spark_serving_provenance_credential(
+  p: SparkServingObservationProvenance,
+) -> FleetSshCredentialBinding? {
+  match p {
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: _, credential: c, receipt: _ } =>
+      Present { value: c }
+    SparkServingObservationTransactionRefused { request: _, cause: _ } => none
+    SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
+  }
+}
+
+fn spark_serving_provenance_phase(
+  p: SparkServingObservationProvenance,
+) -> SparkServingObservationPhase? {
+  match p {
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: ph, observation_attempt: _, credential: _, receipt: _ } =>
+      Present { value: ph }
+    SparkServingObservationTransactionRefused { request: r, cause: _ } =>
+      Present { value: r.phase }
+    SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
+  }
+}
+
+
+fn spark_serving_transaction_capture(
+  txn: SparkServingObservationTransaction,
+  leg: SparkServingProbeLeg,
+) -> SparkServingProbeLegCapture? {
+  filter(txn.captures, c => spark_serving_probe_leg_eq(a: spark_serving_capture_leg(c: c), b: leg)) |> first
+}
+
+// A DERIVATION READS THE EXECUTED ARM OR IT READS NOTHING.
+//
+// Absent here means one of three things -- nobody captured this leg, the transport refused it, or a
+// prerequisite refused it -- and all three are "this fact was not measured", which is exactly what
+// every downstream unobserved arm is built to receive. What none of them is, is a result: a refusal
+// cannot arrive dressed as an exit code, because the only way out of this function is through the
+// executed arm.
+fn spark_serving_transaction_result(
+  txn: SparkServingObservationTransaction,
+  leg: SparkServingProbeLeg,
+) -> SshSessionExecResult? {
+  match spark_serving_transaction_capture(txn: txn, leg: leg) {
+    Absent => none
+    Present { value: c } =>
+      match c.outcome {
+        SparkServingProbeExecuted { result: r } => Present { value: r }
+        SparkServingProbeTransportRefused { cause: _ } => none
+        SparkServingProbePrerequisiteRefused { cause: _ } => none
+      }
+  }
+}
+
+// A LEG CAPTURED TWICE IS A DEFECT IN THE ACQUISITION, NOT A TIE TO BREAK.
+//
+// spark_serving_transaction_capture takes the first match, which would silently pick a winner if a
+// leg were ever captured twice -- exactly the duplicate-read class this carrier was built to end,
+// reintroduced one layer down. So duplication is a REFUSAL the acquirer must pass, not a preference
+// the reader applies.
+fn spark_serving_transaction_duplicated_legs(
+  txn: SparkServingObservationTransaction,
+) -> List<NonEmptyStr> {
+  filter(
+    map(txn.captures, c => spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c))),
+    k => length(filter(txn.captures, c2 => spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c2)) == k)) > 1,
+  )
+}
+
+// THE REQUIRED POPULATION IS CLOSED AND KNOWN, SO A MISSING CAPTURE IS A REFUSAL.
+//
+// The first admission checked duplicates only, so a transaction with NO captures was admitted and
+// the witness cheerfully used the empty one as a positive fixture. That directly contradicts the
+// invariant the carrier advertises: "exactly one capture per leg" was enforced in one direction
+// only. An absent capture must not be left for whichever downstream reader happens to want it
+// first, because that reader will read Absent and honestly report unobserved -- and the whole host
+// will look measured-and-empty rather than never-acquired.
+//
+// FOLLOW-UP TRIGGER: the receipt witnesses still spell the evaluated executed-count snapshots as
+// numeric literals. Before another probe leg joins this roster, expose the roster cardinality to
+// those witnesses and assert the relation `executed == required - refused` instead. The present
+// literals are honest for this closed population, but a third added leg can otherwise make the
+// oracle stale until a person recounts it; deriving the relation from this authority removes that
+// hand-maintained second count.
+fn spark_serving_required_probe_legs() -> List<SparkServingProbeLeg> {
+  [
+    ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,
+    ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
+    ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
+    ProbeModelManifest, ProbeModelBlobsListing, ProbeModelManifestDigest, ProbeModelBlobDigests,
+    ProbeUserUnitRead, ProbeUserUnitIsEnabled, ProbeRunningDefinition, ProbeInvocationIdentity,
+    ProbeRuntimeRoot, ProbeRuntimeExecutable, ProbeRuntimeExecutableBit, ProbeRuntimeRootListing,
+  ]
+}
+
+fn spark_serving_transaction_missing_legs(
+  txn: SparkServingObservationTransaction,
+) -> List<NonEmptyStr> {
+  map(
+    filter(
+      spark_serving_required_probe_legs(),
+      leg => length(
+        filter(txn.captures, c => spark_serving_probe_leg_eq(a: spark_serving_capture_leg(c: c), b: leg)),
+      ) == 0,
+    ),
+    leg => spark_serving_probe_leg_key(leg: leg),
+  )
+}
+
+// THE REFUSAL NAMES THE OBSERVATION IT REFUSED, RATHER THAN LEAVING THE CALLER TO REBUILD IT.
+//
+// The refused arm used to carry a bare cause, so the only caller reconstructed the request a SECOND
+// time from host, context.attempt and the phase and passed it beside the cause. The present caller
+// repeated the same expressions, which is exactly why it looked fine -- but two expressions that
+// happen to agree are not one fact, and the whole point of the request value is that the attempt and
+// its refusal name the SAME observation rather than two that were built alike.
+type SparkServingTransactionRefusal sole_constructor {
+  request: SparkServingObservationRequest
+  cause: NonEmptyStr
+}
+
+type SparkServingTransactionAdmission
+  = SparkServingTransactionAdmitted { txn: SparkServingObservationTransaction }
+  | SparkServingTransactionRefused { refusal: SparkServingTransactionRefusal }
+
+// THE MINTS ARE SEALED, BECAUSE sole_constructor STOPS A RECORD LITERAL AND NOTHING ELSE.
+//
+// The annotations above claimed the acquisition producer was the only thing that could mint a
+// capture or a transaction. That was FALSE while these factories were ordinary importable functions
+// taking arbitrary semantic inputs, and the proof was in this repository: the transaction witness
+// imported both and built whatever it liked. A wall that a caller can walk around by calling a
+// function is not a wall, and an annotation asserting otherwise is worse than none, because it will
+// be cited as coverage.
+//
+// Each list names the real producer plus, where a hermetic witness genuinely needs to build values
+// without an SSH transport, exactly one fixture by name. That is a deliberate exception rather than
+// an open door: a new production caller cannot appear without editing these lists.
+fn spark_serving_probe_leg_capture_of(
+  request: SparkServingProbeRequest,
+  outcome: SparkServingProbeOutcome,
+) -> SparkServingProbeLegCapture
+  admit_callers: [
+    decl_ref(module_path: "gunbc.spark.serving_observe", decl_name: "spark_serving_captured_leg"),
+    decl_ref(
+      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
+      decl_name: "hermetic_capture_of",
+    ),
+  ]
+{
+  SparkServingProbeLegCapture { request: request, outcome: outcome }
+}
+
+// THE MINT IS THE ADMISSION, SO A DUPLICATED TRANSACTION IS NOT A VALUE THAT EXISTS.
+//
+// An admit-after-construct arm would leave the invalid state writable and make safety depend on
+// every caller remembering to run the check -- validation standing exactly where construction was
+// available. Both types are sole_constructor and this is their only mint, so the refusal is not a
+// gate in front of the value: it is the reason the value was never made. A caller that ignores the
+// refused arm has no transaction to proceed with.
+fn spark_serving_observation_transaction_of(
+  request: SparkServingObservationRequest,
+  credential: FleetSshCredentialBinding,
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingTransactionAdmission
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_acquire_observation_transaction",
+    ),
+    decl_ref(
+      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
+      decl_name: "hermetic_transaction_of",
+    ),
+  ]
+{
+  spark_serving_admit_transaction(
+    txn: SparkServingObservationTransaction {
+      request: request,
+      observation_attempt: spark_serving_observation_attempt_of(request: request),
+      credential: credential,
+      captures: captures,
+    },
+  )
+}
+
+fn spark_serving_admit_transaction(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingTransactionAdmission {
+  if length(spark_serving_transaction_missing_legs(txn: txn)) > 0 {
+    SparkServingTransactionRefused {
+      refusal: SparkServingTransactionRefusal {
+      request: txn.request,
+      cause: join([
+        "observation transaction for host ",
+        txn.request.host as String,
+        " attempt ",
+        txn.observation_attempt as String,
+        " is missing required capture(s), so the facts they carry would read as unobserved and the",
+        " host would look measured-and-empty rather than never-acquired: ",
+        join(map(spark_serving_transaction_missing_legs(txn: txn), k => k as String), ", "),
+      ], "") as NonEmptyStr,
+      },
+    }
+  } else if length(spark_serving_transaction_duplicated_legs(txn: txn)) > 0 {
+    SparkServingTransactionRefused {
+      refusal: SparkServingTransactionRefusal {
+      request: txn.request,
+      cause: join([
+        "observation transaction for host ",
+        txn.request.host as String,
+        " attempt ",
+        txn.observation_attempt as String,
+        " captured a leg more than once, so one of the two readings would be discarded by whichever",
+        " consumer read it first: ",
+        join(map(spark_serving_transaction_duplicated_legs(txn: txn), k => k as String), ", "),
+      ], "") as NonEmptyStr,
+      },
+    }
+  } else {
+    SparkServingTransactionAdmitted { txn: txn }
+  }
+}
+
+// THE RECEIPT'S RENDERING, AND ITS ONLY CONSUMER IS THE PRODUCTION PER-HOST LINE.
+//
+// The refused and hermetic arms render nothing here, because their provenance line already says
+// which arm it is and neither has coverage to report. That is the point of the sum: there is no
+// shape in which a hermetic observation prints "missing=0", which reads as measured-and-complete.
+fn spark_serving_acquisition_receipt_text(receipt: SparkServingAcquiredCoverageReceipt) -> String {
+  join([
+    " required=", to_string(receipt.required),
+    " captured=", to_string(receipt.captured),
+    " missing=", to_string(length(receipt.missing)),
+    " duplicated=", to_string(length(receipt.duplicated)),
+    " executed=", to_string(receipt.executed),
+    " transport-refused=", to_string(receipt.transport_refused),
+    " prerequisite-refused=", to_string(receipt.prerequisite_refused),
+  ], "")
+}
+
+// The provenance line for a value that has already been projected out of its transaction. The three
+// arms render differently ON PURPOSE: a receipt that printed the same shape for an acquired and a
+// hermetic observation would be the presentation-layer version of the fabricated provenance this
+// carrier just deleted.
+fn spark_serving_provenance_receipt_line(p: SparkServingObservationProvenance) -> String {
+  match p {
+    SparkServingObservationAcquired {
+      host: h, fleet_attempt: fa, phase: ph, observation_attempt: oa, credential: cr, receipt: rc,
+    } =>
+      join([
+        "spark-serving-provenance host=", h as String,
+        " acquired fleet-attempt=", fa as String,
+        " phase=", spark_serving_observation_phase_key(phase: ph) as String,
+        " observation-attempt=", oa as String,
+        " credential-identity=",
+        serialize_content_hash(hash: fleet_ssh_credential_identity(binding: cr)) as String,
+        " credential-locus=",
+        fleet_ssh_credential_locus_label(binding: cr),
+        spark_serving_acquisition_receipt_text(receipt: rc),
+        "\n",
+      ], "")
+    SparkServingObservationTransactionRefused { request: r, cause: why } =>
+      join([
+        "spark-serving-provenance host=", r.host as String,
+        " transaction-refused fleet-attempt=", r.fleet_attempt as String,
+        " phase=", spark_serving_observation_phase_key(phase: r.phase) as String,
+        " cause=", why as String,
+        "\n",
+      ], "")
+    SparkServingObservationHermeticFixture { host: h, fixture_identity: fid } =>
+      join([
+        "spark-serving-provenance host=", h as String,
+        " hermetic-fixture=", fid as String,
+        "\n",
+      ], "")
+  }
+}

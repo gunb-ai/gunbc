@@ -1,0 +1,34 @@
+module v2.test.manual.token_stream_content_hash_witness
+
+
+fn token_hash_step(acc: Hash, t: Token) -> Hash {
+  combine_hash(
+    a: acc,
+    b: combine_hash(a: symbol_identity_digest(sym: t.class), b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: t.lexeme)))
+  )
+}
+
+fn token_stream_content_hash(stream: TokenStream) -> Hash {
+  fold(
+    token_stream_all(stream: stream),
+    init: symbol_identity_digest(sym: ^token_stream_content_hash_seed),
+    f: token_hash_step
+  )
+}
+
+fn token_stream_content_hash_for_path(path: String) -> Optional<Hash> {
+  let lm = dag_language_model()
+  let source_text = filesystem_read(path: path).content
+  match tokenize(text: source_text, file: ^token_stream_content_hash_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: stream, diagnostics: _ } => Present { value: token_stream_content_hash(stream: stream) }
+  }
+}
+
+fn witness_token_stream_content_hash_tiny() -> Optional<Hash> {
+  token_stream_content_hash_for_path(path: "src/v2/std/witness.dag")
+}
+
+fn witness_token_stream_content_hash_small() -> Optional<Hash> {
+  token_stream_content_hash_for_path(path: "dag/std/execution_mode.dag")
+}

@@ -1,0 +1,249 @@
+module gunbc.host_identity_converge
+
+import std.types { String, NonEmptyStr, Bool }
+import std.access { AccessDecision, Deny }
+import extdeps.dns.domain_name { DnsLabel }
+import std.effects {
+  EffectShape,
+  UpsertEffect,
+  KeySource,
+  CompositeKey,
+  IdempotencyEvidence,
+  LatticeEffect,
+}
+import gunbc.host_effect {
+  HostEffect,
+  SetHostnameCas,
+  NodeControlPlane,
+  HostEffectTransport,
+  HostEffectIntent,
+  HostEffectEvidence,
+}
+import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.host_identity_observation {
+  HostIdentityObservation,
+  host_identity_observation_apply,
+  host_identity_observation_from_apply,
+}
+import gunbc.host_identity_knob {
+  HostIdentityLeafVerdict,
+  host_identity_patch_from_intents,
+}
+import std.change {
+  KeyedApplyHunk,
+  KeyedUnchanged,
+  KeyedConflict,
+  KeyedVerdictAdded,
+  KeyedVerdictRemoved,
+  KeyedLeafVerdictFold,
+  keyed_leaf_verdict_fold,
+}
+import gunbc.deployed_intent_v0 { DeployedIntentV0, deployed_intent_observed_short_hostname }
+import gunbc.deployed_intent_v1 { DeployedIntentV1 }
+import gunbc.host_identity_access { host_identity_srv1_access, host_identity_hostnamectl_path }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  DeployAccessActor,
+  deploy_access_decision_reason,
+}
+import std.realization_reconcile {
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconciliation_converged,
+}
+
+fn host_identity_precondition_verdict(
+  base: DeployedIntentV0,
+  observed: HostIdentityObservation,
+  desired: DeployedIntentV1,
+) -> HostIdentityLeafVerdict {
+  host_identity_patch_from_intents(
+    base_hostname: deployed_intent_observed_short_hostname(d: base),
+    observed_hostname: observed.short_hostname,
+    desired_hostname: desired.desired_hostname_short as String,
+  )
+}
+
+fn host_identity_precondition_allows_mutation(verdict: HostIdentityLeafVerdict) -> Bool {
+  keyed_leaf_verdict_fold(
+    verdict: verdict,
+    fold: KeyedLeafVerdictFold {
+      unchanged: false,
+      conflict: false,
+      apply_hunk: fn(_, _) { true },
+      added: fn(_) { true },
+      removed: fn(_) { true },
+    },
+  )
+}
+
+fn host_identity_precondition_permits_apply(verdict: HostIdentityLeafVerdict) -> Bool {
+  host_identity_precondition_allows_mutation(verdict: verdict)
+}
+
+fn host_identity_precondition_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
+  keyed_leaf_verdict_fold(
+    verdict: verdict,
+    fold: KeyedLeafVerdictFold {
+      unchanged: true,
+      conflict: false,
+      apply_hunk: fn(_, _) { false },
+      added: fn(_) { false },
+      removed: fn(_) { false },
+    },
+  )
+}
+
+fn host_identity_precondition_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
+  keyed_leaf_verdict_fold(
+    verdict: verdict,
+    fold: KeyedLeafVerdictFold {
+      unchanged: false,
+      conflict: true,
+      apply_hunk: fn(_, _) { false },
+      added: fn(_) { false },
+      removed: fn(_) { false },
+    },
+  )
+}
+
+type HostIdentityPlan
+  = ApplyPlan { base: DnsLabel, desired: DnsLabel }
+  | NoopPlan
+  | ConflictPlan { verdict: HostIdentityLeafVerdict }
+
+fn host_identity_plan_from_verdict(
+  verdict: HostIdentityLeafVerdict,
+  base: DnsLabel,
+  desired: DnsLabel,
+) -> HostIdentityPlan {
+  match verdict {
+    KeyedApplyHunk { from: _, to: _ } => ApplyPlan { base: base, desired: desired }
+    KeyedUnchanged => NoopPlan
+    KeyedConflict => ConflictPlan { verdict: verdict }
+    KeyedVerdictAdded { value: _ } => ConflictPlan { verdict: verdict }
+    KeyedVerdictRemoved { value: _ } => ConflictPlan { verdict: verdict }
+  }
+}
+
+fn host_identity_plan_effect(plan: HostIdentityPlan) -> HostEffect? {
+  match plan {
+    ApplyPlan { base: b, desired: d } =>
+      Present {
+        value: SetHostnameCas {
+          hostnamectl_path: host_identity_hostnamectl_path,
+          base: b,
+          desired: d,
+        }
+      }
+    NoopPlan => none
+    ConflictPlan { verdict: _ } => none
+  }
+}
+
+data host_identity_hostname_key_source: KeySource = CompositeKey { fields: ["host", "hostname_short"] }
+
+data host_identity_hostname_effect_shape: EffectShape<KeySource> = UpsertEffect { key_source: host_identity_hostname_key_source }
+
+data host_identity_hostname_idempotency_evidence: IdempotencyEvidence = LatticeEffect { shape: host_identity_hostname_effect_shape }
+
+fn host_identity_apply_evidence() -> IdempotencyEvidence {
+  host_identity_hostname_idempotency_evidence
+}
+
+fn host_identity_apply_denied(
+  target: NodeControlPlane,
+  effect: HostEffect,
+  transport: HostEffectTransport,
+  reason: String,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: reason,
+    applied: HostEffectIntent {
+      target: target,
+      effect: effect,
+      evidence: host_identity_apply_evidence(),
+      transport: transport,
+      privilege_denial: none,
+    },
+  }
+}
+
+fn host_identity_apply_gated(
+  access: DeployAccess,
+  target: NodeControlPlane,
+  plan: HostIdentityPlan,
+  transport: HostEffectTransport,
+  fixture_actor: DeployAccessActor?,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
+  match host_identity_plan_effect(plan: plan) {
+    Present { value: effect } =>
+      Present {
+        value: host_effect_apply_gated(
+          access: access,
+          target: target,
+          effect: effect,
+          evidence: host_identity_apply_evidence(),
+          transport: transport,
+          fixture_actor: fixture_actor,
+        )
+      }
+    Absent => none
+  }
+}
+
+fn host_identity_read_back_matches(
+  observed: HostIdentityObservation,
+  desired_hostname: DnsLabel,
+) -> Bool {
+  observed.short_hostname == (desired_hostname as String)
+}
+
+fn host_identity_observation_live(
+  target: NodeControlPlane,
+  transport: HostEffectTransport,
+  probed_at: NonEmptyStr,
+) -> HostIdentityObservation? {
+  match host_identity_observation_from_apply(
+    r: host_identity_observation_apply(target: target, transport: transport),
+    probed_at: probed_at,
+  ) {
+    Present { value: obs } => Present { value: obs }
+    Absent => none
+  }
+}
+
+fn host_identity_unprivileged_refusal_has_no_marker(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  marker: String,
+) -> Bool {
+  match r {
+    NotConverged { reason: why, applied: intent } =>
+      !string_contains(s: why, pattern: marker)
+        && match intent.privilege_denial {
+          Present { value: Deny { refusal: _ } } => true
+          _ => false
+        }
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+fn host_identity_privilege_denial_reason(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> String {
+  match r {
+    NotConverged { reason: why, applied: intent } =>
+      match intent.privilege_denial {
+        Present { value: d } => deploy_access_decision_reason(d: d)
+        Absent => why
+      }
+    Converged { evidence: _, applied: _ } => ""
+  }
+}
+
+fn host_identity_apply_converged(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> Bool {
+  reconciliation_converged(r: r)
+}

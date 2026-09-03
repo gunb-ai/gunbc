@@ -1,0 +1,66 @@
+module test.claim.floor_non_verdict_classification_witness
+
+import gunbc.floor_non_verdict_classification {
+  classified_non_verdict_identities_are_unique,
+  classification_joins_the_roster_exactly,
+  classified_non_verdict_row_count,
+  every_row_carries_measured_evidence,
+  honest_debt_count,
+  stale_enrolment_count,
+  unmeasured_count
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SubstrateInputsOnly is truthful: this reads the classification carrier and, through it, the
+// floor_non_verdict roster -- both authored `.dag` data, no live tree and no host effect. It
+// guards STRUCTURE -- the identity join against that roster, uniqueness, evidence present, an
+// exact partition -- and never the classifications themselves, which are measurements and not
+// properties any witness can re-derive.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE POPULATION IS JOINED, NOT COUNTED. An earlier revision asserted `row_count() == 15` and
+// called 15 the roster's size; nothing in it read the roster, so it measured the rows this
+// module's own carrier declares -- the `measure() == measure()` change detector DESIGN section 5
+// forbids, green under any drift the author applied to both files. This runs the join instead:
+// every classified identity is rostered in v2.workflow.floor_non_verdict and every rostered
+// identity is classified, at identity grain and in both directions, so a roster row added or
+// removed elsewhere reds HERE and names itself. No count survives as an oracle.
+test fn classification_joins_the_floor_non_verdict_roster_by_identity() -> Bool {
+  classification_joins_the_roster_exactly()
+}
+
+test fn classified_non_verdict_identities_are_distinct() -> Bool {
+  classified_non_verdict_identities_are_unique()
+}
+
+test fn every_classified_non_verdict_row_carries_measured_evidence() -> Bool {
+  every_row_carries_measured_evidence()
+}
+
+// THE INHABITANCE ROW IS DELETED BECAUSE ITS POPULATION IS REPAID, NOT TO MAKE A TEST AGREE WITH
+// BEHAVIOUR. It asserted `stale_enrolment_count() > 0 && unmeasured_count() > 0` -- that neither
+// class was empty and neither had swallowed the other -- and it was the right assertion while the
+// carrier held a live debt population. Every row is now gone: the nine ClosureDependentResolution
+// rows and the two StandingUnmeasured rows all ANSWER and PASS on the required floor after the
+// local-binding-shadow repair, and the four ClosureIndependent rows were repaid earlier at their
+// own producer. A row asserting that a repaid population is non-empty is not evidence that
+// anything works; it is an assertion that the debt must continue to exist, which would make the
+// carrier unable to reach the empty terminal state its own header declares.
+//
+// THE DISTINCTION THIS TURNS ON, stated because the two moves look identical in a diff: editing a
+// witness so it agrees with current behaviour is a claim about the world and is forbidden;
+// deleting a witness whose SUBJECT no longer exists is dissolution. Nothing here weakens a
+// judgment about the classification carrier -- the join, the uniqueness, the evidence-present and
+// the exact-partition rows in this file are untouched and still gate, and they are what red if a
+// row is added or removed anywhere. What is deleted is a claim about the population's SIZE, which is
+// exactly the shape this file already removed once when `row_count() == 15` was found to be a
+// change detector.
+//
+// IT COMES BACK WITH THE DEBT. The carrier keeps both arms declared with their repayment receipts
+// precisely because the causes remain constructible; the day a row is authored into either, this
+// assertion is the one to restore, and the receipts name what would put it there.
+test fn standing_partition_is_exact_over_the_population() -> Bool {
+  (stale_enrolment_count() + honest_debt_count() + unmeasured_count())
+    == classified_non_verdict_row_count()
+}

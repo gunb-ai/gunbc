@@ -1,11 +1,14 @@
 module v2.extdeps.languages.english
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel, language_model_empty_canonical_symbols }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.extdeps.languages.fidelity { FidelityDisposition }
-import v2.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
   FixedToken,
@@ -20,8 +23,7 @@ import v2.std.node {
   Named,
   Node,
   Positional,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.text { String }
 import v2.std.grammar {
@@ -129,7 +131,7 @@ fn english_word_pattern() -> LexPattern {
   }
 }
 
-fn english_wave1_lex() -> LexRules {
+fn english_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -164,82 +166,91 @@ fn english_article_nonterminal() -> GrammarExpr {
   Nonterminal { production: ^english_production_article }
 }
 
-fn english_svo_sentence_expr() -> GrammarExpr {
+fn english_subject_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_article_nonterminal(),
+    right: english_grammar_terminal(token_class: ^english_token_word)
+  )
+}
+
+fn english_subject_nonterminal() -> GrammarExpr {
+  Nonterminal { production: ^english_production_subject }
+}
+
+fn english_object_with_period_expr() -> GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
     right: english_grammar_sequence(
       left: english_grammar_terminal(token_class: ^english_token_word),
-      right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: ^english_token_word),
-        right: english_grammar_sequence(
-          left: english_article_nonterminal(),
-          right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: ^english_token_word),
-            right: english_grammar_terminal(token_class: ^english_token_period)
-          )
-        )
-      )
+      right: english_grammar_terminal(token_class: ^english_token_period)
     )
   )
 }
 
-fn english_copula_sentence_expr() -> GrammarExpr {
+fn english_svo_predicate_expr() -> GrammarExpr {
   english_grammar_sequence(
-    left: english_article_nonterminal(),
-    right: english_grammar_sequence(
-      left: english_grammar_terminal(token_class: ^english_token_word),
-      right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: ^english_token_copula),
-        right: english_grammar_sequence(
-          left: english_article_nonterminal(),
-          right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: ^english_token_word),
-            right: english_grammar_terminal(token_class: ^english_token_period)
-          )
-        )
-      )
-    )
+    left: english_grammar_terminal(token_class: ^english_token_word),
+    right: english_object_with_period_expr()
   )
 }
 
-fn english_wave1_productions() -> List<GrammarProduction> {
+fn english_copula_predicate_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_grammar_terminal(token_class: ^english_token_copula),
+    right: english_object_with_period_expr()
+  )
+}
+
+fn english_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_subject_nonterminal(),
+    right: Choice {
+      left: Nonterminal { production: ^english_production_svo_predicate },
+      right: Nonterminal { production: ^english_production_copula_predicate }
+    }
+  )
+}
+
+fn english_productions() -> List<GrammarProduction> {
   let article = GrammarProduction {
     name: ^english_production_article,
     expression: english_article_expr(),
     emitted: grammar_atom(identity: ^english_surface_article)
   }
-  let svo = GrammarProduction {
-    name: ^english_production_svo_sentence,
-    expression: english_svo_sentence_expr(),
+  let subject = GrammarProduction {
+    name: ^english_production_subject,
+    expression: english_subject_expr(),
+    emitted: grammar_atom(identity: ^english_surface_subject)
+  }
+  let svo_predicate = GrammarProduction {
+    name: ^english_production_svo_predicate,
+    expression: english_svo_predicate_expr(),
     emitted: grammar_atom(identity: ^english_surface_svo)
   }
-  let copula = GrammarProduction {
-    name: ^english_production_copula_sentence,
-    expression: english_copula_sentence_expr(),
+  let copula_predicate = GrammarProduction {
+    name: ^english_production_copula_predicate,
+    expression: english_copula_predicate_expr(),
     emitted: grammar_atom(identity: ^english_surface_copula)
   }
   let sentence = GrammarProduction {
     name: ^english_production_sentence,
-    expression: Choice {
-      left: Nonterminal { production: ^english_production_svo_sentence },
-      right: Nonterminal { production: ^english_production_copula_sentence }
-    },
+    expression: english_sentence_expr(),
     emitted: grammar_atom(identity: ^english_surface_sentence)
   }
-  [sentence, article, svo, copula]
+  [sentence, subject, article, svo_predicate, copula_predicate]
 }
 
-fn english_wave1_grammar() -> ParseGrammar {
+fn english_grammar() -> ParseGrammar {
   ModeledGrammar {
     root: GrammarRoot {
       start: ^english_production_sentence,
-      productions: english_wave1_productions(),
+      productions: english_productions(),
       sync_tokens: grammar_empty_sync_tokens()
     }
   }
 }
 
-fn english_model_core_wave1() -> ModelCore {
+fn english_model_core() -> ModelCore {
   ModelCore {
     primitives: [],
     inhabitance: [],
@@ -249,32 +260,32 @@ fn english_model_core_wave1() -> ModelCore {
   }
 }
 
-fn english_language_model_wave1() -> LanguageModel {
+fn english_language_model() -> LanguageModel {
   LanguageModel {
     canonical_symbols: language_model_empty_canonical_symbols(),
     language_identity: ^english_language_identity,
-    core: english_model_core_wave1(),
-    lex: english_wave1_lex(),
-    grammar: english_wave1_grammar()
+    core: english_model_core(),
+    lex: english_lex(),
+    grammar: english_grammar()
   }
 }
 
-fn english_lex_rules_wave1() -> EnglishLexRules {
+fn english_lex_rules_wrapper() -> EnglishLexRules {
   EnglishLexRules {
-    rules: english_wave1_lex()
+    rules: english_lex()
   }
 }
 
-fn english_grammar_wave1() -> EnglishGrammar {
+fn english_grammar_wrapper() -> EnglishGrammar {
   EnglishGrammar {
-    grammar: english_wave1_grammar()
+    grammar: english_grammar()
   }
 }
 
 fn english_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: english_wave1_lex(),
-    grammar: english_wave1_grammar()
+    lex: english_lex(),
+    grammar: english_grammar()
   }
 }
 
@@ -292,12 +303,20 @@ fn english_article_formal_production_indefinite() -> FormalProduction {
   }
 }
 
-fn english_svo_formal_production() -> FormalProduction {
+fn english_subject_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_svo_sentence),
+    lhs: grammar_formal_nonterminal(identity: ^english_production_subject),
     rhs: [
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_word)
+    ]
+  }
+}
+
+fn english_svo_predicate_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_svo_predicate),
+    rhs: [
       grammar_formal_terminal(identity: ^english_token_word),
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
       grammar_formal_terminal(identity: ^english_token_word),
@@ -306,16 +325,34 @@ fn english_svo_formal_production() -> FormalProduction {
   }
 }
 
-fn english_copula_formal_production() -> FormalProduction {
+fn english_copula_predicate_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_copula_sentence),
+    lhs: grammar_formal_nonterminal(identity: ^english_production_copula_predicate),
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
       grammar_formal_terminal(identity: ^english_token_copula),
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
       grammar_formal_terminal(identity: ^english_token_word),
       grammar_formal_terminal(identity: ^english_token_period)
+    ]
+  }
+}
+
+fn english_svo_sentence_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_subject),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_svo_predicate)
+    ]
+  }
+}
+
+fn english_copula_sentence_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_subject),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_copula_predicate)
     ]
   }
 }
@@ -325,7 +362,7 @@ fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: english_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "the function is a handler.",
-      production: english_copula_formal_production(),
+      production: english_copula_sentence_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^english_surface_copula)
     }
   }
@@ -341,7 +378,7 @@ fn english_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -358,7 +395,7 @@ fn english_noun_facts_node() -> Node {
         target: english_inhabitant_atom(id: ^english_category_formal_noun_phrase)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -375,7 +412,7 @@ fn english_noun_inhabitant_node() -> Node {
         target: english_noun_facts_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -387,7 +424,7 @@ fn english_add_fn_emitted_node() -> Node {
       Edge { label: Positional, target: english_noun_inhabitant_node() },
       Edge { label: Positional, target: english_noun_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -546,7 +583,7 @@ fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -559,7 +596,7 @@ fn english_add_fn_translation_rules_node() -> Node {
         target: english_grammar_relation_row_node(row: english_add_fn_relation_row())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -583,7 +620,7 @@ fn english_add_fn_serialize_source_node() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -624,7 +661,7 @@ fn english_declared_inhabitants_root() -> Node {
       ],
       right: english_add_fn_zip_fold_closure_edges()
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -641,14 +678,15 @@ fn english_add_fn_target_model_node() -> Node {
       english_named_edge(name: ^target_model_edge_translation_rules, target: english_add_fn_translation_rules_node()),
       english_named_edge(name: ^target_model_edge_serialize_source, target: english_add_fn_serialize_source_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
 fn english_add_fn_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: english_add_fn_target_model_node(),
-    lex: english_wave1_lex(),
+    lex: english_lex(),
     binding_spellings: english_add_fn_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: english_add_fn_source_text,
@@ -693,7 +731,7 @@ fn english_add_fn_paragraph_grammar() -> ParseGrammar {
       start: ^english_production_add_fn_paragraph,
       productions: list_append(
         left: [english_add_fn_paragraph_production()],
-        right: english_wave1_productions()
+        right: english_productions()
       ),
       sync_tokens: grammar_empty_sync_tokens()
     }

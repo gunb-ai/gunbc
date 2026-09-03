@@ -1,0 +1,54 @@
+module gunbc.host_identity_knob
+
+
+type HostIdentityHostnameField
+  = HostnameShort
+  | HostnameFieldReserved
+
+type HostIdentityKnobKey {
+  host: HostIdentity
+  field: HostIdentityHostnameField
+}
+
+type HostIdentityKnobValue {
+  hostname_short: String
+}
+
+type HostIdentityLeafVerdict = KeyedLeafVerdict<HostIdentityKnobValue>
+
+fn host_identity_knob_key(host: HostIdentity) -> HostIdentityKnobKey {
+  HostIdentityKnobKey { host: host, field: HostnameShort }
+}
+
+fn host_identity_knob_value(hostname_short: String) -> HostIdentityKnobValue {
+  HostIdentityKnobValue { hostname_short: hostname_short }
+}
+
+fn host_identity_knob_values_equal(a: HostIdentityKnobValue, b: HostIdentityKnobValue) -> Bool {
+  a.hostname_short == b.hostname_short
+}
+
+fn three_way_leaf(
+  base: HostIdentityKnobValue,
+  observed: HostIdentityKnobValue,
+  desired: HostIdentityKnobValue,
+) -> HostIdentityLeafVerdict {
+  keyed_three_way_leaf(
+    base: base,
+    observed: observed,
+    desired: desired,
+    equal: host_identity_knob_values_equal,
+  )
+}
+
+fn host_identity_patch_from_intents(
+  base_hostname: String,
+  observed_hostname: String,
+  desired_hostname: String,
+) -> HostIdentityLeafVerdict {
+  three_way_leaf(
+    base: host_identity_knob_value(hostname_short: base_hostname),
+    observed: host_identity_knob_value(hostname_short: observed_hostname),
+    desired: host_identity_knob_value(hostname_short: desired_hostname),
+  )
+}

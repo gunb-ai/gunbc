@@ -1,0 +1,42 @@
+module gunbc.plans.resolver_pathology_profile_receipt
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
+
+fn resolver_pathology_profile_receipt_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** measurement doc only (no resolver refactor). Timestamped profiling receipt for ROADMAP §1 *profile the 518s resolve*. DESIGN.md remains authority."),
+    p(text: "**Owner:** vivid-carp-798. This is a **historical measurement receipt** — the numbers below are the finding; they are not re-derived on any cadence. The `scripts/profile-cold-resolve.sh` harness that produced them was deleted 2026-07-23 with the rest of `scripts/`, so the receipt no longer ships a runnable entrypoint. Re-measuring is a fresh measurement against today's resolver, not a replay of this one; the durable fix remains substrate-emitted resolve timings (gunbc bash-emit #5828)."),
+    hr(),
+    h2(text: "1. How these numbers were taken"),
+    p(text: "Cold resolve with `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset, per-entry resolve wall clock over the corpus, reported as top-N offenders plus an A/B on the `budget_roster_completeness_test` vs `fold_list_generic_instantiation` pair. Recorded here so the method survives the harness."),
+    hr(),
+    h2(text: "2. Measured top resolve offenders (warm typed_module_cache)"),
+    TableBlock {
+      header: row(cells: [cell(text: "Rank"), cell(text: "ms"), cell(text: "items"), cell(text: "entry")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "1"), cell(text: "9410"), cell(text: "1973"), cell(text: "v2/compiler/manual/dag_import_block_lexeme_stamp_test.dag")]),
+        row(cells: [cell(text: "2"), cell(text: "6164"), cell(text: "2594"), cell(text: "v2/test/claim/emit_host_gate/target_coverage_completeness_test.dag")]),
+        row(cells: [cell(text: "12"), cell(text: "1556"), cell(text: "2412"), cell(text: "complexity_gate/budget_roster_completeness_test.dag")]),
+      ]
+    },
+    hr(),
+    h2(text: "3. Pathological pair"),
+    p(text: "**Pathological:** `budget_roster_completeness_test.dag` — cold resolve 5513ms, 2412 registry items. **Structural twin:** `fold_list_generic_instantiation.dag` — 159ms, 226 items. **Ratio:** 34.7× wall (operator ~450× targets typecheck/item work; see prose receipt)."),
+    hr(),
+    h2(text: "4. Hypothesis"),
+    p(text: "**`reconcile_with_typed_cache` / `typecheck_module`** — fn-typed `List<LensSubjectComplexityBudgetRow>` roster rows pulling source-bridged `v2.compiler.*` modules. Not `resolve_modules` wiring (twins share 57-module closure at ~5.5s cold)."),
+  ]
+}
+
+data resolver_pathology_profile_receipt_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
+  slug: "resolver-pathology-profile-receipt",
+  title: "Resolver pathology — cold-resolve profile receipt",
+  body: resolver_pathology_profile_receipt_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR.")
+  }
+}

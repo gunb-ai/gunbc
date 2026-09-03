@@ -1,0 +1,27 @@
+module test.fixture.anonhead_provider
+
+data anonhead_provider_fixture_note: String = "Minimal provider fixture for test.claim.anonymous_record_head_use_line_witness_test: one record type reached ONLY through an anonymous argument-position literal in the witness fixture (the mechanism under test — the emitter decides the head and must synthesize its use-line), one coproduct pair grounding the record's fields, and one deliberately unconstructed type (AnonheadUnusedView) pinning the over-collection boundary. No imports, so the witness closure is the smallest crossing specimen (witness-cost ruling, DESIGN open thread 2026-08-04): the original fixture imported the real std.cache_interface and paid that module's whole import closure — 61.7s CPU against the 1552ms floor budget — for a mechanism a three-type module exercises identically."
+
+type AnonheadReleasePolicy
+  = AnonheadReleasedAtScopeExit
+  | AnonheadReleasedNever
+
+type AnonheadCapacity
+  = AnonheadCapacityUnbounded
+  | AnonheadCapacityBounded { limit: Int }
+
+type AnonheadRetention {
+  release_policy: AnonheadReleasePolicy
+  capacity: AnonheadCapacity
+}
+
+type AnonheadUnusedView {
+  tag: Int
+}
+
+fn anonhead_retention_bounded(r: AnonheadRetention) -> Bool {
+  match r.capacity {
+    AnonheadCapacityUnbounded => false
+    AnonheadCapacityBounded { limit: _ } => true
+  }
+}

@@ -7,15 +7,16 @@ use self::DocSourceKind::*;
 use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
-pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
-pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
+pub use crate::std_algebra::{
+    algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
+    carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
+};
+pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
@@ -37,35 +38,30 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    match v1_rt::map_get(&kernel_type_set(), name) {
+    match v1_rt::map_get(&kernel_type_set(), name.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
 pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, i64>> = {
-            let mut __m = HashMap::new();
-            __m.insert("List".to_string(), 1);
-            __m.insert("Set".to_string(), 1);
-            __m.insert("Map".to_string(), 2);
-            __m.insert("Witness".to_string(), 1);
-            Rc::new(__m)
+            v1_rt::rc_map_insert(crate::std_algebra::carrier_container_arity_rows(), "Witness".to_string(), 1)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
-    match container_expected_arity(name) {
+    match container_expected_arity(name.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
 pub fn container_expected_arity(name: String) -> Option<i64> {
-    v1_rt::map_get(&container_type_arity(), name)
+    v1_rt::map_get(&container_type_arity(), name.clone())
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
@@ -73,21 +69,22 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
         Rc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
-            Some(p) => algebra_type_param_names(p.clone()),
-            None => Rc::new(vec![]),
+            Some(p) => crate::std_algebra::algebra_type_param_names(p.clone()),
+            std::option::Option::None => Rc::new(vec![]),
         }
     }
 }
 
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     {
-        let names = container_param_names_for(kind_name);
+        let names = container_param_names_for(kind_name.clone());
         match Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new({
                 let mut __result = Vec::new();
                 for pair in Rc::new(
                     names
+                        .clone()
                         .iter()
                         .cloned()
                         .enumerate()
@@ -114,7 +111,7 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
         .cloned()
         {
             Some(name) => Some(name.clone()),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
@@ -131,26 +128,13 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
-    v1_rt::map_contains_key(&ordered_element_collections(), name)
+    v1_rt::map_contains_key(&ordered_element_collections(), name.clone())
 }
 
 pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("List".to_string(), "FreeMonoid".to_string());
-            __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("Map".to_string(), "PartialFunction".to_string());
-            __m.insert("map".to_string(), "PartialFunction".to_string());
-            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
-            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
-            Rc::new(__m)
+            crate::std_algebra::carrier_container_algebra_rows()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
@@ -159,37 +143,26 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
 pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("List".to_string(), "FreeMonoid".to_string());
-            __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("Map".to_string(), "PartialFunction".to_string());
-            __m.insert("map".to_string(), "PartialFunction".to_string());
-            Rc::new(__m)
+            crate::std_algebra::carrier_container_alias_rows()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_algebra_rows(), name)
+    v1_rt::map_get(&container_template_algebra_rows(), name.clone())
 }
 
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
-    v1_rt::map_get(&container_template_alias_rows(), name)
+    v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
-    Rc::new(vec![
-        "BooleanAlgebra".to_string(),
-        "FreeMonoid".to_string(),
-        "List".to_string(),
-        "Map".to_string(),
-        "PartialFunction".to_string(),
-        "Set".to_string(),
+    Rc::new(v1_rt::sorted_map_keys(&v1_rt::rc_map_insert(
+        crate::std_algebra::carrier_container_roster_map(),
         "Witness".to_string(),
-    ])
+        true,
+    )))
 }
 
 #[derive(
@@ -200,26 +173,51 @@ pub enum Bool {
     True,
     False,
 }
+// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)
+impl From<Bool> for bool {
+    fn from(b: Bool) -> bool {
+        match b {
+            Bool::True => true,
+            Bool::False => false,
+        }
+    }
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Json(pub std::marker::PhantomData<()>);
+pub type Json = serde_json::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Bytes(pub std::marker::PhantomData<()>);
+pub type Bytes = std::vec::Vec<u8>;
 
 pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::BooleanAlgebra<Element>>;
+pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
 
-pub fn list_length<T>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _: _| (acc + 1))
+pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
+    items.iter().fold(0, |acc: i64, _| (acc + 1))
 }
 
 pub type CommitSha = String;
+
+pub fn commit_sha_text_holds(head: String) -> bool {
+    ((v1_rt::string_length(&head) == 40) && {
+        let mut __all = true;
+        for cp in Rc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            .iter()
+            .cloned()
+        {
+            if !(((cp.clone() >= 48) && (cp.clone() <= 57))
+                || ((cp.clone() >= 97) && (cp.clone() <= 102)))
+            {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    })
+}
 
 pub type Sha256 = String;
 
@@ -233,9 +231,9 @@ pub type Port = i64;
 
 pub type GistId = String;
 
-pub type Secret = String;
+pub type Secret = std::string::String;
 
-pub type SecretValue = String;
+pub type SecretValue = std::string::String;
 
 pub type SemVer = String;
 
@@ -247,7 +245,28 @@ pub type SecretName = String;
 
 pub type PathSegment = String;
 
+pub fn path_segment_safety_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.\n\nThis is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn path_segment_is_safe(raw: String) -> bool {
+    !((((((((raw.clone() == "".to_string()) || (raw.clone() == ".".to_string()))
+        || (raw.clone() == "..".to_string()))
+        || v1_rt::string_contains(&raw, "/".to_string()))
+        || v1_rt::string_contains(&raw, "\\".to_string()))
+        || v1_rt::string_contains(&raw, "\n".to_string()))
+        || v1_rt::string_contains(&raw, "\x0d".to_string()))
+        || v1_rt::string_contains(&raw, "\x00".to_string()))
+}
+
 pub type GlobSegment = String;
+
+pub type RenderedTerminalText = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {
@@ -261,6 +280,15 @@ pub struct GlobPattern {
 
 pub type FilePath = String;
 
+pub fn file_path_sentinel_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceSpan {
     pub file: FilePath,
@@ -269,6 +297,8 @@ pub struct SourceSpan {
 }
 
 pub type Timestamp = String;
+
+pub type EpochSecs = i64;
 
 pub type EpochMs = i64;
 
@@ -295,8 +325,6 @@ pub type WorkerId = String;
 pub type CommentId = String;
 
 pub type SignalKey = String;
-
-pub type ContentHash = String;
 
 pub type WorkflowProducerId = String;
 

@@ -1,0 +1,283 @@
+module gunbc.fabric_cell_effect
+
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.systemd.unit_file {
+  SystemdSliceDirective,
+  slice_memory_max,
+  slice_memory_high,
+  slice_memory_swap_max,
+  slice_tasks_max,
+  slice_cpu_weight,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.membership_reconcile {
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+  TeardownRefusalCause,
+}
+import gunbc.fabric_cell_converge {
+  FabricCellMember,
+  FabricCellResourceAddress,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_base_dir,
+  fabric_cell_root_path,
+  fabric_cell_attempt_root_path,
+  fabric_cell_slice_name,
+  fabric_cell_resource_address_wire,
+}
+
+data fabric_cell_effect_authority_disposition: Disposition = SingleAuthority
+
+// WHAT THIS FAMILY CAN ACTUALLY DO TO A HOST, AS A CLOSED SUM. Before this module the fabric cell
+// family emitted NO effects at all -- gunbc.fabric_cell_converge has no membership_effects and no
+// EffectsOrRefusal, and both gunbc.runner_lifecycle and gunbc.fleet_converge_plan record in their
+// own words that its host-effect realization is absent. So this is the family's first realization
+// surface, and it is closed rather than open because an effect nobody enumerated is an effect
+// nobody reviewed.
+//
+// NO EFFECT IN THIS SUM CARRIES BYTES AN UNPRIVILEGED PRINCIPAL AUTHORED, AND THAT IS A RULING,
+// NOT A STYLE (parent veto, warm-seal-35, 2026-08-29). An earlier cut of this realization staged a
+// rendered slice unit file under a job-user-writable directory and granted a privileged copy of it
+// into /etc/systemd/system. Exact-argv sudoers matching is no defense there, because the argv is
+// constant and the CONTENT is the payload: any CI job on the host could rewrite the staged bytes
+// and obtain arbitrary root-owned unit content -- root escalation reachable from a pull request.
+// So every effect here is a TYPED TUPLE: a path with an ownership class, or a slice name with its
+// directive words. The privileged executor derives the bytes itself, under its own authority, from
+// words the sudoers grant pins exactly.
+//
+// WHO OWNS WHAT, FROM THE SAME RULING. The cell substrate -- the base directory and the cell root
+// -- is root-owned: a job-user-owned cell root would let any CI job mutate or delete the cell,
+// and FCI-1's release-does-not-mutate-the-substrate control would become unfalsifiable in the
+// wrong direction. The job user is delegated exactly ONE writable directory, the attempt root
+// beneath the cell, and that delegation is an explicit arm here rather than inherited from how
+// the GitHub slot family happens to own its directories.
+type FabricCellSubstrateOwner
+  = CellSubstrateRootOwned
+  | CellAttemptWriterOwned
+
+type FabricCellEffect
+  = FabricCellDirectoryEnsure { path: NonEmptyStr, owner: FabricCellSubstrateOwner }
+  | FabricCellSliceEnsure { slice_unit: NonEmptyStr, directives: List<SystemdSliceDirective> }
+
+fn fabric_cell_directory_ensure(path: String, owner: FabricCellSubstrateOwner) -> FabricCellEffect {
+  FabricCellDirectoryEnsure { path: path as NonEmptyStr, owner: owner }
+}
+
+// THE HOST-SCOPED BASE DIRECTORY IS AN EFFECT, NOT APPLY-SHELL PRELUDE. It used to be prepended
+// only by fleet_converge_plan's apply renderer, while the review plan mapped the typed effect list.
+// Apply therefore executed a privileged root-owned directory creation the operator-approved plan
+// never showed. Keeping the base directory in this list makes review and actuation two projections
+// of one value; neither renderer is allowed to mint it independently.
+fn fabric_cell_base_directory_effect() -> FabricCellEffect {
+  fabric_cell_directory_ensure(path: fabric_cell_base_dir, owner: CellSubstrateRootOwned)
+}
+
+// THE BOUNDARY IS REALIZED FROM TYPED DIRECTIVE WORDS, NOT FROM A REFUSAL AND NOT FROM A FILE.
+//
+// An earlier revision of this module refused the boundary address outright, carrying a
+// `fabric_cell_boundary_missing_directives` roster that named MemorySwapMax, TasksMax and CPUWeight
+// as unmodeled in extdeps.systemd.unit_file. That premise was STALE, not a vocabulary gap: the
+// directive-value-grain lane had already landed all three mints (`slice_memory_swap_max`,
+// `slice_tasks_max`, `slice_cpu_weight`), and the refusal survived on a comment asserting the
+// two-arm shape the tree no longer had. Keeping it would be a wall whose RED names a state that
+// cannot occur -- permanently red by staleness, the mirror of the permanently-green decoration
+// DESIGN 4b forbids.
+//
+// FIVE DIRECTIVES, ZERO LITERALS. Every magnitude comes from gunbc_runner_slot_desired -- the same
+// row fabric_cell_resource_boundary_state_digest renders into the desired member digest -- so the
+// directives this effect applies and the digest reconcile compares are two projections of one
+// authority and cannot disagree by drift.
+//
+// WHY DIRECTIVES AND NOT A SystemdUnitFile: the effect's production realization is
+// `systemctl set-property <slice> <Property>=<value>...` -- systemd renders and owns the persisted
+// drop-in itself, so the privileged boundary is crossed by exactly these typed words and by no
+// authored file bytes (see the closed-sum note above). A unit-file carrier here would be a
+// representation of an artifact nothing constructs.
+fn fabric_cell_slice_desired_directives() -> List<SystemdSliceDirective> {
+  let desired = gunbc_runner_slot_desired()
+  [
+    slice_memory_max(bytes: desired.memory_max),
+    slice_memory_high(bytes: desired.memory_high),
+    slice_memory_swap_max(bytes: desired.memory_swap_max),
+    slice_tasks_max(count: desired.tasks_max),
+    slice_cpu_weight(weight: desired.cpu_weight),
+  ]
+}
+
+fn fabric_cell_slice_ensure(slot: RunnerSlotIdentity) -> FabricCellEffect {
+  FabricCellSliceEnsure {
+    slice_unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+    directives: fabric_cell_slice_desired_directives(),
+  }
+}
+
+// EVERY REFUSAL THIS REALIZATION CAN PRODUCE, TYPED AND LOCATED. A Bool or a dropped effect would
+// make one silence answer for an ownership wall, a duplicate key and an unclassifiable change --
+// causes with different owners and different remedies. A fifth arm,
+// BoundaryDirectiveVocabularyIncomplete, is DELETED rather than retained empty: its premise (three
+// slice directives unmodeled in extdeps.systemd.unit_file) was stale, and per DESIGN 4b(4) the
+// witness rows that expected it flipped to positive controls asserting the boundary realizes.
+type FabricCellRealizationRefusal
+  = CellTeardownRefusedByOwnership { address_wire: String, cause: TeardownRefusalCause }
+  | CellRosterDuplicateKey { address_wire: String }
+  | CellChangeNotYetRealizable { address_wire: String }
+  | CellTeardownNotYetRealizable { address_wire: String }
+
+type FabricCellAddressRealization
+  = AddressRealizable { effect: FabricCellEffect }
+  | AddressRefused { refusal: FabricCellRealizationRefusal }
+
+// ONE ADDRESS AT A TIME, TOTAL OVER BOTH AXES. The address decides WHAT the effect is; the action
+// decides WHETHER there is one. Neither axis is collapsed into the other, so a new address and a
+// new action each fail to compile here rather than inheriting an arm that happened to fit.
+//
+// TEARDOWN AND CHANGE REFUSE RATHER THAN BEING REALIZED, while every ADDITION now realizes.
+// Teardown of a cell root is a DESTRUCTIVE effect on a directory that may hold live
+// attempt state, and change realization is gunbc.change_realization's question -- it classifies a
+// MemberChanged by whether the runtime address survived, and this family has not yet declared its
+// staged intermediates. Realizing either by guessing is how a safe transformation acquires an
+// unsafe realization, which is that module's own warning. Both carry their own refusal arms so the
+// two are countable separately and neither is mistaken for the other.
+fn fabric_cell_address_realization(
+  action: MemberAction<FabricCellMember, String>,
+) -> FabricCellAddressRealization {
+  match action {
+    MemberAdded { at: _, to: m } =>
+      match m.address {
+        FabricCellRootAddress =>
+          AddressRealizable {
+            effect: fabric_cell_directory_ensure(
+              path: fabric_cell_root_path(slot: m.slot),
+              owner: CellSubstrateRootOwned,
+            ),
+          }
+        FabricCellAttemptRootAddress =>
+          AddressRealizable {
+            effect: fabric_cell_directory_ensure(
+              path: fabric_cell_attempt_root_path(slot: m.slot),
+              owner: CellAttemptWriterOwned,
+            ),
+          }
+        FabricCellResourceBoundaryAddress =>
+          AddressRealizable { effect: fabric_cell_slice_ensure(slot: m.slot) }
+      }
+    MemberChanged { at: _, from: _, to: m } =>
+      AddressRefused {
+        refusal: CellChangeNotYetRealizable {
+          address_wire: fabric_cell_resource_address_wire(address: m.address),
+        },
+      }
+    MemberRemoved { at: _, from: m } =>
+      AddressRefused {
+        refusal: CellTeardownNotYetRealizable {
+          address_wire: fabric_cell_resource_address_wire(address: m.address),
+        },
+      }
+    MemberRemovalRefused { from: m, cause: c } =>
+      AddressRefused {
+        refusal: CellTeardownRefusedByOwnership {
+          address_wire: fabric_cell_resource_address_wire(address: m.address),
+          cause: c,
+        },
+      }
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } =>
+      AddressRefused {
+        refusal: CellRosterDuplicateKey {
+          address_wire: fabric_cell_resource_address_wire(address: f.address),
+        },
+      }
+  }
+}
+
+// THE ALL-OR-NOTHING FOLD, AND IT IS THE POINT OF THE MODULE RATHER THAN A GUARD ON IT.
+//
+// AN EARLIER READING WOULD HAVE EMITTED THE TWO DIRECTORY CREATES AND REFUSED ONLY THE BOUNDARY,
+// on the reasoning that a typed located refusal is fail-closed. It is not, and the objection is
+// decisive rather than a caveat: a refusal that fires AFTER two directories exist has not stopped
+// the line, it has stopped half of it and left the other half standing. That is exactly "a
+// partially applied infrastructure change without convergence", which DESIGN 4b names as a class
+// the ladder exists to catch.
+//
+// THE OPERATIONAL FORM OF THE SAME ARGUMENT IS STRONGER THAN THE DOCTRINAL ONE. A cgroup slice
+// carrying no resource directives is UNBOUNDED. So the partial form would not merely leave a cell
+// incomplete -- it would create cells with no memory ceiling, no task ceiling and no weight, on a
+// fleet whose dominant failure is jobs evicted under resource pressure. An unbounded cell is worse
+// than an absent one, because absent is honest and unbounded LOOKS provisioned.
+//
+// So a single refused address refuses the whole plan, and the refusals are ACCUMULATED rather than
+// short-circuited: an operator fixing one deficit should see the others in the same report instead
+// of rediscovering them one run at a time.
+type FabricCellRealization
+  = CellPlanRealizable { effects: List<FabricCellEffect> }
+  | CellPlanRefused { refusals: List<FabricCellRealizationRefusal> }
+
+fn fabric_cell_plan_refusals(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> List<FabricCellRealizationRefusal> {
+  fold(
+    actions,
+    init: [],
+    f: (acc, a) =>
+      match fabric_cell_address_realization(action: a) {
+        AddressRefused { refusal: r } => concat(acc, [r])
+        AddressRealizable { effect: _ } => acc
+      }
+  )
+}
+
+fn fabric_cell_plan_effects(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> List<FabricCellEffect> {
+  let address_effects = fold(
+    actions,
+    init: [],
+    f: (acc, a) =>
+      match fabric_cell_address_realization(action: a) {
+        AddressRealizable { effect: e } => concat(acc, [e])
+        AddressRefused { refusal: _ } => acc
+      }
+  )
+  let boundary_effects = fold(address_effects, init: [], f: (acc, e) => match e {
+    FabricCellSliceEnsure { slice_unit: _, directives: _ } => concat(acc, [e])
+    FabricCellDirectoryEnsure { path: _, owner: _ } => acc
+  })
+  let directory_effects = fold(address_effects, init: [], f: (acc, e) => match e {
+    FabricCellSliceEnsure { slice_unit: _, directives: _ } => acc
+    FabricCellDirectoryEnsure { path: _, owner: _ } => concat(acc, [e])
+  })
+  if list_length(items: address_effects) == 0 {
+    []
+  } else {
+    concat(boundary_effects, concat([fabric_cell_base_directory_effect()], directory_effects))
+  }
+}
+
+// THE EFFECTS ARE STILL CONSTRUCTED ON THE REFUSED PATH AND THEN NOT RETURNED, WHICH IS
+// DELIBERATE. Building them costs nothing, and it means the ensure construction -- the ownership
+// classing and the directive rendering -- is exercised by every plan rather than only by the plans
+// that survive. A realization surface that is only built once its walls lift would be a surface
+// nobody had run.
+fn fabric_cell_realization(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> FabricCellRealization {
+  let refusals = fabric_cell_plan_refusals(actions: actions)
+  if list_length(items: refusals) > 0 {
+    CellPlanRefused { refusals: refusals }
+  } else {
+    CellPlanRealizable { effects: fabric_cell_plan_effects(actions: actions) }
+  }
+}
+
+fn fabric_cell_realization_refusal_count(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> Int {
+  list_length(items: fabric_cell_plan_refusals(actions: actions))
+}

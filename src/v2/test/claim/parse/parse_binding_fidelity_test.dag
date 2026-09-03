@@ -1,39 +1,50 @@
 module v2.test.parse.parse_binding_fidelity
 
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
 import v2.compiler.name_resolve {
   Admission,
   Import,
   ImportVisible,
   ResolutionSubject,
-  resolve_with_admission
+  resolve_with_admission_policy
+}
+import v2.compiler.ingested_fixture_arrows {
+  ingested_add_module_source,
+  ingested_find_arrow_in_module
 }
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse {
-  grammar_validate_for_parse,
-  parse_production_tree,
-}
+import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
-  dag_grammar_production_mvp1_fn_add,
   dag_language_model_surface_empty_prelude,
-  dag_language_model_wave1,
-  dag_mvp1_source_text,
+  dag_language_model,
   dag_named_edge
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
-import v2.std.collection { List, Set }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present
+}
+import v2.std.qualified_name { QualifiedName }
 import v2.std.diagnostic {
   Accepted,
+  None,
   Outcome,
   Rejected,
   bind_outcome,
-  outcome_accepted,
-  port_locus
+  outcome_accepted
 }
-import v2.std.grammar { GrammarRoot, ParseTree }
-import v2.std.compilers.lexing { Token }
+import v2.std.grammar { ParseTree, node_atom_identity_optional }
+import v2.std.compilers.lexing { TokenStream, symbol_lexeme }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -44,143 +55,19 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.resolution_policy { ImportScoped }
+import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.namespace_graft { module_header_containment_graft }
 
-fn pbf_parse_root() -> GrammarRoot {
-  GrammarRoot {
-    start: ^dag_production_mvp1_fn_add,
-    productions: [dag_grammar_production_mvp1_fn_add()],
-    sync_tokens: Set { member: fn(_) { false } }
-  }
-}
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn pbf_tokenize() -> Outcome<List<Token>> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^pbf_source_file, rules: lm.lex),
-    f: fn(stream) {
-      outcome_accepted(value: stream.tokens)
-    }
-  )
-}
-
-fn pbf_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
-  match grammar_validate_for_parse(
-    root: pbf_parse_root(),
-    at: port_locus(port: ^parse_stage_locus_port)
-  ) {
-    Accepted { value: validated, diagnostics: _ } =>
-      parse_production_tree(
-        tokens: tokens,
-        validated: validated,
-        production_name: ^dag_production_mvp1_fn_add
-      )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn pbf_tree_contains_atom_identity(root: Node, wanted: Symbol) -> Bool {
-  match root.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == wanted {
-        true
-      } else {
-        false
-      }
-    _ =>
-      fold(
-        root.children,
-        init: false,
-        f: fn(found, edge) {
-          if found {
-            true
-          } else {
-            pbf_tree_contains_atom_identity(root: edge.target, wanted: wanted)
-          }
-        }
-      )
-  }
-}
-
-fn pbf_parse_preserves_param_x_binding() -> Bool {
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: tree, diagnostics: _ } =>
-          pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_x)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn pbf_parse_preserves_param_y_binding() -> Bool {
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: tree, diagnostics: _ } =>
-          pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_y)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn pbf_parse_does_not_collapse_to_token_ident() -> Bool {
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: tree, diagnostics: _ } =>
-          (pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_x) == true)
-            && (pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_binding_param_y) == true)
-            && ((pbf_tree_contains_atom_identity(root: tree, wanted: ^dag_token_ident) == true) == false)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn pbf_resolved_add_accepts() -> Bool {
-  let lm = dag_language_model_wave1()
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn pbf_resolved_tree_has_distinct_param_bindings() -> Bool {
-  let lm = dag_language_model_wave1()
-  match pbf_tokenize() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match pbf_parse_tokens(tokens: tokens) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
-                Accepted { value: resolved, diagnostics: _ } =>
-                  pbf_tree_contains_atom_identity(root: resolved, wanted: ^dag_binding_param_x)
-                    && pbf_tree_contains_atom_identity(root: resolved, wanted: ^dag_binding_param_y)
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
+fn pbf_graft_module_root(root: Node) -> Node {
+  match module_header_containment_graft(root: root) {
+    Accepted { value: grafted, diagnostics: _ } => grafted
+    Rejected { diagnostics: _ } => root
   }
 }
 
@@ -191,7 +78,7 @@ fn pbf_qn_node(seg: Symbol) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -214,11 +101,11 @@ fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -239,47 +126,59 @@ fn pbf_subject_with_import_use() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn pbf_cross_file_roots() -> FreeMonoid<Node> {
-  Cons {
-    head: pbf_subject_with_import_use(),
+fn pbf_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
+    head: pbf_graft_module_root(root: pbf_subject_with_import_use()),
     tail: Cons {
-      head: pbf_module_root(
-        seg: ^pbf_imported_seg,
-        export_sym: ^pbf_imported_decl,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: pbf_graft_module_root(
+        root: pbf_module_root(
+          seg: ^pbf_imported_seg,
+          export_sym: ^pbf_imported_decl,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn pbf_cross_file_import_resolves() -> Bool {
-  match resolve_with_admission(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: pbf_cross_file_roots(),
-    admission: Admission {
-      subject: ResolutionSubject {
-        name: QnCons { head: ^pbf_subject_seg, tail: QnEmpty }
-      },
-      imports: Cons {
-        head: Import {
-          target: QnCons { head: ^pbf_imported_seg, tail: QnEmpty },
-          visibility: ImportVisible
-        },
-        tail: Empty
-      }
-    }
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match pbf_cross_file_roots() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted_roots, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted_roots,
+      admission: Admission {
+        subject: ResolutionSubject {
+          name: Cons { head: ^pbf_subject_seg, tail: Empty }
+        },
+        imports: Cons {
+          head: Import {
+            target: Cons { head: ^pbf_imported_seg, tail: Empty },
+            visibility: ImportVisible
+          },
+          tail: Empty
+        }
+      },
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 
@@ -292,21 +191,25 @@ fn pbf_unbound_atom_tree() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_unbound_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
 fn pbf_resolve_unbound_symbol_rejects() -> Bool {
+  match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: None) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted_tree, diagnostics: _ } =>
   match resolve(
-    tree: pbf_unbound_atom_tree(),
+    tree: admitted_tree,
     lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
+  }
   }
 }
 
@@ -327,73 +230,80 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn pbf_ambiguous_import_roots() -> FreeMonoid<Node> {
-  Cons {
-    head: pbf_subject_with_ambiguous_import_use(),
+fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
+    head: pbf_graft_module_root(root: pbf_subject_with_ambiguous_import_use()),
     tail: Cons {
-      head: pbf_module_root(
-        seg: ^pbf_ambiguous_import_a_seg,
-        export_sym: ^pbf_ambiguous_export_sym,
-        export_atom: ^dag_c3_surface_sugar_service
+      head: pbf_graft_module_root(
+        root: pbf_module_root(
+          seg: ^pbf_ambiguous_import_a_seg,
+          export_sym: ^pbf_ambiguous_export_sym,
+          export_atom: ^dag_c3_surface_sugar_service
+        )
       ),
       tail: Cons {
-        head: pbf_module_root(
-          seg: ^pbf_ambiguous_import_b_seg,
-          export_sym: ^pbf_ambiguous_export_sym,
-          export_atom: ^dag_c3_surface_sugar_type
+        head: pbf_graft_module_root(
+          root: pbf_module_root(
+            seg: ^pbf_ambiguous_import_b_seg,
+            export_sym: ^pbf_ambiguous_export_sym,
+            export_atom: ^dag_c3_surface_sugar_type
+          )
         ),
         tail: Empty
       }
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn pbf_ambiguous_export_rejects() -> Bool {
-  match resolve_with_admission(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: pbf_ambiguous_import_roots(),
-    admission: Admission {
-      subject: ResolutionSubject {
-        name: QnCons { head: ^pbf_subject_seg, tail: QnEmpty }
-      },
-      imports: Cons {
-        head: Import {
-          target: QnCons { head: ^pbf_ambiguous_import_a_seg, tail: QnEmpty },
-          visibility: ImportVisible
+  match pbf_ambiguous_import_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: Admission {
+        subject: ResolutionSubject {
+          name: Cons { head: ^pbf_subject_seg, tail: Empty }
         },
-        tail: Cons {
+        imports: Cons {
           head: Import {
-            target: QnCons { head: ^pbf_ambiguous_import_b_seg, tail: QnEmpty },
+            target: Cons { head: ^pbf_ambiguous_import_a_seg, tail: Empty },
             visibility: ImportVisible
           },
-          tail: Empty
+          tail: Cons {
+            head: Import {
+              target: Cons { head: ^pbf_ambiguous_import_b_seg, tail: Empty },
+              visibility: ImportVisible
+            },
+            tail: Empty
+          }
         }
-      }
+      },
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
     }
-  ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
   }
 }
 
-test fn witness_parse_binding_fidelity_distinct_identifiers_holds() -> Bool {
-  pbf_parse_preserves_param_x_binding()
-    && pbf_parse_preserves_param_y_binding()
-    && pbf_parse_does_not_collapse_to_token_ident()
-}
-
-test fn witness_resolve_distinct_param_bindings_holds() -> Bool {
-  pbf_resolved_add_accepts()
-    && pbf_resolved_tree_has_distinct_param_bindings()
-}
+// Fixture: three cross-file binding resolution + fail-closed witness tests. Discovered per-PR via
+// *_test.dag walk. Long-lane corpus split: long/parse_binding_fidelity_witness_test.dag
+// (commit_workflow-enrolled module ingest tests) — see parse_binding_fidelity_long_note.
 
 test fn witness_cross_file_import_binding_resolves_holds() -> Bool {
   pbf_cross_file_import_resolves()

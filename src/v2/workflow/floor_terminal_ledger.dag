@@ -1,0 +1,536 @@
+module v2.workflow.floor_terminal_ledger
+
+import v2.std.integer { Int }
+import std.content_hash { Fnv1a64Structural }
+import extdeps.git.object_store { GitObjectId }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_route_gap {
+  FloorRouteGapGround, UnpublishedMockCase, NoMockResponse, FilesystemRemoval
+}
+
+// THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2, TO BE SERIALIZED BY THE SEED.
+//
+// The v2 self-host program claims candidate-bound witnesses executed and matched their
+// expectations. The seed is the only boundary holding that per-identity fact and it discards the
+// passing half before v2 can read it: the accumulation branch increments a counter and drops the
+// identity, so a run that reports `passed=10132` cannot say WHICH 10132. This module is the
+// schema and the completeness law for the evidence the floor already observes. It invents no
+// verdict and reclassifies none.
+//
+// A PASS LIST IS THE WRONG ARTIFACT AND THIS IS DELIBERATELY NOT ONE. A roster of passing
+// identities reproduces one layer up exactly the ambiguity it was built to remove: an identity
+// ABSENT from a pass list is failed, interrupted, unrouted, never executed, or lost to truncation
+// -- five states behind one silence, which is the state-space conflation this repository already
+// names as a recurring failure. The ledger therefore carries ONE ROW PER PLANNED IDENTITY and
+// every row is terminal. Absence is not a value it can express.
+//
+// THE SEED CARRIES A HAND-WRITTEN MIRROR OF THIS SCHEMA. `cli_run.rs` is HAND_MAINTAINED, so its
+// `ClaimTerminalRow`, `ClaimDisposition` and `reconcile_identity_population` are authored beside these
+// declarations rather than derived from them. Regen does not compare them, because that file is
+// not generated; the witnesses do not compare them, because each side is exercised alone.
+//
+// THAT MIRROR IS TWO ERROR CLASSES AT TWO DIFFERENT RUNGS, AND ONE ROW OVER BOTH IS WRONG IN BOTH
+// DIRECTIONS -- it under-rates what the comparator actually guarantees and over-rates what the
+// declarations do. An earlier revision of this note carried the single row, and the correction is
+// recorded rather than silently applied because "the mirror is mitigatable" was cited as settled.
+//
+// CLASS 1 -- `TerminalDispositionWireAgreement`.  Rung: MECHANICALLY PREVENTABLE.
+//   Scope:     every terminal row admitted by this artifact path.
+//   Guarantee: the disposition the seed derived equals the disposition obtained by decoding the
+//              tag it emitted. A disagreement refuses the whole ledger and names the identity.
+//   Not structural: an invalid row is still CONSTRUCTIBLE -- the seed can compute a wrong pair --
+//              it simply cannot become accepted evidence. Construction would require the two
+//              derivations to be one, which is the dissolution below, not a check.
+//   NON-CLAIM, and it is the load-bearing half: neither derivation is proven semantically correct
+//              in isolation. Two mappings that are JOINTLY wrong in the same direction agree, and
+//              agreement is all this class checks. It catches DIVERGENCE, never error.
+//   Coverage bound: the join runs over every row of every run, which is the OBSERVED population
+//              and not every mapping ARM. An arm no live row reaches is unexercised and the join
+//              is silent about it -- §4b(1) rung honesty, since a class's rung is the minimum over
+//              its in-scope paths and an unexercised arm is not on any of them.
+//
+// CLASS 2 -- `SeedDagTerminalSchemaDeclarationLockstep`.  Rung: MITIGATABLE.
+//   Scope:     the declaration vocabulary itself -- payload shapes, arm existence, field contracts.
+//   Held by:   author diligence. Nothing executes over it.
+//   The production join above does NOT retire this, and these all still pass unnoticed:
+//     - Rust grows a variant no live row produces
+//     - this module grows an arm no run exercises
+//     - both sides keep a tag and change its MEANING together
+//     - a payload or cardinality diverges under an unchanged tag
+//     - both mappings are jointly wrong in the same direction (Class 1's stated non-claim)
+//     - a variant disappears from one side but the population never reaches it
+//   Next-rung trigger: a calibration population carrying exactly one row per terminal disposition,
+//              mutation-tested in both directions independently. That converts "enforced for what
+//              ran" into "enforced for every declared arm". Its discriminating case is a mutation
+//              that must NOT red -- change a payload contract while keeping every tag, and Class 1
+//              stays green while this class is the only thing that could have caught it. Without
+//              that case the two rows are indistinguishable and this one is decoration.
+//
+// DISSOLUTION -- one event retires the mirror and the seam together: the self-emitted v2 claim
+// executor. Once v2 drives the floor's execution, the producer holding identity-and-outcome
+// together is v2 itself, the seed's copy is deleted whole, and this module is the sole authority
+// it already claims to be. Until then the duplication is admitted debt with a named terminal,
+// not an unremarked second representation.
+
+// WHAT A CLAIM'S ATTEMPT ACTUALLY REACHED, at the grain the executor already distinguishes.
+//
+// These arms are not a taxonomy invented here: they mirror the arms the seed ALREADY holds
+// typed, one for one. `ClaimOutcome` in the seed is Pass | Fail | NotBool { got } | RuntimeError
+// { message } | BudgetInterrupted { elapsed_at_least_ms, budget_ms, kind } | CompletedOverBudget
+// { elapsed_ms, budget_ms, kind } | HostToolUnresolved { name,
+// probed } | (route gap), and its own comment at that match says why: "Every non-pass arm is
+// reported with the fact that distinguishes it. A collapsed `failed` would make a budget refusal,
+// a runtime error and a witness that answered false read alike, and those three have different
+// remedies."
+//
+// AN EARLIER DRAFT COLLAPSED ALL OF THEM INTO `DiagnosedStop { reason: Symbol }`, which is the
+// same defect the seed's comment argues against, committed on the way ACROSS the seam rather than
+// at the match. A `Symbol` reason is not the raw terminal fact -- it is a rendering of one, and
+// the boundary this schema is built for is "v1 preserves the raw terminal fact it already holds".
+// Stringing it during transport would have made the ledger strictly less informative than the
+// producer, which is the opposite of the obligation. `BudgetRefused` carries the existing
+// `ClaimSafetyOutcome` rather than a second spelling of it.
+// A PANIC IS NOT A RUNTIME ERROR, AND IT WAS THE ONE TERMINAL THIS VOCABULARY COULD NOT SPELL.
+// `RuntimeErrored` carries an `InterpError` the evaluator RAISED and the runner CAUGHT -- a value
+// the seed holds in hand. A host panic is the evaluator failing to produce any value at all, and
+// until it had an arm here the seed had nowhere to put it: measured 2026-08-26 by injecting a
+// panic into witness evaluation, the process aborted with exit 101, the identity got no verdict
+// and no row, and the terminal ledger, the expected-red roster join and the disposition TSV --
+// all written after the fold -- were never written. That is loud, so it is not a fail-open; it is
+// a terminal the artifact cannot describe, which is the reason it gets an arm rather than being
+// folded into `RuntimeErrored`. Folding it there would say the evaluator raised something it did
+// not, and the two have different remedies: a raised error is a witness or a subject defect, an
+// unwind is a defect in the host beneath both.
+//
+// AND THE CLAIMS BEHIND THE ONE THAT UNWOUND NEED A TERMINAL TOO, which is the half that is easy
+// to miss while opening the vocabulary for the panic itself. The line stops at the unwind
+// (DESIGN section 5's factory model: a deficit stops the line, and a fold that continued would
+// measure every later row in a process that unwound through an unknown place -- an unstated
+// precondition no row can express, which is the execution-provenance conflation this repository
+// keeps finding). Stopping leaves a population that was PLANNED AND NEVER ATTEMPTED, and that is
+// a third state: not a claim that ran, and not a claim the floor declined at admission. Without
+// its own arm, `stopped at claim 400 of 10439` and `10039 rows quietly missing from the ledger`
+// publish as the same artifact. `halted_by` carries the identity whose unwind stopped the line,
+// so the ledger names the cause beside every consequence rather than leaving a reader to infer it
+// from a gap.
+// WHY THE HERMETIC ROUTE HAD NO ARM, AS A CLOSED SET RATHER THAN AS PROSE.
+//
+// `RouteGap` carried one `route: String`, and that was a collapse this repo had ALREADY refused
+// elsewhere: `v2.workflow.floor_route_gap` models the same fact as a typed pair -- the operation
+// attempted, and the closed ground on which the hermetic route declined it -- because an
+// identity-only row "cannot object when the witness reaches a different operation or when the
+// ground changes to one with a different remedy". Its own words. The executor observes the pair
+// (`ClaimOutcome.HostEffectRefused { operation, ground }`), so a single string was the one place
+// between observation and artifact where the two facts were fused back together.
+//
+// THE VOCABULARY IS IMPORTED, NOT MINTED. `FloorRouteGapGround` stays where it is and this module
+// takes a dependency on it. Relocating it here was tried first and REFUSED BY ACYCLICITY, because at
+// that time this module imported `required_floor`, which imports `floor_route_gap`, so moving the
+// type would have closed a cycle -- and DESIGN section 4 makes acyclicity the import graph's only
+// structural law.
+//
+// THAT PREMISE NO LONGER HOLDS AND THE CONCLUSION STILL DOES. This module no longer imports
+// `required_floor` at all: the safety vocabulary moved HERE for the same acyclicity reason, which
+// removed the edge. So the cycle argument above is now HISTORY rather than a live constraint, and it
+// is kept because it records WHY the ground type was not relocated when that question was live. The
+// ground stays in `floor_route_gap` on the independent merit that a spelling beside that authority
+// and the seed's `v1_interpreter.HermeticEffectGround` mirror would be exactly the fork this
+// widening exists to close -- which was always the stronger half of the reason.
+//
+// WHAT THIS DOES NOT TOUCH: `floor_route_gap` keeps its expectation type and its whole population.
+// What an identity is EXPECTED to gap on is a different fact from what an attempt REACHED, and
+// neither derives from the other, so nothing there is redundant with this arm.
+// THE SAFETY VOCABULARY LIVES HERE, BESIDE THE TERMINAL THAT CARRIES IT.
+//
+// These two types were declared in `v2.workflow.required_floor` and imported back. That put a
+// VOCABULARY inside one of its CONSUMERS: outside required_floor the family is referenced 12 times
+// in this module, 12 in the wire, and 12 more across the two test modules, so the declaring module
+// was not where it was used. It survived while only the floor and the ledger were involved, and
+// became impossible the moment a third module needed both -- `local_repo_wet_terminal` consuming the
+// shared terminal vocabulary closed `ledger -> required_floor -> local_repo_wet_terminal -> ledger`.
+// DESIGN section 4 makes acyclicity the import graph's only structural law, so the relocation is the
+// FORCED answer rather than a tidier one.
+//
+// PURE RELOCATION. No arm is added, renamed, reordered or re-payloaded; `required_floor` imports
+// them back and remains a consumer, and the opaque-host-operation population stays there as policy
+// over this vocabulary.
+
+// WHICH REACHABILITY ONE CLAIM HAS, closed and named rather than left implicit per-occurrence.
+// A claim either stays inside `eval_expr`'s own poll loop for its whole duration
+// (`CooperativelyPollable` -- the case the two safety limits above genuinely protect), or it
+// crosses into a synchronous native `free_call.*` arm that never re-enters `eval_expr` while it
+// runs (`OpaqueHostCallUnbounded`, naming the operation). These are exactly the two mechanisms
+// `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and this module's own prior
+// comment already described in prose; this type is what the ruling asked that prose become.
+type ClaimPreemptionReachability =
+    CooperativelyPollable
+  | OpaqueHostCallUnbounded { operation: String }
+
+// THE THREE-WAY OUTCOME THE RULING NAMED, replacing the binary `ClaimTerminality` this module's
+// prose used to describe as though a third state did not need its own arm. `SafetyInterrupted`
+// is reserved for a claim the poll genuinely stopped before a verdict -- it must never be the
+// label for a claim that ran to completion, however far over its limit, because "terminal" and
+// "interrupted" are different facts and conflating them is exactly the relabeling this ruling
+// forbids. `CompletedPastSafetyLimit` names the other terminal-but-over-limit case and carries
+// its `ClaimPreemptionReachability`, so a reader can tell WHY the poll never had a chance to fire
+// without re-deriving it from a comment.
+type ClaimSafetyOutcome =
+    CompletedWithinSafetyLimits
+  | SafetyInterrupted {
+      raised_by: String
+      elapsed_cpu_at_least: Int
+      elapsed_wall_at_least: Int
+    }
+  | CompletedPastSafetyLimit {
+      observed_cpu: Int
+      observed_wall: Int
+      preemption: ClaimPreemptionReachability
+    }
+
+type ClaimAttemptTerminal
+  = Returned { observation: ClaimObservation }
+  | RuntimeErrored { message: String }
+  | Panicked { payload: String }
+  | NotAttempted { halted_by: String }
+  | BudgetRefused { safety: ClaimSafetyOutcome }
+  | HostToolUnresolved { name: String, probed: List<String> }
+  | RouteGap { operation: String, ground: FloorRouteGapGround }
+
+// AN ATTEMPT THAT RETURNED STILL MAY NOT HAVE OBSERVED ANYTHING. A claim whose result is not a
+// verdict the floor can read -- the wrapper refusal a run reports when a function returns a bare
+// value instead of a process exit, for instance -- COMPLETED and OBSERVED NOTHING. Collapsing
+// that into `holds: False` would be the fabricated plausible output: it would report a failing
+// witness where the truth is a witness whose answer was never in a readable shape.
+type ClaimObservation
+  = ObservedVerdict { holds: Bool }
+  | ObservationUnrepresentable { reason: Symbol }
+
+// WHAT THE ROSTER EXPECTED OF THIS IDENTITY, which is an input to the projection and never an
+// output of it. Held separately from the observation precisely so that "the witness answered
+// false" and "the witness was expected to answer false" stay two facts: their conjunction is
+// what makes a red held rather than failing, and a single field could not express the pair.
+type ClaimExpectation
+  = ExpectedToHold
+  | ExpectedRed
+
+// ONE ROW PER PLANNED IDENTITY, AND EXECUTION ORDER IS THE ROW'S POSITION -- there is no
+// `ordinal` field, and its absence is the point.
+//
+// An earlier draft carried `ordinal: Int` and claimed in this comment that it made a missing row
+// visible as a gap and a truncation visible as a short tail. NOTHING IN THE SCHEMA READ IT. That
+// is the rung-inflation shape at carrier grain: a field whose asserted property no code performs,
+// where the prose is the only place the guarantee exists.
+//
+// The repair is not to add a contiguity check -- it is to delete the field. Position in a list is
+// dense and unique BY CONSTRUCTION, so a duplicated or gapped ordinal has no spelling here rather
+// than being caught by a validator. Truncation is still caught, by the footer count against the
+// planned population, which is implemented and tested.
+type ClaimTerminalRow {
+  identity: WitnessIdentity
+  expectation: ClaimExpectation
+  terminal: ClaimAttemptTerminal
+}
+
+// WITHOUT A BINDING THIS IS A LIST OF ROWS, NOT EVIDENCE -- and the header of this module claims
+// CANDIDATE-BOUND witnesses.
+//
+// An earlier draft had no `Ledger` type at all: only rows, reconciliation and publication. A
+// ledger produced by run A was then structurally indistinguishable from evidence for run B, and
+// the completed claim the obligation names -- "identity W appears exactly once in candidate C's
+// terminal population" -- had no C to name. That is not a missing convenience; it is the
+// difference between a ledger and evidence, and the artifact's lifecycle is v2's to own.
+//
+// The binding is a FIELD OF THE LEDGER rather than a sibling artifact, so an unbound ledger is
+// unrepresentable rather than merely unusual. Its three identities are content hashes from
+// `std.content_hash` `Fnv1a64Structural` -- the structural family member DESIGN names, not a bare
+// `String`. A `String` digest admits any text at all and cannot be compared against anything else
+// in the corpus that hashes, which is the hollow-carrier shape.
+// A LOCAL RUN HAS NO CANDIDATE, AND THAT IS AN EVIDENTIAL FACT RATHER THAN A FORMATTING ONE.
+//
+// The completed claim this ledger exists to support is "witness W terminated in candidate C". A
+// run with no published commit has no C, so its ledger is NOT candidate-bound and must not be
+// citable as though it were. Rendering the seed's `"local"` into a commit-shaped field would be
+// the state-space conflation trap in its smallest disguise: a consumer asking "is this
+// candidate-bound?" would have to string-compare a magic value, and the day someone spells it
+// differently the answer silently flips.
+//
+// So it is an ARM. `GitObjectId` cannot represent "no commit" -- that is the type doing its job
+// -- and the absence gets its own case, which makes an unbound ledger unmistakable from the
+// shape instead of by convention.
+//
+// The type is `GitObjectId` and NOT a freshly minted repository-ref type. One exists, it is
+// cited to the upstream authority with validating constructors that enforce family, length and
+// lowercase syntax, and v2 already binds artifacts to it -- `v2.compiler.self_host`
+// `frontier_probe_types` carries `source_commit` and `source_tree` as `GitObjectId` for exactly
+// this purpose. Minting a `RepositoryRef` beside it would be the §3 nicknaming violation
+// committed inside a change whose subject is single authority.
+type RepositorySnapshot
+  = PublishedCommit { commit: GitObjectId }
+  | UnpublishedWorkingTree
+
+// THE REF AND THE DIGEST ARE TWO FACTS, NOT ONE, so they are two fields. The ref says WHICH
+// commit a human opens; the prepared-subject digest says WHAT was actually admitted, and they
+// diverge on every run this floor performs, because preparation declines sites. A binding that
+// carried only one of them would answer only half of "which candidate is this evidence for".
+//
+// `repository_snapshot` could not have been an `Fnv1a64Structural` even if we had wanted it to
+// be: that carrier is `String where lower_hex_16`, so a 40-hex commit id REFUSES AT
+// CONSTRUCTION. The corpus settled this before the question was asked.
+// THE ROSTER IDENTITY IS NOT A FIELD, BECAUSE IT IS NOT A FACT A CALLER HOLDS.
+//
+// An earlier revision carried `roster_identity: Fnv1a64Structural` here, supplied by whoever
+// built the binding. That is a stored value which can DISAGREE with the population it names, and
+// a binding whose roster identity describes a different roster than the rows is worse than
+// carrying none: it is a false claim about which witnesses this evidence covers. It is also a
+// fact nothing in the floor computes -- inventing a parameter for a value that does not exist is
+// how hollow carriers start.
+//
+// So it is derived at render time from the identities actually being published, by the same fold
+// on both sides. A roster identity that disagrees with its rows has no constructor rather than
+// being caught by a check (§5).
+type LedgerBinding {
+  repository_snapshot: RepositorySnapshot
+  prepared_subject: Fnv1a64Structural
+}
+
+fn ledger_is_candidate_bound(binding: LedgerBinding) -> Bool {
+  match binding.repository_snapshot {
+    PublishedCommit { commit: _ } => true
+    UnpublishedWorkingTree => false
+  }
+}
+
+type TerminalLedger {
+  binding: LedgerBinding
+  rows: List<ClaimTerminalRow>
+  publication: LedgerPublication
+}
+
+// THE PROJECTION IS LOSSLESS, AND AN EARLIER DRAFT'S WAS NOT.
+//
+// That draft sent RuntimeErrored, HostToolUnresolved, RouteGap and ObservationUnrepresentable all
+// to one `RefusedBeforeVerdict`. The row had just been un-collapsed for exactly this reason -- a
+// budget refusal, a runtime error and a witness that answered false have different remedies -- and
+// the disposition re-collapsed them one step later, for the consumer that most needs them apart.
+//
+// It is not a cosmetic loss. The floor already reports these as SEPARATE COUNTERS
+// (`host_tool_unresolved`, `route_gap_unenrolled`, `route_gap_held`, `stale_route_gap`,
+// `interrupted_before_verdict`), and the obligation requires those counters to be DERIVED from
+// the finalized rows so that a counter disagreeing with the ledger has no constructor. A
+// projection that has already merged two counters cannot derive either, so the counters would
+// have had to be computed independently -- restoring the dual authority the derivation exists to
+// dissolve. One arm per terminal shape keeps every counter derivable.
+
+// `Pass` IS A PROJECTION, NOT A STORED FIELD, AND THAT IS THE WHOLE CONSTRUCTION.
+//
+// There is no `passed: Bool` anywhere in the row, so a row cannot disagree with its own
+// disposition -- the disagreement has no constructor. The seed's `ClaimOutcome::Pass =>
+// outcome.passed += 1` is an INDEPENDENT AUTHORITY over the same fact, and two authorities over
+// one fact is the defect this dissolves: the counter is derived from the finalized rows, so a
+// counter that disagrees with the ledger is unrepresentable rather than detected by a
+// cross-check.
+// TWO OF THE ARMS BELOW ARE NEW AND NEITHER IS A `...BeforeVerdict` ONE, which is the whole
+// point of both.
+//
+// `PassedOverBudget` REACHED ITS VERDICT AND THEN EXCEEDED ITS BUDGET. The erasure this repairs
+// was precisely a disposition whose NAME asserted that no verdict was produced, for a row that
+// demonstrably produced one, so re-using a `BeforeVerdict` name here would reinstate the defect
+// while appearing to fix it.
+//
+// `BudgetTerminalWithoutSafetyCause` IS THE CONTRADICTORY PAIRING, NAMED RATHER THAN ABSORBED: a
+// budget terminal whose safety outcome says the claim stayed WITHIN its limits. No measurement
+// supports calling it either a refusal or a completed overrun, so it is neither.
+//
+// §4b RUNG AND ITS TRIGGER for that arm, declared here rather than left to be rediscovered as a
+// gap. The class sits at MITIGATABLE: the state is REPRESENTABLE and is caught by a check
+// (`ledger_green_admission` refuses a ledger carrying it), not made unwritable. Making it
+// unwritable by narrowing `BudgetRefused`'s carrier to the two coherent arms is REJECTED, and not
+// for cost: `ClaimSafetyOutcome` is declared ABOVE IN THIS MODULE and a narrowed two-arm twin beside
+// it would be one concept forked by rigor -- §3 nicknaming -- and a fork gets consolidated later at
+// someone else's cost.
+//
+// THE OWNERSHIP SENTENCE HERE USED TO SAY `v2.workflow.required_floor` OWNS THIS TYPE. That was true
+// when written and became false when the declaration moved here to open an import cycle. It is
+// corrected rather than deleted because the sentence is load-bearing: it is the reason the narrowed
+// twin is refused, and a reader who found it naming the wrong authority would conclude the refusal
+// no longer applies.
+//
+// NEXT-RUNG TRIGGER, RE-ANCHORED AND NOT RETIRED. It read "the safety axis declared as a family in
+// its OWNING module, with the budget-bearing sub-family derived there rather than re-spelled here".
+// Every locating word in that sentence was DEICTIC -- its owning module, there, here -- so moving the
+// declaration silently re-pointed it at a different module while the prose stayed readable. It did
+// not become false, it became AMBIGUOUS, which is why nothing would ever have flagged it: this is the
+// positional-citation failure one level up, a relative reference decaying rather than a line number.
+//
+// So the trigger is restated with its location EXPLICIT: the safety axis declared as a family in
+// `v2.workflow.floor_terminal_ledger`, with the budget-bearing sub-family DERIVED from that family
+// rather than re-spelled as a sibling coproduct. RELOCATING THE DECLARATION DOES NOT SATISFY IT --
+// the sub-family derivation is the capability, and this change performed a move, not a derivation.
+// The drop stays open at MITIGATABLE. At the point the trigger is met, this arm has no constructor
+// and this disposition, its refusal arm and their evidence dissolve together (operator ruling,
+// 2026-08-24).
+type ClaimDisposition
+  = Passed
+  | Failed
+  | KnownRedHeld
+  | KnownRedNowPassing
+  | BudgetRefusedBeforeVerdict
+  | PassedOverBudget
+  | BudgetTerminalWithoutSafetyCause
+  | HostToolUnresolvedBeforeVerdict
+  | RouteGapBeforeVerdict
+  | RuntimeErroredBeforeVerdict
+  | PanickedBeforeVerdict
+  | NotAttemptedAfterAbort
+  | ObservationUnreadableBeforeVerdict
+
+// THE MODEL HAD THE DISTINCTION; THIS PROJECTION DROPPED IT. `ClaimSafetyOutcome` already
+// separates an interruption from a completion past the limit -- the axis was modelled one import
+// away -- and the `BudgetRefused { safety: _ }` arm below gave both the single disposition
+// `BudgetRefusedBeforeVerdict`, whose name asserts BEFORE VERDICT for a claim that had reached
+// one. That is the same habit its seed mirror carried at four further sites: total at the level
+// examined, blind one level down. The expectation split under `CompletedPastSafetyLimit` mirrors
+// the seed exactly, because the two mappings are compared per row in production and a divergence
+// here makes the ledger unrenderable.
+fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
+  match row.terminal {
+    BudgetRefused { safety: s } =>
+      match s {
+        SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
+          BudgetRefusedBeforeVerdict
+        CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+          match row.expectation {
+            ExpectedToHold => PassedOverBudget
+            ExpectedRed => KnownRedNowPassing
+          }
+        CompletedWithinSafetyLimits => BudgetTerminalWithoutSafetyCause
+      }
+    RuntimeErrored { message: _ } => RuntimeErroredBeforeVerdict
+    Panicked { payload: _ } => PanickedBeforeVerdict
+    NotAttempted { halted_by: _ } => NotAttemptedAfterAbort
+    HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
+    RouteGap { operation: _, ground: _ } => RouteGapBeforeVerdict
+    Returned { observation: o } =>
+      match o {
+        ObservationUnrepresentable { reason: _ } => ObservationUnreadableBeforeVerdict
+        ObservedVerdict { holds: h } =>
+          match row.expectation {
+            ExpectedToHold => if h { Passed } else { Failed }
+            ExpectedRed    => if h { KnownRedNowPassing } else { KnownRedHeld }
+          }
+      }
+  }
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NEVER A COUNT EQUALITY, AND HERE IS THE CASE THAT PROVES IT.
+//
+// Suppose one planned identity never reaches the ledger and some other identity is written twice.
+// `planned == terminal_rows` holds. `passed + failed + held == planned` holds. Every aggregate
+// count in the run summary is IDENTICAL to a correct run. A count-based check is green, and the
+// missing witness -- possibly the one the author just added -- is reported as covered.
+//
+// So the reconciliation below computes THREE INDEPENDENT SETS by joining on identity, and it is a
+// RECORD rather than a coproduct on purpose: a coproduct would report the first defect it found
+// and hide the second, and this failure mode is exactly the one where two defects appear together
+// and cancel in the totals. Completeness is all three being empty, which the swap above fails in
+// two places at once while no count moves.
+type LedgerReconciliation {
+  planned_without_terminal: List<WitnessIdentity>
+  terminal_without_planned: List<WitnessIdentity>
+  terminal_duplicated: List<WitnessIdentity>
+}
+
+fn ledger_is_complete(r: LedgerReconciliation) -> Bool {
+  r.planned_without_terminal.length() == 0
+    && r.terminal_without_planned.length() == 0
+    && r.terminal_duplicated.length() == 0
+}
+
+// A ROUTED IDENTITY WITH NO TERMINAL ROW IS INCOMPLETE, NEVER GREEN, and a terminal row for an
+// identity nobody planned is FOREIGN EXECUTION and is refused. The two are separate arms because
+// their remedies differ: the first says the fold lost a claim, the second says something executed
+// that the roster never admitted, and collapsing them would let a lost claim be explained away as
+// a stray one.
+
+// PUBLICATION IS PART OF THE EVIDENCE, SO ITS FAILURE MUST BE PART OF THE VERDICT.
+//
+// A ledger is finalized only after the fold completes: the footer carries the row count and a
+// digest over the rows, and the file is published atomically under its final name. A run killed
+// before finalization therefore leaves either no ledger or one that is VISIBLY partial -- it never
+// leaves a complete-looking file that is short.
+//
+// `LedgerPartial` is not a degraded success. Witnesses all passing plus a failed ledger write is
+// EVIDENCE INCOMPLETE, and evidence incomplete is not green: otherwise the instrumentation is
+// optional exactly when it fails, which is the failure arm that widens instead of refusing.
+type LedgerPublication
+  = LedgerFinalized { row_count: Int, digest: String }
+  | LedgerPartial { reason: Symbol }
+
+// GREEN ADMISSION IS A TYPED OUTCOME, NOT A Bool, because a Bool cannot say WHY evidence was
+// refused and the three reasons have three different remedies: the fold lost rows, something
+// executed that was never planned, or the run died before the ledger was finalized. Returning
+// `False` for all three would be the state-space conflation this schema exists to remove -- one
+// silence standing for several states -- committed by the very function that judges completeness.
+//
+// THE FOOTER'S COUNT IS CHECKED AGAINST THE PLANNED POPULATION, not against the rows the reader
+// happened to parse. Comparing the footer to the rows read would be an identity: a truncation that
+// removed rows AND rewrote the footer to match would agree with itself. The planned population is
+// the independent referent, and it is the one the caller already holds.
+//
+// `EvidenceCarriesIncoherentRow` IS A ROW THAT CONTRADICTS ITSELF REFUSING THE LEDGER, AND IT
+// CARRIES THE IDENTITIES so the refusal is LOCATED rather than merely typed -- a reader gets the
+// rows to go and look at, not a count to go hunting with.
+//
+// Why it refuses rather than being counted: an arm that neither stops the line nor is reported
+// would be a name that DESCRIBES a contradiction and PERMITS it, so its frequency is unobservable
+// by construction and the deficit never ranks for fixing -- the absorbing fallback's quiet half.
+// And every other judgment this function makes over such a row is meaningless: the row does not
+// say what happened to the claim, so completeness over it is completeness in name.
+type LedgerGreenAdmission
+  = EvidenceComplete
+  | EvidenceUnfinalized { reason: Symbol }
+  | EvidenceReconciliationFailed { reconciliation: LedgerReconciliation }
+  | EvidenceFooterCountDisagrees { footer_rows: Int, planned_rows: Int }
+  | EvidenceCarriesIncoherentRow { rows: List<WitnessIdentity> }
+
+// THE ROWS WHOSE DISPOSITION IS THE CONTRADICTORY PAIRING, keyed by identity. A fold over the
+// SAME `claim_disposition` every other consumer reads, so this cannot disagree with the ledger's
+// own projection -- asking a second question of the row here would be a second authority over the
+// fact the disposition already answers.
+fn incoherent_ledger_rows(rows: List<ClaimTerminalRow>) -> List<WitnessIdentity> {
+  map(
+    filter(rows, r => claim_disposition(row: r) == BudgetTerminalWithoutSafetyCause),
+    r => r.identity
+  )
+}
+
+// THE INCOHERENT-ROW CHECK RUNS AHEAD OF COMPLETENESS AND THE FOOTER, because those two ask
+// whether the right rows are present and this one asks whether a row says anything at all.
+// Reporting a population as complete while one of its members carries no readable outcome would
+// publish the count as the answer to a question the count cannot reach.
+fn ledger_green_admission(
+  ledger: TerminalLedger,
+  reconciliation: LedgerReconciliation,
+  planned: List<WitnessIdentity>,
+) -> LedgerGreenAdmission {
+  match ledger.publication {
+    LedgerPartial { reason: r } => EvidenceUnfinalized { reason: r }
+    LedgerFinalized { row_count: n, digest: _ } => {
+      let incoherent = incoherent_ledger_rows(rows: ledger.rows)
+      if incoherent.length() > 0 {
+        EvidenceCarriesIncoherentRow { rows: incoherent }
+      } else {
+      if ledger_is_complete(r: reconciliation) {
+        if n == planned.length() {
+          EvidenceComplete
+        } else {
+          EvidenceFooterCountDisagrees { footer_rows: n, planned_rows: planned.length() }
+        }
+      } else {
+        EvidenceReconciliationFailed { reconciliation: reconciliation }
+      }}
+    }
+  }
+}

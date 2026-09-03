@@ -1,0 +1,70 @@
+module v2.test.claim.module_own_declaration_wins
+
+import v2.test.claim.module_own_declaration_peer_alpha { alpha_entry }
+import v2.test.claim.module_own_declaration_peer_beta { beta_entry, shared_anchor }
+import v2.test.claim.module_own_declaration_importer_alpha { via_alpha }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A MODULE MUST REACH ITS OWN DECLARATION. Two modules that both declare `section_sentinel` share
+// ONE bare slot in the interpreter's function table -- `fn_nodes` holds one entry per bare name
+// and one per qualified name, and the bare entry is overwritten by whichever module the index
+// walk visited last (or held by the first, under a precedence order). The loser's own calls then
+// execute the winner's body with no diagnostic anywhere.
+//
+// THE SILENT FACE IS THE WHOLE POINT, AND IT SHIPPED. `docs/plans/import-namespace-program.md` and
+// `docs/plans/v2-corpus-self-host.md` are emitted from two plan carriers that each declare
+// `status_block` and `section_1` .. `section_9`, each calling them bare from its own body fold.
+// One carrier won every slot, so the other plan's document was emitted carrying the winner's
+// ENTIRE BODY under its own title and slug -- a well-formed markdown file, byte-stable across
+// runs, with nothing refusing and nothing to see.
+//
+// WHY BOTH DIRECTIONS ARE ASSERTED IN ONE ROW RATHER THAN TWO. Which peer wins the shared slot is
+// a property of walk order, not of anything either peer declares, so a row asserting only alpha
+// would go green or red depending on an ordering neither module controls -- a coin flip wearing a
+// verdict. The CONJUNCTION is order-independent: exactly one bare slot exists, so under the
+// defect at least one conjunct is false whichever peer won, and both are true only when each
+// module reached its own declaration. That is the discriminating form.
+//
+// NOTHING HERE THROWS. Both entries are total and same-typed, so this row is an OBSERVED semantic
+// verdict and never a no-verdict claim -- the displacement produces a plausible Int, which is
+// exactly what made the shipped defect invisible.
+test fn each_module_reaches_its_own_declaration_of_a_shared_bare_name() -> Bool {
+  alpha_entry() == 100 && beta_entry() == 200
+}
+
+// THE IMPORT TIER, AND IT IS A SEPARATE ROW BECAUSE IT IS A SEPARATE MECHANISM. The row above
+// is about a module reaching its OWN declaration; this one is about a module reaching the
+// declaration it SAID it wanted. An own-module tier alone leaves this red -- measured, not
+// predicted: it was the single failure in a floor fold of 11,640 witnesses, where
+// `test.claim.ilm4926_designation_witness` imported `extdeps_external_authority_anchor` from
+// `extdeps.cpu_attachment.ilm4926` and still read `extdeps.vendor.lotes`'s, because lotes is
+// imported one line earlier and wins the shared slot. The import line was inert.
+//
+// BOTH DIRECTIONS IN ONE ROW, for the reason row one already gives and this row had to learn
+// twice. `shared_anchor` is declared by both peers; THIS module imports it from beta, and
+// `module_own_declaration_importer_alpha` imports it from alpha. Exactly one bare slot exists, so
+// under the defect at least one conjunct reads the other peer's value whichever won the slot --
+// which makes the conjunction independent of walk order AND of which resolution path is running.
+//
+// AN EARLIER REVISION ASSERTED ONLY `shared_anchor == 22` AND WAS GREEN WITH NO TIER PRESENT,
+// measured on a three-way A/B against an interpreter carrying neither tier. It was a decoration:
+// permanently green by construction on that path, carrying no information, and worse than absent
+// because it would have been cited as coverage for the mechanism the floor had just proven
+// missing.
+test fn an_explicitly_imported_name_resolves_to_the_module_it_was_imported_from() -> Bool {
+  shared_anchor == 22 && via_alpha() == 11
+}
+
+// GREEN CONTROL, AND IT LOCATES THE BOUNDARY RATHER THAN RESTATING THE ROW ABOVE. A repair that
+// simply stopped consulting the shared bare slot would break every bare CROSS-module reference in
+// the corpus -- which is the intended authoring form under the namespace thread, and the form
+// most witnesses are written in. This module declares no `alpha_entry` and no `beta_entry`, so
+// both calls above are bare cross-module references that must keep resolving. If this row ever
+// reds, the repair narrowed resolution instead of ordering it.
+test fn bare_cross_module_reference_still_resolves_control() -> Bool {
+  alpha_entry() > 0 && beta_entry() > 0
+}

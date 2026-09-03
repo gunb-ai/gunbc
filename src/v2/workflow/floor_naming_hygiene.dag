@@ -1,0 +1,240 @@
+module v2.workflow.floor_naming_hygiene
+
+import std.algebra { trim }
+
+import std.types { String, Bool, List }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.algebra { fold_list }
+
+data floor_test_sidecar_suffix: String = "_test.dag"
+data floor_wire_contract_sidecar_suffix: String = "_contracts.dag"
+
+fn floor_path_basename(path: String) -> String {
+  fold(
+    split(s: path, delimiter: "/"),
+    init: "",
+    f: fn(_acc, seg) { seg }
+  )
+}
+
+fn floor_path_strip_dot_slash_prefix(path: String) -> String {
+  if starts_with(s: path, prefix: "./") {
+    substring(s: path, start: 2, end: string_length(s: path))
+  } else {
+    path
+  }
+}
+
+fn floor_entry_requires_test_sidecar(entry_path: String) -> Bool {
+  ends_with(
+    s: floor_path_strip_dot_slash_prefix(path: entry_path),
+    suffix: floor_test_sidecar_suffix
+  )
+}
+
+fn floor_entry_requires_wire_contract_sidecar(entry_path: String) -> Bool {
+  ends_with(
+    s: floor_path_strip_dot_slash_prefix(path: entry_path),
+    suffix: floor_wire_contract_sidecar_suffix
+  )
+}
+
+fn floor_test_marked_decl_allowed_in_entry(entry_path: String) -> Bool {
+  floor_entry_requires_test_sidecar(entry_path: entry_path)
+}
+
+fn floor_wire_contract_decl_allowed_in_entry(entry_path: String) -> Bool {
+  floor_entry_requires_wire_contract_sidecar(entry_path: entry_path)
+}
+
+fn floor_discovery_line_starts_test_decl(line: String) -> Bool {
+  starts_with(s: trim(line), prefix: "test fn ") || starts_with(s: trim(line), prefix: "test data ")
+}
+
+fn floor_discovery_test_rest_from_line(line: String) -> String {
+  let trimmed = trim(line)
+  if starts_with(s: trimmed, prefix: "test fn ") {
+    substring(s: trimmed, start: 8, end: string_length(s: trimmed))
+  } else if starts_with(s: trimmed, prefix: "test data ") {
+    substring(s: trimmed, start: 10, end: string_length(s: trimmed))
+  } else {
+    ""
+  }
+}
+
+fn floor_discovery_first_token_before_space(seg: String) -> String {
+  fold(
+    split(s: seg, delimiter: " "),
+    init: "",
+    f: fn(name, token) {
+      if name != "" {
+        name
+      } else if token == "" {
+        ""
+      } else {
+        token
+      }
+    }
+  )
+}
+
+fn floor_discovery_test_decl_name_from_rest(rest: String) -> String {
+  let before_paren = fold(
+    split(s: rest, delimiter: "("),
+    init: "",
+    f: fn(acc, seg) {
+      if acc != "" {
+        acc
+      } else {
+        seg
+      }
+    }
+  )
+  let before_colon = fold(
+    split(s: before_paren, delimiter: ":"),
+    init: "",
+    f: fn(acc, seg) {
+      if acc != "" {
+        acc
+      } else {
+        seg
+      }
+    }
+  )
+  floor_discovery_first_token_before_space(seg: before_colon)
+}
+
+fn floor_discovery_test_decl_name_from_line(line: String) -> String {
+  floor_discovery_test_decl_name_from_rest(
+    rest: floor_discovery_test_rest_from_line(line: line)
+  )
+}
+
+fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
+  fold(
+    split(s: content, delimiter: "\n"),
+    init: [],
+    f: fn(acc, line) {
+      if floor_discovery_line_starts_test_decl(line: line) {
+        let name = floor_discovery_test_decl_name_from_line(line: line)
+        if name == "" {
+          acc
+        } else {
+          concat(acc, [name])
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// The sidecar rule read in its second direction. `floor_test_marked_decl_allowed_in_entry`
+// answers where a `test`-marked decl MAY live; this answers what a file claiming that place
+// OWES. Without it a `*_test.dag` file that declares none enrolls zero rows and no consumer
+// can tell that apart from a file whose rows were all excluded -- the floor reports nothing
+// missing because nothing asked.
+// AND THE WALL BELOW WAS UNREACHABLE FROM THE REQUIRED FLOOR FOR AS LONG AS IT HAS EXISTED,
+// measured rather than inferred: main run 33092582255 (headSha 107304a579), both lanes green,
+// with FOUR barren `*_test.dag` entries present in the tree at that sha and zero occurrences of
+// `barren` or `sidecar` anywhere in the 693KB run log. 41 claims sat behind a live wall.
+//
+// THAT POPULATION IS A MEASUREMENT AT THAT SHA AND IS NOT THE POPULATION TODAY, which is the
+// distinction a reader arriving later most needs. gunbc#9483 repaired three of those four
+// entries BY HAND while this repair was in flight -- two deleted with the ctrl/session-container
+// lane, one promoted in place -- so the live barren population when the wall landed was ONE
+// file. That is not evidence the wall was unnecessary; it is the mechanism the wall replaces,
+// observed once more. A class whose only remedy is someone noticing has no bound on how long
+// the next instance stands.
+//
+// THE CAUSE IS NOT THIS PREDICATE AND NOT ITS DENOMINATOR. It is that ONE FACT -- what a test
+// decl IS -- has THREE SCANNERS in one binary, and the wall guards the one production retired:
+//
+//   floor_discovery_scan_test_decl_names   this module; `test fn ` / `test data `; the walled
+//                                          path, reached only via invoke_floor_discovery_producer
+//                                          <- discover_floor_witness_roster, whose entire caller
+//                                          set is claim_batch and the discovery-corpus mode
+//   cli_run.rs scan_test_decl_lines        `test fn ` / `test data `
+//   former cli_run.rs floor scanner        `test fn ` / `test data ` -- and THIS is the required
+//                                          floor's roster, via assemble_prepared_subject. It read
+//                                          `test fn ` ONLY until the repair recorded below; that
+//                                          divergence is what forked this one fact three ways
+//
+// Each is locally reasonable, which is why nobody saw it. The Rust unit test asserting the
+// wiring (cli_run.rs mod sidecar_placement_hygiene_tests) is not the missing piece either: it
+// still PASSES, because the wiring it asserts is genuinely intact on the producer path. A green
+// run of it says nothing about whether the required floor can reach the wall.
+//
+// WHAT LANDED THEN: the required floor asked this module's own `floor_test_sidecar_suffix` about
+// the files its preparation found carrying no test decl of either form, so the RULE kept one
+// home and only its consumer moved.
+//
+// WHAT LANDED NEXT (2026-08-29), AND IT RETIRES THE ROSTER ROW ABOVE: cli_run.rs
+// The Rust floor scanner is DELETED. The required floor no longer scans at all -- it folds
+// v2.workflow.floor_discovery_producer discover_floor_rows_for_source over its prepared sources
+// and takes that fold's rows as its roster, so the barren check, the placement rule and the scan
+// reach the floor through ONE consumer of this module. The measured fork that forced it: the
+// Rust roster scan was filename-blind, so five files carrying 39 `test`-marked decls outside a
+// `*_test.dag` sidecar were refused by the producer and executed by the floor. Two scanners
+// remain in the binary (this module's, and cli_run.rs scan_test_decl_lines on the explicit-entry
+// path); collapsing them still needs the canonical parser to retain the authored `test` marker,
+// and the note below states why that is blocked on a GrammarExpr contextual-keyword terminal
+// that does not exist yet.
+//
+// THAT SEPARATE REPAIR HAS LANDED, and the population it named is the population it closed.
+// The old Rust scanner recognised `test fn ` and not `test data `, so every `test data`
+// claim was dropped from the required floor's roster -- including from files the floor
+// otherwise enrolled. Measured over both source roots at 3bbd53c05a and re-measured unchanged
+// when the repair landed: 40 decls in 15 files (34 in 13 files carrying no `test fn` at all, 6
+// in 2 files the floor does enrol). The roster builder now reads BOTH forms, so the two
+// consumers of "what a test decl is" no longer disagree across this gate.
+//
+// WHY THE SECOND GROUP IS THE POINT, and why a stronger predicate here would not have reached
+// it. The 13 files were at least VISIBLE as a class: they enrolled nothing, and a wall over
+// file-grain barrenness could in principle have named them. The 2 files could not be reached
+// that way at all -- each carries `test fn` decls the floor enrols, so neither is barren under
+// ANY predicate over the file, while 6 of its authored claims silently never ran. That is the
+// PARTIAL enrollment this wall is structurally unable to see: its predicate is EXISTENCE, and
+// existence is satisfied by one enrolled row out of thirty. The repair is therefore not a
+// stronger predicate here -- it is removing the disagreement that made this predicate's own
+// vocabulary mean one thing to the wall and another to the roster.
+//
+// STILL OPEN, AND NOT WIDENED BY THAT REPAIR: this module's scan and cli_run.rs
+// scan_test_decl_lines are still TWO SPELLINGS of one fact (three, until the floor's own scan was
+// deleted as recorded above). They agree; they are not unified. The prerequisite is
+// unchanged and is stated in the note below -- the canonical parser must retain the authored
+// `test` marker, which needs a GrammarExpr contextual-keyword terminal that does not exist yet.
+fn floor_entry_is_barren_test_sidecar(entry_path: String, content: String) -> Bool {
+  if floor_entry_requires_test_sidecar(entry_path: entry_path) {
+    length(xs: floor_discovery_scan_test_decl_names(content: content)) == 0
+  } else {
+    false
+  }
+}
+
+// THE LIST FORM OF THE PLACEMENT QUESTION, so a host consumer can ask it ONCE for a whole
+// candidate roster instead of re-spelling `ends_with(suffix)` on its own side. The predicate is
+// unchanged and this adds no rule; it exists because a caller that can only ask about ONE path
+// at a time will reimplement the filter rather than pay one interpreter call per corpus file,
+// and a reimplementation is the fork this module's own note is about.
+fn floor_entries_requiring_test_sidecar(entry_paths: List<String>) -> List<String> {
+  fold(
+    entry_paths,
+    init: [],
+    f: fn(acc, entry_path) {
+      if floor_entry_requires_test_sidecar(entry_path: entry_path) {
+        concat(acc, [entry_path])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+data floor_naming_hygiene_note: String = "Single authority for floor witness sidecar placement + test-decl name scan predicates. Host discovery walks files and projects rows; these pure fns decide whether an entry placement is admissible and which decls a *_test.dag enrolls.\n\nCORRECTED WITH THE DELETION IT DESCRIBES (gunbc#8155): this note previously claimed two things that stopped being true in the same change that edited this file. It said the module lives here rather than in floor_discovery_producer so that \"orphan/filename hygiene resolve stays free of the Filesystem service closure\" -- there is no longer an orphan census OR a filename-hygiene resolve to keep free of anything, since the `__`-basename rule and the whole-corpus orphan-helper walk are both deleted. It also declared it would dissolve the HAND-Rust mirrors in cli_run.rs check_floor_filename_hygiene and the SIDECAR_PLACEMENT_RULES suffix checks once dual-run equivalence receipts went green -- the filename half of that obligation is discharged by deletion rather than by dissolution, and no receipt was ever needed for a rule with a zero-row population.\n\nWHAT REMAINS TRUE: the sidecar placement predicates and the test-decl line scan are still the single authority for their own questions, and the line scan is still a SECOND PARSER. Its replacement is not a refactor of this module: it needs the canonical parser to retain the authored `test` marker, which v1_compiler_parse.rs drop_leading_test_marker discards, and `test` cannot become a lex keyword because it is a live module-path segment (test.claim.*, extdeps.test.*). The prerequisite is named by v2.workflow.realization_attempt test_marker_capture_note: a GrammarExpr contextual-keyword terminal, which does not exist yet."

@@ -6,12 +6,10 @@ use crate::std_induction::RecursionShape::{
 };
 pub use crate::std_induction::{InductiveField, RecursionShape};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
@@ -116,8 +114,8 @@ pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_compiler_recursive_type(name: String) -> bool {
-    match v1_rt::map_get(&compiler_recursive_types(), name) {
+    match v1_rt::map_get(&compiler_recursive_types(), name.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }

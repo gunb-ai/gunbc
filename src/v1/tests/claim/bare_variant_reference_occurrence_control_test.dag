@@ -1,0 +1,101 @@
+module v1.tests.claim.bare_variant_reference_occurrence_control_test
+
+import std.types { String, List, Int, Bool }
+import std.occurrence_identity {
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  TypeOccurrence,
+  CallableOccurrence,
+  ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
+  FieldOccurrence,
+  MethodOccurrence,
+}
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSource,
+  ParsedOccurrenceBindingSourceReady,
+  ParsedOccurrenceBindingSourceRefused,
+  parse_authored_occurrence_binding_source,
+}
+
+// WHAT THIS CONTROL HOLDS, AND WHY IT IS THE ONLY THING IN THE CORPUS THAT HOLDS IT.
+//
+// The namespace program's baseline census owes an answer for every reference occurrence the
+// validated transport carries (`v2.workflow.legacy_binding_observation` `expected_reference_occurrence_ids`),
+// and its completeness law is an identity join over exactly that denominator. So whether a class of
+// reference is IN the transport decides whether a complete observation is even possible for it.
+//
+// For BARE NULLARY VARIANT references -- `Absent`, `Empty`, the unit arm of nearly every coproduct --
+// the answer is YES, and it is not obvious from either end: the emitter's use-line collector drops
+// exactly this class (`v1.compiler.emit_rust` `collect_value_ref_names` sends ExprVar carrying a
+// VariantValueBinding to its `_ => []`), so a reader who starts there concludes the class is invisible
+// everywhere. It is not: at PARSE time a bare variant reference is an ordinary `ExprVar` -- binding_kind
+// is not yet decided -- and `v1.compiler.parse` `parsed_occurrence_role_for_node` classifies every
+// ExprVar as a reference occurrence. The transport therefore carries it.
+//
+// THE CLAIM THIS PROTECTS IS A NEGATIVE ONE: no transport widening is owed for the class. A negative
+// is exactly what rots silently, because nothing downstream fails when it stops being true -- the
+// observation simply becomes unable to be complete again, in the same invisible way. If the parser's
+// ExprVar classification ever changes, this control going red is how anyone finds out.
+//
+// WHY IT LIVES IN THE v1 TEST TREE AND EXECUTES ON NO REQUIRED RUN, stated rather than left to be
+// discovered:
+// the required floor's source roots are `dag` and `src/v2`, and this subject is only reachable through
+// `v1.compiler.parse`, so no witness under `dag/test/claim` can call it. The one route a dag-side
+// witness has to v1 is reading the file TEXT, which declares ReadsLiveTree and is declined by the fold.
+// So this executes when invoked and on no required run. It is a `test fn` under `src/v1/tests/claim`
+// rather than a `ProcessExit` entry point for a second, measured reason: as a standalone module it
+// entered the regen closure and the fixed point refused for four missing mirrors -- its own plus
+// `std.process` and two `extdeps.process.*` -- so hosting a control would have grown the frozen v1
+// seed by four emitted files. A test module emits none.
+//
+// Rung: mitigatable. Next-rung trigger: a witness home whose source roots reach `src/v1`, or a host
+// builtin exposing the parser's transport the way `compile_dag_diagnostic_census` exposes diagnostics.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag \
+//     --function bare_nullary_variant_references_are_carried_by_the_parser_transport_holds
+
+// THE SUBJECT. Two bare nullary variant references -- `ZqxProbeRed` in a let initializer and `ZqxYes`
+// in tail position -- and one type reference, `ZqxAnswer`. Names are deliberately corpus-unique so the
+// source cannot accidentally bind to anything real.
+data subject_with_bare_variants: String = "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_pick() -> ZqxAnswer {\n    let probe = ZqxProbeRed\n    ZqxYes\n}\n"
+
+// THE CONTROL, and it is what gives the check power to reject. Same shape, same declarations, no value
+// reference of any kind in the body. If this one also reported lexical-value references, the assertion
+// above would be measuring the parser's willingness to emit occurrences at all rather than its
+// treatment of this class.
+data subject_without_value_references: String = "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_count() -> Int {\n    1\n}\n"
+
+fn category_is_lexical_value(c: OccurrenceCategory) -> Bool {
+  match c {
+    LexicalValueOccurrence => true
+    TypeOccurrence => false
+    CallableOccurrence => false
+    ConstructorOccurrence => false
+    NamespaceSegmentOccurrence => false
+    FieldOccurrence => false
+    MethodOccurrence => false
+  }
+}
+
+fn lexical_value_reference_count(source: String) -> Int {
+  match parse_authored_occurrence_binding_source(file: "bare_variant_control.dag", source: source) {
+    ParsedOccurrenceBindingSourceRefused => 0 - 1
+    ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
+      t.references
+        |> filter(r => category_is_lexical_value(c: r.category))
+        |> count
+  }
+}
+
+// THE ASSERTION AND ITS CONTROL IN ONE ROW, deliberately. Read alone, "the subject has two
+// lexical-value references" is satisfied by a parser that emits a reference occurrence for
+// everything; the control's zero is what makes the two a measurement of THIS class rather than of
+// the parser's willingness to emit occurrences at all. A refusal to parse renders as -1 rather than
+// as 0, so a broken subject cannot pass as an empty one.
+test fn bare_nullary_variant_references_are_carried_by_the_parser_transport_holds() -> Bool {
+  lexical_value_reference_count(source: subject_with_bare_variants) == 2
+    && lexical_value_reference_count(source: subject_without_value_references) == 0
+}

@@ -1,0 +1,464 @@
+module v2.test.execution.emit_host_match_equals_eval
+
+import v2.test.complexity_gate.table_fixture_match_subject_producer {
+  table_fixture_match_arrow_with_body,
+  table_fixture_match_arrow_with_body_swapped_arms
+}
+import v2.compiler.emit { emit }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval,
+  run_test_claim_from_source_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval,
+  eval_context_with_semantics,
+  eval_test_claim_subject,
+  inputs_root_only
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_match_if_body_fixture
+}
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test { rust_match_target_model_staging }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection {
+  List,
+  Map,
+  list_at_optional
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
+import v2.std.node { match_arm_body }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v2.std.node_query {
+  find_named_child
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence, verdict_produced_a_comparison }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data emit_match_eval_subgraph_node: Node = dag_match_if_body_fixture
+
+fn emit_match_eval_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: v2.std.cardinality.TerminationProof {
+        non_increasing: [],
+        strict: v2.std.cardinality.RankingDimension { measured: ^emit_match_eval_generic_descent }
+      }
+    }
+  )
+}
+
+fn emit_match_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: emit_match_eval_generic_facts(node: key))
+}
+
+fn emit_match_eval_producer_tree() -> Outcome<InferredTree> {
+  match table_fixture_match_arrow_with_body() {
+    Accepted { value: root, diagnostics: _ } =>
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: PartialFunction { lookup: emit_match_eval_composed_facts }
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_match_eval_swapped_producer_tree() -> Outcome<InferredTree> {
+  match table_fixture_match_arrow_with_body_swapped_arms() {
+    Accepted { value: root, diagnostics: _ } =>
+      outcome_accepted(
+        value: InferredTree {
+          root: root,
+          facts: PartialFunction { lookup: emit_match_eval_composed_facts }
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_match_eval_octet_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+    }
+  }
+}
+
+fn emit_match_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_match_eval_bool_true(value: RuntimeValue) -> Bool {
+  value == emit_match_eval_octet_value(n: 1)
+}
+
+fn emit_match_eval_bool_false(value: RuntimeValue) -> Bool {
+  value == emit_match_eval_octet_value(n: 0)
+}
+
+fn emit_match_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_token_kw_true {
+        outcome_accepted(value: emit_match_eval_octet_value(n: 1))
+      } else if id == ^dag_token_kw_false {
+        outcome_accepted(value: emit_match_eval_octet_value(n: 0))
+      } else if id == ^dag_pick_lit_one {
+        outcome_accepted(value: emit_match_eval_octet_value(n: 1))
+      } else if id == ^dag_pick_lit_two {
+        outcome_accepted(value: emit_match_eval_octet_value(n: 2))
+      } else {
+        outcome_rejected(
+          d: emit_match_eval_diagnostic(reason: ^emit_match_eval_literal_miss, node: node)
+        )
+      }
+    TypeNode { connective: Conj } =>
+      outcome_accepted(value: emit_match_eval_octet_value(n: 0))
+    _ =>
+      outcome_rejected(
+        d: emit_match_eval_diagnostic(reason: ^emit_match_eval_literal_miss, node: node)
+      )
+  }
+}
+
+fn emit_match_eval_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(
+    d: emit_match_eval_diagnostic(reason: ^emit_match_eval_call_primitive_miss, node: node)
+  )
+}
+
+fn emit_match_eval_choose_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(
+    d: emit_match_eval_diagnostic(reason: ^emit_match_eval_branch_miss, node: node)
+  )
+}
+
+fn emit_match_eval_step_loop(
+  node: Node,
+  _env: EvaluationEnvironment
+) -> Outcome<ControlTransfer> {
+  outcome_rejected(
+    d: emit_match_eval_diagnostic(reason: ^emit_match_eval_loop_miss, node: node)
+  )
+}
+
+fn emit_match_eval_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  outcome_accepted(value: env)
+}
+
+fn emit_match_eval_nth_arm_wire(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm_wire } => outcome_accepted(value: arm_wire)
+      }
+    Absent =>
+      outcome_rejected(
+        d: emit_match_eval_diagnostic(reason: ^emit_match_eval_arm_miss, node: node)
+      )
+  }
+}
+
+fn emit_match_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
+  match find_named_child(root: arm_wire, name: match_arm_body) {
+    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_match_eval_choose_arm(
+  node: Node,
+  scrutinee: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  if emit_match_eval_bool_true(value: scrutinee) {
+    match emit_match_eval_nth_arm_wire(node: node, wanted: 1) {
+      Accepted { value: arm, diagnostics: _ } =>
+        emit_match_eval_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else if emit_match_eval_bool_false(value: scrutinee) {
+    match emit_match_eval_nth_arm_wire(node: node, wanted: 2) {
+      Accepted { value: arm, diagnostics: _ } =>
+        emit_match_eval_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else {
+    outcome_rejected(
+      d: emit_match_eval_diagnostic(reason: ^emit_match_eval_arm_miss, node: node)
+    )
+  }
+}
+
+fn emit_match_eval_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: emit_match_eval_allocate_literal, identity: ^emit_match_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: emit_match_eval_call_primitive, identity: ^emit_match_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: emit_match_eval_choose_branch, identity: ^emit_match_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: emit_match_eval_step_loop, identity: ^emit_match_eval_step_loop },
+    bind: BindInterpreter { bind_value: emit_match_eval_bind_value, identity: ^emit_match_eval_bind_value },
+    match: MatchInterpreter { choose_arm: emit_match_eval_choose_arm, identity: ^emit_match_eval_choose_arm }
+  }
+}
+
+fn emit_match_eval_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^emit_match_eval_allocate_literal,
+    call_primitive: ^emit_match_eval_call_primitive,
+    choose_branch: ^emit_match_eval_choose_branch,
+    step_loop: ^emit_match_eval_step_loop,
+    bind_value: ^emit_match_eval_bind_value,
+    choose_arm: ^emit_match_eval_choose_arm
+  }
+}
+
+fn emit_match_eval_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^emit_match_eval_interpretation_pin,
+    interpretation: emit_match_eval_interpretation(),
+    structure_witness: emit_match_eval_structure_witness()
+  )
+}
+
+fn emit_match_eval_claim(rhs_result_node: Node) -> TestClaim {
+  EqualsClaim {
+    label: "S2 B9: rust emit(match-fn) host-run == eval(match-body) via shared octet codec",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    lhs: rhs_result_node,
+    rhs: rhs_result_node,
+    classification: TestClassification { tier: Tier3, layer: Integration }
+  }
+}
+
+fn emit_match_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: emit_match_eval_claim(rhs_result_node: emit_match_eval_subgraph_node),
+    context: emit_match_eval_context(),
+    tree: tree,
+    evaluator_pin: ^emit_match_eval_evaluator_pin
+  )
+}
+
+fn emit_match_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: emit_match_eval_subject(tree: tree),
+    target: rust_match_target_model_staging()
+  )
+}
+
+fn emit_match_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_establishes_equivalence(v: run.verdict)
+}
+
+fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_establishes_divergence(v: run.verdict)
+}
+
+// WHAT THIS PAIR ESTABLISHES, AND THE STRONGER THING IT DOES NOT. Each `test fn` is its own
+// execution and each calls emit_match_eval_run, so the equals row and this row launch TWO
+// INDEPENDENT UNCACHED rustc subprocesses over the same subject. They are two samples of the
+// environment, not two classifications of one run.
+//
+// So the reading "equals red + reached green therefore emit and eval genuinely disagree" DOES NOT
+// FOLLOW, and an earlier revision of this file's PR asserted it. The counter-case is precisely the
+// population being diagnosed: the first subprocess dies under contention (BuildFailed or RunFailed)
+// while the second, moments later, passes. Both rows would then be telling the truth about
+// different attempts, and the pair would have accused the compiler on the strength of an
+// environment failure -- the same wrong-owner conclusion, one level up.
+//
+// WHAT IT HONESTLY BUYS: a second, independently sampled row whose subject is "can the emit-host
+// path reach a semantic judgment here at all". Both rows red is strong evidence the environment
+// could not run, since two independent attempts failed to reach semantics. Equals red with this
+// row green is a NARROWING, not a proof: it says a contemporaneous run of the same subject did
+// reach judgment, which raises but does not settle the question of what the equals run did.
+//
+// NEXT-RUNG TRIGGER, and it is the durable fix rather than more rows: the floor receipt preserving
+// the typed Verdict instead of reducing it to Bool. One run, one Verdict, both propositions read
+// off the same value -- at which point this row's job is done by construction and it becomes a
+// regression control rather than a sampler. That is a change to the witness protocol, not to this
+// module, which is why it is named here instead of attempted here.
+//
+// AND THE TRIGGER IS NOT DEFERRED POLISH, BECAUSE A CLASSIFICATION REQUIRES A SINGLE RECEIPT
+// LINEAGE. Cross-execution comparison may establish INSTABILITY; it can never classify the CAUSE
+// of either execution. emit -> host run -> parse actual -> compare must sit in ONE lineage. So
+// without the typed Verdict carried with its receipt, this row can only ever report stability,
+// never cause -- the current shape cannot answer the question the row's NAME asks.
+
+// TEST-SIDE PROJECTION AT THE ASSERTION BOUNDARY, WHICH IS WHERE THE COLLAPSE IS ALLOWED TO LIVE.
+// A `test fn` must return Bool, so a witness over a coproduct verdict has to collapse it somewhere;
+// the predicate-dissolution rule forbids the AUTHORITY exposing an is_* Bool over its own coproduct,
+// not the witness performing the collapse it is obliged to perform. v2.std.verdict exposes no such
+// predicate and this change adds none to it. The precedent is recorded in
+// test.claim.self_host_promotion_admission `pa_admitted`, whose annotation states the boundary in
+// as many words after review 51217.
+//
+// AND THE CANONICAL QUERY SURFACE CANNOT ANSWER THIS QUESTION, WHICH IS THE WHOLE POINT OF THE ROW.
+// v2.std.verdict verdict_tally_add is the fold over Verdict, and it counts SemanticMismatch,
+// BuildFailed and RunFailed all as `fail`. That is the exact collapse this witness exists to
+// undo: routing through it would classify "the compiler disagreed with itself" and "rustc was
+// killed" into one bucket again, one layer further from the assertion. A tally is the right
+// surface for counting outcomes and the wrong one for distinguishing two of them.
+// THIS FOLD WAS ALREADY CORRECT, and it is dissolved into the shared authority rather than repaired.
+// It hand-wrote exactly the question `verdict_produced_a_comparison` now answers -- did the subject
+// reach the comparison at all -- which is why the comment above it argued against routing through a
+// tally. That argument stands; what changed is that the reading now has one home instead of being
+// re-derived here, so the two cannot drift.
+fn emit_match_eval_verdict_reached_semantics(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_produced_a_comparison(v: run.verdict)
+}
+
+data emit_match_eval_unbuildable_source_text: String = "fn main() { this is not rust"
+
+fn emit_match_eval_unbuildable_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_from_source_emit_vs_eval(
+    subject: emit_match_eval_subject(tree: tree),
+    source_outcome: outcome_accepted(
+      value: Medium { carried: emit_match_eval_unbuildable_source_text, fidelity: Lossless }
+    ),
+    target: rust_match_target_model_staging()
+  )
+}
+
+test fn emit_host_match_run_reaches_semantics_holds() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_reached_semantics(run: emit_match_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_unbuildable_source_does_not_reach_semantics_holds() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_reached_semantics(
+        run: emit_match_eval_unbuildable_run(tree: tree)
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_equals_eval_holds() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_is_pass(run: emit_match_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
+  match emit_match_eval_swapped_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_is_semantic_mismatch(run: emit_match_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_eval_only_accepts() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match eval(
+        tree: tree,
+        interpretation: emit_match_eval_interpretation(),
+        inputs: inputs_root_only(root: emit_match_eval_subgraph_node)
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_emit_only_accepts() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_match_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+

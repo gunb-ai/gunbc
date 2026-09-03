@@ -86,7 +86,7 @@ fn runtime_run_eval_node(
 }
 
 fn runtime_run_step_from_frontier(
-  frontier: RunnableFrontier,
+  frontier: RunnableFrontier<Node>,
   state: RuntimeRunState,
   tree: InferredTree,
   context: EvalContext

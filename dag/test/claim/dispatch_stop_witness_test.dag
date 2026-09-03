@@ -1,0 +1,221 @@
+module test.claim.dispatch_stop_witness
+
+import extdeps.tmux { TmuxLsEntry }
+import gunbc.roadmap_dispatch_actuator {
+  TmuxSessionScope, TmuxPaneEntry,
+  parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
+  tmux_session_observation_with_panes, dispatch_tmux_session_scope,
+  DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
+  DispatchLiveSession,
+  CodexDispatchProvider,
+  dispatch_provider_instance_for,
+  DispatchStopRunningProcess,
+  DispatchClearRetainedSession,
+  DispatchCleanupRefused,
+  dispatch_session_cleanup,
+  dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
+}
+import gunbc.dispatch_selection { dispatch_codex_process_fingerprint }
+import gunbc.roadmap_belt_actuate {
+  BeltStopResult, StopProcessStopped, StopRetainedSessionCleared,
+  StopDisabled, StopRefusedResult, StopObserveRefused, StopTeardownFailed,
+  belt_stop_result_json_value, belt_stop_http_status,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence,
+  WorkerProcessRunning,
+  WorkerProcessExited,
+  worker_observation_without_provider_probe_for_process,
+}
+import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_style { roadmap_css }
+import std.disposition { Disposition, Scaffold, Terminal }
+import std.types { NonEmptyStr }
+import std.upsert_decision { Converged }
+import extdeps.languages.json.emit { serialize_json }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Cleanup receipts separate a present tmux container from its provider process.
+// dispatch_codex_process_fingerprint remains the 2026-07-27 npm-shim live receipt (node) until
+// bundled-native tmux observation updates it. The shared lifecycle path proves three independent
+// conclusions: an owned running node process may be stopped, a retained dead pane may be cleared
+// regardless of its historical env command, and a foreign running process refuses. The wire
+// distinguishes process_stopped from session_cleared and carries ok explicitly; the client renders
+// process evidence beside a stop/clear/unavailable cleanup control. scope() uses
+// dispatch_codex_process_fingerprint directly — stop-contract witnesses prove tmux ownership
+// classification, not production selection standing; production dispatch_actuator_selection refuses
+// until observation wires inventory standing.
+
+fn scope() -> TmuxSessionScope {
+  TmuxSessionScope {
+    session_name: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
+    expected_owner_label: "gunbc-dispatch-ts-authority-converge" as NonEmptyStr,
+    expected_process_fingerprint: dispatch_codex_process_fingerprint,
+  }
+}
+
+fn entry() -> TmuxLsEntry {
+  TmuxLsEntry { session_name: "gunbc-dispatch-ts-authority-converge", windows: 1 }
+}
+
+test fn stop_pane_parse_holds() -> Bool {
+  let one = parse_tmux_pane_line(line: "gunbc-dispatch-ts-authority-converge sleep")
+  let multi = parse_tmux_panes_output(output: "main zsh\ngunbc-dispatch-x claude\n")
+  return match one {
+    Present { value: p } => p.session_name == "gunbc-dispatch-ts-authority-converge" && p.command == "sleep"
+    Absent => false
+  }
+    && count(multi) == 2
+    && any(multi, p => p.session_name == "gunbc-dispatch-x" && p.command == "claude")
+    && match parse_tmux_pane_line(line: "") { Present { value: p2 } => false Absent => true }
+}
+
+test fn stop_gate_kills_only_proven_selected_provider() -> Bool {
+  let provider_obs = tmux_session_observation_with_panes(
+    scope: scope(), entries: [entry()],
+    panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "node" }])
+  let sleep_obs = tmux_session_observation_with_panes(
+    scope: scope(), entries: [entry()],
+    panes: [TmuxPaneEntry { session_name: "gunbc-dispatch-ts-authority-converge", command: "sleep" }])
+  let blind_obs = tmux_session_observation_with_panes(scope: scope(), entries: [entry()], panes: [])
+  let absent_obs = tmux_session_observation_with_panes(scope: scope(), entries: [], panes: [])
+  return match dispatch_stop_gate(scope: scope(), obs: provider_obs) {
+    StopPermitted { session_name: sn } => sn == "gunbc-dispatch-ts-authority-converge"
+    StopRefused { reason: _ } => false
+  } && match dispatch_stop_gate(scope: scope(), obs: sleep_obs) {
+    StopPermitted { session_name: _ } => false
+    StopRefused { reason: r } => string_contains(s: r, pattern: "foreign process")
+  } && match dispatch_stop_gate(scope: scope(), obs: blind_obs) {
+    StopPermitted { session_name: _ } => false
+    StopRefused { reason: r2 } => string_contains(s: r2, pattern: "fingerprint unobserved")
+  } && match dispatch_stop_gate(scope: scope(), obs: absent_obs) {
+    StopPermitted { session_name: _ } => false
+    StopRefused { reason: r3 } => string_contains(s: r3, pattern: "no live session")
+  }
+}
+
+fn live_with_process(process: WorkerProcessEvidence) -> DispatchLiveSession {
+  DispatchLiveSession {
+    session_name: "gunbc-dispatch-ts-authority-converge",
+    node_id: "ts-authority-converge",
+    windows: 1,
+    lease_verdict: Converged,
+    worker: worker_observation_without_provider_probe_for_process(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      process: process,
+    ),
+  }
+}
+
+test fn cleanup_separates_running_process_from_retained_session() -> Bool {
+  let owned = dispatch_session_cleanup(
+    scope: scope(),
+    session: live_with_process(
+      process: WorkerProcessRunning { command: "node" as NonEmptyStr },
+    ),
+  )
+  let retained = dispatch_session_cleanup(
+    scope: scope(),
+    session: live_with_process(
+      process: WorkerProcessExited { exit_code: 0, last_command: "env" },
+    ),
+  )
+  let foreign = dispatch_session_cleanup(
+    scope: scope(),
+    session: live_with_process(
+      process: WorkerProcessRunning { command: "sleep" as NonEmptyStr },
+    ),
+  )
+  match owned {
+    DispatchStopRunningProcess { session_name } =>
+      session_name == "gunbc-dispatch-ts-authority-converge"
+    _ => false
+  } && match retained {
+    DispatchClearRetainedSession { session_name, exit_code } =>
+      session_name == "gunbc-dispatch-ts-authority-converge"
+        && exit_code == 0
+    _ => false
+  } && match foreign {
+    DispatchCleanupRefused { reason } =>
+      string_contains(s: reason, pattern: "foreign running process")
+    _ => false
+  }
+}
+
+test fn stop_wire_statuses_discriminate() -> Bool {
+  let stopped = StopProcessStopped { node_id: "n", session_name: "gunbc-dispatch-n" }
+  let cleared = StopRetainedSessionCleared {
+    node_id: "n",
+    session_name: "gunbc-dispatch-n",
+    exit_code: 0,
+  }
+  let disabled = StopDisabled { node_id: "n", instance_id: "preview", reason: "observe-only" }
+  let foreign = StopRefusedResult { node_id: "n", reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
+  let missing = StopRefusedResult { node_id: "n", reason: "no session container for this node" }
+  let unknowable = StopObserveRefused { node_id: "n", reason: "tmux ls: permission denied" }
+  let failed = StopTeardownFailed { node_id: "n", session_name: "gunbc-dispatch-n", detail: "kill-session exited 1" }
+  return belt_stop_http_status(r: stopped) == 200
+    && belt_stop_http_status(r: cleared) == 200
+    && belt_stop_http_status(r: disabled) == 403
+    && belt_stop_http_status(r: foreign) == 409
+    && belt_stop_http_status(r: missing) == 404
+    && belt_stop_http_status(r: unknowable) == 503
+    && belt_stop_http_status(r: failed) == 502
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: stopped)), pattern: "\"status\": \"process_stopped\"")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: stopped)), pattern: "\"ok\": true")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: cleared)), pattern: "\"status\": \"session_cleared\"")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: cleared)), pattern: "\"action\": \"clear\"")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: cleared)), pattern: "\"exit_code\": 0")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: disabled)), pattern: "\"status\": \"stop_disabled\"")
+    && string_contains(s: serialize_json(v: belt_stop_result_json_value(r: foreign)), pattern: "\"status\": \"stop_refused\"")
+}
+
+test fn stop_client_carries_the_chip() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "'cleanup-chip'")
+    && string_contains(s: js, pattern: "session-facts")
+    && string_contains(s: js, pattern: "'/cleanup/' + sess.node_id")
+    && string_contains(s: js, pattern: "{ method: 'POST' }")
+    && string_contains(s: js, pattern: "j.ok === true")
+    && string_contains(s: js, pattern: "window.location.reload()")
+    && string_contains(s: js, pattern: "action + ' refused'")
+    && string_contains(s: js, pattern: "dataset.cleanupAction = sact.label")
+    && string_contains(s: js, pattern: "sact.availability !== 'available'")
+    && !string_contains(s: js, pattern: "sess.cleanup_action")
+    && !string_contains(s: js, pattern: "sess.cleanup_allowed")
+    && !string_contains(s: js, pattern: "sess.process_state")
+    && !string_contains(s: js, pattern: "sess.process_detail")
+}
+
+// A2 flip (operator blockers 4/5): the chip's action identity and availability come from the wire's
+// DECIDED session action (sact.label onto dataset.cleanupAction, disabled when sact.availability is
+// not 'available') — the client never reads raw admission fields. The four former positives
+// (sess.cleanup_action/cleanup_allowed/process_state/process_detail) are now discriminating
+// NEGATIVES: any reappearing in the emitted source is the client re-deriving cleanup or process
+// presentation from raw facts, a second authority beside session_facts_view.
+
+test fn stop_chip_is_styled() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")
+    && string_contains(s: roadmap_css(), pattern: ".cleanup-chip:disabled")
+    && string_contains(s: roadmap_css(), pattern: ".session-facts { display: flex;")
+    && !string_contains(s: roadmap_css(), pattern: ".process-chip")
+}
+
+test fn stop_fingerprint_scaffold_is_discharged() -> Bool {
+  return match dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
+  }
+}
+
+test fn dashboard_instance_stop_contract_keystone_holds() -> Bool {
+  stop_pane_parse_holds()
+    && stop_gate_kills_only_proven_selected_provider()
+    && cleanup_separates_running_process_from_retained_session()
+    && stop_wire_statuses_discriminate()
+    && stop_client_carries_the_chip()
+    && stop_chip_is_styled()
+    && stop_fingerprint_scaffold_is_discharged()
+}

@@ -1,0 +1,172 @@
+module test.claim.long.decl_ref_resolution_witness_test
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.decl_index { DeclFact, FnItem, decl_facts }
+import v2.std.decl_ref_resolution {
+  resolve_declaration_ref,
+  DeclarationRefAmbiguous,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTING EVIDENCE FOR v2.std.decl_ref_resolution, REHOMED 2026-08-26 OFF A CARRIER THAT DIED
+// UNDER IT.
+//
+// These six rows lived in test.claim.long.cited_symbol_resolution_witness_test until
+// v2.lens.cited_symbol_resolution was deleted. They were never the lens's: measured against the
+// seven symbols that file imported FROM the lens, none of these six touches one. They call
+// resolve_declaration_ref directly, and that function lives in v2.std.decl_ref_resolution, which
+// SURVIVES with four other consumers — gunbc.doc_graph_roots, gunbc.dissolution_observation,
+// test.claim.documentary_refs_witness_test and
+// test.claim.long.v1_complexity_capability_census_resolution_test.
+//
+// SO DELETING THEM WITH THE LENS WOULD HAVE BEEN A DESIGN 4b(4) VIOLATION, not a tidy-up. That
+// clause says a climb deletes the redundant lower-rung PRODUCTION machinery and that the class's
+// discriminating RED and positive control REMAIN ENROLLED, because deleting the evidence recreates
+// specification-without-execution one rung up. The corpus-wide citation census climbed into
+// v1_compiler.declaration_index at ingestion; the resolver's own five-arm refusal did not climb
+// anywhere, and these are the only rows in the tree that execute it.
+//
+// THE PAIR IS THE POINT. Two positive controls establish that the resolver RESOLVES a real
+// authority and a real constructor; four reds establish that each refusal arm fires for the reason
+// its variant names. Either half alone is satisfiable by a resolver that answers one way for
+// everything.
+//
+// WHAT THIS IS NOT: enforcement. Long lane, executes nowhere today — the cited-symbol CI job was
+// removed 2026-08-23 and the required floor declines this home; each row pays a full witness-layer
+// decl_facts scan (operator 5s fast-lane rule 2026-07-12). The evidence is PRESERVED AND UNRUN, and
+// saying otherwise would be the rung inflation DESIGN 4b(1) calls worse than sitting low. What the
+// rehome buys is that when a route returns, the controls are still here and still attached to their
+// real subject.
+
+data decl_ref_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
+
+data decl_ref_witness_layer_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
+
+test fn decl_ref_resolves_node_kind_authority() -> Bool {
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NodeKind",
+      field: WholeDeclaration,
+    },
+    facts: decl_ref_witness_layer_facts,
+    modules: decl_ref_witness_layer_modules
+  ) {
+    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+  }
+}
+
+test fn decl_ref_resolves_decl_ref_constructor() -> Bool {
+  match resolve_declaration_ref(
+    ref: decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
+    facts: decl_ref_witness_layer_facts,
+    modules: decl_ref_witness_layer_modules
+  ) {
+    DeclarationRefResolved { declaration_identity: _ } => true
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+  }
+}
+
+test fn decl_ref_refuses_module_absent() -> Bool {
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "synthetic.g1_module_absent_RED",
+      decl_name: "any",
+      field: WholeDeclaration,
+    },
+    facts: decl_ref_witness_layer_facts,
+    modules: decl_ref_witness_layer_modules
+  ) {
+    DeclarationRefModuleAbsent { reference: _ } => true
+    DeclarationRefResolved { declaration_identity: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+  }
+}
+
+test fn decl_ref_refuses_declaration_absent() -> Bool {
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NoSuchDecl_G1_RED",
+      field: WholeDeclaration,
+    },
+    facts: decl_ref_witness_layer_facts,
+    modules: decl_ref_witness_layer_modules
+  ) {
+    DeclarationRefDeclarationAbsent { reference: _ } => true
+    DeclarationRefResolved { declaration_identity: _ } => false
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+  }
+}
+
+test fn decl_ref_refuses_ambiguous_binding() -> Bool {
+  let facts = [
+    DeclFact {
+      qualified_name: "std.node.g1_ambiguous",
+      name: "g1_ambiguous",
+      kind: FnItem,
+      node: enforcement_red_probe_body_leaf,
+      rel_path: "synthetic/a.dag",
+    },
+    DeclFact {
+      qualified_name: "std.node.g1_ambiguous",
+      name: "g1_ambiguous",
+      kind: FnItem,
+      node: enforcement_red_probe_body_leaf,
+      rel_path: "synthetic/b.dag",
+    },
+  ]
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "g1_ambiguous",
+      field: WholeDeclaration,
+    },
+    facts: facts,
+    modules: decl_ref_witness_layer_modules
+  ) {
+    DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
+    DeclarationRefResolved { declaration_identity: _ } => false
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefFieldAbsent { reference: _ } => false
+  }
+}
+
+test fn decl_ref_refuses_named_field_absent() -> Bool {
+  match resolve_declaration_ref(
+    ref: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NodeKind",
+      field: NamedField { field_name: "NoSuchField_G1_RED" },
+    },
+    facts: decl_ref_witness_layer_facts,
+    modules: decl_ref_witness_layer_modules
+  ) {
+    DeclarationRefFieldAbsent { reference: _ } => true
+    DeclarationRefResolved { declaration_identity: _ } => false
+    DeclarationRefModuleAbsent { reference: _ } => false
+    DeclarationRefDeclarationAbsent { reference: _ } => false
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+  }
+}

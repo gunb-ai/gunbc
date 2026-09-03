@@ -1,0 +1,381 @@
+module tools.dag_compile_clean_scope
+
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
+import tools.dag_compile_clean_shard_roster {
+  compile_clean_shard_entry_paths,
+  compile_clean_shard_entry_paths_from,
+  CompileCleanShardEntryPathsBuilt,
+  CompileCleanShardEntryPathsDuplicatePath,
+  compile_clean_shard_roster_mechanism_fixture_duplicate_facts,
+}
+import v2.lens.module_graph { entry_affected_by_touched_paths }
+import v2.workflow.floor_compile_clean_predicates {
+  compile_clean_all_touched_paths_docs_universe,
+  compile_clean_all_touched_paths_selectable,
+  compile_clean_departed_paths_outside_docs,
+  compile_clean_touched_path_selectable
+}
+import std.types { String, Bool, List, list_length }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type CompileCleanScopeDisposition
+  = ScopedRun { entry_paths: List<String> }
+  | SkipNoAffectedEntries { reason: String }
+  | RequireWholeTree { reason: String }
+  | RefuseShardRosterDuplicate { path: String, reason: String }
+
+// 2026-07-16 reground (channel 2 of operator fork (c), 2026-07-10): compile-clean per-PR selection
+// consumes v2.lens.module_graph.entry_affected_by_touched_paths (import-closure grain,
+// edge-source-agnostic) — the same authority the discovery-corpus entry_file_touched channel
+// regrounded onto. The fn-arrow DependencyView chain (entry_affected_by_dependency_view, gated on
+// corpus_dependency_view_per_pr_substrate_ready / #6239) is no longer a consumer here; it remains
+// in tree as the decl-level candidate only. Two guards keep the whole-tree baseline where
+// import-closure selection cannot answer: (a) any touched path outside the selectable universe
+// (docs/** or *.dag) is a compiler/infra change — whole-tree; (b) any non-docs departed path
+// (deletion/rename-from) is invisible to current-tree adjacency (a dangling import drops the edge,
+// so the broken importer would not be selected) — whole-tree.
+
+data compile_clean_docs_universe_path_grain_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.floor_compile_clean_predicates",
+    decl_name: "compile_clean_all_touched_paths_docs_universe",
+    field: WholeDeclaration
+  }
+}
+
+data compile_clean_docs_universe_path_grain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission ahead of import-closure entry selection; DISSOLVES WHEN v2.lens.module_graph.entry_affected_by_touched_paths over the merge-base diff is the sole authority for the docs-only skip (docs paths fall out of every entry closure structurally, so the prefix predicate becomes a redundant second representation and the witness bin reads the scope disposition without a path-grain short-circuit)")
+
+fn compile_clean_pool_roots() -> List<String> {
+  compile_clean_partition_boundary().pool_roots
+}
+
+fn compile_clean_entry_roots() -> List<String> {
+  compile_clean_partition_boundary().entry_roots
+}
+
+fn compile_clean_affected_entry_paths_from_roster(
+  pool_roots: List<String>,
+  touched_paths: List<String>,
+  roster: List<String>
+) -> List<String> {
+  fold(
+    roster,
+    init: [],
+    f: fn(acc, entry_path) {
+      if entry_affected_by_touched_paths(
+        entry_path: entry_path,
+        pool_roots: pool_roots,
+        touched_paths: touched_paths
+      ) {
+        concat(acc, [entry_path])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn compile_clean_scope_disposition_probe(
+  touched_paths: List<String>,
+  departed_paths: List<String>,
+  roster: List<String>,
+  pool_roots: List<String>
+) -> CompileCleanScopeDisposition {
+  if list_length(items: touched_paths) == 0 {
+    RequireWholeTree {
+      reason: "empty touched-path set — a diff that observed nothing is indistinguishable from a diff that could not be observed, so the whole tree is the only sound baseline (a main-push squash merge lands here)"
+    }
+  } else if compile_clean_all_touched_paths_docs_universe(touched_paths: touched_paths) {
+    SkipNoAffectedEntries {
+      reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+    }
+  } else if compile_clean_all_touched_paths_selectable(touched_paths: touched_paths) == false {
+    RequireWholeTree {
+      reason: "touched path outside the selectable universe (docs/** or *.dag) — compiler/infra change, whole-tree baseline"
+    }
+  } else if compile_clean_departed_paths_outside_docs(departed_paths: departed_paths) {
+    RequireWholeTree {
+      reason: "departed non-docs path in diff (deletion/rename) — current-tree adjacency cannot see broken importers, whole-tree baseline"
+    }
+  } else {
+    let affected = compile_clean_affected_entry_paths_from_roster(
+      pool_roots: pool_roots,
+      touched_paths: touched_paths,
+      roster: roster
+    )
+    if list_length(items: affected) > 0 {
+      ScopedRun { entry_paths: affected }
+    } else {
+      RequireWholeTree {
+        reason: "non-empty diff with no shard intersection — whole-tree baseline"
+      }
+    }
+  }
+}
+
+fn compile_clean_scope_disposition_from_diff_with_roster(
+  touched_paths: List<String>,
+  departed_paths: List<String>,
+  roster: List<String>
+) -> CompileCleanScopeDisposition {
+  compile_clean_scope_disposition_probe(
+    touched_paths: touched_paths,
+    departed_paths: departed_paths,
+    roster: roster,
+    pool_roots: compile_clean_pool_roots()
+  )
+}
+
+fn compile_clean_scope_disposition_from_diff(
+  touched_paths: List<String>,
+  departed_paths: List<String>
+) -> CompileCleanScopeDisposition {
+  match compile_clean_shard_entry_paths() {
+    CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
+      RefuseShardRosterDuplicate {
+        path: p,
+        reason: concat(
+          "shard roster construction refused duplicate path key at admission: ",
+          p,
+        )
+      }
+    CompileCleanShardEntryPathsBuilt { paths: roster } =>
+      compile_clean_scope_disposition_from_diff_with_roster(
+        touched_paths: touched_paths,
+        departed_paths: departed_paths,
+        roster: roster,
+      )
+  }
+}
+
+fn compile_clean_scope_disposition_from_touched(
+  touched_paths: List<String>
+) -> CompileCleanScopeDisposition {
+  compile_clean_scope_disposition_from_diff(
+    touched_paths: touched_paths,
+    departed_paths: []
+  )
+}
+
+fn witness_pool_roots_match_witness_layer_roots() -> Bool {
+  fold(witness_layer_roots, init: true, f: fn(ok, root) {
+    ok && fold(compile_clean_pool_roots(), init: false, f: fn(found, pool_root) {
+      found || (pool_root == root)
+    })
+  })
+}
+
+fn witness_entry_roots_are_witness_layer_roots() -> Bool {
+  compile_clean_entry_roots() == witness_layer_roots
+}
+
+fn witness_empty_touched_requires_whole_tree() -> Bool {
+  match compile_clean_scope_disposition_probe(
+    touched_paths: [],
+    departed_paths: [],
+    roster: [],
+    pool_roots: compile_clean_pool_roots()
+  ) {
+    RequireWholeTree { reason: _ } => true
+    SkipNoAffectedEntries { reason: _ } => false
+    ScopedRun { entry_paths: _ } => false
+    RefuseShardRosterDuplicate { path: _, reason: _ } => false
+  }
+}
+
+type ScopeDispositionExpectation
+  = ExpectSkip
+  | ExpectScopedExactly { entries: List<String> }
+  | ExpectWholeTree
+
+type ScopeDispositionRow {
+  touched: String
+  expect: ScopeDispositionExpectation
+}
+
+data scope_disposition_rows: List<ScopeDispositionRow> = [
+  ScopeDispositionRow { touched: "docs/plans/example.md", expect: ExpectSkip },
+  ScopeDispositionRow { touched: "./docs/plans/example.md", expect: ExpectSkip },
+  ScopeDispositionRow { touched: "dag/gunbc/plans/example.dag", expect: ExpectWholeTree },
+  ScopeDispositionRow { touched: "src/v2/test/fixture/compile_clean_scope/scope_importer.dag", expect: ExpectScopedExactly { entries: ["src/v2/test/fixture/compile_clean_scope/scope_importer.dag"] } },
+  ScopeDispositionRow { touched: "src/v2/test/fixture/compile_clean_scope/scope_isolated.dag", expect: ExpectScopedExactly { entries: ["src/v2/test/fixture/compile_clean_scope/scope_isolated.dag"] } },
+  ScopeDispositionRow { touched: "src/v1/stage0/src/cli_run.rs", expect: ExpectWholeTree },
+  ScopeDispositionRow { touched: ".github/workflows/ci.yml", expect: ExpectWholeTree },
+  ScopeDispositionRow { touched: "src/v2/test/fixture/compile_clean_scope/scope_shared.dag", expect: ExpectScopedExactly { entries: ["src/v2/test/fixture/compile_clean_scope/scope_importer.dag"] } }
+]
+
+fn touched_path_disposition_matches_with_roster(
+  row: ScopeDispositionRow,
+  roster: List<String>
+) -> Bool {
+  match compile_clean_scope_disposition_probe(
+    touched_paths: [row.touched],
+    departed_paths: [],
+    roster: roster,
+    pool_roots: scope_disposition_witness_pool_roots
+  ) {
+    SkipNoAffectedEntries { reason: _ } =>
+      match row.expect {
+        ExpectSkip => true
+        ExpectScopedExactly { entries: _ } => false
+        ExpectWholeTree => false
+      }
+    ScopedRun { entry_paths: paths } =>
+      match row.expect {
+        ExpectSkip => false
+        ExpectScopedExactly { entries: expected } => paths == expected
+        ExpectWholeTree => false
+      }
+    RequireWholeTree { reason: _ } =>
+      match row.expect {
+        ExpectSkip => false
+        ExpectScopedExactly { entries: _ } => false
+        ExpectWholeTree => true
+      }
+    RefuseShardRosterDuplicate { path: _, reason: _ } =>
+      match row.expect {
+        ExpectSkip => false
+        ExpectScopedExactly { entries: _ } => false
+        ExpectWholeTree => false
+      }
+  }
+}
+
+data scope_disposition_witness_roster: List<String> = [
+  "src/v2/test/fixture/compile_clean_scope/scope_importer.dag",
+  "src/v2/test/fixture/compile_clean_scope/scope_isolated.dag"
+]
+
+data scope_disposition_witness_pool_roots: List<String> = [
+  "src/v2/test/fixture/compile_clean_scope"
+]
+
+data scope_disposition_witness_roster_note: String = "Pinned fixture-grain roster AND pool for the disposition-row witness, not compile_clean_shard_entry_paths() over the live pool: each interpreted entry_affected_by_touched_paths call materializes whole-pool dependency facts as interpreter values, so live-pool rows cost ~100s and multi-GB under the Wet interpreter (measured 2026-07-16; OOM-kill class in the witness corpus and in capped dev containers). The fixture pool makes every walking row cheap while staying REAL: self-selection (scope_importer selects itself, scope_isolated selects itself) and cross-file selection through a genuine import edge (touching scope_shared selects scope_importer, which imports it, and NOT scope_isolated, which does not — a strict-subset proof).\n\nTHE SPECIMENS NOW LIVE IN A FIXTURE HOME THIS WITNESS OWNS, and that is a repair rather than a relocation. They were parked in test/fixture/floor_skip, which died with affected-set selection on 2026-07-15; they were moved to test/fixture/walk_plan_stage, which died with the claim_executor plan/walk surface on 2026-08-26; each time, a witness about SCOPE DISPOSITION broke because a mechanism it has nothing to do with was deleted. src/v2/test/fixture/compile_clean_scope/ has exactly three modules, no test fn, no effects, and one consumer — these rows — so nothing else can delete it out from under them and no discovery exclusion is needed to keep it out of the witness corpus.\n\nTHE STRICT-SUBSET HALF IS NOW ASSERTED RATHER THAN NARRATED. The expectation was ExpectScopedContaining, which checks MEMBERSHIP: a selector that returned the entire roster satisfied every row, so the exclusion this note claimed as a strict-subset proof was described in prose and checked by nothing. ExpectScopedExactly compares the selected list to the expected list, so the scope_shared row goes red if scope_isolated is ever selected — which is the property the third specimen exists to carry. Discriminating red: give scope_isolated an import of scope_shared and the row fails.\n\nLive-pool, live-roster selection is proven by execution on the host-realized floor fast path (entry_file_touched_via_import_closure — certified against v2.lens.module_graph by the module-grain receipt harness)."
+
+fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
+  touched_path_disposition_matches_with_roster(
+    row: row,
+    roster: scope_disposition_witness_roster
+  )
+}
+
+fn witness_touched_path_dispositions_hold() -> Bool {
+  fold(scope_disposition_rows, init: true, f: fn(acc, row) {
+    acc && touched_path_disposition_matches_with_roster(row: row, roster: scope_disposition_witness_roster)
+  })
+}
+
+fn witness_mixed_rs_and_dag_requires_whole_tree() -> Bool {
+  match compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: ["src/v1/stage0/src/cli_run.rs", "dag/std/logic.dag"],
+    departed_paths: [],
+    roster: []
+  ) {
+    RequireWholeTree { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    SkipNoAffectedEntries { reason: _ } => false
+    RefuseShardRosterDuplicate { path: _, reason: _ } => false
+  }
+}
+
+fn witness_departed_dag_path_requires_whole_tree() -> Bool {
+  match compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: ["dag/std/logic.dag"],
+    departed_paths: ["dag/std/logic.dag"],
+    roster: []
+  ) {
+    RequireWholeTree { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    SkipNoAffectedEntries { reason: _ } => false
+    RefuseShardRosterDuplicate { path: _, reason: _ } => false
+  }
+}
+
+fn witness_docs_only_departure_still_skips() -> Bool {
+  match compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: ["docs/plans/example.md"],
+    departed_paths: ["docs/plans/example.md"],
+    roster: []
+  ) {
+    SkipNoAffectedEntries { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    RequireWholeTree { reason: _ } => false
+    RefuseShardRosterDuplicate { path: _, reason: _ } => false
+  }
+}
+
+fn compile_clean_scope_disposition_from_decl_facts(
+  touched_paths: List<String>,
+  departed_paths: List<String>,
+  decl_facts: List<CompileCleanModuleDeclFact>,
+) -> CompileCleanScopeDisposition {
+  match compile_clean_shard_entry_paths_from(decl_facts: decl_facts) {
+    CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
+      RefuseShardRosterDuplicate {
+        path: p,
+        reason: concat(
+          "shard roster construction refused duplicate path key at admission: ",
+          p,
+        )
+      }
+    CompileCleanShardEntryPathsBuilt { paths: roster } =>
+      compile_clean_scope_disposition_from_diff_with_roster(
+        touched_paths: touched_paths,
+        departed_paths: departed_paths,
+        roster: roster,
+      )
+  }
+}
+
+fn witness_shard_roster_duplicate_refuses_at_scope_admission() -> Bool {
+  match compile_clean_scope_disposition_from_decl_facts(
+    touched_paths: ["dag/std/logic.dag"],
+    departed_paths: [],
+    decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts,
+  ) {
+    RefuseShardRosterDuplicate { path: p, reason: reason } =>
+      p == "dag/fixture/alpha.dag"
+        && string_contains(
+          s: reason,
+          pattern: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag",
+        )
+    ScopedRun { entry_paths: _ } => false
+    SkipNoAffectedEntries { reason: _ } => false
+    RequireWholeTree { reason: _ } => false
+  }
+}
+
+fn witness_empty_touched_duplicate_roster_refuses_at_admission() -> Bool {
+  match compile_clean_scope_disposition_from_decl_facts(
+    touched_paths: [],
+    departed_paths: [],
+    decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts,
+  ) {
+    RefuseShardRosterDuplicate { path: p, reason: reason } =>
+      p == "dag/fixture/alpha.dag"
+        && string_contains(
+          s: reason,
+          pattern: "shard roster construction refused duplicate path key at admission: dag/fixture/alpha.dag",
+        )
+    ScopedRun { entry_paths: _ } => false
+    SkipNoAffectedEntries { reason: _ } => false
+    RequireWholeTree { reason: _ } => false
+  }
+}
+
+fn lever_a_local_receipts_hold() -> Bool {
+  witness_empty_touched_requires_whole_tree()
+    && witness_touched_path_dispositions_hold()
+    && witness_entry_roots_are_witness_layer_roots()
+    && witness_pool_roots_match_witness_layer_roots()
+    && witness_mixed_rs_and_dag_requires_whole_tree()
+    && witness_departed_dag_path_requires_whole_tree()
+    && witness_docs_only_departure_still_skips()
+    && witness_shard_roster_duplicate_refuses_at_scope_admission()
+    && witness_empty_touched_duplicate_roster_refuses_at_admission()
+}

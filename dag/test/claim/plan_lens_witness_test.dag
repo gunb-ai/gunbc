@@ -1,0 +1,62 @@
+module test.claim.plan_lens_witness
+
+import std.types { NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanHasNoRetirement, PlanProjectsCommittedMarkdown, plan_has_retirement, plans_all_have_retirement, plan_title_is_present, plans_all_titled }
+import gunbc.plan_registry { all_plans }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn plan_with_trigger() -> Plan {
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "x", title: "x", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
+}
+
+fn plan_without_trigger() -> Plan {
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
+}
+
+// Reaches the empty condition through the NON-LITERAL path. The literal form is
+// refused at construction now that unbound_dissolution takes NonEmptyStr;
+// refinement at non-literal positions is still deferred, and that gap is what
+// plan_has_retirement's nonempty check defends -- so this control must go
+// through the gap to keep proving the check works (DESIGN 4b(4)).
+fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+  concat(text, "")
+}
+
+fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+  unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+}
+
+fn plan_with_empty_retirement() -> Plan {
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "w", title: "w", body: [], retirement: PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
+}
+
+fn plan_untitled() -> Plan {
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
+}
+
+test fn every_registered_plan_has_retirement() -> Bool {
+  plans_all_have_retirement(plans: all_plans)
+}
+
+test fn every_registered_plan_is_titled() -> Bool {
+  plans_all_titled(plans: all_plans)
+}
+
+test fn missing_retirement_is_detected() -> Bool {
+  plan_has_retirement(p: plan_with_trigger())
+    && (plan_has_retirement(p: plan_without_trigger()) == false)
+    && (plan_has_retirement(p: plan_with_empty_retirement()) == false)
+    && (plans_all_have_retirement(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
+    && (plans_all_have_retirement(plans: [plan_with_trigger(), plan_with_empty_retirement()]) == false)
+}
+
+test fn missing_title_is_detected() -> Bool {
+  plan_title_is_present(p: plan_with_trigger())
+    && (plan_title_is_present(p: plan_untitled()) == false)
+    && (plans_all_titled(plans: [plan_with_trigger(), plan_untitled()]) == false)
+}

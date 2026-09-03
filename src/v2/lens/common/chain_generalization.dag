@@ -1,0 +1,22 @@
+module v2.lens.common.chain_generalization
+
+import v2.std.node { Node }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { length }
+import v2.std.anti_unification { anti_unify_chain, template_has_hole, fillings_all_leaves }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+fn chain_collapses(steps: FreeMonoid<Node>, min_len: Int, require_hole: Bool) -> Bool {
+  if length(xs: steps) < min_len {
+    false
+  } else {
+    let g = anti_unify_chain(steps: steps)
+    let hole_ok = if require_hole {
+      template_has_hole(template: g.template)
+    } else {
+      true
+    }
+    hole_ok && fillings_all_leaves(per_element: g.per_element)
+  }
+}

@@ -1,0 +1,65 @@
+module extdeps.llm.anthropic
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.llm.anthropic_contracts { wire_contract }
+import extdeps.llm.anthropic_messages_api {
+  MessagesApiImplementation,
+  VersionHeaderSelectsRevision,
+  current_api_version
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.anthropic.com/en/docs/about-claude/models/overview"
+  }
+}
+
+// WHAT IS LEFT HERE IS THE PRODUCT, NOT THE SHAPE. The messages/tool-use wire shape moved WHOLE to
+// extdeps.llm.anthropic_messages_api, which is the specification more than one implementation
+// serves; what remains is what is true of the Anthropic API product alone — which models it offers,
+// at which context and output ceilings — plus this module's own conformance row against that
+// specification. The shape rows were moved, not copied: nothing here answers a question that module
+// also answers.
+
+type AnthropicModel
+  = ClaudeHaiku4_5
+  | ClaudeSonnet4_6
+  | ClaudeOpus4_6
+
+type AnthropicModelSpec {
+  model: AnthropicModel
+  model_id: String
+  context_window: Int
+  max_output_tokens: Int
+}
+
+data models: List<AnthropicModelSpec> = [
+  { model: ClaudeHaiku4_5, model_id: "claude-haiku-4-5-20251001", context_window: 200000, max_output_tokens: 64000 },
+  { model: ClaudeSonnet4_6, model_id: "claude-sonnet-4-6-20250929", context_window: 200000, max_output_tokens: 64000 },
+  { model: ClaudeOpus4_6, model_id: "claude-opus-4-6-20251101", context_window: 200000, max_output_tokens: 64000 }
+]
+
+// The publisher's own service is one implementation of the specification like any other, and says
+// so in the same carrier every other implementation uses. Its version binding is
+// VersionHeaderSelectsRevision because for this service the header IS the revision selector — the
+// arm that distinguishes it from an implementation that accepts the header and ignores it.
+data anthropic_messages_api_conformance: MessagesApiImplementation = MessagesApiImplementation {
+  implementation: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.anthropic_rest",
+      decl_name: "llm.Anthropic",
+      field: WholeDeclaration
+    }
+  },
+  spec_version: current_api_version,
+  version_binding: VersionHeaderSelectsRevision {},
+  citation: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "docs.anthropic.com/en/api/versioning"
+    }
+  }
+}

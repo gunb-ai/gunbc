@@ -1,0 +1,35 @@
+module extdeps.vendor.macronix
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-08-14.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Macronix"
+  }
+}
+
+// Read 2026-08-14: an integrated device manufacturer of non-volatile memory, headquartered in
+// Taiwan. The entry also gives the name in Chinese characters, not carried because legal_name is a
+// single field and choosing its script is a decision no document read here makes; a later
+// script-aware name carrier grounds what this row leaves open rather than correcting it.
+
+data macronix: Vendor<Hardware> = Vendor { legal_name: "Macronix International Co., Ltd." }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.macronix",
+      decl_name: "macronix",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -1,0 +1,224 @@
+module test.claim.filesystem_absence_establishment_witness_test
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+  FilesystemListingObservation,
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  filesystem_listing_observation,
+  FilesystemEntryPresence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  filesystem_entry_presence,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  filesystem_file_observation,
+  filesystem_established_absence_detail,
+  filesystem_listing_names_entry,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Pure folds over authored listing text and an authored read outcome, run in the ordinary floor
+// because the subject is the FOLD -- a total function of what a host reported, with no filesystem,
+// no subprocess and no host. The listing strings are the newline-joined encoding Filesystem.List's
+// own output channel declares, so the membership question under test is asked over the real wire
+// format rather than an invention. What these deliberately do NOT establish is that Filesystem.List
+// EMITS those bytes for any given directory: that is a transport claim, it cannot execute inside
+// the hermetic fold, and reporting these as coverage for it would be the rung inflation DESIGN
+// section 4b forbids. What they also do not establish is the CONSTRUCTION wall -- that a record
+// literal for FilesystemEstablishedAbsence outside its home module is refused. That claim is about
+// compiler acceptance, its subject is source text rather than a value, and its only enrolled home
+// is the guarantee-probe corpus, which DESIGN records as declined by the floor; it is measured by
+// execution and cited in filesystem_absence_establishment_receipt instead of asserted here as a
+// permanently-green arm.
+
+fn listed(entries: String) -> FilesystemListingObservation {
+  filesystem_listing_observation(
+    directory: "/opt/gunbc/state",
+    success: true,
+    entries: entries,
+    error: "",
+  )
+}
+
+fn unlistable() -> FilesystemListingObservation {
+  filesystem_listing_observation(
+    directory: "/opt/gunbc/state",
+    success: false,
+    entries: "",
+    error: "Permission denied (os error 13)",
+  )
+}
+
+fn presence_arm(p: FilesystemEntryPresence) -> String {
+  match p {
+    FilesystemEntryAbsent(_) => "absent"
+    FilesystemEntryListed { directory: _, name: _ } => "listed"
+    FilesystemEntryPresenceIndeterminate { cause: _ } => "indeterminate"
+  }
+}
+
+fn observation_arm(o: FilesystemFileObservation) -> String {
+  match o {
+    FilesystemFileAbsent(_) => "absent"
+    FilesystemFileRead { path: _, content: _ } => "read"
+    FilesystemFileIndeterminate { cause: _ } => "indeterminate"
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => "disagree"
+  }
+}
+
+fn observe(
+  listing: FilesystemListingObservation,
+  name: String,
+  read: FilesystemReadOutcome,
+) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: listing,
+    name: name,
+    path: "/opt/gunbc/state/marker.json",
+    read: read,
+  )
+}
+
+// A LISTING THAT FAILED ASSERTS NOTHING ABOUT WHAT IS THERE. This is the arm the whole construction
+// exists for: the directory could not be read, so the entry is neither present nor absent, and the
+// consumer is handed a state it must decide about rather than a false it can mistake for a fact.
+test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool {
+  presence_arm(p: filesystem_entry_presence(listing: unlistable(), name: "marker.json")) == "indeterminate"
+    && observation_arm(o: observe(
+      listing: unlistable(),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    )) == "indeterminate"
+}
+
+// AND THE READ CANNOT RESCUE IT EITHER WAY. A refused listing stays indeterminate even when the read
+// SUCCEEDS, because a read that worked says the file is there and says nothing about the directory
+// the consumer could not enumerate -- so the fold never lets a read decide a listing's question.
+test fn a_successful_read_does_not_repair_a_refused_listing() -> Bool {
+  observation_arm(o: observe(
+    listing: unlistable(),
+    name: "marker.json",
+    read: FilesystemReadSucceeded { content: "{}" },
+  )) == "indeterminate"
+}
+
+// AN ENTRY THAT IS LISTED AND UNREADABLE IS NOT ABSENT. This is the defect the ruling forbade and
+// prose failed to stop: present-and-unreadable and not-there have opposite correct actions, so they
+// get different arms. The third clause is the positive control -- the same fold, the same refused
+// read, and a listing that does not name the entry -- so the arms are decided by the LISTING and not
+// by the read's status.
+test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool {
+  observation_arm(o: observe(
+    listing: listed(entries: "marker.json\nreceipts"),
+    name: "marker.json",
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+  )) == "indeterminate"
+    && observation_arm(o: observe(
+      listing: listed(entries: "receipts\nbin"),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    )) == "absent"
+    && observation_arm(o: observe(
+      listing: listed(entries: "marker.json\nreceipts"),
+      name: "marker.json",
+      read: FilesystemReadSucceeded { content: "{}" },
+    )) == "read"
+}
+
+// ABSENCE IS LINE-EXACT, NOT A SUBSTRING COINCIDENCE. A directory holding `marker.json.tmp` does not
+// hold `marker.json`, and one holding `marker.json` does not hold `marker` -- both directions, because
+// a prefix test and a suffix test fail in opposite directions and only one of them is caught by
+// checking a name that is longer than the entry.
+test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
+  presence_arm(p: filesystem_entry_presence(
+    listing: listed(entries: "marker.json.tmp"),
+    name: "marker.json",
+  )) == "absent"
+    && presence_arm(p: filesystem_entry_presence(
+      listing: listed(entries: "marker.json"),
+      name: "marker",
+    )) == "absent"
+    && presence_arm(p: filesystem_entry_presence(
+      listing: listed(entries: "a.json\nmarker.json\nz.json"),
+      name: "marker.json",
+    )) == "listed"
+    && filesystem_listing_names_entry(listing: "marker.json", name: "marker.json")
+    && !filesystem_listing_names_entry(listing: "", name: "marker.json")
+}
+
+// AN EMPTY DIRECTORY IS AN ANSWER AND AN UNLISTABLE ONE IS NOT, which is the pair a Bool collapses.
+// Both produce no entries; only the first establishes absence.
+test fn an_empty_listing_establishes_absence_and_a_refused_one_does_not() -> Bool {
+  presence_arm(p: filesystem_entry_presence(listing: listed(entries: ""), name: "marker.json")) == "absent"
+    && presence_arm(p: filesystem_entry_presence(listing: unlistable(), name: "marker.json")) == "indeterminate"
+}
+
+// THE ESTABLISHED ABSENCE CARRIES WHAT WAS LOOKED FOR AND WHERE. A consumer must be able to say what
+// it did not find without being able to mint the finding, so the carrier holds the pair and the
+// detail is read off it rather than rebuilt by each caller.
+test fn an_established_absence_names_its_directory_and_its_entry() -> Bool {
+  match filesystem_entry_presence(listing: listed(entries: "receipts"), name: "marker.json") {
+    FilesystemEntryAbsent(established) =>
+      filesystem_established_absence_detail(absence: established)
+        == "no marker.json is listed in /opt/gunbc/state"
+    FilesystemEntryListed { directory: _, name: _ } => false
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+  }
+}
+
+// A SUCCESSFUL READ OF AN ENTRY THE LISTING DID NOT NAME IS NOT AN ABSENCE, and it is not a presence
+// either. Review 57099 on gunbc#9564 found the first cut returning the established absence here and
+// never consulting the read, which discards a positive observation -- bytes in hand while the answer
+// says nothing is there. The two observations describe different instants, so neither is discarded
+// and neither wins: the disagreement is its own arm, with its own remedy.
+//
+// THE THREE CLAUSES ARE THE DISCRIMINATION. Same listing, same missing entry, and only the READ
+// differs -- refused gives the ordinary established absence, succeeded gives the disagreement -- so
+// the arm is decided by the pair and not by either observation alone. The third clause is the
+// control that keeps the absent arm reachable, because an implementation that answered "disagree"
+// whenever the entry was unlisted would pass the first two.
+test fn a_successful_read_of_an_unlisted_entry_is_not_an_absence() -> Bool {
+  observation_arm(o: observe(
+    listing: listed(entries: "receipts\nbin"),
+    name: "marker.json",
+    read: FilesystemReadSucceeded { content: "{}" },
+  )) == "disagree"
+    && observation_arm(o: observe(
+      listing: listed(entries: "receipts\nbin"),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    )) == "absent"
+    && observation_arm(o: observe(
+      listing: listed(entries: ""),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    )) == "absent"
+}
+
+// AND THE DISAGREEMENT IS NOT THE INDETERMINATE ARM. "I could not look" and "I looked twice and got
+// two answers" have different remedies -- fix the permission versus re-observe the pair atomically --
+// so they are different arms, and a fold that collapsed them would pass every other test in this
+// file. A refused listing stays indeterminate even when the read succeeds, because no absence was
+// ever established for the read to disagree with.
+test fn a_disagreement_is_distinct_from_an_unmakeable_observation() -> Bool {
+  observation_arm(o: observe(
+    listing: unlistable(),
+    name: "marker.json",
+    read: FilesystemReadSucceeded { content: "{}" },
+  )) == "indeterminate"
+    && observation_arm(o: observe(
+      listing: listed(entries: "marker.json"),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    )) == "indeterminate"
+}

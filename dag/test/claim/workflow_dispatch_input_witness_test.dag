@@ -1,0 +1,193 @@
+module test.claim.workflow_dispatch_input_witness
+
+import extdeps.github.actions {
+  WorkflowDispatch, DispatchInput, InputString, InputChoice
+}
+import gunbc.fleet_converge_workflow {
+  fleet_converge_workflow, expected_fleet_converge_yml,
+  FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
+}
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke }
+import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
+}
+
+fn value_is_expected_input(v: YamlValue) -> Bool {
+  match v {
+    YamlMapping { entries } =>
+      fold(entries, init: false, f: fn(acc, entry) {
+        acc || (entry.key == "inputs" && match entry.value {
+          YamlMapping { entries: inputs } =>
+            fold(inputs, init: false, f: fn(found, row) {
+              found || (row.key == "expected_healed_sha" && match row.value {
+                YamlMapping { entries: fields } =>
+                  fold(fields, init: false, f: fn(has_type, field) {
+                    has_type || (field.key == "type" && match field.value {
+                      YamlString { value } => value == "string"
+                      YamlNull => false
+                      YamlBool { value: _ } => false
+                      YamlInt { lexeme: _ } => false
+                      YamlFloat { lexeme: _ } => false
+                      YamlSequence { elements: _ } => false
+                      YamlMapping { entries: _ } => false
+                    })
+                  })
+                YamlNull => false
+                YamlBool { value: _ } => false
+                YamlInt { lexeme: _ } => false
+                YamlFloat { lexeme: _ } => false
+                YamlString { value: _ } => false
+                YamlSequence { elements: _ } => false
+              })
+            })
+          YamlNull => false
+          YamlBool { value: _ } => false
+          YamlInt { lexeme: _ } => false
+          YamlFloat { lexeme: _ } => false
+          YamlString { value: _ } => false
+          YamlSequence { elements: _ } => false
+        })
+      })
+    YamlNull => false
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlString { value: _ } => false
+    YamlSequence { elements: _ } => false
+  }
+}
+
+test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
+  let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
+    inputs: [DispatchInput {
+      name: "expected_healed_sha",
+      description: Present { value: "immutable subject" },
+      required: false,
+      default: none,
+      type: InputString
+    }]
+  })
+  entry.key == "workflow_dispatch" && value_is_expected_input(v: entry.value)
+}
+
+test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
+  match workflow_trigger_entry(trigger: WorkflowDispatch { inputs: [] }).value {
+    YamlNull => true
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlString { value: _ } => false
+    YamlSequence { elements: _ } => false
+    YamlMapping { entries: _ } => false
+  }
+}
+
+fn mode_input_has_choice_options(v: YamlValue) -> Bool {
+  match v {
+    YamlMapping { entries } =>
+      fold(entries, init: false, f: fn(acc, entry) {
+        acc || (entry.key == "inputs" && match entry.value {
+          YamlMapping { entries: inputs } =>
+            fold(inputs, init: false, f: fn(found, row) {
+              found || (row.key == "mode" && match row.value {
+                YamlMapping { entries: fields } =>
+                  fold(fields, init: false, f: fn(has_opts, field) {
+                    has_opts || (field.key == "options" && match field.value {
+                      YamlSequence { elements: opts } =>
+                        length(opts) == 10
+                          && any(opts, o => match o { YamlString { value } => value == "plan"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "allocation_store_plan"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "apply"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "org_actions_observe"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_linger"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_observe"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_reboot"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_grants"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_durability"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "dashboard_deploy"  _ => false })
+                      YamlNull => false
+                      YamlBool { value: _ } => false
+                      YamlInt { lexeme: _ } => false
+                      YamlFloat { lexeme: _ } => false
+                      YamlString { value: _ } => false
+                      YamlMapping { entries: _ } => false
+                    })
+                  })
+                YamlNull => false
+                YamlBool { value: _ } => false
+                YamlInt { lexeme: _ } => false
+                YamlFloat { lexeme: _ } => false
+                YamlString { value: _ } => false
+                YamlSequence { elements: _ } => false
+              })
+            })
+          YamlNull => false
+          YamlBool { value: _ } => false
+          YamlInt { lexeme: _ } => false
+          YamlFloat { lexeme: _ } => false
+          YamlString { value: _ } => false
+          YamlSequence { elements: _ } => false
+        })
+      })
+    YamlNull => false
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlString { value: _ } => false
+    YamlSequence { elements: _ } => false
+  }
+}
+
+test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
+  let entry = workflow_trigger_entry(trigger: fleet_converge_workflow.on[0])
+  entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
+}
+
+// THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
+// `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
+// pinning the total would let a fourth job appear unobserved; pinning the total without naming them
+// would pass for any three jobs at all. Together they are an exact partition, which is the identity
+// join DESIGN section 5 asks for rather than a count standing in for one.
+//
+// BOTH DEPLOYING JOBS NEED `build`, and that is the property this witness is really about: the
+// release binaries are produced once and consumed by everything that installs them, so a job that
+// mutates a host without that edge would be installing whatever happened to be lying around.
+test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
+  fleet_converge_workflow.jobs.length() == 3
+    && fleet_converge_workflow.jobs[0].id == "build"
+    && fleet_converge_workflow.jobs[1].id == "fleet-converge"
+    && fleet_converge_workflow.jobs[1].needs == ["build"]
+    && fleet_converge_workflow.jobs[2].id == "dashboard-deploy"
+    && fleet_converge_workflow.jobs[2].needs == ["build"]
+}
+
+fn expected_fleet_converge_yml_content() -> String {
+  match expected_fleet_converge_yml() {
+    FleetConvergeYamlGenerated { content } => content
+    FleetConvergeYamlGenerationRefused { reason: _ } => ""
+  }
+}
+
+test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
+  !string_contains(s: expected_fleet_converge_yml_content(), pattern: "expected_healed_sha")
+}
+
+test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
+  string_contains(
+    s: expected_fleet_converge_yml_content(),
+    pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
+  )
+    && !string_contains(
+      s: expected_fleet_converge_yml_content(),
+      pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
+    )
+    && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
+}
+
+test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
+  string_contains(
+    s: gunbc_ci_org_actions_converge_invoke(),
+    pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet",
+  )
+}

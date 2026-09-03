@@ -1,0 +1,35 @@
+module gunbc.namespace_structural_observation_bridge_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the host bridge that carries the v1 parser walk's four in-file
+// visibility observations to the dag closing check for roadmap node
+// namespace-structural-observations. Homed beside the obligation it declares rather than in
+// gunbc.seed_growth_admission, which owns the roster and the join.
+
+data namespace_structural_observation_bridge_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "namespace_structural_observation_admissions_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "reference_derived_closure_admission_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "subject_module_value",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY A HOST BRIDGE RATHER THAN A .dag WITNESS CALLING THE PRODUCER DIRECTLY, and it is a reachability limit rather than a preference. The four observations are produced by v1.gunbc.namespace_reference_derived_closure_production_observations over v1.compiler.parse, and the required floor resolves --source-root dag --source-root src/v2 only. Measured over the whole corpus: NO dag module imports a v1 module, so a witness under dag/test/claim cannot name the producer at all. The two routes that do not need a bridge were both refused for reasons DESIGN already records. Homing the witness under src/v1/tests would bind the row's closing contract to evidence no required run executes -- the coverage-by-illusion tier DESIGN's compile-clean family is the receipt for. Rebuilding the observations on the v2 pipeline would put a second resolution authority beside the P2a candidate producer and the P1 fold, which is the single-authority violation the whole namespace lane exists to remove.\n\nWHAT THE BRIDGE IS AND IS NOT. It is a TRANSPORT: it takes one in-memory source string plus the four probe spellings from the caller, calls the one .dag producer, and encodes what that producer returned. It reads no repository file, needs no module index, and is hermetic by construction, so the witness on it declares SubstrateInputsOnly truthfully and executes in the required floor rather than landing in its DeclinedLiveTree arm. It decides nothing: the subject is the caller's, the four observations are composed in .dag, and the capability judgement is made by gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation, which the .dag producer calls. If a policy question ever arises inside the bridge, it belongs in the producer.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- does the change serve the v2 self-host program. Namespace-only resolution is that program's current frontier, and until an ordinary compile can be asked what a name sees, every claim about it rests on hand-built examples.\n\nHAND-ITEM DELTA: +3, all enumerated above, all free functions in src/v1/stage0/src/v1_interpreter.rs and therefore citable as WholeDeclaration with no impl-method class. The third, subject_module_value, encodes the subject's own identity as a typed StructuralObservationSubjectModule rather than a String: an earlier revision of this bridge returned the module path as a bare string with EMPTY standing for the parse having refused, which made 'the parse refused' and 'the module path is empty' one value in a carrier that had a typed absence available. It was fail-closed only by accident of what the one consumer did with the string. The dispatch arm itself is a new match arm inside the existing eval_builtin_inner macro, which is an ExistingSeedItemModified rather than a new declaration, and v1_interpreter_dispatch_generated.rs is generated from gunbc.v1_interpreter_primitive_surface, so its new variant is a generated-surface regeneration and is not netted into a hand census. src/v1/04_method.dag and the .dag producer are substrate changes whose Rust mirrors are generated.",
+  owning_dissolution_lane: "namespace-structural-observations" as RoadmapNodeId,
+  trigger: "Delete both when a .dag witness can ask an ordinary compile what a name sees from where it is written WITHOUT a host bridge -- that is, when the observation-producing walk is reachable from a witness home whose resolution roots include the compiler that produces it, and the four observations for one in-memory source are obtainable there. What does NOT dissolve them is the required floor gaining src/v1 as a source root on its own: that is an artifact, and it can land while the producer is still unreachable from any executing witness -- the capability this bridge supplies is ONE IN-MEMORY SOURCE ANSWERED BY THE ORDINARY COMPILE PATH INSIDE AN EXECUTING WITNESS, and the trigger is satisfied only when something else supplies exactly that. What does NOT dissolve them either is the single-source compile builtins gaining another caller: those resolve through build_module_path_index_from_witness_roots, which walks the live tree, so a witness on them is declined and would retire executing evidence in favour of a name.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs free_call.namespace_structural_observation_admissions arm and its three encoders; dag/gunbc/namespace/namespace_structural_observations_production.dag; dag/gunbc/v1/v1_interpreter_primitive_surface.dag roster row; src/v1/04_method.dag builtin return type; dag/std/primitives.dag spelling roster"
+}

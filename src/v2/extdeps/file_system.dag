@@ -1,6 +1,6 @@
 module v2.extdeps.file_system
 
-import v2.std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid }
 import v2.std.diagnostic { Outcome }
 import v2.std.machine { Byte }
 

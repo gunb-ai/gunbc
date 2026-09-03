@@ -1,0 +1,206 @@
+module gunbc.actions_run_binding
+
+import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.github.actions_environment {
+  github_sha_variable_name,
+  github_run_id_variable_name,
+  github_repository_variable_name,
+  github_workflow_ref_variable_name,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, json_kv, json_string, json_object }
+import extdeps.languages.json.parse {
+  json_object_unique_member,
+  JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import gunbc.running_release_identity { release_revision_text_valid }
+
+// ONE RUN BINDING, READ ONCE PER RUN, CARRIED ON EVERY RECEIPT THE RUN PRODUCES. The Roadmap Launch
+// MVP's RLM-2 transaction is four workflow runs (plan, apply, dashboard deploy, final receipt) that
+// must all have executed at ONE main revision R, in ONE repository, through ONE workflow file. Each
+// run therefore records the four facts the runner supplies about itself -- GITHUB_REPOSITORY,
+// GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_SHA (extdeps.github.actions_environment) -- and every
+// downstream join compares bindings rather than trusting a workflow input. The expected revision is
+// an INDEPENDENT input (RLM_EXPECTED_REVISION, a workflow_dispatch input the operator types), so
+// `run_revision == expected` is a comparison of two origins and can fail; deriving both from the
+// checkout would compare git to itself (gunbc.live_rust_observation LiveRustObservationRequest).
+// Every absence is its own typed arm: outside Actions the variables are legitimately unset, and a
+// run must refuse to mint a receipt it cannot bind rather than mint one bound to nothing.
+type ActionsRunBinding {
+  repository: String
+  workflow_ref: String
+  run_id: String
+  run_revision: String
+}
+
+type ActionsRunBindingObservation
+  = ActionsRunBound { binding: ActionsRunBinding }
+  | ActionsRunUnbound { variable: String, detail: String }
+
+type ActionsVariableRead
+  = ActionsVariablePresent { value: String }
+  | ActionsVariableAbsent { variable: String, detail: String }
+
+fn actions_variable_read(name: String) -> ActionsVariableRead {
+  match shell.Env.Get(name: name as NonEmptyStr).value {
+    Absent => ActionsVariableAbsent { variable: name, detail: "not set" }
+    Present { value: v } =>
+      if trim(s: v) == "" {
+        ActionsVariableAbsent { variable: name, detail: "set but empty" }
+      } else {
+        ActionsVariablePresent { value: trim(s: v) }
+      }
+  }
+}
+
+fn observe_actions_run_binding() -> ActionsRunBindingObservation {
+  match actions_variable_read(name: github_repository_variable_name) {
+    ActionsVariableAbsent { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
+    ActionsVariablePresent { value: repository } =>
+      match actions_variable_read(name: github_workflow_ref_variable_name) {
+        ActionsVariableAbsent { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
+        ActionsVariablePresent { value: workflow_ref } =>
+          match actions_variable_read(name: github_run_id_variable_name) {
+            ActionsVariableAbsent { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
+            ActionsVariablePresent { value: run_id } =>
+              match actions_variable_read(name: github_sha_variable_name) {
+                ActionsVariableAbsent { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
+                ActionsVariablePresent { value: sha } =>
+                  if !release_revision_text_valid(text: sha) {
+                    ActionsRunUnbound { variable: github_sha_variable_name, detail: join(["not a 40-digit lower-hex revision: ", sha], "") }
+                  } else {
+                    ActionsRunBound {
+                      binding: ActionsRunBinding {
+                        repository: repository,
+                        workflow_ref: workflow_ref,
+                        run_id: run_id,
+                        run_revision: sha,
+                      },
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE EXPECTED REVISION IS A WORKFLOW INPUT, NOT A DERIVED FACT. One name for every mode of the
+// transaction, so a receipt produced by any of the four runs is comparable to any other.
+data rlm_expected_revision_env_name: String = "RLM_EXPECTED_REVISION"
+
+type ExpectedRevisionRead
+  = ExpectedRevisionPresent { revision: String }
+  | ExpectedRevisionAbsent { variable: String, detail: String }
+
+fn read_expected_revision() -> ExpectedRevisionRead {
+  match actions_variable_read(name: rlm_expected_revision_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } => ExpectedRevisionAbsent { variable: v, detail: d }
+    ActionsVariablePresent { value: r } =>
+      if release_revision_text_valid(text: r) {
+        ExpectedRevisionPresent { revision: r }
+      } else {
+        ExpectedRevisionAbsent { variable: rlm_expected_revision_env_name, detail: join(["not a 40-digit lower-hex revision: ", r], "") }
+      }
+  }
+}
+
+type RunRevisionAdmission
+  = RunRevisionAdmitted { revision: String }
+  | RunRevisionRefused { expected: String, observed: String }
+
+fn admit_run_revision(binding: ActionsRunBinding, expected: String) -> RunRevisionAdmission {
+  if binding.run_revision == expected {
+    RunRevisionAdmitted { revision: expected }
+  } else {
+    RunRevisionRefused { expected: expected, observed: binding.run_revision }
+  }
+}
+
+// GITHUB_WORKFLOW_REF is `<repository>/<workflow path>@<ref>`; the binding names a FILE when the
+// prefix up to the `@` is exactly repository + "/" + path.
+fn run_binding_names_workflow_file(binding: ActionsRunBinding, workflow_path: String) -> Bool {
+  starts_with(s: binding.workflow_ref, prefix: join([binding.repository, "/", workflow_path, "@"], ""))
+}
+
+// TWO RUNS OF ONE TRANSACTION agree on repository, workflow file and revision. run_id is what
+// distinguishes them and is compared by the join that knows which run is expected where.
+fn run_bindings_share_transaction(left: ActionsRunBinding, right: ActionsRunBinding, workflow_path: String) -> Bool {
+  left.repository == right.repository
+    && left.run_revision == right.run_revision
+    && run_binding_names_workflow_file(binding: left, workflow_path: workflow_path)
+    && run_binding_names_workflow_file(binding: right, workflow_path: workflow_path)
+}
+
+fn actions_run_binding_json(binding: ActionsRunBinding) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "repository", value: json_string(s: binding.repository)),
+    json_kv(key: "workflow_ref", value: json_string(s: binding.workflow_ref)),
+    json_kv(key: "run_id", value: json_string(s: binding.run_id)),
+    json_kv(key: "run_revision", value: json_string(s: binding.run_revision)),
+  ])
+}
+
+// A SHARED READER FOR REQUIRED STRING MEMBERS, so every receipt decoder in this transaction
+// refuses the same four ways with the same words.
+type JsonStringMember
+  = JsonStringMemberFound { value: String }
+  | JsonStringMemberRefused { reason: String }
+
+fn json_required_string_member(doc: JsonValue, key: String) -> JsonStringMember {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => JsonStringMemberFound { value: s }
+    JsonMemberFound { value: _ } => JsonStringMemberRefused { reason: join([key, " is not a string"], "") }
+    JsonMemberAbsent => JsonStringMemberRefused { reason: join([key, " is missing"], "") }
+    JsonMemberDuplicated { count: _ } => JsonStringMemberRefused { reason: join([key, " is duplicated"], "") }
+    JsonMemberNotAnObject => JsonStringMemberRefused { reason: "document is not an object" }
+  }
+}
+
+type ActionsRunBindingDecode
+  = ActionsRunBindingDecoded { binding: ActionsRunBinding }
+  | ActionsRunBindingUnreadable { reason: String }
+
+fn actions_run_binding_of_json(doc: JsonValue) -> ActionsRunBindingDecode {
+  match json_required_string_member(doc: doc, key: "repository") {
+    JsonStringMemberRefused { reason: r } => ActionsRunBindingUnreadable { reason: r }
+    JsonStringMemberFound { value: repository } =>
+      match json_required_string_member(doc: doc, key: "workflow_ref") {
+        JsonStringMemberRefused { reason: r } => ActionsRunBindingUnreadable { reason: r }
+        JsonStringMemberFound { value: workflow_ref } =>
+          match json_required_string_member(doc: doc, key: "run_id") {
+            JsonStringMemberRefused { reason: r } => ActionsRunBindingUnreadable { reason: r }
+            JsonStringMemberFound { value: run_id } =>
+              match json_required_string_member(doc: doc, key: "run_revision") {
+                JsonStringMemberRefused { reason: r } => ActionsRunBindingUnreadable { reason: r }
+                JsonStringMemberFound { value: run_revision } =>
+                  if !release_revision_text_valid(text: run_revision) {
+                    ActionsRunBindingUnreadable { reason: "run_revision is not a 40-digit lower-hex revision" }
+                  } else {
+                    ActionsRunBindingDecoded {
+                      binding: ActionsRunBinding {
+                        repository: repository,
+                        workflow_ref: workflow_ref,
+                        run_id: run_id,
+                        run_revision: run_revision,
+                      },
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn actions_run_binding_of_member(doc: JsonValue, key: String) -> ActionsRunBindingDecode {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: inner } => actions_run_binding_of_json(doc: inner)
+    JsonMemberAbsent => ActionsRunBindingUnreadable { reason: join([key, " is missing"], "") }
+    JsonMemberDuplicated { count: _ } => ActionsRunBindingUnreadable { reason: join([key, " is duplicated"], "") }
+    JsonMemberNotAnObject => ActionsRunBindingUnreadable { reason: "document is not an object" }
+  }
+}
+
+fn actions_run_binding_identity_text(binding: ActionsRunBinding) -> String {
+  join([binding.repository, "|", binding.workflow_ref, "|", binding.run_id, "|", binding.run_revision], "")
+}

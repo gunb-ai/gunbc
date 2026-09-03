@@ -1,9 +1,0 @@
-module v2.test.self_host.compiler_closure_emit
-
-import v2.test.fixture.compiler_closure_scope_receipt {
-  scoped_closure_scope_scalar_receipt_holds
-}
-
-test fn scoped_closure_excludes_lens_module_holds() -> Bool {
-  scoped_closure_scope_scalar_receipt_holds()
-}

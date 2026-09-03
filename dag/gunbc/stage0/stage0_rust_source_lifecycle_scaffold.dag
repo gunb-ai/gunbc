@@ -1,0 +1,885 @@
+module gunbc.stage0_rust_source_lifecycle_scaffold
+
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import gunbc.stage0_cargo_manifest {
+  stage0_cargo_bin_paths_observation_ref
+}
+import gunbc.stage0_rust_host_observation {
+  EmitPopulationConfirmed,
+  EmitPopulationUnobserved,
+  GitObservationRefused,
+  RustManifestObserved,
+  RustManifestParseRefused,
+  RustManifestReadRefused,
+  RustSourceHostObservation,
+  current_stage0_rust_source_observation
+}
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
+import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
+import gunbc.rust_item_host_observation {
+  rust_source_prefix_test_harness, rust_source_prefix_stage0_test, rust_source_prefix_stage0_example, rust_source_prefix_tooling
+}
+import std.content_hash { Fnv1a64Structural }
+import std.keyed_roster { path_occurrence_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import gunbc.roadmap_model { RoadmapNodeId }
+import v2.compiler.self_host.stage0_crate_layout { hand_maintained_stage0_filenames }
+import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
+
+data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
+
+// Observation prerequisite only: RustManifestObserved establishes the revision-addressed subject
+// and Cargo roles. v1-honest-frontier must separately derive maintenance disposition, product
+// reachability, generation authority, retirement trigger, hand LOC, and typed hand obligations
+// before V1FinishLine ZeroHandMaintainedRust can consume it.
+
+type RustSourceManifestStateVerdict
+  = ManifestStateScaffoldOk
+  | ManifestStateScaffoldRefused { cause: RustSourceManifestStateRefusal }
+
+type RustSourceManifestStateRefusal
+  = HostManifestReadRefused { detail: String }
+  | HostManifestParseRefused { detail: String }
+  | HostGitObservationRefused { detail: String }
+  | DerivedNewlyUnclassified { count: Int }
+  | DerivedStaleLifecycleRows { count: Int }
+  | DerivedDuplicateExactPaths { count: Int }
+  | DerivedHandMaintainedGrew { prior: Int, current: Int }
+  | DerivedUnclassifiedTracked { count: Int }
+  | EmitPopulationUnobservedEvidence { detail: String }
+  | ObservedCargoPathUntracked { path: String }
+  | CargoTargetMissingLifecycleDisposition { path: String }
+
+data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.stage0_rust_source_lifecycle_scaffold",
+    decl_name: "rust_source_manifest_state_verdict",
+    field: WholeDeclaration
+  }
+}
+
+data rust_source_manifest_state_verdict_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)")
+
+fn path_in_list(path: String, paths: List<String>) -> Bool {
+  any(xs: paths, predicate: fn(p) { p == path })
+}
+
+fn observed_cargo_paths_subset_of_tracked(
+  cargo_bin_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> Bool {
+  fold_list(
+    xs: cargo_bin_repo_paths,
+    empty: true,
+    cons: fn(ok, cargo_path) { ok && path_in_list(path: cargo_path, paths: tracked_paths) }
+  )
+}
+
+fn first_untracked_cargo_path(
+  cargo_bin_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> String {
+  fold_list(
+    xs: cargo_bin_repo_paths,
+    empty: "",
+    cons: fn(first, cargo_path) {
+      if first != "" {
+        first
+      } else if path_in_list(path: cargo_path, paths: tracked_paths) {
+        ""
+      } else {
+        cargo_path
+      }
+    }
+  )
+}
+
+fn count_tracked_unclassified(tracked_paths: List<String>, classified_paths: List<String>) -> Int {
+  fold_list(
+    xs: tracked_paths,
+    empty: 0,
+    cons: fn(count, path) {
+      if path_in_list(path: path, paths: classified_paths) {
+        count
+      } else {
+        count + 1
+      }
+    }
+  )
+}
+
+fn count_newly_unclassified_tracked(
+  tracked_paths: List<String>,
+  prior_tracked_paths: List<String>,
+  classified_paths: List<String>
+) -> Int {
+  fold_list(
+    xs: tracked_paths,
+    empty: 0,
+    cons: fn(count, path) {
+      let is_new = !path_in_list(path: path, paths: prior_tracked_paths)
+      let is_classified = path_in_list(path: path, paths: classified_paths)
+      if is_new && !is_classified {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List<String>) -> Int {
+  fold_list(
+    xs: lifecycle_paths,
+    empty: 0,
+    cons: fn(count, path) {
+      if path_in_list(path: path, paths: tracked_paths) {
+        count
+      } else {
+        count + 1
+      }
+    }
+  )
+}
+
+fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
+  fold_list(
+    xs: derived_hand_maintained_disposition_repo_paths(),
+    empty: 0,
+    cons: fn(count, hand_path) {
+      if path_in_list(path: hand_path, paths: tracked_paths) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> Int {
+  fold_list(
+    xs: derived_hand_maintained_disposition_repo_paths(),
+    empty: 0,
+    cons: fn(count, hand_path) {
+      if path_in_list(path: hand_path, paths: prior_tracked_paths) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_duplicate_path_excess(paths: List<String>) -> Int {
+  fold_list(
+    xs: paths,
+    empty: 0,
+    cons: fn(excess, path) {
+      let occurrences = path_occurrence_count(paths: paths, target: path)
+      if occurrences > 1 {
+        excess + (occurrences - 1)
+      } else {
+        excess
+      }
+    }
+  )
+}
+
+fn count_observed_manifest_duplicate_excess(
+  tracked_paths: List<String>,
+  prior_tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> Int {
+  fold_list(
+    xs: [tracked_paths, prior_tracked_paths, cargo_bin_repo_paths],
+    empty: 0,
+    cons: fn(sum, paths) { sum + count_duplicate_path_excess(paths: paths) }
+  )
+}
+
+// A CARGO TARGET MUST BE NAMED BY AN AUTHORITY, NOT MERELY FALL UNDER THE EMITTER'S COMPLEMENT.
+// CargoTargetMissingLifecycleDisposition asks whether some authority accounts for a [[bin]]
+// path. It formerly compared against the whole lifecycle population, which was safe while the
+// generated half was an enumerated roster. It is not safe now: the derived half claims EVERY
+// unclaimed direct child of the stage0 root, so any new [[bin]] under that root would answer
+// "dispositioned" by construction and the refusal could never fire again. That is the DESIGN 5
+// absorbing fallback exactly -- the arm widens instead of refusing, and its firing rate goes to
+// zero by construction rather than because the defect stopped occurring. Caught by execution:
+// scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition went red on the floor while
+// two reviews passed over the change. The comparison is against the AUTHORED classification.
+// ON THE EmitPopulationUnobserved ARM BELOW: THE LINE STOPS; IT DOES NOT WIDEN. Without the
+// emitter's declaration this module cannot separate "the emitter produces this" from "nobody
+// registered this", which is precisely the deficit #8674's rung drop was declared over. Falling
+// back to the crate-layout complement in that arm would restore the deficit while still reporting
+// a verdict, with its own firing rate zeroed by construction -- the absorbing fallback DESIGN 5
+// forbids. So the arm refuses, typed and located, and the degradation is countable.
+fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
+  match observation {
+    RustManifestReadRefused { detail: detail } =>
+      ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
+    RustManifestParseRefused { detail: detail } =>
+      ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } }
+    GitObservationRefused { detail: detail } =>
+      ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } }
+    RustManifestObserved {
+      repository_revision: repository_revision,
+      manifest_content_identity: manifest_content_identity,
+      tracked_rust_repo_paths: tracked_paths,
+      prior_tracked_rust_repo_paths: prior_tracked_paths,
+      cargo_bin_repo_paths: cargo_bin_repo_paths,
+      emit_population_evidence: emit_population_evidence
+    } =>
+      if repository_revision == "" {
+        ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
+      } else {
+        match emit_population_evidence {
+          EmitPopulationUnobserved { detail: detail } =>
+            ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: detail } }
+          EmitPopulationConfirmed { emitted_stage0_repo_paths: emitted_stage0_repo_paths } =>
+            let file_grain_paths = file_grain_lifecycle_repo_paths(
+              emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+              tracked_paths: tracked_paths
+            )
+            let classified_paths = file_grain_paths
+            let lifecycle_paths = classified_paths
+            let newly_unclassified = count_newly_unclassified_tracked(
+              tracked_paths: tracked_paths,
+              prior_tracked_paths: prior_tracked_paths,
+              classified_paths: classified_paths
+            )
+            let unclassified = count_tracked_unclassified(tracked_paths: tracked_paths, classified_paths: classified_paths)
+            let stale = count_stale_lifecycle_rows(tracked_paths: tracked_paths, lifecycle_paths: lifecycle_paths)
+            let duplicate_excess = count_observed_manifest_duplicate_excess(
+              tracked_paths: tracked_paths,
+              prior_tracked_paths: prior_tracked_paths,
+              cargo_bin_repo_paths: cargo_bin_repo_paths
+            )
+            let hand_current = count_hand_maintained_in_tracked(tracked_paths: tracked_paths)
+            let hand_prior = count_hand_maintained_in_prior_tracked(prior_tracked_paths: prior_tracked_paths)
+            let untracked_cargo = first_untracked_cargo_path(
+              cargo_bin_repo_paths: cargo_bin_repo_paths,
+              tracked_paths: tracked_paths
+            )
+            let cargo_without_disposition = first_untracked_cargo_path(
+              cargo_bin_repo_paths: cargo_bin_repo_paths,
+              tracked_paths: non_generated_classified_repo_paths()
+            )
+            if length(xs: cargo_bin_repo_paths) == 0 {
+              ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
+            } else if untracked_cargo != "" {
+              ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: untracked_cargo } }
+            } else if cargo_without_disposition != "" {
+              ManifestStateScaffoldRefused {
+                cause: CargoTargetMissingLifecycleDisposition { path: cargo_without_disposition }
+              }
+            } else if newly_unclassified != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: newly_unclassified } }
+            } else if stale != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedStaleLifecycleRows { count: stale } }
+            } else if duplicate_excess != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: duplicate_excess } }
+            } else if hand_current > hand_prior {
+              ManifestStateScaffoldRefused { cause: DerivedHandMaintainedGrew { prior: hand_prior, current: hand_current } }
+            } else if unclassified != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: unclassified } }
+            } else {
+              ManifestStateScaffoldOk
+            }
+        }
+      }
+  }
+}
+
+data rust_source_discovery_prefix_hints: List<String> = [
+  rust_source_prefix_test_harness,
+  rust_source_prefix_tooling,
+  rust_source_prefix_stage0_test,
+  rust_source_prefix_stage0_example
+]
+
+data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
+
+data hand_maintained_stage0_filenames_authority_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.compiler.self_host.stage0_crate_layout",
+  decl_name: "hand_maintained_stage0_filenames",
+  field: WholeDeclaration
+}
+
+data stage0_partition_crate_rows_authority_ref: DeclarationRef = DeclarationRef {
+  module_path: "v2.workflow.rust_crate_partition",
+  decl_name: "stage0_partition_crate_rows",
+  field: WholeDeclaration
+}
+
+data stage0_cargo_bin_manifest_authority_ref: DeclarationRef = stage0_cargo_bin_paths_observation_ref
+
+data behavioral_oracle_carrier_ref: DeclarationRef = DeclarationRef {
+  module_path: "tools.self_host_module_behavioral_transport_roster",
+  decl_name: "compiler_module_behavioral_transport_roster",
+  field: WholeDeclaration
+}
+
+type RustSourceRole
+  = CargoBin
+  | CargoLib
+  | Test
+  | BehavioralOracle
+  | Tooling
+
+type RustMaintenanceDisposition
+  = Generated { authority: DeclarationRef }
+  | EmitFrom { authority: DeclarationRef }
+  | DeleteWith { roadmap_node: RoadmapNodeId }
+  | RetainedKernel { reason: String }
+  | HandScaffold { reason: NonEmptyStr, dissolution: DissolutionCondition }
+
+type RustSourceLifecycleRow {
+  path: String
+  roles: List<RustSourceRole>
+  maintenance_dispositions: List<RustMaintenanceDisposition>
+}
+
+fn stage0_src_repo_path(filename: String) -> String {
+  concat(stage0_src_repo_prefix, filename)
+}
+
+//
+// `claimed` is hoisted rather than inlined into the predicate: non_generated_classified_repo_paths()
+// folds three rosters through list_concat_unique, which is quadratic in its own length, and
+// calling it per tracked path would multiply that by the whole observed tree.
+// THE GENERATED POPULATION IS THE ONE THE EMITTER DECLARED, READ RATHER THAN RECONSTRUCTED.
+//
+// It was, in order: a 100+ row hand roster with no producer (deleted by #8674, because its
+// producer died in the #8406 regen cut); then the COMPLEMENT of the crate-layout claim over the
+// observed tree. The complement is a faithful reconstruction and it still cannot answer the
+// question this module asks, which is why #8674 had to declare a rung drop: a direct child of
+// the stage0 root that nobody claims is "generated" BY DEFINITION under a complement, so a newly
+// hand-added file nobody registered could never surface as unclassified, and the refusal's firing
+// rate went to zero by construction.
+//
+// The emitter now declares its own population (`v1.compiler.emit_rust`
+// `emit_emitted_population_manifest` -> `src/v1/stage0/src/emitted_population.rs`), the
+// observation reads it at the revision, and this filter selects the tracked paths that
+// declaration names. A file the emitter does not produce is now absent from the generated
+// population no matter where it sits, which restores exactly the distinction the drop declared
+// unavailable -- "the emitter produces this" versus "nobody registered this".
+//
+// The intersection with `tracked_paths` is deliberate and is not a narrowing: the population this
+// module classifies is the OBSERVED tree, so a declared path absent from the tree is not this
+// carrier's subject. `required_regen`'s `committed_not_emitted` / `emitted_not_committed` arms
+// are the authority on that disagreement and they compare against the real emit, which no at-rest
+// fact can. Two carriers, two questions, no second answer to either.
+fn derived_generated_stage0_repo_paths(
+  emitted_stage0_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> List<String> {
+  filter(
+    xs: tracked_paths,
+    predicate: fn(path) { path_in_list(path: path, paths: emitted_stage0_repo_paths) }
+  )
+}
+
+fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
+  list_map(
+    xs: hand_maintained_stage0_filenames(),
+    f: fn(filename) { stage0_src_repo_path(filename: filename) }
+  )
+}
+
+// v2_compiler_compile.rs, v2_compiler_program_assembly.rs and v2_compiler_source_authority.rs
+// carried a residue_frontier_module_gap row each, whose own dissolution condition read:
+// 'dissolve-on: the module basename appears on hand_maintained_stage0_filenames() ... and this
+// residue row deletes.' The #8428 regen-survivability backfill
+// (pre_existing_hand_retained_registration_backfill_note,
+// v2.compiler.self_host.stage0_crate_layout) registered all three as
+// SeedRetainedIntrinsicRegistration rows, so the trigger fired and the three residue rows are
+// deleted here rather than left stale — the dissolution condition is evidence consumed, not a
+// permission grant kept beside a state it no longer describes.
+
+// cssl_seed_linked_closure_assembly.rs is BOTH a residue row here (not yet regen-emitted) AND,
+// since the #8428 backfill, a hand_maintained_stage0_filenames() member (excluded from
+// required_regen_host's compile_stage0() population comparison, since it is a CSSL-harness-compiled
+// oracle never part of the stage0 crate's own mod tree). THIS NOTE FORMERLY TURNED ON A DISTINCTION
+// THAT NO LONGER EXISTS: it argued the dual classification was genuine because the dissolution
+// trigger named generated_stage0_files membership rather than hand_maintained_stage0_filenames()
+// membership -- two rosters, two memberships. With the generated population derived as the
+// complement of the crate-layout claim, those are one membership read two ways, and the trigger is
+// restated accordingly. The dual classification itself survives and is still genuine
+// (residue-pending-emission AND emit-comparison-excluded); what dies is the two-roster argument for
+// it. classified_residue_disjoint_holds is scoped to exclude this single known, named path rather
+// than silently widening to tolerate any future collision.
+
+// derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be
+// pub-mod-declared for the crate to link (layout membership, per
+// hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's
+// contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated:
+// gunbc.generated_artifact's generated_artifact_registry is the closed, single authority over every
+// drift-gated artifact this repo produces, and artifact_path is its per-variant path projection —
+// the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any
+// stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an
+// identity join by artifact_path, not a filename literal) is EmitFrom the registry's real
+// generation authority, never HandScaffold and never silently excluded by a hand-picked path.
+// v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the
+// discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs
+// (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both
+// derive from the identical registry membership check, no per-file code.
+// derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition
+// population: layout membership minus the generated-artifact-registry overlap. This is the single
+// authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and
+// by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins.
+
+data v1_interpreter_dispatch_generated_repo_path: String = stage0_src_repo_path(
+  filename: "v1_interpreter_dispatch_generated.rs"
+)
+
+data bootstrap_stage0_crate_layout_generated_repo_path: String = stage0_src_repo_path(
+  filename: "bootstrap_stage0_crate_layout_generated.rs"
+)
+
+data generated_artifact_emit_authority_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.generated_artifact_emit",
+  decl_name: "artifact_generate",
+  field: WholeDeclaration
+}
+
+fn generated_artifact_repo_paths() -> List<String> {
+  list_map(xs: generated_artifact_registry, f: fn(a) { artifact_path(a: a) })
+}
+
+fn generated_artifact_stage0_src_repo_paths() -> List<String> {
+  filter(
+    xs: generated_artifact_repo_paths(),
+    predicate: fn(path) { rust_source_path_has_prefix(path: path, prefix: stage0_src_repo_prefix) }
+  )
+}
+
+fn generated_artifact_stage0_src_disposition_rows() -> List<RustSourceLifecycleRow> {
+  list_map(
+    xs: generated_artifact_stage0_src_repo_paths(),
+    f: fn(path) {
+      RustSourceLifecycleRow {
+        path: path,
+        roles: [],
+        maintenance_dispositions: [
+          EmitFrom { authority: generated_artifact_emit_authority_ref }
+        ]
+      }
+    }
+  )
+}
+
+fn disposition_authority_rows() -> List<RustSourceLifecycleRow> {
+  fold_list(
+    xs: generated_artifact_stage0_src_disposition_rows(),
+    empty: rust_source_lifecycle_residue_rows,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row) }
+  )
+}
+
+fn derived_hand_maintained_disposition_repo_paths() -> List<String> {
+  filter(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    predicate: fn(path) {
+      !path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths())
+    }
+  )
+}
+
+fn generated_artifact_layout_overlap_repo_paths() -> List<String> {
+  filter(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    predicate: fn(path) { path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths()) }
+  )
+}
+
+fn generated_artifact_layout_overlap_subset_of_hand_maintained_holds() -> Bool {
+  fold_list(
+    xs: generated_artifact_layout_overlap_repo_paths(),
+    empty: true,
+    cons: fn(ok, path) {
+      ok && path_in_list(path: path, paths: derived_hand_maintained_stage0_repo_paths())
+    }
+  )
+}
+
+fn generated_artifact_stage0_src_disposition_rows_well_formed() -> Bool {
+  fold_list(
+    xs: generated_artifact_stage0_src_disposition_rows(),
+    empty: true,
+    cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
+  )
+}
+
+fn generated_artifact_stage0_src_disjoint_from_residue_holds() -> Bool {
+  !any(
+    xs: generated_artifact_stage0_src_repo_paths(),
+    predicate: fn(path) { path_in_list(path: path, paths: residue_lifecycle_repo_paths()) }
+  )
+}
+
+fn partition_crate_lib_repo_path(crate_dir: String) -> String {
+  concat(crate_dir, "/src/lib.rs")
+}
+
+fn derived_partition_crate_lib_repo_paths() -> List<String> {
+  list_map(
+    xs: stage0_partition_crate_rows(),
+    f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
+  )
+}
+
+fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
+  fold_list(
+    xs: items,
+    empty: acc,
+    cons: fn(acc_paths, path) {
+      if any(xs: acc_paths, predicate: fn(p) { p == path }) {
+        acc_paths
+      } else {
+        list_snoc_item(xs: acc_paths, item: path)
+      }
+    }
+  )
+}
+
+fn rust_source_path_has_prefix(path: String, prefix: String) -> Bool {
+  starts_with(s: path, prefix: prefix)
+}
+
+fn path_matches_discovery_prefix_hint(path: String) -> Bool {
+  any(
+    xs: rust_source_discovery_prefix_hints,
+    predicate: fn(prefix) { rust_source_path_has_prefix(path: path, prefix: prefix) }
+  )
+}
+
+data residue_cssl_assembly_reason: String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
+
+data residue_cssl_assembly_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs leaves hand_maintained_stage0_filenames() -- i.e. compile_stage0() emits it, so the derived generated population claims it -- or a typed emit producer row deletes the hand file")
+
+data residue_module_path_index_reason: String = "hand_maintained_stage0_dirs lists module_path_index/ but file membership is not enumerated by any join authority yet"
+
+data residue_module_path_index_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
+
+fn residue_row(path: String, reason: String, dissolution: DissolutionCondition) -> RustSourceLifecycleRow {
+  RustSourceLifecycleRow {
+    path: path,
+    roles: [],
+    maintenance_dispositions: [
+      HandScaffold { reason: reason as NonEmptyStr, dissolution: dissolution }
+    ]
+  }
+}
+
+data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
+  residue_row(
+    path: "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
+    reason: residue_cssl_assembly_reason,
+    dissolution: residue_cssl_assembly_dissolution
+  ),
+  residue_row(
+    path: "src/v1/stage0/src/module_path_index/mod.rs",
+    reason: residue_module_path_index_reason,
+    dissolution: residue_module_path_index_dissolution
+  ),
+  residue_row(
+    path: "src/v1/stage0/src/module_path_index/index.rs",
+    reason: residue_module_path_index_reason,
+    dissolution: residue_module_path_index_dissolution
+  ),
+  residue_row(
+    path: "src/v1/stage0/src/module_path_index/parsed_dag_file.rs",
+    reason: residue_module_path_index_reason,
+    dissolution: residue_module_path_index_dissolution
+  )
+]
+
+fn residue_lifecycle_repo_paths() -> List<String> {
+  list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
+}
+
+// The classified population that does NOT come from the observed tree: every path some
+// authority names outright. `derived_generated_stage0_repo_paths` is defined as the observed
+// stage0 direct children this list does not claim, so the two are disjoint by construction --
+// which is why `derived_generated_hand_disjoint_holds`, the check that used to assert exactly
+// that over two hand rosters, is deleted rather than kept green (DESIGN 4b: a climb dissolves
+// the production machinery it obsoletes).
+fn non_generated_classified_repo_paths() -> List<String> {
+  let with_residue = list_concat_unique(
+    acc: derived_hand_maintained_stage0_repo_paths(),
+    items: residue_lifecycle_repo_paths()
+  )
+  list_concat_unique(acc: with_residue, items: generated_artifact_stage0_src_repo_paths())
+}
+
+fn file_grain_lifecycle_repo_paths(
+  emitted_stage0_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> List<String> {
+  list_concat_unique(
+    acc: non_generated_classified_repo_paths(),
+    items: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+      tracked_paths: tracked_paths
+    )
+  )
+}
+
+// FIXTURE GENERATED PATHS ARE SYNTHETIC AND DELIBERATELY SO. The generated population is now
+// a function of the tracked list, so a fixture that derived its tracked list from the
+// classified population would be circular -- it would observe only what it already named and
+// could never exercise the filter. These two names are not real files; they exercise the
+// derivation (direct-child .rs under the stage0 root, claimed by no authority) without
+// coupling the witnesses to whichever real modules happen to be emitted today.
+data witness_generated_stage0_fixture_paths: List<String> = [
+  stage0_src_repo_path(filename: "witness_generated_fixture_a.rs"),
+  stage0_src_repo_path(filename: "witness_generated_fixture_b.rs")
+]
+
+fn witness_fixture_tracked_paths() -> List<String> {
+  list_concat_unique(
+    acc: non_generated_classified_repo_paths(),
+    items: witness_generated_stage0_fixture_paths
+  )
+}
+
+fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
+  let classified = witness_fixture_tracked_paths()
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: list_concat_unique(acc: classified, items: [extra_path]),
+    prior_tracked_rust_repo_paths: classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
+  }
+}
+
+fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
+  let prior_file_grain = list_concat_unique(
+    acc: witness_generated_stage0_fixture_paths,
+    items: residue_lifecycle_repo_paths()
+  )
+  let classified = witness_fixture_tracked_paths()
+  let prior_classified = prior_file_grain
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: classified,
+    prior_tracked_rust_repo_paths: prior_classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
+  }
+}
+
+fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
+  let classified = witness_fixture_tracked_paths()
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: classified,
+    prior_tracked_rust_repo_paths: classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
+  }
+}
+
+// The standing-unclassified fixture, and the reason it is authored separately from the
+// sibling constructors above rather than being one more `extra_path` argument to them.
+//
+// count_newly_unclassified_tracked is checked BEFORE count_tracked_unclassified in the verdict
+// fold, and it is the narrower predicate: a tracked path that is unclassified AND absent from
+// prior_tracked. So every constructor that adds its extra path to tracked alone lands on
+// DerivedNewlyUnclassified and can never reach the arm below it. That is not a second way of
+// exercising the same axis -- it is the reason DerivedUnclassifiedTracked had no discriminating
+// input at all, while a witness NAMED for the unclassified axis asserted the newly arm and
+// passed. This constructor puts the planted path in BOTH tracked and prior_tracked, which is the
+// only shape that reaches the standing arm, and it is what makes the two arms distinguishable by
+// execution rather than by reading the fold.
+//
+// Controlled fixture, not a tree-copied pin: the input population and the expected population are
+// authored independently here (one planted path in, exactly one counted out), so automating the
+// expected value would not collapse the assertion to measure() == measure().
+fn witness_standing_unclassified_observation(planted_path: String) -> RustManifestObserved {
+  let classified = witness_fixture_tracked_paths()
+  let tracked = list_concat_unique(acc: classified, items: [planted_path])
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: tracked,
+    prior_tracked_rust_repo_paths: tracked,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
+  }
+}
+
+fn first_classified_repo_path(classified: List<String>) -> String {
+  fold_list(
+    xs: classified,
+    empty: "",
+    cons: fn(first, path) {
+      if first == "" {
+        path
+      } else {
+        first
+      }
+    }
+  )
+}
+
+fn witness_duplicate_tracked_observation() -> RustManifestObserved {
+  let classified = witness_fixture_tracked_paths()
+  let dup_path = first_classified_repo_path(classified: classified)
+  let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: tracked_with_dup,
+    prior_tracked_rust_repo_paths: classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
+  }
+}
+
+fn declaration_ref_populated(ref: DeclarationRef) -> Bool {
+  !(ref.module_path == "") && !(ref.decl_name == "")
+}
+
+fn rust_maintenance_disposition_well_formed(disposition: RustMaintenanceDisposition) -> Bool {
+  match disposition {
+    Generated { authority: ref } => declaration_ref_populated(ref: ref)
+    EmitFrom { authority: ref } => declaration_ref_populated(ref: ref)
+    DeleteWith { roadmap_node: node } => !((node as String) == "")
+    RetainedKernel { reason: reason } => !(reason == "")
+    HandScaffold { reason: reason, dissolution: d } =>
+      !((reason as String) == "") && !(dissolution_description(condition: d) == "")
+  }
+}
+
+data lifecycle_row_well_formed_query_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.stage0_rust_source_lifecycle_scaffold",
+    decl_name: "lifecycle_row_well_formed",
+    field: WholeDeclaration
+  }
+}
+
+data lifecycle_row_well_formed_query_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1/v1_deletion_plan.dag)")
+
+fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
+  !(row.path == "")
+    && length(xs: row.maintenance_dispositions) > 0
+    && fold_list(
+      xs: row.maintenance_dispositions,
+      empty: true,
+      cons: fn(ok, disposition) {
+        ok && rust_maintenance_disposition_well_formed(disposition: disposition)
+      }
+    )
+}
+
+fn rust_source_lifecycle_residue_rows_well_formed() -> Bool {
+  fold_list(
+    xs: rust_source_lifecycle_residue_rows,
+    empty: true,
+    cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
+  )
+}
+
+fn list_paths_all_unique(paths: List<String>) -> Bool {
+  fold_list(
+    xs: paths,
+    empty: true,
+    cons: fn(ok, path) { ok && path_occurrence_count(paths: paths, target: path) == 1 }
+  )
+}
+
+fn rust_source_lifecycle_residue_paths_unique() -> Bool {
+  list_paths_all_unique(paths: residue_lifecycle_repo_paths())
+}
+
+// Both checks range over `non_generated_classified_repo_paths()` rather than the whole
+// lifecycle population, because the derived half can no longer violate either: every member
+// comes from one filter over the observed tracked list, so it is unique if the observation is
+// (the observation's own duplicates are reported by `count_observed_manifest_duplicate_excess`,
+// which is where that defect belongs) and it is under `stage0_src_repo_prefix` by the filter
+// itself, which no discovery-prefix hint matches.
+fn duplicate_exact_paths_zero_holds() -> Bool {
+  list_paths_all_unique(paths: non_generated_classified_repo_paths())
+}
+
+fn partition_crate_paths_complete_holds() -> Bool {
+  length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_rows())
+}
+
+data cssl_seed_linked_closure_assembly_repo_path: String = stage0_src_repo_path(
+  filename: "cssl_seed_linked_closure_assembly.rs"
+)
+
+fn residue_hand_maintained_overlap_repo_paths() -> List<String> {
+  filter(
+    xs: residue_lifecycle_repo_paths(),
+    predicate: fn(residue_path) {
+      any(
+        xs: derived_hand_maintained_stage0_repo_paths(),
+        predicate: fn(derived_path) { derived_path == residue_path }
+      )
+    }
+  )
+}
+
+fn classified_residue_disjoint_holds() -> Bool {
+  residue_hand_maintained_overlap_repo_paths() == [cssl_seed_linked_closure_assembly_repo_path]
+}
+
+fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
+  !any(
+    xs: non_generated_classified_repo_paths(),
+    predicate: fn(file_path) { path_matches_discovery_prefix_hint(path: file_path) }
+  )
+}
+
+fn manifest_state_verdict_scaffold_holds() -> Bool {
+  match rust_source_manifest_state_verdict(observation: current_stage0_rust_source_observation()) {
+    ManifestStateScaffoldOk => true
+    ManifestStateScaffoldRefused { cause: _ } => false
+  }
+}
+
+fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
+  partition_crate_paths_complete_holds()
+    && classified_residue_disjoint_holds()
+    && file_grain_paths_avoid_discovery_prefix_holds()
+    && duplicate_exact_paths_zero_holds()
+    && rust_source_lifecycle_residue_rows_well_formed()
+    && rust_source_lifecycle_residue_paths_unique()
+    && generated_artifact_layout_overlap_subset_of_hand_maintained_holds()
+    && generated_artifact_stage0_src_disposition_rows_well_formed()
+    && generated_artifact_stage0_src_disjoint_from_residue_holds()
+    && seed_growth_roster_well_formed_gate_holds()
+}
+
+fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
+  stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
+    && manifest_state_verdict_scaffold_holds()
+}
+
+data unclassified_axis_rung_note: String = "RUNG DROP, DECLARED (2026-08-20). SUBJECT: the unclassified axis -- count_tracked_unclassified here, and unclassified_paths in gunbc.stage0_rust_lifecycle_totality, which answer the same question over the same two authorities. DECLARED RUNG: mitigatable. It is NOT mechanically preventable, and it was reported as though it were by carriers that derive the axis correctly while nothing executing can make it fire.\n\nMEASURED AT 026a709a71636d60df325f9183b78febff22901d, by execution, both directions. LIVE: current_stage0_rust_source_observation() through lifecycle_totality_receipt gives tracked=270, generated=126, disposition=7, stale=0, UNCLASSIFIED=137, paths enumerated. HERMETIC: the same predicate over lifecycle_totality_witness_observation(extra_paths: []) gives ZERO. The predicate is not wrong; the subject is. That constructor sets tracked := classified ++ extra_paths, so unclassified_paths is IDENTICALLY extra_paths -- confirmed by planting a path that does not exist on disk and getting back exactly it. A hermetic witness of this carrier can only discover what its author already typed into the call.\n\nTHE LIVE ARM DOES NOT RESCUE IT, FOR TWO REASONS THAT ARE INDEPENDENT OF EACH OTHER. First, it executes nowhere: both files reaching it declare ReadsLiveTree, which the required floor declines, and their exclusion rows name bin_witness_wet_entries as their real executing consumer -- a roster of 94 rows across 38 entry files whose consumer, the ci.yml wet job, was deleted at 611fd02770. Second, and worse, the live witnesses would not detect the frontier even when run: measured under claim_batch --wet at this ref, all three PASS at 137 unclassified. One accepted DerivedUnclassifiedTracked with a positive count OR CargoTargetMissingLifecycleDisposition OR ManifestStateScaffoldOk -- three mutually contradictory states, so it was green at 137 and would have been green at 0. The other asserted only that two Bools are false, which any refusal satisfies, including a git outage. Both disjunctions are repaired in this change; that repair removes a fabricated green and does NOT change the rung, because the witnesses still execute nowhere.\n\nWHAT THIS CHANGE ACTUALLY BUYS, stated narrowly so it is not mistaken for the climb: DerivedUnclassifiedTracked now has a discriminating RED that runs on the required floor. It had none. count_newly_unclassified_tracked is checked first and is the narrower predicate, so every pre-existing constructor reached the newly arm and the standing arm was unreachable by any executing input -- including from a witness named for the unclassified axis that asserted the newly arm and passed. That is one arm of one carrier made falsifiable. The AXIS is still measured over a manufactured subject.\n\nCEILING AND WHY: mechanically preventable is not the ceiling and structural impossibility is. Classification is decidable and fully modeled -- a tracked path either is or is not a member of two closed authorities -- so the reachable end state is that an unclassified file cannot be WRITTEN, not that a check finds it. That is section 4b's construction rung and it is a property of the file, not of two lists that can both omit it.\n\nNEXT-RUNG TRIGGER, and it is deliberately not a wall: an executing consumer for the live observation. Not a restored wet lane by itself -- ReadsLiveTree declines these files from the floor independently, so a wet lane alone leaves them off. Until some executing path reaches the real tracked population, a construction wall over the live arm would be a SECOND unexecuted artifact sitting at exactly this rung while looking like a climb, which is the rung inflation 4b names as worse than sitting low. The 137 is a decision about what this repository intends to classify and is routed to the operator as a discovery rather than landed as a refusal.\n\nRESTORATION: this row is rewritten as an ordinary description -- not amended -- when the axis has an executing consumer over the live population, at which point the honest rung can be re-measured instead of re-argued."
+
+data unclassified_axis_rung_restoration: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the unclassified axis acquires an executing consumer over the LIVE tracked population (not a manufactured observation), at which point unclassified_axis_rung_note is rewritten in one pass and this row deletes with it")

@@ -53,13 +53,13 @@ fn executor_job_for_node(node: Node) -> ExecutorJob {
   ExecutorJob { node: node }
 }
 
-fn executor_jobs_for_frontier(frontier: RunnableFrontier) -> List<ExecutorJob> {
+fn executor_jobs_for_frontier(frontier: RunnableFrontier<Node>) -> List<ExecutorJob> {
   fold(frontier.ready, init: [], f: fn(jobs, node) {
     list_snoc_item(xs: jobs, item: executor_job_for_node(node: node))
   })
 }
 
-fn executor_batch_for_frontier(frontier: RunnableFrontier) -> ExecutorBatch {
+fn executor_batch_for_frontier(frontier: RunnableFrontier<Node>) -> ExecutorBatch {
   ExecutorBatch {
     jobs: executor_jobs_for_frontier(frontier: frontier)
   }
@@ -107,7 +107,7 @@ fn parallel_executor_step_plan_from_dependencies(
   )
 }
 
-fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan) -> ExecutorRunPlan {
+fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan<Node>) -> ExecutorRunPlan {
   match scheduler_plan {
     SchedulerPlanComplete { layers: layers, scheduled: scheduled_nodes } => ExecutorRunComplete {
       batches: executor_batches_for_layers(layers: layers),
@@ -126,7 +126,7 @@ fn executor_plan_from_scheduler_plan(scheduler_plan: SchedulerPlan) -> ExecutorR
     }
   }
 }
-fn parallel_executor_plan_from_layers(layers: List<ReadinessLayer>) -> ExecutorRunPlan {
+fn parallel_executor_plan_from_layers(layers: List<ReadinessLayer<Node>>) -> ExecutorRunPlan {
   let batches = executor_batches_for_layers(layers: layers)
   ExecutorRunComplete {
     batches: batches,
@@ -138,7 +138,7 @@ fn executor_batch_contains_node(batch: ExecutorBatch, node: Node) -> Bool {
   contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
 }
 
-fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<ReadinessLayer>) -> Bool {
+fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<ReadinessLayer<Node>>) -> Bool {
   fold(layers, init: true, f: fn(ok, layer) {
     ok && contains(
       xs: batches,
@@ -148,7 +148,7 @@ fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: Lis
   })
 }
 
-fn executor_batches_for_layers(layers: List<ReadinessLayer>) -> List<ExecutorBatch> {
+fn executor_batches_for_layers(layers: List<ReadinessLayer<Node>>) -> List<ExecutorBatch> {
   fold(layers, init: [], f: fn(acc, layer) {
     executor_append_batch(
       batches: acc,

@@ -1,0 +1,253 @@
+module test.claim.grounded_principal_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_runner_fiction_not_in_roster() -> Bool {
+  !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
+    && match fleet_posix_account_from_name(name: "runner" as NonEmptyStr) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+test fn witness_ghrunner_is_ci_deploy_principal() -> Bool {
+  let deploy_name = grounded_posix_principal_name(p: ci_deploy_srv1_access.principal)
+  let roster_name = grounded_posix_principal_name(p: fleet_posix_ci_runner_principal())
+  deploy_name == "ghrunner" && deploy_name == roster_name
+}
+
+test fn witness_operator_is_manual_deploy_principal() -> Bool {
+  let deploy_name = grounded_posix_principal_name(p: ci_deploy_srv1_operator_access.principal)
+  let roster_name = grounded_posix_principal_name(p: fleet_posix_operator_principal())
+  deploy_name == "briansrls" && deploy_name == roster_name
+}
+
+test fn witness_briansrls_fork_dissolved() -> Bool {
+  host_identity_operator_principal_name() == "briansrls"
+    && tailscale_acl_operator_email() == fleet_operator_email
+    && operator_principal_member() == fleet_operator_gcp_iam_member()
+    && string_contains(
+      s: operator_principal_member(),
+      pattern: host_identity_operator_principal_name() as String
+    )
+}
+
+test fn witness_declared_probe_names_principal() -> Bool {
+  posix_declared_probe_names_principal(p: fleet_posix_ci_runner_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_operator_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_root_principal())
+    && posix_declared_probe_names_principal(p: fleet_posix_srv3_host_administrator_principal())
+}
+
+test fn witness_declared_probe_mismatch_red() -> Bool {
+  let p = fleet_posix_ci_runner_principal()
+  let poisoned = GroundedPosixPrincipal {
+    posix: p.posix,
+    sudo_grants: p.sudo_grants,
+    declared_probe: PosixAccountDeclaredProbe {
+      probed_at: p.declared_probe.probed_at,
+      probe_command: "id runner",
+      host: p.declared_probe.host,
+    },
+  }
+  !posix_declared_probe_names_principal(p: poisoned)
+}
+
+test fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
+  let principal = fleet_posix_ci_runner_principal()
+  let grounded = grounded_principal_privileged_commands(p: principal)
+  let composed = srv1_live_deploy_privileged_commands()
+  length(grounded) == 6
+    && length(composed) == 6
+    && composed == grounded
+    && grounded.first().grant.command_path == deploy_access_apt_get_binary_path
+    && !any(grounded, c => c.grant.command_path == "/usr/bin/bash")
+    && any(
+      grounded,
+      c =>
+        if c.grant.command_path != "/usr/bin/tailscale" {
+          false
+        } else {
+          match c.grant.probe {
+            NopasswdGrantListCheck => true
+            NopasswdExecuteCheck { check_argv: _ } => false
+          }
+        }
+    )
+}
+
+test fn witness_preflight_shell_is_dash_safe() -> Bool {
+  deploy_preflight_shell_header == "set -eu"
+    && !string_contains(s: deploy_preflight_shell_header, pattern: "pipefail")
+}
+
+test fn witness_gha_runner_context_is_not_os_account() -> Bool {
+  context_name(context: Runner) == "runner"
+    && !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
+}
+
+test fn witness_operator_secret_binding_uses_fleet_gcp_member() -> Bool {
+  operator_tailscale_acl_secret_bindings.first().member == fleet_operator_gcp_iam_member()
+    && operator_principal_member() == fleet_operator_gcp_iam_member()
+}
+
+fn srv1_host_observation() -> DeployTargetHostObservation {
+  deploy_target_host_fixture_observation(
+    hostname: "srv1",
+    runner_name: "actions-runner@srv1-01.service"
+  )
+}
+
+test fn witness_ci_runner_grounded_access_gate_permits() -> Bool {
+  match deploy_mutation_gate(
+    access: ci_deploy_srv1_access,
+    fixture_actor: Present {
+      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+    },
+    fixture_host: Present { value: srv1_host_observation() }
+  ) {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+test fn witness_operator_grounded_access_gate_permits() -> Bool {
+  match deploy_mutation_gate(
+    access: ci_deploy_srv1_operator_access,
+    fixture_actor: Present {
+      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_operator_access)
+    },
+    fixture_host: Present { value: srv1_host_observation() }
+  ) {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+test fn witness_deploy_authorization_query_grounds_expected_principal() -> Bool {
+  let query = deploy_access_authorization_query(access: ci_deploy_srv1_access)
+  query.expected_principal == "ghrunner"
+    && query.envelope.grants.count() == 6
+}
+
+test fn witness_deploy_preflight_plan_has_whoami_plus_privileged_probes() -> Bool {
+  let plan = deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  plan.steps.count() == 7
+}
+
+test fn witness_deploy_preflight_plan_first_step_reads_principal() -> Bool {
+  let first = deploy_access_preflight_plan(access: ci_deploy_srv1_access).steps.first()
+  first == deploy_access_principal_probe_step()
+}
+
+test fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
+  match deploy_access_grant_admits_probe(
+    access: ci_deploy_srv1_access,
+    cmd: deploy_access_apt_get_privileged_command()
+  ) {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
+  match deploy_access_grant_admits_probe(
+    access: ci_deploy_srv1_access,
+    cmd: PrivilegedCommand {
+      grant: PosixSudoGrant {
+        command_path: "/usr/bin/bash" as NonEmptyStr,
+        probe: NopasswdExecuteCheck { check_argv: "--version" as NonEmptyStr },
+      }
+    }
+  ) {
+    Permit => false
+    Deny { refusal: _ } => true
+  }
+}
+
+fn witness_srv1_job_principal_resolves_from_runner() -> Bool {
+  match fleet_deploy_job_principal(runner: srv1_ci_deploy_runner_principal) {
+    Present { value: p } => grounded_posix_principal_name(p: p) == "ghrunner"
+    Absent => false
+  }
+}
+
+test fn witness_deploy_job_principal_unresolved_refuses_not_maps_ghrunner() -> Bool {
+  let poisoned = DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr }
+  match fleet_deploy_job_principal(runner: poisoned) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_unknown_job_user_does_not_silent_map_ci_runner() -> Bool {
+  let poisoned = DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr }
+  match deploy_access_or_refusal_for_runner(
+    runner: poisoned,
+    host: srv1_host,
+    transport: LocalShell,
+  ) {
+    DeployAccessJobPrincipalRefused { refusal: r } => r.job_user == "runner"
+    DeployAccessReady { access: _ } => false
+  }
+}
+
+test fn witness_two_phase_principal_derives_job_user() -> Bool {
+  witness_srv1_job_principal_resolves_from_runner()
+    && srv1_ci_deploy_runner_principal.unit_user == "root"
+    && srv1_ci_deploy_runner_principal.job_user == "ghrunner"
+    && grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) == srv1_ci_deploy_runner_principal.job_user
+}
+
+// The host administrator receipt is srv3's, and the ROLE key cannot be answered without a host.
+// Both halves are asserted here because generalizing the key from FleetAccountSrv3Host is exactly
+// what would let a srv4 or DGX Spark caller receive srv3's probe under a role-spelled name.
+// Discriminating RED: restore the host-free arm to PrincipalGrounded and the second conjunct
+// fails; re-add the "ubuntu" arm to fleet_posix_account_from_name and the third fails.
+test fn witness_host_administrator_receipt_is_srv3_and_role_key_needs_a_host() -> Bool {
+  grounded_posix_principal_name(p: fleet_posix_srv3_host_administrator_principal()) == "ubuntu"
+    && match fleet_posix_principal(key: FleetAccountHostAdministrator) {
+      PrincipalRequiresHostScope { principal: _ } => true
+      PrincipalGrounded { principal: _ } => false
+      PrincipalUnallocated { occurrence: _ } => false
+      PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => false
+      PrincipalUnobserved { allocation: _ } => false
+      PrincipalDrifted { allocation: _, first: _, more: _ } => false
+    }
+    && !fleet_posix_account_exists(name: "ubuntu" as NonEmptyStr)
+}
+
+test fn witness_deploy_sudo_grants_refuse_generic_movers() -> Bool {
+  deploy_access_sudo_grants_lint_ok(access: ci_deploy_srv1_access)
+}
+
+test fn witness_blessed_helper_grant_absent_from_roster() -> Bool {
+  !any(
+    fleet_posix_ci_runner_sudo_grants(),
+    g => g.command_path == gunbc_deploy_privileged_helper_path
+  )
+}
+
+test fn witness_unknown_sudo_grant_command_lint_red() -> Bool {
+  !posix_sudo_grant_generic_mover_lint_ok(
+    g: PosixSudoGrant {
+      command_path: "/usr/bin/bash" as NonEmptyStr,
+      probe: NopasswdExecuteCheck { check_argv: "--version" },
+    }
+  )
+}
+
+test fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
+  let projected = posix_sudo_grant_to_effect_grant(
+    g: PosixSudoGrant {
+      command_path: fleet_apt_get_binary_path,
+      probe: NopasswdExecuteCheck { check_argv: "--help" },
+    }
+  )
+  let expected = filesystem_position(path: ["usr", "bin", "apt-get"])
+  let root = grant_root(g: projected)
+  verb_eq(a: grant_verb(g: projected), b: verb_of_effect_shape(shape: ExecuteEffect))
+    && verb_eq(a: grant_verb(g: projected), b: Execute)
+    && position_under(target: expected, root: root)
+    && position_under(target: root, root: expected)
+}

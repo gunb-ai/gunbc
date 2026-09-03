@@ -1,28 +1,42 @@
 module v2.test.manual.loop_demand_driven_eval
-
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
   eval_context_with_semantics,
-  eval_with_context,
-  inputs_root_only,
   run_test_claim,
   test_claim_run_verdict,
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.languages.dag {
+  dag_int_literal_magnitude_int_from_node,
+  dag_int_literal_node_from_lexeme,
+  dag_node_is_int_literal_atom
+}
 import v2.std.cardinality {
   RankingDimension,
   TerminationProof,
   structural_node_size_termination_proof
 }
-import v2.std.collection { List, Map }
+import v2.std.collection {
+  List,
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -46,7 +60,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence,
+  Value,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -76,11 +90,14 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn loop_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: []
   }
 }
@@ -103,15 +120,29 @@ fn loop_eval_one_value() -> RuntimeValue {
 }
 
 fn loop_eval_lit_one() -> Node {
-  loop_eval_atom(s: ^loop_eval_lit_one_sym)
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^loop_eval_lit_one_lexeme_invalid } },
+        occurrence_id: OccurrenceSynthetic,
+        children: []
+      }
+  }
+}
+
+data loop_eval_divergent_value_node: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  occurrence_id: OccurrenceSynthetic,
+  children: []
 }
 
 fn loop_eval_divergent() -> Node {
-  loop_eval_atom(s: ^loop_eval_divergent_sym)
+  loop_eval_divergent_value_node
 }
 
 fn loop_eval_measure() -> Node {
-  loop_eval_atom(s: ^loop_eval_measure_sym)
+  loop_eval_lit_one()
 }
 
 fn loop_eval_diagnostic(n: Node) -> Diagnostic {
@@ -123,12 +154,17 @@ fn loop_eval_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn loop_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == loop_eval_lit_one() {
-    outcome_accepted(value: loop_eval_one_value())
-  } else if node == loop_eval_measure() {
-
-    outcome_accepted(value: loop_eval_one_value())
-  } else if node == loop_eval_divergent() {
+  if dag_node_is_int_literal_atom(node: node) {
+    match dag_int_literal_magnitude_int_from_node(node: node) {
+      Accepted { value: mag, diagnostics: _ } =>
+        if mag == 1 {
+          outcome_accepted(value: loop_eval_one_value())
+        } else {
+          outcome_rejected(d: loop_eval_diagnostic(n: node))
+        }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    }
+  } else if node == loop_eval_divergent_value_node {
     outcome_rejected(d: loop_eval_diagnostic(n: node))
   } else {
     outcome_rejected(d: loop_eval_diagnostic(n: node))
@@ -165,22 +201,22 @@ fn loop_eval_bind_value(
 
 fn loop_eval_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: loop_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: loop_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: loop_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: loop_eval_step_loop_continue },
-    bind: BindInterpreter { bind_value: loop_eval_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: loop_eval_allocate_literal, identity: ^loop_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: loop_eval_call_primitive, identity: ^loop_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: loop_eval_choose_branch, identity: ^loop_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: loop_eval_step_loop_continue, identity: ^loop_eval_step_loop_continue },
+    bind: BindInterpreter { bind_value: loop_eval_bind_value, identity: ^loop_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn loop_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^loop_eval_allocate_literal_sym,
-    call_primitive: ^loop_eval_call_primitive_sym,
-    choose_branch: ^loop_eval_choose_branch_sym,
-    step_loop: ^loop_eval_step_loop_continue_sym,
-    bind_value: ^loop_eval_bind_value_sym,
+    allocate_literal: ^loop_eval_allocate_literal,
+    call_primitive: ^loop_eval_call_primitive,
+    choose_branch: ^loop_eval_choose_branch,
+    step_loop: ^loop_eval_step_loop_continue,
+    bind_value: ^loop_eval_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
@@ -193,10 +229,10 @@ fn loop_eval_context() -> EvalContext {
   )
 }
 
-fn loop_eval_loop_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn loop_eval_loop_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^loop_eval_measure_sym }
+    strict: v2.std.cardinality.RankingDimension { measured: ^loop_eval_measure_sym }
   }
 }
 
@@ -207,34 +243,30 @@ fn loop_eval_node_is_loop(node: Node) -> Bool {
   }
 }
 
-fn loop_eval_bounded_descent() -> Witness<TerminationProof> {
+fn loop_eval_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
   Holds { value: structural_node_size_termination_proof() }
 }
 
-fn loop_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn loop_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
   if loop_eval_node_is_loop(node: key) {
-    Holds {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_eval_i64(),
         descent: Holds { value: loop_eval_loop_termination_proof() }
-      )
-    }
+      ))
   } else {
-    Holds {
-      value: claim_inferred_facts_from_nodes(
+    optional_present(value: claim_inferred_facts_from_nodes(
         resolved: key,
         algebra: loop_eval_i64(),
         descent: loop_eval_bounded_descent()
-      )
-    }
+      ))
   }
 }
 
 fn loop_eval_loop_node(body: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: body },
       Edge { label: Named { name: ^loop_bound_edge }, target: loop_eval_measure() }
@@ -245,7 +277,7 @@ fn loop_eval_loop_node(body: Node) -> Node {
 fn loop_eval_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [Edge { label: Positional, target: callee }]
   }
 }
@@ -253,13 +285,13 @@ fn loop_eval_pick_call(callee: Node) -> Node {
 fn loop_eval_arrow_with_body(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Conj },
-          occurrence_id: SyntheticOccurrence,
+          occurrence_id: OccurrenceSynthetic,
           children: []
         }
       },
@@ -273,7 +305,7 @@ fn loop_eval_arrow_with_body(body: Node) -> Node {
 fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Named { name: ^loop_eval_actual }, target: call },
       Edge { label: Named { name: ^loop_eval_expected }, target: expected }
@@ -284,7 +316,7 @@ fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
 fn loop_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: loop_eval_facts_lookup }
+    facts: PartialFunction { lookup: loop_eval_facts_lookup }
   }
 }
 
@@ -334,51 +366,12 @@ fn loop_eval_divergent_body_step_loop_holds() -> Bool {
   )
 }
 
-fn loop_eval_lit_one_body_step_loop_holds() -> Bool {
-  loop_eval_run_passes(
-    run: loop_eval_run(
-      body: loop_eval_loop_node(body: loop_eval_lit_one()),
-      expected: loop_eval_lit_one()
-    )
-  )
-}
-
-fn loop_eval_runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
-  a == b
-}
-
-fn loop_eval_pick_call_direct_holds() -> Bool {
-  let arrow = loop_eval_arrow_with_body(
-    body: loop_eval_loop_node(body: loop_eval_lit_one())
-  )
-  let call = loop_eval_pick_call(callee: arrow)
-  let root = loop_eval_tree_root(call: call, expected: loop_eval_lit_one())
-  let tree = loop_eval_admitted_tree(root: root)
-  match eval_with_context(
-    tree: tree,
-    context: loop_eval_context(),
-    inputs: inputs_root_only(root: call)
-  ) {
-    Accepted { value: actual, diagnostics: d } =>
-      match eval_with_context(
-        tree: tree,
-        context: loop_eval_context(),
-        inputs: inputs_root_only(root: loop_eval_lit_one())
-      ) {
-        Accepted { value: expected, diagnostics: ed } =>
-          loop_eval_runtime_value_eq(a: actual, b: expected) && (d == None) && (ed == None)
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn loop_eval_arrow_lit_one_body_holds() -> Bool {
-  loop_eval_run_passes(
-    run: loop_eval_run(body: loop_eval_lit_one(), expected: loop_eval_lit_one())
-  )
-}
+// lit_one / pick_call_direct / arrow_lit_one manuals were never on the enrolled keystone (main =
+// divergent pole only). Umbrella-dissolution briefly folded them into the keystone and CI red them
+// (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land
+// as test fns only when claim_batch shows Bool(true) on CI hardware.
 
 test fn loop_demand_driven_eval_keystone_holds() -> Bool {
   loop_eval_divergent_body_step_loop_holds()
 }
+

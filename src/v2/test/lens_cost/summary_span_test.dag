@@ -1,0 +1,114 @@
+module v2.test.lens_cost.summary_span
+
+import v2.lens.cost.expr { CostAdd, CostConst, CostExpr, CostMax, cost_const }
+import v2.lens.cost.summary {
+  ComplexitySummary,
+  summary_parallel,
+  summary_sequential
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.nat { Succ, Zero }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn unit_cost_expr() -> CostExpr {
+  cost_const(value: Succ { prev: Zero })
+}
+
+fn unit_complexity_summary() -> ComplexitySummary {
+  ComplexitySummary {
+    work: unit_cost_expr(),
+    span: unit_cost_expr()
+  }
+}
+
+fn triple_sequential_shape() -> ComplexitySummary {
+  summary_sequential(
+    left: unit_complexity_summary(),
+    right: summary_sequential(
+      left: unit_complexity_summary(),
+      right: unit_complexity_summary()
+    )
+  )
+}
+
+fn triple_parallel_shape() -> ComplexitySummary {
+  summary_parallel(
+    left: unit_complexity_summary(),
+    right: summary_parallel(
+      left: unit_complexity_summary(),
+      right: unit_complexity_summary()
+    )
+  )
+}
+
+fn is_pair_of_unit_costs(expr: CostExpr) -> Bool {
+  match expr {
+    CostAdd {
+      left: CostConst { value: Succ { prev: Zero } },
+      right: CostConst { value: Succ { prev: Zero } }
+    } => true
+    _ => false
+  }
+}
+
+fn is_triple_of_unit_costs(expr: CostExpr) -> Bool {
+  match expr {
+    CostAdd {
+      left: CostConst { value: Succ { prev: Zero } },
+      right: CostAdd {
+        left: CostConst { value: Succ { prev: Zero } },
+        right: CostConst { value: Succ { prev: Zero } }
+      }
+    } => true
+    _ => false
+  }
+}
+
+test fn sequential_summary_adds_work_and_span() -> Bool {
+  let left = unit_complexity_summary()
+  let right = unit_complexity_summary()
+  let combined = summary_sequential(left: left, right: right)
+  is_pair_of_unit_costs(expr: combined.work)
+    && is_pair_of_unit_costs(expr: combined.span)
+}
+
+test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
+  let left = unit_complexity_summary()
+  let right = unit_complexity_summary()
+  let combined = summary_parallel(left: left, right: right)
+  match combined.span {
+    CostMax { left: _, right: _ } =>
+      is_pair_of_unit_costs(expr: combined.work)
+    _ => false
+  }
+}
+
+test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
+  let sequential = triple_sequential_shape()
+  let parallel = triple_parallel_shape()
+  is_triple_of_unit_costs(expr: sequential.work)
+    && is_triple_of_unit_costs(expr: parallel.work)
+    && sequential.work == parallel.work
+    && sequential.span != parallel.span
+}
+
+test fn equal_work_span_operands_match_exactly() -> Bool {
+  let left = unit_complexity_summary()
+  let right = unit_complexity_summary()
+  let sequential = summary_sequential(left: left, right: right)
+  let parallel = summary_parallel(left: left, right: right)
+  match sequential.span {
+    CostAdd { left: seq_l, right: seq_r } =>
+      match parallel.span {
+        CostMax { left: par_l, right: par_r } =>
+          seq_l == par_l
+            && seq_r == par_r
+            && sequential.work == parallel.work
+            && sequential.span != parallel.span
+        _ => false
+      }
+    _ => false
+  }
+}

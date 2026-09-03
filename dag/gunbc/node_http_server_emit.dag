@@ -1,0 +1,365 @@
+module gunbc.node_http_server_emit
+
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
+import extdeps.uri_path { PathTemplate, LiteralToken, ParamToken }
+import extdeps.http.server {
+  HttpServerListenConfig,
+  ServedStaticRoute,
+  ServedStaticRouteTable,
+  MediaType,
+  media_type_wire_label,
+}
+import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
+import extdeps.languages.typescript.program {
+  TsProgram,
+  TsExpr,
+  TsStmt,
+  serialize_typescript_program,
+  ts_ident,
+  ts_lit_str,
+  ts_lit_backtick,
+  ts_lit_num,
+  ts_lit_regex,
+  ts_member,
+  ts_call,
+  ts_binop,
+  ts_field,
+  ts_quoted_field,
+  ts_object,
+  ts_array,
+  ts_arrow,
+  ts_block,
+  ts_const,
+  ts_expr_stmt,
+  ts_return,
+  ts_if,
+  ts_for_of,
+  ts_index,
+  ts_cond,
+  ts_prefix,
+  ts_spread,
+}
+
+// DISPOSITION (P5, UI-model migration): the belt-A ROADMAP dashboard emit is DELETED. Belt B (gunbc
+// serve / gunbc.roadmap_serve) retired it from deploy membership (live_deploy_spec_belt_b_note: the
+// service is `gunbc serve`, not an emitted server.js) and this PR proved the belt-B path end-to-end
+// by execution (GET / , /roadmap, /sandbox render; POST /dispatch and /sandbox/echo answer
+// in-process). Gone with it: the belt-A smuggled-exec dispatch route (BeltDispatchRouteConfig + the
+// execFile-gunbc handler — the very env-var-channel shell-out belt B dissolves to an in-process
+// call), the roadmap static route table, and every roadmap_dashboard_* emitter. This module
+// SURVIVES only for the gunbhub static-server emit (gunbhub_node_http_server_source, the sole live
+// consumer via dag/gunbc/instruments/emit_host_transport.dag) — a static server with no dispatch.
+// Its own dissolution trigger is gunbhub's migration to belt B (gunbc serve), the named follow-on
+// (OUT OF SCOPE here: gunbhub_serve). Not a silent zombie: the roadmap emit is removed, not merely
+// marked, and the remaining consumer is named.
+
+type NodeHttpStaticServerSpec {
+  service_name: String
+  routes: ServedStaticRouteTable
+  listen: HttpServerListenConfig
+}
+
+fn emit_http_method_label(method: HttpMethod) -> String {
+  match method {
+    GET => "GET"
+    POST => "POST"
+    PUT => "PUT"
+    PATCH => "PATCH"
+    DELETE => "DELETE"
+    HEAD => "HEAD"
+    OPTIONS => "OPTIONS"
+  }
+}
+
+fn js_regex_escape_literal(s: String) -> String {
+  let s1 = join(split(s: s, delimiter: "\\"), "\\\\")
+  let s2 = join(split(s: s1, delimiter: "."), "\\.")
+  let s3 = join(split(s: s2, delimiter: "+"), "\\+")
+  let s4 = join(split(s: s3, delimiter: "?"), "\\?")
+  let s5 = join(split(s: s4, delimiter: "*"), "\\*")
+  let s6 = join(split(s: s5, delimiter: "("), "\\(")
+  let s7 = join(split(s: s6, delimiter: ")"), "\\)")
+  let s8 = join(split(s: s7, delimiter: "^"), "\\^")
+  let s9 = join(split(s: s8, delimiter: "$"), "\\$")
+  let s10 = join(split(s: s9, delimiter: "["), "\\[")
+  let s11 = join(split(s: s10, delimiter: "]"), "\\]")
+  let s12 = join(split(s: s11, delimiter: "\{"), "\\\{")
+  let s13 = join(split(s: s12, delimiter: "\}"), "\\\}")
+  let s14 = join(split(s: s13, delimiter: "|"), "\\|")
+  s14
+}
+
+fn emit_path_template_regex_source(template: PathTemplate) -> String {
+  let segs = map(xs: template.tokens, f: tok =>
+    match tok {
+      LiteralToken { text: t } => js_regex_escape_literal(s: t)
+      ParamToken { name: _ } => "[^\\/]+"
+    }
+  )
+  if count(xs: segs) == 0 {
+    "^\\/$"
+  } else {
+    concat("^\\/", concat(join(segs, "\\/"), "$"))
+  }
+}
+
+fn emit_static_route_expr(route: ServedStaticRoute) -> TsExpr {
+  let method = emit_http_method_label(method: route.method)
+  let re = emit_path_template_regex_source(template: route.path_pattern)
+  let ct = media_type_wire_label(m: route.content_type)
+  ts_object([
+    ts_field(key: "method", value: ts_lit_str(value: method)),
+    ts_field(key: "pathRe", value: ts_lit_regex(source: re)),
+    ts_field(key: "body", value: ts_lit_backtick(value: route.body)),
+    ts_field(key: "contentType", value: ts_lit_str(value: ct)),
+    ts_field(key: "status", value: ts_lit_num(text: to_string(route.status_on_hit))),
+  ])
+}
+
+fn emit_static_route_exprs(routes: List<ServedStaticRoute>) -> List<TsExpr> {
+  map(xs: routes, f: r => emit_static_route_expr(route: r))
+}
+
+fn req_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: "req"), property: name)
+}
+
+fn res_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: "res"), property: name)
+}
+
+fn route_member(name: String) -> TsExpr {
+  ts_member(object: ts_ident(name: "route"), property: name)
+}
+
+fn process_env(key: String) -> TsExpr {
+  ts_index(
+    object: ts_member(object: ts_ident(name: "process"), property: "env"),
+    index: ts_lit_str(value: key)
+  )
+}
+
+fn node_http_match_handler_body() -> TsStmt {
+  ts_block(stmts: [
+    ts_expr_stmt(expr: ts_call(
+      callee: res_member(name: "writeHead"),
+      args: [
+        route_member(name: "status"),
+        ts_object(fields: [
+          ts_quoted_field(key: "Content-Type", value: route_member(name: "contentType")),
+        ]),
+      ]
+    )),
+    ts_expr_stmt(expr: ts_call(callee: res_member(name: "end"), args: [route_member(name: "body")])),
+    ts_return(expr: none),
+  ])
+}
+
+fn node_http_request_handler_block() -> TsStmt {
+  ts_block(stmts: concat([
+    ts_const(
+      name: "method",
+      value: ts_binop(left: req_member(name: "method"), op: "||", right: ts_lit_str(value: "GET"))
+    ),
+    ts_const(
+      name: "rawUrl",
+      value: ts_binop(left: req_member(name: "url"), op: "||", right: ts_lit_str(value: "/"))
+    ),
+    ts_const(
+      name: "path",
+      value: ts_binop(
+        left: ts_index(
+          object: ts_call(
+            callee: ts_member(object: ts_ident(name: "rawUrl"), property: "split"),
+            args: [ts_lit_str(value: "?")]
+          ),
+          index: ts_lit_num(text: "0")
+        ),
+        op: "||",
+        right: ts_lit_str(value: "/")
+      )
+    ),
+  ], [
+    ts_for_of(
+      var_name: "route",
+      iterable: ts_ident(name: "routes"),
+      body: ts_if(
+        cond: ts_binop(
+          left: ts_binop(
+            left: route_member(name: "method"),
+            op: "===",
+            right: ts_ident(name: "method")
+          ),
+          op: "&&",
+          right: ts_call(
+            callee: ts_member(object: route_member(name: "pathRe"), property: "test"),
+            args: [ts_ident(name: "path")]
+          )
+        ),
+        then: node_http_match_handler_body(),
+        else_stmt: none
+      )
+    ),
+    ts_const(
+      name: "pathRoutes",
+      value: ts_call(
+        callee: ts_member(object: ts_ident(name: "routes"), property: "filter"),
+        args: [
+          ts_arrow(
+            params: ["r"],
+            body: ts_expr_stmt(expr: ts_call(
+              callee: ts_member(
+                object: ts_member(object: ts_ident(name: "r"), property: "pathRe"),
+                property: "test"
+              ),
+              args: [ts_ident(name: "path")]
+            ))
+          ),
+        ]
+      )
+    ),
+    ts_if(
+      cond: ts_binop(
+        left: ts_member(object: ts_ident(name: "pathRoutes"), property: "length"),
+        op: ">",
+        right: ts_lit_num(text: "0")
+      ),
+      then: ts_block(stmts: [
+        ts_const(
+          name: "allow",
+          value: ts_call(
+            callee: ts_member(
+              object: ts_array(elements: [
+                ts_spread(expr: ts_prefix(
+                  op: "new ",
+                  expr: ts_call(
+                    callee: ts_ident(name: "Set"),
+                    args: [
+                      ts_call(
+                        callee: ts_member(object: ts_ident(name: "pathRoutes"), property: "map"),
+                        args: [
+                          ts_arrow(
+                            params: ["r"],
+                            body: ts_expr_stmt(expr: ts_member(object: ts_ident(name: "r"), property: "method"))
+                          ),
+                        ]
+                      ),
+                    ]
+                  )
+                )),
+              ]),
+              property: "join"
+            ),
+            args: [ts_lit_str(value: ", ")]
+          )
+        ),
+        ts_expr_stmt(expr: ts_call(
+          callee: res_member(name: "writeHead"),
+          args: [
+            ts_lit_num(text: "405"),
+            ts_object(fields: [ts_field(key: "Allow", value: ts_ident(name: "allow"))]),
+          ]
+        )),
+        ts_expr_stmt(expr: ts_call(
+          callee: res_member(name: "end"),
+          args: [ts_lit_str(value: "Method Not Allowed")]
+        )),
+        ts_return(expr: none),
+      ]),
+      else_stmt: none
+    ),
+    ts_expr_stmt(expr: ts_call(callee: res_member(name: "writeHead"), args: [ts_lit_num(text: "404")])),
+    ts_expr_stmt(expr: ts_call(callee: res_member(name: "end"), args: [ts_lit_str(value: "Not Found")])),
+  ]))
+}
+
+fn node_http_create_server_stmt() -> TsStmt {
+  ts_const(
+    name: "server",
+    value: ts_call(
+      callee: ts_member(
+        object: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "http")]),
+        property: "createServer"
+      ),
+      args: [ts_arrow(params: ["req", "res"], body: node_http_request_handler_block())]
+    )
+  )
+}
+
+fn node_http_port_const(port: String) -> TsStmt {
+  ts_const(
+    name: "PORT",
+    value: ts_cond(
+      test: process_env(key: "PORT"),
+      consequent: ts_call(
+        callee: ts_ident(name: "parseInt"),
+        args: [process_env(key: "PORT"), ts_lit_num(text: "10")]
+      ),
+      alternate: ts_lit_num(text: port)
+    )
+  )
+}
+
+fn node_http_host_const(host: String) -> TsStmt {
+  ts_const(
+    name: "HOST",
+    value: ts_binop(left: process_env(key: "HOST"), op: "||", right: ts_lit_str(value: host))
+  )
+}
+
+fn node_http_listen_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_ident(name: "server"), property: "listen"),
+    args: [
+      ts_ident(name: "PORT"),
+      ts_ident(name: "HOST"),
+      ts_arrow(
+        params: [],
+        body: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "process"), property: "stdout"),
+              property: "write"
+            ),
+            args: [ts_lit_str(value: "listening\\n")]
+          )),
+        ])
+      ),
+    ]
+  ))
+}
+
+fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> TsProgram {
+  let port = to_string(spec.listen.port)
+  TsProgram {
+    ts_nocheck: true,
+    header_lines: [
+      "GENERATED by gunbc from dag/gunbc/node_http_server_emit.dag",
+    ],
+    statements: [
+      ts_const(
+        name: "routes",
+        value: ts_array(elements: emit_static_route_exprs(routes: spec.routes.routes))
+      ),
+      node_http_create_server_stmt(),
+      node_http_port_const(port: port),
+      node_http_host_const(host: spec.listen.host),
+      node_http_listen_stmt(),
+    ],
+  }
+}
+
+fn gunbhub_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
+  NodeHttpStaticServerSpec {
+    service_name: "gunbhub",
+    routes: gunbhub_served_static_route_table(),
+    listen: HttpServerListenConfig {
+      host: "0.0.0.0",
+      port: 8080,
+    },
+  }
+}
+
+fn gunbhub_node_http_server_source() -> String {
+  serialize_typescript_program(p: emit_node_http_static_server_program(spec: gunbhub_node_http_static_server_spec()))
+}

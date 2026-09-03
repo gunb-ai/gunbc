@@ -1,0 +1,9 @@
+module v2.std.resolution_policy
+
+type NameResolutionPolicy
+  = ImportScoped
+  | NamespaceOnlyY
+
+fn default_name_resolution_policy() -> NameResolutionPolicy {
+  NamespaceOnlyY
+}

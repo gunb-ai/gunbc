@@ -1,33 +1,5 @@
 module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence
 
-import v2.std.algebra { any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.text { String }
-import v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_module_refs {
-witness_clean_gist_create_lens_unit_module,
-  witness_clean_git_diff_lens_unit_module,
-  witness_dead_param_cargo_build_lens_unit_module,
-  witness_dead_param_cargo_clippy_corpus_module,
-  witness_dead_param_cargo_clippy_lens_unit_module,
-  witness_dead_param_cargo_doc_corpus_module,
-  witness_dead_param_cargo_fmt_corpus_module,
-  witness_dead_param_gcp_login_corpus_module,
-  witness_dead_param_gcp_login_lens_unit_module,
-  witness_embedded_policy_corpus_module,
-  witness_embedded_policy_lens_unit_module,
-  witness_gist_create_corpus_module,
-  witness_git_policy_leak_corpus_module,
-  witness_policy_leak_cargo_build_corpus_module,
-  witness_policy_leak_cargo_build_lens_unit_module,
-  witness_policy_leak_cargo_doc_corpus_module,
-  witness_policy_leak_cargo_doc_lens_unit_module,
-  witness_policy_leak_cargo_fmt_corpus_module,
-  witness_policy_leak_cargo_fmt_lens_unit_module,
-  witness_transport_fusion_gcp_oauth_corpus_module,
-  witness_transport_fusion_gcp_oauth_lens_unit_module
-}
 
 data violation_kind_policy_leak: String = "policy leak in argv"
 data violation_kind_transport_fusion: String = "transport fusion fork"

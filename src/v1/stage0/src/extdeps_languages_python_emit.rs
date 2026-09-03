@@ -6,12 +6,10 @@ use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -51,6 +49,7 @@ pub fn python_container_templates() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "list[{0}]".to_string());
             __m.insert("set".to_string(), "set[{0}]".to_string());
+            __m.insert("pointwise_power".to_string(), "set[{0}]".to_string());
             __m.insert("optional".to_string(), "Optional[{0}]".to_string());
             __m.insert("map".to_string(), "dict[{0}, {1}]".to_string());
             __m.insert("free_monoid".to_string(), "list[{0}]".to_string());
@@ -237,7 +236,7 @@ pub fn python_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn python_method_templates_flat() -> Rc<HashMap<String, String>> {
     python_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )

@@ -1,0 +1,1361 @@
+module v2.lens.module_impact_query
+
+import v2.std.algebra {
+  any,
+  contains,
+  fold_list,
+  list_reverse,
+  list_snoc_item,
+}
+import std.algebra { Cons }
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.text { String }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding,
+}
+import std.disposition { SingleAuthority }
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureEstablished,
+  ReferenceDerivedClosureRefused,
+  ReferenceDerivedClosureUnavailable,
+  ReferenceDerivedClosureTrigger,
+  UnrelatedLoadedFileExcluded,
+}
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  ImportResolutionFact,
+  map_lookup_where_rejected_unreachable,
+}
+
+// CONFIDENCE-0. THE direction-typed reading over the module-graph edge population. It adds NO edge
+// producer: it consumes v2.lens.module_graph's ModuleDependencyEdge and ModuleDeclarationFact rows
+// as data, exactly as dependency_closure does, honouring the 2026-07-10 operator constraint in
+// dependency_edge_source_migration_note. What is new is DIRECTION: before this module every closure
+// in the corpus was forward, and any consumer wanting dependents simulated it with N forward
+// closures.
+
+// The core is keyed on MODULE IDENTITY, not on paths (operator ruling 2026-08-08, recut A).
+// ModuleDependencyEdge is asymmetric - a source PATH and a target MODULE - so normalization goes
+// through ModuleDeclarationFact into dependent_module / dependency_module, and the whole traversal,
+// cycle partition and standing operate on ModuleIdentity. Paths are attached as PRESENTATION and as
+// an adapter for file-shaped questions, never as the semantic authority: a file-level question may
+// conservatively resolve to SEVERAL semantic seeds, which is why the adapter returns a list.
+// ModuleIdentity is a record rather than a bare String so a path cannot be passed where an identity
+// is required - the confusion is unwritable rather than merely labelled. The earlier revision keyed
+// the core on paths and normalized INTO path space, the inverse of the ruled direction, which
+// silently changes meaning under the module-identity-storage lane's staged many-to-many path/module
+// relation.
+
+type ModuleIdentity {
+  name: String
+}
+
+type ImpactDirection
+  = DependenciesOf
+  | DependentsOf
+
+type EdgeProvenance
+  = ImportDerivedEdge
+  | ReferenceDerivedEdge
+
+type ImpactEdge {
+  dependent_module: ModuleIdentity
+  dependency_module: ModuleIdentity
+  provenance: EdgeProvenance
+}
+
+// Standing is a TYPED carrier DERIVED from ReferenceDerivedClosureAdmission, not prose and not a
+// lower bound (operator ruling 2026-08-08, recut B). The earlier revision minted ImpactLowerBound,
+// which is unjustified: UnrelatedLoadedFileExcluded is Unavailable, so the observed pool can
+// introduce SPURIOUS edges as well as omit real ones - the reading may over- AND under-approximate,
+// and lower bound claims only the second. ExactForGraphSubject is reachable only when
+// pool-independent projection is Established AND no cause was observed; with the capability
+// Unavailable the standing is PoolIndependentProjectionUnavailable carrying the admission's OWN
+// trigger, so the reason a consumer cannot treat the answer as exact is the admission carrier's
+// fact rather than this module's opinion. DESIGN 4c: an annotation is never evidence a machine
+// claim holds, so none of this lives in a note a consumer cannot read.
+
+type ImpactStandingCause
+  = UndeclaredTargetModule {
+      dependent_module: ModuleIdentity,
+      target_module: String
+    }
+  | DeclaredTargetAbsentFromPool {
+      dependent_module: ModuleIdentity,
+      target_module: String
+    }
+
+type ImpactStanding
+  = ExactForGraphSubject
+  | ProvisionalForObservedPool
+  | Incomplete {
+      causes: List<ImpactStandingCause>
+    }
+  | PoolIndependentProjectionUnavailable {
+      trigger: ReferenceDerivedClosureTrigger
+    }
+
+// The declared flag and pool membership are INDEPENDENT observations and are kept independent
+// (operator ruling 2026-08-08, folding manager finding F3). ModuleDependencyEdge.target_declared
+// says the producer believed the target declared; ModuleDeclarationFact membership says the
+// supplied pool actually carries it. An edge with target_declared true whose target has no
+// ModuleDeclarationFact used to resolve to ZERO edges and vanish from adjacency, closure and cycle
+// classification, while completeness was computed from the raw flag alone - so the reading still
+// answered complete. That is the empty-observation narrow DESIGN 5 names: bottom-as-answer
+// conflated with bottom-as-ignorance, from an inconsistent pool, in a module whose own notes cite
+// the rule. Both observations now land as DISTINCT ImpactStandingCause arms and neither is inferred
+// from the other.
+
+type ImpactCycle
+  = ImpactCycleReferenceAdmissible {
+      members: List<ModuleIdentity>
+    }
+  | ImpactImportAcyclicityViolation {
+      members: List<ModuleIdentity>
+    }
+
+// Operator refinement 2026-08-08. Cycle membership is computed over the UNION edge population,
+// where reference-derived cycles are legitimate and carry no violation. A cycle whose every
+// participating edge is import-derived additionally violates the import-acyclicity law and surfaces
+// as its own typed diagnostic, not merely as SCC membership. Distinct arms, not one arm with a
+// flag.
+
+// Cycle classification partitions cyclic modules into strongly connected components and classifies
+// EACH component independently. An earlier revision folded every cyclic module in the reached set
+// into ONE member list and emitted ONE verdict for the union, which was fail-open on precisely the
+// law above: with two disjoint cycles, a single ReferenceDerivedEdge in the first made the
+// all-import test false for the whole union, so a genuine all-import cycle in the second reported
+// admissible and its violation was suppressed. Import-acyclicity is a per-cycle law, so the
+// partition is part of the law's meaning, not an optimisation. Caught by review 50459 on
+// gunbc#8044.
+
+// Edge provenance is DERIVED at query time by membership in the import-only population, not read
+// off the edge. ModuleDependencyEdge carries no provenance field, and
+// dependency_resolution_facts_live erases it by construction: it unions import and reference facts
+// as ImportResolutionFact BEFORE mapping to edges, and the union dedups reference-first, so a fact
+// backed by BOTH survives as the reference copy. That reference-first law now lives in the native
+// construction v1_compiler.cli_run union_dedup_import_facts_reference_first, which the interpreted
+// union_import_resolution_fact_lists carried until it was deleted for cost (module_graph
+// dedup_import_resolution_facts_cost_note); the law is unchanged, only its home moved, and this
+// note's derivation depends on the law rather than on where it is realized. Declared residue: a
+// dual-backed edge therefore classifies reference-derived here, which is the conservative direction
+// for the acyclicity law - it under-reports violations rather than inventing them - but is not the
+// answer a carried provenance field would give, and it earns its own witness when the stamp lands.
+// The construction-grade climb is to stamp provenance at the single construction site
+// import_fact_to_dependency_edge (one construction site, two referencing files); it edits the
+// single edge producer under the 2026-07-10 constraint, so it is escalated rather than taken here.
+
+type ImpactReading {
+  direction: ImpactDirection
+  seeds: List<ModuleIdentity>
+  reached: List<ModuleIdentity>
+  explanation: List<ImpactEdge>
+  standing: ImpactStanding
+  causes: List<ImpactStandingCause>
+}
+
+data impact_no_modules: List<ModuleIdentity> = []
+
+data impact_no_edges: List<ImpactEdge> = []
+
+data impact_no_causes: List<ImpactStandingCause> = []
+
+data impact_no_cycles: List<ImpactCycle> = []
+
+data impact_no_components: List<List<ModuleIdentity>> = []
+
+data impact_no_paths: List<String> = []
+
+data impact_no_import_modules: List<String> = []
+
+data impact_no_module: Optional<ModuleIdentity> = Absent
+
+data impact_no_trigger: Optional<ReferenceDerivedClosureTrigger> = Absent
+
+fn impact_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn impact_module_eq(a: ModuleIdentity, b: ModuleIdentity) -> Bool {
+  a.name == b.name
+}
+
+fn impact_add_unseen_module(
+  acc: List<ModuleIdentity>,
+  item: ModuleIdentity
+) -> List<ModuleIdentity> {
+  if contains(xs: acc, item: item, eq: impact_module_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+// Normalization is INDEXED, not scanned. The first recut resolved each edge by folding the whole
+// ModuleDeclarationFact list twice - once for the source path, once for target membership - which
+// is O(edges x modules): on the live corpus that is 15376 edges against 3256 modules, roughly 50
+// million allocating scan steps, and it OOM-killed the front door rather than answering. Both
+// lookups are now Map probes against indexes built ONCE per reading. This is the bare-minimum-cost
+// rule with a measured receipt, not a speculative optimisation: the unindexed shape could not
+// answer the live question at all.
+
+type ImpactPoolIndex {
+  path_to_module: Map<String, String>
+  declared_modules: Map<String, String>
+}
+
+fn impact_build_pool_index(nodes: List<ModuleDeclarationFact>) -> ImpactPoolIndex {
+  fold_list(
+    xs: nodes,
+    empty: ImpactPoolIndex {
+      path_to_module: empty_map(),
+      declared_modules: empty_map()
+    },
+    cons: fn(acc, node) {
+      ImpactPoolIndex {
+        path_to_module: map_insert(
+          m: acc.path_to_module,
+          key: node.path,
+          value: node.module
+        ),
+        declared_modules: map_insert(
+          m: acc.declared_modules,
+          key: node.module,
+          value: node.path
+        )
+      }
+    }
+  )
+}
+
+fn impact_module_of_path_indexed(
+  index: ImpactPoolIndex,
+  path: String
+) -> Optional<ModuleIdentity> {
+  match map_lookup_where_rejected_unreachable(m: index.path_to_module, key: path) {
+    Present { value: module_name } =>
+      optional_present(value: ModuleIdentity { name: module_name })
+    Absent => impact_no_module
+  }
+}
+
+fn impact_pool_declares_module_indexed(
+  index: ImpactPoolIndex,
+  module_name: String
+) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: index.declared_modules, key: module_name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// impact_paths_for_module and impact_seeds_for_path are the FILE-SHAPED ADAPTERS above the semantic
+// core, not part of it. impact_seeds_for_path returns a LIST because one path may conservatively
+// resolve to several semantic seeds under the staged many-to-many path/module relation, and
+// returning a single identity would silently pick one. An empty result is a real answer - the pool
+// declares no module at that path - and the caller decides whether that is a refusal; the adapter
+// never invents a seed.
+
+fn impact_paths_for_module(
+  nodes: List<ModuleDeclarationFact>,
+  module_id: ModuleIdentity
+) -> List<String> {
+  fold_list(
+    xs: nodes,
+    empty: impact_no_paths,
+    cons: fn(acc, node) {
+      if node.module == module_id.name {
+        list_snoc_item(xs: acc, item: node.path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn impact_seeds_for_path(
+  nodes: List<ModuleDeclarationFact>,
+  path: String
+) -> List<ModuleIdentity> {
+  fold_list(
+    xs: nodes,
+    empty: impact_no_modules,
+    cons: fn(acc, node) {
+      if node.path == path {
+        impact_add_unseen_module(
+          acc: acc,
+          item: ModuleIdentity { name: node.module }
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn impact_edge_is_import_derived(
+  edge: ModuleDependencyEdge,
+  import_facts: List<ImportResolutionFact>
+) -> Bool {
+  any(
+    xs: import_facts,
+    predicate: fn(fact) {
+      fact.path == edge.path && fact.import_module == edge.target_module
+    }
+  )
+}
+
+fn impact_provenance_of_edge(
+  edge: ModuleDependencyEdge,
+  import_facts: List<ImportResolutionFact>
+) -> EdgeProvenance {
+  if impact_edge_is_import_derived(edge: edge, import_facts: import_facts) {
+    ImportDerivedEdge
+  } else {
+    ReferenceDerivedEdge
+  }
+}
+
+type ImpactNormalizationAcc {
+  edges: List<ImpactEdge>
+  causes: List<ImpactStandingCause>
+}
+
+fn impact_cause_for_absent_target(
+  dependent: ModuleIdentity,
+  edge: ModuleDependencyEdge
+) -> ImpactStandingCause {
+  if edge.target_declared {
+    DeclaredTargetAbsentFromPool {
+      dependent_module: dependent,
+      target_module: edge.target_module
+    }
+  } else {
+    UndeclaredTargetModule {
+      dependent_module: dependent,
+      target_module: edge.target_module
+    }
+  }
+}
+
+fn impact_normalize_edge(
+  acc: ImpactNormalizationAcc,
+  edge: ModuleDependencyEdge,
+  index: ImpactPoolIndex,
+  import_index: Map<String, List<String>>
+) -> ImpactNormalizationAcc {
+  match impact_module_of_path_indexed(index: index, path: edge.path) {
+    Absent => acc
+    Present { value: dependent } =>
+      if impact_pool_declares_module_indexed(index: index, module_name: edge.target_module) {
+        ImpactNormalizationAcc {
+          edges: Cons {
+            head: ImpactEdge {
+              dependent_module: dependent,
+              dependency_module: ModuleIdentity { name: edge.target_module },
+              provenance: impact_provenance_of_edge_indexed(
+                edge: edge,
+                import_index: import_index
+              )
+            },
+            tail: acc.edges
+          },
+          causes: acc.causes
+        }
+      } else {
+        ImpactNormalizationAcc {
+          edges: acc.edges,
+          causes: Cons {
+            head: impact_cause_for_absent_target(dependent: dependent, edge: edge),
+            tail: acc.causes
+          }
+        }
+      }
+  }
+}
+
+// The import index is keyed on the PATH ALONE, mapping to that path's list of imported module
+// names, and provenance is decided by a membership check within that small per-path list. An
+// earlier attempt built a single composite key by interpolating path and module into one String;
+// every lookup then hit, so every edge classified import-derived - the FAIL-OPEN direction for the
+// acyclicity law, because it invents violations rather than missing them. Two witnesses caught it
+// (the reference-admissible cycle pair); a suite without them would have greened an index that
+// answers the same thing for every input. Rather than keep guessing at the composite key's
+// behaviour, the index now uses only plain keys of the same shape the pool index already proves
+// correct, and the per-path import list is short enough that membership within it is not a cost
+// shape.
+
+fn impact_append_import_module(
+  existing: List<String>,
+  module_name: String
+) -> List<String> {
+  if contains(xs: existing, item: module_name, eq: impact_string_eq) {
+    existing
+  } else {
+    list_snoc_item(xs: existing, item: module_name)
+  }
+}
+
+fn impact_imports_for_path(
+  import_index: Map<String, List<String>>,
+  path: String
+) -> List<String> {
+  match map_lookup_where_rejected_unreachable(m: import_index, key: path) {
+    Present { value: modules } => modules
+    Absent => impact_no_import_modules
+  }
+}
+
+fn impact_build_import_index(
+  import_facts: List<ImportResolutionFact>
+) -> Map<String, List<String>> {
+  fold_list(
+    xs: import_facts,
+    empty: empty_map(),
+    cons: fn(acc, fact) {
+      map_insert(
+        m: acc,
+        key: fact.path,
+        value: impact_append_import_module(
+          existing: impact_imports_for_path(import_index: acc, path: fact.path),
+          module_name: fact.import_module
+        )
+      )
+    }
+  )
+}
+
+fn impact_provenance_of_edge_indexed(
+  edge: ModuleDependencyEdge,
+  import_index: Map<String, List<String>>
+) -> EdgeProvenance {
+  if contains(
+    xs: impact_imports_for_path(import_index: import_index, path: edge.path),
+    item: edge.target_module,
+    eq: impact_string_eq
+  ) {
+    ImportDerivedEdge
+  } else {
+    ReferenceDerivedEdge
+  }
+}
+
+fn impact_normalize(
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>
+) -> ImpactNormalizationAcc {
+  let index = impact_build_pool_index(nodes: nodes)
+  let import_index = impact_build_import_index(import_facts: import_facts)
+  let built = fold_list(
+    xs: edges,
+    empty: ImpactNormalizationAcc {
+      edges: impact_no_edges,
+      causes: impact_no_causes
+    },
+    cons: fn(acc, edge) {
+      impact_normalize_edge(
+        acc: acc,
+        edge: edge,
+        index: index,
+        import_index: import_index
+      )
+    }
+  )
+  ImpactNormalizationAcc {
+    edges: list_reverse(xs: built.edges),
+    causes: list_reverse(xs: built.causes)
+  }
+}
+
+fn impact_admission_pool_independence_trigger(
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> Optional<ReferenceDerivedClosureTrigger> {
+  fold_list(
+    xs: admissions,
+    empty: impact_no_trigger,
+    cons: fn(acc, admission) {
+      match admission {
+        ReferenceDerivedClosureUnavailable { capability, trigger } =>
+          match capability {
+            UnrelatedLoadedFileExcluded => optional_present(value: trigger)
+            _ => acc
+          }
+        ReferenceDerivedClosureEstablished { receipt: _ } => acc
+        ReferenceDerivedClosureRefused { capability: _, failure: _ } => acc
+      }
+    }
+  )
+}
+
+fn impact_admission_pool_independence_established(
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> Bool {
+  any(
+    xs: admissions,
+    predicate: fn(admission) {
+      match admission {
+        ReferenceDerivedClosureEstablished { receipt } =>
+          match receipt.capability {
+            UnrelatedLoadedFileExcluded => true
+            _ => false
+          }
+        ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
+        ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
+      }
+    }
+  )
+}
+
+fn impact_standing_from_admissions(
+  admissions: List<ReferenceDerivedClosureAdmission>,
+  causes: List<ImpactStandingCause>
+) -> ImpactStanding {
+  match impact_admission_pool_independence_trigger(admissions: admissions) {
+    Present { value: trigger } =>
+      PoolIndependentProjectionUnavailable { trigger: trigger }
+    Absent =>
+      if any(xs: causes, predicate: fn(_) { true }) {
+        Incomplete { causes: causes }
+      } else {
+        if impact_admission_pool_independence_established(admissions: admissions) {
+          ExactForGraphSubject
+        } else {
+          ProvisionalForObservedPool
+        }
+      }
+  }
+}
+
+// The BFS carries a membership Map ALONGSIDE the ordered reached list: the list preserves
+// meaningful traversal order, the map answers membership in one probe. A linear contains over
+// reached is O(n^2) on a corpus-scale closure and was part of what OOM-killed the live front door.
+// This is the pattern DESIGN's determinism thread prescribes - preserve source order in a list, use
+// a map only for membership - so no map traversal order is ever observed.
+
+type ImpactBfsState {
+  reached: List<ModuleIdentity>
+  seen: Map<String, String>
+  queue: List<ModuleIdentity>
+}
+
+// The walk is the recursive worklist shape v2.lens.module_graph proves in import_closure_bfs_walk,
+// over an adjacency built once per reading. Declared residue, all renegotiable as follow-on: the
+// adjacency is rebuilt per call rather than reused once per graph subject; this is a second BFS
+// beside import_closure_bfs_walk where one direction-parameterized walk was the section-2 shape
+// (that walk is path-keyed and this core is module-keyed, so unifying them belongs to the
+// module-identity-storage lane rather than a local edit); and cycle classification runs one walk
+// per cyclic module plus two per candidate component through impact_mutually_reachable, so it is
+// quadratic in the reached set and superlinear in components. The SCC partition made that term
+// LARGER and was still right, because the union-level classification it replaced was fail-open.
+// Climb: a single-pass Tarjan producer computes the same partition in one traversal and subsumes
+// every walk site.
+
+fn impact_adjacency_from(edge: ImpactEdge, direction: ImpactDirection) -> ModuleIdentity {
+  match direction {
+    DependenciesOf => edge.dependent_module
+    DependentsOf => edge.dependency_module
+  }
+}
+
+fn impact_adjacency_to(edge: ImpactEdge, direction: ImpactDirection) -> ModuleIdentity {
+  match direction {
+    DependenciesOf => edge.dependency_module
+    DependentsOf => edge.dependent_module
+  }
+}
+
+fn impact_neighbors_of(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  module_id: ModuleIdentity
+) -> List<ModuleIdentity> {
+  match map_lookup_where_rejected_unreachable(m: adjacency, key: module_id.name) {
+    Present { value: modules } => modules
+    Absent => impact_no_modules
+  }
+}
+
+fn impact_adjacency(
+  edges: List<ImpactEdge>,
+  direction: ImpactDirection
+) -> Map<String, List<ModuleIdentity>> {
+  fold_list(
+    xs: edges,
+    empty: empty_map(),
+    cons: fn(acc, edge) {
+      let from = impact_adjacency_from(edge: edge, direction: direction)
+      map_insert(
+        m: acc,
+        key: from.name,
+        value: impact_add_unseen_module(
+          acc: impact_neighbors_of(adjacency: acc, module_id: from),
+          item: impact_adjacency_to(edge: edge, direction: direction)
+        )
+      )
+    }
+  )
+}
+
+fn impact_bfs_seen(state: ImpactBfsState, module_id: ModuleIdentity) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: state.seen, key: module_id.name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn impact_bfs_absorb(state: ImpactBfsState, module_id: ModuleIdentity) -> ImpactBfsState {
+  if impact_bfs_seen(state: state, module_id: module_id) {
+    state
+  } else {
+    ImpactBfsState {
+      reached: Cons { head: module_id, tail: state.reached },
+      seen: map_insert(m: state.seen, key: module_id.name, value: module_id.name),
+      queue: list_snoc_item(xs: state.queue, item: module_id)
+    }
+  }
+}
+
+fn impact_bfs_absorb_all(
+  state: ImpactBfsState,
+  neighbors: List<ModuleIdentity>
+) -> ImpactBfsState {
+  fold_list(
+    xs: neighbors,
+    empty: state,
+    cons: fn(acc, module_id) { impact_bfs_absorb(state: acc, module_id: module_id) }
+  )
+}
+
+fn impact_bfs_walk(
+  state: ImpactBfsState,
+  adjacency: Map<String, List<ModuleIdentity>>
+) -> List<ModuleIdentity> {
+  match state.queue |> first {
+    Present { value: module_id } =>
+      impact_bfs_walk(
+        state: impact_bfs_absorb_all(
+          state: ImpactBfsState {
+            reached: state.reached,
+            seen: state.seen,
+            queue: state.queue |> skip(1)
+          },
+          neighbors: impact_neighbors_of(adjacency: adjacency, module_id: module_id)
+        ),
+        adjacency: adjacency
+      )
+    Absent => list_reverse(xs: state.reached)
+  }
+}
+
+fn impact_seen_from_seeds(seeds: List<ModuleIdentity>) -> Map<String, String> {
+  fold_list(
+    xs: seeds,
+    empty: empty_map(),
+    cons: fn(acc, m) { map_insert(m: acc, key: m.name, value: m.name) }
+  )
+}
+
+fn impact_closure_from_seeds(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  seeds: List<ModuleIdentity>
+) -> List<ModuleIdentity> {
+  impact_bfs_walk(
+    state: ImpactBfsState {
+      reached: list_reverse(xs: seeds),
+      seen: impact_seen_from_seeds(seeds: seeds),
+      queue: seeds
+    },
+    adjacency: adjacency
+  )
+}
+
+fn impact_module_reaches_self(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  module_id: ModuleIdentity
+) -> Bool {
+  contains(
+    xs: impact_closure_from_seeds(
+      adjacency: adjacency,
+      seeds: impact_neighbors_of(adjacency: adjacency, module_id: module_id)
+    ),
+    item: module_id,
+    eq: impact_module_eq
+  )
+}
+
+// MEASURED cost-shape fix (capsule 2). Cycle detection previously ran a full closure PER reached
+// module (impact_module_reaches_self over every node), plus two more per pairwise component
+// placement — O(V) closures at best and O(V^2) with placement. That is correct and affordable at a
+// small reading (231 modules rendered in 290s) and fatal at an ordinary one: an impact query over a
+// real 37-path diff (33 .dag modules as seeds) was OOM-killed after 1649s. The fix is a PEEL, not a
+// different partition: a module can lie on a cycle only if it has at least one predecessor AND at
+// least one successor INSIDE the candidate set, so iteratively dropping modules that fail that test
+// leaves exactly the union of the non-trivial strongly connected components. COST, STATED HONESTLY:
+// each peel round is O(V+E) and runs ZERO closures, but the number of ROUNDS is bounded by peel
+// depth, not by one - a chain sheds one module from each end per round - so the worst case is
+// O(V*(V+E)), the SAME asymptotic class as the closure-per-module version it replaces. The win here
+// is a depth factor on a shallow dependency DAG plus the elimination of closure allocation, not a
+// change of complexity class, and it is justified by measurement rather than by the bound: the same
+// real 37-path subject went from OOM-killed at 1649s to completing in 591s. An earlier revision of
+// this note claimed the peel was O(V+E) outright, which is false for any population needing more
+// than one round. Semantics are unchanged by construction: a peeled module provably cannot
+// participate in a cycle, so no component and no acyclicity verdict can differ — the peel decides
+// membership candidacy, never the verdict, and the per-SCC classification that review 50459
+// required is untouched. Self-loops survive the peel because a self-edge is both an in- and an
+// out-edge.
+
+fn impact_opposite_direction(direction: ImpactDirection) -> ImpactDirection {
+  match direction {
+    DependenciesOf => DependentsOf
+    DependentsOf => DependenciesOf
+  }
+}
+
+fn impact_module_in_set(set: Map<String, String>, module_id: ModuleIdentity) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: set, key: module_id.name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn impact_set_of_modules(modules: List<ModuleIdentity>) -> Map<String, String> {
+  fold_list(
+    xs: modules,
+    empty: empty_map(),
+    cons: fn(acc, m) { map_insert(m: acc, key: m.name, value: m.name) }
+  )
+}
+
+fn impact_has_neighbor_in_set(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  set: Map<String, String>,
+  module_id: ModuleIdentity
+) -> Bool {
+  any(
+    xs: impact_neighbors_of(adjacency: adjacency, module_id: module_id),
+    predicate: fn(n) { impact_module_in_set(set: set, module_id: n) }
+  )
+}
+
+fn impact_count_modules(modules: List<ModuleIdentity>) -> Int {
+  fold_list(xs: modules, empty: 0, cons: fn(acc, _) { acc + 1 })
+}
+
+fn impact_prepend_module(
+  acc: List<ModuleIdentity>,
+  module_id: ModuleIdentity
+) -> List<ModuleIdentity> {
+  Cons { head: module_id, tail: acc }
+}
+
+fn impact_peel_round(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  reverse_adjacency: Map<String, List<ModuleIdentity>>,
+  candidates: List<ModuleIdentity>
+) -> List<ModuleIdentity> {
+  let set = impact_set_of_modules(modules: candidates)
+  list_reverse(xs: fold_list(
+    xs: candidates,
+    empty: impact_no_modules,
+    cons: fn(acc, module_id) {
+      if impact_has_neighbor_in_set(adjacency: adjacency, set: set, module_id: module_id)
+        && impact_has_neighbor_in_set(adjacency: reverse_adjacency, set: set, module_id: module_id) {
+        impact_prepend_module(acc: acc, module_id: module_id)
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn impact_peel_fixpoint(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  reverse_adjacency: Map<String, List<ModuleIdentity>>,
+  candidates: List<ModuleIdentity>
+) -> List<ModuleIdentity> {
+  let peeled = impact_peel_round(
+    adjacency: adjacency,
+    reverse_adjacency: reverse_adjacency,
+    candidates: candidates
+  )
+  if impact_count_modules(modules: peeled) == impact_count_modules(modules: candidates) {
+    peeled
+  } else {
+    impact_peel_fixpoint(
+      adjacency: adjacency,
+      reverse_adjacency: reverse_adjacency,
+      candidates: peeled
+    )
+  }
+}
+
+fn impact_cyclic_modules(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  reached: List<ModuleIdentity>
+) -> List<ModuleIdentity> {
+  fold_list(
+    xs: reached,
+    empty: impact_no_modules,
+    cons: fn(acc, module_id) {
+      if impact_module_reaches_self(adjacency: adjacency, module_id: module_id) {
+        impact_add_unseen_module(acc: acc, item: module_id)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn impact_mutually_reachable(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  a: ModuleIdentity,
+  b: ModuleIdentity
+) -> Bool {
+  contains(
+    xs: impact_closure_from_seeds(adjacency: adjacency, seeds: [a]),
+    item: b,
+    eq: impact_module_eq
+  )
+    && contains(
+      xs: impact_closure_from_seeds(adjacency: adjacency, seeds: [b]),
+      item: a,
+      eq: impact_module_eq
+    )
+}
+
+fn impact_component_admits(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  component: List<ModuleIdentity>,
+  module_id: ModuleIdentity
+) -> Bool {
+  match component |> first {
+    Present { value: representative } =>
+      impact_mutually_reachable(
+        adjacency: adjacency,
+        a: representative,
+        b: module_id
+      )
+    Absent => false
+  }
+}
+
+type ImpactComponentAcc {
+  components: List<List<ModuleIdentity>>
+  placed: Bool
+}
+
+fn impact_place_in_components(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  components: List<List<ModuleIdentity>>,
+  module_id: ModuleIdentity
+) -> List<List<ModuleIdentity>> {
+  let acc = fold_list(
+    xs: components,
+    empty: ImpactComponentAcc { components: impact_no_components, placed: false },
+    cons: fn(state, component) {
+      if state.placed {
+        ImpactComponentAcc {
+          components: list_snoc_item(xs: state.components, item: component),
+          placed: true
+        }
+      } else {
+        if impact_component_admits(
+          adjacency: adjacency,
+          component: component,
+          module_id: module_id
+        ) {
+          ImpactComponentAcc {
+            components: list_snoc_item(
+              xs: state.components,
+              item: impact_add_unseen_module(acc: component, item: module_id)
+            ),
+            placed: true
+          }
+        } else {
+          ImpactComponentAcc {
+            components: list_snoc_item(xs: state.components, item: component),
+            placed: false
+          }
+        }
+      }
+    }
+  )
+  if acc.placed {
+    acc.components
+  } else {
+    list_snoc_item(xs: acc.components, item: [module_id])
+  }
+}
+
+fn impact_cycle_components(
+  adjacency: Map<String, List<ModuleIdentity>>,
+  reverse_adjacency: Map<String, List<ModuleIdentity>>,
+  reached: List<ModuleIdentity>
+) -> List<List<ModuleIdentity>> {
+  fold_list(
+    xs: impact_cyclic_modules(
+      adjacency: adjacency,
+      reached: impact_peel_fixpoint(
+        adjacency: adjacency,
+        reverse_adjacency: reverse_adjacency,
+        candidates: reached
+      )
+    ),
+    empty: impact_no_components,
+    cons: fn(acc, module_id) {
+      impact_place_in_components(
+        adjacency: adjacency,
+        components: acc,
+        module_id: module_id
+      )
+    }
+  )
+}
+
+fn impact_edge_joins_members(
+  edge: ImpactEdge,
+  members: List<ModuleIdentity>
+) -> Bool {
+  contains(xs: members, item: edge.dependent_module, eq: impact_module_eq)
+    && contains(xs: members, item: edge.dependency_module, eq: impact_module_eq)
+}
+
+fn impact_cycle_all_edges_import_derived(
+  edges: List<ImpactEdge>,
+  members: List<ModuleIdentity>
+) -> Bool {
+  fold_list(
+    xs: edges,
+    empty: true,
+    cons: fn(acc, edge) {
+      if impact_edge_joins_members(edge: edge, members: members) {
+        match edge.provenance {
+          ImportDerivedEdge => acc
+          ReferenceDerivedEdge => false
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn impact_classify_component(
+  edges: List<ImpactEdge>,
+  members: List<ModuleIdentity>
+) -> ImpactCycle {
+  if impact_cycle_all_edges_import_derived(edges: edges, members: members) {
+    ImpactImportAcyclicityViolation { members: members }
+  } else {
+    ImpactCycleReferenceAdmissible { members: members }
+  }
+}
+
+fn impact_classify_cycles(
+  edges: List<ImpactEdge>,
+  components: List<List<ModuleIdentity>>
+) -> List<ImpactCycle> {
+  fold_list(
+    xs: components,
+    empty: impact_no_cycles,
+    cons: fn(acc, members) {
+      list_snoc_item(
+        xs: acc,
+        item: impact_classify_component(edges: edges, members: members)
+      )
+    }
+  )
+}
+
+fn module_impact_reading(
+  seeds: List<ModuleIdentity>,
+  direction: ImpactDirection,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>,
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> ImpactReading {
+  let normalized = impact_normalize(
+    edges: edges,
+    nodes: nodes,
+    import_facts: import_facts
+  )
+  let adjacency = impact_adjacency(edges: normalized.edges, direction: direction)
+  let reached = impact_closure_from_seeds(adjacency: adjacency, seeds: seeds)
+  ImpactReading {
+    direction: direction,
+    seeds: seeds,
+    reached: reached,
+    explanation: normalized.edges,
+    standing: impact_standing_from_admissions(
+      admissions: admissions,
+      causes: normalized.causes
+    ),
+    causes: normalized.causes
+  }
+}
+
+// OPERATOR RULING 2026-08-08, item 5: reachability and cycle analysis are SEPARATE questions and
+// only the first answers what does this change impact. The reading previously ran peeling, exact
+// cycle membership, component construction and per-component classification UNCONDITIONALLY on
+// every query — that is what OOM-killed the first live run and dominated the 591s of the run that
+// replaced it. Cycle analysis is now an optional projection computed ONLY on request over an
+// already-selected reading, so the common path pays nothing for it. It is a projection rather than
+// a second reading: it derives its adjacency from the reading's own explanation edges and
+// direction, so there is no second edge population and no way for the two to disagree. The per-SCC
+// classification review 50459 required is unchanged — it moved, it did not weaken.
+
+type ModuleCycleAnalysis {
+  cycles: List<ImpactCycle>
+}
+
+fn module_cycle_analysis(reading: ImpactReading) -> ModuleCycleAnalysis {
+  let adjacency = impact_adjacency(edges: reading.explanation, direction: reading.direction)
+  ModuleCycleAnalysis {
+    cycles: impact_classify_cycles(
+      edges: reading.explanation,
+      components: impact_cycle_components(
+        adjacency: adjacency,
+        reverse_adjacency: impact_adjacency(
+          edges: reading.explanation,
+          direction: impact_opposite_direction(direction: reading.direction)
+        ),
+        reached: reading.reached
+      )
+    )
+  }
+}
+
+// CAPSULE 2, REWORKED under the operator ruling 2026-08-08. The consumer takes a changed surface -
+// the shape a diff actually has - and answers what it impacts. Four things the first revision got
+// wrong and this one does not. (1) DELETIONS were discarded: the front door threw away
+// departed_paths, so the query could not answer what depends on the module I am DELETING, which is
+// the most important destructive form of the question. (2) A deleted module is absent from the head
+// population BY DEFINITION, so resolving every subject against head silently answers
+// nothing-depends-on-it for exactly the case that most needs an answer. Each subject therefore
+// carries the SIDE it must resolve against. (3) An unresolved subject was a side list beside the
+// reading, so a machine consumer reading only the reading saw affects nothing with no typed signal
+// - the outcome is now a coproduct and an unresolved subject CONTAMINATES the whole result. (4)
+// Nothing prevented a partial answer being used to skip work.
+
+// Which population a changed subject must resolve against is a fact about the EDIT, not about the
+// graph: added -> head, deleted -> base, modified -> both, renamed -> old name in base and new name
+// in head. Conservatively the dependent populations of both sides join. This carrier models that
+// axis so a deletion can never be silently resolved against head; what it does NOT do is supply the
+// base population, because no revision-scoped fact producer exists. module_declaration_facts /
+// import_resolution_facts / reference_resolution_facts are host builtins over pool_roots that walk
+// the WORKING TREE (cli_run pool_roots_abs) with no revision parameter, and the three ways to
+// obtain a base graph are all gated: a revision-scoped builtin is new hand-Rust under
+// gunbc.seed_growth; a base checkout is a heavy wet effect; reconstructing the graph from git show
+// would be a SECOND edge producer, which the 2026-07-10 operator constraint in
+// dependency_edge_source_migration_note forbids. So a base-side subject resolves to
+// BaseGraphUnavailable, which is a typed, located, counted refusal that contaminates the outcome to
+// Partial - never a fabricated head-side answer for a module that no longer exists there.
+// Dissolve-on: a revision-scoped population becomes available to .dag, at which point ResolveInBase
+// resolves against it and this cause disappears.
+
+type ChangedSubjectSide
+  = ResolveInHead
+  | ResolveInBase
+  | ResolveInBoth
+
+type ChangedSubject {
+  path: String
+  side: ChangedSubjectSide
+}
+
+type UnresolvedSubjectCause
+  = NoModuleDeclaredAtPath
+  | BaseGraphUnavailable
+
+type UnresolvedSubject {
+  path: String
+  cause: UnresolvedSubjectCause
+}
+
+type ChangedPathSeeds {
+  path: String
+  seeds: List<ModuleIdentity>
+}
+
+// Complete | Partial | Refused, so a consumer cannot read a partial answer as a whole one. Partial
+// carries the unresolved subjects rather than a flag, because the remedy differs per cause and a
+// count cannot carry that. Refused is for an input that could not be observed at all - it computes
+// no reading and widens nothing (DESIGN 5: a failure arm must refuse, never widen). Presentation is
+// NOT a safety wall: the previous revision printed a warning line about unresolved paths while the
+// typed result still said complete, and a machine consumer does not read terminal output.
+
+type ChangedSurfaceImpactOutcome
+  = ChangedSurfaceComplete {
+      reading: ImpactReading
+    }
+  | ChangedSurfacePartial {
+      reading: ImpactReading,
+      unresolved_subjects: List<UnresolvedSubject>
+    }
+  | ChangedSurfaceRefused {
+      reason: String
+    }
+
+data impact_no_changed_path_seeds: List<ChangedPathSeeds> = []
+
+data impact_no_unresolved_subjects: List<UnresolvedSubject> = []
+
+data impact_no_changed_subjects: List<ChangedSubject> = []
+
+fn impact_changed_subject(path: String, side: ChangedSubjectSide) -> ChangedSubject {
+  ChangedSubject { path: path, side: side }
+}
+
+fn impact_prepend_unresolved(
+  acc: List<UnresolvedSubject>,
+  item: UnresolvedSubject
+) -> List<UnresolvedSubject> {
+  Cons { head: item, tail: acc }
+}
+
+fn impact_prepend_changed_subject(
+  acc: List<ChangedSubject>,
+  item: ChangedSubject
+) -> List<ChangedSubject> {
+  Cons { head: item, tail: acc }
+}
+
+fn impact_subject_needs_base(subject: ChangedSubject) -> Bool {
+  match subject.side {
+    ResolveInBase => true
+    ResolveInBoth => true
+    ResolveInHead => false
+  }
+}
+
+fn impact_subject_resolvable_in_head(subject: ChangedSubject) -> Bool {
+  match subject.side {
+    ResolveInHead => true
+    ResolveInBoth => true
+    ResolveInBase => false
+  }
+}
+
+// git diff --name-status reports a DELETED path in BOTH projections: touched_paths carries every
+// entry's path regardless of status (plus old_path for renames), while departed_paths carries
+// deletions and rename old-paths. A deleted path is therefore in both lists, and building a subject
+// from each produced TWO subjects for one deletion - a head-side one that resolves to nothing and
+// reports NoModuleDeclaredAtPath, beside the correct base-side BaseGraphUnavailable. That inflated
+// the unresolved count and misreported the cause for exactly the destructive case this rework
+// exists to serve. A departed path is a deletion, so it is a base-side subject ONLY. A rename is
+// unaffected and still yields two subjects, correctly: the old name in base and the distinct new
+// name in head. Found by the real-diff deletion receipt (operator ruling item 7), not by a fixture
+// - the fixtures authored the two lists as disjoint, which is not how git reports them.
+
+fn impact_path_is_departed(departed_set: Map<String, String>, path: String) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: departed_set, key: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn impact_changed_subjects(
+  changed_paths: List<String>,
+  departed_paths: List<String>
+) -> List<ChangedSubject> {
+  let departed_set = fold_list(
+    xs: departed_paths,
+    empty: empty_map(),
+    cons: fn(acc, path) { map_insert(m: acc, key: path, value: path) }
+  )
+  let with_head = fold_list(
+    xs: changed_paths,
+    empty: impact_no_changed_subjects,
+    cons: fn(acc, path) {
+      if impact_path_is_departed(departed_set: departed_set, path: path) {
+        acc
+      } else {
+        impact_prepend_changed_subject(
+          acc: acc,
+          item: impact_changed_subject(path: path, side: ResolveInHead)
+        )
+      }
+    }
+  )
+  list_reverse(xs: fold_list(
+    xs: departed_paths,
+    empty: with_head,
+    cons: fn(acc, path) {
+      impact_prepend_changed_subject(
+        acc: acc,
+        item: impact_changed_subject(path: path, side: ResolveInBase)
+      )
+    }
+  ))
+}
+
+fn impact_resolve_subject_seeds(
+  nodes: List<ModuleDeclarationFact>,
+  subject: ChangedSubject
+) -> List<ModuleIdentity> {
+  if impact_subject_resolvable_in_head(subject: subject) {
+    impact_seeds_for_path(nodes: nodes, path: subject.path)
+  } else {
+    impact_no_modules
+  }
+}
+
+fn impact_unresolved_cause_for(subject: ChangedSubject) -> UnresolvedSubjectCause {
+  if impact_subject_needs_base(subject: subject) {
+    BaseGraphUnavailable
+  } else {
+    NoModuleDeclaredAtPath
+  }
+}
+
+fn impact_resolve_changed_subjects(
+  nodes: List<ModuleDeclarationFact>,
+  subjects: List<ChangedSubject>
+) -> List<ChangedPathSeeds> {
+  list_reverse(xs: fold_list(
+    xs: subjects,
+    empty: impact_no_changed_path_seeds,
+    cons: fn(acc, subject) {
+      Cons {
+        head: ChangedPathSeeds {
+          path: subject.path,
+          seeds: impact_resolve_subject_seeds(nodes: nodes, subject: subject)
+        },
+        tail: acc
+      }
+    }
+  ))
+}
+
+fn impact_unresolved_subjects(
+  nodes: List<ModuleDeclarationFact>,
+  subjects: List<ChangedSubject>
+) -> List<UnresolvedSubject> {
+  list_reverse(xs: fold_list(
+    xs: subjects,
+    empty: impact_no_unresolved_subjects,
+    cons: fn(acc, subject) {
+      if any(
+        xs: impact_resolve_subject_seeds(nodes: nodes, subject: subject),
+        predicate: fn(_) { true }
+      ) {
+        acc
+      } else {
+        impact_prepend_unresolved(
+          acc: acc,
+          item: UnresolvedSubject {
+            path: subject.path,
+            cause: impact_unresolved_cause_for(subject: subject)
+          }
+        )
+      }
+    }
+  ))
+}
+
+fn impact_seeds_of_resolution(resolution: List<ChangedPathSeeds>) -> List<ModuleIdentity> {
+  fold_list(
+    xs: resolution,
+    empty: impact_no_modules,
+    cons: fn(acc, row) {
+      fold_list(
+        xs: row.seeds,
+        empty: acc,
+        cons: fn(inner, m) { impact_add_unseen_module(acc: inner, item: m) }
+      )
+    }
+  )
+}
+
+fn changed_surface_impact_outcome(
+  changed_paths: List<String>,
+  departed_paths: List<String>,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  import_facts: List<ImportResolutionFact>,
+  admissions: List<ReferenceDerivedClosureAdmission>
+) -> ChangedSurfaceImpactOutcome {
+  let subjects = impact_changed_subjects(
+    changed_paths: changed_paths,
+    departed_paths: departed_paths
+  )
+  let resolution = impact_resolve_changed_subjects(nodes: nodes, subjects: subjects)
+  let unresolved = impact_unresolved_subjects(nodes: nodes, subjects: subjects)
+  let reading = module_impact_reading(
+    seeds: impact_seeds_of_resolution(resolution: resolution),
+    direction: DependentsOf,
+    edges: edges,
+    nodes: nodes,
+    import_facts: import_facts,
+    admissions: admissions
+  )
+  if any(xs: unresolved, predicate: fn(_) { true }) {
+    ChangedSurfacePartial { reading: reading, unresolved_subjects: unresolved }
+  } else {
+    ChangedSurfaceComplete { reading: reading }
+  }
+}
+
+// OPERATOR RULING 2026-08-08, item 4: a Partial answer must NEVER become a CI skip authority. This
+// is the wall, and it is a construction wall rather than a check: the ONLY function that yields a
+// skip authority pattern-matches the outcome, and the granting arm is reachable exclusively from
+// ChangedSurfaceComplete whose reading ALSO carries ExactForGraphSubject. A Partial or Refused
+// outcome has no path to SkipAuthorityGranted at all, so a consumer cannot obtain one by being
+// careless with a field. Note what this means today: pool-independent projection is Unavailable, so
+// no reading currently reaches ExactForGraphSubject and SkipAuthorityGranted is therefore
+// UNREACHABLE on the live corpus. That is the honest state - this capability is a pool-relative
+// module dependent query, not an affected set - and it is asserted by a witness rather than left as
+// a claim.
+
+type SkipWithheldCause
+  = SkipWithheldUnresolvedSubjects
+  | SkipWithheldObservationRefused
+  | SkipWithheldStandingNotExact
+
+type SkipAuthority
+  = SkipAuthorityGranted {
+      affected: List<ModuleIdentity>
+    }
+  | SkipAuthorityWithheld {
+      cause: SkipWithheldCause
+    }
+
+fn changed_surface_skip_authority(outcome: ChangedSurfaceImpactOutcome) -> SkipAuthority {
+  match outcome {
+    ChangedSurfaceRefused { reason: _ } =>
+      SkipAuthorityWithheld { cause: SkipWithheldObservationRefused }
+    ChangedSurfacePartial { reading: _, unresolved_subjects: _ } =>
+      SkipAuthorityWithheld { cause: SkipWithheldUnresolvedSubjects }
+    ChangedSurfaceComplete { reading } =>
+      match reading.standing {
+        ExactForGraphSubject => SkipAuthorityGranted { affected: reading.reached }
+        ProvisionalForObservedPool => SkipAuthorityWithheld { cause: SkipWithheldStandingNotExact }
+        Incomplete { causes: _ } => SkipAuthorityWithheld { cause: SkipWithheldStandingNotExact }
+        PoolIndependentProjectionUnavailable { trigger: _ } =>
+          SkipAuthorityWithheld { cause: SkipWithheldStandingNotExact }
+      }
+  }
+}
+
+// The bad-state class is a consumer reading a pool-relative, per-component answer as if it were
+// exact and whole-subgraph. Most of that class is unwritable by construction rather than validated
+// after the fact: ImpactStanding makes ExactForGraphSubject reachable only when the admission
+// carrier reports pool independence Established AND no cause was observed, so a pool-relative
+// answer cannot present as exact; ModuleIdentity is a record, so a path cannot be passed where a
+// semantic identity is required; the declared flag and pool membership are independent observations
+// landing as distinct cause arms, so an inconsistent pool cannot silently answer complete; and
+// cycle verdicts are per strongly connected component, so a per-cycle law cannot be answered at
+// union grain. What is NOT yet walled, and is what the grounding supplies: edge provenance is
+// derived at query time rather than carried, so a dual-backed edge classifies reference-derived and
+// a change to the edge population could reclassify a cycle with no consumer edit. That dissolves to
+// one authority - provenance stamped at the single construction site import_fact_to_dependency_edge
+// - hence WallAfterGrounding rather than WallNow, and not RatchetForever, because it is decidable.
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

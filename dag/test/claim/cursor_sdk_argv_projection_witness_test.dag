@@ -1,0 +1,83 @@
+module test.claim.cursor_sdk_argv_projection_witness_test
+
+import std.types { Bool, NonEmptyStr, String, FilePath }
+import extdeps.llm.cursor_sdk {
+  CursorSdkCredentialProjectionRefused,
+  cursor_sdk_environment_api_key_materialization,
+  cursor_sdk_project_materialization,
+  cursor_sdk_refuse_argv_api_key_projection,
+  cursor_sdk_projection_argv_excludes_token,
+  cursor_sdk_projection_binds_environment,
+}
+import extdeps.llm.cursor_cli {
+  CursorAuth,
+  CursorApiKeyArgument,
+  CursorInvocation,
+  CursorDefaultEditMode,
+  CursorSandboxEnabled,
+  CursorStreamJson,
+  cursor_api_key_env_var,
+  cursor_model_auto,
+  shape_cursor_invocation,
+  cursor_argv_contains,
+}
+
+data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
+
+fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
+  CursorInvocation {
+    auth: auth,
+    model: cursor_model_auto,
+    mode: CursorDefaultEditMode,
+    sandbox: CursorSandboxEnabled,
+    output_format: CursorStreamJson,
+    force: false,
+    trust_workspace: true,
+    workspace: "/srv/attempt" as FilePath,
+    prompt: "do the work" as NonEmptyStr,
+  }
+}
+
+test fn environment_materialization_binds_env_not_argv() -> Bool {
+  let projection = cursor_sdk_project_materialization(
+    materialization: cursor_sdk_environment_api_key_materialization(),
+    environment_key_plaintext: witness_key,
+  )
+  cursor_sdk_projection_binds_environment(
+    projection: projection,
+    env_var: cursor_api_key_env_var,
+  )
+    && cursor_sdk_projection_argv_excludes_token(
+      projection: projection,
+      forbidden_token: witness_key as String,
+    )
+}
+
+test fn argv_api_key_projection_refuses() -> Bool {
+  match cursor_sdk_refuse_argv_api_key_projection(key: witness_key) {
+    CursorSdkCredentialProjectionRefused { reason } =>
+      string_contains(s: reason as String, pattern: "argv")
+    _ => false
+  }
+}
+
+test fn cli_argument_arm_leaks_key_into_argv_red_control() -> Bool {
+  cursor_argv_contains(
+    argv: shape_cursor_invocation(
+      inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
+    ).argv,
+    token: witness_key as String,
+  )
+    && cursor_argv_contains(
+      argv: shape_cursor_invocation(
+        inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
+      ).argv,
+      token: "--api-key",
+    )
+}
+
+test fn cursor_sdk_argv_projection_witness_keystone_holds() -> Bool {
+  environment_materialization_binds_env_not_argv()
+    && argv_api_key_projection_refuses()
+    && cli_argument_arm_leaks_key_into_argv_red_control()
+}

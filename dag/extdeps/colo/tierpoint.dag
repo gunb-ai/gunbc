@@ -1,0 +1,85 @@
+module extdeps.colo.tierpoint
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.tierpoint.com/data-centers/pennsylvania/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.tierpoint",
+      decl_name: "tierpoint_pennsylvania_facilities",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data tierpoint_philadelphia: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Philadelphia (Navy Yard)",
+  address: AddressListed {
+    street: "4775 League Island Boulevard, Philadelphia, PA 19112",
+    citation: "tierpoint.com Philadelphia page, read 2026-08-18",
+  },
+  municipality: "Philadelphia",
+  region_code: "PA",
+  facility_note: "Navy Yard site between the airport and Center City; the operator's page (read 2026-08-18) notes Keystone Opportunity Improvement Zone tax standing.",
+}
+
+data tierpoint_allentown: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Allentown (TekPark)",
+  address: AddressListed {
+    street: "9999 Hamilton Boulevard, Building 4, Breinigsville, PA 18031",
+    citation: "tierpoint.com Allentown TekPark page and spec sheet, read 2026-08-18",
+  },
+  municipality: "Breinigsville",
+  region_code: "PA",
+  facility_note: "Purpose-built Lehigh Valley site on the TEK Park campus; the operator publishes a spec sheet PDF for it.",
+}
+
+data tierpoint_bethlehem: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Bethlehem",
+  address: AddressUnread {
+    obligation: "Listed on the operator's Pennsylvania index (read 2026-08-18); street address not captured in this sweep.",
+  },
+  municipality: "Bethlehem",
+  region_code: "PA",
+  facility_note: "Lehigh Valley site marketed for disaster recovery proximity to both Philadelphia and New York.",
+}
+
+data tierpoint_valley_forge: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Valley Forge",
+  address: AddressUnread {
+    obligation: "Listed on the operator's Pennsylvania index (read 2026-08-18); street address not captured in this sweep.",
+  },
+  municipality: "Valley Forge",
+  region_code: "PA",
+  facility_note: "Philadelphia-suburb site on the operator's Pennsylvania index.",
+}
+
+data tierpoint_pennsylvania_facilities: List<ColoFacilityRow> = [
+  tierpoint_philadelphia,
+  tierpoint_allentown,
+  tierpoint_bethlehem,
+  tierpoint_valley_forge,
+]
+
+data tierpoint_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "tierpoint.com sales",
+  obligation: "Spec sheets are published; cabinet pricing is not (read 2026-08-18).",
+}

@@ -6,20 +6,21 @@ use self::CostBound::*;
 use self::PolynomialExponent::*;
 use self::RecursionShape::*;
 use self::SubValueRelation::*;
-pub use crate::std_computation::tree_size_bound;
-use crate::std_computation::CallPattern::{
-    ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
+pub use crate::std_checked_arithmetic::{
+    checked_int_add, checked_int_multiply, checked_int_optional,
 };
-use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
-use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
+pub use crate::std_computation::tree_size_bound;
+use crate::std_computation::CallPattern::*;
+use crate::std_computation::IterationPrimitive::*;
+use crate::std_computation::ShrinkFactor::*;
+use crate::std_computation::SizeBound::*;
 pub use crate::std_computation::{
     CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
-use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
-use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
-use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
-use crate::std_termination::RankingDimension::TreeSize;
+use crate::std_termination::DescentEvidence::*;
+use crate::std_termination::PositiveDescentAmount::*;
+use crate::std_termination::ProportionalDivisor::*;
+use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
     peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
     positive_descent_count, proportional_divisor_from_int_at_least_two,
@@ -29,12 +30,10 @@ pub use crate::std_termination::{
     DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -59,24 +58,24 @@ pub struct InductiveField {
 }
 
 pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
-    match a {
-        RecursionShape::DirectRecursion => match b {
+    match a.clone() {
+        RecursionShape::DirectRecursion => match b.clone() {
             RecursionShape::DirectRecursion => true,
             _ => false,
         },
-        RecursionShape::ListRecursion => match b {
+        RecursionShape::ListRecursion => match b.clone() {
             RecursionShape::ListRecursion => true,
             _ => false,
         },
-        RecursionShape::OptionalRecursion => match b {
+        RecursionShape::OptionalRecursion => match b.clone() {
             RecursionShape::OptionalRecursion => true,
             _ => false,
         },
-        RecursionShape::SetRecursion => match b {
+        RecursionShape::SetRecursion => match b.clone() {
             RecursionShape::SetRecursion => true,
             _ => false,
         },
-        RecursionShape::MapValueRecursion => match b {
+        RecursionShape::MapValueRecursion => match b.clone() {
             RecursionShape::MapValueRecursion => true,
             _ => false,
         },
@@ -95,7 +94,9 @@ pub fn inductive_field_to_dimension(
     field: Rc<InductiveField>,
     param: String,
 ) -> Rc<RankingDimension> {
-    Rc::new(RankingDimension::TreeSize { param: param })
+    Rc::new(RankingDimension::TreeSize {
+        param: param.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -120,7 +121,7 @@ pub enum SubValueRelation {
 }
 
 pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence {
-    match (*relation).clone() {
+    match (*relation.clone()).clone() {
         SubValueRelation::StrictSubValue { factor: f, .. } => match (*f.clone()).clone() {
             ShrinkFactor::UnitShrink => DescentEvidence::Strict,
             ShrinkFactor::ConstantShrink { steps: _, .. } => DescentEvidence::Strict,
@@ -141,20 +142,22 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
 }
 
 pub fn shrink_factor_eq(a: Rc<ShrinkFactor>, b: Rc<ShrinkFactor>) -> bool {
-    match (*a).clone() {
-        ShrinkFactor::UnitShrink => match (*b).clone() {
+    match (*a.clone()).clone() {
+        ShrinkFactor::UnitShrink => match (*b.clone()).clone() {
             ShrinkFactor::UnitShrink => true,
             _ => false,
         },
-        ShrinkFactor::ConstantShrink { steps: sa, .. } => match (*b).clone() {
+        ShrinkFactor::ConstantShrink { steps: sa, .. } => match (*b.clone()).clone() {
             ShrinkFactor::ConstantShrink { steps: sb, .. } => {
-                (positive_descent_count(sa.clone()) == positive_descent_count(sb.clone()))
+                (crate::std_termination::positive_descent_count(sa.clone())
+                    == crate::std_termination::positive_descent_count(sb.clone()))
             }
             _ => false,
         },
-        ShrinkFactor::ProportionalShrink { divisor: da, .. } => match (*b).clone() {
+        ShrinkFactor::ProportionalShrink { divisor: da, .. } => match (*b.clone()).clone() {
             ShrinkFactor::ProportionalShrink { divisor: db, .. } => {
-                (proportional_divisor_to_int(da.clone()) == proportional_divisor_to_int(db.clone()))
+                (crate::std_termination::proportional_divisor_to_int(da.clone())
+                    == crate::std_termination::proportional_divisor_to_int(db.clone()))
             }
             _ => false,
         },
@@ -162,12 +165,12 @@ pub fn shrink_factor_eq(a: Rc<ShrinkFactor>, b: Rc<ShrinkFactor>) -> bool {
 }
 
 pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> bool {
-    match (*a).clone() {
+    match (*a.clone()).clone() {
         SubValueRelation::StrictSubValue {
             field: fa,
             factor: fac_a,
             ..
-        } => match (*b).clone() {
+        } => match (*b.clone()).clone() {
             SubValueRelation::StrictSubValue {
                 field: fb,
                 factor: fac_b,
@@ -178,7 +181,7 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
             }
             _ => false,
         },
-        SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b).clone() {
+        SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b.clone()).clone() {
             SubValueRelation::IteratedSubValue { field: fb, .. } => {
                 inductive_field_eq(fa.clone(), fb.clone())
             }
@@ -188,7 +191,7 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
             param: pa,
             factor: fac_a,
             ..
-        } => match (*b).clone() {
+        } => match (*b.clone()).clone() {
             SubValueRelation::ArithmeticDescent {
                 param: pb,
                 factor: fac_b,
@@ -196,23 +199,23 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
             } => ((pa.clone() == pb.clone()) && shrink_factor_eq(fac_a.clone(), fac_b.clone())),
             _ => false,
         },
-        SubValueRelation::PreservedValue => match (*b).clone() {
+        SubValueRelation::PreservedValue => match (*b.clone()).clone() {
             SubValueRelation::PreservedValue => true,
             _ => false,
         },
-        SubValueRelation::NonIncreasingValue => match (*b).clone() {
+        SubValueRelation::NonIncreasingValue => match (*b.clone()).clone() {
             SubValueRelation::NonIncreasingValue => true,
             _ => false,
         },
-        SubValueRelation::StrictAxisErased => match (*b).clone() {
+        SubValueRelation::StrictAxisErased => match (*b.clone()).clone() {
             SubValueRelation::StrictAxisErased => true,
             _ => false,
         },
-        SubValueRelation::MixedTop => match (*b).clone() {
+        SubValueRelation::MixedTop => match (*b.clone()).clone() {
             SubValueRelation::MixedTop => true,
             _ => false,
         },
-        SubValueRelation::SubValueUnknown => match (*b).clone() {
+        SubValueRelation::SubValueUnknown => match (*b.clone()).clone() {
             SubValueRelation::SubValueUnknown => true,
             _ => false,
         },
@@ -220,7 +223,7 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
 }
 
 pub fn is_strict_style_structural(r: Rc<SubValueRelation>) -> bool {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         SubValueRelation::StrictSubValue { .. } => true,
         SubValueRelation::IteratedSubValue { field: _, .. } => true,
         SubValueRelation::ArithmeticDescent { .. } => true,
@@ -230,7 +233,7 @@ pub fn is_strict_style_structural(r: Rc<SubValueRelation>) -> bool {
 }
 
 pub fn sub_value_level(r: Rc<SubValueRelation>) -> i64 {
-    match (*r).clone() {
+    match (*r.clone()).clone() {
         SubValueRelation::MixedTop => 4,
         SubValueRelation::StrictAxisErased => 3,
         SubValueRelation::StrictSubValue { .. } => 2,
@@ -320,10 +323,10 @@ pub fn compose_sub_value(
     base: Rc<SubValueRelation>,
     field: Rc<InductiveField>,
 ) -> Rc<SubValueRelation> {
-    match (*base).clone() {
+    match (*base.clone()).clone() {
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
         _ => Rc::new(SubValueRelation::StrictSubValue {
-            field: field,
+            field: field.clone(),
             factor: Rc::new(ShrinkFactor::UnitShrink),
         }),
     }
@@ -422,7 +425,7 @@ pub fn compose_sub_value_relations(
 }
 
 pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<CallPattern>> {
-    match (*relation).clone() {
+    match (*relation.clone()).clone() {
         SubValueRelation::StrictSubValue { field: f, .. } => {
             Some(Rc::new(CallPattern::ChildAccessorCall {
                 accessor: f.field_name.clone(),
@@ -456,22 +459,22 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
             })),
         },
         SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
-        SubValueRelation::NonIncreasingValue => None,
-        SubValueRelation::StrictAxisErased => None,
-        SubValueRelation::MixedTop => None,
-        SubValueRelation::SubValueUnknown => None,
+        SubValueRelation::NonIncreasingValue => std::option::Option::None,
+        SubValueRelation::StrictAxisErased => std::option::Option::None,
+        SubValueRelation::MixedTop => std::option::Option::None,
+        SubValueRelation::SubValueUnknown => std::option::Option::None,
     }
 }
 
 pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc<LoweringTarget>> {
-    match (*relation).clone() {
+    match (*relation.clone()).clone() {
         SubValueRelation::StrictSubValue {
             field: f,
             factor: fac,
             ..
         } => Some(Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Descend,
-            bound: tree_size_bound(f.field_name.clone()),
+            bound: crate::std_computation::tree_size_bound(f.field_name.clone()),
             evidence: DescentEvidence::Strict,
             factor: Some(fac.clone()),
         })),
@@ -481,7 +484,7 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
                 param: f.field_name.clone(),
             }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         })),
         SubValueRelation::ArithmeticDescent {
             param: p,
@@ -497,17 +500,17 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         })),
         SubValueRelation::NonIncreasingValue => Some(Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         })),
-        SubValueRelation::StrictAxisErased => None,
-        SubValueRelation::MixedTop => None,
-        SubValueRelation::SubValueUnknown => None,
+        SubValueRelation::StrictAxisErased => std::option::Option::None,
+        SubValueRelation::MixedTop => std::option::Option::None,
+        SubValueRelation::SubValueUnknown => std::option::Option::None,
     }
 }
 
@@ -576,7 +579,7 @@ pub enum CostBound {
 
 pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
     match terms.clone().first().cloned() {
-        None => Rc::new(CostBound::ErrorBound),
+        std::option::Option::None => Rc::new(CostBound::ErrorBound),
         Some(_) => Rc::new(CostBound::SumBound {
             terms: terms.clone(),
         }),
@@ -584,7 +587,7 @@ pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
 }
 
 pub fn cost_bound_is_sum_bound(b: Rc<CostBound>) -> bool {
-    match (*b).clone() {
+    match (*b.clone()).clone() {
         CostBound::SumBound { terms: _, .. } => true,
         CostBound::ConstantBound => false,
         CostBound::AtomicBound { cost: _, .. } => false,
@@ -602,7 +605,7 @@ pub fn cost_constant() -> Rc<CostBound> {
 pub fn cost_linear(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::AtomicBound {
         cost: Rc::new(AtomicCost::PolyCost {
-            param: param,
+            param: param.clone(),
             exponent: poly_exp_degree_one(),
         }),
     })
@@ -615,21 +618,22 @@ pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
         if (degree.clone() == 0) {
             Rc::new(CostBound::AtomicBound {
                 cost: Rc::new(AtomicCost::PolyCost {
-                    param: param,
+                    param: param.clone(),
                     exponent: Rc::new(PolynomialExponent::IntegerExpZero),
                 }),
             })
         } else {
-            match positive_descent_amount_from_positive_int(degree.clone()) {
+            match crate::std_termination::positive_descent_amount_from_positive_int(degree.clone())
+            {
                 Some(deg) => Rc::new(CostBound::AtomicBound {
                     cost: Rc::new(AtomicCost::PolyCost {
-                        param: param,
+                        param: param.clone(),
                         exponent: Rc::new(PolynomialExponent::IntegerExpPos {
                             degree: deg.clone(),
                         }),
                     }),
                 }),
-                None => Rc::new(CostBound::ErrorBound),
+                std::option::Option::None => Rc::new(CostBound::ErrorBound),
             }
         }
     }
@@ -639,32 +643,34 @@ pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
     if (k.clone() <= 0) {
         Rc::new(CostBound::ErrorBound)
     } else {
-        match positive_descent_amount_from_positive_int(k.clone()) {
+        match crate::std_termination::positive_descent_amount_from_positive_int(k.clone()) {
             Some(rw) => Rc::new(CostBound::AtomicBound {
                 cost: Rc::new(AtomicCost::PolyCost {
-                    param: param,
+                    param: param.clone(),
                     exponent: Rc::new(PolynomialExponent::FractionExp {
                         numerator: Rc::new(PositiveDescentAmount::OneStep),
                         root: rw.clone(),
                     }),
                 }),
             }),
-            None => Rc::new(CostBound::ErrorBound),
+            std::option::Option::None => Rc::new(CostBound::ErrorBound),
         }
     }
 }
 
 pub fn cost_sqrt(param: String) -> Rc<CostBound> {
-    cost_root(param, 2)
+    cost_root(param.clone(), 2)
 }
 
 pub fn cost_cbrt(param: String) -> Rc<CostBound> {
-    cost_root(param, 3)
+    cost_root(param.clone(), 3)
 }
 
 pub fn cost_log(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::AtomicBound {
-        cost: Rc::new(AtomicCost::LogCost { param: param }),
+        cost: Rc::new(AtomicCost::LogCost {
+            param: param.clone(),
+        }),
     })
 }
 
@@ -686,11 +692,11 @@ pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
     Rc::new(CostBound::SumOfProductsBound {
         terms: Rc::new(vec![
             Rc::new(vec![Rc::new(AtomicCost::PolyCost {
-                param: v_param,
+                param: v_param.clone(),
                 exponent: poly_exp_degree_one(),
             })]),
             Rc::new(vec![Rc::new(AtomicCost::PolyCost {
-                param: e_param,
+                param: e_param.clone(),
                 exponent: poly_exp_degree_one(),
             })]),
         ]),
@@ -705,80 +711,12 @@ pub struct RecurrenceForm {
     pub work_exponent: i64,
 }
 
-pub fn int_add_checked(a: i64, b: i64) -> Option<i64> {
-    if (b.clone() > 0) {
-        if (a.clone() > (9223372036854775807 - b.clone())) {
-            None
-        } else {
-            Some((a.clone() + b.clone()))
-        }
-    } else {
-        if (b.clone() < 0) {
-            if (a.clone() < (((0 - 9223372036854775807) - 1) - b.clone())) {
-                None
-            } else {
-                Some((a.clone() + b.clone()))
-            }
-        } else {
-            Some(a.clone())
-        }
-    }
-}
-
-pub fn int_mul_checked(a: i64, b: i64) -> Option<i64> {
-    if (b.clone() == 0) {
-        Some(0)
-    } else {
-        if (a.clone() == 0) {
-            Some(0)
-        } else {
-            if (b.clone() == -1) {
-                if (a.clone() == ((0 - 9223372036854775807) - 1)) {
-                    None
-                } else {
-                    Some((0 - a.clone()))
-                }
-            } else {
-                if (b.clone() > 0) {
-                    if (a.clone() > 0) {
-                        if (a.clone() > (9223372036854775807 / b.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    } else {
-                        if (a.clone() < (((0 - 9223372036854775807) - 1) / b.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    }
-                } else {
-                    if (a.clone() > 0) {
-                        if (b.clone() < (((0 - 9223372036854775807) - 1) / a.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    } else {
-                        if (b.clone() < (9223372036854775807 / a.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn bounded_int_pow_exponent(k: i64) -> Option<i64> {
     if (k.clone() < 0) {
-        None
+        std::option::Option::None
     } else {
-        if (k.clone() > peano_literal_materialization_cap()) {
-            None
+        if (k.clone() > crate::std_termination::peano_literal_materialization_cap()) {
+            std::option::Option::None
         } else {
             Some(k.clone())
         }
@@ -790,7 +728,7 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
         512 * 1024,
         2 * 1024 * 1024,
         || match bounded_int_pow_exponent(exp.clone()) {
-            None => None,
+            std::option::Option::None => std::option::Option::None,
             Some(e) => {
                 if (e.clone() == 0) {
                     Some(1)
@@ -812,12 +750,18 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                 }
                             } else {
                                 match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
-                                    Some(prev) => match int_mul_checked(base.clone(), prev.clone())
-                                    {
-                                        Some(prod) => Some(prod.clone()),
-                                        None => None,
-                                    },
-                                    None => None,
+                                    Some(prev) => {
+                                        match crate::std_checked_arithmetic::checked_int_optional(
+                                            crate::std_checked_arithmetic::checked_int_multiply(
+                                                base.clone(),
+                                                prev.clone(),
+                                            ),
+                                        ) {
+                                            Some(prod) => Some(prod.clone()),
+                                            std::option::Option::None => std::option::Option::None,
+                                        }
+                                    }
+                                    std::option::Option::None => std::option::Option::None,
                                 }
                             }
                         }
@@ -830,7 +774,7 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
 
 pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {
     if ((base.clone() < 2) || (argument.clone() < 1)) {
-        None
+        std::option::Option::None
     } else {
         ceil_log_iter(base.clone(), argument.clone(), 0, 1)
     }
@@ -839,24 +783,30 @@ pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {
 pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i64) -> Option<i64> {
     loop {
         if (power.clone() >= argument.clone()) {
-            break Some(k);
+            break Some(k.clone());
         } else {
-            match int_mul_checked(power.clone(), base.clone()) {
-                None => {
-                    break None;
+            match crate::std_checked_arithmetic::checked_int_optional(
+                crate::std_checked_arithmetic::checked_int_multiply(power.clone(), base.clone()),
+            ) {
+                std::option::Option::None => {
+                    break std::option::Option::None;
                 }
-                Some(next_power) => match int_add_checked(k, 1) {
-                    None => {
-                        break None;
+                Some(next_power) => {
+                    match crate::std_checked_arithmetic::checked_int_optional(
+                        crate::std_checked_arithmetic::checked_int_add(k.clone(), 1),
+                    ) {
+                        std::option::Option::None => {
+                            break std::option::Option::None;
+                        }
+                        Some(k1) => {
+                            let __tco_0 = k1.clone();
+                            let __tco_1 = next_power.clone();
+                            k = __tco_0;
+                            power = __tco_1;
+                            continue;
+                        }
                     }
-                    Some(k1) => {
-                        let __tco_0 = k1.clone();
-                        let __tco_1 = next_power.clone();
-                        k = __tco_0;
-                        power = __tco_1;
-                        continue;
-                    }
-                },
+                }
             }
         }
     }
@@ -871,10 +821,10 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
         if ((a.clone() < 1) || (b.clone() < 2)) {
             Rc::new(CostBound::ErrorBound)
         } else {
-            match bounded_int_pow_exponent(d) {
-                None => Rc::new(CostBound::ErrorBound),
+            match bounded_int_pow_exponent(d.clone()) {
+                std::option::Option::None => Rc::new(CostBound::ErrorBound),
                 Some(d_ok) => match int_pow_bounded(b.clone(), d_ok.clone()) {
-                    None => Rc::new(CostBound::ErrorBound),
+                    std::option::Option::None => Rc::new(CostBound::ErrorBound),
                     Some(b_to_d) => {
                         if (a.clone() < b_to_d.clone()) {
                             match d_ok.clone() {
@@ -884,46 +834,37 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
                         } else {
                             if (a.clone() == b_to_d.clone()) {
                                 match d_ok.clone() {
-                                    0 => cost_log(n.clone()),
-                                    _ => match positive_descent_amount_from_positive_int(
-                                        d_ok.clone(),
-                                    ) {
-                                        Some(deg) => Rc::new(CostBound::ProductBound {
-                                            factors: Rc::new(vec![
-                                                Rc::new(AtomicCost::PolyCost {
-                                                    param: n.clone(),
-                                                    exponent: Rc::new(
-                                                        PolynomialExponent::IntegerExpPos {
-                                                            degree: deg.clone(),
-                                                        },
-                                                    ),
-                                                }),
-                                                Rc::new(AtomicCost::LogCost { param: n.clone() }),
-                                            ]),
-                                        }),
-                                        None => Rc::new(CostBound::ErrorBound),
-                                    },
-                                }
+    0 => cost_log(n.clone()),
+    _ => match crate::std_termination::positive_descent_amount_from_positive_int(d_ok.clone()) {
+    Some(deg) => Rc::new(CostBound::ProductBound {
+    factors: Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: n.clone(),
+    exponent: Rc::new(PolynomialExponent::IntegerExpPos {
+    degree: deg.clone(),
+}),
+}), Rc::new(AtomicCost::LogCost {
+    param: n.clone(),
+})]),
+}),
+    std::option::Option::None => Rc::new(CostBound::ErrorBound),
+},
+}
                             } else {
-                                match proportional_divisor_from_int_at_least_two(b.clone()) {
-                                    Some(base_w) => {
-                                        match positive_descent_amount_from_positive_int(a.clone()) {
-                                            Some(arg_w) => Rc::new(CostBound::AtomicBound {
-                                                cost: Rc::new(AtomicCost::PolyCost {
-                                                    param: n.clone(),
-                                                    exponent: Rc::new(
-                                                        PolynomialExponent::LogBasedExp {
-                                                            base: base_w.clone(),
-                                                            argument: arg_w.clone(),
-                                                        },
-                                                    ),
-                                                }),
-                                            }),
-                                            None => Rc::new(CostBound::ErrorBound),
-                                        }
-                                    }
-                                    None => Rc::new(CostBound::ErrorBound),
-                                }
+                                match crate::std_termination::proportional_divisor_from_int_at_least_two(b.clone()) {
+    Some(base_w) => match crate::std_termination::positive_descent_amount_from_positive_int(a.clone()) {
+    Some(arg_w) => Rc::new(CostBound::AtomicBound {
+    cost: Rc::new(AtomicCost::PolyCost {
+    param: n.clone(),
+    exponent: Rc::new(PolynomialExponent::LogBasedExp {
+    base: base_w.clone(),
+    argument: arg_w.clone(),
+}),
+}),
+}),
+    std::option::Option::None => Rc::new(CostBound::ErrorBound),
+},
+    std::option::Option::None => Rc::new(CostBound::ErrorBound),
+}
                             }
                         }
                     }
@@ -940,7 +881,7 @@ pub fn catamorphism_bound(param: String, nesting_depth: i64) -> Rc<CostBound> {
         if (nesting_depth.clone() == 0) {
             Rc::new(CostBound::ConstantBound)
         } else {
-            cost_poly(param, nesting_depth.clone())
+            cost_poly(param.clone(), nesting_depth.clone())
         }
     }
 }
@@ -955,27 +896,27 @@ pub fn derive_bound(
         Rc::new(CostBound::ErrorBound)
     } else {
         match bounded_int_pow_exponent(work_exponent.clone()) {
-            None => Rc::new(CostBound::ErrorBound),
-            Some(_) => match (*factor).clone() {
+            std::option::Option::None => Rc::new(CostBound::ErrorBound),
+            Some(_) => match (*factor.clone()).clone() {
                 ShrinkFactor::UnitShrink => {
                     if (branches.clone() <= 1) {
-                        cost_linear(param)
+                        cost_linear(param.clone())
                     } else {
                         Rc::new(CostBound::ForeverBound)
                     }
                 }
                 ShrinkFactor::ConstantShrink { steps: _, .. } => {
                     if (branches.clone() <= 1) {
-                        cost_linear(param)
+                        cost_linear(param.clone())
                     } else {
                         Rc::new(CostBound::ForeverBound)
                     }
                 }
                 ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
                     master_theorem(Rc::new(RecurrenceForm {
-                        param: param,
+                        param: param.clone(),
                         branches: branches.clone(),
-                        divisor: proportional_divisor_to_int(d.clone()),
+                        divisor: crate::std_termination::proportional_divisor_to_int(d.clone()),
                         work_exponent: work_exponent.clone(),
                     }))
                 }
@@ -1049,7 +990,7 @@ pub fn cube_root_bound() -> Rc<CostBound> {
 }
 
 pub fn kth_root_bound(k: i64) -> Rc<CostBound> {
-    cost_root("n".to_string(), k)
+    cost_root("n".to_string(), k.clone())
 }
 
 pub fn bfs_dfs_bound() -> Rc<CostBound> {

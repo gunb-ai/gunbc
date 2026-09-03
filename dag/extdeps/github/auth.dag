@@ -1,0 +1,84 @@
+module extdeps.github.auth
+
+import extdeps.github.github { GitHubAuthToken, GitHubScope, ScopeGist, ScopeRepo }
+import std.credentials { CredentialSource, EnvVar }
+import extdeps.shell.credentials { env_credential }
+import std.types { NonEmptyStr, Timestamp }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication"
+  }
+}
+
+type GitHubTokenMetadataAuthority
+  = DeclaredGitHubTokenMetadata { scopes: List<GitHubScope>, expires_at: Timestamp? }
+
+type GitHubAuthSource {
+  credential_source: CredentialSource
+  token_metadata: GitHubTokenMetadataAuthority
+}
+
+data default_github_auth_source: GitHubAuthSource = {
+  credential_source: EnvVar { name: "GITHUB_TOKEN" },
+  token_metadata: DeclaredGitHubTokenMetadata {
+    scopes: [ScopeRepo, ScopeGist],
+    expires_at: none
+  }
+}
+
+data structural_coverage_gap_github_token_metadata_verification: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "GitHubAuthToken" },
+      DeclaredMetadata { field: "scopes" },
+      DeclaredMetadata { field: "expires_at" }
+    ],
+    trigger: "GitHub token introspection or installation-token issuance surface"
+  }
+]
+
+// A TOKEN READ IS AN OBSERVATION, AND MAY FIND NOTHING. `env_credential` answers `token: Secret?`
+// because the variable may be unset; this func used to reach the secret with a cast, so an unset
+// GITHUB_TOKEN produced a `GitHubAuthToken` whose secret was the literal text `Absent` -- a forged
+// credential indistinguishable from a real one at every later boundary.
+//
+// The absence is answered here, not carried further, so `GitHubAuthToken.token` KEEPS its
+// non-optional `Secret`: that type still means a token was actually read. The refusal names the
+// variable, because "no token" and "the wrong variable" are different problems for the caller and
+// only the second is fixable by editing the auth source.
+type GitHubAuthTokenRead
+  = GitHubAuthTokenObserved { token: GitHubAuthToken }
+  | GitHubAuthTokenUnavailable { variable: NonEmptyStr }
+
+func github_token() -> GitHubAuthTokenRead
+{
+  cred = match default_github_auth_source.credential_source {
+    EnvVar { name } => env_credential(env_var: name as NonEmptyStr)
+  }
+  return match cred.token {
+    Absent =>
+      GitHubAuthTokenUnavailable {
+        variable: match default_github_auth_source.credential_source {
+          EnvVar { name } => name as NonEmptyStr
+        }
+      }
+    Present { value: secret } =>
+      GitHubAuthTokenObserved {
+        token: {
+          token: secret,
+          scopes: match default_github_auth_source.token_metadata {
+            DeclaredGitHubTokenMetadata { scopes, expires_at } => scopes
+          },
+          expires_at: match default_github_auth_source.token_metadata {
+            DeclaredGitHubTokenMetadata { scopes, expires_at } => expires_at
+          }
+        }
+      }
+  }
+}

@@ -1,0 +1,216 @@
+module v2.lens.duplicate_computation
+
+import std.disposition { RealizationDispatch }
+import std.materialization_ladder { LadderVerdict, AuthoredDuplication, Frame, SharedStateFrame }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.algebra { any, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type DemandGuard
+  = UnguardedDemand
+  | GuardedFallbackDemand
+
+type ReplicationIntent
+  = SingleRun
+  | ReplicatedOracle { runs: Int }
+
+type ComputationDemandFact {
+  site: String
+  computation_key: String
+  guard: DemandGuard
+  replication: ReplicationIntent
+}
+
+data empty_computation_demand_facts: List<ComputationDemandFact> = []
+data empty_duplicate_computation_violations: List<LadderVerdict> = []
+data empty_computation_key_tokens: List<String> = []
+
+fn computation_placement_flag(token: String) -> Bool {
+  token == "--output-dir"
+}
+
+type ComputationKeyFold {
+  skip_next: Bool
+  kept: List<String>
+}
+
+fn computation_key_tokens(tokens: List<String>) -> List<String> {
+  let folded = fold_list(
+    xs: tokens,
+    empty: ComputationKeyFold { skip_next: false, kept: empty_computation_key_tokens },
+    cons: fn(acc, t) {
+      if acc.skip_next {
+        ComputationKeyFold { skip_next: false, kept: acc.kept }
+      } else if computation_placement_flag(token: t) {
+        ComputationKeyFold { skip_next: true, kept: acc.kept }
+      } else {
+        ComputationKeyFold {
+          skip_next: false,
+          kept: list_snoc_item(xs: acc.kept, item: t)
+        }
+      }
+    }
+  )
+  folded.kept
+}
+
+fn computation_join_tokens(tokens: List<String>) -> String {
+  fold_list(
+    xs: tokens,
+    empty: "",
+    cons: fn(acc, t) {
+      if acc == "" { t } else { concat(acc, concat(" ", t)) }
+    }
+  )
+}
+
+type TypedArgvInvocation {
+  site: String
+  tool: String
+  args: List<String>
+}
+
+fn typed_argv_computation_tokens(invocation: TypedArgvInvocation) -> List<String> {
+  fold_list(
+    xs: invocation.args,
+    empty: [invocation.tool],
+    cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }
+  )
+}
+
+fn computation_command_is_compile_class(tokens: List<String>) -> Bool {
+  let first = computation_token_at(tokens: tokens, at: 0)
+  let second = computation_token_at(tokens: tokens, at: 1)
+  ((first == "cargo") && (second == "build")) || ((first == "gunbc") && (second == "compile"))
+}
+
+type ComputationTokenPick {
+  index: Int
+  picked: String
+}
+
+fn computation_token_at(tokens: List<String>, at: Int) -> String {
+  let folded = fold_list(
+    xs: tokens,
+    empty: ComputationTokenPick { index: 0, picked: "" },
+    cons: fn(acc, t) {
+      if acc.index == at {
+        ComputationTokenPick { index: acc.index + 1, picked: t }
+      } else {
+        ComputationTokenPick { index: acc.index + 1, picked: acc.picked }
+      }
+    }
+  )
+  folded.picked
+}
+
+fn typed_argv_computation_demands(
+  invocation: TypedArgvInvocation,
+  guard: DemandGuard,
+  replication: ReplicationIntent
+) -> List<ComputationDemandFact> {
+  let tokens = typed_argv_computation_tokens(invocation: invocation)
+  if computation_command_is_compile_class(tokens: tokens) {
+    [ComputationDemandFact {
+      site: invocation.site,
+      computation_key: computation_join_tokens(tokens: computation_key_tokens(tokens: tokens)),
+      guard: guard,
+      replication: replication
+    }]
+  } else {
+    empty_computation_demand_facts
+  }
+}
+
+fn demand_guard_is_unguarded(g: DemandGuard) -> Bool {
+  match g {
+    UnguardedDemand => true
+    GuardedFallbackDemand => false
+  }
+}
+
+fn replication_admits_observed_runs(r: ReplicationIntent, observed: Int) -> Bool {
+  match r {
+    SingleRun => observed <= 1
+    ReplicatedOracle { runs: declared } => observed == declared
+  }
+}
+
+fn computation_keys_contain(keys: List<String>, key: String) -> Bool {
+  any(xs: keys, predicate: fn(k) { k == key })
+}
+
+fn distinct_computation_keys(facts: List<ComputationDemandFact>) -> List<String> {
+  fold_list(
+    xs: facts,
+    empty: empty_computation_key_tokens,
+    cons: fn(acc, f) {
+      if computation_keys_contain(keys: acc, key: f.computation_key) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: f.computation_key)
+      }
+    }
+  )
+}
+
+fn unguarded_demands_for_key(facts: List<ComputationDemandFact>, key: String) -> List<ComputationDemandFact> {
+  fold_list(
+    xs: facts,
+    empty: empty_computation_demand_facts,
+    cons: fn(acc, f) {
+      if (f.computation_key == key) && demand_guard_is_unguarded(g: f.guard) {
+        list_snoc_item(xs: acc, item: f)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bool {
+  let observed = length(xs: group)
+  if observed <= 1 {
+    true
+  } else {
+    !(any(xs: group, predicate: fn(f) { !(replication_admits_observed_runs(r: f.replication, observed: observed)) }))
+  }
+}
+
+fn authored_duplication_lca(key: String) -> List<Frame> {
+  [Frame { name: key, kind: SharedStateFrame }]
+}
+
+fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<LadderVerdict> {
+  fold_list(
+    xs: distinct_computation_keys(facts: facts),
+    empty: empty_duplicate_computation_violations,
+    cons: fn(acc, key) {
+      let group = unguarded_demands_for_key(facts: facts, key: key)
+      if computation_demand_group_admissible(group: group) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: AuthoredDuplication {
+          identity: key,
+          lca: authored_duplication_lca(key: key),
+          site_count: length(xs: group)
+        })
+      }
+    }
+  )
+}
+
+fn duplicate_computation_violation_count(facts: List<ComputationDemandFact>) -> Int {
+  length(xs: duplicate_computation_violations(facts: facts))
+}
+
+fn duplicate_computation_clean_holds(facts: List<ComputationDemandFact>) -> Bool {
+  duplicate_computation_violation_count(facts: facts) == 0
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

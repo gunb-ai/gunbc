@@ -47,11 +47,11 @@ type LeafModelClaimVerdictRow {
 }
 
 type LeafModelVerificationTotals {
-  proven: Nat
-  model_failed: Nat
-  falsification_caught: Nat
-  falsification_missed: Nat
-  not_checked: Nat
+  proven: v2.std.nat.Nat
+  model_failed: v2.std.nat.Nat
+  falsification_caught: v2.std.nat.Nat
+  falsification_missed: v2.std.nat.Nat
+  not_checked: v2.std.nat.Nat
 }
 
 type LeafModelVerificationReport<M> {

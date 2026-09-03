@@ -1,0 +1,64 @@
+module v2.test.long.dag_compile_clean_scope_sigma_test
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data corpus_scope_subject_path: String = "dag/gunbc/instruments/dag_compile_clean_scope.dag"
+
+data corpus_sigma_anchor: Symbol = ^fn_family_corpus_anchor
+
+fn corpus_subject_trees() -> List<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: filesystem_read(path: corpus_scope_subject_path).content,
+    file: corpus_sigma_anchor,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: artifact, diagnostics: _ } => [artifact.tree]
+      }
+  }
+}
+
+test fn corpus_scope_parse_accepted() -> Bool {
+  length(xs: corpus_subject_trees()) == 1
+}
+
+test fn corpus_scope_has_no_sigma_families() -> Bool {
+  let trees = corpus_subject_trees()
+  let family_total = fold_list(
+    xs: trees,
+    empty: 0,
+    cons: fn(acc, tree) { acc + module_sigma_family_count(tree: tree) }
+  )
+  (length(xs: trees) == 1) && (family_total == 0)
+}
+
+data planted_family_fixture_path: String = "src/v2/test/fixture/fn_family/planted_family.dag"
+
+fn planted_fixture_trees() -> List<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: filesystem_read(path: planted_family_fixture_path).content,
+    file: corpus_sigma_anchor,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: artifact, diagnostics: _ } => [artifact.tree]
+      }
+  }
+}
+
+test fn corpus_red_control_planted_family_fires() -> Bool {
+  let count = fold_list(
+    xs: planted_fixture_trees(),
+    empty: 0,
+    cons: fn(acc, tree) { acc + module_sigma_family_count(tree: tree) }
+  )
+  (length(xs: planted_fixture_trees()) == 1) && (count == 1)
+}

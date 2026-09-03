@@ -1,0 +1,46 @@
+module extdeps.colo.centersquare
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.csquare.com/data-centers/new-york-new-jersey"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.centersquare",
+      decl_name: "centersquare_weehawken",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data centersquare_lineage_note: NonEmptyStr = "Centersquare (marketed Csquare) is the operator formed from the Cyxtera colocation estate after Cyxtera's 2023 bankruptcy sale; the Weehawken campus appears in older directories under Cyxtera EWR2 and originally CenturyLink/Savvis. One upstream entity, three historical names - recorded so a reader reconciling directories does not count three operators."
+
+data centersquare_weehawken: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Centersquare",
+  facility_label: "Centersquare EWR2 A/B/E Weehawken campus",
+  address: AddressListed {
+    street: "300 J.F. Kennedy Boulevard East, Weehawken, NJ 07086",
+    citation: "Inflect and datacenters.com Centersquare EWR2 profiles, read 2026-08-18",
+  },
+  municipality: "Weehawken",
+  region_code: "NJ",
+  facility_note: "Directory profiles read 2026-08-18 describe the 300 JFK Boulevard East building at roughly 802,000 square feet with about 105 MW marketed across its operators, 2N UPS and N+1 cooling on the Centersquare floors, roughly 32 on-site network providers, and colocation sold as secure cabinets and cages beside DIA and bare-metal products. Digital Realty EWR10 occupies the same building under its own module.",
+}
+
+data centersquare_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "sales contact via csquare.com",
+  obligation: "No cabinet pricing published on the pages read 2026-08-18; single-cabinet retail is sold but priced by quote.",
+}

@@ -1,0 +1,246 @@
+module test.claim.fabric_cell_effect_witness
+
+import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.membership_reconcile {
+  MemberAction, MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
+  MemberNotOwned,
+}
+import gunbc.fabric_cell_converge {
+  FabricCellMember,
+  FabricCellResourceAddress,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_member_key,
+  fabric_cell_desired_state_digest,
+  fabric_cell_root_path,
+  fabric_cell_attempt_root_path,
+  fabric_cell_base_dir,
+  fabric_cell_slice_name,
+}
+import gunbc.fabric_cell_effect {
+  FabricCellRealization,
+  CellPlanRealizable,
+  CellPlanRefused,
+  FabricCellEffect,
+  FabricCellDirectoryEnsure,
+  FabricCellSliceEnsure,
+  CellSubstrateRootOwned,
+  CellAttemptWriterOwned,
+  CellTeardownRefusedByOwnership,
+  CellChangeNotYetRealizable,
+  CellTeardownNotYetRealizable,
+  CellRosterDuplicateKey,
+  fabric_cell_realization,
+  fabric_cell_realization_refusal_count,
+  fabric_cell_plan_effects,
+}
+
+fn srv3_fabric_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+}
+
+fn member_at(address: FabricCellResourceAddress) -> FabricCellMember {
+  FabricCellMember {
+    slot: srv3_fabric_slot(),
+    address: address,
+    state_digest: fabric_cell_desired_state_digest(slot: srv3_fabric_slot(), address: address),
+  }
+}
+
+fn added(address: FabricCellResourceAddress) -> MemberAction<FabricCellMember, String> {
+  MemberAdded {
+    at: fabric_cell_member_key(member: member_at(address: address)),
+    to: member_at(address: address),
+  }
+}
+
+fn changed(address: FabricCellResourceAddress) -> MemberAction<FabricCellMember, String> {
+  MemberChanged {
+    at: fabric_cell_member_key(member: member_at(address: address)),
+    from: member_at(address: address),
+    to: member_at(address: address),
+  }
+}
+
+// NO ACTIONS MEANS NO EFFECTS. The base directory is a prerequisite of real cell work, not a
+// host mutation independently inferred from the absence of member actions. This is the direct RED
+// for review 57510: fabric_cell_realization must preserve the action-to-effect boundary even though
+// the fleet's converged-family arm normally bypasses this function for an empty plan.
+test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
+  match fabric_cell_realization(actions: []) {
+    CellPlanRealizable { effects: es } => list_length(items: es) == 0
+    CellPlanRefused { refusals: _ } => false
+  }
+}
+
+// THE FLIPPED ROW, AND WHY IT FLIPPED (DESIGN 4b(4)). This module's original discriminating RED
+// asserted that a full cell plan refuses because the boundary's slice directives were unmodeled in
+// extdeps.systemd.unit_file. That premise went STALE -- the directive-value-grain lane landed
+// `slice_memory_swap_max`, `slice_tasks_max` and `slice_cpu_weight`, and the refusal survived only
+// on a comment describing a two-arm shape the tree no longer had. When the wall's premise died the
+// expecting-red row flipped to this permanent positive control: a full cell of three additions
+// realizes FOUR effects -- the host-scoped base directory, two address directories, and one slice
+// ensure carrying all five desired
+// directives -- and a regression that re-refuses the boundary goes red here.
+test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool {
+  let full_cell = [
+    added(address: FabricCellRootAddress),
+    added(address: FabricCellAttemptRootAddress),
+    added(address: FabricCellResourceBoundaryAddress),
+  ]
+  match fabric_cell_realization(actions: full_cell) {
+    CellPlanRealizable { effects: es } =>
+      list_length(items: es) == 4
+        && fold(es, init: false, f: (acc, e) => acc || (match e {
+          FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
+            (u as String) == fabric_cell_slice_name(slot: srv3_fabric_slot())
+              && list_length(items: ds) == 5
+          FabricCellDirectoryEnsure { path: _, owner: _ } => false
+        }))
+    CellPlanRefused { refusals: _ } => false
+  }
+}
+
+// THE LAW THIS MODULE EXISTS FOR, AND ITS RED IS THE DESIGN WE REJECTED RATHER THAN A TYPO.
+// A cell plan holding two realizable additions and one unrealizable change must emit ZERO effects:
+// a refusal that fires after two directories exist has stopped half the line and left the other
+// half standing. The unrealizable member is now a MemberChanged -- change realization is
+// gunbc.change_realization's undeclared question -- because the boundary addition that used to
+// play this role realizes today.
+//
+// BOTH HALVES ARE ASSERTED SEPARATELY ON PURPOSE. A plan that refused and also produced no effects
+// because it produced nothing at all would satisfy the effect count while proving nothing, so the
+// realizable controls above and below are what make this a wall rather than a blanket refusal.
+test fn witness_one_unrealizable_address_refuses_the_whole_cell_and_emits_no_effects() -> Bool {
+  let mixed_cell = [
+    added(address: FabricCellRootAddress),
+    added(address: FabricCellAttemptRootAddress),
+    changed(address: FabricCellResourceBoundaryAddress),
+  ]
+  match fabric_cell_realization(actions: mixed_cell) {
+    CellPlanRefused { refusals: rs } => list_length(items: rs) == 1
+    CellPlanRealizable { effects: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL AT DIRECTORY GRAIN, kept from the original suite: the two directory
+// addresses alone realize their two ensures plus the shared base ensure, so the refusal above is
+// caused by the unrealizable action
+// and not by the family being unable to realize anything.
+test fn witness_directory_addresses_alone_realize_both_ensures() -> Bool {
+  let dirs_only = [
+    added(address: FabricCellRootAddress),
+    added(address: FabricCellAttemptRootAddress),
+  ]
+  match fabric_cell_realization(actions: dirs_only) {
+    CellPlanRealizable { effects: es } => list_length(items: es) == 3
+    CellPlanRefused { refusals: _ } => false
+  }
+}
+
+// OWNERSHIP DELEGATION IS EXPLICIT AND EXACTLY ONE DIRECTORY WIDE (parent ruling, warm-seal-35,
+// 2026-08-29). The cell root is substrate -- root-owned, so no CI job can mutate or delete the
+// persistent cell -- and the attempt root beneath it is the ONE directory delegated to the job
+// user. A realization that classes the cell root as attempt-writer-owned hands the substrate to
+// every CI job; one that classes the attempt root as substrate leaves the executor nowhere to
+// write. Both directions go red here.
+test fn witness_substrate_is_root_owned_and_only_the_attempt_root_is_delegated() -> Bool {
+  let dirs_only = [
+    added(address: FabricCellRootAddress),
+    added(address: FabricCellAttemptRootAddress),
+  ]
+  fold(
+    fabric_cell_plan_effects(actions: dirs_only),
+    init: true,
+    f: (acc, e) =>
+      acc && (match e {
+        FabricCellDirectoryEnsure { path: p, owner: o } =>
+          if (p as String) == fabric_cell_base_dir {
+            match o { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
+          } else if (p as String) == fabric_cell_root_path(slot: srv3_fabric_slot()) {
+            match o { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
+          } else {
+            (p as String) == fabric_cell_attempt_root_path(slot: srv3_fabric_slot())
+              && (match o { CellSubstrateRootOwned => false CellAttemptWriterOwned => true })
+          }
+        FabricCellSliceEnsure { slice_unit: _, directives: _ } => false
+      })
+  )
+}
+
+// REFUSALS ACCUMULATE RATHER THAN SHORT-CIRCUITING. An operator fixing one deficit should see the
+// others in the same report instead of rediscovering them one run at a time. Two unrealizable
+// actions must therefore produce two refusals, not one.
+test fn witness_refusals_accumulate_across_addresses() -> Bool {
+  let two_bad = [
+    changed(address: FabricCellResourceBoundaryAddress),
+    MemberRemoved {
+      at: fabric_cell_member_key(member: member_at(address: FabricCellRootAddress)),
+      from: member_at(address: FabricCellRootAddress),
+    },
+  ]
+  fabric_cell_realization_refusal_count(actions: two_bad) == 2
+}
+
+// THE REFUSAL CAUSES ARE DISTINCT, AND THAT IS NOT COSMETIC. An ownership wall is a correct refusal
+// that should never be "fixed"; an unrealizable teardown is a destructive effect nobody has
+// modeled; an unrealizable change is gunbc.change_realization's question about staged
+// intermediates. Different owners, different remedies. A single refusal type would make one message
+// answer for all of them.
+test fn witness_the_refusal_causes_are_distinguished() -> Bool {
+  let teardown = fabric_cell_realization(actions: [
+    MemberRemoved {
+      at: fabric_cell_member_key(member: member_at(address: FabricCellRootAddress)),
+      from: member_at(address: FabricCellRootAddress),
+    },
+  ])
+  let refused_teardown = fabric_cell_realization(actions: [
+    MemberRemovalRefused { from: member_at(address: FabricCellRootAddress), cause: MemberNotOwned },
+  ])
+  let change = fabric_cell_realization(actions: [changed(address: FabricCellRootAddress)])
+  is_teardown_unrealizable(r: teardown)
+    && is_ownership_refusal(r: refused_teardown)
+    && is_change_unrealizable(r: change)
+}
+
+fn is_teardown_unrealizable(r: FabricCellRealization) -> Bool {
+  match r {
+    CellPlanRefused { refusals: rs } =>
+      fold(rs, init: false, f: (acc, x) => acc || (match x {
+        CellTeardownNotYetRealizable { address_wire: _ } => true
+        CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
+        CellRosterDuplicateKey { address_wire: _ } => false
+        CellChangeNotYetRealizable { address_wire: _ } => false
+      }))
+    CellPlanRealizable { effects: _ } => false
+  }
+}
+
+fn is_ownership_refusal(r: FabricCellRealization) -> Bool {
+  match r {
+    CellPlanRefused { refusals: rs } =>
+      fold(rs, init: false, f: (acc, x) => acc || (match x {
+        CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => true
+        CellRosterDuplicateKey { address_wire: _ } => false
+        CellChangeNotYetRealizable { address_wire: _ } => false
+        CellTeardownNotYetRealizable { address_wire: _ } => false
+      }))
+    CellPlanRealizable { effects: _ } => false
+  }
+}
+
+fn is_change_unrealizable(r: FabricCellRealization) -> Bool {
+  match r {
+    CellPlanRefused { refusals: rs } =>
+      fold(rs, init: false, f: (acc, x) => acc || (match x {
+        CellChangeNotYetRealizable { address_wire: _ } => true
+        CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
+        CellRosterDuplicateKey { address_wire: _ } => false
+        CellTeardownNotYetRealizable { address_wire: _ } => false
+      }))
+    CellPlanRealizable { effects: _ } => false
+  }
+}

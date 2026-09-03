@@ -1,0 +1,13 @@
+module test.claim.env_freshness_witness
+
+
+data path_env_name: NonEmptyStr = "PATH"
+
+func witness_env_get_path() -> Bool {
+  let r = shell.Env.Get(name: path_env_name)
+  return r.value != null && (r.value != "")
+}
+
+fn env_freshness_keystone_holds() -> Bool {
+  witness_env_get_path()
+}

@@ -1,0 +1,26 @@
+module v2.test.claim.rc_probe_wire_decode_call
+
+import extdeps.filesystem.filesystem_io
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+
+data target_model_path: String = "src/v2/std/compilers/target_model.dag"
+
+fn target_model_live_content() -> String {
+  let result = filesystem_read(path: target_model_path)
+  result.content
+}
+
+test fn probe_wire_decode_call_uses_node_and_projection_args() -> Bool {
+  let live = target_model_live_content()
+  string_contains(
+    s: live,
+    pattern: "target_type_expr_emitted_wire_decode(node: emitted, projection: projection)"
+  ) && !string_contains(
+    s: live,
+    pattern: "target_type_expr_emitted_wire_decode(emitted:"
+  )
+}

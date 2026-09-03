@@ -1,0 +1,117 @@
+module v2.test.self_host.closure_emit_population_admission
+
+import v2.compiler.self_host.compiler_closure_emit_driver {
+  ClosureEmitPopulationAdmitted,
+  ClosureEmitPopulationRefused,
+  closure_emit_population_admission
+}
+import v2.compiler.source_authority {
+  DiscoveredSourceRefsDigestNoRefList,
+  DiscoveredSourceRefsDigestUnavailable,
+  DiscoveredSourceRefsDigest,
+  SourceRef,
+  SourceRootCoverageComplete,
+  SourceRootManifestAbsent,
+  SourceRootProvenanceCoverageReceipt
+}
+import v2.std.algebra { Empty }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.logic { Bool }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_closure_refs,
+  host_source_root_ingest_coverage_receipt
+}
+
+// The emitter is total over whatever ingest it receives: an empty ingest emits
+// an empty program and reports Accepted. So the acceptance criterion lives in
+// closure_emit_population_admission, ahead of the emitter, and these witnesses
+// exercise it without paying for an emission.
+//
+// The three refused populations below differ in ONE fact each, so a single
+// absorbing arm answering for all of them would fail at least two.
+//
+// Three of the six refusal arms are NOT exercised here, named rather than left
+// for a reader to discover by counting: population_digest_mismatch,
+// source_read_failed, and ingest_row_shortfall. Each needs a SourceRef whose
+// content hash and read outcome are controlled, which the committed stub
+// cannot supply.
+//
+// The ADMITTED path is also not asserted. The committed manifest is a stub, so
+// no committed population exists to admit, and asserting acceptance against it
+// would be a guard over an empty roster. It becomes assertable when a host
+// manifest overlay supplies a real closure.
+fn admission_reason_lexeme_or_admitted(
+  refs: List<SourceRef>,
+  receipt: SourceRootProvenanceCoverageReceipt
+) -> String {
+  match closure_emit_population_admission(refs: refs, receipt: receipt) {
+    ClosureEmitPopulationAdmitted { ingest: _ } => "admitted"
+    ClosureEmitPopulationRefused { reason: reason } => symbol_lexeme(sym: reason)
+  }
+}
+
+data admission_probe_absent_digest: DiscoveredSourceRefsDigest = DiscoveredSourceRefsDigestUnavailable {
+    cause: DiscoveredSourceRefsDigestNoRefList {
+      reason: "closure-emit-admission-probe-no-ref-list"
+    }
+  }
+
+// read_count 0, the committed stubs own shape, restated as a fixture so the
+// arm is exercised even if the stub is later replaced by a real manifest.
+data admission_probe_empty_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {
+    ingest_read_count: 0,
+    produced_row_count: 0,
+    discovered_source_refs_digest: admission_probe_absent_digest,
+    coverage: SourceRootManifestAbsent
+  }
+
+// read_count positive, coverage NOT complete, differs from the row above in
+// exactly one fact, so arm 1 and arm 2 cannot both be answered by one branch.
+data admission_probe_incomplete_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {
+    ingest_read_count: 3,
+    produced_row_count: 3,
+    discovered_source_refs_digest: admission_probe_absent_digest,
+    coverage: SourceRootManifestAbsent
+  }
+
+// read_count positive AND coverage complete, but the ref population is empty,
+// the transport shortfall, which is the state the old fold rendered as Accepted.
+data admission_probe_partial_population_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {
+    ingest_read_count: 3,
+    produced_row_count: 3,
+    discovered_source_refs_digest: admission_probe_absent_digest,
+    coverage: SourceRootCoverageComplete
+  }
+
+test fn closure_emit_admission_refuses_empty_population_holds() -> Bool {
+  admission_reason_lexeme_or_admitted(
+    refs: Empty,
+    receipt: admission_probe_empty_receipt
+  ) == "closure_emit_driver_empty_population"
+}
+
+test fn closure_emit_admission_refuses_incomplete_coverage_holds() -> Bool {
+  admission_reason_lexeme_or_admitted(
+    refs: Empty,
+    receipt: admission_probe_incomplete_coverage_receipt
+  ) == "closure_emit_driver_coverage_incomplete"
+}
+
+test fn closure_emit_admission_refuses_partial_population_holds() -> Bool {
+  admission_reason_lexeme_or_admitted(
+    refs: Empty,
+    receipt: admission_probe_partial_population_receipt
+  ) == "closure_emit_driver_partial_population"
+}
+
+// The committed manifest is refused, loudly, rather than emitting an empty
+// program and reporting Accepted. When a real manifest overlay lands this
+// witness flips, and it must be re-pointed at the stub rather than deleted,
+// because the stub state stays reachable.
+test fn closure_emit_admission_refuses_committed_manifest_stub_holds() -> Bool {
+  admission_reason_lexeme_or_admitted(
+    refs: host_source_root_closure_refs,
+    receipt: host_source_root_ingest_coverage_receipt
+  ) == "closure_emit_driver_empty_population"
+}

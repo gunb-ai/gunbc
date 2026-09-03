@@ -1,0 +1,664 @@
+module std.realization_schedule
+
+import std.types { CommitSha, NonEmptyStr, Bool, String, List, Int }
+import std.execution_mode { ExecutionMode, Hermetic, execution_mode_eq }
+import std.nat { Nat }
+import std.measure {
+  ClockBasis, CpuClock, WallClock, clock_basis_eq,
+  Measure, Time, ByteSize, Watt,
+  Second, Millisecond,
+  byte_size, byte_size_count, watt, time_measure, measure_count,
+  second_count, millisecond_count
+}
+import std.pareto { AxisGoal }
+import std.content_hash { ContentHash }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  as_content_hash_structural,
+  serialize_content_hash,
+  fnv1a64_structural_hex_digest
+}
+import std.algebra { Empty, Cons }
+import std.process_termination { ProcessTermination, ProcessExited, ProcessSignaled, ProcessTerminationUnobserved }
+import std.decl_ref { DeclarationRef }
+import std.witness_admission { WitnessConsumerCadence }
+
+type CostBasis
+  = Predicted
+  | Measured
+
+type CostAccount<S> {
+  time: Measure<Time, S, Nat>
+  space: ByteSize
+  power: Watt
+  basis: CostBasis
+}
+
+fn cost_account_predicted_zero<S>() -> CostAccount<S> {
+  CostAccount {
+    time: time_measure(count: 0)
+    space: byte_size(count: 0)
+    power: watt(count: 0)
+    basis: Predicted
+  }
+}
+
+fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
+  CostAccount {
+    time: time
+    space: byte_size(count: 0)
+    power: watt(count: 0)
+    basis: Measured
+  }
+}
+
+fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
+  measure_count(m: account.time)
+}
+
+type RealizationObjective {
+  goals: List<AxisGoal>
+}
+
+type WitnessKind
+  = CorpusWitnessKind
+  | ExecutionWitnessKind
+  | NativeBundleWitnessKind
+
+type WitnessSeam {
+  producer: String
+  consumer: String
+}
+
+// Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed
+// builds performance receipts from wall_nanos (performance_receipt_from_witness) while the
+// per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as
+// std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold.
+// claim_batch receipt logs cited on MeasuredAtExactSubject rows are WallClock unless re-measured on
+// thread CPU. THE CARRIER IS std.measure ClockBasis, and this note records why it is not a second
+// one. A local WitnessCostClock = WitnessCostWallEval | WitnessCostThreadCpuEval stood here until
+// 2026-08-05, minted one day before std.measure ClockBasis = CpuClock | WallClock and for the SAME
+// stated reason — the sentence above, that an untagged figure is not comparable to a threshold,
+// appears in both notes. Two carriers, one concept, one argument, two names is the section 3
+// nicknaming violation exactly, and it duplicates at the meaning layer where everything derived
+// duplicates again. It was also not merely redundant, which is what made it urgent rather than
+// tidy: the declared side of a cost comparison was tagged in this vocabulary while the observed
+// side (gunbc.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so
+// witness_row_cost_verdict's BasisClockMismatch — the wall built to refuse a thread-CPU figure
+// compared against a wall baseline — could not see across the two spellings. A fork that defeats
+// the mechanism written to catch that mistake reports clean while comparing the two quantities it
+// exists to keep apart. Dissolved by IMPORT rather than by re-declaration, so the arms below are
+// the same values the observation side already carries and a cross-clock pair refuses on one
+// comparator.
+
+type WitnessCostBasis
+  = MeasuredAtExactSubject {
+      clock: ClockBasis,
+      duration: Millisecond,
+      receipt: String
+    }
+  | EstimatedFromSiblingClass {
+      clock: ClockBasis,
+      source_witness: String,
+      basis: String
+    }
+
+// path_classification: WitnessConsumerCadence, not a cadence String (C-b, operator brief
+// 2026-08-07, corrected 2026-08-07): the string fused three separate facts — path-policy
+// classification, schedule period, and maximum tolerated staleness — into one field, so a value
+// like "4h" answered both which lane classifies this row and how often it runs, and the wire
+// decoder that tried to recover the identity half from the string only ever knew five of
+// WitnessConsumerCadence's nine arms (witness_consumer_cadence_wire_round_trip_witness_test.dag,
+// RED on the archived draft gunbc#7893 / origin/session/swift-wren-710). WitnessConsumerCadence
+// (std.witness_admission) already is the closed, grounded vocabulary for path-policy classification
+// — importing it here is the §3 single-authority move, not a second declaration. The field is named
+// path_classification, not consumer: per src/v2/workflow/witness_admission.dag's
+// commit_roster_enrollment_is_a_consumer_note, WitnessConsumerCadence answers which path policy
+// classifies a row, NOT whether anything executes it — those are two different questions, and
+// naming this field consumer would silently answer the second with the first (the state-space
+// conflation this slice exists to remove). Whether a row has an executing consumer is answered by
+// the separate fold in src/v2/workflow/witness_admission.dag; this envelope does not carry that
+// fact and must not be read as carrying it. max_staleness is Millisecond, the SAME measure
+// wall_budget already uses (std.measure) — reaching for the existing measure is the point; minting
+// a fresh Duration carrier for a concept that already exists would itself be a failed decomposition
+// (§2 net-concepts test). This envelope represents ACTUAL path-policy classification, never DESIRED
+// placement — that is a distinct, later slice with its own types.
+
+type ScheduledWitnessEnvelope {
+  path_classification: WitnessConsumerCadence
+  wall_budget: Millisecond
+  max_staleness: Millisecond
+}
+
+type WitnessSpan
+  = SpanUndeclared
+  | SpanSeams { seams: List<WitnessSeam> }
+  | SpanEnrolled {
+      seams: List<WitnessSeam>,
+      cost_basis: WitnessCostBasis,
+      envelope: ScheduledWitnessEnvelope
+    }
+
+fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> Bool {
+  match a {
+    CorpusWitnessKind => match b {
+      CorpusWitnessKind => true
+      ExecutionWitnessKind => false
+      NativeBundleWitnessKind => false
+    }
+    ExecutionWitnessKind => match b {
+      ExecutionWitnessKind => true
+      CorpusWitnessKind => false
+      NativeBundleWitnessKind => false
+    }
+    NativeBundleWitnessKind => match b {
+      NativeBundleWitnessKind => true
+      CorpusWitnessKind => false
+      ExecutionWitnessKind => false
+    }
+  }
+}
+
+// function is OPTIONAL at file grain (umbrella dissolution U3, 2026-07-26): the empty string means
+// Absent — the executor enumerates the entry's test fns through the same path discovery uses
+// (scan_test_decl_names / floor_discovery_scan_test_decl_names). Non-empty keeps fn grain (per-row
+// wet budgets, QuarantineProbeExpectRed probes, roster_registry rows that legitimately stay
+// fn-scoped). CommitWitnessClaim.check_fns: [] projects one ScheduleWitnessEntry with function: "".
+// Dissolve-on: Optional<String> when enrollment is derived from discovery
+// (commit_witness_claim_roster_dissolution_trigger).
+
+type ScheduleWitnessEntry {
+  entry: String
+  function: String
+  kind: WitnessKind
+}
+
+// Memory class is a structural marker, not a quantity (operator ruling 2026-07-12): the former
+// RunnableMemoryPeak predicted_peak bytes were hand-edited calibration constants — pins freezing
+// derivations, the July OOM regime's root — and the width folds that consumed them are retired.
+// Realization concurrency is now governed adaptively at run time (v1_compiler::memory_governor:
+// AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted
+// receipts), so the model keeps only the honest structural fact: Negligible vs Substantial
+// residency, which co-residence structure keys on. Quantified per-runnable demand returns when it
+// is derivable from the graph (CostAccount.space measured/derived), not as authored literals.
+
+type RunnableMemoryClass
+  = RunnableMemoryNegligible
+  | RunnableMemorySubstantial
+
+// execution_mode is the runnable's declared effect envelope (operator posture 2026-07-11): the
+// runner binds the injector the profile declares — Hermetic replays published mocks/recorded
+// fixtures and refuses unmocked effects with typed diagnostics, Wet dispatches live transports,
+// Record dispatches and captures fixtures. The declaration lives on the profile so every runnable
+// kind (gate claim, discovery batch, execution batch) carries it uniformly, beside its resource
+// siblings (spawns_host_compiler is already an effect-class fact). Fail-closed default:
+// runnable_resource_profile_negligible declares Hermetic, so an undeclared-envelope runnable cannot
+// silently reach live effects — it refuses, loudly, at the effect boundary. Future hardening (named
+// trigger, not built here): an OS-level harness that fail-closes on sensed bypasses (shell spawn /
+// network / out-of-root disk IO) beneath the interpreter seam.
+
+type RunnableResourceProfile {
+  heavy_whole_tree_resolve: Bool
+  spawns_host_compiler: Bool
+  memory: RunnableMemoryClass
+  execution_mode: ExecutionMode
+}
+
+// A clamp carries WHO DECLARED IT, and it is a required field rather than a lookup, because the
+// numbers alone cannot say. Two independently owned populations once fed one aligned clamp list —
+// the positional gunbc.ci_spec rows for ordinary batches, and a scoped witness batch's own row in
+// gunbc.ci_layer_roots (that batch is deleted; the field it forced is not) — and the executor
+// reconstructed the origin from the LIST POSITION. That is
+// how a refusal came to report clamp_ms=360000 while citing gunbc_ci_floor_batch_clamp_params[0],
+// a row whose overhead is 240 seconds: two facts that cannot both be true, printed in one located
+// diagnostic, costing two lanes their time reconciling a number against a row that never produced
+// it (gunbc#7869, 2026-08-08).
+//
+// Carrying the authority HERE rather than beside the reader is the construction move: a clamp
+// without a declared source has no constructor, so the misattribution is unwritable instead of
+// being a rendering to keep correct. The positional index stays a positional convenience supplied
+// by the reader — it names an offset into a list, which no symbol can name — while the module and
+// declaration travel with the value (DESIGN section 3: cite the symbol, not the position).
+type RunnableBatchClamp {
+  overhead: Second
+  per_unit: Millisecond
+  authority: DeclarationRef
+}
+
+// The clamp arithmetic, once. `units` is present in the expression and contributes exactly
+// `units * per_unit` — which is ZERO on every row whose rate is zero, including the scoped witness
+// batch's. Stating it as one fn is what lets a witness assert "27 units and 1 unit clamp
+// identically" against the same expression the executor evaluates, rather than against a second
+// spelling of it.
+fn runnable_batch_clamp_ms(clamp: RunnableBatchClamp, units: Int) -> Int {
+  (second_count(s: clamp.overhead) * 1000) + (units * millisecond_count(m: clamp.per_unit))
+}
+
+type RunnableBatchClampSource
+  = RunnableUsesFloorPositionalClamp
+  | RunnableOwnsBatchClamp { clamp: RunnableBatchClamp }
+
+// A single-variant carrier, and deliberately still a coproduct rather than a collapse to a
+// bare product: it once had a ScopedWitnessFloorWorker arm carrying a batch id, deleted with
+// the scoped witness batch (2026-08-15). The remaining arm keeps its own name so a second
+// worker kind is one row rather than a type change at every reader.
+type FloorWorkerIdentity
+  = OrdinaryFloorWorker {}
+
+type FloorWorkerTerminalReceipt
+  = FloorWorkerTerminalReceiptObserved { report: FloorWorkerTerminalReport }
+  | FloorWorkerTerminalReceiptMissing
+
+type FloorWorkerTerminalReport
+  = FloorWorkerReportedCompleted { detail: String }
+  | FloorWorkerReportedRefused { detail: String }
+  | FloorWorkerReportedFailed { detail: String }
+  | FloorWorkerTerminalReportMalformed { detail: String }
+
+type FloorWorkerObservationOutcome
+  = FloorWorkerCompleted
+  | FloorWorkerRefused { detail: String }
+  | FloorWorkerFailed { detail: String }
+  | FloorWorkerDiedWithoutTerminalReceipt { detail: String }
+
+type FloorWorkerObservation {
+  worker: FloorWorkerIdentity
+  termination: ProcessTermination
+  terminal_receipt: FloorWorkerTerminalReceipt
+}
+
+fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> FloorWorkerObservationOutcome {
+  match observation.terminal_receipt {
+    FloorWorkerTerminalReceiptMissing => FloorWorkerDiedWithoutTerminalReceipt {
+      detail: "worker termination had no terminal report"
+    }
+    FloorWorkerTerminalReceiptObserved { report: report } => match observation.termination {
+      ProcessExited { code: 0 } => match report {
+        FloorWorkerReportedCompleted { detail: _ } => FloorWorkerCompleted
+        FloorWorkerReportedRefused { detail: detail } => FloorWorkerFailed {
+          detail: "refusal report contradicted exit code 0: " + detail
+        }
+        FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
+        FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
+      }
+      ProcessExited { code: _ } => match report {
+        FloorWorkerReportedCompleted { detail: _ } => FloorWorkerFailed {
+          detail: "completion report contradicted nonzero exit"
+        }
+        FloorWorkerReportedRefused { detail: detail } => FloorWorkerRefused { detail: detail }
+        FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
+        FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
+      }
+      ProcessSignaled { signal: _ } => FloorWorkerFailed {
+        detail: "terminal report contradicted signal death"
+      }
+      ProcessTerminationUnobserved => FloorWorkerFailed {
+        detail: "terminal report exists but process termination was unobserved"
+      }
+    }
+  }
+}
+
+type FloorWorkerObservationReceiptPath = NonEmptyStr where brand("FloorWorkerObservationReceiptPath")
+
+data floor_worker_observation_receipt_path: FloorWorkerObservationReceiptPath = "target/floor-worker-observation-receipt.tsv"
+
+// The floor coordinator is structurally closure-free: only worker processes resolve or execute a
+// plan. Every worker writes a terminal receipt only after its result artifacts are complete; the
+// coordinator crosses that report with the OS exit status and persists a located counted
+// FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an
+// observed state, never absence-as-success. Outcome is deliberately NOT a field:
+// floor_worker_observation_outcome derives it totally from termination crossed with
+// terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an
+// observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary
+// rendering of that derivation. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on:
+// a std tabular-codec carrier derives the observation storage projection from
+// FloorWorkerObservation, deleting the seed wire labels while preserving the branded path.
+
+fn runnable_memory_negligible() -> RunnableMemoryClass {
+  RunnableMemoryNegligible
+}
+
+fn runnable_memory_substantial() -> RunnableMemoryClass {
+  RunnableMemorySubstantial
+}
+
+fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemoryClass) -> Bool {
+  match left {
+    RunnableMemoryNegligible => match right {
+      RunnableMemoryNegligible => true
+      RunnableMemorySubstantial => false
+    }
+    RunnableMemorySubstantial => match right {
+      RunnableMemoryNegligible => false
+      RunnableMemorySubstantial => true
+    }
+  }
+}
+
+fn runnable_resource_profile_eq(left: RunnableResourceProfile, right: RunnableResourceProfile) -> Bool {
+  (left.heavy_whole_tree_resolve == right.heavy_whole_tree_resolve)
+    && (left.spawns_host_compiler == right.spawns_host_compiler)
+    && runnable_memory_class_eq(left: left.memory, right: right.memory)
+    && execution_mode_eq(left: left.execution_mode, right: right.execution_mode)
+}
+
+fn runnable_resource_profile_negligible() -> RunnableResourceProfile {
+  RunnableResourceProfile {
+    heavy_whole_tree_resolve: false
+    spawns_host_compiler: false
+    memory: runnable_memory_negligible()
+    execution_mode: Hermetic
+  }
+}
+
+fn runnable_resource_profile(
+  heavy_whole_tree_resolve: Bool,
+  spawns_host_compiler: Bool,
+  memory: RunnableMemoryClass,
+  execution_mode: ExecutionMode
+) -> RunnableResourceProfile {
+  RunnableResourceProfile {
+    heavy_whole_tree_resolve: heavy_whole_tree_resolve
+    spawns_host_compiler: spawns_host_compiler
+    memory: memory
+    execution_mode: execution_mode
+  }
+}
+
+fn runnable_excludes_corpus_co_residence(profile: RunnableResourceProfile) -> Bool {
+  match profile.memory {
+    RunnableMemoryNegligible => false
+    RunnableMemorySubstantial => true
+  }
+}
+
+fn runnable_heavy_whole_tree_resolve(profile: RunnableResourceProfile) -> Bool {
+  profile.heavy_whole_tree_resolve
+}
+
+fn runnable_profile(r: Runnable) -> RunnableResourceProfile {
+  match r {
+    RunnableSingleClaim { entry: _, function: _, profile: p } => p
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
+    RunnableKernelWorkload { fused_op_count: _ } => runnable_resource_profile_negligible()
+  }
+}
+
+fn runnable_batch_clamp_source(r: Runnable) -> RunnableBatchClampSource {
+  match r {
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => RunnableUsesFloorPositionalClamp
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => RunnableUsesFloorPositionalClamp
+    RunnableKernelWorkload { fused_op_count: _ } => RunnableUsesFloorPositionalClamp
+  }
+}
+
+fn runnable_forbids_corpus_co_residence(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+    RunnableSingleClaim { entry: _, function: _, profile: p } => runnable_excludes_corpus_co_residence(profile: p)
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+type Runnable
+  = RunnableSingleClaim { entry: String, function: String, profile: RunnableResourceProfile }
+  | RunnableDiscoveryBatch {
+      source_roots: List<String>
+      scan_dirs: List<String>
+      explicit_entries: List<ScheduleWitnessEntry>
+      exclude_substrings: List<String>
+      discovery_scope_dirs: List<String>
+      profile: RunnableResourceProfile
+    }
+  | RunnableKernelWorkload { fused_op_count: Int }
+
+type OnSuccessRunnableDisposition
+  = OnSuccessRunnableAdmitted
+  | OnSuccessDiscoveryRefused
+  | OnSuccessKernelRefused
+  | OnSuccessHeavyResolveRefused
+  | OnSuccessHostCompilerRefused
+  | OnSuccessSubstantialRefused
+
+// The single modeled admission authority for a Runnable authored into WalkPlan.on_success_stages.
+// Discovery and kernel workloads have no defined green-only meaning. A whole-tree resolve takes the
+// unadmitted memo lane and leaves its context resident across later stages; host-compiler spawn and
+// substantial residency refuse because success stages declare no resource clamp. A modeled
+// RunnableSingleClaim always carries its full profile — absence or malformation is the strict
+// executor parser's boundary, not a second disposition arm here. The seed executor mirrors this
+// decision until it consumes the v2 model directly; when stage capabilities grow, this function is
+// the one authority that changes.
+
+fn on_success_runnable_disposition(runnable: Runnable) -> OnSuccessRunnableDisposition {
+  match runnable {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
+      OnSuccessDiscoveryRefused
+    RunnableKernelWorkload { fused_op_count: _ } =>
+      OnSuccessKernelRefused
+    RunnableSingleClaim { entry: _, function: _, profile: profile } =>
+      if profile.heavy_whole_tree_resolve {
+        OnSuccessHeavyResolveRefused
+      } else if profile.spawns_host_compiler {
+        OnSuccessHostCompilerRefused
+      } else {
+        match profile.memory {
+          RunnableMemoryNegligible => OnSuccessRunnableAdmitted
+          RunnableMemorySubstantial => OnSuccessSubstantialRefused
+        }
+      }
+  }
+}
+
+data walk_plan_note: String = "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — ELIGIBLE INDEPENDENT RESOLVE GROUPS within a stage MAY overlap, subject to resource admission — no sibling ordering is guaranteed, so anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. The contract is deliberately weaker than \"members run concurrently\" (review 2026-07-31), because the executor can legitimately withdraw overlap without breaking anything: same-entry same-mode claims are COMBINED into one resolve group and run serially within it; memo-lane and discovery units run on the main thread; and at governor width 1 two spawned threads exist while only one claim body is admitted at a time. Promising wall-time concurrency would make grouping, memo placement, and the governor into contract violations when they are the design. What the admission occupants actually need is the absence of a guaranteed order, and that is what is stated. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).
+
+WHAT THE EXECUTOR PROVIDES, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). THE THREE GAPS THIS NOTE USED TO NAME ARE CLOSED. Both populations now run through ONE executor, `run_stage`: same unit grouping, same lane partition (`batch_unit_lane`), same derived cost clamp. ADMISSION IS PER-LANE, NOT UNIVERSAL, and this note states it precisely because an earlier draft's \{same governor admission\} shorthand was read as a property of every unit and used to justify deleting a real refusal (review 2026-07-31): `run_batch_unit` takes an `AdmittedSlot` for the unit's lifetime. Ordinary spawned-lane units reach it on worker threads. On-success units that would otherwise take that lane reach the SAME function serially on the executor's main thread, still acquire the SAME slot, and thereby consume that thread's already-warm process_shared_index instead of rebuilding a second cold index. This is a typed consequence of the population, never a claim-name exception. It deliberately withdraws sibling overlap for on-success stages; the contract above permits that withdrawal and still guarantees NO sibling order, while the first live roster uses singleton stages and therefore loses no available overlap. Memo-lane and discovery main-thread units remain UNADMITTED. That is why a heavy-whole-tree-resolve claim is refused admission to an on-success stage rather than merely admitted narrowly — it would route to the memo lane, where no slot governs it, and its context stays resident in `stage_memo` across later stages, so wrapping the call in an ordinary slot would not bound it either. Ordinary members within a stage may therefore OVERLAP subject to per-lane admission; on-success members do not promise overlap. Each on-success stage writes ITS OWN receipt before the next begins, so a process death mid-sequence no longer erases the record of stages that had in fact completed; and the callers differ only where their population semantics require it: ordering/failure policy plus warm-index placement for green-only postconditions.
+
+WHAT MAKES THAT CHECKABLE RATHER THAN ASSERTED. Ordinary spawned-lane overlap was unreachable by a test while spawn-and-join sat inlined in the batch loop. `spawn_units`/`join_units` are split out so a LATCH can reach them: each member increments a shared counter and waits until it observes the other, which a serial ordinary executor cannot satisfy because the first member waits for a peer that was never started. The bound on that wait is a deadlock detector, never the assertion. Proven discriminating by mutation — making `spawn_units` run each ordinary unit inline turns the overlap control RED with the exact serial signature [false, true] and leaves the join and panic controls green. On-success stages deliberately do not use that overlap path. Their BARRIER is stronger and simpler: each `run_stage` returns before `run_walk` advances its loop, and the loop takes `&mut stage_memo` per iteration, so two stages cannot overlap. The schedule lens continues to treat sibling membership as an unordered multiset because implementation order is not a semantic guarantee.
+
+WHAT STILL REFUSES — the TOTAL account, replacing a paragraph that had gone self-contradictory (review 2026-07-31). The prior text asserted that the arm-time validator no longer refuses a heavy-whole-tree-resolve claim, which was true of one revision and false of the one before AND after it; the restored refusal was described elsewhere in this same note, so the canonical carrier stated both. A partial list is how that happened, so this is written as a closed enumeration rather than as commentary on what changed.
+
+An on-success stage refuses, at arm time:
+  - an UNDECLARED resource profile — the values would be the parse's fail-closed fillers rather than the plan's statements, and a wall read off invented facts is worse than no wall;
+  - `heavy_whole_tree_resolve` — such a unit takes the memo lane, which is UNADMITTED, and its resolved context stays resident in the stage memo across every later stage;
+  - `spawns_host_compiler`;
+  - SUBSTANTIAL residency — the last two because stages supply no clamp parameters (`gunbc_ci_floor_batch_clamp_params` indexes the ORDINARY batches), so such a claim would run unclamped;
+  - a DISCOVERY runnable — it has no defined green-only meaning.
+
+All four profile restrictions are conditional on mechanisms stages do not yet have, and each names a DIFFERENT trigger; they do not dissolve together. `spawns_host_compiler` and substantial residency dissolve on stages carrying declared clamp parameters. `heavy_whole_tree_resolve` dissolves on a context-lifetime resident reservation — and that reservation is NOT expressible today, which is the part an earlier draft of this sentence got wrong by naming the lease alone as its trigger. An `AdmittedSlot` is a CONCURRENCY slot: holding one for a memoized context's lifetime pins the active count, so the zero-active progress floor never fires, every later admission holds on a full window, and the width that would relieve it grows only on a completion that can no longer happen. The real trigger is therefore TWO steps in order: split execution-slot accounting from resident-reservation accounting, THEN take a context-lifetime reservation against the second. The undeclared-profile refusal has no dissolution — it is the fail-closed floor.
+
+Every plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading."
+
+data walk_plan_run_stage_claim_executor_seed_deferral: String = "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, and the manifest/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; resolving executor-owned decisions against inherited walk roots is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. The merge-admission pre-walk extension (2026-08-02, review 47517) is likewise this SAME deferral grown, not a new one: the PreWalkExecution value parser, `run_pre_walk_execution` (including its capture-refusal-wire read), the two WalkPopulationBudget watchdogs and the WalkPopulationBudgetRefusal durable writer, and the per-stage memory snapshots are HAND-RUST in `claim_executor.rs`, all dissolving on the same trigger as the rest of this row — the executor walk and its receipt projections becoming emitted `.dag` realizations. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.
+
+WHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.
+
+WHAT THE SCOPED EXTENSION WAS, and why this row shrank. A scoped-witness worker once ran a second source-root envelope in a sequential child process, with its own clamp, execution authority, request projection and TSV receipt family, all hand-Rust here. Its single instance and every carrier behind it were deleted 2026-08-15 with affected-set selection, because the batch existed to make a second subject envelope affordable and selection was what made it affordable. The seed shrank by that whole path rather than migrating it.
+
+MIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane choice, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for."
+
+data walk_finalization_note: String = "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan \{ batches: floor_batches, finalization: NoWalkFinalization, .. \}` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.
+
+WHAT THE PARAMETERIZATION DOES AND DOES NOT BUY, measured rather than assumed — and the measurement contradicted the intent, so the intent is not what gets written down. The review that requested this asked for a construction wall: the floor's return type should REJECT the empty policy. It does not, today. Probed by execution 2026-07-30: replacing the floor's finalization with NoFinalizationDeclared \{\} while the signature still reads WalkPlan<FloorFinalization> TYPECHECKS, and fails only later, at the first field access, as a runtime error. A narrower probe isolates the general defect — the typechecker does not check a function's declared return type against its body at all (`fn f() -> Int \{ \"not an int\" \}` typechecks; so does a mismatched generic instantiation), nor a `data` declaration's annotation against its value, while ARGUMENT position is checked and refuses correctly. So this is a §5 WALL-AFTER-GROUNDING, not a wall now: the class is decidable, the single authority it waits on is return-position typechecking, and until that lands the enforcement is honestly VALIDATION — the enrolled witness floor_plan_projects_the_declared_resolve_count_authority (v2.test.claim.ci_floor_plan_witness) reds when the floor stops projecting the declared count, with a forked-count RED control beside it. Saying the signature walls it would be the same overclaim this note's own history is a record of. dissolve-on: return-position type enforcement in the typechecker, at which point the signature becomes the wall and the witness becomes redundant.
+
+LANGUAGE-LAYER FINDING recorded rather than absorbed (§5 workaround rule): a one-variant sum cannot be spelled `type T = OneVariant` — that production is the type-ALIAS form, and the compiler reads OneVariant as an unresolved type name (probed by execution). The nullary variant therefore has to be spelled `= NoFinalizationDeclared \{\}`, an empty record variant. That is position-dependent meaning for the same syntax (`= A | B` makes A a variant; `= A` makes A an alias target), and it belongs in the grammar-consolidation lane, not in a silent respelling."
+
+type NoWalkFinalization
+  = NoFinalizationDeclared {}
+
+type PreWalkExecution
+  = NoPreWalkExecution {}
+  | TypedClaimSubprocess {
+      transport_entry: String
+      transport_function: String
+      source_roots: List<String>
+      claim_entry: String
+      claim_function: String
+    }
+
+// A WalkPlan may carry one typed execution before its ordinary population. NoPreWalkExecution is
+// explicit absence. TypedClaimSubprocess is a modeled argv-host-effect transport: the executor
+// resolves transport_entry, calls transport_function with the authored source_roots/claim identity,
+// and requires a true result before arming the ordinary floor. The transport function must realize
+// the child through gunbc.WitnessBin.Run (the existing typed bin-invocation service), never through
+// a shell program or an executor-minted command. This placement exists for small identity captures
+// whose result must precede the floor but whose evaluator arena must die with a child address
+// space; a refusal is located to both transport and claim and blocks batch 1.
+
+type WalkPlan<F> {
+  pre_walk_execution: PreWalkExecution
+  batches: List<List<Runnable>>
+  finalization: F
+  on_success_stages: List<List<Runnable>>
+  ordinary_budget: Millisecond?
+  on_success_budget: Millisecond?
+}
+
+type WalkPopulationBudgetRefusal {
+  population: String
+  plan_site: String
+  population_index: Nat
+  active_unit: String
+  elapsed: Millisecond
+  budget: Millisecond
+}
+
+// WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in
+// the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is
+// authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog
+// owns the entire ordinary interval through receipt finalization and is disarmed only before
+// green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The
+// postcondition watchdog separately bounds stages plus their receipts. A breach constructs
+// WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the
+// population, plan site, one-based active stage/batch index, active unit, measured elapsed wall,
+// and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero
+// means the population had not entered its first unit. The outer workflow timeout remains only a
+// larger wrapper backstop.
+
+type Schedule = List<List<Runnable>>
+
+type RealizationPlan<S> {
+  target: ContentHash
+  objective: RealizationObjective
+  schedule: Schedule
+
+  total: CostAccount<S>
+}
+
+fn runnable_step_label(r: Runnable) -> String {
+  match r {
+    RunnableSingleClaim { entry: _, function: f, profile: _ } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
+    RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
+  }
+}
+
+fn schedule_batch_contains_label(batch: List<Runnable>, target: String) -> Bool {
+  fold(batch, init: false, f: fn(acc, r) {
+    acc || (runnable_step_label(r: r) == target)
+  })
+}
+
+fn schedule_generates_same_batch_count<S>(left: RealizationPlan<S>, right: RealizationPlan<S>) -> Bool {
+  left.schedule.count() == right.schedule.count()
+}
+
+fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -> Bool {
+  (a.entry == b.entry) && (a.function == b.function) && witness_kind_eq(a: a.kind, b: b.kind)
+}
+
+// Roster membership at the ONE identity grain (entry, function, kind), beside the equality it
+// folds, so every consumer joining two witness rosters — the eval-ceiling union, the budget
+// partition of a known-red lane — asks the same question of the same authority. It exists because
+// the first shape of the ceiling union carried its own private membership fold in
+// gunbc.ci_layer_roots and the budget partition was about to author a second one; two folds over
+// one relation is the fork DESIGN 3 names, and a roster join by bare name rather than by identity
+// is the weaker check the schedule-multiplicity wall already refuses.
+
+fn schedule_witness_entry_roster_contains(
+  xs: List<ScheduleWitnessEntry>,
+  w: ScheduleWitnessEntry
+) -> Bool {
+  fold(xs, init: false, f: fn(found, x) { found || schedule_witness_entry_eq(a: x, b: w) })
+}
+
+fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
+  if left.count() != right.count() {
+    false
+  } else if left.count() == 0 {
+    true
+  } else if left.first() != right.first() {
+    false
+  } else {
+    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<ScheduleWitnessEntry>) -> Bool {
+  if left.count() != right.count() {
+    false
+  } else if left.count() == 0 {
+    true
+  } else if !schedule_witness_entry_eq(a: left.first(), b: right.first()) {
+    false
+  } else {
+    schedule_witness_entry_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
+  match left {
+    RunnableSingleClaim { entry: le, function: lf, profile: lp } => match right {
+      RunnableSingleClaim { entry: re, function: rf, profile: rp } =>
+        (le == re) && (lf == rf) && runnable_resource_profile_eq(left: lp, right: rp)
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableKernelWorkload { fused_op_count: _ } => false
+    }
+    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, exclude_substrings: lex2, discovery_scope_dirs: lsc, profile: lp } => match right {
+      RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, exclude_substrings: rex2, discovery_scope_dirs: rsc, profile: rp } =>
+        string_list_eq(left: lsr, right: rsr)
+          && string_list_eq(left: lsd, right: rsd)
+          && schedule_witness_entry_list_eq(left: lex, right: rex)
+          && string_list_eq(left: lex2, right: rex2)
+          && string_list_eq(left: lsc, right: rsc)
+          && runnable_resource_profile_eq(left: lp, right: rp)
+      RunnableKernelWorkload { fused_op_count: _ } => false
+    }
+    RunnableKernelWorkload { fused_op_count: lleft } => match right {
+      RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableKernelWorkload { fused_op_count: rcount } => lleft == rcount
+    }
+  }
+}
+
+fn runnable_batch_eq(left: List<Runnable>, right: List<Runnable>) -> Bool {
+  if left.count() != right.count() {
+    false
+  } else if left.count() == 0 {
+    true
+  } else if !runnable_eq(left: left.first(), right: right.first()) {
+    false
+  } else {
+    runnable_batch_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
+  if left.count() != right.count() {
+    false
+  } else if left.count() == 0 {
+    true
+  } else if !runnable_batch_eq(left: left.first(), right: right.first()) {
+    false
+  } else {
+    schedule_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn schedule_generates_identical_schedule<S>(plan: RealizationPlan<S>, schedule: Schedule) -> Bool {
+  schedule_eq(left: plan.schedule, right: schedule)
+}

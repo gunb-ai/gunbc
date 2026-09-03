@@ -6,16 +6,41 @@ edition = "2021"
 [features]
 default = []
 text_lookup_work_counter = []
+# Test-only interpreter instrumentation (default-off until armed). Compiled into shared release artifact; inert at runtime until armed.
+interp_test_witness = []
+test_hooks = []
 
 [dependencies]
-# Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed
-# (thread-confined, matching the Value Rc-discipline) crate providing BOTH
-# carriers v2.std.value_carrier declares: HashMap is a hash array mapped trie
-# (map_carrier: ^hash_array_mapped_trie) and Vector is a relaxed radix
-# balanced tree (list_carrier: ^relaxed_radix_balanced_tree, O(log n)
-# concatenation). rpds was the considered alternative; rejected because its
-# Vector has no concatenation, so it cannot realize the declared list carrier.
-im-rc = "15.1"
+# Persistent value carriers (ctrl#1533 phase 2). `im` and `im-rc` are the same
+# crate source; build.rs switches on CARGO_PKG_NAME to set cfg(threadsafe),
+# which flips one alias in that crate's util.rs -- Ref<A> = std::rc::Rc for
+# im-rc, std::sync::Arc for im. Public API, macro set, and algorithms are
+# identical; the only feature im-rc adds is `pool`, which we do not request.
+# It provides BOTH carriers v2.std.value_carrier declares: HashMap is a hash
+# array mapped trie (map_carrier: ^hash_array_mapped_trie) and Vector is a
+# relaxed radix balanced tree (list_carrier: ^relaxed_radix_balanced_tree,
+# O(log n) concatenation). rpds was the considered alternative; rejected
+# because its Vector has no concatenation, so it cannot realize the declared
+# list carrier.
+#
+# im-rc -> im so the typed payloads these carriers build CAN become Send. The
+# floor runs serially because each worker rebuilds its own whole-tree typed
+# index; cross-entry reuse is real (measured 92.5% typed_module_cache hit rate
+# over 80 sequential discovery entries), but sharing it needs Send payloads,
+# and an outer Arc cannot make a value Send when its interior is im_rc-backed.
+# NOT Send yet: the Value substrate is still std::rc::Rc. That is the
+# follow-on step, gated on this swap's measured cost -- im refcounts
+# atomically, so this taxes every collection op including the interpreter
+# hot path.
+im = { version = "15.1", features = ["serde"] }
+# THE PARTITION, LINKED. This crate is the host shell of the stage0 executable: it declares the
+# retained host modules and the emitted mirrors no partition crate owns yet, and it re-exports
+# this package for the seventy-one it does. One edge, not six -- each layered partition crate
+# re-exports the crates below it, so the top module-bearing package carries the whole chain.
+# Authority: v2.compiler.self_host.stage0_executable_assembly
+# (stage0_host_shell_partition_dependencies), projected through
+# gunbc.stage0_executable_assembly_generated.
+v1-stage0-v1-infer = { path = "../stage0_v1_infer" }
 unicode-ident = "1"
 unicode-properties = { version = "0.1", features = ["emoji"] }
 stacker = "0.1"
@@ -23,17 +48,22 @@ clap = { version = "4", features = ["derive"] }
 lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
-serde_yaml = { workspace = true }
+sha2 = "0.10"
+toml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
+# Thread CPU-time clock (CLOCK_THREAD_CPUTIME_ID) for the fast-lane eval budget: the
+# budget bounds COMPUTE, not wall, so a witness inflated by cold-I/O reads or governor
+# time-slicing is not misclassified as an eval-wedge (a true non-terminating eval still
+# burns CPU and is caught). Already present transitively; declared direct for this use.
+libc = "0.2"
 
 [[bin]]
 name = "gunbc"
 path = "src/main.rs"
 
 [[bin]]
-name = "regen_stage0"
-path = "src/bin/regen_stage0.rs"
-# cache-bust-v2-binary-20260526
+name = "cssl_assemble"
+path = "src/bin/cssl_assemble.rs"
 
 # Batch claim runner: resolve one --entry closure once, run many witnesses.
 # Hand-written CI tool (like regen_stage0); reuses the v1-compiler lib, does NOT
@@ -51,48 +81,102 @@ path = "src/bin/claim_batch.rs"
 name = "claim_executor"
 path = "src/bin/claim_executor.rs"
 
-# Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
-# Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
 [[bin]]
-name = "discover_owned_data"
-path = "src/bin/discover_owned_data.rs"
+name = "carrier_realization_census"
+path = "src/bin/carrier_realization_census.rs"
 
-# Hand-written CI parse fallback for `gunbc.ci_yaml_validate` when PyYAML/actionlint
-# are absent on the runner (see `dsl/gunbc/ci_yaml_validate.dag`). SCAFFOLD — dissolves
-# when (a) self-hosted CI image pins actionlint/PyYAML so the shell chain never needs this
-# bin, or (b) YAML parse becomes a declared extdeps host effect with no v1 seed binary
-# (DESIGN §7: seed transport shrinks as host facts move into `.dag` authority).
+# XL-0T-CUTOVER census: over the complete production TypeOccurrence population, what the
+# module-wide bare-name TypeEnv path (X, as repaired by #9813) binds versus what the exact
+# per-occurrence containment authority (Y,
+# std.occurrence_binding_candidates.resolve_type_reference_containment_binding) binds. The
+# denominator is the corpus, so it is an instrument rather than a test, and it is named here
+# so no number it reports is ever transcribed as an authority (DESIGN section 6).
 [[bin]]
-name = "yaml_check"
-path = "src/bin/yaml_check.rs"
+name = "type_occurrence_binding_census"
+path = "src/bin/type_occurrence_binding_census.rs"
 
 # Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
 [[bin]]
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
-
-# Whole-tree v2 parse regression scanner (host transport; one harness, N files).
-[[bin]]
-name = "v2_whole_tree_parse_scan"
-path = "src/bin/v2_whole_tree_parse_scan.rs"
-
-# Parse-only regression scanner for src/v1/*.dag (cheap half of full_dsl_compiles,
+# Parse-only regression scanner for src/v1/*.dag (cheap half of full_dag_compiles,
 # which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
 # SCAFFOLD — dissolves when src/v1 is fully migrated to .dag substrate authority
-# and the floor covers it via the standard dsl_compile_clean_gate.
+# and the floor covers it via the standard dag_compile_clean_gate.
 [[bin]]
 name = "v1_src_dag_parse"
 path = "src/bin/v1_src_dag_parse.rs"
 
-# Whole-tree wiring-liveness scan (gunbc#5364 widening): runs
-# wiring_liveness_corpus_dead_wires over a context built across the WHOLE
-# source-root corpus in one pass, so a dead wire ANYWHERE (not just inside a
-# per-entry import closure) fails the floor. Coverage widens from per-entry
-# resolve-closure to whole-tree-in-one-pass.
+# Floor witness for extdep REST transport collection (cli_run::collect_rest_transport_operations).
+# Parses the eight-file authority closure live, resolves tracked ops, and checks
+# fingerprint uniqueness + derive_op_effect obligations. SCAFFOLD — dissolves when
+# REST transport facts move to modeled .dag authority (interpreter_kernel_d).
 [[bin]]
-name = "wiring_liveness_whole_tree"
-path = "src/bin/wiring_liveness_whole_tree.rs"
+name = "effects_rest_transport_witness"
+path = "src/bin/effects_rest_transport_witness.rs"
+
+# Host-physics floor witness for infer semantics oracle suite (infer_semantics.rs).
+# Exercises v1.compiler.infer_* submodules (access, patterns, lookup, types) until
+# those APIs are witness-layer importable from pure .dag floor witnesses.
+[[bin]]
+name = "infer_semantics_witness"
+path = "src/bin/infer_semantics_witness.rs"
+
+# Host-physics floor witness for the auth-declared-but-unwired guard oracle suite
+# (auth_declared_but_unwired_witness_test.rs). Exercises v1_interpreter's auth
+# resolution/dispatch guard until that behavior is witness-layer importable.
+[[bin]]
+name = "auth_declared_but_unwired_witness"
+path = "src/bin/auth_declared_but_unwired_witness.rs"
+
+# Host-physics floor witness for the v1 bootstrap self-host oracle suite
+# (bootstrap.rs). Exercises stage0 check/compile/fixed-point/freshness gates
+# until v2.workflow.bootstrap self-host gates are witness-layer importable.
+[[bin]]
+name = "bootstrap_witness"
+path = "src/bin/bootstrap_witness.rs"
+
+# Host-physics floor witness for the v1 interpreter recorded-fixture record ->
+# hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
+# claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on
+# disk to prove fail-closed. SCAFFOLD — dissolves when the record/replay lifecycle
+# is modeled + executed in the v2 .dag floor (open thread: v2.std.determinism).
+[[bin]]
+name = "interp_recorded_fixture_witness"
+path = "src/bin/interp_recorded_fixture_witness.rs"
+
+# Host-physics floor witness for the v1 compiler diagnostic oracle suite
+# (diagnostics.rs). Exercises compile-time diagnostic shape, message text, and
+# span→line/col mapping via compile_multi until that harness is witness-layer
+# importable from pure .dag floor witnesses.
+[[bin]]
+name = "diagnostics_witness"
+path = "src/bin/diagnostics_witness.rs"
+
+# Host-physics floor witness for dag_collect fingerprint oracle suite
+# (dag_collect_fingerprint_witness_test.rs). Exercises bag/seq hash and
+# recursive surface fingerprint discrimination until v1.compiler.dag_collect_support
+# is witness-layer importable from pure .dag floor witnesses.
+[[bin]]
+name = "dag_collect_fingerprint_witness"
+path = "src/bin/dag_collect_fingerprint_witness.rs"
+
+# Host-physics floor witness for parse/tokenize oracle suite (parse.rs).
+[[bin]]
+name = "parse_witness"
+path = "src/bin/parse_witness.rs"
 
 [[bin]]
-name = "measure_whole_tree_resolve"
-path = "src/bin/measure_whole_tree_resolve.rs"
+name = "codex_app_server_stdio_session"
+path = "src/bin/codex_app_server_stdio_session.rs"
+
+# B0 control witness (#7943, review 49798 / operator ruling): proves the
+# GENERATED stage0 realization of declaration_exposure_from_containment under
+# NamespaceStructuralRootExposure dispatches to three distinct outcomes
+# (empty/one/two ancestors), not a collapsed if/else — the class the generic
+# emitter was silently dropping (EMIT-NESTED-PATTERN-0,
+# node://adhoc-b4da0e4d-cf3). Calls the compiled generated function directly,
+# so it exercises the compiled realization rather than the interpreter.
+[[bin]]
+name = "namespace_structural_root_exposure_generated_witness"
+path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"

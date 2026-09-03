@@ -1,0 +1,238 @@
+module extdeps.shell.exec
+
+import std.types { String, Int, Bool, NonEmptyStr }
+import v2.std.compilers.cli_surface { ProcessArgvExpansion }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
+import std.measure { ByteSize }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
+
+// THE TRANSPORT-SCRIPT CONSTRUCTION WALL. TransportScript was `= String where brand(...)` — a
+// TRANSPARENT brand, so every module could produce one, by cast or by simply passing a String into the
+// `script:` position, and the class was guarded by a lens rather than by construction (DESIGN 5:
+// construction over validation). It is now a sole_constructor RECORD: only this file may build one, and
+// `transport_script_seal` below is the single admitted route in, caller-sealed to the production
+// bridges by name. A String has no route to a shell invocation that does not pass through one of them.
+//
+// The transport reads `script.body` rather than the value itself — a record cannot be handed to a
+// process, only its text can. That projection is what the wall costs, and it is proven by execution
+// rather than assumed: a service transport may project a record field into stdin and into an argv
+// interpolation slot.
+type TransportScript sole_constructor {
+  body: String
+}
+
+// The ONE mint. It takes a bare String — this is extdeps, which owns the transport's interface shape
+// and must not know the product's policy carriers — and gates WHO may call it, so the policy that a
+// script body carries a reason and a dissolve-on target stays in the product layer where it belongs
+// (DESIGN 3: interface shape here, business policy in the workflow layer).
+//
+// admit_callers is the whole wall's load: adding a caller is an edit to THIS list in the dependency's
+// own module, which is a conspicuous, counted review event rather than an import someone can write in
+// their own file. No test declaration is admitted; a test obtains a TransportScript through a
+// production bridge, the same way production does.
+fn transport_script_seal(body: String) -> TransportScript
+  admit_callers: [
+    decl_ref(module_path: "gunbc.retained_shell_script", decl_name: "retained_shell_script_to_transport"),
+    decl_ref(module_path: "gunbc.bash_materialized_transport", decl_name: "bash_materialized_transport"),
+  ]
+  = TransportScript { body: body }
+
+// shell.Exec.Run transport: argv is fixed [bash, -s]; the script input is routed through the
+// transport stdin field. Large payloads belong here — they never become a single argv token, so
+// they do not encounter the Linux per-argument exec ceiling modeled in
+// extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen (deploy Part A / #6711).
+
+data service_op_string_wire_projection_method_fork_note: String = "🟡 KNOWN CLASS (infer-layer, not runtime Value): extdeps service-operation output fields declared `T from \"wire_key\"` (e.g. stdout: String from \"stdout\") infer as FaithfulFreeMonoid / Coproduct carriers when the closure lacks v1-seed sources (v1.compiler.infer rust_corpus_repr), while ordinary String parameters and algebra ReceiverSelf method templates (trim, length, …) attach to the declared String type node. Method syntax on the wire-minted receiver therefore refuses (method trim not found on Coproduct(FreeMonoid)) even though the extdeps contract names String. Free-call trim(s: x) can still compile when explicit import lists std.algebra { trim } and the argument coerces to String — a binding bridge, not type-node unification (#8062 trim registry). Pinning witness: fixtures/class_b_trim/monoid_specimen.dag + v1-compiler-tests trim_method_form_fails_on_freemonoid_receiver; bold-eagle effect_plan wire projection confirmed same class. Every other String method on any service-op result field shares this latent fork until dissolved. DISSOLVE-ON: service-op wire projection unifies with the declared output type authority so ReceiverSelf algebra methods attach to the same node the extdeps contract names (FaithfulFreeMonoid mint ≡ String for String-declared wire fields). SUPERSEDED-MECHANISM (eager-deer-389, RustCorpusRepr cutover): the trigger this class names -- v1.compiler.infer rust_corpus_repr selecting a corpus-global FaithfulFreeMonoid arm when the closure lacks v1-seed sources -- NO LONGER EXISTS. RustCorpusRepr and its closure-provenance switch are deleted; primitive realization is keyed on each type's declaring module, and the Rust text carrier is now unconditionally host-native. So the CITATION is stale even if the CLASS is not: this note's owner must re-measure whether a wire-minted receiver still forks, rather than reading the old trigger as live. One data point in that direction: emitting std.algebra::trim previously produced v1_rt::from_code_point((1 / 0)) in both arms of a tautological if -- the declared .dag seam leaking instead of routing to host realization -- and now emits v1_rt::trim(s). That is the same carrier family this class is about, but it is one function in one closure and is NOT a claim that the class is closed."
+
+// shell.Exec.Check transport: argv is [sh, -c, command] — the entire command string is ONE argv
+// element. On Linux hosts this is the surface that hits execve(2) MAX_ARG_STRLEN
+// (extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen): an oversized embed fails E2BIG (opaque os
+// error 7) unless the interpreter refuses first at dispatch_shell
+// (InterpError::ArgvExceedsHostArgMax). Prefer Run for payloads approaching the per-argument
+// ceiling.
+
+data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
+
+// THE LOCAL PROCESS-ARGV SEAM (shell.Exec.RunArgv, declared in the service below).
+//
+// Run is argv ["bash", "-s"] with the script on stdin -- the heredoc path -- so every local
+// ArgvCommand in the corpus renders its argv to quoted TEXT and hands that text to a shell, which
+// parses it back into an argument vector. The seed does Command::new(&argv[0]).args(&argv[1..]) at
+// the far end regardless, so the round trip through shell quoting buys nothing and costs the one
+// thing argv-as-serialization exists to stop: a re-parse where the boundary between arguments is
+// inferred from text instead of carried.
+//
+// THE PROGRAM IS NOT AN ARGUMENT, which is why RunArgv takes it as a separate input rather than as
+// the first element of the expansion. execve takes the executable and the argument vector as
+// distinct parameters; conflating them is the same state-space collapse this lane keeps removing.
+// And with the program separate and NonEmptyStr, an EMPTY argv is unconstructible -- there is
+// always an argv[0], so the unspawnable empty vector has no representation here rather than being
+// refused after the fact.
+//
+// NO success: Bool FIELD, DELIBERATELY. `success` is not an observation, it is a POLICY judgement
+// about one -- jq exits 4 to mean "no output" and 1 to mean "false result", neither of which is
+// failure. A Bool beside stdout forces every caller to re-derive that judgement from a field that
+// already threw the information away, and lets a refusal read as empty output. So the wire carries
+// the honest triple -- a wire returns scalars, it cannot return a coproduct -- and the typed
+// outcome is decoded immediately above it by classify_process_observation against a policy the
+// caller declares. That is the pattern already landed for jq (jq_classify_observation /
+// JqExitPolicy / JqOutcome), reused rather than re-coined.
+//
+// The argv IS the expansion, spliced one word per CliArgument, with no shell between the carrier
+// and the process: nothing is quoted, joined, or re-parsed. A nonzero exit is DATA, not an error --
+// refusing there would hard-code one exit policy into the seam and make every legitimate nonzero
+// convention unreachable.
+// NO mock_response ARM ON ANY OPERATION HERE, AND THAT IS THE POINT (operator ruling, 2026-08-23).
+// Each of the three operations carried one unconditional arm -- Run answered
+// `{ exit_code: 0, success: true, stdout: "", stderr: "" }`, RunArgv and Check the same shape --
+// keyed on an exit status the arm itself supplied, so it was not a function of the declared input
+// at all: in hermetic mode `bash -s` running `exit 1` returned exactly what `true` returned, and a
+// witness asserting "this fails closed" could not be satisfied. The arm fabricated three distinct
+// facts (exit status, captured output, transport reachability), each with its own remedy; that
+// census and its measured receipts are gunbc.hermetic_mock_fidelity.
+//
+// The arms are DELETED rather than made input-varying. Hermetic execution of these operations now
+// reaches HermeticEffectGround.NoMockResponse -- a typed, located, per-identity refusal that
+// surfaces on the route-gap roster -- instead of a fabricated success. A witness that reaches this
+// seam hermetically needs a ROUTE, never a better mock: reachability in particular has no honest
+// mock, since consulting the transport is what hermetic mode forbids.
+//
+// DO NOT RE-ADD ONE. An arm here is only honest if its value varies with the operation's declared
+// input, and even then it cannot answer whether a remote endpoint replied.
+service shell.Exec {
+  operation Run {
+    input { script: TransportScript }
+
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell {
+      argv: ["bash", "-s"]
+      stdin: script.body
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Script failed"
+    }
+  }
+
+  operation RunArgv {
+    input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
+
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell {
+      argv: [program, arguments]
+    }
+
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+
+  operation Check {
+    input { command: TransportScript }
+    output { exists: Bool from "exit_success" }
+    readonly
+
+    transport shell { argv: ["sh", "-c", "{command.body}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Command failed"
+    }
+  }
+}
+
+// -------------------------------------------------------------------------------------------
+// DECODING THE OBSERVATION, immediately above the wire.
+//
+// The seam returns three scalars because that is what a process gives back. Correlating them is
+// a decision, and it belongs in one place rather than at each of the twenty-five call sites that
+// currently do it by hand.
+// -------------------------------------------------------------------------------------------
+
+type ProcessObservation {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+fn process_observation(exit_code: Int, stdout: String, stderr: String) -> ProcessObservation {
+  ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+// THE OBSERVATION HALF OF THAT CONVERGENCE IS DONE: extdeps.tools.jq declared a byte-identical
+// JqProcessObservation and no longer does -- it consumes this type, so the raw triple has one
+// name. The triple was the half with nothing tool-specific in it: exit_code, stdout and stderr
+// are what any process returns, so the fork was pure nicknaming (DESIGN section 3).
+//
+// CONVERGENCE STILL OWED, on the half that is NOT a copy of anything here. jq carries
+// JqOutcome / JqExitPolicy / jq_classify_observation, and its four-code contract reads exit 1 as
+// a false-or-null last output and exit 4 as absence -- neither of which ProcessExitPolicy above
+// can express, so folding it in requires a third policy variant and is a MODEL change, not a
+// rename. That is deliberately not done here: this change dissolved a duplicate, and inventing a
+// policy variant to absorb jq's semantics is the consumer-driven work that must justify itself
+// with a live caller.
+// DISSOLVE-ON: the first consumer migrated onto RunArgv, at which point both classifiers have a
+// live caller and the merge is a refactor with execution behind it rather than a speculative one.
+
+// WHAT THE CALLER WANTS FROM THE PROCESS, which is the thing a bare Bool cannot say. Callers of
+// the current run_shell_command_capture split into two populations that a success flag renders
+// identically: those for whom stdout IS the product (ssh-keyscan, ssh-keygen -lf) and those for
+// whom the exit status is the product. For the first, "refused" and "produced nothing" are
+// different answers with different remedies, and a refusal that reads as empty output is the
+// fabricated plausible output DESIGN forbids -- an empty string is a legitimate value, so nothing
+// downstream can tell it apart from a failure.
+type ProcessOutcome
+  = ProcessOutputPresent { text: String }
+  | ProcessOutputAbsent
+  | ProcessRefused { exit_code: Int, stderr: String }
+
+// The policy is DECLARED by the caller because there is no universal one -- that is the whole
+// reason `success` is not a field on the operation. ExitZeroSucceeds is the ordinary convention;
+// ExitZeroOrOneSucceeds covers the diff/grep family where 1 means "no match" rather than failure.
+type ProcessExitPolicy
+  = ExitZeroSucceeds
+  | ExitZeroOrOneSucceeds
+
+fn process_exit_is_admitted(policy: ProcessExitPolicy, exit_code: Int) -> Bool {
+  match policy {
+    ExitZeroSucceeds => exit_code == 0
+    ExitZeroOrOneSucceeds => (exit_code == 0) || (exit_code == 1)
+  }
+}
+
+// An admitted exit with empty stdout is ABSENT, not present-and-empty. That distinction is the
+// point of the coproduct: a caller matching on ProcessOutputPresent cannot silently receive the
+// empty string where a refusal occurred, because a refusal is not that variant.
+fn classify_process_observation(
+  policy: ProcessExitPolicy,
+  observation: ProcessObservation
+) -> ProcessOutcome {
+  if process_exit_is_admitted(policy: policy, exit_code: observation.exit_code) {
+    if observation.stdout == "" {
+      ProcessOutputAbsent
+    } else {
+      ProcessOutputPresent { text: observation.stdout }
+    }
+  } else {
+    ProcessRefused { exit_code: observation.exit_code, stderr: observation.stderr }
+  }
+}

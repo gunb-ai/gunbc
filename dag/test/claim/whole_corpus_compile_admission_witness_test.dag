@@ -1,0 +1,155 @@
+module test.claim.whole_corpus_compile_admission_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_budget_source {
+  HostBudgetResolution,
+  HostBudgetResolved,
+  HostBudgetUnreadable,
+  BudgetSourceCgroupMemoryHigh,
+  host_budget_resolved_observation,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.whole_corpus_compile_admission {
+  WholeCorpusCompileAdmitted,
+  WholeCorpusCompileRefusedBudgetBelowMeasuredDemand,
+  WholeCorpusCompileRefusedBudgetUnreadable,
+  whole_corpus_compile_admission,
+  whole_corpus_compile_admits,
+  whole_corpus_compile_measured_peak_demand,
+  whole_corpus_compile_observed_runner_budget_lower_bound,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_subject_note: String = "BOTH ARMS STAND ON INDEPENDENTLY MEASURED MACHINES, which is what makes the pair fail for a reason worth knowing in either direction rather than restating its own input.\n\nThe REFUSING budget is the one the BuildBuddy remote-execution runner actually answered with on invocation 13cf8d2e-173a-42d2-9a56-101bb3332740, the run that was SIGKILLed at exit 137. It is not chosen to make the assertion true: it is recovered from the cap=1675 line that run printed, by inverting the integer division cli_run performs.\n\nTHE SOURCE ON THAT FIXTURE MOVED AND THE BUDGET DID NOT. It was BudgetSourceMemAvailable, the arm that produced the doomed number in the first place; that arm is deleted (gunbc.host_budget_source host_budget_source_seed_mirror_disposition) because a reading about the MACHINE is not a bound on the slot, and a runner in that state now resolves to HostBudgetUnreadable and refuses before this arm is reached. What this row judges is the QUANTITY, so the fixture is now carried on BudgetSourceEnvOverride — which is precisely the shape an operator on that runner produces today, and it makes the arm say something sharper than it did: even a 4.9 GiB budget DECLARED by an operator is refused against the measured demand.\n\nThe ADMITTING budget is gunbc.runner_slot_allocation's declared per-slot memory.high, READ FROM THAT AUTHORITY rather than retyped here. Retyping it would have been the exact defect this PR's own threshold note argues against, and it has a live specimen one module over: host_budget_source_witness_test built its expectation from the seed mirror value retyped, so it greened whichever way the mirror went (found by stern-heron-695, corrected in gunbc#8638). A fixture input is still an input, and one that silently tracks nothing is worse than one that fails. So a refusal that stopped firing would mean the measured doomed run had become admissible, and an admission that stopped holding would mean CI's own runner had been refused — two different regressions, each with its own arm here."
+
+fn observed_doomed_budget() -> HostBudgetResolution {
+  host_budget_resolved_observation(
+    source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
+    bytes: whole_corpus_compile_observed_runner_budget_lower_bound
+  )
+}
+
+fn fleet_runner_slot_budget() -> HostBudgetResolution {
+  host_budget_resolved_observation(
+    source: BudgetSourceCgroupMemoryHigh {
+      cgroup_dir: "/sys/fs/cgroup/system.slice/system-actions-runner.slice/actions-runner@srv1-01.service" as NonEmptyStr,
+    },
+    bytes: gunbc_runner_slot_desired().memory_high
+  )
+}
+
+// THE REQUIRED FIGURE IS DERIVED, NOT TRANSCRIBED. This arm asserted `r == 7516192768` -- a copy
+// of the authority's own constant, which made it a change detector: the only way to close it after
+// a re-measure was to hand-edit the expectation to whatever the authority now says, which is the
+// self-comparison DESIGN section 5's oracle rule names. It caught nothing and cost a red on the
+// 2026-08-28 re-measure. Derived from whole_corpus_compile_measured_peak_demand() it asserts the
+// RELATION the arm exists for -- the refusal reports the authority's figure and not some other --
+// and it survives every future re-measure without an edit.
+//
+// THE BUDGET LITERAL STAYS A LITERAL, and the asymmetry is deliberate: 5269094400 is a DATED
+// EXTERNAL RECEIPT, the MemAvailable lower bound of the runner that SIGKILLed this instrument
+// twice. It is not a number from this tree, so it is an oracle in exactly the sense the demand
+// figure was not.
+//
+// THE SOURCE HALF MOVED AND THE BUDGET HALF DID NOT, which is why the expected label changed
+// here rather than being loosened. BudgetSourceMemAvailable is the arm that produced this very
+// number and it is deleted, so a runner in that state now resolves to HostBudgetUnreadable and
+// refuses one step earlier. What this arm still judges is the QUANTITY reaching the demand
+// comparison, and the source that carries it today is the operator's declaration -- so the
+// assertion says something sharper than it did: even 4.9 GiB DECLARED by an operator is refused,
+// and the refusal still names where the number came from rather than reporting a bare figure.
+test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
+  match whole_corpus_compile_admission(budget: observed_doomed_budget()) {
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+      budget: b,
+      required: r,
+      source: s,
+    } => byte_size_count(b: b) == 5269094400
+      && byte_size_count(b: r) == byte_size_count(b: whole_corpus_compile_measured_peak_demand())
+      && string_contains(s: s as String, pattern: "memory.high")
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+  }
+}
+
+// THE RECEIPT THAT THE FAIL-OPEN CLOSED. Until 2026-08-28 the demand figure was 7 GiB, a PROXY
+// taken on the floor route at an older tree; the whole-corpus peak measured on the compile route
+// itself is 12.41 GiB. So this arm admitted a 7 GiB host and that host would then have been
+// SIGKILLed -- a refusal that exists and cannot fire for the population needing it, which is not
+// conservatism but the shape DESIGN section 5 names, where the deficit's frequency is zero by
+// construction.
+//
+// 7516192768 is written here as a LITERAL on purpose and it is not a tree copy: it is the
+// superseded figure, a historical fact that does not move, and this arm's whole content is that
+// the value the old authority admitted is now refused. It is progress-safe because a demand
+// figure does not shrink with corpus growth -- the row says so and the re-measure trigger only
+// fires upward -- so no legitimate future measurement makes this arm red.
+test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
+  whole_corpus_compile_admits(
+    a: whole_corpus_compile_admission(
+      budget: host_budget_resolved_observation(
+        source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
+        bytes: byte_size(7516192768)
+      ))) == false
+}
+
+// THIS ROW WAS INVERTED, NOT EDITED TO STAY GREEN, and the distinction is the whole reason it
+// carries a note. It asserted the_runner_ci_actually_uses_is_admitted. Raising the declared demand
+// to cover the highest measured COMPLETING peak (gunbc.whole_corpus_compile_admission
+// whole_corpus_compile_measured_demand_note, review 57202 on gunbc#9545) put the threshold above
+// the runner slot's reported budget, so the previous assertion became false about the tree. The two
+// available responses were to change what the row asserts or to change the threshold until the row
+// stayed true; the second is the failure this whole module exists to refuse, since it derives a
+// safety literal from the outcome someone wanted.
+//
+// WHAT IT NOW ASSERTS AND WHY THAT IS THE CORRECT VERDICT RATHER THAN A CONCESSION. The budget
+// resolved from a slot is memory_high -- the line the host has agreed to give before it throttles
+// -- and the demand exceeds it. A completing run would in fact survive there, degrading into swap
+// below the 16 GiB memory_max kill line, so this is an over-refusal measured against SURVIVAL and
+// an exact refusal measured against the BUDGET. An admission arm that admits on the grounds that a
+// host tolerates breaches past its own stated line is not fail-closed, so the refusal is the
+// modelled answer and the survival margin is a fact about the host, not a licence.
+//
+// WHAT WOULD MAKE THIS ROW FLIP BACK: a slot provisioned above the demand, or a re-measured demand
+// that is genuinely lower under this module's own re-measure trigger -- which only fires on a
+// HIGHER reading, so the second path requires the trigger to be changed on its own argument and not
+// as a side effect of wanting this green.
+
+test fn the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand() -> Bool {
+  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: fleet_runner_slot_budget())) == false
+}
+
+test fn admission_is_tight_at_the_measured_demand() -> Bool {
+  let demand = byte_size_count(b: whole_corpus_compile_measured_peak_demand())
+  whole_corpus_compile_admits(
+    a: whole_corpus_compile_admission(
+      budget: host_budget_resolved_observation(
+        source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
+        bytes: byte_size(demand)
+      )
+    )
+  )
+    && !whole_corpus_compile_admits(
+      a: whole_corpus_compile_admission(
+        budget: host_budget_resolved_observation(
+          source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
+          bytes: byte_size(demand - 1)
+        )
+      )
+    )
+}
+
+test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> Bool {
+  match whole_corpus_compile_admission(
+    budget: HostBudgetUnreadable {
+      reason: "no modeled host memory source answered on this platform" as NonEmptyStr,
+    }
+  ) {
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: r } => !((r as String) == "")
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+  }
+}

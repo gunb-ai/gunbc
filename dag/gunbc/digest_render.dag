@@ -1,0 +1,125 @@
+module gunbc.digest_render
+
+
+type PullRequestDigestSubject {
+  number: Int
+  title: String
+  url: NonEmptyStr
+  state: PullRequestState
+  draft: Bool
+  head_sha: String
+  base_ref: String
+}
+
+type DigestReadinessProjection
+  = DigestOpenForReview
+  | DigestNotReady { first_reason: String, more_reasons: List<String> }
+
+type PullRequestDigestView {
+  subject: PullRequestDigestSubject
+  readiness: DigestReadinessProjection
+  review_states: List<String>
+}
+
+data digest_render_expectation_receipts: List<String> = [
+  "render_readiness|DigestNotReady(first_reason=already merged,more_reasons=[])|not ready: already merged",
+  "render_readiness|DigestNotReady(first_reason=changes requested,more_reasons=[stale])|not ready: changes requested; stale",
+  "render_readiness|DigestOpenForReview|open for review"
+]
+
+fn digest_subject(pr: extdeps.github.pulls.PullRequest) -> PullRequestDigestSubject {
+  PullRequestDigestSubject {
+    number: pr.number,
+    title: pr.title,
+    url: pr.html_url,
+    state: pr.state,
+    draft: pr.draft,
+    head_sha: pr.head.sha,
+    base_ref: pr.base.ref
+  }
+}
+
+fn render_pull_request_state(state: PullRequestState) -> String {
+  match state {
+    Open => "open"
+    Closed => "closed"
+  }
+}
+
+fn render_review_state(state: ReviewState) -> String {
+  match state {
+    Pending => "pending"
+    Commented => "commented"
+    Approved => "approved"
+    ChangesRequested => "changes_requested"
+    Dismissed => "dismissed"
+  }
+}
+
+fn review_state_labels(reviews: List<PullReview>) -> List<String> {
+  map(reviews, r => render_review_state(state: r.state))
+}
+
+fn readiness_projection(pr: extdeps.github.pulls.PullRequest) -> DigestReadinessProjection {
+  if pr.draft {
+    DigestNotReady { first_reason: "draft", more_reasons: [] }
+  } else {
+    match pr.merged_at {
+      Present { value: _ } => DigestNotReady { first_reason: "already merged", more_reasons: [] }
+      Absent =>
+        match pr.state {
+          Open => DigestOpenForReview
+          Closed => DigestNotReady { first_reason: "not open", more_reasons: [] }
+        }
+    }
+  }
+}
+
+fn project_pull_request_digest(pr: extdeps.github.pulls.PullRequest, reviews: List<PullReview>) -> PullRequestDigestView {
+  PullRequestDigestView {
+    subject: digest_subject(pr: pr),
+    readiness: readiness_projection(pr: pr),
+    review_states: review_state_labels(reviews: reviews)
+  }
+}
+
+fn render_readiness(readiness: DigestReadinessProjection) -> String {
+  match readiness {
+    DigestOpenForReview => "open for review"
+    DigestNotReady { first_reason, more_reasons } =>
+      if count(more_reasons) > 0 {
+        let rest = join(more_reasons, ", ")
+        "not ready: \{first_reason\}; \{rest\}"
+      } else {
+        "not ready: \{first_reason\}"
+      }
+  }
+}
+
+fn render_review_states(states: List<String>) -> String {
+  if count(states) > 0 {
+    join(states, ", ")
+  } else {
+    "none"
+  }
+}
+
+fn render_pull_request_digest_line(view: PullRequestDigestView) -> String {
+  let title = "#\{view.subject.number\} \{view.subject.title\}"
+  let status = render_readiness(readiness: view.readiness)
+  let reviews = render_review_states(states: view.review_states)
+  "\{title\} -- \{status\} -- reviews: \{reviews\} -- head: \{view.subject.head_sha\}"
+}
+
+fn render_pull_request_digest_block(view: PullRequestDigestView) -> String {
+  let entries = [
+    kv_pair(key: "PR", sep: ": ", value: "#\{view.subject.number\} \{view.subject.title\}"),
+    kv_pair(key: "URL", sep: ": ", value: view.subject.url),
+    kv_pair(key: "Base", sep: ": ", value: view.subject.base_ref),
+    kv_pair(key: "Head", sep: ": ", value: view.subject.head_sha),
+    kv_pair(key: "State", sep: ": ", value: render_pull_request_state(state: view.subject.state)),
+    kv_pair(key: "Readiness", sep: ": ", value: render_readiness(readiness: view.readiness)),
+    kv_pair(key: "Reviews", sep: ": ", value: render_review_states(states: view.review_states))
+  ]
+  list_block(header: "Pull request digest", level: 0, unit: "  ", prefix: "- ", items: entries)
+}

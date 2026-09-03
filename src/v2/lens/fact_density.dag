@@ -1,35 +1,8 @@
 module v2.lens.fact_density
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
 
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.node {
-  Node,
-  Edge,
-  Named,
-  Positional,
-  Connective,
-  Atom,
-  Conj,
-  Disj,
-  Arrow,
-  Cardinality,
-  Instantiation,
-  TypeNode,
-  ComputationNode,
-  Symbol
-}
-import v2.std.nat { Nat, Zero, Succ }
-import v2.std.cardinality { NonZeroNat }
-import v2.std.witness { Holds, Witness }
+import v2.std.witness { Holds }
+import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
+
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
   s == ^fact_density_kernel_ambient_string ||
     s == ^fact_density_kernel_ambient_int ||
@@ -45,19 +18,19 @@ type SourceSpecReadFact
   | NoFact
   | NotATypeCarrier
 
-fn named_fact_count(children: List<Edge>) -> Nat {
-  fold(children, init: Zero, f: fn(acc, e) {
+fn named_fact_count(children: List<Edge>) -> v2.std.nat.Nat {
+  fold(children, init: v2.std.nat.Zero, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => Succ { prev: acc }
+      Named { name: _ } => v2.std.nat.Succ { prev: acc }
       Positional => acc
     }
   })
 }
 
-fn density_fact(named_facts: Nat) -> SourceSpecReadFact {
+fn density_fact(named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
   match named_facts {
-    Zero => NoFact
-    Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
+    v2.std.nat.Zero => NoFact
+    v2.std.nat.Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
   }
 }
 
@@ -68,7 +41,7 @@ fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   }
 }
 
-fn connective_spec_fact(c: Connective, named_facts: Nat) -> SourceSpecReadFact {
+fn connective_spec_fact(c: Connective, named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
   if connective_is_kernel_ambient_atom(c: c) {
     KernelAmbientAtom
   } else {
@@ -83,13 +56,19 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
       connective_spec_fact(c: c, named_facts: named_fact_count(children: carrier.children))
   }
 }
+// Node-local predicate (DESIGN 6 bare-minimum-cost): carrier_spec_fact reads only the node's direct
+// children (named_fact_count is O(degree), not a subtree walk). Enrollment is the per-subtree-node
+// roster in validate_then_compile (run_required_lens_gates_on_subtree visits each node exactly
+// once); a rooted whole-tree walk inside the gate would stack with that fold and be O(n^2). Witness
+// accumulation on the roster fold uses prepend+reverse, not append-in-step.
+
 fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_spec_fact(carrier: node) {
     NoFact =>
       outcome_rejected(
         Diagnostic {
           reason: ^fact_density_hollow_alias_locus,
-          at: port_locus(port: ^fact_density_hollow_alias_locus),
+          at: node_locus(node: node),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       )
@@ -100,6 +79,5 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "Detecting a structurally-hollow alias (a NoFact carrier) is decidable and gateable; the deeper DESIGN sec 2 leaf-side -- whether a leaf is adequately DECOMPOSED -- needs domain knowledge and stays region-3 review (the parked sec 2 open thread). Grounding authority: fact-presence required at type declaration by construction (a hollow NoFact carrier becomes unwritable). Dissolves on: a type carrier with no recorded spec facts is rejected at declaration, not flagged after the fact"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

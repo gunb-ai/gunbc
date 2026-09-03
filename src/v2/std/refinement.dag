@@ -11,13 +11,14 @@ import v2.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   diagnostics_singleton,
-  port_locus
+  invariant_port_locus,
+  port_refusal_locus
 }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 
 fn refinement_authoritative_locus() -> Locus {
-  port_locus(port: ^refinement_authoritative_locus)
+  invariant_port_locus(port: ^refinement_authoritative_locus, invariant: ^refinement_authoritative_invariant)
 }
 
 type Validation<B> {
@@ -32,14 +33,6 @@ data vacuous_admits_marker: VacuousAdmits = VacuousAdmits {}
 type VacuousValidation<B> {
   reason: Symbol
   vacuous: VacuousAdmits
-}
-
-fn vacuous_admits<B>(_: B) -> Bool {
-  true
-}
-
-fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
-  Validation { reason: by.reason, admits: vacuous_admits }
 }
 
 type Refined<B> {
@@ -58,7 +51,7 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: by.reason,
-          at: at,
+          at: port_refusal_locus(at: at, port: ^refinement_authoritative_locus, invariant: by.reason),
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -70,21 +63,6 @@ fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
 
-fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Outcome<Refined<B>> {
-  let validation = validation_from_vacuous(by: by)
-  match refine(base: base, by: validation, at: at) {
-    Accepted { value: refined, diagnostics: _ } => Accepted { value: refined, diagnostics: None }
-    Rejected { diagnostics: rejected } => Rejected { diagnostics: rejected }
-  }
-}
-
-fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
-  match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
-    Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => Refined { base: base }
-  }
-}
-
 fn positive_int_admits(value: Int) -> Bool {
   value >= 1
 }
@@ -94,11 +72,11 @@ fn non_negative_int_admits(value: Int) -> Bool {
 }
 
 fn at_least_minus_one_int_admits(value: Int) -> Bool {
-  value >= -1
+  value >= (0 - 1)
 }
 
 fn at_least_minus_two_int_admits(value: Int) -> Bool {
-  value >= -2
+  value >= (0 - 2)
 }
 
 fn exact_one_int_admits(value: Int) -> Bool {

@@ -1,0 +1,3 @@
+module test.fixture.sole_constructor_order_probe.open_variant
+
+type DupShape { tag: Int }

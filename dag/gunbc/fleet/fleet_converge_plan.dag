@@ -1,0 +1,3111 @@
+module gunbc.fleet_converge_plan
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.measure { byte_size_count }
+import std.algebra { trim }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash {
+  content_hash_atom,
+  content_hash_of_value,
+  serialize_content_hash,
+  Fnv1a64StructuralDigestHex,
+  Fnv1a64Structural,
+  Fnv1a64,
+  ContentHash,
+  content_hash_combine_structural,
+}
+import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
+import extdeps.exec.command { ArgvCommand }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_test_bracket,
+  bash_build_with_redir_to_file,
+  bash_build_word_cmdsubst,
+  bash_build_word_lit,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_var,
+}
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected, None }
+import gunbc.fabric_cell_converge {
+  FabricCellMember,
+  FabricCellAddressDisposition,
+  AddressPresent,
+  AddressMissingOnHost,
+  AddressUnobserved,
+  AddressContradicted,
+  AddressUnreadable,
+  fabric_cell_address_ref_wire,
+  fabric_cell_member_key_eq,
+  fabric_cell_member_value_eq,
+  fabric_cell_member_ownership,
+  FabricCellObservationRefusal,
+  ExpectedAddressBlocked,
+  UnexpectedCellEvidence,
+  ReadbackHostMismatch,
+  ForeignArtifactObserved,
+  DiscoveryUnavailable,
+  SuppliedProbeUnconsumed,
+  SuppliedNamespaceUnconsumed,
+  UnexpectedCommittedSlotArtifact,
+  ExpectedRosterHostMismatch,
+  ObserverUnavailable,
+  CrossHostNamedArtifactObserved,
+  fabric_cell_member_key,
+  fabric_cell_resource_address_wire,
+  fabric_cell_desired_members,
+}
+import gunbc.fabric_cell_effect {
+  FabricCellRealizationRefusal,
+  CellTeardownRefusedByOwnership,
+  CellRosterDuplicateKey,
+  CellChangeNotYetRealizable,
+  CellTeardownNotYetRealizable,
+  CellPlanRealizable,
+  CellPlanRefused,
+  FabricCellEffect,
+  FabricCellDirectoryEnsure,
+  FabricCellSliceEnsure,
+  CellSubstrateRootOwned,
+  CellAttemptWriterOwned,
+  fabric_cell_realization,
+}
+import gunbc.runner_host_grants {
+  fabric_cell_effect_operations,
+  fabric_allocation_store_effect_operations,
+}
+import gunbc.fabric_allocation_store_substrate {
+  fabric_allocation_store_substrate_spec,
+  fabric_allocation_store_ensure_effect,
+  AllocationStoreSubstratePrestate,
+  AllocationStoreDirectoryAbsent,
+  AllocationStoreDirectoryPresentExpected,
+  AllocationStoreDirectoryPresentUnexpected,
+  allocation_store_substrate_prestate_wire,
+}
+import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationDecision,
+  FabricCellObservationOutcome,
+  fabric_cell_observation_outcome,
+  FabricCellObservationAdmitted,
+  FabricCellObservationDenied,
+  FabricCellObservationNotApplicable,
+  fabric_cell_observed_population_host,
+  fabric_cell_observed_population_members,
+}
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+  TeardownRefusalCause,
+  MemberNotOwned,
+  OwnershipUnknown,
+  RosterDuplicateKey,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_refusal_count,
+  membership_added_count,
+}
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.ownership { Ownership, Owned }
+import gunbc.fleet_posix_accounts {
+  fleet_posix_ci_runner_principal, grounded_posix_principal_name,
+  ci_runner_sudo_binary_path, SudoInstall, SudoSystemctl,
+}
+import gunbc.spark.serving_execution_schedule {
+  ScheduledRows,
+  scheduled_rows_empty,
+  scheduled_rows_list,
+  SparkServingAxisDisposition,
+  SparkServingAxisNotApplicable,
+  SparkServingAxisUnobserved,
+  SparkServingAxisRefused,
+  SparkServingAxisPlanned,
+}
+
+import gunbc.fleet_converge_timer {
+  fleet_converge_service_unit_name,
+  fleet_converge_timer_unit_name,
+}
+import gunbc.live_deploy.spec {
+  deployment_spec_srv1,
+  deployment_fleet_converge_service_unit_name,
+  deployment_fleet_converge_timer_unit_name,
+}
+import gunbc.host_axis_caps {
+  CapMember,
+  CapMemberAt,
+  caps_reconcile,
+  desired_cap_member,
+  cap_upsert_script,
+}
+import gunbc.host_converge {
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  gunbc_runner_per_slot_tasks_dropin_path,
+  systemd_memory_max_property,
+  systemd_memory_high_property,
+  systemd_memory_swap_max_property,
+  systemd_tasks_max_property,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_provision {
+  RunnerSlotMember,
+  RunnerSlotMemberAt,
+  runner_slot_member_key,
+  runner_slot_provision_plan,
+  RunnerSlotProvisionPlan,
+}
+import extdeps.github.actions_runner {
+  actions_runner_release_2_336_0,
+  actions_runner_binary_artifact_for_arch,
+}
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.runner_host_deploy {
+  RunnerHostDeployFound,
+  RunnerHostDeployUnmodeled,
+  runner_host_deploy_for,
+  admit_runner_host,
+}
+import gunbc.runner_service_activation {
+  RunnerActivationReadiness,
+  RunnerTransitionPlan,
+  runner_activation_plans_for_deploy,
+  runner_transition_apply_lines,
+  runner_transition_plan_line,
+  runner_activation_refusal_count,
+  runner_activation_reachability_report,
+  runner_activation_safety_report,
+}
+import gunbc.spark.serving_membership {
+  SparkServingMember,
+  SparkServingMemberAt,
+  spark_serving_member_key,
+}
+import gunbc.spark.serving_realization {
+  ServingInstallEffect, EnableLingerForOwnAccount,
+  SparkServingExecutablePlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
+  spark_serving_retirement_effect_wire,
+}
+import gunbc.remote_operation {
+  PlannedRemoteStep, RemoteOperation, remote_operation_label, remote_operations_wire }
+
+type TimerRetirementMemberAt = NonEmptyStr
+
+// On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218):
+// membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved,
+// MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at
+// different poles; this module owns serialization, the content-addressed artifact, subject
+// identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline
+// fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and
+// mints a generation-scoped lease so two applies against the same observed baseline cannot both
+// act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on
+// the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are
+// precisely what a reviewer needs to see before approving.
+
+// SCOPE IS A PROPERTY OF THE REQUEST, NOT A FLAG BESIDE IT. A fleet converge answers for a set of
+// resource families, and the fabric-execution-cells cut needs to answer for exactly one of them.
+// The tempting spelling is a scope flag alongside the existing all-families signature, with the
+// unselected families passed empty -- and that is the empty-observation narrow at the plan layer:
+// an empty list says THIS FAMILY HAS NO MEMBERS, which is a positive claim about the host, while
+// the truth is that nobody was asked. The two have opposite consequences, because the first
+// licenses removals.
+//
+// OUT OF SCOPE IS NOT A REFUSAL EITHER, and this is the distinction that decides the shape. A
+// refusal means a SELECTED obligation could not be satisfied; out of scope means the obligation was
+// never selected. Rendering the unselected families as refusals would make every fabric-only plan
+// operationally red for reasons no operator can act on.
+//
+// SO NEITHER STATE IS DECLARED: the fabric-only arm carries NO AUTHORITATIVE POSITION for timers,
+// caps, spark or slots. There is no declared field to pass empty and none to pass refused, so no
+// production constructor and no request-driven fold can supply or project one.
+//
+// AND THE COMPILER DOES NOT MAKE THAT UNWRITABLE, WHICH THIS ANNOTATION HAS NOW BEEN WRONG ABOUT
+// TWICE, IN TWO DIFFERENT WAYS.
+//
+// The first overclaim was about CODE: an earlier revision said "the fabric-only CLI branch cannot
+// invoke those observers and then cannot reach them at all", describing the construction this type
+// makes POSSIBLE rather than anything that existed.
+//
+// The second overclaim was about the COMPILER, and it is this sentence's own former ending -- "the
+// bad state has no spelling rather than being checked for". That is FALSE, and it is false for
+// every payload-carrying arm in this file, not only for this one. Measured through
+// compile_dag_diagnostic_census on the acceptance path: a payload-carrying coproduct arm literal
+// receives NO EXCESS-FIELD JUDGMENT AT ALL, so `FabricExecutionCellsConverge { host, ...,
+// observed_slots: [] }` compiles, and so does the same literal carrying a field name declared on no
+// type anywhere in the corpus. The arm is not projected to its arm record, the record-literal
+// construction roster comes back absent, and the unknown-field path declines to judge in silence.
+// The mechanism and its repair belong to the compiler-floor lane adhoc-0f99c6bc-193.
+//
+// SO STATE THE PROPERTY THAT IS TRUE. The arm declares no authoritative position for the excluded
+// axes, and the exact production constructors and request-driven folds do not supply or project
+// them; the current compiler does not prevent excess-field spelling. Both overclaims are corrected
+// in place rather than deleted, because the pattern is the lesson: a type that makes a wall possible
+// is not the wall, and neither is a declaration the compiler never checks. Reading a declaration
+// establishes intent, not acceptance.
+// THE LAUNCH-ENVIRONMENT SCOPE IS A NARROWER OBLIGATION, NOT A FILTERED FULL HOST. RLM-2 asks
+// whether the production instance can EXECUTE at an exact revision. CI runner capacity -- the
+// GitHub runner slot family and the runner service activation that follows it -- answers a
+// different question: how much work the host can accept, on which ladder its own plan
+// (docs/plans/runner-service-capacity-convergence.md) is the authority.
+//
+// THE ARM CARRIES TIMER RETIREMENT AND NOTHING ELSE, AND TWO AXES WERE REMOVED FROM AN EARLIER CUT
+// OF IT AFTER REVIEW MEASURED THEM AS FOREIGN. Recording both, because the mistake is instructive
+// and a reader will otherwise wonder why the narrowest scope is this narrow:
+//
+//   THE CAP AXIS IS CI CAPACITY WEARING A HOST-SHAPED NAME. fleet_converge_desired_caps builds
+//   CapMembers at gunbc_runner_per_slot_dropin_path, and gunbc.runner_unit resolves that to
+//   /etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf. Those are drop-ins ON THE
+//   ACTIONS-RUNNER UNIT TEMPLATE -- the same family the slot and activation axes act on, reached by
+//   a different name. Selecting caps here excluded runner capacity through the front door and
+//   readmitted it through the side.
+//
+//   AND THE CAP AXIS COULD NOT HAVE PERFORMED ANYWAY, which is the independent half. Cap
+//   MemberAdded/Changed/Removed arms are rendered into plan.txt for review and are deliberately NOT
+//   emitted into apply.sh (fleet_converge_cap_apply_shell_note: drop-in writes are live_deploy
+//   deploy-principal authority). So a launch terminal that COUNTED cap refusals was counting an
+//   axis whose work this script never performs: an actionable cap mutation would sit unapplied
+//   while the terminal reported FullyApplied. That is the fabricated plausible output at the
+//   actuation seam, admitted by an axis nobody could act on.
+//
+//   FABRIC EXECUTION CELLS ARE RULED OFF THIS PROOF'S PATH BY THE PLAN ITSELF.
+//   docs/plans/roadmap-launch-mvp-plan.md: "Do not couple the first roadmap-launch proof to Fabric
+//   CI." An axis the governing plan excludes is not this scope's obligation to carry.
+//
+// WHY THE REMAINDER IS NOT A CEREMONIAL EMPTY SCOPE. Timer retirement is a real observed obligation
+// with a real membership reconcile, a real baseline the apply compare-and-swaps against, and real
+// emitted teardown work in apply.sh. The scope answers a question that can fail.
+//
+// THE TWO WERE FUSED IN ONE SCOPE AND THE FUSION WAS LOAD-BEARING IN THE WRONG DIRECTION. A
+// full-host plan for srv1 lands PartiallyApplied on runner-slot ownership and activation readiness
+// -- both declared, both owned elsewhere, neither an RLM obligation -- and the RLM deployment fold
+// accepts only FullyApplied, so the launch environment could not be proven converged for reasons
+// that say nothing about the launch environment. That is not a threshold to relax: the terminal was
+// answering over a resource set wider than the question, so the fix is to make the question's
+// resource set nameable.
+//
+// IT OMITS THE AXES RATHER THAN EXCUSING THEM. Selecting the slot family and then ignoring its
+// refusals would leave the invalid state writable and put a policy in front of it; passing empty
+// slot and readiness populations would be the empty-observation narrow this file already refuses one
+// layer down, since an empty list is a positive claim that the host HAS no slots and licenses
+// removals. So LaunchEnvironmentConverge DECLARES no runner-slot position and no activation
+// position, and its terminal folds over the single axis it selects -- timer retirement.
+//
+// WHAT THAT DOES AND DOES NOT BUY, STATED EXACTLY, BECAUSE THIS SENTENCE PREVIOUSLY CLAIMED THE TOP
+// RUNG AND WAS WRONG. It said a launch-environment plan carrying a foreign axis "has no
+// constructor". The compiler admits one: see the excess-field measurement in the annotation above
+// the scope type. What holds instead, separated by WHETHER THE GATE EXECUTES IT:
+//
+//   NOT COVERED AT ALL, AND THAT IS A LOSS THIS PR TOOK RATHER THAN A GAP IT INHERITED. The arm
+//   declares only host and observed_timers, and WHERE launch requests are constructed is covered by
+//   NOTHING EXECUTING and by nothing enrolled. A site census over the production corpus stood here
+//   and is REMOVED, not deferred and not re-homed. It answered on no run: on every required-floor
+//   run of every head that carried it, in either of the two fold shapes it was written in, its three
+//   rows stood planned-without-terminal-verdict and were budget-refused before verdict. An enrolled
+//   witness that can never answer is counted as coverage while carrying none.
+//   THE COST REDUCTION WAS ATTEMPTED BEFORE THE DELETION WAS MADE FINAL, and that attempt is why
+//   this paragraph no longer argues from the subject's size. The census had been reaching for the
+//   whole atom population of every declaration when it reads only construction spellings; it was
+//   rebuilt to carry one Int per node instead, subject untouched, and the floor refused it again.
+//   Its worst row also grew the run's resident set by two gigabytes, the largest of any claim in
+//   that run, so the walk is not only over the CPU line. What the floor's remedy sentence offers
+//   besides reducing the cost is a lane declaring its own ceiling, and no such lane exists that
+//   executes anything -- relocation into a non-executing home is the bare de-enrollment the
+//   admission ruling forbids, and it deletes coverage while retaining the source.
+//   Re-filed at node://adhoc-cfdf3366-bc3, and it cannot start until BOTH hold: a lane with a dated
+//   ceiling that actually executes the exact enrolled witness identity and returns a candidate-bound
+//   terminal verdict, AFFORDING THIS ROW'S MEASURED RESOURCE COST AND NOT MERELY A LOOSER CPU
+//   NUMBER; and a substrate-readable per-field record-literal label sufficient for a witness to
+//   assert the exact field-name set of a named construction site.
+//   THE FIRST CLAUSE CARRIES A MEMORY TERM ON PURPOSE, because a trigger has to be satisfiable in
+//   fact and not only in form. A lane could be stood up with a generous dated CPU ceiling and would
+//   then die exactly as the off-gate probe host did -- at which point the trigger would read as
+//   fired while the witness still reached no verdict. The measured facts a candidate lane must
+//   clear, both re-derivable by naming the producer rather than by trusting this line: the required
+//   floor's own run (the reduced-shape head's run, which its floor artifact and the
+//   [floor-claim-memory] lines identify) reports this identity's CPU as UNMEASURED and above the
+//   per-claim ceiling with no upper bound, and reports its worst row as the LARGEST single claim in
+//   that run by resident-set growth, in gigabytes rather than megabytes. Until both clauses hold the
+//   only thing standing over WHERE construction happens is review of the two named declarations;
+//   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
+//   subject, baseline, member-set fingerprint, plan body, counters, terminal, lease, apply shell or
+//   bundle identity -- executed as difference over production-shaped payloads by
+//   test.claim.fleet_converge_launch_scope_non_interference, each pair carrying an owning-scope
+//   control so the equality cannot be a dead fixture;
+//
+//   excess-field initializers are semantically analysed and are not runtime-evaluated.
+//
+// That is mechanically excluded from the authoritative launch-environment projection on this exact
+// tree. It is NOT structural impossibility, and with the site census removed nothing sees a new
+// construction site either -- and even with it, a field added INSIDE one of the two reviewed
+// constructors was invisible to it, because the field-NAME set of a record literal is not readable
+// from the substrate today. NEXT-RUNG TRIGGER, named as the capability: either the variant-local
+// excess-field compiler wall lands, or reflection exposes substrate-readable per-field record-literal
+// labels SUFFICIENT FOR a witness to assert the exact field-name set of a named construction site.
+type FleetConvergeScope
+  = FullHost
+  | LaunchEnvironment
+  | FabricExecutionCellsOnly
+  | FabricAllocationStoreOnly
+
+type FleetConvergeRequest
+  = FullHostConverge {
+      host: NonEmptyStr
+      observed_timers: List<TimerRetirementMember>
+      observed_caps: List<CapMember>
+      observed_spark: List<SparkServingMember>
+      observed_slots: List<RunnerSlotMember>
+      observed_fabric_cells: FabricCellObservationDecision
+      observed_activation_readiness: RunnerActivationReadiness
+    }
+  | LaunchEnvironmentConverge {
+      host: NonEmptyStr
+      observed_timers: List<TimerRetirementMember>
+    }
+  | FabricExecutionCellsConverge {
+      host: NonEmptyStr
+      observed_fabric_cells: FabricCellObservationDecision
+    }
+  | FabricAllocationStoreConverge {
+      host: NonEmptyStr
+      observed_allocation_store: AllocationStoreSubstratePrestate
+    }
+
+fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => FullHost
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
+  }
+}
+
+fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
+  match request {
+    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => h
+    LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
+    FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
+    FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
+  }
+}
+
+// THE SCOPE IS IN THE BASELINE TEXT, so two scopes over one host cannot collide on subject identity
+// -- a fabric-only plan and a full-host plan that happened to observe the same fabric population
+// would otherwise fingerprint identically, and an apply admitted against the wrong one would
+// actuate a plan nobody reviewed.
+fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
+  match scope {
+    FullHost => "scope:full-host"
+    LaunchEnvironment => "scope:launch-environment"
+    FabricExecutionCellsOnly => "scope:fabric-execution-cells-only"
+    FabricAllocationStoreOnly => "scope:fabric-allocation-store-only"
+  }
+}
+
+// SCOPE IS CARRIED EXPLICITLY, NOT RECOVERED FROM THE FINGERPRINT. The baseline text includes the
+// scope row, so two scopes already hash differently and cannot be admitted against each other --
+// but that only DISTINGUISHES subjects, and apply needs to DECIDE which observers to run. A hash
+// cannot be inverted into FullHost versus FabricExecutionCellsOnly, so a subject carrying only the
+// fingerprint can refuse a scope crossing while being unable to route one. The two jobs are
+// different and only one of them a digest can do.
+//
+// It is a field rather than a parse of plan.txt for the same reason the bundle digest exists at
+// all: recovering a routing decision by reading back rendered human text would make the reviewed
+// artifact's PROSE load-bearing, and prose is the one part of a plan nobody hashes for meaning.
+type FleetConvergePlanSubject {
+  host: NonEmptyStr
+  scope: FleetConvergeScope
+  member_set_fingerprint: ContentHash
+}
+
+fn fleet_converge_plan_lease_key(host: NonEmptyStr) -> NonEmptyStr {
+  concat("fleet-converge-plan:", host as String) as NonEmptyStr
+}
+
+fn fleet_converge_plan_subject_identity_text(subject: FleetConvergePlanSubject) -> String {
+  concat(
+    concat(
+      concat("host:", subject.host as String),
+      concat("\n", fleet_converge_scope_wire(scope: subject.scope)),
+    ),
+    concat("\nmember_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+  )
+}
+
+fn fleet_converge_plan_resource_fingerprint(subject: FleetConvergePlanSubject) -> ContentHash {
+  content_hash_of_value(value: fleet_converge_plan_subject_identity_text(subject: subject) as NonEmptyStr)
+}
+
+fn fleet_converge_plan_subject(request: FleetConvergeRequest) -> FleetConvergePlanSubject {
+  FleetConvergePlanSubject {
+    host: fleet_converge_request_host(request: request),
+    scope: fleet_converge_request_scope(request: request),
+    member_set_fingerprint: fleet_converge_member_set_fingerprint(request: request),
+  }
+}
+
+fn fleet_converge_member_set_fingerprint(request: FleetConvergeRequest) -> ContentHash {
+  content_hash_of_value(value: observed_baseline_text(request: request) as NonEmptyStr)
+}
+
+fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed_host: NonEmptyStr) -> Bool {
+  planned_host == observed_host
+}
+
+// APPLY RE-OBSERVES UNDER THE REQUEST, WHICH CARRIES THE SCOPE THE PLAN WAS BUILT FROM. Taking the
+// families as loose parameters would let an apply admit a fabric-only plan against a full-host
+// re-observation, or the reverse -- the fingerprints would be computed over different family sets
+// and the mismatch would read as ordinary drift rather than as a scope confusion.
+//
+// THIS PREDICATE IS A PROJECTION OF THE ARTIFACT-LEVEL ONE BELOW, NOT A SECOND AUTHORITY.
+// It takes a FleetConvergePlanSubject, which production does not have at apply time and cannot
+// build: the artifact holds a host, a scope wire and a fingerprint TEXT, and turning that text
+// back into a ContentHash would mean minting a content hash from untrusted file bytes -- the
+// forgeable-mint shape DESIGN.md 4b records for UriValidatedScalar. So the direction is fixed:
+// serialize the subject down to the wire the artifact holds and judge there. Nothing parses back.
+
+fn fleet_converge_apply_subject_admits(
+  planned_subject: FleetConvergePlanSubject,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: planned_subject.host as String,
+    planned_scope_wire: fleet_converge_scope_wire(scope: planned_subject.scope),
+    planned_fingerprint_text: serialize_content_hash(hash: planned_subject.member_set_fingerprint) as String,
+    observed: observed,
+  ) {
+    ApplyAdmitted => true
+    ApplySubjectHostMismatch { planned: _, observed: _ } => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+    ApplyMemberSetMismatch => false
+    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+  }
+}
+
+// WHY THE REFUSAL IS A COPRODUCT AND NOT A Bool. The three admission facts fail for reasons with
+// different operator remedies -- a host mismatch means the artifact belongs to another machine, a
+// scope mismatch means apply is about to actuate a family the plan never selected, and a member-set
+// mismatch means ordinary drift and a replan. Collapsing them to false makes one message answer for
+// three causes, which is the state-space conflation this repository keeps finding, and it is worse
+// here than usual because only one of the three is routine.
+type FleetConvergeApplyAdmission
+  = ApplyAdmitted
+  | ApplySubjectHostMismatch { planned: String, observed: String }
+  | ApplyScopeUndecodable { cause: String }
+  | ApplyScopeMismatch { planned_wire: String, observed_wire: String }
+  | ApplyMemberSetMismatch
+  | ApplyAllocationStorePrestateMismatch { namespace_path: NonEmptyStr, store_path: NonEmptyStr, observed: String }
+
+// THE CANONICAL APPLY ADMISSION, OVER EXACTLY WHAT THE ARTIFACT CARRIES. Host, scope and member
+// set are judged together in one place, so a caller cannot check two of three and still reach the
+// actuator -- which is what the wet path did while these were three separate helper calls.
+fn fleet_converge_apply_artifact_admits(
+  planned_host_text: String,
+  planned_scope_wire: String,
+  planned_fingerprint_text: String,
+  observed: FleetConvergeRequest,
+) -> FleetConvergeApplyAdmission {
+  let observed_host = fleet_converge_request_host(request: observed) as String
+  let observed_scope_wire = fleet_converge_scope_wire(
+    scope: fleet_converge_request_scope(request: observed),
+  )
+  if trim(s: planned_host_text) != observed_host {
+    ApplySubjectHostMismatch { planned: trim(s: planned_host_text), observed: observed_host }
+  } else {
+    match fleet_converge_scope_of_wire(wire: planned_scope_wire) {
+      ScopeUndecodable { cause: why } => ApplyScopeUndecodable { cause: why }
+      ScopeDecoded { scope: planned_scope } =>
+        if !fleet_converge_scope_matches(
+          planned: planned_scope,
+          observed: fleet_converge_request_scope(request: observed),
+        ) {
+          ApplyScopeMismatch {
+            planned_wire: fleet_converge_scope_wire(scope: planned_scope),
+            observed_wire: observed_scope_wire,
+          }
+        } else if !fleet_converge_member_set_fingerprint_matches(
+          planned_fingerprint_text: planned_fingerprint_text,
+          observed: observed,
+        ) {
+          match observed {
+            FabricAllocationStoreConverge { host: _, observed_allocation_store: prestate } =>
+              ApplyAllocationStorePrestateMismatch {
+                namespace_path: fabric_allocation_store_substrate_spec().namespace_path,
+                store_path: fabric_allocation_store_substrate_spec().path,
+                observed: allocation_store_substrate_prestate_wire(prestate: prestate),
+              }
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => ApplyMemberSetMismatch
+            LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
+            FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+          }
+        } else {
+          ApplyAdmitted
+        }
+    }
+  }
+}
+
+// THE DECODE REFUSES AN UNRECOGNISED WIRE RATHER THAN CHOOSING A SCOPE. Defaulting to FullHost
+// would be the absorbing fallback in its most expensive form: a truncated or hand-edited scope
+// file would widen apply from one resource family to every family on the host, and the widening
+// would be invisible because the wider run is exactly what the old signature always did. An empty
+// file is called out separately from an unrecognised token because they have different causes --
+// a write that did not complete, versus an artifact minted by a vintage that spelled scope
+// differently -- and only the second is a version problem.
+type FleetConvergeScopeDecode
+  = ScopeDecoded { scope: FleetConvergeScope }
+  | ScopeUndecodable { cause: String }
+
+fn fleet_converge_scope_of_wire(wire: String) -> FleetConvergeScopeDecode {
+  let w = trim(s: wire)
+  if w == "" {
+    ScopeUndecodable {
+      cause: "the planned scope artifact is empty, so the plan states no scope and apply must not choose one",
+    }
+  } else if w == fleet_converge_scope_wire(scope: FullHost) {
+    ScopeDecoded { scope: FullHost }
+  } else if w == fleet_converge_scope_wire(scope: LaunchEnvironment) {
+    ScopeDecoded { scope: LaunchEnvironment }
+  } else if w == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly) {
+    ScopeDecoded { scope: FabricExecutionCellsOnly }
+  } else if w == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly) {
+    ScopeDecoded { scope: FabricAllocationStoreOnly }
+  } else {
+    ScopeUndecodable {
+      cause: concat("the planned scope artifact names no scope this build knows: ", w),
+    }
+  }
+}
+
+fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmission) -> String {
+  match admission {
+    ApplyAdmitted => "admitted"
+    ApplySubjectHostMismatch { planned: p, observed: o } =>
+      concat("SubjectHostMismatch planned=", concat(p, concat(" observed=", o)))
+    ApplyScopeUndecodable { cause: why } => concat("PlannedScopeUndecodable — ", why)
+    ApplyScopeMismatch { planned_wire: p, observed_wire: o } =>
+      concat(
+        "SubjectScopeMismatch — the plan selected ",
+        concat(p, concat(" and apply re-observed ", concat(o, "; apply would actuate a family the plan never selected"))),
+      )
+    ApplyMemberSetMismatch =>
+      "SubjectIdentityMismatch — member set drifted since plan; rerun plan and review"
+    ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
+      join(["AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], "")
+  }
+}
+
+// SCOPE EQUALITY IS ASKED OF THE WIRE FOLD, WHICH IS THIS TYPE'S CANONICAL TOTAL SURFACE.
+//
+// This was a nested match over both arguments -- one arm per ORDERED PAIR, so it grew
+// quadratically and a fourth scope would have taken it to sixteen arms. Its annotation defended the
+// shape on the ground that a derived `==` would let a new scope join the admitted set silently, and
+// that concern is correct and is PRESERVED here rather than traded away: fleet_converge_scope_wire
+// is itself an exhaustive match, so a new scope still fails to compile until it is given a wire,
+// and the comparison still cannot answer for a scope nobody spelled.
+//
+// WHAT THE WIRE FORM ADDS is a single authority. The wire already decides scope identity everywhere
+// that matters -- it is what the plan artifact persists, what apply decodes, and what
+// fleet_converge_scope_of_wire inverts -- so comparing two scopes by any OTHER rule would have been
+// a second answer to a question the wire already answers, and the two could disagree.
+//
+// THE ONE PROPERTY THE PAIRWISE FORM HAD FOR FREE AND THIS ONE MUST STATE: two scopes sharing a
+// wire spelling would compare equal. That is not left to inspection --
+// every_scope_wire_is_distinct pins the wires pairwise distinct, which is the same fact
+// fleet_converge_scope_of_wire's decode already depends on.
+fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConvergeScope) -> Bool {
+  fleet_converge_scope_wire(scope: planned) == fleet_converge_scope_wire(scope: observed)
+}
+
+fn fleet_converge_plan_held_lease(
+  subject: FleetConvergePlanSubject,
+  prior_generation: Int,
+  owner_fingerprint: ContentHash,
+) -> HeldLease {
+  held_lease(
+    epoch: LeaseEpoch {
+      lease_key: fleet_converge_plan_lease_key(host: subject.host),
+      resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
+      owner_fingerprint: owner_fingerprint,
+      generation: prior_generation + 1,
+    },
+    observed: LeaseAbsent,
+  )
+}
+
+fn fleet_converge_apply_generation_admits(prior_generation: Int, store_generation: Int) -> Bool {
+  store_generation == prior_generation
+}
+
+fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generation: Int) -> Bool {
+  store_generation >= planned_generation
+}
+
+// THE APPLY-SIDE PREDICATES TAKE THE REQUEST, SO PRODUCTION CONSUMES THE CANONICAL DECISION
+// RATHER THAN A SECOND ONE SHAPED LIKE IT. These two rebuilt a FullHostConverge internally from
+// five loose family parameters, which meant the request coproduct was the authority everywhere
+// EXCEPT on the live apply path -- the canonical decision standing beside the predecessor seam
+// instead of replacing it, which is DESIGN section 3's two-authorities case arriving as a
+// leftover rather than as a fork.
+//
+// WHAT TAKING THE REQUEST DOES FOR SCOPE, AT THE STRENGTH IT ACTUALLY HAS. A scope crossing is
+// REFUSED HERE, NOT PREVENTED, and the difference is not pedantic: these take a request of either
+// arm beside a fingerprint STRING, and nothing binds the two, so a full-host observation can be
+// handed to a fabric-only plan's fingerprint perfectly well. What happens then is that the
+// comparison FAILS -- because scope is inside the baseline the fingerprint hashes -- so the
+// crossing is caught by a value comparison at runtime rather than made unwritable by a type.
+//
+// AN EARLIER REVISION OF THIS ANNOTATION SAID SUCH A CROSSING "cannot reach these at all", WHICH
+// WAS FALSE, and it is the SECOND time on this branch that a comment described a refusal as an
+// impossibility. Recorded rather than quietly rewritten because one instance is a slip and two is
+// a habit worth naming: a wall I have just built reads to me as stronger than it is, and the tell
+// both times was an absolute -- "cannot", "at all" -- attached to a mechanism that in fact
+// compares two values and says no. Making the crossing genuinely unwritable would mean the plan
+// artifact handing over its scope as a typed field rather than a hex string, which this commit
+// does not do.
+fn fleet_converge_member_set_fingerprint_matches(
+  planned_fingerprint_text: String,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  trim(s: planned_fingerprint_text) == (
+    serialize_content_hash(hash: fleet_converge_member_set_fingerprint(request: observed)) as String
+  )
+}
+
+type TimerRetirementMember {
+  unit_name: NonEmptyStr
+}
+
+fn timer_member_key(m: TimerRetirementMember) -> NonEmptyStr {
+  m.unit_name
+}
+
+fn timer_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn timer_member_value_eq(a: TimerRetirementMember, b: TimerRetirementMember) -> Bool {
+  a.unit_name as String == b.unit_name as String
+}
+
+fn timer_member_ownership(m: TimerRetirementMember) -> Ownership? {
+  Present { value: Owned }
+}
+
+fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: timer_retirement_desired(),
+      observed: observed,
+      key_of: timer_member_key,
+      key_eq: timer_member_key_eq,
+      value_eq: timer_member_value_eq,
+      ownership_of: timer_member_ownership,
+    ),
+  )
+}
+
+fn timer_member_unit_path(unit_name: NonEmptyStr) -> NonEmptyStr {
+  concat("/etc/systemd/system/", unit_name as String) as NonEmptyStr
+}
+
+fn timer_retirement_desired() -> List<TimerRetirementMember> {
+  []
+}
+
+fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
+  let names = deployment_spec_srv1().names
+  [
+    TimerRetirementMember { unit_name: fleet_converge_timer_unit_name as NonEmptyStr },
+    TimerRetirementMember { unit_name: fleet_converge_service_unit_name as NonEmptyStr },
+    TimerRetirementMember { unit_name: deployment_fleet_converge_timer_unit_name(names: names) },
+    TimerRetirementMember { unit_name: deployment_fleet_converge_service_unit_name(names: names) },
+  ]
+}
+
+fn teardown_refusal_cause_label(cause: TeardownRefusalCause) -> String {
+  match cause {
+    MemberNotOwned => "MemberNotOwned"
+    OwnershipUnknown => "OwnershipUnknown"
+    RosterDuplicateKey { roster: _ } => "RosterDuplicateKey"
+  }
+}
+
+fn timer_action_line(action: MemberAction<TimerRetirementMember, TimerRetirementMemberAt>) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => concat("ADD timer-unit ", m.unit_name as String)
+    MemberChanged { at: _, from: f, to: t } =>
+      concat(concat("CHANGE timer-unit ", f.unit_name as String), concat(" -> ", t.unit_name as String))
+    MemberRemoved { at: _, from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
+    MemberRemovalRefused { from: m, cause: c } =>
+      concat(
+        concat("REFUSED-REMOVAL timer-unit ", m.unit_name as String),
+        concat(" cause=", teardown_refusal_cause_label(cause: c)),
+      )
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+  }
+}
+
+fn cap_action_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => concat("ADD cap ", m.dropin_path as String)
+    MemberChanged { at: _, from: f, to: t } =>
+      concat(concat("CHANGE cap ", f.dropin_path as String), concat(" -> content drift"))
+    MemberRemoved { at: _, from: m } => concat("REMOVE cap ", m.dropin_path as String)
+    MemberRemovalRefused { from: m, cause: c } =>
+      concat(
+        concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
+        concat(" cause=", teardown_refusal_cause_label(cause: c)),
+      )
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+  }
+}
+
+fn membership_plan_lines_timer(plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
+  map(plan.actions, a => timer_action_line(action: a))
+}
+
+fn membership_plan_lines_cap(plan: MembershipPlan<CapMember, CapMemberAt>) -> List<String> {
+  map(plan.actions, a => cap_action_line(action: a))
+}
+
+// THE SLOT ROSTER IS RECONCILED HERE RATHER THAN STOOD UP BY A SEPARATE SCRIPT, which is the whole
+// point of the consolidation (operator directive 2026-08-22: this all belongs in fleet
+// convergence). Timers and caps already flowed through membership_reconcile and slot standup did
+// not, so the fleet had two ways to change a host: a reviewed plan artifact with a lease, a
+// member-set fingerprint and a CAS against the observed baseline, and a hand-run provisioning path
+// with none of those. A width change landing through the second one is unreviewed by construction.
+//
+// DESIRED COMES FROM THE DEPLOY ROW AND THE DEPLOY ROW DERIVES ITS WIDTH, so the roster this plan
+// proposes is the width the admission axes committed -- not a number authored beside them. An
+// unmodeled host emits a REFUSED line and no actions; it does not fall through to zero desired
+// members, because zero desired against a populated host reconciles to REMOVE EVERY SLOT, which is
+// the absorbing failure arm pointed the destructive direction.
+//
+// OBSERVATION REFUSAL IS UPSTREAM. gunbc.runner_slot_provision RunnerSlotsUnobserved is resolved by
+// the caller before it reaches this module; a List<RunnerSlotMember> arriving here has already been
+// established to be a genuine reading of the host rather than an unread one rendered as empty.
+
+fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => concat("ADD runner-slot ", runner_slot_member_key(m: m) as String)
+    MemberChanged { at: _, from: f, to: t } =>
+      concat(
+        concat("CHANGE runner-slot ", runner_slot_member_key(m: f) as String),
+        concat(" -> ", runner_slot_member_key(m: t) as String),
+      )
+    MemberRemoved { at: _, from: m } => concat("REMOVE runner-slot ", runner_slot_member_key(m: m) as String)
+    MemberRemovalRefused { from: m, cause: c } =>
+      concat(
+        concat("REFUSED-REMOVAL runner-slot ", runner_slot_member_key(m: m) as String),
+        concat(" cause=", teardown_refusal_cause_label(cause: c)),
+      )
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+  }
+}
+
+type FleetConvergeSlotFamily
+  = SlotFamilyPlanned { plan: RunnerSlotProvisionPlan }
+  | SlotFamilyUnmodeledHost { host: HostIdentity }
+  | SlotFamilyArtifactUnpublished { host: HostIdentity }
+
+// ONE RESOLUTION FEEDS BOTH THE REVIEW LINES AND THE APPLY SCRIPT, which is not tidiness -- it is
+// the property the whole plan/apply split rests on. If the renderer and the actuator each resolved
+// the host and reconciled the roster on their own, the reviewer could approve one membership and
+// apply could execute a different one, and the bundle hash would not catch it because both halves
+// would be internally consistent. Resolving once and deriving both projections makes that
+// disagreement unrepresentable rather than checked.
+fn fleet_converge_slot_family(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> FleetConvergeSlotFamily {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
+    RunnerHostDeployFound { deploy: d } =>
+      match actions_runner_binary_artifact_for_arch(
+        binary_release: actions_runner_release_2_336_0,
+        arch: altra_max_m12830_catalog.architecture,
+      ) {
+        Absent => SlotFamilyArtifactUnpublished { host: host as HostIdentity }
+        Present { value: a } =>
+          SlotFamilyPlanned {
+            plan: runner_slot_provision_plan(deploy: d, artifact: a, observed: observed_slots),
+          }
+      }
+  }
+}
+
+// THE FABRIC CELL FAMILY IS A SIBLING OF THE GitHub RUNNER SLOT FAMILY, NOT A FILTER OVER IT.
+//
+// Its desired population comes from gunbc.runner_slot_allocation's exact fabric identities, and it
+// shares with the slot family exactly one thing: the RunnerSlotIdentity that names the physical
+// cell. It routes through none of runner_host_deploy_for, actions_runner_binary_artifact_for_arch
+// or runner_slot_provision_plan -- those are the GitHub family's facts, and a fabric cell that
+// resolved through them would be a fabric executor provisioned from an Actions runner release.
+//
+// THE OBSERVED SIDE IS A TYPED POPULATION RATHER THAN A BARE LIST, AND THAT IS THE WHOLE REASON
+// THIS ARM EXISTS. The sibling families take List<Member> and a caller with no observer passes the
+// empty list, which reconcile then reads as "the host has none of these" and plans a full install.
+// For a family whose resources are a cgroup and two directories that is the empty-observation
+// narrow: a probe that could not read the host is indistinguishable from a host that has nothing,
+// and the two have opposite remedies. FabricCellObservationDecision makes them different values, so an
+// unreadable cell stops the line here instead of arriving as work to do.
+// PLANNED WORK WITH NO REALIZER IS A REFUSAL, NOT A ZERO-REFUSAL PLAN.
+//
+// AN EARLIER REVISION OF THIS FAMILY HAD A LATENT FAIL-OPEN AT THE ACTUATION SEAM, and it was latent
+// only because the CLI has no observer yet. An observed-empty population produces an ordinary
+// MembershipPlan with three MemberAdded actions; those render as ADD lines; the apply shell emits
+// them as comments; and the refusal count -- being the MEMBERSHIP refusal count -- is zero. So the
+// modeled state was "three additions due, zero refusals, zero host effects, apply completes", which
+// is a plan reporting work as applied that nothing performs. Landing the observer alone would have
+// turned that live on its first honest empty read.
+//
+// So the family has a third arm, carrying the planned actions. Its meaning NARROWED when the
+// declared dissolve-on fired: this arm was REFUSED-REALIZATION back when the family had no
+// host-effect realizer at all, and its own trigger said it narrows "to whatever remains genuinely
+// unrealizable" when the realizer lands. The realizer has landed (gunbc.fabric_cell_effect emits
+// typed effects; the apply shell renders them through the exact-argv privileged-operation seam), so
+// the arm is now PLANNED: each consumer asks fabric_cell_realization, realizable actions render as
+// executable work, and what still refuses -- teardown, change realization, ownership walls -- is
+// rendered and counted as the typed refusal it is, never as an ADD a reader would take for work
+// that will happen.
+// A POPULATION OBSERVED ON ONE HOST IS NOT EVIDENCE ABOUT ANOTHER, AND UNTIL THIS ARM EXISTED IT
+// WAS SILENTLY TREATED AS SUCH. The observed arm's host was discarded (`host: _`) and the desired
+// side was derived from the SEPARATELY SUPPLIED plan host, so a perfectly valid srv4 population
+// paired with srv3 reconciled as srv3 evidence: srv3's three resources read as absent, srv4's three
+// read as extras, and the plan was a full install plus a full teardown, against a host nobody read.
+// Nothing refused, because nothing compared the two names (codex review 55419).
+//
+// It is a typed refusal rather than a silent correction because BOTH readings are wrong and the
+// caller must learn which: preferring the population's host would plan the right host from a
+// mis-supplied argument, and preferring the argument is what produced the hole. The mismatch is a
+// defect in whoever joined them, so the line stops and names both.
+// NOT-APPLICABLE IS NOT CONVERGED, and giving it its own arm is what keeps the plan from claiming an
+// observation nobody made. A host the product does not scan for fabric artifacts plans no actions --
+// same as a converged one -- but the REASON differs and so does what a later reader may conclude:
+// converged means read and correct, not-applicable means never looked at and not expected to be.
+type FleetConvergeFabricCellFamily
+  = FabricCellFamilyNotApplicable
+  | FabricCellFamilyConvergedNoActions
+  | FabricCellFamilyPlanned { planned: MembershipPlan<FabricCellMember, String> }
+  | FabricCellFamilyObservationRefused { blocked: List<FabricCellObservationRefusal> }
+  | FabricCellFamilyObservationHostMismatch { planned_host: String, observed_host: String }
+
+fn fleet_converge_fabric_cell_family(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> FleetConvergeFabricCellFamily {
+  match fabric_cell_observation_outcome(decision: observed_fabric_cells) {
+    FabricCellObservationNotApplicable { host: _ } => FabricCellFamilyNotApplicable
+    FabricCellObservationDenied { host: _, blocked: b } =>
+      FabricCellFamilyObservationRefused { blocked: b }
+    FabricCellObservationAdmitted { population: pop } =>
+      if (fabric_cell_observed_population_host(population: pop) as String) != (host as String) {
+        FabricCellFamilyObservationHostMismatch {
+          planned_host: host as String,
+          observed_host: fabric_cell_observed_population_host(population: pop) as String,
+        }
+      } else {
+      let observed = fabric_cell_observed_population_members(population: pop)
+      let planned = membership_plan_admitting_outcome(
+        outcome: membership_reconcile(
+          desired: fabric_cell_desired_members(host: host as HostIdentity),
+          observed: observed,
+          key_of: fabric_cell_member_key,
+          key_eq: fabric_cell_member_key_eq,
+          value_eq: fabric_cell_member_value_eq,
+          ownership_of: fabric_cell_member_ownership,
+        )
+      )
+      if list_length(items: planned.actions) == 0 {
+        FabricCellFamilyConvergedNoActions
+      } else {
+        FabricCellFamilyPlanned { planned: planned }
+      }
+      }
+  }
+}
+
+// THE REFUSAL IS RENDERED FOR THE REVIEWER RATHER THAN FILTERED, exactly as MemberRemovalRefused is.
+// A plan that silently omitted the fabric family when its observation failed would read as "no
+// fabric work to do", which is the same wrong answer the typed population exists to prevent, one
+// layer further out. And an action this family cannot realize is rendered as the refusal it is,
+// never as an ADD line a reader would take for work that will happen.
+fn fleet_converge_fabric_cell_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyObservationRefused { blocked: b } =>
+      map(b, r => concat("REFUSED-OBSERVATION fabric-cell ", fabric_cell_observation_refusal_line(refusal: r)))
+    FabricCellFamilyNotApplicable => []
+    FabricCellFamilyConvergedNoActions => []
+    FabricCellFamilyPlanned { planned: p } =>
+      fabric_cell_realization_lines(actions: p.actions)
+    FabricCellFamilyObservationHostMismatch { planned_host: ph, observed_host: oh } =>
+      [concat(
+        "REFUSED-HOST-MISMATCH fabric-cell planned_host=", ph,
+        " observed_host=", oh,
+        "; a population observed on one host is not evidence about another",
+      )]
+  }
+}
+
+// THE REALIZATION IS NOW ASKED RATHER THAN ASSUMED UNAVAILABLE, AND THAT IS THE WHOLE CHANGE.
+// This arm previously rendered every action as an undifferentiated "REFUSED-REALIZATION", which was
+// honest when the fabric family had no realization surface at all. It has one now
+// (gunbc.fabric_cell_effect), so the family asks it, and an operator reads WHICH address could not
+// be realized and WHY instead of learning that something somewhere is unrealizable.
+//
+// THE PLAN STILL REFUSES AS A WHOLE, and the lines say so rather than implying partial progress.
+// gunbc.fabric_cell_effect refuses a cell in which any address is unrealizable, because a cell root
+// created without its resource boundary is an UNBOUNDED cgroup slice -- worse than an absent cell,
+// since absent is honest and unbounded looks provisioned.
+fn fabric_cell_realization_lines(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> List<String> {
+  match fabric_cell_realization(actions: actions) {
+    CellPlanRealizable { effects: es } =>
+      fabric_cell_effect_plan_lines(effects: es)
+    CellPlanRefused { refusals: rs } =>
+      concat(
+        map(rs, r => concat("REFUSED-REALIZATION ", fabric_cell_realization_refusal_line(refusal: r))),
+        ["REFUSED-REALIZATION fabric-cell plan refused as a whole; no address is applied, because a cell root without its resource boundary is an unbounded slice"],
+      )
+  }
+}
+
+fn fabric_cell_effect_plan_lines(effects: List<FabricCellEffect>) -> List<String> {
+  map(effects, e => fabric_cell_effect_plan_line(effect: e))
+}
+
+fn fabric_cell_substrate_owner_word(effect: FabricCellEffect) -> String {
+  match effect {
+    FabricCellDirectoryEnsure { path: _, owner: o } =>
+      match o {
+        CellSubstrateRootOwned => "root-owned-substrate"
+        CellAttemptWriterOwned => "attempt-writer-owned"
+      }
+    FabricCellSliceEnsure { slice_unit: _, directives: _ } => "slice-boundary"
+  }
+}
+
+fn fabric_cell_effect_plan_line(effect: FabricCellEffect) -> String {
+  match effect {
+    FabricCellDirectoryEnsure { path: pth, owner: _ } =>
+      join([
+        "REALIZE fabric-cell ensure-directory ", pth as String,
+        " ", fabric_cell_substrate_owner_word(effect: effect),
+      ], "")
+    FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
+      join([
+        "REALIZE fabric-cell ensure-slice ", u as String,
+        " directives=", to_string(list_length(items: ds)),
+      ], "")
+  }
+}
+
+fn fabric_cell_realization_refusal_line(refusal: FabricCellRealizationRefusal) -> String {
+  match refusal {
+    CellTeardownRefusedByOwnership { address_wire: w, cause: _ } =>
+      concat("fabric-cell ", concat(w, " teardown refused: member is not Owned"))
+    CellRosterDuplicateKey { address_wire: w } =>
+      concat("fabric-cell ", concat(w, " roster duplicate key"))
+    CellChangeNotYetRealizable { address_wire: w } =>
+      concat("fabric-cell ", concat(w, " change realization undeclared: no staged intermediates (gunbc.change_realization)"))
+    CellTeardownNotYetRealizable { address_wire: w } =>
+      concat("fabric-cell ", concat(w, " teardown unmodeled: destructive effect over possibly-live attempt state"))
+  }
+}
+
+// THE COUNT STAYS TOTAL WHEN THE PLAN REFUSES, AND THAT IS DELIBERATE RATHER THAN LEFTOVER.
+// With a realization surface in place it is tempting to count only the TYPED refusals, which today
+// would report one deficit for a cell whose three addresses all went unapplied. That understates
+// the owed work by exactly the amount the all-or-nothing rule causes: when the plan refuses, no
+// address is applied, so every action is undone work whether or not its own address was realizable.
+// The annotation below was written for the blanket arm and survives the change unaltered because
+// its argument was never about the arm -- it is about the deficit being per unit of work owed.
+// EVERY UNREALIZABLE ACTION COUNTS AS A REFUSAL, not one refusal for the family. The count is what
+// makes the deficit's frequency visible, and the deficit is per unit of work owed: three resources
+// that cannot be provisioned is three pieces of undone work, not one inconvenience.
+fn fleet_converge_fabric_cell_refusal_count(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> Int {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyObservationRefused { blocked: b } => list_length(items: b)
+    FabricCellFamilyNotApplicable => 0
+    FabricCellFamilyConvergedNoActions => 0
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: _ } => 0
+        CellPlanRefused { refusals: _ } => list_length(items: p.actions)
+      }
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
+  }
+}
+
+fn fleet_converge_slot_lines(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> List<String> {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+    SlotFamilyUnmodeledHost { host: h } =>
+      [concat("REFUSED-UNMODELED-HOST runner-slot host=", h as String)]
+    SlotFamilyArtifactUnpublished { host: h } =>
+      [concat("REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=", h as String)]
+    SlotFamilyPlanned { plan: p } => map(p.membership.actions, a => slot_action_line(action: a))
+  }
+}
+
+// SLOT ADD IS THE ONE MEMBER FAMILY THIS SCRIPT ACTUALLY EXECUTES BESIDE TIMER TEARDOWN, and the
+// reason is principal, not appetite. Cap drop-ins live under /etc/systemd and belong to the
+// deploy principal (fleet_converge_cap_apply_shell_note); slot directories live under the runner
+// user's own /opt/actions-runner, which is exactly the principal converge already runs as. So
+// emitting ADD here is converge acting within its own authority rather than reaching outside it.
+//
+// REMOVE AND CHANGE EMIT NOTHING, AND THAT IS THE FAIL-CLOSED ARM RATHER THAN AN OVERSIGHT.
+// gunbc.runner_slot_provision runner_slot_member_ownership returns Absent for every observed slot
+// because no provenance signal exists yet to tell a gunbc-managed directory from one somebody put
+// there by hand. Reconcile therefore yields MemberRemovalRefused rather than MemberRemoved, those
+// refusals ARE rendered into plan.txt for the reviewer, and nothing deletes a directory whose
+// ownership was never established. Teardown becomes emittable when the provenance signal lands,
+// not before.
+//
+// AN UNMODELED HOST STOPS THE SCRIPT RATHER THAN CONTRIBUTING NO LINES. Silence here would be
+// indistinguishable from "this host had nothing to do", so apply would report success for a host it
+// could not identify -- the fabricated plausible output at the actuation seam. The emitted exit is
+// the line-stop.
+// AN UNMODELED HOST COUNTS AS A REFUSAL RATHER THAN AS ZERO REFUSALS. Zero is what a reviewer reads
+// as "nothing was refused on this axis", and a host nobody modeled is the largest refusal the slot
+// family can produce -- so reporting it as zero would make the most severe state look like the
+// cleanest one.
+fn fleet_converge_slot_refusal_count(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> Int {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+    SlotFamilyUnmodeledHost { host: _ } => 1
+    SlotFamilyArtifactUnpublished { host: _ } => 1
+    SlotFamilyPlanned { plan: p } => membership_refusal_count(plan: p.membership)
+  }
+}
+
+// THE ACTIVATION FAMILY, AND IT IS A SEPARATE FAMILY FROM THE SLOT FAMILY RATHER THAN TWO MORE
+// LINES INSIDE IT. Materializing a slot writes files under a directory the converging principal
+// already owns; activating one lets it accept work, and the first cache-miss compile of that work
+// spawns a build-cache server in whichever cgroup the slot sits in. The two have different
+// prerequisites and different refusal causes, so a reviewer reading plan.txt must be able to see
+// that materialization was planned and activation was refused -- which one merged family would
+// render as a single verdict over both.
+//
+// AN UNMODELED HOST YIELDS NO PLANS AT ALL, and that is not the silence this module elsewhere
+// forbids: the slot family ALREADY stops the script for an unmodeled host, one axis earlier and
+// with the louder diagnostic, so emitting a second refusal here would report one host's single
+// defect twice and inflate the refusal count that a reviewer reads as a magnitude.
+//
+// WHAT THE ACTIVATION FAMILY DOES NOT CONTRIBUTE, DECLARED RATHER THAN LEFT TO BE FOUND. The
+// readiness observation is NOT part of observed_baseline_text, so it is in neither the subject's
+// member-set fingerprint nor the compare-and-swap baseline. That is deliberate on the first count
+// and a residual on the second: readiness is not a MEMBER, and the two fingerprints are the same
+// text today, so folding it in would silently redefine subject identity to include an observation
+// that is not part of the subject.
+//
+// THE RESIDUAL IT LEAVES: the transitions are frozen into apply.sh at plan time, so if a readiness
+// that produced an ADMITTED enable stopped holding between plan and apply, the lease would still
+// admit and apply would activate against an observation that had lapsed. That is the same class the
+// Spark population's own baseline note records and closed for itself. It is not closed here, and
+// the exposure is currently zero rather than small: every caller in the tree supplies
+// ActivationReadinessUnobserved, so no admitted transition exists to go stale. Saying "zero" is not
+// the same as saying "safe" -- the mechanism is real and the first observed readiness arms it.
+// DISSOLVE-ON: the host observation transaction lands (docs/plans/runner-service-capacity-
+// convergence.md, "the shared blocker"), at which point the readiness has a subject and a currency
+// of its own and belongs in the baseline as a bound row rather than as a verdict.
+fn fleet_converge_activation_plans(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> List<RunnerTransitionPlan> {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployFound { deploy: d } =>
+      runner_activation_plans_for_deploy(
+        host_admission: admit_runner_host(deploy: d),
+        deploy: d,
+        readiness: readiness,
+      )
+  }
+}
+
+fn fleet_converge_activation_lines(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> List<String> {
+  map(
+    fleet_converge_activation_plans(host: host, readiness: readiness),
+    p => runner_transition_plan_line(plan: p),
+  )
+}
+
+fn fleet_converge_activation_refusal_count(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> Int {
+  runner_activation_refusal_count(
+    plans: fleet_converge_activation_plans(host: host, readiness: readiness),
+  )
+}
+
+// THE TWO DECLARED ROWS ARE RENDERED INTO THE PLAN A HUMAN REVIEWS, WHICH IS WHAT MAKES THEM
+// EVIDENCE RATHER THAN PROSE WITH A TYPE. A GuaranteeStall nothing reads is exactly the inert-lens
+// tier DESIGN section 6 names -- the machinery exists and nothing consumes it -- and it decays in a
+// specific way: the row goes stale while the refusal printed beside it keeps naming a different
+// cause, so the two disagree and no mechanism notices. Rendering them into plan.txt puts the
+// declared blocker and the executed refusal in front of the same reader in the same artifact, and
+// test.claim.runner_service_activation asserts they agree.
+//
+// BOTH ROWS, NOT ONE. The reachability row says why the admission cannot say yes here; the safety
+// row says what it would guarantee if it did, and that the raw systemctl grants leave a door beside
+// the wall. A reviewer approving a converge plan needs the second as much as the first -- it is the
+// difference between "this refusal is temporary" and "and even when it lifts, the host boundary is
+// mitigated rather than structural".
+// APPLY COULD NOT SAY "PARTIALLY APPLIED", AND ITS TERMINAL WAS THE SHELL'S EXIT STATUS. Every axis
+// already counted its refusals and rendered them, but the CONCLUSION a consumer reads is whether the
+// script exited zero -- and a script that refused an axis and continued exits zero, so "converged"
+// and "converged except for the axis nobody could admit" were the same terminal. That is the
+// fabricated plausible output at the reporting seam: not a wrong number anywhere, a missing state.
+//
+// THE PROJECTION IS DERIVED FROM THE REFUSAL COUNTS, NEVER STORED. A stored terminal is a second
+// authority for what the counts already say, and the two would drift in the ordinary direction --
+// someone adds an axis, the counts include it and the terminal does not. So there is no field to
+// transcribe: the arms are a fold over the same numbers plan.txt prints.
+//
+// IT CHANGES NO EXIT CODE. The line stop stays where it is -- an unmodeled host still exits, a
+// refused sibling axis still continues -- because withdrawing an authorized effect over an unrelated
+// refusal is the trade this lane refused in the first place. What changes is that the terminal is
+// now SAYABLE, so a consumer that wants to gate on full convergence has a state to read instead of
+// an exit code that cannot express one.
+type FleetConvergeApplyTerminal
+  = FullyApplied
+  | PartiallyApplied { refused_axis_count: Int, detail: String }
+
+// THE TERMINAL FOLDS OVER THE REQUEST, SO ITS AXIS SET IS THE SCOPE'S AXIS SET AND NOT A WIDER ONE.
+// It used to take the families as loose parameters, which made the axis set a property of the CALL
+// rather than of the plan: every caller had to pass a slot population and an activation readiness,
+// so a narrower scope could only be expressed by passing something for axes it had not selected --
+// an empty list (a positive claim the host has none) or a stalled readiness (a refusal for an
+// obligation nobody took on). Both spellings put a value where the honest answer was that the
+// question was never asked, and the second is what made a launch-environment plan unable to reach
+// FullyApplied for CI-capacity reasons.
+//
+// Taking the request removes the choice rather than documenting it: each arm reads exactly the
+// populations that arm carries, and an axis the arm has no field for cannot be counted, excused, or
+// defaulted, because there is nothing to read. Adding a scope makes this match non-exhaustive.
+//
+// THE ALLOCATION-STORE ARM IS FullyApplied BY THE SHAPE OF ITS ARM AND NOT BY A COUNT. That
+// transaction plans two idempotent ensure-directory effects and models no refusal axis at all, so a
+// count there could only ever be zero and would read as a measurement nobody took. This is where
+// fleet_converge_allocation_store_plan_artifact used to write the literal; it now asks here, so
+// there is one authority for what a terminal means.
+fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConvergeApplyTerminal {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } => {
+      let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
+      let cap_refused = membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))
+      let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
+      let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
+      let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness)
+      let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
+      if total == 0 {
+        FullyApplied
+      } else {
+        PartiallyApplied {
+          refused_axis_count: total,
+          detail: join(
+            [
+              "slot=", to_string(slot_refused),
+              " cap=", to_string(cap_refused),
+              " timer=", to_string(timer_refused),
+              " fabric-cell=", to_string(fabric_refused),
+              " activation=", to_string(activation_refused),
+            ],
+            "",
+          ),
+        }
+      }
+    }
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } => {
+      let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
+      if timer_refused == 0 {
+        FullyApplied
+      } else {
+        PartiallyApplied {
+          refused_axis_count: timer_refused,
+          detail: join(["timer=", to_string(timer_refused)], ""),
+        }
+      }
+    }
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } => {
+      let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
+      if fabric_refused == 0 {
+        FullyApplied
+      } else {
+        PartiallyApplied {
+          refused_axis_count: fabric_refused,
+          detail: join(["fabric-cell=", to_string(fabric_refused)], ""),
+        }
+      }
+    }
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FullyApplied
+  }
+}
+
+// THE REVIEWED BODY AND THE EXECUTED SCRIPT READ THE SAME REQUEST, so a scope cannot render one
+// axis set for a human and actuate another. These two are the plan.txt halves that were inlined in
+// the full-host fold; lifting them out is what lets the launch-environment fold be a second SUBJECT
+// rather than a second authority for how a plan is written.
+fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } =>
+      concat(
+        concat(
+          concat(
+            concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers))),
+            concat(["# cap-axis"], membership_plan_lines_cap(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))),
+          ),
+          concat(["# runner-slot"], fleet_converge_slot_lines(host: host, observed_slots: observed_slots)),
+        ),
+        concat(
+          concat(
+            concat(["# runner-service-activation"], fleet_converge_activation_lines(host: host, readiness: readiness)),
+            fleet_converge_activation_declaration_lines(),
+          ),
+          concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells)),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers)))
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+  }
+}
+
+// ONE COUNTER ROW PER SELECTED AXIS AND NO ROW FOR AN UNSELECTED ONE. A `# slot-refusals=0` line
+// under a scope that never observed slots is the empty-observation narrow in its reporting form:
+// zero reads as "nothing was refused on this axis", which is a claim about the host, where the
+// truth is that the axis was not this plan's obligation. The absent row says the second.
+fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: FullHost)),
+        concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
+        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness))),
+        concat("# cap-refusals=", to_string(membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)))),
+        concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
+        concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
+      ]
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: LaunchEnvironment)),
+        concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
+      ]
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)),
+        concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
+      ]
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)),
+        "# allocation-store-refusals=0",
+      ]
+  }
+}
+
+fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "# apply-terminal: FullyApplied"
+    PartiallyApplied { refused_axis_count: n, detail: d } =>
+      concat(
+        concat("# apply-terminal: PartiallyApplied refusals=", to_string(n)),
+        concat(" ", d),
+      )
+  }
+}
+
+// The terminal's wire spelling, carried by the plan artifact and both fleet receipts so the RLM-2
+// join can require FullyApplied without re-deriving refusal counts it cannot observe.
+fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "fully_applied"
+    PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
+  }
+}
+
+fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
+  if text == "fully_applied" {
+    Present { value: FullyApplied }
+  } else if starts_with(s: text, prefix: "partially_applied|") {
+    let rest = substring(s: text, start: 18, end: string_length(s: text))
+    let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+    match parse_int(s: n_text) {
+      Absent => none
+      Present { value: n } =>
+        Present { value: PartiallyApplied {
+          refused_axis_count: n,
+          detail: substring(s: rest, start: string_length(s: n_text) + 1, end: string_length(s: rest)),
+        } }
+    }
+  } else {
+    none
+  }
+}
+
+fn fleet_converge_activation_declaration_lines() -> List<String> {
+  [
+    concat("# activation-reachability: ", runner_activation_reachability_report()),
+    concat("# activation-safety: ", runner_activation_safety_report()),
+  ]
+}
+
+fn activation_apply_lines(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> List<String> {
+  flat_map(
+    fleet_converge_activation_plans(host: host, readiness: readiness),
+    p => runner_transition_apply_lines(plan: p),
+  )
+}
+
+fn slot_apply_lines(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+) -> List<String> {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+    SlotFamilyUnmodeledHost { host: h } =>
+      [
+        concat(
+          "echo 'fleet_converge_apply: REFUSED-UNMODELED-HOST runner-slot host=",
+          concat(h as String, "' >&2"),
+        ),
+        "exit 1",
+      ]
+    SlotFamilyArtifactUnpublished { host: h } =>
+      [
+        concat(
+          "echo 'fleet_converge_apply: REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=",
+          concat(h as String, "' >&2"),
+        ),
+        "exit 1",
+      ]
+    SlotFamilyPlanned { plan: p } =>
+      if membership_added_count(plan: p.membership) == 0 {
+        ["# runner-slot: no slots to add"]
+      } else {
+        concat([p.base_dir_script], p.upsert_extract_scripts)
+      }
+  }
+}
+
+fn fleet_converge_desired_caps() -> List<CapMember> {
+  let slot = gunbc_runner_slot_desired()
+  [
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+      property: systemd_memory_max_property,
+      bytes_value: to_string(byte_size_count(b: slot.memory_max)) as NonEmptyStr,
+    ),
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
+      property: systemd_memory_high_property,
+      bytes_value: to_string(byte_size_count(b: slot.memory_high)) as NonEmptyStr,
+    ),
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
+      property: systemd_memory_swap_max_property,
+      bytes_value: to_string(byte_size_count(b: slot.memory_swap_max)) as NonEmptyStr,
+    ),
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
+      property: systemd_tasks_max_property,
+      bytes_value: to_string(slot.tasks_max) as NonEmptyStr,
+    ),
+  ]
+}
+
+// THE OBSERVED SPARK POPULATION IS PART OF THE COMPARE-AND-SWAP BASELINE.
+//
+// It was not, and the consequence was specific rather than theoretical: the baseline fingerprinted
+// host, timers and caps only, so a Spark member could change between plan and apply -- a model
+// replaced, a unit rewritten, linger turned off -- WITHOUT invalidating the approved plan. The lease
+// would still admit, and apply would execute operations planned against a state that no longer held.
+//
+// Freezing the operations (above) closed the other half of that: apply executes exactly what plan
+// admitted. This closes the half the freeze cannot reach, because a frozen operation is only as
+// good as the baseline it was planned against. Each member contributes its ADDRESS and its
+// state_digest -- the address alone would let a value change without moving the fingerprint, which
+// is precisely the drift being guarded.
+// AN UNREADABLE FABRIC POPULATION CONTRIBUTES A ROW, NOT AN ABSENCE OF ROWS, AND THAT IS THE POINT
+// OF CARRYING THE TYPED POPULATION THIS FAR IN. If the refused arm rendered nothing, the baseline of
+// a host whose cells could not be read would be byte-identical to the baseline of a host observed to
+// have no cells -- two states with opposite remedies hashing to one fingerprint, so a plan approved
+// under one would admit under the other. The cause is in the row because the cause is part of what
+// was observed: "we could not read it, for this reason" is the observation.
+// THE REFUSAL BASELINE NAMES EVERY BLOCKED ADDRESS AND ITS CAUSE, not just that a refusal happened.
+//
+// A single "observation refused" row makes two hosts blocked for different reasons at different
+// addresses hash identically, so a plan approved while the cgroup was unreadable would admit later
+// while the attempt root was unreadable instead. The baseline exists to make the approved state and
+// the applied state the same state; a refusal is part of that state, and its shape is part of the
+// refusal.
+// THE STABLE TYPED CLASS ENTERS THE FINGERPRINT; THE UPSTREAM WORDING DOES NOT. The unreadable row
+// used to concatenate the raw `cause` string, and that made the fingerprint ORDER-DEPENDENT through
+// a path no witness here could reach: `fabric_cell_address_evidence` keeps the FIRST refusal cause,
+// so two probes refusing one address with different messages produced `cause A` in one arrival order
+// and `cause B` in the other -- the same substrate state, two fingerprints. The disposition ARM was
+// order-free; the VALUE inside it was not, and only the value reached the hash.
+//
+// This is the fixture-cannot-express-the-failure pattern one more time, and this time inside the PR
+// whose subject is that pattern: witness_fabric_cell_fingerprint_is_stable_under_observation_order
+// reverses POSITIVE observations, so it could never author two refusals with different causes.
+// Found by side-chat review, which reached it by asking what the JOIN's algebra requires rather than
+// by reading the arms -- `join(Refused(A), Refused(B))` is a cell no scenario fixture had.
+//
+// A raw transport message is also the wrong thing to hash on its own terms: it is upstream text that
+// may vary between runs for one unchanged condition, so hashing it makes a plan refuse to admit
+// against a substrate that has not moved. The ref and the class still separate every distinct
+// refusal SUBJECT -- two different addresses refusing still differ -- which is the property the
+// baseline needs. The cause remains in the rendered plan line for the reader, where varying wording
+// is information rather than identity.
+fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> String {
+  match d {
+    AddressUnreadable { ref: r, cause: _ } =>
+      concat(fabric_cell_address_ref_wire(ref: r), "=unreadable")
+    AddressContradicted { ref: r } =>
+      concat(fabric_cell_address_ref_wire(ref: r), "=contradicted")
+    AddressUnobserved { ref: r } =>
+      concat(fabric_cell_address_ref_wire(ref: r), "=unobserved")
+    AddressMissingOnHost { ref: r } =>
+      concat(fabric_cell_address_ref_wire(ref: r), "=missing")
+    AddressPresent { ref: r, member: m } =>
+      concat(fabric_cell_address_ref_wire(ref: r), "=present:", m.state_digest as String)
+  }
+}
+
+// EVERY REFUSAL IS LOCATED AND COUNTED SEPARATELY, WHICH THIS FAMILY CLAIMED BEFORE IT WAS TRUE.
+// The refused arm used to collapse the whole blocked list into ONE generic host-level sentence and
+// report a refusal count of 1 no matter how many addresses were blocked -- so three unprovisionable
+// resources and one unreadable directory rendered identically, and the deficit's frequency, which
+// is the entire reason DESIGN section 5 asks for counted degradations, was pinned at one by
+// construction. The population always carried the located list; only the plan surface threw it
+// away. It is the same total-at-the-level-examined shape as the drift collapse: the match over
+// FabricCellObservationDecision was exhaustive and the distinction that mattered was inside an arm.
+// THE REMEDY IS RENDERED PER DISPOSITION BECAUSE THE THREE BLOCKED STATES ARE NOT THE SAME EVENT.
+// One sentence -- "the address was not read" -- was appended to all of them, and it is FALSE of
+// AddressContradicted: that address WAS read, and the observations disagreed. A reader told the
+// probe never ran looks at the transport; a reader told two probes disagreed looks at the host.
+// Same typed class, opposite investigations, and the typed baseline row above was already correct
+// -- only the reviewer-facing half lied. It is the collapsed-remedy shape again, in prose rather
+// than in a match arm, which is why it survived the arm being split.
+fn fabric_cell_blocked_remedy(d: FabricCellAddressDisposition) -> String {
+  match d {
+    AddressUnobserved { ref: _ } =>
+      "; no observation was produced for this address, so its state is unknown and no membership may be planned against it"
+    AddressUnreadable { ref: _, cause: _ } =>
+      "; the observation was attempted and refused, so this address's state is unknown and no membership may be planned against it"
+    AddressContradicted { ref: _ } =>
+      "; this address WAS read and its observations disagree, so the host's own reporting is inconsistent and no membership may be planned against it"
+    AddressMissingOnHost { ref: _ } =>
+      "; reported absent -- this disposition does not block, and reaching this arm means a non-blocking standing was filed as blocked"
+    AddressPresent { ref: _, member: _ } =>
+      "; reported present -- this disposition does not block, and reaching this arm means a non-blocking standing was filed as blocked"
+  }
+}
+
+// THE RAW CAUSE IS NOT RENDERED, AND THIS IS THE SAME LESSON THE MULTIPLICITY COUNTERS TAUGHT
+// APPLIED BEFORE IT COST ANYTHING. `DiscoveryUnavailable` carries a free-text cause, and these
+// lines enter `plan_body`, which `fleet_converge_plan_artifact` content-hashes into the held-lease
+// owner fingerprint. Interpolating the cause would make the plan identity a function of how a
+// transport happened to word a failure -- two runs against one unchanged host producing two plan
+// artifacts because a timeout message carried a different duration. What is stable and host-derived
+// is that the host's discovery could not be completed, and that is what is rendered; the typed
+// cause survives on the refusal for a consumer that is not the plan.
+//
+// THE FOREIGN ARTIFACT RENDERS ITS NAME AND LOCATION BECAUSE THOSE ARE HOST STATE, not wording: a
+// different name is a different artifact, and the plan identity SHOULD move when the host's
+// contents do.
+fn fabric_cell_observation_refusal_line(refusal: FabricCellObservationRefusal) -> String {
+  match refusal {
+    ExpectedAddressBlocked { disposition: d } =>
+      concat(fabric_cell_disposition_baseline_row(d: d), fabric_cell_blocked_remedy(d: d))
+    UnexpectedCellEvidence { evidence: e } =>
+      concat(
+        "unexpected-cell ", runner_slot_instance_name(slot: e.slot),
+        "; evidence was supplied for a slot this host does not declare, and no ownership provenance exists to decide whether it is ours to remove",
+      )
+    ReadbackHostMismatch { mismatch: m } =>
+      concat(
+        "host-mismatched-readback ", runner_slot_instance_name(slot: m.supplied_slot),
+        " enclosing-host=", m.enclosing_host as String,
+        "; this readback names a slot on another host, so it is evidence about neither this host's expected cells nor an unexpected cell here -- the caller labelled it wrong and the remedy is upstream of this fold",
+      )
+    ForeignArtifactObserved { host: h, observed_name: n, location: l } =>
+      concat(
+        "foreign-artifact ", n, " in ", l, " on ", h as String,
+        "; the host holds an artifact matching no slot it committed, and no ownership provenance exists to decide whether it is ours to remove -- it is reported by the name observed, never by an identity derived from that name",
+      )
+    SuppliedProbeUnconsumed { host: h, slot: sl, address: a } =>
+      concat(
+        "unconsumed-probe ", runner_slot_instance_name(slot: sl),
+        " ", fabric_cell_resource_address_wire(address: a), " on ", h as String,
+        "; a state read was supplied for a slot this host does not declare, so it was not consumed by any expected address -- evidence that arrived about something nobody asked about is refused rather than dropped",
+      )
+    SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
+      concat(
+        "unconsumed-namespace ", runner_slot_instance_name(slot: sl), " on ", h as String,
+        "; a cell namespace was enumerated for a slot this host does not declare, so nothing consumed it",
+      )
+    ObserverUnavailable { host: h } =>
+      concat(
+        "observer-unavailable on ", h as String,
+        "; no observer is wired for this host, so nothing about its fabric cells was read -- this is not an empty host and no membership may be planned against it",
+      )
+    ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
+      concat(
+        "expected-roster-host-mismatch ", runner_slot_instance_name(slot: sl),
+        " enclosing-host=", h as String,
+        "; the roster asked this host about a slot on ANOTHER host, so no observation of this host can answer for it -- the remedy is upstream of this fold, in whatever scoped the roster",
+      )
+    UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
+      concat(
+        "unexpected-committed-slot-artifact ", runner_slot_instance_name(slot: sl),
+        " in ", l, " on ", h as String,
+        "; the host holds a cell artifact for a slot it committed but which the fabric authority does not expect -- the identity is the host's own commitment, not one parsed from the name, and no ownership provenance exists to decide whether it is ours to remove",
+      )
+    CrossHostNamedArtifactObserved {
+      observed_on: oh
+      observed_name: n
+      matched_committed_slot: ms
+      location: l
+    } =>
+      concat(
+        "cross-host-named-artifact ", n, " in ", l, " on ", oh as String,
+        " matches-committed=", runner_slot_instance_name(slot: ms),
+        "; the name matches a slot committed on ANOTHER host, so it is evidence about neither this host's cells nor an artifact nobody committed -- the match is recorded, and it does not assert the artifact IS that slot",
+      )
+    DiscoveryUnavailable { host: h, cause: _ } =>
+      concat(
+        "discovery-unavailable on ", h as String,
+        "; the host's own cells were not enumerated, so an out-of-band artifact would be invisible and no membership may be planned against a population that was only half read",
+      )
+  }
+}
+
+fn fabric_cell_refusal_baseline_row(refusal: FabricCellObservationRefusal) -> String {
+  match refusal {
+    ExpectedAddressBlocked { disposition: d } => fabric_cell_disposition_baseline_row(d: d)
+    UnexpectedCellEvidence { evidence: e } =>
+      concat("unexpected-cell:", runner_slot_instance_name(slot: e.slot))
+    ReadbackHostMismatch { mismatch: m } =>
+      concat("host-mismatched-readback:", runner_slot_instance_name(slot: m.supplied_slot))
+    ForeignArtifactObserved { host: h, observed_name: n, location: l } =>
+      concat("foreign-artifact:", h as String, ":", l, ":", n)
+    DiscoveryUnavailable { host: h, cause: _ } =>
+      concat("discovery-unavailable:", h as String)
+    SuppliedProbeUnconsumed { host: h, slot: sl, address: a } =>
+      concat("unconsumed-probe:", h as String, ":", runner_slot_instance_name(slot: sl), ":", fabric_cell_resource_address_wire(address: a))
+    SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
+      concat("unconsumed-namespace:", h as String, ":", runner_slot_instance_name(slot: sl))
+    ObserverUnavailable { host: h } => concat("observer-unavailable:", h as String)
+    ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
+      concat("expected-roster-host-mismatch:", h as String, ":", runner_slot_instance_name(slot: sl))
+    UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
+      concat("unexpected-committed-slot-artifact:", h as String, ":", l, ":", runner_slot_instance_name(slot: sl))
+    CrossHostNamedArtifactObserved {
+      observed_on: oh
+      observed_name: n
+      matched_committed_slot: ms
+      location: l
+    } =>
+      concat("cross-host-named-artifact:", oh as String, ":", l, ":", n, ":", runner_slot_instance_name(slot: ms))
+  }
+}
+
+// THE OBSERVED ARM CARRIES ITS OWN HOST INTO THE BASELINE, and it did not until the host-mismatch
+// row was written. The arm discarded the population's host and serialized members only, so two
+// observed-empty populations on DIFFERENT hosts produced byte-identical rows and hashed identically
+// -- the same collision the refused arm was already fixed for, surviving one arm over. The family
+// now refuses a cross-host join outright, so this is the second wall rather than the only one; both
+// belong, because the fingerprint is what a LATER apply re-checks, and it must not admit against a
+// baseline that could have come from somewhere else.
+fn fabric_cell_baseline_rows(population: FabricCellObservationDecision) -> List<String> {
+  match fabric_cell_observation_outcome(decision: population) {
+    FabricCellObservationNotApplicable { host: h } =>
+      [concat("fabric-cell-not-applicable:", h as String)]
+    FabricCellObservationAdmitted { population: pop } =>
+      concat(
+        [concat("fabric-cell-observed-host:", fabric_cell_observed_population_host(population: pop) as String)],
+        map(fabric_cell_observed_population_members(population: pop), m => concat(
+          "fabric-cell:", fabric_cell_member_key(member: m), "=", m.state_digest as String,
+        )),
+      )
+    FabricCellObservationDenied { host: h, blocked: b } =>
+      concat(
+        [concat("fabric-cell-observation-refused:", h as String)],
+        map(b, r => concat("fabric-cell-observation-blocked:", fabric_cell_refusal_baseline_row(refusal: r))),
+      )
+  }
+}
+
+// THE BASELINE IS DERIVED FROM THE REQUEST, so the rows that exist are exactly the families the
+// request named. The fabric-only arm emits the scope, the host and the fabric rows and nothing
+// else -- not empty timer rows, which would assert the host has no timers.
+fn observed_baseline_text(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: observed_spark,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: _,
+    } =>
+      join(
+        concat(
+          concat(
+            concat(
+              [fleet_converge_scope_wire(scope: FullHost), concat("host:", host as String)],
+              map(observed_timers, m => concat("timer:", m.unit_name as String)),
+            ),
+            concat(
+                concat(
+                  map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+                  map(observed_spark, m => concat(
+                    "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+                  )),
+                ),
+                map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
+              ),
+          ),
+          fabric_cell_baseline_rows(population: observed_fabric_cells),
+        ),
+        "\n",
+      )
+    LaunchEnvironmentConverge { host: host, observed_timers: observed_timers } =>
+      join(
+        concat(
+          [fleet_converge_scope_wire(scope: LaunchEnvironment), concat("host:", host as String)],
+          map(observed_timers, m => concat("timer:", m.unit_name as String)),
+        ),
+        "\n",
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      join(
+        concat(
+          [
+            fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
+            concat("host:", host as String),
+          ],
+          fabric_cell_baseline_rows(population: observed_fabric_cells),
+        ),
+        "\n",
+      )
+    FabricAllocationStoreConverge { host: host, observed_allocation_store: observed } =>
+      join(
+        [
+          fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+          concat("host:", host as String),
+          allocation_store_substrate_prestate_wire(prestate: observed),
+        ],
+        "\n",
+      )
+  }
+}
+
+// THE ROW FREEZES WHAT APPLY EXECUTES, not merely what it should figure out.
+//
+// The row used to carry the action and its effects only. `WriteUserUnitFile` is a bare variant with
+// no bytes, so apply resolved the unit content, path and mode from the repository's CURRENT
+// authorities at execution time -- and the bundle hash could not detect a plan/apply divergence
+// because the bytes were never in the bundle. Freezing the realized operations closes that: what the
+// plan admitted is exactly what runs.
+// THE OPERATION LIST IS STRUCTURALLY NONEMPTY, head plus tail.
+//
+// It was `operations: List<RemoteOperation>` guarded by an apply-time check reading "there are
+// effects and the aggregate operation list is empty". That check is over AGGREGATES, so it does not
+// catch the case it exists for: one row carrying effects and ZERO operations, sitting beside another
+// row that has operations. The totals are both nonzero, the check passes, and that row's effect is
+// reported applied while nothing ran for it -- a fabricated plausible output at the actuation seam.
+//
+// Head plus tail removes the state instead of catching it (DESIGN section 5, construction over
+// validation): a row with no operations has no constructor, so the aggregate check is not tightened,
+// it is unnecessary. The same shape StagedIntermediates uses, for the same reason.
+//
+// EACH EFFECT OWNS ITS OWN OPERATIONS.
+//
+// The row previously carried two PARALLEL populations: a list of effects, and one flat operation
+// sequence covering all of them. That guaranteed the row was nonempty and nothing more -- there was
+// no relation between the two lists, so a row carrying three effects could not say which operation
+// belonged to which, and no apply receipt could report "the download succeeded, the digest verified,
+// the extraction failed" against the effect that owns those steps.
+//
+// Parallel lists are also the shape that goes wrong silently as the sequences get long. A short
+// linger effect contributing one argv and a runtime install contributing nine cannot be told apart
+// in a flat list of ten, so a receipt has to guess an attribution, and a guess at the actuation seam
+// is the fabricated plausible output this lane keeps closing one layer down.
+//
+// The relation is now structural: one execution binds one effect to the operations that realize it,
+// head plus tail, so an effect with zero operations has no constructor. Ordering is preserved in
+// both directions -- executions in effect order, operations in realization order within each -- and
+// the flat sequence the actuator consumes is DERIVED by concatenation rather than stored beside the
+// executions, so the two cannot disagree.
+// THE EFFECT FIELD CARRIES EITHER DIRECTION, because a plan row is now produced by installs OR by
+// retirements and an execution must be able to say which one it realized. Widening the field to the
+// sum rather than adding a second execution type keeps one non-empty-in-steps invariant over one
+// population: a retirement step that ran is accounted exactly as an install step that ran.
+type PlannedEffectExecution {
+  effect: SparkServingExecutablePlannedEffect
+  first_step: PlannedRemoteStep
+  further_steps: List<PlannedRemoteStep>
+}
+
+fn planned_effect_execution_steps(x: PlannedEffectExecution) -> List<PlannedRemoteStep> {
+  concat([x.first_step], x.further_steps)
+}
+
+// The row is nonempty in EXECUTIONS now rather than in operations, and each execution is nonempty in
+// operations. A row with no executions is unwritable for the same reason a row with no operations
+// was: it would report its effects applied while nothing ran for them.
+type FleetConvergeSparkServingTypedAction {
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+  first_execution: PlannedEffectExecution
+  further_executions: List<PlannedEffectExecution>
+}
+
+fn fleet_converge_spark_serving_row_executions(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<PlannedEffectExecution> {
+  concat([row.first_execution], row.further_executions)
+}
+
+// The effect roster is DERIVED from the executions rather than stored, which is what retires the
+// parallel-population defect: there is no second list to fall out of step with the first.
+fn fleet_converge_spark_serving_row_effects(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<SparkServingExecutablePlannedEffect> {
+  map(fleet_converge_spark_serving_row_executions(row: row), x => x.effect)
+}
+
+fn fleet_converge_spark_serving_row_steps(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<PlannedRemoteStep> {
+  flat_map(
+    fleet_converge_spark_serving_row_executions(row: row),
+    x => planned_effect_execution_steps(x: x),
+  )
+}
+
+// The bare operations, for the consumers that hash or count them. Deliberately DERIVED from the
+// steps rather than stored, so the identities and the operations cannot describe different work.
+fn fleet_converge_spark_serving_row_operations(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<RemoteOperation> {
+  map(fleet_converge_spark_serving_row_steps(row: row), st => st.operation)
+}
+
+type FleetConvergePlanArtifact {
+  subject: FleetConvergePlanSubject
+  prior_generation: Int
+  plan_lease: HeldLease
+  apply_terminal: FleetConvergeApplyTerminal
+  observed_baseline_hex: Fnv1a64StructuralDigestHex
+  plan_body: String
+  apply_shell: String
+  spark_serving_typed_actions: ScheduledRows<FleetConvergeSparkServingTypedAction>
+}
+
+// NO WILDCARD. The wildcard is what made ServingInstallEffect extensible in silence: a thirteenth
+// variant would have landed as "UnmodeledServingInstallEffect" and read as a legitimate wire label
+// that simply missed. Every variant now names itself, so the wire string says WHICH effect was
+// asked for, and adding a variant makes this match non-exhaustive rather than defaulting.
+// Behaviour for the implemented slice is unchanged: EnableLingerForOwnAccount is still the only
+// effect the linger vertical realizes.
+fn fleet_converge_spark_serving_install_effect_wire(effect: ServingInstallEffect) -> String {
+  match effect {
+    EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
+    WriteSystemUnitFile => "WriteSystemUnitFile"
+    ReloadSystemManager => "ReloadSystemManager"
+    EnableSystemUnit => "EnableSystemUnit"
+    StartSystemUnit => "StartSystemUnit"
+    WriteUserUnitFile => "WriteUserUnitFile"
+    ReloadUserManager => "ReloadUserManager"
+    EnableUserUnit => "EnableUserUnit"
+    StartUserUnit => "StartUserUnit"
+    InstallRuntimePackage => "InstallRuntimePackage"
+    InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
+    MaterializeModelArtifact => "MaterializeModelArtifact"
+    GrantContainerRuntimeAccess => "GrantContainerRuntimeAccess"
+    RunContainerAsOwnUser => "RunContainerAsOwnUser"
+  }
+}
+
+// THE TWO VOCABULARIES RENDER INTO ONE STRING AND STAY DISTINGUISHABLE IN IT.
+//
+// A retirement effect is prefixed rather than dropped into the same flat namespace of names. The
+// plan wire is read by humans comparing two converges, and `StartUserUnit` beside `StopUserUnit`
+// with nothing to separate them invites reading a retirement as an install that was spelled oddly.
+// The prefix is the sum's own arm, so the rendering cannot claim a kind the value does not have.
+fn fleet_converge_spark_serving_effect_wire(effect: SparkServingExecutablePlannedEffect) -> String {
+  match effect {
+    PlannedInstallEffect { install: e } =>
+      fleet_converge_spark_serving_install_effect_wire(effect: e)
+    PlannedRetirementEffect { retirement: e } =>
+      join(["retire:", spark_serving_retirement_effect_wire(effect: e)], "")
+  }
+}
+
+fn fleet_converge_spark_serving_action_kind(action: MemberAction<SparkServingMember, SparkServingMemberAt>) -> String {
+  match action {
+    MemberAdded { at: _, to: _ } => "ADD"
+    MemberChanged { at: _, from: _, to: _ } => "CHANGE"
+    MemberRemoved { at: _, from: _ } => "REMOVE"
+    MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+  }
+}
+
+// THE MEMBER VALUES ARE IN THE WIRE, NOT ONLY THE MEMBER KEY.
+//
+// `spark_serving_member_key` is host x principal x ADDRESS -- deliberately, because that is the
+// stable identity reconcile keys on. But the hash needs the VALUE too: with the key alone, a row
+// whose `to` digest changed from one model manifest to another serializes identically, so the
+// approved artifact would still admit after the very drift the CAS baseline exists to catch. Key
+// answers "which resource"; the digests answer "from what, to what", and an approval is about both.
+//
+// `from` is rendered explicitly as absent where the arm has none, rather than omitted, so an add and
+// a change to the same value cannot collide on one string.
+fn fleet_converge_spark_serving_action_state_wire(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => join([" from=<none> to=", m.state_digest as String], "")
+    MemberChanged { at: _, from: f, to: m } =>
+      join([" from=", f.state_digest as String, " to=", m.state_digest as String], "")
+    MemberRemoved { at: _, from: f } => join([" from=", f.state_digest as String, " to=<none>"], "")
+    MemberRemovalRefused { from: f, cause: c } =>
+      join([" from=", f.state_digest as String, " to=<refused> cause=", c], "")
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: d } =>
+      join([" first=", f.state_digest as String, " duplicate=", d.state_digest as String], "")
+  }
+}
+
+fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedAction) -> String {
+  let member = match row.action {
+    MemberAdded { at: _, to: m } => m
+    MemberChanged { at: _, from: _, to: m } => m
+    MemberRemoved { at: _, from: m } => m
+    MemberRemovalRefused { from: m, cause: _ } => m
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } => f
+  }
+  join(
+    [
+      fleet_converge_spark_serving_action_kind(action: row.action),
+      " spark-serving ",
+      spark_serving_member_key(member: member),
+      fleet_converge_spark_serving_action_state_wire(action: row.action),
+      " effects=",
+      join(map(fleet_converge_spark_serving_row_effects(row: row), e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+      " ops=",
+      remote_operations_wire(operations: fleet_converge_spark_serving_row_operations(row: row)),
+    ],
+    "",
+  )
+}
+
+fn fleet_converge_spark_serving_typed_actions_wire(
+  rows: List<FleetConvergeSparkServingTypedAction>,
+) -> String {
+  join(map(rows, r => fleet_converge_spark_serving_action_line(row: r)), ";")
+}
+
+data fleet_converge_spark_typed_actions_wire_empty_canonical: NonEmptyStr = "spark-serving-typed-actions-wire-empty"
+
+fn fleet_converge_spark_typed_actions_wire_structural_hash(wire: String) -> Fnv1a64Structural? {
+  if wire == "" {
+    match content_hash_of_value(value: fleet_converge_spark_typed_actions_wire_empty_canonical) {
+      Fnv1a64(structural) => Present { value: structural }
+      _ => Absent
+    }
+  } else {
+    match content_hash_of_value(value: wire as NonEmptyStr) {
+      Fnv1a64(structural) => Present { value: structural }
+      _ => Absent
+    }
+  }
+}
+
+fn fleet_converge_plan_body_claims_spark_typed_actions(plan_body: String) -> Bool {
+  string_contains(s: plan_body, pattern: "# spark-serving-typed-actions:")
+}
+
+fn fleet_converge_plan_spark_typed_actions_consistency_admits(
+  plan_body: String,
+  spark_serving_typed_actions: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+) -> Bool {
+  let body_claims = fleet_converge_plan_body_claims_spark_typed_actions(plan_body: plan_body)
+  if length(scheduled_rows_list(scheduled: spark_serving_typed_actions)) > 0 && !body_claims {
+    false
+  } else {
+    true
+  }
+}
+
+fn fleet_converge_plan_body_structural_hash(plan_body: String) -> Fnv1a64Structural? {
+  match content_hash_of_value(value: plan_body as NonEmptyStr) {
+    Fnv1a64(structural) => Present { value: structural }
+    _ => Absent
+  }
+}
+
+fn fleet_converge_plan_apply_shell_structural_hash(apply_shell: String) -> Fnv1a64Structural? {
+  match content_hash_of_value(value: apply_shell as NonEmptyStr) {
+    Fnv1a64(structural) => Present { value: structural }
+    _ => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_v1_structural_hash(plan_body: String, apply_shell: String) -> Fnv1a64Structural? {
+  match fleet_converge_plan_body_structural_hash(plan_body: plan_body) {
+    Present { value: plan_struct } =>
+      match fleet_converge_plan_apply_shell_structural_hash(apply_shell: apply_shell) {
+        Present { value: shell_struct } =>
+          Present {
+            value: content_hash_combine_structural(left: plan_struct, right: shell_struct),
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_structural_hash(
+  plan_body: String,
+  apply_shell: String,
+  spark_typed_actions_wire: String,
+) -> Fnv1a64Structural? {
+  match fleet_converge_plan_bundle_v1_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
+    Present { value: bundle_v1 } =>
+      match fleet_converge_spark_typed_actions_wire_structural_hash(wire: spark_typed_actions_wire) {
+        Present { value: spark_struct } =>
+          Present {
+            value: content_hash_combine_structural(left: bundle_v1, right: spark_struct),
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_digest_hex(
+  plan_body: String,
+  apply_shell: String,
+  spark_typed_actions_wire: String,
+) -> Fnv1a64StructuralDigestHex? {
+  match fleet_converge_plan_bundle_structural_hash(
+    plan_body: plan_body,
+    apply_shell: apply_shell,
+    spark_typed_actions_wire: spark_typed_actions_wire,
+  ) {
+    Present { value: bundle } => Present { value: bundle.digest }
+    Absent => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_matches(
+  plan_body: String,
+  apply_shell: String,
+  spark_typed_actions_wire: String,
+  claimed_hex: String,
+) -> Bool {
+  match fleet_converge_plan_bundle_digest_hex(
+    plan_body: plan_body,
+    apply_shell: apply_shell,
+    spark_typed_actions_wire: spark_typed_actions_wire,
+  ) {
+    Present { value: computed } => trim(s: claimed_hex) == computed as String
+    Absent => false
+  }
+}
+
+fn fleet_converge_plan_bundle_v1_matches(plan_body: String, apply_shell: String, claimed_hex: String) -> Bool {
+  match fleet_converge_plan_bundle_v1_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
+    Present { value: bundle } => trim(s: claimed_hex) == bundle.digest as String
+    Absent => false
+  }
+}
+
+fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDigestHex? {
+  match fleet_converge_plan_body_structural_hash(plan_body: plan_body) {
+    Present { value: structural } => Present { value: structural.digest }
+    Absent => Absent
+  }
+}
+
+fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv1a64StructuralDigestHex? {
+  fleet_converge_plan_bundle_digest_hex(
+    plan_body: artifact.plan_body,
+    apply_shell: artifact.apply_shell,
+    spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+      rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
+    ),
+  )
+}
+
+fn fleet_converge_plan_artifact_bundle_admits(artifact: FleetConvergePlanArtifact, claimed_hex: String) -> Bool {
+  fleet_converge_plan_spark_typed_actions_consistency_admits(
+    plan_body: artifact.plan_body,
+    spark_serving_typed_actions: artifact.spark_serving_typed_actions,
+  )
+    && fleet_converge_plan_bundle_matches(
+      plan_body: artifact.plan_body,
+      apply_shell: artifact.apply_shell,
+      spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+        rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
+      ),
+      claimed_hex: claimed_hex,
+    )
+}
+
+data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner for timer retirement only (sudo systemctl disable/rm + daemon-reload); cap drop-in mutations are live_deploy deploy-principal authority (host_axis_caps_note) and are plan-output-only here; generation compare+apply+commit runs under flock in fleet_converge_locked_apply_script; subject-host / member-set / observed-baseline gates live in fleet_converge_apply_wet before the locked transport; DISSOLVES WHEN bash-emit or host_effect_apply realizes timer teardown and lease acquisition without medium-as-string concat")
+
+data fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_plan",
+    decl_name: "fleet_converge_apply_shell_emit_dissolution_trigger",
+    field: WholeDeclaration,
+  },
+}
+
+fn timer_retirement_disable_line(unit_name: NonEmptyStr) -> String {
+  concat("sudo -n systemctl disable --now ", unit_name as String)
+}
+
+fn timer_retirement_remove_line(unit_name: NonEmptyStr) -> String {
+  concat("sudo -n rm -f /etc/systemd/system/", unit_name as String)
+}
+
+fn cap_apply_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => cap_upsert_script(m: m)
+    MemberChanged { at: _, from: _, to: t } => cap_upsert_script(m: t)
+    MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
+    MemberRemovalRefused { from: _, cause: _ } => ""
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
+  }
+}
+
+data fleet_converge_cap_apply_shell_note: String = "Cap MemberAdded/Changed/Removed arms are rendered in plan.txt for human review but are NOT emitted into apply.sh — PerSlotMemoryCap drop-in writes are live_deploy deploy-principal authority (host_axis_caps host_axis_caps_note); converge on the operator runner does not sudo-write /etc/systemd drop-ins."
+
+fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
+  flat_map(plan.actions, a =>
+    match a {
+      MemberRemoved { at: _, from: m } =>
+        [timer_retirement_disable_line(unit_name: m.unit_name), timer_retirement_remove_line(unit_name: m.unit_name)]
+      MemberRemovalRefused { from: _, cause: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+      MemberAdded { at: _, to: _ } => []
+      MemberChanged { at: _, from: _, to: _ } => []
+    }
+  )
+}
+
+data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
+
+fn fleet_converge_parse_nonneg_generation_text(content: String) -> Int? {
+  let trimmed = trim(s: content)
+  if trimmed == "" {
+    none
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n >= 0 {
+          Present { value: n }
+        } else {
+          none
+        }
+      Absent => none
+    }
+  }
+}
+
+// AN UNREADABLE STORE IS NOT A STORE THAT SAYS ZERO, AND A STORE THAT DOES NOT EXIST YET IS
+// NEITHER OF THOSE. fleet_converge_generation_from_store_content used to answer `Int?` over two
+// inputs and fold three states into two: it returned Present{0} whenever the read had not
+// succeeded, so "no store yet, this host has never applied" and "the store is there and I could
+// not read it" produced the same number, and only a corrupt-but-readable store refused. That is
+// the empty-observation narrow (DESIGN, recurring failure modes) pointed at a lease guard: ⊥-as-
+// answer conflated with ⊥-as-ignorance, on the value that decides whether a converge apply may
+// proceed.
+//
+// So the observation carries three variants and ONLY ONE OF THEM HAS A NUMBER. Neither
+// not-yet-existing nor could-not-read is given a numeric payload, because giving a state with no
+// number a number is the entire defect. What the absent store MEANS — that this host is at the
+// first generation — is a decision, and it lives in fleet_converge_generation_admission below
+// where it is one named arm rather than a coercion hidden inside a read.
+type GenerationStoreObservation
+  = GenerationObserved { generation: Int }
+  | GenerationStoreAbsent
+  | GenerationUnobserved { reason: String }
+
+fn fleet_converge_generation_observation(
+  store_present: Bool,
+  content: String,
+) -> GenerationStoreObservation {
+  if !store_present {
+    GenerationStoreAbsent
+  } else {
+    match fleet_converge_parse_nonneg_generation_text(content: content) {
+      Present { value: n } => GenerationObserved { generation: n }
+      Absent =>
+        GenerationUnobserved {
+          reason: concat(
+            "fleet_converge: generation store is present but does not decode to a non-negative integer at ",
+            fleet_converge_generation_store_path,
+          ),
+        }
+    }
+  }
+}
+
+// THE ONE PLACE THE FIRST-GENERATION RULE LIVES. Both the modelled admission below and the
+// emitted apply guard read this row, so the shell cannot drift into a different idea of what a
+// host that has never applied is at.
+data fleet_converge_first_generation: Int = 0
+
+// WHAT THE ABSENT ARM DOES, AND THE GAP IT LEAVES — stated because a reader would otherwise
+// assume it is as safe as the other two. GenerationStoreAbsent PROCEEDS, at the first
+// generation. So removing the store on a host is a supported way to pass the staleness compare:
+// a deleted store and a host that has never applied are the same observation, and the guard
+// cannot tell them apart.
+//
+// This is NOT a case of evidence that exists and was not consulted. Nothing currently modelled
+// separates the two histories. Filesystem.Read yields success and content, so absence carries no
+// history. The store's directory is created out of band and must already exist for any commit to
+// have succeeded, so its presence is evidence about provisioning, not about a prior apply. The
+// lock file is created by the flock in the guard itself, so it exists on a first run too. Every
+// candidate the site offers is present in both worlds.
+//
+// The residual is therefore a REAL bypass with no detector, not a rung this code declined to
+// climb, and it is bounded to a principal who can already write /var/lib/gunbc — the same
+// principal the apply runs as. It closes by CONSTRUCTION rather than by detection: provision the
+// store WITH the first generation, so that a host which has applied and a host which has not both
+// have a readable store, absence stops being a legitimate state, and GenerationStoreAbsent
+// becomes a third refusal beside GenerationUnobserved. Until that lands, the arm below is the
+// honest reading of what the host can actually be asked.
+type GenerationAdmission
+  = GenerationAdmitted { generation: Int }
+  | GenerationAdmissionRefused { reason: String }
+
+fn fleet_converge_generation_admission(observation: GenerationStoreObservation) -> GenerationAdmission {
+  match observation {
+    GenerationObserved { generation: n } => GenerationAdmitted { generation: n }
+    GenerationStoreAbsent => GenerationAdmitted { generation: fleet_converge_first_generation }
+    GenerationUnobserved { reason: why } =>
+      GenerationAdmissionRefused {
+        reason: concat("fleet_converge: refusing to plan on an unobserved generation store — ", why),
+      }
+  }
+}
+
+// THE LEASE IS HELD BY THE PRINCIPAL THAT RUNS THE APPLY, so it is grounded on that principal
+// rather than spelled here. Doing it the other way would put a second authoring of "who converges"
+// beside gunbc.fleet_posix_accounts, and the two would drift the moment either moved.
+//
+// WHY THIS ROW EXISTS AT ALL: the lease directory used to be created with `sudo -n mkdir -p`, and
+// the lock then taken with `sudo -n flock`. Neither mkdir nor flock is in this principal's NOPASSWD
+// roster, so the very first privileged command of every apply refused -- measured on srv3, where an
+// authorized add-only materialization died at `sudo -n mkdir` with zero slots touched. install IS
+// granted, and it can create the directory already owned by the converging principal, which then
+// makes the flock and the generation-store write ordinary unprivileged file operations. Privilege
+// is spent once, on the one thing that genuinely needs it.
+//
+// The generation store's own note already assumed this ownership ("bounded to a principal who can
+// already write /var/lib/gunbc -- the same principal the apply runs as"). That assumption was true
+// of the design and false of the emitted shell; this makes the shell agree with it.
+fn fleet_converge_lease_owner() -> NonEmptyStr {
+  grounded_posix_principal_name(p: fleet_posix_ci_runner_principal())
+}
+
+data fleet_converge_generation_lock_path: String = "/var/lib/gunbc/fleet-converge/plan_generation.lock"
+
+data fleet_converge_locked_apply_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_locked_apply_script — flock-guarded generation compare, apply.sh, and store commit in one shell transport; DISSOLVES WHEN bash-emit or host_effect_apply provides typed lease acquisition without medium-as-string concat")
+
+// THE LEASE GUARD IS A PROGRAM, AND IT USED TO BE SPLICED INTO ANOTHER ONE BY HAND.
+// The previous form built the inner body by joining concatenated command text and then wrote
+// `sudo -n flock -x PATH bash -c '` ++ inner ++ `'` — hand-typed single quotes wrapped around a
+// multi-line body carrying a command substitution, a redirect to stderr and a redirect to a file.
+// Nothing structurally prevented an apostrophe reaching that body, and the failure mode of one
+// arriving is not a refusal: it closes the quoting early and the remainder reparses as different
+// shell, under flock, as root. The inner body is now a modelled bash statement list serialized
+// once, and it enters the outer command as a single WORD, so the quoting is the serializer's
+// (extdeps.posix.shell_command_language posix_single_quote) rather than an author's.
+//
+// THE READ ARM IS THE OTHER HALF, and it is the reason this function changed at all. The old
+// guard read the store as `CURRENT=$(cat PATH 2>/dev/null || echo 0)` — every failure, whether
+// the store was missing or present-and-unreadable, became the number zero. The modelled reader in
+// this same module refuses that coercion in as many words, so the two halves of one rule
+// disagreed and only the modelled half was ever read by a reviewer. The emitted guard now
+// discriminates the same three states the model does: the default is the named
+// fleet_converge_first_generation row (not a coerced read), the store is consulted only when it
+// exists, and a store that exists but cannot be read aborts the guard under `set -e` instead of
+// passing as generation zero.
+//
+// WHAT IS NOT CLAIMED: this is derivation of the emitted guard's CONSTANTS and arms from the
+// modelled rows, not execution of the modelled decision on the host. The comparison itself is
+// still spelled twice — once as fleet_converge_apply_generation_admits and once as the emitted
+// `[ "$_gunbc_current" != "<prior>" ]` — and the witness below pins the emitted operands against
+// the modelled ones so the two cannot drift silently. A single spelling needs the guard to call
+// back into the substrate on the host, which is what this row's dissolution trigger names.
+data fleet_converge_locked_apply_current_var: String = "_gunbc_current"
+
+fn fleet_converge_generation_store_default_stmt() -> Node {
+  bash_build_assign(
+    name: fleet_converge_locked_apply_current_var,
+    value: bash_build_word_lit(text: to_string(fleet_converge_first_generation)),
+  )
+}
+
+// Read the store ONLY where it exists. A present-but-unreadable store makes the command
+// substitution fail, and `set -euo pipefail` at the head of this body turns that into a nonzero
+// exit — a refusal, not a zero.
+fn fleet_converge_generation_store_read_stmt() -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_lit(text: "-e"),
+      bash_build_word_lit(text: fleet_converge_generation_store_path),
+    ]),
+    then_stmts: [
+      bash_build_assign(
+        name: fleet_converge_locked_apply_current_var,
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "cat"),
+            bash_build_word_lit(text: fleet_converge_generation_store_path),
+          ]),
+        ),
+      ),
+    ],
+  )
+}
+
+fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_generation: Int) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: to_string(prior_generation)),
+    ]),
+    then_stmts: [
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_lit(text: "LeaseGenerationStale"),
+        bash_build_word_lit(text: concat("planned=", to_string(planned_generation))),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "observed="),
+          bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+        ]),
+      ]),
+      bash_build_exit(code: "1"),
+    ],
+  )
+}
+
+fn fleet_converge_locked_apply_inner_stmts(
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+) -> List<Node> {
+  [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    fleet_converge_generation_store_default_stmt(),
+    fleet_converge_generation_store_read_stmt(),
+    fleet_converge_generation_stale_guard_stmt(
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+    ),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: apply_shell_path),
+    ]),
+    bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "printf"),
+        bash_build_word_lit(text: "%s\n"),
+        bash_build_word_lit(text: to_string(planned_generation)),
+      ]),
+      path: bash_build_word_lit(text: fleet_converge_generation_store_path),
+    ),
+  ]
+}
+
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+
+fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+  }
+}
+
+fn fleet_converge_locked_apply_inner_script(
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+) -> String {
+  fleet_converge_bash_or_poison(
+    stmts: fleet_converge_locked_apply_inner_stmts(
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+      apply_shell_path: apply_shell_path,
+    ),
+  )
+}
+
+fn fleet_converge_locked_apply_script(
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+) -> String {
+  fleet_converge_bash_or_poison(stmts: [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: ci_runner_sudo_binary_path(b: SudoInstall) as String),
+      bash_build_word_lit(text: "-d"),
+      bash_build_word_lit(text: "-m"),
+      bash_build_word_lit(text: "755"),
+      bash_build_word_lit(text: "-o"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+      bash_build_word_lit(text: "-g"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+      bash_build_word_lit(text: "/var/lib/gunbc/fleet-converge"),
+    ]),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "flock"),
+      bash_build_word_lit(text: "-x"),
+      bash_build_word_lit(text: fleet_converge_generation_lock_path),
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+        apply_shell_path: apply_shell_path,
+      )),
+    ]),
+  ])
+}
+
+// THE SCRIPT IS BUILT FROM THE REQUEST FOR THE SAME REASON THE TERMINAL IS. An apply script is the
+// executable projection of exactly the axes the plan selected, so taking loose families let a
+// narrower scope be spelled only by handing over populations it never observed -- and here the
+// consequence is not a misreported count but EXECUTED WORK: a launch-environment plan carrying an
+// empty slot list would emit a full slot install for a family its scope does not own.
+//
+// THE PREAMBLE LINE NAMES THE SCOPE'S OWN AXES rather than a fixed sentence about all of them,
+// because that line is what an operator reads before approving a script.
+fn fleet_converge_apply_shell(
+  request: FleetConvergeRequest,
+  terminal: FleetConvergeApplyTerminal,
+) -> String {
+  join(
+    concat(
+      [
+        concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
+        concat("# ", fleet_converge_cap_apply_shell_note),
+        concat(
+          "# Admission gates enforced in fleet_converge_apply_wet before bash — ",
+          fleet_converge_apply_shell_axis_note(request: request),
+        ),
+        "set -euo pipefail",
+        "# generated at plan time — apply MUST NOT recompute membership_reconcile",
+      ],
+      concat(
+        fleet_converge_apply_shell_axis_lines(request: request),
+        [fleet_converge_apply_terminal_line(terminal: terminal)],
+      ),
+    ),
+    "\n",
+  )
+}
+
+fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } =>
+      "this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+  }
+}
+
+fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: _,
+      observed_spark: _,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: readiness,
+    } =>
+      concat(
+        concat(
+          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+        ),
+        concat(
+          ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
+          concat(
+            slot_apply_lines(host: host, observed_slots: observed_slots),
+            concat(
+              ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
+              concat(
+                activation_apply_lines(host: host, readiness: readiness),
+                fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              ),
+            ),
+          ),
+        ),
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+  }
+}
+
+// THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
+// OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
+// gunbc.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// and its authorization are one value rendered twice, so a command with no grant has no spelling
+// here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
+// realization, an observation refusal -- reaches the script as a comment refusal line, counted in
+// the terminal, never as work claimed applied.
+//
+// THE BOUNDARY IS APPLIED BEFORE THE SUBSTRATE DIRECTORIES, AND THE ORDER IS THE SAFETY PROPERTY.
+// The all-or-nothing realization already refuses a cell any of whose addresses cannot be realized;
+// this ordering closes the RUNTIME half of the same hazard: under `set -euo pipefail` a failing
+// line stops the script, and with the slice ensured first a stop can strand a boundary with no
+// directories -- inert -- but never a cell root without its resource boundary, which is the
+// unbounded-slice state the fold exists to forbid. A half-applied cell reconciles forward: the next
+// plan reads the missing addresses as MemberAdded and completes, because every effect here is an
+// idempotent ensure.
+//
+// AN UNMODELED DEPLOY HOST CONTRIBUTES NO FABRIC LINES, mirroring the activation family: the slot
+// family already stops the whole script for an unmodeled host, one axis earlier and with the
+// louder diagnostic, so a second stop here would report one defect twice.
+fn fabric_cell_apply_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: es } =>
+          fabric_cell_apply_executable_lines(host: host, effects: es)
+        CellPlanRefused { refusals: _ } =>
+          fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+      }
+    FabricCellFamilyNotApplicable =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyConvergedNoActions =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationRefused { blocked: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+fn fabric_cell_apply_comment_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
+  concat(
+    ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time"],
+    map(
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      l => concat("# ", l),
+    ),
+  )
+}
+
+fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
+  map(
+    fabric_cell_effect_operations(effect: effect, job_user: job_user),
+    op => executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+
+fn fabric_cell_apply_executable_lines(
+  host: NonEmptyStr,
+  effects: List<FabricCellEffect>,
+) -> List<String> {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployFound { deploy: d } => {
+      concat(
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: d.job_user),
+      )
+    }
+  }
+}
+
+// THE ARTIFACT'S OPTIONAL CARRIED A FACT THAT CANNOT HAPPEN, so it is dissolved rather than reused.
+//
+// It answered `Absent` when `content_hash_of_value` did not return the Fnv1a64 arm -- an absorbing
+// arm in the narrowing direction, since a hash the match did not recognize became "there is no plan
+// artifact", which every caller reads as nothing to converge rather than as could-not-classify. The
+// Spark plan builder repaired exactly this in its own copy and this one was left behind.
+// `content_hash_atom` returns Fnv1a64Structural directly -- the same digest, since
+// `content_hash_of_value` is that function wrapped in the union -- so there is no union to match and
+// no arm to get wrong.
+//
+// The outcome stays a sum because assembling a plan IS refusable, and the Refused arm now has a real
+// producer: a SparkServingAxisRefused disposition propagates here instead of being laundered into an
+// empty schedule. An earlier revision made the artifact total and left this arm with nothing
+// constructing it -- a permanently-green arm carrying no information, which DESIGN §4b calls worse
+// than absent because it gets cited as coverage.
+type FleetConvergePlanArtifactOutcome
+  = FleetConvergePlanArtifactReady { artifact: FleetConvergePlanArtifact }
+  | FleetConvergePlanArtifactRefused { refusal: FleetConvergePlanArtifactRefusal }
+
+// THE REFUSAL IS A COPRODUCT BECAUSE A DOWNSTREAM CONSUMER CANNOT ASK PROSE WHICH THING WENT WRONG.
+//
+// Rendering all four non-success situations into one `cause: String` repeated the C2
+// producer-versus-renderer mistake one layer later: "the axis does not apply", "the axis applies but
+// nobody observed it", "planning ran and refused", and "this axis belongs to another host" are four
+// different facts with four different operator responses, and a string is a second, lossy naming
+// scheme for a distinction the disposition already carries. The CLI renders this to prose at its
+// receipt boundary, which is where rendering belongs.
+type FleetConvergePlanArtifactRefusal
+  = SparkAxisSubjectHostMismatch { axis_host: HostIdentity, subject_host: HostIdentity }
+  | SparkAxisUnobservedRefusal { host: HostIdentity }
+  | SparkAxisPlanningRefused { host: HostIdentity, cause: String }
+
+fn fleet_converge_plan_artifact_refusal_text(r: FleetConvergePlanArtifactRefusal) -> String {
+  match r {
+    SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: sh } =>
+      join([
+        "SparkAxisSubjectHostMismatch — the spark axis is tagged for host ",
+        ah as String,
+        " but the plan subject is ",
+        sh as String,
+        "; the plan would carry one host's serving rows under another host's baseline and lease",
+      ], "")
+    SparkAxisUnobservedRefusal { host: h } =>
+      join([
+        "SparkAxisUnobserved — ",
+        h as String,
+        " is an enrolled Spark and its serving axis was never observed, so a plan built here would",
+        " claim a completeness that was never measured",
+      ], "")
+    SparkAxisPlanningRefused { host: h, cause: why } =>
+      join(["SparkAxisPlanningRefused — on host ", h as String, ": ", why], "")
+  }
+}
+
+// P0-C3: THE SPARK AXIS ARRIVES AS ONE ALREADY-PLANNED PRODUCT.
+//
+// THE MEMBERS AND THE ROWS ARE ONE PARAMETER BECAUSE THEY ARE ONE FACT. A first cut took
+// `observed_spark` and the schedule separately, so a caller could hand members from one observation
+// and rows planned from another. `observed_spark` feeds the observed BASELINE, and the baseline is
+// what apply re-checks to decide the plan still applies -- so that disagreement would have been
+// invisible at exactly the moment it mattered. SparkServingAxisProduct is sole_constructor and only
+// the row producer mints it, so the members that fingerprinted the baseline are the members the
+// schedule was planned from.
+//
+// `spark_serving_typed_actions: scheduled_rows_empty()` stood here unconditionally, so the
+// production full-host plan could not emit a Spark row even when handed a real observation. That is
+// one of two independent breaks that made P0-WET unreachable -- the other being that the CLI passed
+// `observed_spark: []` -- which is why repairing either alone changed nothing.
+//
+// THE ROWS ARE A PARAMETER AND NOT SOMETHING THIS FUNCTION PLANS. A first attempt had the artifact
+// call the Spark row producer directly, and the substrate refused it with a circular dependency:
+// gunbc.fleet_converge_plan -> gunbc.spark.serving_converge_apply -> gunbc.spark.serving_converge_plan
+// already runs the other way. That refusal was correct and load-bearing. Artifact assembly consumes
+// already-planned axis products -- timer plan, cap plan, slot plan, fabric plan, activation plan --
+// and the Spark schedule is one more of them, not an exception this module reaches down to compute.
+// THE AXIS CARRIES A HOST AND SO DOES THIS ARTIFACT, AND NOTHING JOINED THEM.
+//
+// Putting the host inside the disposition stopped it disagreeing with the OBSERVATION that produced
+// it. It did not stop it disagreeing with the SUBJECT being planned: an axis tagged srv6 could be
+// handed to an artifact whose subject is srv5, and the resulting plan would carry srv6's retirement
+// rows under srv5's baseline and lease. Third instance of the class #9754 opened -- a host carried
+// twice, joined by convention -- and this function refuses on the disagreement rather than making it
+// unrepresentable, because the two hosts are genuinely two facts until the comparison is made.
+// ONE EXHAUSTIVE MATCH ON THE AXIS, NOT THREE PROJECTIONS THAT AGREE BY CALLER ARRANGEMENT.
+//
+// The first cut asked the disposition three separate questions -- members, rows, refusal -- and was
+// safe only because the caller happened to consult the refusal before using the other two. Both
+// Unobserved and Refused projected to an empty member list and an empty schedule, so a caller that
+// forgot the third question would assemble a perfectly well-formed plan that actuates nothing on a
+// host nobody looked at. A refusal has no rows projection now: the arms that cannot be planned are
+// eliminated here and never reach the assembler, which takes members and rows as ordinary values.
+//
+// The subject-host join is part of the same match rather than a guard beside it: each arm binds the
+// host the axis is tagged for, so there is no second reading of it to disagree with.
+fn fleet_converge_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  spark_axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+) -> FleetConvergePlanArtifactOutcome {
+  match spark_axis {
+    SparkServingAxisUnobserved { host: ah } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactRefused { refusal: SparkAxisUnobservedRefusal { host: ah } }
+      }
+    SparkServingAxisRefused { host: ah, cause: why } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactRefused { refusal: SparkAxisPlanningRefused { host: ah, cause: why } }
+      }
+    SparkServingAxisNotApplicable { host: ah } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactReady {
+          artifact: fleet_converge_plan_artifact_assembled(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          observed_spark: [],
+          spark_rows: scheduled_rows_empty(),
+          observed_slots: observed_slots,
+          observed_fabric_cells: observed_fabric_cells,
+          observed_activation_readiness: observed_activation_readiness,
+          ),
+        }
+      }
+    SparkServingAxisPlanned { plan: bound } =>
+      if !host_identity_eq(a: bound.host, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch {
+            axis_host: bound.host,
+            subject_host: host as HostIdentity,
+          },
+        }
+      } else {
+        FleetConvergePlanArtifactReady {
+          artifact: fleet_converge_plan_artifact_assembled(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          observed_spark: bound.observed_members,
+          spark_rows: bound.rows,
+          observed_slots: observed_slots,
+          observed_fabric_cells: observed_fabric_cells,
+          observed_activation_readiness: observed_activation_readiness,
+          ),
+        }
+      }
+  }
+}
+// THE ASSEMBLER IS NOW A CONSTRUCTOR INTO THE REQUEST FOLD, NOT A SECOND FOLD BESIDE IT.
+//
+// It used to build the plan body itself -- header, then one hardcoded section per axis, then the
+// counters, then the terminal -- with the FULL-HOST axis set written into its own concat. That was
+// the only shape available while the terminal took seven loose axis parameters, and it is what made
+// a narrower scope impossible to express: there was nowhere to say "this transaction has no
+// runner-slot position" except by passing an empty list, which is a claim that the host HAS no
+// slots rather than that they are not this transaction's business.
+//
+// So the body fold moved onto the REQUEST, whose arms carry exactly the axes their scope owns, and
+// this function became what it always was semantically: the full-host constructor. Everything added
+// around it on main -- the Spark axis eliminator, the refusal coproduct, the dissolved Optional --
+// is preserved above and unchanged; only the assembly step is now shared with every other scope
+// instead of duplicated once per entry point.
+fn fleet_converge_plan_artifact_assembled(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+) -> FleetConvergePlanArtifact {
+  fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: observed_spark,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+    },
+    prior_generation: prior_generation,
+    spark_rows: spark_rows,
+  )
+}
+
+// THE SPARK AXIS IS ELIMINATED WHERE IT IS OWNED, WHICH IS THE FULL-HOST ARM AND NOWHERE ELSE.
+//
+// The Spark axis can refuse -- unobserved, planning-refused, or tagged for another host -- and those
+// refusals are real and must reach the operator. But they are refusals of an axis the narrower
+// scopes never took on: a launch-environment transaction has no Spark position, so routing its plan
+// through the Spark eliminator would let a Spark observation failure refuse a plan that does not
+// depend on it. That is precisely the coupling this PR exists to remove, one axis over. So the
+// eliminator runs on the full-host arm, and the other arms are Ready by construction.
+fn fleet_converge_plan_outcome_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifactOutcome {
+  match request {
+    FullHostConverge {
+      host: h,
+      observed_timers: t,
+      observed_caps: c,
+      observed_spark: _,
+      observed_slots: sl,
+      observed_fabric_cells: fc,
+      observed_activation_readiness: ar,
+    } =>
+      fleet_converge_plan_artifact(
+        host: h,
+        prior_generation: prior_generation,
+        observed_timers: t,
+        observed_caps: c,
+        spark_axis: spark_axis,
+        observed_slots: sl,
+        observed_fabric_cells: fc,
+        observed_activation_readiness: ar,
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+  }
+}
+
+// THE SPARK WIRE IS AN AXIS ROW LIKE ANY OTHER, so it is emitted by the arm that owns the axis. It
+// rode the body unconditionally while the body was full-host-only; leaving it there would have put
+// an empty "# spark-serving-typed-actions:" line into a launch-environment plan, which reads as an
+// observed-and-empty Spark axis rather than as a scope that never took one on -- the same
+// empty-observation confusion the whole scope narrowing exists to remove.
+fn fleet_converge_plan_spark_wire_lines(
+  request: FleetConvergeRequest,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: _, observed_timers: _, observed_caps: _, observed_spark: _,
+      observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _,
+    } => [
+      concat(
+        "# spark-serving-typed-actions:",
+        fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows)),
+      ),
+    ]
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => []
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => []
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+  }
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// TOTAL, NOT OPTIONAL, and that is main's dissolution preserved rather than re-litigated: the Absent
+// arm answered "there is no plan artifact" when a hash did not match an expected union arm, which
+// every caller reads as nothing to converge rather than as could-not-classify. content_hash_atom
+// returns the structural digest directly, so there is no union to match and no arm to get wrong.
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifact {
+  let subject = fleet_converge_plan_subject(request: request)
+  let baseline = observed_baseline_text(request: request)
+  let planned_generation = prior_generation + 1
+  let planned_terminal = fleet_converge_apply_terminal(request: request)
+  let body = join(
+    concat(
+      concat(
+        [
+          "# fleet-converge plan",
+          concat("subject_host:", subject.host as String),
+          concat(
+            "subject_member_set:",
+            serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+          ),
+          concat("plan_generation:", to_string(planned_generation)),
+          concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+          "observed_baseline:",
+          baseline,
+        ],
+        fleet_converge_plan_axis_lines(request: request),
+        fleet_converge_plan_spark_wire_lines(request: request, spark_rows: spark_rows),
+      ),
+      fleet_converge_plan_refusal_counter_lines(request: request),
+      [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+    ),
+    "\n",
+  )
+  let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+  let lease = fleet_converge_plan_held_lease(
+    subject: subject,
+    prior_generation: prior_generation,
+    owner_fingerprint: owner_fp,
+  )
+  FleetConvergePlanArtifact {
+    subject: subject,
+    prior_generation: prior_generation,
+    plan_lease: lease,
+    apply_terminal: planned_terminal,
+    observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+    plan_body: body,
+    apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+    spark_serving_typed_actions: spark_rows,
+  }
+}
+
+
+// THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
+fn fleet_converge_launch_environment_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+) -> FleetConvergePlanArtifact {
+  fleet_converge_plan_artifact_of_request(
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
+    prior_generation: prior_generation,
+    spark_rows: scheduled_rows_empty(),
+  )
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  let planned_generation = prior_generation + 1
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployFound { deploy: deploy } => {
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: deploy.job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", spec.namespace_mode as String),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", spec.mode as String),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      let lease = fleet_converge_plan_held_lease(
+        subject: subject,
+        prior_generation: prior_generation,
+        owner_fingerprint: owner_fp,
+      )
+      match content_hash_of_value(value: baseline as NonEmptyStr) {
+        Fnv1a64(structural) => Present { value: FleetConvergePlanArtifact {
+          subject: subject,
+          prior_generation: prior_generation,
+          plan_lease: lease,
+          apply_terminal: fleet_converge_apply_terminal(request: request),
+          observed_baseline_hex: structural.digest,
+          plan_body: body,
+          apply_shell: apply_shell,
+          spark_serving_typed_actions: scheduled_rows_empty(),
+        } }
+        _ => Absent
+      }
+    }
+  }
+}
+
+data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"
+
+data fleet_converge_plan_body_path: String = "/tmp/fleet-converge-plan/plan.txt"
+
+data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+
+data fleet_converge_plan_apply_shell_path: String = "/tmp/fleet-converge-plan/apply.sh"
+
+data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+
+data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+
+data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+
+data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+
+data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
+
+fn fleet_converge_observed_baseline_matches(
+  observed_baseline_hex: Fnv1a64StructuralDigestHex,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  let baseline = observed_baseline_text(request: observed)
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) => structural.digest == observed_baseline_hex
+    _ => false
+  }
+}

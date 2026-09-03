@@ -1,5 +1,6 @@
 module v2.test.computation_shapes.branch_dispatch
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {
   Atom,
   Branch,
@@ -12,7 +13,6 @@ import v2.std.node {
   TypeNode,
   content_hash,
   well_formed,
-  SyntheticOccurrence
 }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -24,9 +24,10 @@ import v2.std.verification {
   EqualsClaim,
   manual_claim_anchor
 }
+
 fn branch_dispatch_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -36,7 +37,7 @@ fn branch_dispatch_arm(s: Symbol) -> Node {
     children: [
       Edge { label: Positional, target: branch_dispatch_leaf(s: s) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -49,7 +50,7 @@ data branch_dispatch_subject: Node = Node {
     Edge { label: Positional, target: branch_dispatch_arm_then },
     Edge { label: Positional, target: branch_dispatch_arm_else }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn branch_dispatch_pass_node() -> Node {
@@ -88,7 +89,7 @@ data branch_dispatch_subject_rebuilt: Node = Node {
     Edge { label: Positional, target: branch_dispatch_arm_then },
     Edge { label: Positional, target: branch_dispatch_arm_else }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data branch_dispatch_subject_arms_swapped: Node = Node {
@@ -97,7 +98,7 @@ data branch_dispatch_subject_arms_swapped: Node = Node {
     Edge { label: Positional, target: branch_dispatch_arm_else },
     Edge { label: Positional, target: branch_dispatch_arm_then }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data witness_branch_dispatch_content_hash_stable: Bool = (content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject_rebuilt)) && (content_hash(n: branch_dispatch_subject) != content_hash(n: branch_dispatch_subject_arms_swapped))

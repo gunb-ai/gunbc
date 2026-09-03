@@ -3,22 +3,24 @@
 
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
-pub use crate::v1_compiler_infer_items::ResolvedGraph;
+pub use crate::v1_compiler_infer_env::TypeEnv;
+pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::CompilerDiagnostic::ModuleFilenameCollision;
 use crate::v1_std_core::Connective::NoConnective;
-pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at};
-pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node, TextFile};
+pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at, make_error_node};
+pub use crate::v1_std_core::{
+    CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node, TextFile,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -36,6 +38,7 @@ pub struct TestProjection {
     pub params: Rc<Vec<Rc<Node>>>,
     pub mock_field_inits: Rc<Vec<Rc<Node>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub type_env: Rc<TypeEnv>,
 }
 
 pub fn escape_json_string(s: String) -> String {
@@ -43,7 +46,8 @@ pub fn escape_json_string(s: String) -> String {
         Rc::new(
             Rc::new(
                 Rc::new(
-                    s.split(&"\\".to_string())
+                    s.clone()
+                        .split(&"\\".to_string())
                         .map(|s| s.to_string())
                         .collect::<Vec<_>>(),
                 )
@@ -67,11 +71,70 @@ pub fn escape_json_string(s: String) -> String {
 
 pub fn module_to_filename(name: String) -> String {
     Rc::new(
-        name.split(&".".to_string())
+        name.clone()
+            .split(&".".to_string())
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
     )
     .join(&"_".to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleFilenameOwners {
+    pub owners: Rc<HashMap<String, String>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let result = typed.modules.clone().iter().cloned().fold(
+            Rc::new(ModuleFilenameOwners {
+                owners: v1_rt::rc_empty_map::<String, String>(),
+                diagnostics: Rc::new(vec![]),
+            }),
+            |acc: Rc<ModuleFilenameOwners>, tm: _| {
+                let module_name = crate::v1_std_core::authored_name_at(
+                    tm.type_env.clone().source_indices.clone(),
+                    tm.module.clone(),
+                );
+                let filename = module_to_filename(module_name.clone());
+                match v1_rt::map_get(&acc.owners.clone(), filename.clone()) {
+                    Some(owner) => {
+                        if (owner.clone() == module_name.clone()) {
+                            acc.clone()
+                        } else {
+                            Rc::new(ModuleFilenameOwners {
+                                owners: acc.owners.clone(),
+                                diagnostics: v1_rt::rc_list_push(
+                                    acc.diagnostics.clone(),
+                                    crate::v1_std_core::make_error_node(
+                                        Rc::new(CompilerDiagnostic::ModuleFilenameCollision {
+                                            filename: filename.clone(),
+                                            modules: Rc::new(vec![
+                                                owner.clone(),
+                                                module_name.clone(),
+                                            ]),
+                                            span: tm.module.clone().span.clone(),
+                                        }),
+                                        module_name.clone(),
+                                    ),
+                                ),
+                            })
+                        }
+                    }
+                    std::option::Option::None => Rc::new(ModuleFilenameOwners {
+                        owners: v1_rt::rc_map_insert(
+                            acc.owners.clone(),
+                            filename.clone(),
+                            module_name.clone(),
+                        ),
+                        diagnostics: acc.diagnostics.clone(),
+                    }),
+                }
+            },
+        );
+        result.diagnostics.clone()
+    }
 }
 
 pub fn make_indent(level: i64) -> String {
@@ -91,8 +154,8 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            |acc: Rc<UniqueAccum>, item: String| {
-                if emit_map_has(acc.seen.clone(), item.clone()) {
+            |acc: _, item: String| {
+                if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {
                     Rc::new(UniqueAccum {
@@ -109,7 +172,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 pub fn to_string(value: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() < 0) {
-            v1_rt::concat("-".to_string(), (0 - value.clone()).to_string())
+            v1_rt::concat("-".to_string(), to_string((0 - value.clone())))
         } else {
             if (value.clone() == 0) {
                 "0".to_string()
@@ -157,6 +220,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
                 let mut __result = Vec::new();
                 for p in Rc::new(
                     digit_chars
+                        .clone()
                         .iter()
                         .cloned()
                         .enumerate()
@@ -176,11 +240,11 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             .cloned()
             {
                 Some(p) => p.1.clone(),
-                None => "?".to_string(),
+                std::option::Option::None => "?".to_string(),
             };
             {
                 let __tco_0 = rest.clone();
-                let __tco_1 = v1_rt::concat(Rc::new(vec![ch]), acc);
+                let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
                 value = __tco_0;
                 acc = __tco_1;
                 continue;
@@ -191,11 +255,12 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
 
 pub fn to_snake(name: String) -> String {
     {
-        let chars_list = Rc::new(name.chars().map(|c| c as i64).collect::<Vec<_>>());
+        let chars_list = Rc::new(name.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let result = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
                 chars_list
+                    .clone()
                     .iter()
                     .cloned()
                     .enumerate()
@@ -221,16 +286,16 @@ pub fn to_snake(name: String) -> String {
             }
             __result
         });
-        result.join(&"".to_string())
+        result.clone().join(&"".to_string())
     }
 }
 
 pub fn to_screaming_snake(name: String) -> String {
     {
-        let snake = to_snake(name);
+        let snake = to_snake(name.clone());
         Rc::new({
             let mut __result = Vec::new();
-            for ch in Rc::new(snake.chars().map(|c| c as i64).collect::<Vec<_>>())
+            for ch in Rc::new(snake.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
                 .iter()
                 .cloned()
             {
@@ -252,7 +317,7 @@ pub fn to_lower_char(ch: i64) -> String {
         if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
             {
                 let lower_cp = (cp.clone() + 32);
-                v1_rt::from_code_point(lower_cp)
+                v1_rt::from_code_point(lower_cp.clone())
             }
         } else {
             v1_rt::from_code_point(ch.clone())
@@ -266,7 +331,7 @@ pub fn to_upper_char(ch: i64) -> String {
         if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
             {
                 let upper_cp = (cp.clone() - 32);
-                v1_rt::from_code_point(upper_cp)
+                v1_rt::from_code_point(upper_cp.clone())
             }
         } else {
             v1_rt::from_code_point(ch.clone())
@@ -277,7 +342,8 @@ pub fn to_upper_char(ch: i64) -> String {
 pub fn sanitize_service_name(name: String) -> String {
     {
         let parts = Rc::new(
-            name.split(&".".to_string())
+            name.clone()
+                .split(&".".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         );
@@ -288,13 +354,13 @@ pub fn sanitize_service_name(name: String) -> String {
             }
             __result
         });
-        pascal_parts.join(&"".to_string())
+        pascal_parts.clone().join(&"".to_string())
     }
 }
 
 pub fn capitalize_first(s: String) -> String {
     {
-        let chars_list = Rc::new(s.chars().map(|c| c as i64).collect::<Vec<_>>());
+        let chars_list = Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         if ((chars_list.clone().len() as i64) == 0) {
             "".to_string()
         } else {
@@ -326,14 +392,15 @@ pub fn capitalize_first(s: String) -> String {
 }
 
 pub fn service_var_name(service_name: String) -> String {
-    to_snake(sanitize_service_name(service_name))
+    to_snake(sanitize_service_name(service_name.clone()))
 }
 
 pub fn to_pascal(name: String) -> String {
     {
-        let snake = to_snake(name);
+        let snake = to_snake(name.clone());
         let parts = Rc::new(
             snake
+                .clone()
                 .split(&"_".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -345,13 +412,13 @@ pub fn to_pascal(name: String) -> String {
             }
             __result
         });
-        pascal_parts.join(&"".to_string())
+        pascal_parts.clone().join(&"".to_string())
     }
 }
 
 pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
     {
-        let conventions = test_conventions_for_target(target);
+        let conventions = crate::v1_compiler_languages::test_conventions_for_target(target.clone());
         let formatted = match conventions.name_style.clone() {
             TestNameStyle::SnakeCaseTestNames => v1_rt::concat(
                 v1_rt::concat(
@@ -365,24 +432,26 @@ pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) 
                 to_pascal(projection.operation_name.clone()),
             ),
         };
-        v1_rt::concat(conventions.function_prefix.clone(), formatted)
+        v1_rt::concat(conventions.function_prefix.clone(), formatted.clone())
     }
 }
 
 pub fn apply_type_template1(template: String, arg0: String) -> String {
     Rc::new(
         template
+            .clone()
             .split(&"{0}".to_string())
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
     )
-    .join(&arg0)
+    .join(&arg0.clone())
 }
 
 pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
     {
         let parts = Rc::new(
             template
+                .clone()
                 .split(&"{0}".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -402,7 +471,7 @@ pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> Str
             }
             __result
         });
-        replaced.join(&arg0)
+        replaced.clone().join(&arg0.clone())
     }
 }
 
@@ -410,6 +479,7 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
     {
         let parts0 = Rc::new(
             template
+                .clone()
                 .split(&"{0}".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -426,7 +496,7 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
                     );
                     let inner = Rc::new({
                         let mut __result = Vec::new();
-                        for p1 in parts1.clone().iter().cloned() {
+                        for p1 in parts1.iter().cloned() {
                             __result.push(
                                 Rc::new(
                                     p1.clone()
@@ -444,13 +514,13 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
             }
             __result
         });
-        replaced.join(&arg0)
+        replaced.clone().join(&arg0.clone())
     }
 }
 
 pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
     apply_named_template_nested(
-        template,
+        template.clone(),
         bindings.clone(),
         Rc::new(v1_rt::map_keys(&bindings)),
     )
@@ -463,7 +533,7 @@ pub fn apply_named_template_nested(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match keys.clone().first().cloned() {
-            None => template,
+            std::option::Option::None => template,
             Some(key) => {
                 let rest = Rc::new(
                     keys.clone()
@@ -478,7 +548,7 @@ pub fn apply_named_template_nested(
                     Some(val) => {
                         let parts = Rc::new(
                             template
-                                .split(&placeholder)
+                                .split(&placeholder.clone())
                                 .map(|s| s.to_string())
                                 .collect::<Vec<_>>(),
                         );
@@ -493,9 +563,9 @@ pub fn apply_named_template_nested(
                             }
                             __result
                         });
-                        processed.join(&val.clone())
+                        processed.clone().join(&val.clone())
                     }
-                    None => {
+                    std::option::Option::None => {
                         v1_rt::concat("TEMPLATE_ERROR_MISSING_BINDING_".to_string(), key.clone())
                     }
                 }
@@ -505,19 +575,21 @@ pub fn apply_named_template_nested(
 }
 
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
-    language_spec_for_target(target)
+    crate::v1_compiler_languages::language_spec_for_target(target.clone())
 }
 
 pub fn escape_string_literal_body(s: String) -> String {
     {
         let escaped_backslash = Rc::new(
-            s.split(&"\\".to_string())
+            s.clone()
+                .split(&"\\".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
         .join(&"\\\\".to_string());
         let escaped_quote = Rc::new(
             escaped_backslash
+                .clone()
                 .split(&"\"".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -525,6 +597,7 @@ pub fn escape_string_literal_body(s: String) -> String {
         .join(&"\\\"".to_string());
         let escaped_newline = Rc::new(
             escaped_quote
+                .clone()
                 .split(&"\n".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -532,13 +605,23 @@ pub fn escape_string_literal_body(s: String) -> String {
         .join(&"\\n".to_string());
         let escaped_return = Rc::new(
             escaped_newline
-                .split(&"\\r".to_string())
+                .clone()
+                .split(&"\x0d".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .join(&"\\r".to_string());
-        Rc::new(
+        .join(&"\\x0d".to_string());
+        let escaped_nul = Rc::new(
             escaped_return
+                .clone()
+                .split(&"\x00".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .join(&"\\x00".to_string());
+        Rc::new(
+            escaped_nul
+                .clone()
                 .split(&"\t".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -583,10 +666,12 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                         if {
                                             let mut __found = false;
                                             for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(field_init_node_name_at(
-                                                    p.clone(),
-                                                    tm.type_env.clone().source_indices.clone(),
-                                                )) {
+                                                if has_mock_prefix(
+                                                    crate::v1_std_core::field_init_node_name_at(
+                                                        p.clone(),
+                                                        tm.type_env.clone().source_indices.clone(),
+                                                    ),
+                                                ) {
                                                     __found = true;
                                                     break;
                                                 }
@@ -602,33 +687,38 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 .cloned()
                                 {
                                     __result.push(Rc::new(TestProjection {
-                                        module_name: authored_name_at(
+                                        module_name: crate::v1_std_core::authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             tm.module.clone(),
                                         ),
-                                        service_name: authored_name_at(
+                                        service_name: crate::v1_std_core::authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             item.clone(),
                                         ),
-                                        operation_name: authored_name_at(
+                                        operation_name: crate::v1_std_core::authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             c.clone(),
                                         ),
-                                        inferred: resolved_type(c.clone()),
+                                        inferred: crate::v1_compiler_infer_types::resolved_type(
+                                            c.clone(),
+                                        ),
                                         params: c.params.clone(),
                                         mock_field_inits: Rc::new({
                                             let mut __result = Vec::new();
                                             for p in c.properties.clone().iter().cloned() {
-                                                if has_mock_prefix(field_init_node_name_at(
-                                                    p.clone(),
-                                                    tm.type_env.clone().source_indices.clone(),
-                                                )) {
+                                                if has_mock_prefix(
+                                                    crate::v1_std_core::field_init_node_name_at(
+                                                        p.clone(),
+                                                        tm.type_env.clone().source_indices.clone(),
+                                                    ),
+                                                ) {
                                                     __result.push(p);
                                                 }
                                             }
                                             __result
                                         }),
                                         source_indices: tm.type_env.clone().source_indices.clone(),
+                                        type_env: tm.type_env.clone(),
                                     }));
                                 }
                                 __result
@@ -651,21 +741,24 @@ pub fn is_type_alias_return_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (authored_name_at(source_indices, n) != "Unit".to_string())
+    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
 
 pub fn is_service_item(item: Rc<Node>) -> bool {
-    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
+    ((item.transport.clone() != std::option::Option::None)
+        && ((item.children.clone().len() as i64) > 0))
 }
 
 pub fn is_type_def_item(item: Rc<Node>) -> bool {
-    ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
+    ((item.connective.clone() != Connective::NoConnective)
+        && (item.transport.clone() == std::option::Option::None))
 }
 
 pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
-    (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None))
+    (((((item.connective.clone() == Connective::NoConnective)
+        && (item.body.clone() == std::option::Option::None))
         && ((item.params.clone().len() as i64) == 0))
-        && (item.transport.clone() == None))
+        && (item.transport.clone() == std::option::Option::None))
         && ((item.children.clone().len() as i64) == 0))
 }
 
@@ -674,7 +767,10 @@ pub fn is_type_alias_item(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (is_bare_leaf_item(item.clone())
-        && is_type_alias_return_node(resolved_type(item.clone()), source_indices))
+        && is_type_alias_return_node(
+            crate::v1_compiler_infer_types::resolved_type(item.clone()),
+            source_indices.clone(),
+        ))
 }
 
 pub fn is_type_decl_item(
@@ -682,27 +778,36 @@ pub fn is_type_decl_item(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((is_bare_leaf_item(item.clone())
-        && !is_type_alias_return_node(resolved_type(item.clone()), source_indices))
-        || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
-            && (item.transport.clone() == None))
+        && !is_type_alias_return_node(
+            crate::v1_compiler_infer_types::resolved_type(item.clone()),
+            source_indices.clone(),
+        ))
+        || (((((item.params.clone().len() as i64) > 0)
+            && (item.body.clone() == std::option::Option::None))
+            && (item.transport.clone() == std::option::Option::None))
             && ((item.children.clone().len() as i64) == 0)))
 }
 
 pub fn is_function_item(item: Rc<Node>) -> bool {
-    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
+    ((item.body.clone() != std::option::Option::None)
+        && (item.type_annotation.clone() == std::option::Option::None))
 }
 
 pub fn is_data_def_item(item: Rc<Node>) -> bool {
-    ((item.body.clone() != None) && (item.type_annotation.clone() != None))
+    ((item.body.clone() != std::option::Option::None)
+        && (item.type_annotation.clone() != std::option::Option::None))
 }
 
 pub fn is_service_def_item(item: Rc<Node>) -> bool {
-    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
+    ((item.transport.clone() != std::option::Option::None)
+        && ((item.children.clone().len() as i64) > 0))
 }
 
 pub fn is_resource_def_item(item: Rc<Node>) -> bool {
-    (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0))
-        || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0))
+    (((item.transport.clone() == std::option::Option::None)
+        && ((item.children.clone().len() as i64) > 0))
+        || ((((item.transport.clone() == std::option::Option::None)
+            && ((item.children.clone().len() as i64) == 0))
             && ((item.properties.clone().len() as i64) > 0))
-            && (item.body.clone() == None)))
+            && (item.body.clone() == std::option::Option::None)))
 }

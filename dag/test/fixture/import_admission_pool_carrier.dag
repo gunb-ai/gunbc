@@ -1,0 +1,6 @@
+module test.fixture.import_admission_pool_carrier
+
+import std.types { Int }
+import test.fixture.import_admission_provider { import_admission_listed }
+
+fn import_admission_carrier(value: Int) -> Int { import_admission_listed(value) }

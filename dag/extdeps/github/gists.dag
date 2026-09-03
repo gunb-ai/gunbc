@@ -1,0 +1,73 @@
+module extdeps.github.gists
+
+import extdeps.github.github { GitHubUser, default_api_base }
+import std.types { Timestamp, GistId, NonEmptyStr, HttpMethod, AuthScheme }
+import extdeps.github.errors { GitHubErrorShape }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/gists/gists"
+  }
+}
+
+type GistFile {
+  filename: String
+  content: String
+  language: String?
+  size: Int
+}
+
+type Gist {
+  id: String
+  description: String?
+  public: Bool
+  files: Map<String, GistFile>
+  owner: GitHubUser
+  created_at: Timestamp
+  updated_at: Timestamp
+  html_url: NonEmptyStr
+}
+
+service github.Gist {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+  }
+
+  operation Create {
+    input {
+      description: String
+      filename: String
+      content: String
+      public: Bool = false
+      auth_token: Secret
+    }
+    output {
+      id: GistId
+      html_url: NonEmptyStr
+    }
+    transport rest {
+      method: POST,
+      path: "/gists",
+      body: {
+        description: description,
+        public: public,
+        files: { "\{filename\}": { content: content } }
+      }
+    }
+    response {
+      201 => Gist
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}

@@ -3,7 +3,7 @@ module v1.compiler.ownership
 import v1.std.core {
   Node,
   ExprData, NoExprData, ExprError,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprElaboratedLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn, ExprLambda, ExprForEach,
   ExprRecordLit,
   VarBindingKind, LocalValueBinding, FunctionValueBinding,
@@ -19,8 +19,32 @@ import v1.std.core {
   expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, authored_name_at,
   NewlineIndex
 }
-import v1.compiler.emit { to_string }
 
+import v1.compiler.emit_core_support { to_string }
+
+
+// Read is the ELSE OF in_tail, not a finding that the use borrows. walk_expr's ExprVar arm
+// branches on one bit: in_tail selects Consumed, and everything else -- every argument position,
+// every receiver, every scrutinee -- falls to Read. So Read conflates two states whose remedies
+// differ: "this use is provably non-consuming" and "this use was never classified". Consumed is
+// the deliberate wall (only a tail position is proven to consume); Read is its residue.
+//
+// The consequence, which is what this note exists for: DO NOT KEY AN OPTIMIZATION ON Read. An arm
+// that emits a borrow wherever Read appears fires on genuine by-value-consuming positions and
+// emits a borrow where an owned value is required. That arm was proposed and refuted on this
+// reasoning in 2026-08, before it was written.
+//
+// A borrow-safety decision wants a LOCAL proof instead. The iter_owned receiver disposition in
+// 05_emit_rust.dag is the worked example: the syntactic position of the receiver as an iter_owned
+// argument is itself the borrow-position proof, so it consults no ownership classification at all.
+//
+// PRIOR ART, so the next reader does not rebuild it blind: the split was built and verified --
+// two orthogonal axes (UsePosition = tail/non-tail, UseContext = the syntactic role), threaded
+// through walk_expr and record_use, behaviour-preserving at gen-2 first_generation_equal 129 of
+// 129. It was CLOSED UNMERGED in gunbc#8689 for want of a consumer: it wrote the context at 34
+// sites and nothing read it, which is the DESIGN.md section 6 experimental-residue tell. The
+// conflation described above is real and unfixed; the code that fixes it is quarry in that PR.
+// Rebuild it when a decision actually needs to distinguish the two states, and land them together.
 type EdgeKind = Consumed | Read | Threaded | Projected
 
 type EdgeClassification {
@@ -74,10 +98,11 @@ type OwnershipProof {
 type UsageAccum {
   bindings: Map<String, BindingUsage>
   fold_call_nodes: List<Node>
+  touched: List<String>
 }
 
 fn empty_usage_accum() -> UsageAccum {
-  UsageAccum { bindings: empty_map(), fold_call_nodes: [] }
+  UsageAccum { bindings: empty_map(), fold_call_nodes: [], touched: [] }
 }
 
 fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
@@ -92,7 +117,11 @@ fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, bin
     binding_kind: effective_kind,
     consumers: list_push(existing.consumers, edge)
   }
-  UsageAccum { bindings: map_insert(accum.bindings, name, updated), fold_call_nodes: accum.fold_call_nodes }
+  UsageAccum {
+    bindings: map_insert(accum.bindings, name, updated),
+    fold_call_nodes: accum.fold_call_nodes,
+    touched: list_push(accum.touched, name)
+  }
 }
 
 fn max_usage_by_fan_out(a: BindingUsage, b: BindingUsage) -> BindingUsage {
@@ -106,15 +135,27 @@ fn map_usage_merge_at(base: Map<String, BindingUsage>, key: String, new_val: Bin
   }
 }
 
+fn branch_seed(from: UsageAccum) -> UsageAccum {
+  UsageAccum { bindings: from.bindings, fold_call_nodes: from.fold_call_nodes, touched: [] }
+}
+
 fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAccum {
   let binding_merged = branches |> fold(init: base.bindings, f: (merged, branch) =>
-    branch.bindings |> map_values |> fold(init: merged, f: (acc, usage) =>
-      map_usage_merge_at(base: acc, key: usage.name, new_val: usage)
+    branch.touched |> fold(init: merged, f: (acc, name) =>
+      match map_get(branch.bindings, name) {
+        Present { value: usage } => map_usage_merge_at(base: acc, key: name, new_val: usage)
+        Absent => acc
+      }
     )
   )
+  let touched_merged = branches |> fold(init: base.touched, f: (acc, branch) => concat(acc, branch.touched))
   let base_fold_count = base.fold_call_nodes |> count
   let branch_fold_nodes = branches |> flat_map(b => b.fold_call_nodes |> skip(base_fold_count))
-  UsageAccum { bindings: binding_merged, fold_call_nodes: base.fold_call_nodes |> concat(branch_fold_nodes) }
+  UsageAccum {
+    bindings: binding_merged,
+    fold_call_nodes: base.fold_call_nodes |> concat(branch_fold_nodes),
+    touched: touched_merged
+  }
 }
 
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>) -> UsageAccum {
@@ -128,6 +169,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       }
 
     ExprLiteral { value: _ } => accum
+    ExprElaboratedLiteral { value: _, elaboration: _ } => accum
 
     ExprFieldAccess =>
       let base_node = field_access_base(texpr: texpr)
@@ -186,7 +228,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
           walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
-        UsageAccum { bindings: walked.bindings, fold_call_nodes: list_push(walked.fold_call_nodes, texpr) }
+        UsageAccum { bindings: walked.bindings, fold_call_nodes: list_push(walked.fold_call_nodes, texpr), touched: walked.touched }
       } else {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
         mc_args |> fold(init: recv_accum, f: (acc, a) =>
@@ -198,8 +240,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let scrut = match_scrutinee(texpr: texpr)
       let arm_nodes = match_arm_nodes(texpr: texpr)
       let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false, si: si)
+      let seed = branch_seed(from: s_accum)
       let branch_accums = arm_nodes |> map(arm_node =>
-        walk_expr(accum: s_accum, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si)
+        walk_expr(accum: seed, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si)
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
@@ -207,10 +250,11 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
       let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si)
-      let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail, si: si)
+      let seed = branch_seed(from: c_accum)
+      let t_accum = walk_expr(accum: seed, texpr: t, in_tail: in_tail, si: si)
       let e_accum = match if_else_branch(texpr: texpr) {
-        Present { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail, si: si)
-        Absent => c_accum
+        Present { value: eb } => walk_expr(accum: seed, texpr: eb, in_tail: in_tail, si: si)
+        Absent => seed
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
@@ -248,10 +292,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let body = lambda_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
+        record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
       )
-      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
+      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes), touched: binding_merged.touched }
 
     ExprForEach =>
       let coll = foreach_collection(texpr: texpr)
@@ -259,10 +302,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let body = foreach_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
+        record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
       )
-      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
+      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes), touched: binding_merged.touched }
 
     _ =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
@@ -300,9 +342,16 @@ fn is_owned_local(kind: VarBindingKind?) -> Bool {
   }
 }
 
-fn build_movable_set(proof: OwnershipProof) -> Set<String> {
+fn whole_value_borrow_count(usage: BindingUsage) -> Int {
+  usage.consumers |> filter(c => match c.kind { Read => true, Threaded => true, _ => false }) |> count
+}
+
+fn build_movable_set(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
   proof.bindings |> map_values
-    |> filter(usage => binding_fan_out(usage: usage) == 1 && is_owned_local(kind: usage.binding_kind))
+    |> filter(usage =>
+      (match make_decision(usage: usage) { SoleOwner { binding: _, site: _ } => true, _ => false })
+      && whole_value_borrow_count(usage: usage) == 0
+      && (is_owned_local(kind: usage.binding_kind) || set_contains(param_names, usage.name)))
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
 
@@ -327,6 +376,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
         _ => empty_set()
       }
     ExprLiteral { value: _ } => empty_set()
+    ExprElaboratedLiteral { value: _, elaboration: _ } => empty_set()
     ExprFieldAccess =>
       collect_callable_refs(texpr: field_access_base(texpr: texpr), si: si)
     ExprCall =>
@@ -349,7 +399,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
     ExprMatch =>
       let scrut = collect_callable_refs(texpr: match_scrutinee(texpr: texpr), si: si)
       match_arm_nodes(texpr: texpr) |> fold(init: scrut, f: (acc, arm) =>
-        set_union(acc, collect_callable_refs(texpr: arm_body(arm: arm), si: si))
+        set_union(acc, collect_callable_refs(texpr: arm_body(n: arm), si: si))
       )
     ExprLet =>
       let val = collect_callable_refs(texpr: let_value(texpr: texpr), si: si)
@@ -545,7 +595,8 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<
     let p_name = authored_name_at(source_indices: si, node: p)
     UsageAccum {
       bindings: map_insert(acc.bindings, p_name, BindingUsage { name: p_name, binding_kind: none, consumers: [] }),
-      fold_call_nodes: acc.fold_call_nodes
+      fold_call_nodes: acc.fold_call_nodes,
+      touched: acc.touched
     }
   )
   let result = walk_expr(accum: initial, texpr: body, in_tail: true, si: si)
@@ -560,3 +611,4 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<
     fold_acc_unwrap: fold_proofs
   }
 }
+

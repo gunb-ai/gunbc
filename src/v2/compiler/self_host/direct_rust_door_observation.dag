@@ -1,0 +1,103 @@
+module v2.compiler.self_host.direct_rust_door_observation
+
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+}
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  ArtifactLeafEstablished,
+  ArtifactLeafRefused,
+  DirectRustDoorProductionGroup,
+  direct_rust_door_producer_identity_assessment,
+  direct_rust_door_seed_emitter_absence_assessment,
+  direct_rust_door_source_fidelity_assessment,
+  direct_rust_door_source_produced_assessment,
+}
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// PURE FIRST-FAILURE PROJECTION of the canonical direct-door production group. This module used to
+// run its own ingest-assemble-infer-mint composition, which made it a SECOND production authority
+// answering the same question as the group — two folds, two schedule occurrences, one fact. It now
+// takes an ALREADY-BUILT group and computes nothing expensive: there is deliberately no
+// zero-argument entrypoint here, because one would recompute the group and silently reopen the
+// duplicate walk this consolidation closed. A caller that wants this vocabulary supplies the group
+// it already holds. The nine DirectRustDoorObservation variants are preserved verbatim so no
+// consumer had to change.
+
+// MEASURED 2026-08-04 on main, and unchanged by the consolidation: assembly ACCEPTS, inference
+// ACCEPTS, mint over the hand-authored fixture inferred tree ACCEPTS, and mint over the real
+// infer(assemble(ingest)) REJECTS. Every stage passes in isolation; only the real composition
+// fails, at emission.
+
+type DirectRustDoorObservation
+  = AssemblyRefused { reason: Symbol }
+  | InferenceRefused { reason: Symbol }
+  | CandidateRejected { reason: Symbol }
+  | ReceiptRefused { reason: Symbol }
+  | EmittedSourceMismatch
+  | SeedEmitterReachable
+  | WrongProducer
+  | SourceProducedQualificationMissing
+  | DirectRustDoorSourceProduced
+
+fn project_direct_rust_door_observation(
+  group: DirectRustDoorProductionGroup
+) -> DirectRustDoorObservation {
+  match group.emission {
+    AssemblyRejected { diagnostics: ds } => AssemblyRefused { reason: ds.head.reason }
+    InferenceRejected { diagnostics: ds } => InferenceRefused { reason: ds.head.reason }
+    EmissionRejected { diagnostics: ds } => CandidateRejected { reason: ds.head.reason }
+    ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: ds.head.reason }
+    ArtifactProduced { artifact: a } =>
+      match direct_rust_door_source_fidelity_assessment(artifact: a) {
+        ArtifactLeafRefused { cause: _ } => EmittedSourceMismatch
+        ArtifactLeafEstablished =>
+          match direct_rust_door_producer_identity_assessment(artifact: a) {
+            ArtifactLeafRefused { cause: _ } => WrongProducer
+            ArtifactLeafEstablished =>
+              match direct_rust_door_seed_emitter_absence_assessment(artifact: a) {
+                ArtifactLeafRefused { cause: _ } => SeedEmitterReachable
+                ArtifactLeafEstablished =>
+                  match direct_rust_door_source_produced_assessment(artifact: a) {
+                    ArtifactLeafRefused { cause: _ } => SourceProducedQualificationMissing
+                    ArtifactLeafEstablished => DirectRustDoorSourceProduced
+                  }
+              }
+          }
+      }
+  }
+}
+
+// Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a tenth observation variant would land as false and read as an honest negative rather than an unhandled case.
+fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> Bool {
+  match o {
+    AssemblyRefused { reason: _ } => false
+    InferenceRefused { reason: _ } => false
+    CandidateRejected { reason: _ } => false
+    ReceiptRefused { reason: _ } => false
+    EmittedSourceMismatch => false
+    SeedEmitterReachable => false
+    WrongProducer => false
+    SourceProducedQualificationMissing => false
+    DirectRustDoorSourceProduced => true
+  }
+}
+
+fn direct_rust_door_observation_is_candidate_rejection(o: DirectRustDoorObservation) -> Bool {
+  match o {
+    AssemblyRefused { reason: _ } => false
+    InferenceRefused { reason: _ } => false
+    CandidateRejected { reason: _ } => true
+    ReceiptRefused { reason: _ } => false
+    EmittedSourceMismatch => false
+    SeedEmitterReachable => false
+    WrongProducer => false
+    SourceProducedQualificationMissing => false
+    DirectRustDoorSourceProduced => false
+  }
+}

@@ -9,16 +9,16 @@ the realization is a seed that shrinks to zero; host-effect-orchestration.md Pha
 
 ## The structure/runtime split (why this is single-authority)
 
-Two *different kinds* of fact, each with exactly one home — they are not two copies of one fact:
+Two *different kinds* of fact, each with exactly one home — not two copies of one fact:
 
 - **Graph structure** — what work exists, dependencies, sizing, acceptance conditions. Home:
-  the gunbc `.dag` authority (`dsl/gunbc/roadmap_authority.dag` + `roadmap_model.dag`). Edited
+  the gunbc `.dag` authority (`dag/gunbc/roadmap/roadmap_authority.dag` + `roadmap_model.dag`). Edited
   by committing the `.dag` to main. ctrl never authors structure.
 - **Runtime state** — is a node actually done, is a session live. Home: ctrl/GitHub. Flows
   **one direction, ctrl → gunbc, read-only**, as acceptance *evidence* (PR merged, session
   archived). gunbc reads it; it does not store it.
 
-So: **planning edits = git commits to the `.dag`**; if a plan is wrong you fix the `.dag` and
+So: **planning edits = git commits to the `.dag`**; a wrong plan is fixed in the `.dag` and
 the ready-set recomputes next tick. ctrl is a consumer + fact-reporter, never a co-author.
 
 ## Anchor
@@ -34,7 +34,7 @@ Planning and code go through the same PR gate to main.
 - **the ctrl bridge** computes *runtime dedup*: `no-active-session-for-this-node`. It has the
   session list. It does NOT re-derive graph readiness.
 
-This split mirrors the structure/runtime split exactly, so neither side duplicates the other.
+This mirrors the structure/runtime split exactly, so neither side duplicates the other.
 
 ## The frozen interface contract (build both lanes against THIS)
 
@@ -70,8 +70,8 @@ A gunbc CLI entry evaluates `next_spawnable` over the authority at HEAD and writ
 
 ### 2. Pause control — the kill switch (fail-closed, §5)
 
-A single control the operator flips in **one action, no gunbc commit/regen required** (so a
-"things got weird" pause is instant):
+One control the operator flips in **one action, no gunbc commit/regen required**, so a
+"things got weird" pause is instant:
 
 ```json
 // ctrl-side control file, polled by the bridge each tick
@@ -79,8 +79,8 @@ A single control the operator flips in **one action, no gunbc commit/regen requi
 ```
 
 - **Default `paused: true`** — fail-closed: the loop spawns NOTHING until the operator
-  explicitly un-pauses. A fresh deploy, a parse error, a missing control file → treated as
-  paused, never as "spawn freely."
+  explicitly un-pauses. A fresh deploy, a parse error, a missing control file → paused, never
+  "spawn freely."
 - One-liner to pause/resume (bridge lane defines the exact command + dashboard toggle).
 - When paused, the bridge reads the ready-set but emits zero spawns and logs the held count.
 
@@ -97,7 +97,7 @@ A single control the operator flips in **one action, no gunbc commit/regen requi
    EXISTING auto-spawn poller spawns + monitors. Zero new spawn code — reuse the poller,
    capacity gate, and respawn circuit-breaker. Honor `paused`. Log held/spawned counts.
 
-Acceptance stays `PrsMerged`/`Manual` in Stage 1 — no acceptance automation yet. You watch the
+Acceptance stays `PrsMerged`/`Manual` in Stage 1 — no acceptance automation yet. Watch the
 dashboard tree; pause anytime.
 
 ## Stage 2+ (later, not this MVP)
@@ -112,7 +112,7 @@ dashboard tree; pause anytime.
 
 ## Why the integration is good (not a forced fit)
 
-The roadmap node already maps almost 1:1 onto ctrl's work-item fields. `ctrl.process_algebra`
+The roadmap node already maps almost 1:1 onto ctrl's work-item fields; `gunbc.process_algebra`
 is already the `.dag` mirror of ctrl's `nodes` table (same Leaf/Composite/Bucket, same
 Declare/Decompose/Close). The only genuine adds are sizing, the `Acceptance` coproduct, and the
 emit seam — small and additive. That 1:1 mapping IS the evidence the integration is real.

@@ -1,0 +1,215 @@
+module test.claim.sessions_panel_witness
+
+import gunbc.roadmap_belt_actuate {
+  BeltObserve, Observed, ObserveRefused,
+  belt_sessions_json_value, belt_sessions_observed_json, belt_sessions_http_status,
+}
+import gunbc.roadmap_dispatch_actuator {
+  DispatchLiveSession,
+  CodexDispatchProvider,
+  dispatch_provider_instance_for,
+  dispatch_live_sessions_from_entries,
+  fixture_projection_standing_refusal_tmux_entry,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessExited,
+  worker_observation_without_provider_probe,
+  worker_observation_without_provider_probe_for_process,
+}
+import gunbc.roadmap_component {
+  dispatch_client_js_source, sessions_route_path,
+}
+import gunbc.roadmap_style { roadmap_css }
+import std.upsert_decision { ObservationVerdict, Converged }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Sessions receipts keep five axes mechanically distinct on the wire and client: session-container
+// presence, pane/process lifecycle, configured provider versus provider observation,
+// readiness/phase, and cleanup eligibility. A retained dead pane stays session present, projects
+// process exited, and offers clear; the unprobed fixture projects process unobserved and cleanup
+// unavailable. Session-list refusal stays LOUD/503, never an empty successful set. Production
+// standing refusal omits tmux rows from admission (fixture_projection_standing_refusal_tmux_entry)
+// — the wire must not fabricate a partial session row.
+
+test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
+  let o = Observed {
+    live: dispatch_live_sessions_from_entries(
+      entries: [fixture_projection_standing_refusal_tmux_entry()],
+    ),
+  }
+  let j = belt_sessions_observed_json(o: o)
+  string_contains(s: j, pattern: "\"observe_refused\": false")
+    && string_contains(s: j, pattern: "\"sessions\": []")
+    && !string_contains(s: j, pattern: "\"node_id\": \"panel-a\"")
+    && belt_sessions_http_status(o: o) == 200
+}
+
+fn fixture_live() -> DispatchLiveSession {
+  DispatchLiveSession {
+    session_name: "gunbc-dispatch-5-regen-cutover",
+    node_id: "5-regen-cutover",
+    windows: 1,
+    lease_verdict: Converged,
+    worker: worker_observation_without_provider_probe(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+    ),
+  }
+}
+
+test fn sessions_observed_projects_to_wire() -> Bool {
+  let j = belt_sessions_observed_json(o: Observed { live: [fixture_live()] })
+  return string_contains(s: j, pattern: "\"schema\": \"roadmap-sessions/v1\"")
+    && string_contains(s: j, pattern: "\"observe_refused\": false")
+    && string_contains(s: j, pattern: "\"node_id\": \"5-regen-cutover\"")
+    && string_contains(s: j, pattern: "\"session_name\": \"gunbc-dispatch-5-regen-cutover\"")
+    && string_contains(s: j, pattern: "\"session_presence\": \"present\"")
+    && string_contains(s: j, pattern: "\"process_state\": \"process unobserved\"")
+    && string_contains(s: j, pattern: "\"configured_provider\": \"Codex\"")
+    && string_contains(s: j, pattern: "\"provider\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"provider_readiness\": \"readiness unobserved\"")
+    && string_contains(s: j, pattern: "\"tool_execution_readiness\": \"tool readiness unobserved\"")
+    && string_contains(s: j, pattern: "\"worker_phase\": \"phase unobserved\"")
+    && string_contains(s: j, pattern: "\"cleanup_action\": \"unavailable\"")
+    && string_contains(s: j, pattern: "\"cleanup_allowed\": false")
+    && string_contains(s: j, pattern: "\"facts\": ")
+    && string_contains(s: j, pattern: "\"line\": \"session · present — process unobserved\"")
+    && string_contains(s: j, pattern: "\"detail\": \"provider unobserved (configured Codex, readiness readiness unobserved) — gunbc-dispatch-5-regen-cutover · ")
+    && string_contains(s: j, pattern: "\"availability\": \"unavailable\"")
+    && belt_sessions_http_status(o: Observed { live: [fixture_live()] }) == 200
+}
+
+test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
+  let retained = DispatchLiveSession {
+    session_name: "gunbc-dispatch-5-regen-cutover",
+    node_id: "5-regen-cutover",
+    windows: 1,
+    lease_verdict: Converged,
+    worker: worker_observation_without_provider_probe_for_process(
+      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      process: WorkerProcessExited { exit_code: 0, last_command: "env" },
+    ),
+  }
+  let j = belt_sessions_observed_json(o: Observed { live: [retained] })
+  string_contains(s: j, pattern: "\"session_presence\": \"present\"")
+    && string_contains(s: j, pattern: "\"process_state\": \"process exited\"")
+    && string_contains(s: j, pattern: "\"process_detail\": \"exit=0 last-command=env\"")
+    && string_contains(s: j, pattern: "\"cleanup_action\": \"clear\"")
+    && string_contains(s: j, pattern: "\"cleanup_allowed\": true")
+    && string_contains(s: j, pattern: "\"line\": \"session · present — process exited\"")
+    && string_contains(s: j, pattern: "\"label\": \"clear\"")
+    && string_contains(s: j, pattern: "\"availability\": \"available\"")
+    && string_contains(s: j, pattern: "only retained tmux session metadata will be removed")
+}
+
+test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
+  let o = ObserveRefused { reason: "tmux ls: permission denied" }
+  let j = belt_sessions_observed_json(o: o)
+  return string_contains(s: j, pattern: "\"observe_refused\": true")
+    && string_contains(s: j, pattern: "tmux ls: permission denied")
+    && belt_sessions_http_status(o: o) == 503
+    && !string_contains(s: j, pattern: "\"sessions\"")
+}
+
+// The A2 flip of this witness's pins (operator blocker 5): the client composes no session prose —
+// it paints the wire's DECIDED facts verbatim (sfx.line into the visible text, sfx.detail into the
+// title, sact.label/detail/availability onto the cleanup chip). The former positives
+// (sess.process_state, sess.cleanup_action, sess.cleanup_allowed, the composed 'session · present'
+// literal) are now the discriminating NEGATIVES: any reappearing in the emitted source is a second
+// session presentation authority standing back up.
+
+test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "fetch('/sessions.json')")
+    && string_contains(s: js, pattern: "sj.observe_refused")
+    && string_contains(s: js, pattern: "sess.facts")
+    && string_contains(s: js, pattern: "sfx.line")
+    && string_contains(s: js, pattern: "sfx.detail")
+    && string_contains(s: js, pattern: "sact.label")
+    && string_contains(s: js, pattern: "sact.availability !== 'available'")
+    && !string_contains(s: js, pattern: "session · present")
+    && !string_contains(s: js, pattern: "session · spawned")
+    && !string_contains(s: js, pattern: "session · live")
+    && !string_contains(s: js, pattern: "sess.process_state")
+    && !string_contains(s: js, pattern: "sess.cleanup_action")
+    && !string_contains(s: js, pattern: "sess.cleanup_allowed")
+    && string_contains(s: js, pattern: "dispatch · accepted")
+    && string_contains(s: js, pattern: "session-facts")
+    && string_contains(s: js, pattern: "'cleanup-chip'")
+    && string_contains(s: js, pattern: "'observe-refused sessions-observe-refused'")
+    && string_contains(s: js, pattern: "session observation refused: ")
+    && string_contains(s: js, pattern: "impactDetail && impactDetail.append(bn)")
+    && string_contains(s: js, pattern: ".catch(")
+}
+
+test fn sessions_client_reobserves_after_dispatch_and_on_cadence() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "const gunbcObserveSessions = () =>")
+    && string_contains(s: js, pattern: "const gunbcObserveAttempts = () =>")
+    && string_contains(s: js, pattern: "const gunbcObservationPollTick = () =>")
+    && string_contains(s: js, pattern: "setTimeout(gunbcObservationPollTick, 3000)")
+    && !string_contains(s: js, pattern: "setInterval")
+    && string_contains(s: js, pattern: "gunbcObserveSessions()")
+    && string_contains(s: js, pattern: "gunbcObserveAttempts()")
+    && string_contains(s: js, pattern: "3000")
+}
+
+test fn sessions_client_serializes_each_observation_source() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "let gunbcSessionsObservationInFlight = false")
+    && string_contains(s: js, pattern: "let gunbcAttemptsObservationInFlight = false")
+    && string_contains(s: js, pattern: "if (gunbcSessionsObservationInFlight)")
+    && string_contains(s: js, pattern: "gunbcSessionsObservationPending = true")
+    && string_contains(s: js, pattern: "if (gunbcAttemptsObservationInFlight)")
+    && string_contains(s: js, pattern: "gunbcAttemptsObservationPending = true")
+}
+
+// Strengthened at A2 (the action/observation split): the sessions observer may never write the
+// dispatch button's text — the former guarded caption flip ('session · present' on the button when
+// idle) was the observation-in-the-control-position defect the falsifier exposed. Presence is a
+// dataset fact for admission logic; the visible claim lives in the disclosure's session-facts line.
+// The discriminating negatives are the exact strings the old mechanism emitted.
+
+test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "sb.dataset.sessionPresence = 'present'")
+    && !string_contains(s: js, pattern: "sb.textContent = 'session")
+    && !string_contains(s: js, pattern: "pb.textContent = 'dispatch'")
+    && !string_contains(s: js, pattern: "session · present")
+}
+
+test fn sessions_refusal_withdraws_prior_presence() -> Bool {
+  let js = dispatch_client_js_source()
+  let presence_reset_selector = ".dispatch-btn[data-session-presence=\"present\"], .session-facts"
+  return count(split(s: js, delimiter: presence_reset_selector)) == 4
+    && string_contains(s: js, pattern: "sj.observe_refused")
+    && string_contains(s: js, pattern: ".catch(")
+    && string_contains(s: js, pattern: "pb.classList.contains('session-facts')")
+    && string_contains(s: js, pattern: "pb.remove()")
+}
+
+test fn attempts_refusal_withdraws_prior_rows() -> Bool {
+  let js = dispatch_client_js_source()
+  return count(split(s: js, delimiter: ".dispatch-attempts")) == 5
+    && string_contains(s: js, pattern: "aj.attempts_refused")
+    && string_contains(s: js, pattern: "staleAttempts.remove()")
+}
+
+test fn sessions_banner_is_styled_loud() -> Bool {
+  return string_contains(s: roadmap_css(), pattern: ".observe-refused { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-4) var(--space-0) var(--space-8); font-family: var(--font-mono) }")
+}
+
+test fn sessions_panel_keystone_holds() -> Bool {
+  witness_projection_standing_refusal_specimen_omits_wire_row()
+    && sessions_observed_projects_to_wire()
+    && retained_dead_process_projects_clear_without_erasing_session()
+    && sessions_refusal_is_loud_on_the_wire()
+    && sessions_client_marks_presence_reobserves_and_shouts_refusal()
+    && sessions_client_reobserves_after_dispatch_and_on_cadence()
+    && sessions_client_serializes_each_observation_source()
+    && sessions_presence_does_not_overwrite_dispatch_presentation()
+    && sessions_refusal_withdraws_prior_presence()
+    && attempts_refusal_withdraws_prior_rows()
+    && sessions_banner_is_styled_loud()
+}

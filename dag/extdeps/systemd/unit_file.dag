@@ -1,0 +1,737 @@
+module extdeps.systemd.unit_file
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.measure { ByteSize, byte_size_count, HardwareThreadCount, hardware_thread_count_value }
+import extdeps.systemd {
+  SystemdUnitProperty,
+  MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight,
+  systemd_unit_property_wire,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE UNIT FILE FORMAT ITSELF, not a unit's runtime state.
+//
+// `extdeps.systemd` models a unit's observable PROPERTIES (LoadState, ActiveState, MemoryMax) and
+// `extdeps.systemd.systemctl` models the manager INVOCATIONS. Neither models the on-disk file, so a
+// consumer that needs to WRITE a unit had no authority to render one and would have had to spell
+// systemd's INI syntax itself -- a second systemd authority living inside a product module, which is
+// exactly the §3 nicknaming this module exists to prevent.
+//
+// The subject is the unit file format as specified by systemd.unit(5) and systemd.service(5). Those
+// are two citations of ONE subject, which is what `further_citations` is for.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.unit.html"
+  }
+}
+
+data systemd_service_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.service.html"
+  }
+}
+
+// THE TIMER AND EXECUTION-ENVIRONMENT SUBJECTS ARE THEIR OWN UPSTREAM SPECIFICATIONS, and the
+// declared scope has to cover the grammar this module actually models. systemd.unit owns [Unit]
+// and [Install]; systemd.service owns [Service] and Type=/Restart=/ExecStart=. Neither owns the
+// [Timer] section, and neither owns the execution-environment options (User=, Group=,
+// WorkingDirectory=, Environment=, EnvironmentFile=) that systemd.exec defines for service units.
+// Those rows became this repository's PRODUCTION authority for live-deploy unit emission, so
+// leaving their subjects uncited would declare a scope narrower than the grammar being claimed --
+// the extdeps citation duty (DESIGN section 3, ExtdepsExternalAuthorityGate), not documentation.
+data systemd_timer_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.timer.html"
+  }
+}
+
+data systemd_exec_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.exec.html"
+  }
+}
+
+// KillMode= AND KillSignal= ARE systemd.kill(5), WHICH IS A FIFTH SUBJECT AND NOT A CORNER OF
+// systemd.service(5). The distinction is load-bearing rather than pedantic: systemd.kill defines
+// what a unit's TEARDOWN reaches -- the whole cgroup, the main process only, or nothing -- for
+// every unit type that can be stopped, which is why it is specified apart from the service
+// directives that decide what STARTING one does. A module that renders KillMode= while citing only
+// systemd.service claims a grammar wider than its declared scope, which is the extdeps citation
+// duty (DESIGN section 3).
+data systemd_kill_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.kill.html"
+  }
+}
+
+// Slice=, MemoryMax= and MemoryHigh= belong to none of the three subjects above. systemd.unit owns
+// [Unit] and [Install], systemd.service owns [Service]'s execution directives, and systemd.exec owns
+// the execution environment -- but the cgroup RESOURCE CONTROL vocabulary is its own upstream
+// specification, and it is the one that defines both the slice a service joins and the memory limits
+// a [Slice] unit carries. Adding those directives without adding this citation would claim a grammar
+// wider than the declared scope, which is the extdeps citation duty (DESIGN section 3), not
+// bookkeeping.
+data systemd_resource_control_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systemd.unit_file",
+      decl_name: "SystemdUnitFile",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    systemd_service_directive_authority,
+    systemd_timer_directive_authority,
+    systemd_exec_directive_authority,
+    systemd_resource_control_directive_authority,
+    systemd_kill_directive_authority,
+  ]
+}
+
+// ONE DIRECTIVE TYPE PER SECTION, SO A MISPLACED DIRECTIVE HAS NO REPRESENTATION.
+//
+// systemd rejects `ExecStart=` in `[Unit]` and `WantedBy=` in `[Service]`, and a renderer carrying one
+// flat directive name would make both writable -- caught, at best, by a remote systemd refusing to
+// load the file long after it was delivered. Three disjoint types put that class at the top of the
+// §4b ladder instead: the invalid file has no constructor, so no validation of section placement is
+// needed anywhere downstream.
+//
+// These are deliberately NOT the full directive vocabulary. systemd specifies hundreds; enumerating
+// them speculatively would be a large closed set that is still incomplete, which is worse than a
+// small one, because incompleteness in a closed enum reads as "this directive is not permitted"
+// rather than "this directive is not modeled yet". Each is a §2-horizontal row: a consumer needing
+// `RestartPreventExitStatus=` adds one variant and one wire row, and nothing else changes.
+
+type SystemdUnitDirective
+  = Description { text: NonEmptyStr }
+  | After { target: NonEmptyStr }
+  | Before { target: NonEmptyStr }
+  | Wants { target: NonEmptyStr }
+  | Requires { target: NonEmptyStr }
+  | StartLimitIntervalSec { duration: NonEmptyStr }
+
+type SystemdServiceDirective
+  = ServiceType { mode: NonEmptyStr }
+  | ExecStart { command: NonEmptyStr }
+  | Restart { policy: NonEmptyStr }
+  | Environment { assignment: NonEmptyStr }
+  | EnvironmentFile { path: NonEmptyStr }
+  | EnvironmentFileIfPresent { path: NonEmptyStr }
+  | WorkingDirectory { path: NonEmptyStr }
+  | ServiceUser { name: NonEmptyStr }
+  | ServiceGroup { name: NonEmptyStr }
+  | ServiceSlice { name: NonEmptyStr }
+  | ServiceNice { priority: Int }
+  | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
+  | TimeoutStartSec { duration: NonEmptyStr }
+  | ServiceExitType { exit_type: SystemdExitType }
+  | ServiceKillMode { mode: SystemdKillMode }
+  | RestartSec { duration: NonEmptyStr }
+  | TimeoutStopSec { duration: NonEmptyStr }
+
+// THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
+//
+// `Nice=` and `IOSchedulingClass=` are what let a maintenance service share a host with the work
+// that host exists to do: the first lowers CPU priority, the second takes the service out of the
+// I/O scheduler's contending classes entirely. A renderer that cannot express them can still
+// produce a unit that RUNS -- it simply competes with the production workload while doing so, so
+// the omission is invisible in the rendered text and shows up as someone else's latency.
+// `TimeoutStartSec=` bounds a `Type=oneshot` service that would otherwise hang forever.
+//
+// `IOSchedulingClass=` takes one of exactly three values, fixed by the kernel's I/O scheduler
+// rather than by systemd, so it is a closed coproduct here for the same reason the monotonic and
+// wallclock timers above are separate variants: an authority that closes a value set and then
+// carries it as `NonEmptyStr` has re-opened it, and every consumer must then re-validate what the
+// upstream already decided. `Nice=` genuinely is an integer over -20..19 -- a range this type does
+// not narrow, which is a bound left unmodeled and not a value set left open.
+type SystemdIoSchedulingClass
+  = IoSchedulingRealtime
+  | IoSchedulingBestEffort
+  | IoSchedulingIdle
+
+// THE THREE RESTART-AND-TEARDOWN TIMING DIRECTIVES, ADDED FOR A SUPERVISED SERVICE THAT IS MEANT TO
+// EXIT AND COME BACK.
+//
+// `StartLimitIntervalSec=` is a [Unit] directive, not a [Service] one, which is why it sits with
+// Description= and After= above rather than beside Restart= below: systemd.unit(5) owns the start
+// rate limiter because every unit type can be rate limited, and the section split this module is
+// built on would be broken by putting it where the restart policy reads more naturally. A unit whose
+// normal operation is to exit after each unit of work and be restarted will trip the default limit
+// (five starts in ten seconds) and be left FAILED, so a service of that shape has to say so.
+//
+// `RestartSec=` is the delay before the restart and `TimeoutStopSec=` is how long a stop is given
+// before systemd escalates to SIGKILL. They are two durations at opposite ends of a unit's life and
+// are two variants for the reason every pair in this module is: one value carrying both would put
+// the difference between "wait before starting again" and "wait before killing" into a position.
+//
+// They take `NonEmptyStr` rather than a modeled duration, following `TimeoutStartSec=`'s established
+// precedent here. systemd's timespan grammar admits bare seconds and suffixed units ("5", "5min"),
+// and modeling it is a real piece of work that no consumer has needed yet -- so this is an unmodeled
+// grammar rather than a closed value set left open, which is the distinction `SystemdIoSchedulingClass`
+// above draws.
+
+// THE TWO DIRECTIVES THAT DECIDE WHEN A SERVICE IS OVER, AND WHAT ITS END REACHES.
+//
+// They are separate directives answering separate questions, and a consumer that conflates them
+// gets a unit that looks converged and leaks processes. `ExitType=` decides when systemd considers
+// the service FINISHED: `main` watches the main process alone, so a wrapper that spawns a worker
+// and exits ends the service while the worker is still running; `cgroup` waits for the last
+// process in the cgroup to leave. `KillMode=` decides, once systemd HAS decided to stop the unit,
+// what the stop reaches: `control-group` signals every process in the cgroup, `mixed` sends SIGTERM
+// to the main process and SIGKILL to the rest, `process` signals only the main process and leaves
+// its children running, and `none` signals nothing at all.
+//
+// So `ExitType=main` with `KillMode=process` is the pair under which a supervised unit can be
+// simultaneously "not running" and still holding live processes -- the state the manager's own
+// view cannot express, because ActiveState answers for the main process and the cgroup is where the
+// survivors are.
+//
+// BOTH VALUE SETS ARE CLOSED BY systemd, so both are coproducts here for the reason
+// `SystemdIoSchedulingClass` above already gives: an authority that closes a value set and then
+// carries it as `NonEmptyStr` has re-opened it, and every consumer must re-validate what the
+// upstream already decided. The variant names carry their directive's prefix because `Process`,
+// `Mixed`, `None` and `Main` are words this corpus uses for other subjects, and a bare `None` in
+// particular would collide with optionality at every call site that reads one of these.
+type SystemdExitType
+  = ExitTypeMain
+  | ExitTypeCgroup
+
+type SystemdKillMode
+  = KillModeControlGroup
+  | KillModeMixed
+  | KillModeProcess
+  | KillModeNone
+
+fn systemd_exit_type_wire(exit_type: SystemdExitType) -> String {
+  match exit_type {
+    ExitTypeMain => "main"
+    ExitTypeCgroup => "cgroup"
+  }
+}
+
+fn systemd_kill_mode_wire(mode: SystemdKillMode) -> String {
+  match mode {
+    KillModeControlGroup => "control-group"
+    KillModeMixed => "mixed"
+    KillModeProcess => "process"
+    KillModeNone => "none"
+  }
+}
+
+// WHETHER A STOP REACHES EVERY PROCESS IN THE CGROUP IS A PROPERTY OF THE KILL MODE ALONE, and it
+// is spelled here rather than at each consumer because it is a fact about systemd.kill(5)'s
+// vocabulary, not about any one unit. `mixed` qualifies: it reaches the whole cgroup, differing
+// from `control-group` only in which signal each process receives, and a consumer asking "can a
+// process survive this unit's teardown" must get the same answer for both.
+fn systemd_kill_mode_reaches_whole_cgroup(mode: SystemdKillMode) -> Bool {
+  match mode {
+    KillModeControlGroup => true
+    KillModeMixed => true
+    KillModeProcess => false
+    KillModeNone => false
+  }
+}
+
+fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) -> String {
+  match scheduling_class {
+    IoSchedulingRealtime => "realtime"
+    IoSchedulingBestEffort => "best-effort"
+    IoSchedulingIdle => "idle"
+  }
+}
+
+// `ServiceUser`/`ServiceGroup` follow `ServiceType`'s precedent exactly, and for the same reason it
+// exists: `User` and `Group` are words this corpus uses for other subjects, and the wire name is
+// systemd's rather than the variant's. `EnvironmentFile=` is a distinct directive from
+// `Environment=`, not a spelling of it -- one names a file systemd reads, the other carries an
+// assignment inline -- so they are two variants and a consumer cannot reach one meaning the other.
+
+// `EnvironmentFileIfPresent` is systemd's `-` prefix, and it is a SECOND VARIANT rather than a
+// `required: Bool` on the first for the reason this file already applies to `OnBootSec` versus
+// `OnCalendar`: the two forms have different semantics, and fusing them would put the distinction
+// back into a flag. Required means a missing file FAILS THE UNIT; optional means systemd starts it
+// anyway with the assignments unset.
+//
+// THE OPTIONAL FORM IS NOT THE POLICY ESCAPE HATCH DESIGN SECTION 5 FORBIDS, and the distinction is
+// what the file CARRIES rather than which directive spells it. `gunbc.host_disk_reclaim_units`
+// (reclaim_omitted_environment_file_note) drops `EnvironmentFile=-` precisely because that file
+// would carry THRESHOLDS -- host-local values overriding gates this repository owns, one edit from
+// silently relaxing them. A file carrying a CREDENTIAL overrides no gate: its absence does not let
+// anything proceed as though a refusal had not fired, because the consumer probes for the credential
+// and refuses on its own terms.
+//
+// Which form to choose is therefore decided by WHERE THE REFUSAL LIVES, not by which is stricter
+// sounding. Where the consumer adjudicates absence itself, the required form is strictly worse: it
+// converts a typed, located, recorded refusal into a unit that never starts and writes no receipt at
+// all, so a missing credential and a broken binary render identically to every reader downstream.
+// That is the execution-provenance loss this repository names -- an unreached stage rendering as a
+// stage that ran -- bought in exchange for a strictness the consumer was already providing. Where no
+// such consumer exists, the required form is correct and this variant is the wrong one to reach for.
+
+// A TIMER'S DIRECTIVES, which is the section that made the unit-type coproduct below necessary.
+//
+// `TimerUnit` renders as `Unit=` -- the service this timer activates. It is named for what it is
+// because `Unit` alone would read as the `[Unit]` section, which is a different thing present in
+// every unit file including this one.
+//
+// The monotonic timers (`OnBootSec`, `OnUnitInactiveSec`) and the wallclock timer (`OnCalendar`)
+// are deliberately separate variants rather than one `TimerSchedule { key, value }`: systemd gives
+// them different semantics -- a monotonic timer measures from an event, a calendar timer from a
+// clock -- and fusing them into a key-value pair would put the distinction back into a string.
+type SystemdTimerDirective
+  = TimerUnit { target: NonEmptyStr }
+  | OnCalendar { expression: NonEmptyStr }
+  | OnBootSec { duration: NonEmptyStr }
+  | OnUnitInactiveSec { duration: NonEmptyStr }
+  | AccuracySec { duration: NonEmptyStr }
+  | RandomizedDelaySec { duration: NonEmptyStr }
+  | Persistent { enabled: Bool }
+
+type SystemdInstallDirective
+  = WantedBy { target: NonEmptyStr }
+  | RequiredBy { target: NonEmptyStr }
+
+// A [Slice] UNIT'S DIRECTIVES, AND THE KNOB NAME IS NOT MINTED HERE.
+//
+// The previous shape was a two-arm coproduct, `SliceMemoryMax { bytes: NonEmptyStr }` and
+// `SliceMemoryHigh { bytes: NonEmptyStr }`, and it had two defects that only show up when a third
+// knob is needed. It spelled `MemoryMax` and `MemoryHigh` a SECOND time -- `extdeps.systemd`
+// `SystemdUnitProperty` already carries both names and `systemd_unit_property_wire` already renders
+// them -- so a boundary needing `MemorySwapMax=`, `TasksMax=` and `CPUWeight=` would have widened
+// that fork from two names to five. And it carried every value as `NonEmptyStr`, so a magnitude the
+// caller was holding as a `ByteSize` was flattened one call before the wire.
+//
+// SO THE KNOB IS THE PROPERTY AND THE VALUE IS A MAGNITUDE, and the record is `sole_constructor` so
+// that pairing is the only one a consumer can obtain. Zero knob names are minted here: the wire
+// spelling has exactly one owner, reached through `property`, and a name added or corrected upstream
+// moves both surfaces at once.
+//
+// WHY THE PROPERTY TYPE IS SAFE HERE WHEN GROUNDING THE DIRECTIVE *COPRODUCT* ON IT WOULD NOT BE.
+// `gunbc.systemd_property_directive_overlap` is the authority on this question and its ruling is
+// that `SystemdUnitProperty` is the SHOW SURFACE: it mixes settable knobs with observations the
+// manager computes, so a directive type that admitted any member would make `MemoryCurrent=`,
+// `ActiveState=` and `MainPID=` writable into a unit file -- reuse bought by making an invalid state
+// representable. What closes that is not a check and not a narrower field type: it is that the only
+// constructors in existence are the mints below, and `sole_constructor` refuses a record literal
+// from any other module. `MemoryCurrent=` has no spelling because nothing produces it.
+//
+// SCOPE OF THAT GUARANTEE, DECLARED RATHER THAN INHERITED (DESIGN section 4b). `sole_constructor`
+// confines cross-module construction on the source-to-`.dag` acceptance path, and DESIGN records by
+// execution that an emitted Rust mirror of such a type is silently forgeable
+// (`extdeps.uri` `UriValidatedScalar`). This record is constructed and rendered entirely inside the
+// `.dag` pipeline -- it is never deserialized, and nothing on the emitted side reconstructs one --
+// so the mint is sufficient FOR THE PATH IT TRAVELS. If a directive ever arrives from outside that
+// path, this paragraph is the notice that the invariant needs a fresh answer rather than an
+// inherited one. Same-module construction also remains possible by design; the confinement is about
+// who else may write the pairing, not about the declaring module disciplining itself.
+//
+// THEY ARE STILL DELIBERATELY NOT SHARED WITH [Service], even though systemd.resource-control
+// permits these directives in either section. That is this module's established reading, stated at
+// `SystemdUnitDirective`: one directive type per section, so a misplaced directive has no
+// representation. The record is `SystemdSliceDirective` and not a shared resource-control type for
+// exactly that reason -- sharing one across both sections would buy a little reuse and sell the
+// property the whole module is built on.
+type SystemdSliceDirective sole_constructor {
+  property: SystemdUnitProperty
+  value: SystemdDirectiveValue
+}
+
+// THE WRITE-SIDE VALUE, AND IT IS ITS OWN TYPE RATHER THAN THE READ-SIDE ONE.
+//
+// `extdeps.systemd` `SystemdCgroupMemoryLimit` looks like it fits -- bytes, unbounded, absent -- and
+// reusing it would be the same defect as grounding on the show surface, one level down: its third
+// arm exists because a `systemctl show` READBACK can be a string this repository cannot parse, and a
+// value that cannot be parsed is not a value a unit file may assign. The read-side type stays the
+// wider one and the write side gets these arms.
+//
+// `DirectiveUnlimited` renders systemd's own sentinel. It is a variant rather than a magic magnitude
+// because "no ceiling" is not a large number: a consumer comparing a declared ceiling against an
+// observed one must not have to decide which integer means absent.
+//
+// WHAT IS DELIBERATELY NOT MODELED, and it is a residue rather than a closed set left open.
+// systemd.resource-control(5) also admits a K/M/G/T-suffixed byte count and a percentage of
+// installed memory for the memory limits, and a percentage for `TasksMax=`. No producer in this
+// repository emits either form, so arms for them would be constructors with no consumer -- and the
+// suffixed form in particular is a spelling of the same magnitude this type already carries, which
+// is a rendering choice rather than a distinct value. `gunbc.systemd_directive_value_grain` carries
+// the standing obligation for the percentage form, which is the one that genuinely cannot be
+// expressed here.
+// A COUNT AND A WEIGHT ARE TWO ARMS AND NOT ONE `Int`, even though they render identically today.
+// `TasksMax=` is a cardinal -- how many processes -- and `CPUWeight=` is a relative share against
+// every sibling cgroup, an amount of nothing on its own. Fusing them into one integer arm would put
+// that difference into position, which is the same move this module refuses for `RestartSec=` versus
+// `TimeoutStopSec=` above; and the two ranges are unrelated, so a bound modeled later narrows one
+// arm rather than needing to be told which meaning it is narrowing.
+// `CPUQuota=` IS THE PERCENTAGE FORM gunbc.systemd_directive_value_grain FILED AS LATENT, AND
+// DirectiveCpuTime IS WHAT MAKES IT LIVE. That filing said the loss "becomes live the first time a
+// producer wants a percentage", and named the obstacle: a percentage is "a fraction of a host figure
+// this repository does not hold".
+//
+// THAT OBSTACLE DOES NOT APPLY ON THIS AXIS, which is why the arm is a thread count rather than the
+// general percentage arm the filing anticipated. `MemoryMax=50%` is a fraction of installed memory --
+// a host figure. `CPUQuota=` is denominated in CPU TIME PER WALL SECOND, where 100% is one CPU by
+// definition and not a share of the machine, so the quantity is a MULTIPLE OF A UNIT this repository
+// already carries as HardwareThreadCount. Six threads is 600%, and it means the same six threads on a
+// 128-core host as on an 8-core one.
+//
+// So the arm is DirectiveCpuTime and not DirectivePercentage: a general percentage arm would also
+// admit `MemoryMax=50%`, which is still a fraction of a figure nothing here holds, and would make that
+// unwritable state writable again to buy reuse. The memory half of the filing stays open and keeps its
+// own trigger.
+//
+// There is deliberately no `slice_cpu_quota` mint beside slice_cpu_weight. One was written and
+// deleted unused (review 57699): the live CPU-quota producer is gunbc.host_converge
+// runner_cpu_boundary_knobs, which reaches the property-generic PerSlotMemoryCap target directly, so
+// a slice-directive mint would have been set-completion with no caller -- the residue DESIGN 6 names.
+// It costs one line to add when a slice-directive consumer exists.
+type SystemdDirectiveValue
+  = DirectiveByteCount { bytes: ByteSize }
+  | DirectiveCardinal { count: Int }
+  | DirectiveWeight { weight: Int }
+  | DirectiveCpuTime { threads: HardwareThreadCount }
+  | DirectiveUnlimited
+
+fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
+  match value {
+    DirectiveByteCount { bytes: b } => to_string(byte_size_count(b: b))
+    DirectiveCardinal { count: n } => to_string(n)
+    DirectiveWeight { weight: w } => to_string(w)
+    DirectiveCpuTime { threads: t } => join([to_string(hardware_thread_count_value(t: t) * 100), "%"], "")
+    DirectiveUnlimited => systemd_directive_unlimited_wire
+  }
+}
+
+// systemd's sentinel for "no limit", spelled once. `max` is the cgroup v2 kernel interface's word;
+// `infinity` is systemd's, and a unit file is read by systemd rather than by the kernel.
+data systemd_directive_unlimited_wire: String = "infinity"
+
+// THE MINTS, WHICH ARE THE WHOLE ADMISSION SURFACE.
+//
+// One per (knob, value-shape) pair systemd admits, so a caller states which knob it means and hands
+// over a magnitude of the right kind -- and cannot state a knob systemd would reject, nor pair a
+// byte count with a task ceiling. `CPUWeight=` has no unlimited mint because systemd defines no
+// such value for it: the asymmetry is the model rather than an omission.
+fn slice_memory_max(bytes: ByteSize) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryMax, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn slice_memory_max_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryMax, value: DirectiveUnlimited }
+}
+
+fn slice_memory_high(bytes: ByteSize) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryHigh, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn slice_memory_high_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryHigh, value: DirectiveUnlimited }
+}
+
+fn slice_memory_swap_max(bytes: ByteSize) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemorySwapMax, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn slice_memory_swap_max_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemorySwapMax, value: DirectiveUnlimited }
+}
+
+// `TasksMax=` IS A CARDINAL AND NOT A MAGNITUDE THIS REPOSITORY HAS A CARRIER FOR. `extdeps.systemd`
+// already declares that gap against its own read-side parse (feature:task-count-measure-carrier),
+// and inventing a `TaskCount` here to avoid a bare `Int` would mint the concept in the consumer
+// rather than beside the parse that needs it too. So the `Int` is the same honest grain the read
+// side carries, and it moves when that carrier lands.
+fn slice_tasks_max(count: Int) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: TasksMax, value: DirectiveCardinal { count: count } }
+}
+
+fn slice_tasks_max_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: TasksMax, value: DirectiveUnlimited }
+}
+
+// `CPUWeight=` is a relative share over 1..10000, not an amount of anything -- a bound this mint
+// does not narrow, which is a range left unmodeled and not a value set left open, exactly as
+// `ServiceNice`'s -20..19 above.
+fn slice_cpu_weight(weight: Int) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: CPUWeight, value: DirectiveWeight { weight: weight } }
+}
+
+// The directive names are systemd's, spelled once here. A consumer never writes the literal
+// "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.
+
+fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
+  match directive {
+    Description { text: v } => join(["Description=", v as String], "")
+    After { target: v } => join(["After=", v as String], "")
+    Before { target: v } => join(["Before=", v as String], "")
+    Wants { target: v } => join(["Wants=", v as String], "")
+    Requires { target: v } => join(["Requires=", v as String], "")
+    StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
+  }
+}
+
+fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String {
+  match directive {
+    ServiceType { mode: v } => join(["Type=", v as String], "")
+    ExecStart { command: v } => join(["ExecStart=", v as String], "")
+    Restart { policy: v } => join(["Restart=", v as String], "")
+    Environment { assignment: v } => join(["Environment=", v as String], "")
+    EnvironmentFile { path: v } => join(["EnvironmentFile=", v as String], "")
+    EnvironmentFileIfPresent { path: v } => join(["EnvironmentFile=-", v as String], "")
+    WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
+    ServiceUser { name: v } => join(["User=", v as String], "")
+    ServiceGroup { name: v } => join(["Group=", v as String], "")
+    ServiceSlice { name: v } => join(["Slice=", v as String], "")
+    ServiceNice { priority: v } => join(["Nice=", to_string(v)], "")
+    ServiceIoSchedulingClass { scheduling_class: v } =>
+      join(["IOSchedulingClass=", systemd_io_scheduling_class_wire(scheduling_class: v)], "")
+    TimeoutStartSec { duration: v } => join(["TimeoutStartSec=", v as String], "")
+    ServiceExitType { exit_type: v } => join(["ExitType=", systemd_exit_type_wire(exit_type: v)], "")
+    ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
+    RestartSec { duration: v } => join(["RestartSec=", v as String], "")
+    TimeoutStopSec { duration: v } => join(["TimeoutStopSec=", v as String], "")
+  }
+}
+
+// `Persistent=` takes systemd's boolean literal, so the Bool is rendered here rather than carried as
+// a string by the consumer: a modeled Bool cannot be spelled `yes`, `1`, or `True` at a call site,
+// and systemd accepts only its own spelling.
+fn systemd_timer_directive_line(directive: SystemdTimerDirective) -> String {
+  match directive {
+    TimerUnit { target: v } => join(["Unit=", v as String], "")
+    OnCalendar { expression: v } => join(["OnCalendar=", v as String], "")
+    OnBootSec { duration: v } => join(["OnBootSec=", v as String], "")
+    OnUnitInactiveSec { duration: v } => join(["OnUnitInactiveSec=", v as String], "")
+    AccuracySec { duration: v } => join(["AccuracySec=", v as String], "")
+    RandomizedDelaySec { duration: v } => join(["RandomizedDelaySec=", v as String], "")
+    Persistent { enabled: v } => if v { "Persistent=true" } else { "Persistent=false" }
+  }
+}
+
+// THE LINE HAS NO MATCH LEFT TO GET WRONG. Both halves come from an authority: the knob name from
+// `systemd_unit_property_wire` and the value from `systemd_directive_value_wire`, so a fifth knob is
+// a mint above and no edit here.
+fn systemd_slice_directive_line(directive: SystemdSliceDirective) -> String {
+  join([
+    systemd_unit_property_wire(property: directive.property) as String,
+    "=",
+    systemd_directive_value_wire(value: directive.value),
+  ], "")
+}
+
+fn systemd_install_directive_line(directive: SystemdInstallDirective) -> String {
+  match directive {
+    WantedBy { target: v } => join(["WantedBy=", v as String], "")
+    RequiredBy { target: v } => join(["RequiredBy=", v as String], "")
+  }
+}
+
+// A UNIT FILE IS ITS TYPE, AND ITS TYPE DECIDES WHICH SECTIONS EXIST.
+//
+// The previous shape was one record of three mandatory lists, which was right for the single
+// consumer it was written for and wrong for every other unit systemd defines. A `.timer` file has
+// `[Timer]` and no `[Service]`; systemd refuses to load one carrying the wrong section. Modeling the
+// file as a record forced every unit to have a `[Service]`, so a timer could only be rendered by
+// emitting a section its own unit type forbids -- which meant the shared model was not a safe
+// destination for the three hand-rendering consumers, and rendering a timer through it would have
+// produced a file the host rejects.
+//
+// A coproduct over the unit TYPE puts that class at the top of the §4b ladder: `[Service]` in a
+// timer has no constructor. Section order and section membership both stop being things a renderer
+// has to get right, because neither is expressible any other way. A new unit type (`.slice`,
+// `.socket`, `.path`) is one more variant and one more arm -- the same §2-horizontal row the
+// directive vocabulary above is built from.
+
+// WHETHER A UNIT IS INSTALLABLE IS A FACT ABOUT THE UNIT, NOT AN EMPTY LIST.
+//
+// Three of the units this module now renders are started by their own timer and are never enabled,
+// so they carry no `[Install]` section at all -- not an `[Install]` with nothing under it. An empty
+// list cannot say which of those two a unit is, and the difference is observable in the bytes.
+// Naming it makes the distinction explicit at the construction site: a consumer states that a unit
+// is activated by something else, rather than leaving a list empty and hoping the renderer agrees
+// about what that meant.
+type SystemdInstallSection
+  = NotInstallable
+  | Installable { directives: List<SystemdInstallDirective> }
+
+type SystemdUnitFile
+  = ServiceUnitFile {
+      unit: List<SystemdUnitDirective>,
+      service: List<SystemdServiceDirective>,
+      install: SystemdInstallSection,
+    }
+  | TimerUnitFile {
+      unit: List<SystemdUnitDirective>,
+      timer: List<SystemdTimerDirective>,
+      install: SystemdInstallSection,
+    }
+  | SliceUnitFile {
+      unit: List<SystemdUnitDirective>,
+      slice: List<SystemdSliceDirective>,
+      install: SystemdInstallSection,
+    }
+
+// THE INSTANCE SPECIFIER IS systemd's, SO IT IS SPELLED HERE AND NOWHERE ELSE.
+//
+// A template unit (`foo@.service`) is written once and instantiated per name, and `%i` is what
+// stands for the instance inside it. That is systemd.unit(5) grammar, not a convention a consumer
+// invents, so a product module writing `"%i"` into an `ExecStart=` or a `WorkingDirectory=` would be
+// spelling systemd syntax outside the module that owns it -- the same §3 fork this file exists to
+// close for directive names.
+data systemd_instance_name_specifier: String = "%i"
+
+data systemd_unit_section_header: String = "[Unit]"
+
+data systemd_service_section_header: String = "[Service]"
+
+data systemd_timer_section_header: String = "[Timer]"
+
+data systemd_slice_section_header: String = "[Slice]"
+
+data systemd_install_section_header: String = "[Install]"
+
+fn systemd_install_section_block(section: SystemdInstallSection) -> List<List<String>> {
+  match section {
+    NotInstallable => []
+    Installable { directives: ds } => [
+      concat(
+        [systemd_install_section_header],
+        map(ds, d => systemd_install_directive_line(directive: d)),
+      ),
+    ]
+  }
+}
+
+// SECTIONS ARE SEPARATED BY A BLANK LINE, which is systemd's own convention in every unit it ships
+// and the form every unit currently live on the fleet already has. An earlier revision of this
+// serializer emitted none, because its one consumer had never been written to a host and so nothing
+// had ever compared its bytes against a real file. Adopting the conventional form here is what lets
+// the hand-rendering consumers migrate onto this module byte-for-byte instead of each keeping its
+// own renderer to preserve its own spacing -- which is how one format acquires four authorities.
+//
+// The trailing blank entry after the LAST section is what produces the terminating newline, so the
+// two facts have one mechanism rather than a separate append: systemd's parser is line-oriented and
+// a final directive without a newline is the classic silently-truncated last line. Because an
+// already-delivered unit is observed by comparing bytes against exactly this output, both the
+// separators and the terminator are load-bearing for convergence, not cosmetic.
+fn systemd_section_lines(sections: List<List<String>>) -> List<String> {
+  fold(sections, init: [], f: (acc, section) => concat(acc, concat(section, [""])))
+}
+
+fn systemd_sections_text(sections: List<List<String>>) -> String {
+  join(systemd_section_lines(sections: sections), "\n")
+}
+
+// THE LINE VIEW AND THE BYTES ARE ONE ASSEMBLY READ AT TWO GRAINS, NOT TWO RENDERERS.
+//
+// Consumers exist that want to ask whether a unit declares a particular directive without comparing
+// whole files, and before this projection existed the only way to get one was to keep a second
+// hand-rolled renderer producing `List<String>` -- which is precisely how a product module becomes a
+// second systemd authority. So the section assembly is named once and `serialize_systemd_unit_file`
+// is defined as its join: a directive cannot appear in the line view and not in the bytes, or render
+// one way in one and another way in the other, because there is only one place either could come
+// from.
+fn systemd_unit_file_lines(file: SystemdUnitFile) -> List<String> {
+  match file {
+    ServiceUnitFile { unit: u, service: sv, install: inst } =>
+      systemd_section_lines(
+        sections: concat(
+          [
+            concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
+            concat([systemd_service_section_header], map(sv, d => systemd_service_directive_line(directive: d))),
+          ],
+          systemd_install_section_block(section: inst),
+        ),
+      )
+    TimerUnitFile { unit: u, timer: tm, install: inst } =>
+      systemd_section_lines(
+        sections: concat(
+          [
+            concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
+            concat([systemd_timer_section_header], map(tm, d => systemd_timer_directive_line(directive: d))),
+          ],
+          systemd_install_section_block(section: inst),
+        ),
+      )
+    SliceUnitFile { unit: u, slice: sl, install: inst } =>
+      systemd_section_lines(
+        sections: concat(
+          [
+            concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
+            concat([systemd_slice_section_header], map(sl, d => systemd_slice_directive_line(directive: d))),
+          ],
+          systemd_install_section_block(section: inst),
+        ),
+      )
+  }
+}
+
+fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
+  join(systemd_unit_file_lines(file: file), "\n")
+}
+
+// A DROP-IN IS A FRAGMENT, NOT A UNIT, AND CONFLATING THE TWO WOULD BREAK THE COPRODUCT ABOVE.
+//
+// systemd.unit(5) specifies drop-in files under <unit>.d/: they carry any SUBSET of the sections a
+// unit file may carry, and they are merged over an existing unit rather than loaded as one. That is
+// why a drop-in cannot be a `SystemdUnitFile` arm. `SystemdUnitFile` is a coproduct over the unit
+// TYPE, and its whole guarantee is that the type decides which sections exist -- a `.service` has a
+// [Service], a `.slice` has a [Slice]. A fragment has no unit type at all, so admitting one as an arm
+// would mean adding a variant for which that guarantee is vacuously true, and the next reader would
+// reasonably conclude the guarantee had loosened for every other arm too.
+//
+// THE SECTION LIST IS WHAT MAKES "SUBSET" REPRESENTABLE, and it is why this is not a record of
+// optional sections. A drop-in that carries only [Service] and one that carries an EMPTY [Service]
+// are different artifacts -- the first says nothing about the section, the second emits a header --
+// and a record of lists cannot tell them apart, exactly as `SystemdInstallSection` above exists
+// because an empty list could not say whether a unit was installable. Absence here is absence from
+// the list; presence with nothing under it stays writable and stays distinct.
+//
+// The known-fragment kinds are enumerated rather than left open for the same reason the directive
+// vocabulary is: an unmodeled section should read as "not modeled yet", which is what adding an arm
+// fixes, rather than as a string a consumer may spell freely.
+type SystemdDropInSection
+  = DropInUnitSection { directives: List<SystemdUnitDirective> }
+  | DropInServiceSection { directives: List<SystemdServiceDirective> }
+
+type SystemdDropIn {
+  sections: List<SystemdDropInSection>
+}
+
+fn systemd_drop_in_section_block(section: SystemdDropInSection) -> List<String> {
+  match section {
+    DropInUnitSection { directives: ds } =>
+      concat([systemd_unit_section_header], map(ds, d => systemd_unit_directive_line(directive: d)))
+    DropInServiceSection { directives: ds } =>
+      concat([systemd_service_section_header], map(ds, d => systemd_service_directive_line(directive: d)))
+  }
+}
+
+// A drop-in serializes through the same section machinery as a whole unit -- same headers, same blank
+// separator, same terminating newline -- because systemd's parser is the same parser. Rendering a
+// fragment by a second route would be exactly the divergence this module exists to prevent, one
+// nesting level down.
+fn systemd_drop_in_lines(drop_in: SystemdDropIn) -> List<String> {
+  systemd_section_lines(
+    sections: map(drop_in.sections, sec => systemd_drop_in_section_block(section: sec)),
+  )
+}
+
+fn serialize_systemd_drop_in(drop_in: SystemdDropIn) -> String {
+  join(systemd_drop_in_lines(drop_in: drop_in), "\n")
+}

@@ -1,18 +1,5 @@
 module v2.lens.host_language_transport_script
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
 
-import std.lens_verdict {
-  Holds,
-  LensVerdict,
-  LensVerdictDiagnostic,
-  ModuleWholeFile,
-  Violation,
-}
-import v2.std.algebra { fold_list, is_empty, length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 type TransportScriptArgShape
   = ComputedApplication
@@ -93,20 +80,23 @@ fn transport_script_lens_verdict(
   if transport_script_literal_ban_holds(facts: facts) {
     Holds
   } else {
-    Violation {
-      diagnostic: LensVerdictDiagnostic {
-        reason: "transport_script_literal_blob_in_script_position",
-        at: ModuleWholeFile { module_name: "v2.lens.host_language_transport_script" }
-      }
-    }
+    lens_verdict_module_violation(
+      reason: ^transport_script_literal_blob_in_script_position,
+      module_name: "v2.lens.host_language_transport_script"
+    )
   }
 }
 
 fn transport_script_live_literal_violation_count_for_path(path: String) -> Int {
-  transport_script_literal_violation_count_for_path(path: path)
+  transport_script_literal_violation_count(
+    facts: transport_script_position_facts_for_path(path: path)
+  )
+}
+
+fn transport_script_position_facts_live(path: String) -> List<TransportScriptPositionFact> {
+  transport_script_position_facts_for_path(path: path)
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "A compile-time-known literal in script: position is a decidable shape read; an interim structural guard until emit(intent, Bash) makes the literal unrepresentable there by construction. Grounding authority: emit(intent, Bash) -- the bash-as-target terminal (warm-badger-46 arc). Dissolves on: raw String literals become unrepresentable in shell.Exec.Run script: position once emit(intent, Bash) owns shell construction"
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

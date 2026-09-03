@@ -1,0 +1,53 @@
+module extdeps.unicode.display
+
+import extdeps.unicode.blocks { zero_width_blocks, zero_width_codepoints, wide_blocks }
+import std.unicode.types {
+  DisplayWidth,
+  UnicodeBlock,
+  display_width_columns,
+  in_block,
+  ZeroWidth,
+  Narrow,
+  Wide,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.unicode.org/reports/tr11/"
+  }
+}
+
+fn char_display_width(c: Char) -> DisplayWidth {
+  let cp = c
+  let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
+  if is_zero_width { return ZeroWidth }
+  if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }
+  return Narrow
+}
+
+fn char_width(c: Char) -> Int {
+  display_width_columns(w: char_display_width(c: c))
+}
+
+fn string_display_width(s: String) -> Int {
+  let char_list = chars(s)
+  let widths = char_list |> map(c => char_width(c: c))
+  widths |> fold(init: 0, f: fn(acc, w) { acc + w })
+}
+
+fn truncate_text(text: String, max_width: Int) -> String {
+  let char_list = chars(text)
+  let state = fold(char_list,
+    init: { result: "", used: 0 },
+    f: (acc, c) => if acc.used + char_width(c: c) > max_width {
+      acc
+    } else {
+      { result: concat(acc.result, from_code_point(c)), used: acc.used + char_width(c: c) }
+    }
+  )
+  state.result
+}

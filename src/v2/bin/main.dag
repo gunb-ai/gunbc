@@ -1,3 +1,0 @@
-module v2.bin.main
-
-data main_rs_trampoline_authority: String = "include!(\"v2_main_generated.rs\");"

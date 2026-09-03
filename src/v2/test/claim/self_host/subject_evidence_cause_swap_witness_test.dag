@@ -1,0 +1,122 @@
+module v2.test.claim.self_host.subject_evidence_cause_swap_witness_test
+
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  invariant_port_locus
+}
+import v2.std.verdict {
+  BuildFailed,
+  Deferred,
+  Pass,
+  RunFailed,
+  SemanticMismatch,
+  Verdict,
+  verdict_build_failed,
+  verdict_establishes_divergence,
+  verdict_establishes_equivalence,
+  verdict_produced_a_comparison,
+  verdict_run_failed,
+  verdict_semantic_mismatch
+}
+import v2.std.collection { Absent }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CAUSE-SWAP CONTROL for the Verdict projection in v2.std.verdict. Its sibling — the control
+// over the fault-detection conjunct in tools.self_host_curated_seed_linked_harness — is
+// deliberately NOT here: an operator ruling re-sequenced that repair into the wet-execution
+// transaction that gives it an executing consumer, so it lands there or not at all. This control
+// enforces one rule: an evidence standing may establish a proposition only when EVERY execution
+// path constructing it proves the subject reached the relevant phase and entails the proposition.
+// Here the violation was OUTCOME COLLAPSE, not predicate aliasing — a coproduct with distinct
+// causes folded to one Bool, its tell a discarded payload on a non-pass arm. The arms below hold
+// the OLD fold's answer CONSTANT, vary the cause underneath, and require the new carrier to
+// distinguish what the Bool could not.
+
+fn sample_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^subject_evidence_cause_swap_surface, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sample_rejected() -> Outcome<String> {
+  Rejected { diagnostics: diagnostics_singleton(d: sample_diagnostic(reason: ^cause_swap_probe)) }
+}
+
+fn divergence_verdict() -> Verdict<String, String> {
+  verdict_semantic_mismatch(actual: sample_rejected(), falsification: Absent)
+}
+
+fn build_failure_verdict() -> Verdict<String, String> {
+  verdict_build_failed(
+    actual: sample_rejected(),
+    diagnostic: sample_diagnostic(reason: ^cause_swap_build_failed)
+  )
+}
+
+fn run_failure_verdict() -> Verdict<String, String> {
+  verdict_run_failed(
+    actual: sample_rejected(),
+    diagnostic: sample_diagnostic(reason: ^cause_swap_run_failed)
+  )
+}
+
+// THE OLD FOLD, RESTATED EXECUTABLY so the control proves rather than asserts that the two causes
+// were indistinguishable to it. Every non-pass arm answered false with its payload discarded.
+fn old_is_pass_fold(v: Verdict<String, String>) -> Bool {
+  match v {
+    Pass => true
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+test fn cause_swap_old_fold_cannot_tell_divergence_from_build_failure() -> Bool {
+  old_is_pass_fold(v: divergence_verdict()) == old_is_pass_fold(v: build_failure_verdict())
+    && old_is_pass_fold(v: divergence_verdict()) == old_is_pass_fold(v: run_failure_verdict())
+}
+
+// THE LOAD-BEARING ARM. Same false from the old fold on both causes; the new carrier separates
+// them. A comparison that RAN and disagreed produced a verdict; a build that failed produced none.
+test fn cause_swap_new_carrier_separates_divergence_from_build_failure() -> Bool {
+  verdict_produced_a_comparison(v: divergence_verdict())
+    && !verdict_produced_a_comparison(v: build_failure_verdict())
+    && !verdict_produced_a_comparison(v: run_failure_verdict())
+}
+
+// A HOST FAILURE MUST NOT ESTABLISH DIVERGENCE — the arm that matters for every discriminating red
+// in the migrated family: those probes assert "the wrong fixture was refused", and a build failure
+// must never satisfy that claim.
+test fn cause_swap_build_failure_does_not_establish_divergence() -> Bool {
+  verdict_establishes_divergence(v: divergence_verdict())
+    && !verdict_establishes_divergence(v: build_failure_verdict())
+    && !verdict_establishes_divergence(v: run_failure_verdict())
+}
+
+// AND MUST NOT ESTABLISH EQUIVALENCE EITHER. Both claims are refused by a no-verdict standing,
+// which makes the standing a standing rather than a third truth value smuggled into a Bool.
+test fn cause_swap_build_failure_does_not_establish_equivalence() -> Bool {
+  verdict_establishes_equivalence(v: Pass)
+    && !verdict_establishes_equivalence(v: build_failure_verdict())
+    && !verdict_establishes_equivalence(v: divergence_verdict())
+}
+
+// THE TWO CLAIMS ARE NOT COMPLEMENTS, and this arm pins that they never become so. Under the old
+// fold `!is_pass` was a tempting spelling of "diverged"; every no-verdict cause satisfies it.
+test fn cause_swap_not_equivalent_is_not_the_same_as_divergent() -> Bool {
+  !verdict_establishes_equivalence(v: build_failure_verdict())
+    && !verdict_establishes_divergence(v: build_failure_verdict())
+}

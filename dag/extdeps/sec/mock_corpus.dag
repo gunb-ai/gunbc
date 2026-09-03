@@ -1,0 +1,22 @@
+module extdeps.sec.mock_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+
+data sec_edgar_mock_case_get_company_facts: PublishedMockCase = PublishedMockCase {
+  operation_key: "sec.Edgar.GetCompanyFacts",
+  service: "sec.Edgar",
+  operation: "GetCompanyFacts",
+  case_id: 0
+}
+
+data sec_edgar_mock_case_get_company_concept: PublishedMockCase = PublishedMockCase {
+  operation_key: "sec.Edgar.GetCompanyConcept",
+  service: "sec.Edgar",
+  operation: "GetCompanyConcept",
+  case_id: 0
+}
+
+data sec_edgar_published_mock_corpus: List<PublishedMockCase> = [
+  sec_edgar_mock_case_get_company_facts,
+  sec_edgar_mock_case_get_company_concept
+]

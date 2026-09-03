@@ -1,0 +1,1090 @@
+module gunbc.observation_ci_render
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.measure {
+  Nanosecond,
+  Millisecond,
+  ByteSize,
+  BasisPoint,
+  nanosecond,
+  nanosecond_count,
+  nanoseconds_per_millisecond,
+  nanosecond_to_millisecond_floor,
+  millisecond,
+  millisecond_count,
+  byte_size,
+  byte_size_count,
+  basis_point,
+  basis_point_count,
+  gibibyte_scale_factor_bytes,
+  milliseconds_per_second,
+  seconds_per_minute,
+}
+import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusTimedOut, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
+import std.disposition { Disposition, Terminal }
+import gunbc.witness_row_cost {
+  SharedFillPayer,
+  SharedFillDisposition,
+  shared_fill_disposition,
+  shared_fill_disposition_tag,
+  shared_fill_payer_tag,
+}
+import extdeps.render.glyphs { resolve_symbol }
+import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.observation {
+  ClassDone,
+  ClassFailed,
+  ObservationSubject,
+  ObservationSegment,
+  RunSegment,
+  BatchSegment,
+  EntrySegment,
+  ModuleSegment,
+  DeclarationSegment,
+  PhaseSegment,
+  observation_subject_render,
+  observation_subject_contains,
+  observation_declaration_key,
+  Measured,
+  MeasuredValue,
+  MeasuredUnavailable,
+  ObservationEvent,
+  ObservationOutcome,
+  Done,
+  Refused,
+  Failed,
+  TimedOut,
+  Skipped,
+  Final,
+  ObservationTransition,
+  Begin,
+  Step,
+  Concluded,
+  ObservationEventClass,
+  ClassRefused,
+  ClassBlocked,
+  ClassDwellEscalation,
+  observation_event_class,
+  observation_presentation,
+  observation_class_density,
+  ObservationGrain,
+  BatchGrain,
+  observation_subject_prefix_at_grain,
+  ObservationRollup,
+  ObservationCounts,
+  ObservationDensity,
+  RoutineCollapsible,
+  SummaryAlwaysShown,
+  AnomalyExpanded,
+  observation_class_is_intrinsic_anomaly,
+  AttentionLevel,
+  Ambient,
+  Notable,
+  Anomaly,
+  AttentionBasis,
+  observation_attention,
+  DwellThreshold,
+  observation_dwell_threshold,
+  observation_escalation_depth,
+  observation_escalation_subject,
+  SchedulerHold,
+  PsiPressure,
+  CurrentHighWater,
+  observation_hold_resource,
+  ContendedResource,
+  MemoryBudget,
+  AdmissionWindow,
+  MaturationReserve,
+  observation_wall,
+  clock_basis_label,
+}
+
+// P1 of the progress-and-observation lane: the CI-log renderer, built first because the CI log is
+// where the pain lives. Append-only, no repaint — a GitHub Actions log cannot be redrawn, so every
+// line is final when written. This module PROJECTS the std.observation event vocabulary into lines;
+// it computes no facts of its own and holds no telemetry source. Every number it prints arrives in
+// an event or a heartbeat sample that the process already had (law 5), which is why the flagship
+// acceptance can replay a captured run: the renderer is a pure function of the stream.
+
+// Tone contract (operator, 2026-07-24). Arm's-length lines are plain sentences a human reads
+// without decoding — not dense key-equals-value chains, which belong in receipt boxes and files.
+// Magnitudes are in human units: gibibytes, minutes, percent. The named negative example is the
+// floor memory heartbeat's current shape, sixty-plus context-free byte dumps an hour, each carrying
+// a raw current=16106717184 and no subject at all; that line is what the operator watched for ten
+// minutes while a single module typechecked, and it is the exact shape this renderer must not
+// reproduce.
+
+// The scale factors are CONSUMED from std.measure, never respelled here. A renderer carrying its own copy of how many bytes are in a gibibyte is a second unit authority hiding inside a formatting helper, and the fork is easy to miss precisely because it looks like arithmetic rather than modelling.
+data ci_one_decimal: Nat = 10
+
+fn ci_gibibyte_tenths(b: ByteSize) -> Nat {
+  (byte_size_count(b) * ci_one_decimal) / gibibyte_scale_factor_bytes()
+}
+
+fn ci_milliseconds_per_minute() -> Nat {
+  milliseconds_per_second() * seconds_per_minute()
+}
+
+data ci_minute_switch_seconds: Nat = 90
+
+// Where the sentence form switches from seconds to minutes is a DISPLAY policy, not a unit: ninety seconds reads better as ninety seconds than as one minute. It is named rather than buried as a literal so it stays visible as the judgement it is, distinct from the scale factors above, which are facts.
+fn ci_tenths_text(tenths: Nat) -> String {
+  concat(to_string(tenths / 10), concat(".", to_string(tenths % 10)))
+}
+
+fn ci_human_bytes(b: ByteSize) -> String {
+  concat(ci_tenths_text(tenths: ci_gibibyte_tenths(b: b)), " GiB")
+}
+
+fn ci_human_percent(bp: BasisPoint) -> String {
+  concat(ci_tenths_text(tenths: basis_point_count(bp: bp) / 10), "%")
+}
+
+fn ci_human_duration(d: Millisecond) -> String {
+  let ms = millisecond_count(m: d)
+  if ms < milliseconds_per_second() {
+    concat(to_string(ms), "ms")
+  } else if ms < (ci_minute_switch_seconds * milliseconds_per_second()) {
+    concat(to_string(ms / milliseconds_per_second()), " seconds")
+  } else {
+    concat(to_string(ms / ci_milliseconds_per_minute()), " minutes")
+  }
+}
+
+fn ci_human_elapsed(d: Nanosecond) -> String {
+  let ns = nanosecond_count(n: d)
+  if ns < nanoseconds_per_millisecond() {
+    concat(to_string(ns), "ns")
+  } else {
+    ci_human_duration(d: nanosecond_to_millisecond_floor(n: d))
+  }
+}
+
+// A second duration projection beside gunbc.ci_render.format_duration is deliberate and is not a
+// fork: that one is the COMPACT technical form for receipt boxes and timing tables (230ms, 41s),
+// this one is the SENTENCE form for arm's-length prose (10 minutes). Same fact, two surfaces,
+// chosen by the tone contract rather than by taste. If a third caller wants a third spelling, that
+// is the signal to unify them behind one carrier with a declared style axis rather than to add a
+// fourth.
+
+// ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
+fn ci_measured_bytes_text(m: Measured<ByteSize>) -> String {
+  match m {
+    MeasuredValue { value: b } => ci_human_bytes(b: b)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
+}
+
+// The elapsed counterpart of ci_measured_bytes_text, and it keeps the same discipline: an
+// unavailable reading prints its CAUSE rather than a zero, because a batch that reports 0s is
+// indistinguishable from one that finished instantly.
+fn ci_measured_elapsed_text(m: Measured<Nanosecond>) -> String {
+  match m {
+    MeasuredValue { value: d } => ci_human_elapsed(d: d)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
+}
+
+fn ci_measured_percent_text(m: Measured<BasisPoint>) -> String {
+  match m {
+    MeasuredValue { value: bp } => ci_human_percent(bp: bp)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
+}
+
+fn ci_glyph(id: SymbolId, tier: Tier) -> String {
+  match resolve_symbol(id: id, tier: tier) {
+    Present { value: g } => g
+    Absent => "?"
+  }
+}
+
+type RenderedLine {
+  glyph: SymbolId
+  text: String
+  attention: AttentionLevel
+}
+
+type LinePlacement
+  = InsideCollapsedGroup
+  | OutsideGroup
+
+// Law 4's asymmetry made structural. Placement is DERIVED from the line's attention, never chosen at the call site, so an anomaly cannot be written into a collapsed group: the group is exactly where a reader will not look, and burying a refusal there is how a stopped line reads as silence. This is the construction that replaces the review instruction not to hide refusals.
+fn ci_line_placement(attention: AttentionLevel) -> LinePlacement {
+  match attention {
+    Ambient => InsideCollapsedGroup
+    Notable => OutsideGroup
+    Anomaly => OutsideGroup
+  }
+}
+
+fn ci_render_line(line: RenderedLine, tier: Tier) -> String {
+  concat(ci_glyph(id: line.glyph, tier: tier), concat(" ", line.text))
+}
+
+fn ci_subject_leaf_text(subject: ObservationSubject) -> String {
+  let a = ci_subject_activity(subject: subject)
+  let detail = ci_subject_detail_text(subject: subject)
+  if detail != "" {
+    detail
+  } else if a.entry != "" {
+    a.entry
+  } else if a.batch != "" {
+    a.batch
+  } else if a.run != "" {
+    concat("run ", a.run)
+  } else {
+    "the run"
+  }
+}
+
+// The deepest MEANINGFUL identity, not literally the last segment. A path ending in a phase segment renders as typecheck v2.compiler.normalized_tree rather than the bare word typecheck, because the phase alone names an activity without naming what it is being done to — which is the same half-answer the captured crawl window gave for ten minutes.
+type ObservationActivity {
+  run: String
+  batch: String
+  entry: String
+  module_path: String
+  declaration: String
+  phase: String
+}
+
+// A subject path carries TWO grains a reader needs at once, and collapsing them loses the one that
+// orients: the coarse phase the run is in (the batch label — witness discovery) and the fine
+// activity inside it (typecheck of a named module, or a declaration-grain witness). A projection
+// that keeps only the deepest segment answers what is happening but not where, and one that keeps
+// only the batch answers where but not what. The heartbeat sentence carries both because the crawl
+// window proved both were missing.
+
+fn ci_subject_activity(subject: ObservationSubject) -> ObservationActivity {
+  fold(
+    subject.segments,
+    init: ObservationActivity { run: "", batch: "", entry: "", module_path: "", declaration: "", phase: "" },
+    f: (acc, seg) =>
+      match seg {
+        RunSegment { id: i } =>
+          ObservationActivity { run: i, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
+        BatchSegment { index: _, label: l } =>
+          ObservationActivity { run: acc.run, batch: l, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
+        EntrySegment { source_path: p } =>
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: p, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
+        ModuleSegment { module_path: m } =>
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: m, declaration: acc.declaration, phase: acc.phase }
+        DeclarationSegment { declaration: d } =>
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: observation_declaration_key(d: d), phase: acc.phase }
+        PhaseSegment { name: n } =>
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: n }
+      }
+  )
+}
+
+fn ci_subject_activity_text(subject: ObservationSubject) -> String {
+  let a = ci_subject_activity(subject: subject)
+  if a.batch != "" {
+    a.batch
+  } else if a.entry != "" {
+    a.entry
+  } else if a.run != "" {
+    concat("run ", a.run)
+  } else {
+    "the run"
+  }
+}
+
+fn ci_subject_detail_text(subject: ObservationSubject) -> String {
+  let a = ci_subject_activity(subject: subject)
+  if a.module_path != "" && a.phase != "" {
+    concat(a.phase, concat(" ", a.module_path))
+  } else if a.declaration != "" {
+    a.declaration
+  } else if a.module_path != "" {
+    a.module_path
+  } else if a.phase != "" {
+    a.phase
+  } else {
+    ""
+  }
+}
+
+fn ci_outcome_text(o: ObservationOutcome) -> String {
+  match o {
+    Done => "done"
+    Refused { diagnostic: d } => concat("refused: ", d)
+    Failed { error: e, output: _ } => concat("failed: ", e)
+    TimedOut { basis: k, budget: b, elapsed: e } =>
+      concat(
+        "timed out after ",
+        concat(
+          ci_human_duration(d: e),
+          concat(
+            " ",
+            concat(
+              clock_basis_label(b: k) as String,
+              concat(" (budget ", concat(ci_human_duration(d: b), concat(" ", concat(clock_basis_label(b: k) as String, ")"))))
+            )
+          )
+        )
+      )
+    Skipped { reason: r } => concat("skipped: ", r)
+    Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
+  }
+}
+
+fn ci_duration_suffix(wall: Measured<Nanosecond>) -> String {
+  match wall {
+    MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
+    MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
+  }
+}
+
+// An unmeasured duration NAMES ITSELF rather than vanishing from the line. Dropping the clause
+// would have been the model own fabrication rule broken by its first renderer:
+// observation_measured_note says an absent measurement never prints a zero and never omits the
+// field, because a silently omitted number reads as a fact that was never in question. A reader who
+// sees no duration assumes nobody timed it; a reader who sees the cause knows why.
+
+// Every outcome line carries its duration. The reference implementation studied for this lane omits them, which is why a reader cannot tell a fast green from a slow one without diffing timestamps by hand — and the slow green is the one that becomes next month's wall.
+fn ci_event_line_at_attention(event: ObservationEvent, attention: AttentionLevel) -> RenderedLine {
+  let presentation = observation_presentation(c: observation_event_class(event: event))
+  let subject = ci_subject_leaf_text(subject: event.subject)
+  match event.transition {
+    Begin =>
+      RenderedLine { glyph: presentation.glyph, text: concat("started ", subject), attention: attention }
+    Step { k: k, n: n } =>
+      RenderedLine {
+        glyph: presentation.glyph,
+        text: concat(subject, concat(": ", concat(to_string(k), concat(" of ", to_string(n))))),
+        attention: attention
+      }
+    Concluded { outcome: o } =>
+      RenderedLine {
+        glyph: presentation.glyph,
+        text: concat(subject, concat(" ", concat(ci_outcome_text(o: o), ci_duration_suffix(wall: observation_wall(event: event))))),
+        attention: attention
+      }
+  }
+}
+
+fn ci_event_line(event: ObservationEvent, basis: AttentionBasis) -> RenderedLine {
+  ci_event_line_at_attention(
+    event: event,
+    attention: observation_attention(event: event, basis: basis)
+  )
+}
+
+type HeartbeatSample {
+  elapsed: Millisecond
+  active: ObservationSubject
+  entry_index: Nat
+  entry_total: Nat
+  rss: Measured<ByteSize>
+  swap: Measured<ByteSize>
+  pressure: Measured<BasisPoint>
+}
+
+// Law 2: the heartbeat carries IDENTITY, not just vitals — and identity comes first in the sentence, vitals last. The ordering is the whole point. A reader scanning a wall of heartbeats needs to know WHAT is running; the memory numbers only matter once they know that. The captured crawl window is the counter-example in the record: sixty heartbeats that named no subject at all while one module typechecked for ten minutes, so the operator could see the process was alive and could not see what it was doing.
+fn ci_heartbeat_line(sample: HeartbeatSample) -> RenderedLine {
+  let detail = ci_subject_detail_text(subject: sample.active)
+  let position = concat(": entry ", concat(to_string(sample.entry_index), concat(" of ", to_string(sample.entry_total))))
+  let identity = concat(
+    "still in ",
+    concat(ci_subject_activity_text(subject: sample.active),
+    concat(position, if detail == "" { "" } else { concat(", now ", detail) }))
+  )
+  let vitals = concat(
+    "memory ", concat(ci_measured_bytes_text(m: sample.rss),
+    concat(", swap ", concat(ci_measured_bytes_text(m: sample.swap),
+    concat(", pressure ", ci_measured_percent_text(m: sample.pressure)))))
+  )
+  RenderedLine {
+    glyph: StatusPulse,
+    text: concat(ci_human_duration(d: sample.elapsed), concat(" in — ", concat(identity, concat(". ", vitals)))),
+    attention: Ambient
+  }
+}
+
+fn ci_hold_cause_text(hold: SchedulerHold) -> String {
+  match hold {
+    PsiPressure { avg10: bp } =>
+      concat("blocked on memory reclaim (pressure ", concat(ci_human_percent(bp: bp), ")"))
+    CurrentHighWater { current: c, high_water: hw } =>
+      concat("blocked on the memory high-water line (", concat(ci_human_bytes(b: c), concat(" of ", concat(ci_human_bytes(b: hw), ")"))))
+    _ => "blocked on scheduler admission"
+  }
+}
+
+// Law 3 rendered: quiet past T names the child, past 2T the grandchild, recursively to the leaf. The escalation APPENDS — it never repaints, because a CI log cannot be redrawn — so the reader watches attention walk down the tree in real time. Depth comes from std.observation, not from a threshold invented here.
+fn ci_escalation_line(quiet_subject: ObservationSubject, active_leaf: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> RenderedLine {
+  let surfaced = observation_escalation_subject(quiet_subject: quiet_subject, active_leaf: active_leaf, quiet: quiet, t: t)
+  RenderedLine {
+    glyph: StatusDwell,
+    text: concat(
+      ci_subject_leaf_text(subject: surfaced),
+      concat(" has been quiet for ", concat(ci_human_duration(d: quiet), " — still working"))
+    ),
+    attention: Notable
+  }
+}
+
+fn ci_escalation_blocked_line(quiet_subject: ObservationSubject, active_leaf: ObservationSubject, quiet: Millisecond, t: DwellThreshold, hold: SchedulerHold) -> RenderedLine {
+  let surfaced = observation_escalation_subject(quiet_subject: quiet_subject, active_leaf: active_leaf, quiet: quiet, t: t)
+  RenderedLine {
+    glyph: StatusBlocked,
+    text: concat(
+      ci_subject_leaf_text(subject: surfaced),
+      concat(" quiet for ", concat(ci_human_duration(d: quiet), concat(" — ", ci_hold_cause_text(hold: hold))))
+    ),
+    attention: Anomaly
+  }
+}
+
+data ci_escalation_exponents: List<Int> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+type EscalationScan {
+  count: Nat
+  threshold: Nat
+}
+
+// The escalation law has two rates and they are not the same number. The REVEAL DEPTH grows linearly — quiet over T — because the tree is walked one level per threshold. The EMISSION POINTS double — T, 2T, 4T, 8T — so a window that stays quiet does not turn into a per-minute drumbeat saying the same thing; each successive line costs twice the silence to earn and carries strictly more information than the last. That is law 4 and law 3 agreeing rather than competing: attention escalates, but the log stays quiet at arm's length. The exponent roster is bounded by construction, so a window that never ends emits a bounded number of lines instead of growing without limit.
+fn ci_escalation_emission_count(quiet: Millisecond, t: DwellThreshold) -> Nat {
+  let q = millisecond_count(m: quiet)
+  let scanned = fold(
+    ci_escalation_exponents,
+    init: EscalationScan { count: 0, threshold: millisecond_count(m: t.period) },
+    f: (acc, k) =>
+      if acc.threshold <= q {
+        EscalationScan { count: acc.count + 1, threshold: acc.threshold * 2 }
+      } else {
+        acc
+      }
+  )
+  scanned.count
+}
+
+// The responsiveness law stated as a predicate the flagship can execute against a real captured
+// window: a subject quiet past T must have produced at least one line naming it. The captured crawl
+// window of run 30044816605 fails this by construction — ten minutes quiet, zero lines — which is
+// what makes it the right acceptance fixture rather than a synthetic one. A planted silent phase
+// reds this predicate; that is the RED control, and it is the same shape as the historical defect.
+
+fn ci_window_is_responsive(quiet: Millisecond, t: DwellThreshold) -> Bool {
+  if millisecond_count(m: quiet) <= millisecond_count(m: t.period) {
+    true
+  } else {
+    ci_escalation_emission_count(quiet: quiet, t: t) > 0
+  }
+}
+
+fn ci_group_open(title: String) -> String {
+  concat(annotation_group_prefix, title)
+}
+
+fn ci_group_close() -> String {
+  annotation_endgroup
+}
+
+fn ci_collapsed_summary(green_count: Nat) -> String {
+  concat("… ", concat(to_string(green_count), " more finished cleanly"))
+}
+
+// Law 4's quiet half: sub-threshold work collapses to a count rather than a line each. The count is a projection of the events that were collapsed, so the summary is true by construction and the reader can always expand the group to see them.
+type FloorRunSummary {
+  entries_complete: Nat
+  entries_total: Nat
+  refusals: Nat
+  failures: Nat
+  wall: Millisecond
+}
+
+fn ci_run_summary_glyph(summary: FloorRunSummary) -> SymbolId {
+  if summary.failures > 0 {
+    NodeFailed
+  } else if summary.refusals > 0 {
+    StatusRefused
+  } else {
+    NodeCompleted
+  }
+}
+
+// The run summary keeps Refused and Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
+fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
+  let problems = summary.refusals + summary.failures
+  RenderedLine {
+    glyph: ci_run_summary_glyph(summary: summary),
+    text: concat(
+      to_string(summary.entries_complete),
+      concat(" of ", concat(to_string(summary.entries_total),
+      concat(" entries finished in ", concat(ci_human_duration(d: summary.wall),
+      concat(", ", concat(to_string(summary.refusals),
+      concat(" refused and ", concat(to_string(summary.failures), " failed"))))))))
+    ),
+    attention: if problems == 0 { Ambient } else { Anomaly }
+  }
+}
+
+// Refusals and failures are re-rendered at the end of the run as well as at the moment they happen. A GitHub Actions log is routinely truncated in the middle and is read from the bottom, so a refusal that appeared only at its own timestamp is a refusal the reader will not find. Restating it is not duplication of the FACT — it is the same event projected to a second position, which is what an append-only medium requires.
+fn ci_refusal_restate_line(subject: ObservationSubject, diagnostic: NonEmptyStr) -> RenderedLine {
+  RenderedLine {
+    glyph: StatusRefused,
+    text: concat(observation_subject_render(subject: subject), concat(" — ", neutralize_workflow_commands(text: diagnostic))),
+    attention: Anomaly
+  }
+}
+
+// A restated diagnostic is text this repo relays from a SUBJECT process, so it goes through
+// extdeps.github.log_annotations.neutralize_workflow_commands: a child whose captured stderr
+// happens to begin with the workflow-command prefix would otherwise mint annotations in the parent
+// run that no gunbc code authored. Consuming the existing guard rather than re-deriving it is the
+// point — the neutralization rule is that module's fact, not this renderer's.
+
+// Measurement-feed projection (wiring flip): peak-RSS and cgroup samples are not progress
+// Begin/Concluded pairs — they are Measured facts about the run. This line is Ambient,
+// identity-first (the label), vitals in human GiB via ci_measured_bytes_text, never a raw byte
+// dump. Placement consumers and receipts still read the typed facts; this is the log surface only.
+
+fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> RenderedLine {
+  RenderedLine {
+    glyph: StatusPulse,
+    text: concat(label, concat(" — ", ci_measured_bytes_text(m: rss))),
+    attention: Ambient
+  }
+}
+
+data observation_ci_render_disposition: Disposition = Terminal {
+  reason: "The CI-log renderer is Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
+}
+
+// ---------------------------------------------------------------------------
+// Batch-grain projection — the decision that makes the fold visible.
+// ---------------------------------------------------------------------------
+
+// ci_collapsed_summary above hides finished work inside a GitHub group. That is placement, not
+// accumulation: 4110 lines still exist, still cost their emission, and still sit between the reader
+// and the eight lines that answer what is running. This projection is the other operation — a
+// routine event below the declared grain updates its batch's rollup and produces NO line, so the
+// console carries batch transitions, dwell heartbeats, and anomalies at their exact leaf subject.
+type RoutineProjection
+  = FoldedIntoRollup { at: ObservationSubject }
+  | EmittedAtLeaf { reason: LeafEmissionReason }
+
+// Why an event still reached the console, as a named state rather than a fall-through. Three of the
+// four are deliberate; NoAncestorAtGrain is the fail-closed arm, and it emits rather than drops:
+// an event whose batch ancestor cannot be located is exactly the event a reader must still see, and
+// silently discarding it would be the empty-observation narrow — rendering "I could not place this"
+// as "there was nothing to place".
+type LeafEmissionReason
+  = LeafGrainRequested
+  | AnomalyPierces
+  | RunSummaryShown
+  | NoAncestorAtGrain
+
+// The seed's per-witness suppression asked the SAME question the projection answers — does routine
+// work fold? — and answered it in hand-Rust, so the density rule had two representations and only
+// this one was witnessed. It cannot call ci_routine_projection per witness (one .dag evaluation per
+// witness across ~9,000), but it does not need to: the density of a concluded outcome depends only
+// on its CLASS, so the verdict is resolved ONCE at policy install and transported, exactly like
+// routine_rollup_folds. The rule stays here; the seed carries an answer, not a copy of the rule.
+fn ci_routine_projection(
+  event: ObservationEvent,
+  grain: ObservationGrain?,
+) -> RoutineProjection {
+  match observation_class_density(c: observation_event_class(event: event)) {
+    AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }
+    SummaryAlwaysShown => EmittedAtLeaf { reason: RunSummaryShown }
+    RoutineCollapsible =>
+      match grain {
+        Absent => EmittedAtLeaf { reason: LeafGrainRequested }
+        Present { value: g } =>
+          match observation_subject_prefix_at_grain(subject: event.subject, grain: g) {
+            Absent => EmittedAtLeaf { reason: NoAncestorAtGrain }
+            Present { value: ancestor } => FoldedIntoRollup { at: ancestor }
+          }
+      }
+  }
+}
+
+fn ci_rollup_summary_glyph(rollup: ObservationRollup) -> SymbolId {
+  if rollup.counts.failed > 0 {
+    NodeFailed
+  } else if rollup.counts.refused > 0 {
+    StatusRefused
+  } else if rollup.counts.timed_out > 0 {
+    StatusTimedOut
+  } else {
+    NodeCompleted
+  }
+}
+
+// The measurement clause is emitted ONLY when something was actually unmeasured, so an ordinary
+// batch reads clean and a partially measured one says so rather than implying full coverage.
+fn ci_rollup_measurement_note(rollup: ObservationRollup) -> String {
+  if rollup.measurement_absent == 0 {
+    ""
+  } else {
+    concat(" (", concat(to_string(rollup.measurement_absent), " unmeasured)"))
+  }
+}
+
+// Elapsed is the SUM of the folded leaves' measured walls, and the leaves run concurrently across
+// shards, so it is WORK-TIME and never elapsed wall — DESIGN's cost-partition law says exactly this
+// ("elapsed wall is NOT additive over concurrent spans"). The word `work` is in the rendered line
+// because a bare duration beside a batch is read as how long the batch took, and on a wide run the
+// two differ by the shard count.
+//
+// Peak renders only when a batch-scoped reading exists. The seed cannot supply one: its only
+// memory fact is the PROCESS high-water mark, which is monotone over the whole run, so attributing
+// it to a batch reported `peak 11.5 GiB` beside a four-millisecond single-witness batch — a real
+// number located on the wrong subject, which DESIGN section 5 treats as the same defect class as a
+// wrong number. Absence is disclosed by ci_rollup_measurement_note rather than filled in.
+fn ci_rollup_peak_text(rollup: ObservationRollup) -> String {
+  match rollup.peak_rss {
+    MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
+    MeasuredUnavailable { cause: _ } => ""
+  }
+}
+
+fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
+  let problems = rollup.counts.refused + rollup.counts.failed + rollup.counts.timed_out
+  RenderedLine {
+    glyph: ci_rollup_summary_glyph(rollup: rollup),
+    text: join([
+      ci_subject_leaf_text(subject: rollup.subject),
+      " — ",
+      to_string(rollup.counts.done), " passed · ",
+      to_string(rollup.counts.skipped), " skipped · ",
+      to_string(rollup.counts.refused), " refused · ",
+      to_string(rollup.counts.failed), " failed · ",
+      ci_measured_elapsed_text(m: rollup.elapsed),
+      " work",
+      ci_rollup_peak_text(rollup: rollup),
+      ci_rollup_measurement_note(rollup: rollup),
+    ], ""),
+    attention: if problems == 0 { Ambient } else { Anomaly }
+  }
+}
+
+// The duration crosses as the std.measure carrier, never a bare Nat named `*_nanos`. Wrapping it
+// immediately inside the body would NOT discharge that — the PARAMETER surface is what a caller can
+// get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
+// seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
+// boundary and passes the result back in, so the constructor stays the single authority (a record
+// built in Rust would have forked it).
+//
+// The seed's ONE seam into this authority. The floor walk lives in Rust and cannot construct a
+// .dag record, so it hands over the scalars it already has and receives one finished line back.
+// Everything that decides how a batch READS — the glyph, the field order, the anomaly split, the
+// unmeasured-reading wording — stays here; the seed transports counts and prints a string. A seam
+// that took a preformatted string instead would be the second representation this whole lane exists
+// to remove.
+//
+
+// A partition is trustworthy only if it is EXHAUSTIVE, so the line states whether it is. The counts
+// the seed can supply are passed / unaffected / deferred / failed / timed-out; if those do not add
+// up to the population the batch declared, the remainder is named rather than absorbed into one of
+// the arms. The previous version printed `0 refused` while 1,078 rows sat deferred — a category the
+// summary did not carry, supplied to the argument named `refused` — so a reader saw a clean
+// partition that had never been checked against anything.
+//
+// `refused` and `timed_out` are deliberately ABSENT rather than printed as zero: the seed has
+// neither count to give, and a displayed zero is a claim that the fold looked and found none. A
+// timed-out row reaches the seed inside the failure list, so it is already counted under `failed`;
+// carrying a separate zero beside it would have been a silent claim AND a double-count hazard.
+fn ci_population_reconciliation_text(declared: Nat, classified: Nat) -> String {
+  if classified == declared {
+    ""
+  } else if classified < declared {
+    join([" (", to_string(declared - classified), " of ", to_string(declared), " unclassified)"], "")
+  } else {
+    join([" (over-counted: ", to_string(classified), " classified against a declared ", to_string(declared), ")"], "")
+  }
+}
+
+// DEFERRED IS NOT A CLASSIFICATION OF THE DECLARED POPULATION, it is a population beside it: a
+// deferred row never entered the run the declared count describes. Summing it in reported
+// "over-counted: 10562 classified against a declared 9478" on a HEALTHY run — a false anomaly in the
+// very line whose job is to catch a real one, which is worse than not reconciling at all because it
+// teaches a reader to ignore the parenthetical. The reconciliation covers exactly the rows the run
+// disposed of; deferred is printed beside it as its own number.
+fn ci_batch_summary_text(
+  batch_index: Nat,
+  batch_label: NonEmptyStr,
+  declared_population: Nat,
+  passed: Nat,
+  unaffected: Nat,
+  deferred: Nat,
+  failed: Nat,
+  work: Nanosecond,
+) -> String {
+  let classified = passed + unaffected + failed
+  ci_render_line(
+    line: RenderedLine {
+      glyph: if failed > 0 { NodeFailed } else { NodeCompleted },
+      text: join([
+        batch_label,
+        " — ",
+        to_string(passed), " passed · ",
+        to_string(unaffected), " unaffected · ",
+        to_string(deferred), " deferred · ",
+        to_string(failed), " failed · ",
+        ci_measured_elapsed_text(m: MeasuredValue { value: work }),
+        " work",
+        ci_population_reconciliation_text(declared: declared_population, classified: classified),
+      ], ""),
+      attention: if failed > 0 { Anomaly } else { Ambient }
+    },
+    tier: Ascii,
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Per-witness claim-result lines — the ONE presentation authority for floor output.
+// ---------------------------------------------------------------------------
+
+// Bazel-shaped claim-result lines for every witness the floor executes. The seed transports
+// subject, function, verdict and wall time; every choice about how the line READS lives here.
+// Subject is either a dotted module path (test.claim.foo) or a repo-relative entry path
+// (dag/test/claim/foo_test.dag); both normalize to a //package:target label. Column width is a
+// display policy, not a semantic fact — the outcome and duration are always present so a fast green
+// and a slow green read differently at arm's length.
+
+// KNOWN BLIND SPOT, NOT A FORMATTING SIMPLIFICATION. Wave 6 routes E1 formatting through this
+// authority but the seed still collapses ClaimOutcome to passed: Bool at the boundary because the
+// hot path cannot afford per-line interpreter eval. That collapse is lossy in the direction that
+// hides the class gunbc#8423 just surfaced: Pass, Fail, and TimedOut all become two display tokens,
+// and TimedOut — budget interruption, not a semantic verdict — is the one that matters. The Bool
+// must not become the shared interface other consumers key on. Warn-tier cost debt was a separate
+// projection until 2026-08-20, when the tier and its renderer were deleted outright (see
+// ci_witness_budget_warn_retirement_receipt). Dissolve-on: replace subject/function/passed/wall
+// with ONE typed per-witness receipt the floor produces once; the renderer projects human lines
+// from the PRODUCT of two independent facts — (1) outcome: ClaimOutcome (Pass | Fail | NotBool |
+// RuntimeError | TimedOut{elapsed_ms,budget_ms,kind:BudgetKind}) where TimedOut is the sole
+// budget-refusal variant and elapsed_ms is a lower bound, not a measured duration; (2) disposition:
+// ExpectedRedArm Held | NowPassing | BudgetRefused when enrolled, else not enrolled. The failed /
+// stale_quarantine / budget_refused reporting channels on RequiredFloorOutcome are a run-level
+// partition, not per-witness facts — do not key the renderer on them. Held rows currently print
+// nothing (261 of 795 measured); a follow-up renderer must not assume only refusals get lines.
+
+data ci_witness_claim_column_width: Nat = 60
+
+fn ci_witness_package_from_entry_path(path: String) -> String {
+  if path.ends_with(suffix: ".dag") {
+    substring(s: path, start: 0, end: string_length(s: path) - 4)
+  } else {
+    path
+  }
+}
+
+fn ci_witness_package_path(subject: String) -> String {
+  if string_contains(s: subject, pattern: "/") {
+    ci_witness_package_from_entry_path(path: subject)
+  } else {
+    join(subject.split(delimiter: "."), "/")
+  }
+}
+
+fn ci_witness_bazel_target_label(subject: String, function: String) -> String {
+  concat("//", concat(ci_witness_package_path(subject: subject), concat(":", function)))
+}
+
+data ci_witness_verdict_note: String = "ONE BIT WAS CARRYING SEVEN STATES (2026-08-20). The per-row token was derived from a Bool that the CALLER had already produced -- cli_run `stream_witness` receives matches!(outcome, ClaimOutcome::Pass), so Fail, NotBool, RuntimeError, TimedOut and HostToolUnresolved were flattened into one FAILED token BEFORE this renderer was reached, and no change confined to the renderer could have recovered them. The console was the only place the typed outcome was lost. Enrollment is the seventh state: a witness ENROLLED in v2.workflow.floor_expected_red that fails exactly as enrolled printed the identical FAILED line as a genuine regression. The distinction existed only in the run-summary counters -- known_red_held versus failed -- and nowhere in the per-row output that a human or a grep actually reads. On a nine-thousand-row console with a roster of ~180 enrolled identities, that is the DESIGN §5 state-space conflation with the worst possible consequence attached: the one signal that must never be lost is rendered indistinguishable from the several hundred that are expected. This is the same shape the corpus already names at run_verdict_refusal_polarity_note -- one bit cannot carry \"ran, verdict false\" and \"failed as enrolled\" as different states, and no care in the caller fixes it, because the caller has already collapsed them before this function is reached. The remedy is the one DESIGN prescribes for a conflation: split the state space, do not annotate the collapsed one. KNOWN-RED is deliberately NOT spelled as a decoration on FAILED: anything scanning the console for FAILED must stop matching enrolled rows, which is precisely the behaviour that was missing."
+
+// The arms mirror v1_compiler.cli_run `ClaimOutcome` one-for-one, plus the enrollment state the
+// outcome alone cannot express. That correspondence is the point: `ClaimOutcome` is ALREADY a
+// typed coproduct and the console was the only place it got flattened, so this is not a new
+// vocabulary -- it is the existing one surviving as far as the reader.
+// THE CAUSE OF A NON-VERDICT ROW, AND WHY IT IS A COPRODUCT RATHER THAN THE PROSE IT REPLACES.
+// A witness that THROWS reaches no subject and decides nothing, so the only fact its row can
+// carry about the failure is WHY it threw. That fact was already typed one layer up --
+// v1_interpreter.InterpError is a closed 24-arm coproduct (the figure is illustrative -- what
+// actually holds totality is the seed's own exhaustiveness check on of_interp_error, so a new
+// interpreter arm fails to compile there rather than silently aging this sentence) -- and the
+// witness boundary flattened
+// it with format!("{other}") into ClaimOutcome::RuntimeError { message }, after which the console
+// printed the identity and the duration and dropped the message entirely. So the cause existed,
+// was known at the moment of routing, and reached no reader. This is the same shape this file
+// already records twice above (ci_witness_verdict_note, and the TimedOut comment in the seed):
+// a typed value collapsed at a seam, then guessed back downstream by substring-matching the
+// prose that collapsing produced.
+//
+// THE MEASURED COST OF THAT COLLAPSE. On main f9963a762 the required floor emitted 142 rows
+// reading `ERROR in <duration>` with no cause, against a corpus whose only other route to the
+// cause is running the floor -- a job that OOMs in a session container. Three sessions grepped
+// that log in one day; one produced an inverted-sign claim (9 identities reported as duplicated
+// when the pattern had MISSED them) that reached a merge-ready PR as a high-priority alarm.
+// Every cause partition over that population is therefore a CLAIM and not a receipt, which is
+// exactly the state DESIGN section 4b calls specification without execution.
+//
+// THE ARMS MIRROR InterpError ONE-FOR-ONE and deliberately mint no vocabulary of their own
+// (DESIGN section 3): the five variants that already have their OWN ClaimOutcome arm --
+// HostToolUnresolved, HermeticHostEffectRefused, EvalBudgetExceeded, WitnessWallBudgetExceeded
+// and the pre-mapped EvaluationBudgetExceeded -- cannot reach this classifier, because
+// map_budget_error_to_witness_refusal and the arms above it consume them first. (The three
+// hermetic grounds -- UnpublishedMockCase, NoMockResponse, FilesystemRemoval -- are arms of
+// HermeticEffectGround NESTED INSIDE HermeticHostEffectRefused, not peers of it, so they are
+// consumed with their parent and are likewise absent here. They were briefly given cause arms
+// of their own; the seed's exhaustiveness check refused it, which is the check doing its job.) They are NOT
+// given cause arms, and the one arm that stands for all five is WitnessCauseMappedOutcomeEscaped:
+// a typed, located, COUNTABLE diagnostic saying the mapper let one through. That is one arm and
+// not five because all five share one remedy -- repair the mapper -- and DESIGN's descend-or-
+// collapse rule turns on shared remedy, not on arm count.
+type CiWitnessRuntimeCause
+  = WitnessCauseNoSuchFunction
+  | WitnessCauseNoSuchVariable
+  | WitnessCauseNoSuchField
+  | WitnessCauseTypeError
+  | WitnessCauseCrossRepresentationEquality
+  | WitnessCauseStringRealizationStraddle
+  | WitnessCausePoolRootContributesNothing
+  | WitnessCausePatternMatchFailure
+  | WitnessCauseDivisionByZero
+  | WitnessCauseIntegerOverflow
+  | WitnessCauseUnimplemented
+  | WitnessCauseEarlyReturn
+  | WitnessCauseAuthDeclaredButUnwired
+  | WitnessCauseServiceConfigUnresolved
+  | WitnessCauseServiceConfigMissing
+  | WitnessCauseArgvExceedsHostArgMax
+  | WitnessCauseHostToolRelativePathAmbiguous
+  | WitnessCauseShellOutputLimitExceeded
+  | WitnessCauseCallContractMismatch
+  | WitnessCauseMappedOutcomeEscaped
+
+// Stable kebab tokens, chosen so a reader extracts identity-and-cause pairs with a pattern that
+// depends on neither column width nor name length -- the failure that produced the inverted-sign
+// claim above. The token is the grep key; the interpreter's prose detail (WHICH name, WHICH
+// type) stays on the seed's failure receipt, which is a different consumer with a different
+// budget for length.
+fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
+  match cause {
+    WitnessCauseNoSuchFunction => "no-such-function"
+    WitnessCauseNoSuchVariable => "no-such-variable"
+    WitnessCauseNoSuchField => "no-such-field"
+    WitnessCauseTypeError => "type-error"
+    WitnessCauseCrossRepresentationEquality => "cross-representation-equality"
+    WitnessCauseStringRealizationStraddle => "string-realization-straddle"
+    WitnessCausePoolRootContributesNothing => "pool-root-contributes-nothing"
+    WitnessCausePatternMatchFailure => "pattern-match-failure"
+    WitnessCauseDivisionByZero => "division-by-zero"
+    WitnessCauseIntegerOverflow => "integer-overflow"
+    WitnessCauseUnimplemented => "unimplemented"
+    WitnessCauseEarlyReturn => "early-return"
+    WitnessCauseAuthDeclaredButUnwired => "auth-declared-but-unwired"
+    WitnessCauseServiceConfigUnresolved => "service-config-unresolved"
+    WitnessCauseServiceConfigMissing => "service-config-missing"
+    WitnessCauseArgvExceedsHostArgMax => "argv-exceeds-host-arg-max"
+    WitnessCauseHostToolRelativePathAmbiguous => "host-tool-relative-path-ambiguous"
+    WitnessCauseShellOutputLimitExceeded => "shell-output-limit-exceeded"
+    WitnessCauseCallContractMismatch => "call-contract-mismatch"
+    WitnessCauseMappedOutcomeEscaped => "mapped-outcome-escaped"
+  }
+}
+
+// THE CAUSE RIDES INSIDE THE VERDICT ARM, not beside it, and that placement is the whole safety
+// argument. A separate `cause` parameter would make two invalid states writable -- a PASSED row
+// carrying a cause, and an ERROR row carrying none -- and both would then need a check. Carried
+// as the arm's payload, neither has a spelling: WitnessRuntimeError cannot be constructed without
+// a cause, and no other arm has a field to put one in. That is DESIGN section 4b's structurally
+// impossible rung rather than its mechanically preventable one, bought here for the price of a
+// field.
+type CiWitnessVerdict
+  = WitnessPassed
+  | WitnessFailed
+  | WitnessNotBool
+  | WitnessRuntimeError { cause: CiWitnessRuntimeCause }
+  | WitnessBudgetRefused
+  | WitnessHostToolUnresolved
+  | WitnessKnownRed
+  | WitnessRouteGap
+
+fn ci_witness_outcome_token(verdict: CiWitnessVerdict) -> String {
+  match verdict {
+    WitnessPassed => "PASSED"
+    WitnessFailed => "FAILED"
+    WitnessNotBool => "NOT-BOOL"
+    WitnessRuntimeError { cause: _ } => "ERROR"
+    WitnessBudgetRefused => "BUDGET-REFUSED"
+    WitnessHostToolUnresolved => "TOOL-UNRESOLVED"
+    WitnessKnownRed => "KNOWN-RED"
+    WitnessRouteGap => "NO-ROUTE"
+  }
+}
+
+// The cause field is TRAILING and key-tagged for one reason: the identity, the token and the
+// duration are all positional today, and a fourth positional field would make every existing
+// reader's offset wrong. `cause=<token>` is addressable by key, so a reader that wants the pair
+// asks for `//...` and `cause=...` and never counts columns.
+//
+// Every arm is enumerated rather than falling through a wildcard. A wildcard would silently give
+// a future non-verdict arm an empty cause -- the arm most likely to need one -- and DESIGN's
+// total-at-the-level-examined class is exactly a match that compiles, looks complete, and never
+// descends to the distinction that decides the outcome.
+fn ci_witness_cause_field(verdict: CiWitnessVerdict) -> String {
+  match verdict {
+    WitnessPassed => ""
+    WitnessFailed => ""
+    WitnessNotBool => ""
+    WitnessRuntimeError { cause: c } =>
+      concat(" cause=", ci_witness_runtime_cause_token(cause: c))
+    WitnessBudgetRefused => ""
+    WitnessHostToolUnresolved => ""
+    WitnessKnownRed => ""
+    WitnessRouteGap => ""
+  }
+}
+
+fn ci_witness_claim_suffix(verdict: CiWitnessVerdict, wall: Nanosecond) -> String {
+  concat(
+    ci_witness_outcome_token(verdict: verdict),
+    concat(
+      " in ",
+      concat(ci_human_elapsed(d: wall), ci_witness_cause_field(verdict: verdict))
+    )
+  )
+}
+
+fn ci_witness_pad_to_column(label: String, width: Nat) -> String {
+  let len = string_length(s: label)
+  if len >= width {
+    label
+  } else {
+    concat(label, repeat_string(s: " ", n: width - len))
+  }
+}
+
+// THE SEED'S ONE SEAM for per-witness floor output. Scalars in, one finished line out — the same
+// shape as ci_batch_summary_text, so the floor never owns a second formatter for claim results.
+fn ci_witness_claim_result_text(
+  subject: String,
+  function: String,
+  verdict: CiWitnessVerdict,
+  wall: Nanosecond,
+) -> String {
+  let label = ci_witness_bazel_target_label(subject: subject, function: function)
+  let padded = ci_witness_pad_to_column(label: label, width: ci_witness_claim_column_width)
+  concat(padded, ci_witness_claim_suffix(verdict: verdict, wall: wall))
+}
+
+// RETIRED 2026-08-20 with the warn tier itself. ci_witness_budget_warn_text rendered the floor
+// fold's [floor-witness-slow] line; the tier it served is deleted at its authority
+// (v2.workflow.required_floor, see the deletion note there), so the renderer has no subject. Its
+// evidence is retired with it rather than left standing, per DESIGN 4b: a witness whose only
+// subject is behaviour the tree deliberately rejects would otherwise become the mechanism by which
+// the rejected behaviour grants itself immortality. What went with it: the two witnesses
+// w_witness_budget_warn_line_holds and w_RED_witness_budget_warn_requires_ceiling_clause, the seed
+// mirror render_witness_budget_warn_text_mirror and its parity test, RequiredFloorClaim.warn_ms,
+// RequiredFloorOutcome.over_warn (which no consumer ever read), the ClaimBudgetTiersInverted
+// refusal, and the emit-census site row witness_budget_warn_site. The two safety deadlines and the
+// diagnostic completed-cost line are untouched — this retires an advisory tier, not a limit.
+
+// fill_ms is SELF time and inclusive_ms includes the fills nested inside this one, because these
+// caches compose: building the module graph builds the reference edges and the path index on its
+// way, so a sum over inclusive figures counts each inner scan once per enclosing scan. Measured on
+// the first floor receipt, a 17890ms module-graph fill contained a 12054ms path-index fill and a
+// 5141ms reference-edge fill and was ~695ms of its own. The total is summed over SELF; inclusive is
+// carried beside it because it is what names the caller that caused the inner scans. One line per
+// SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim
+// paid it, and how many claims and modules read that same fill for free. This reports the part of a
+// row's wall time that did not belong to that row. It was formerly contrasted here with
+// ci_witness_budget_warn_text, the warn-tier line, which is deleted (see
+// ci_witness_budget_warn_retirement_receipt) — this row-cost projection is unaffected by that
+// retirement and remains live. The disposition is derived from the payer and the consumer breadth
+// by gunbc.witness_row_cost shared_fill_disposition, so the line never carries a verdict the seed
+// authored beside the numbers that decide it.
+
+fn ci_shared_fill_row_text(
+  cache: String,
+  key: String,
+  fill: Millisecond,
+  inclusive: Millisecond,
+  payer: SharedFillPayer,
+  consumer_claims: Nat,
+  consumer_modules: Nat,
+  modules: String,
+) -> String {
+  concat(
+    "[floor-shared-fill] cache=",
+    concat(
+      cache,
+      concat(
+        " key=",
+        concat(
+          key,
+          concat(
+            " fill_ms=",
+            concat(
+              to_string(millisecond_count(m: fill)),
+              concat(
+                " inclusive_ms=",
+              concat(
+                to_string(millisecond_count(m: inclusive)),
+              concat(
+                " paid_by=",
+                concat(
+                  shared_fill_payer_tag(payer: payer),
+                  concat(
+                    " consumer_claims=",
+                    concat(
+                      to_string(consumer_claims),
+                      concat(
+                        " consumer_modules=",
+                        concat(
+                          to_string(consumer_modules),
+                          concat(
+                            " disposition=",
+                            concat(
+                              shared_fill_disposition_tag(
+                                disposition: shared_fill_disposition(
+                                  payer: payer,
+                                  consumer_modules: consumer_modules
+                                )
+                              ),
+                              concat(" modules=", modules)
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// THE TOTAL LINE CARRIES BOTH DENOMINATORS AND THE HOLE. shared_fill_ms is the part of fill_ms
+// that removing any one module cannot recover; unattributed_hits is the count of reads served by
+// a fill this ledger did not observe, which is the honest statement that the shared figure is a
+// LOWER bound rather than the whole of the sharing.
+fn ci_shared_fill_total_text(
+  fills: Nat,
+  fill: Millisecond,
+  shared_fill: Millisecond,
+  unattributed_hits: Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill] TOTAL fills=",
+    concat(
+      to_string(fills),
+      concat(
+        " fill_ms=",
+        concat(
+          to_string(millisecond_count(m: fill)),
+          concat(
+            " shared_fill_ms=",
+            concat(
+              to_string(millisecond_count(m: shared_fill)),
+              concat(" unattributed_hits=", to_string(unattributed_hits))
+            )
+          )
+        )
+      )
+    )
+  )
+}

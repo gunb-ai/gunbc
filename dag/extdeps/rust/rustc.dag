@@ -1,0 +1,111 @@
+module extdeps.rustc
+
+import std.types { String, Bool, Int }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/rustc/command-line-arguments.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.rustc",
+      decl_name: "rustc.Check",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// rustc reads a crate from STANDARD INPUT when the input filename is `-`, the cited interface this
+// operation binds. Beyond convenience: the alternative materializes a candidate's emitted source as
+// a file inside the tree, and the batch executor builds its module index ONCE at startup, so a file
+// appearing mid-run is invisible to that index at best and poisons later entries at worst. stdin
+// keeps a candidate a value rather than a tree mutation.
+
+// THE SCRIPT IS A FIXED LITERAL WITH POSITIONAL PARAMETERS, WHICH IS THE PROPERTY THAT MATTERS, AND
+// THE SIMPLER SPELLINGS WERE TRIED RATHER THAN ASSUMED AWAY (review 54507 flagged the shape).
+// Source and edition arrive as $1 and $2 and are never spliced into the script body, so no
+// candidate can escape a quote — the discipline extdeps.shell already applies to its own multi-step
+// operations (FilesAndSymlinksWithMode, FilesByNameSorted), the precedent this row follows.
+//
+// WHY EACH SHORTER FORM FAILS, MEASURED ON THIS HOST: rustc writes its temporaries BESIDE its
+// output path, so `-o /dev/null` and `--emit=metadata=/dev/null` both fail with `could not create a
+// temp dir` — and by printing an `error:` line, which an observer reading the diagnostic stream
+// would have read as the CANDIDATE being rejected. A fixed output path under /tmp removes the temp
+// dir but races concurrent scoring, which a best-of-N harness does constantly. So the
+// per-invocation directory is what makes the observation attributable to the candidate.
+//
+// WHAT WOULD DISSOLVE IT: a modeled composition primitive over the shell surface — a pipe and a
+// scoped temporary directory expressible as nodes — at which point this row is those nodes and the
+// literal goes. None exists today, so this is the honest bottom transport rather than a
+// routed-around one, recorded as an observation, not a self-approved deferral.
+
+service rustc.Check {
+  operation CheckSourceText {
+    input { source: String, edition: String = "2021" }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "d=$(mktemp -d) && printf '%s' \"$1\" | rustc --edition \"$2\" --crate-type lib --emit=metadata --out-dir \"$d\" -; rc=$?; rm -rf \"$d\"; exit $rc",
+        "sh", "{source}", "{edition}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "rustc did not accept the source"
+    }
+  }
+}
+
+// rustc reports its own identity in a KEYED, LINE-ORIENTED form under `--version --verbose`: the
+// first line is the human release line, and every later line is `<key>: <value>`. That format is
+// what this operation binds, and it is bound rather than the bare `--version` line because the bare
+// line omits the host triple and the commit hash — the two facts that decide whether one
+// measurement may be compared to another at all. Nothing here composes those fields into a
+// repository-specific identity string: which fields a consumer joins on is the consumer's fact.
+service rustc.Identity {
+  operation VersionVerbose {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+    }
+    transport shell { argv: ["rustc", "--version", "--verbose"] }
+    exit {
+      0 => Unit
+      nonzero => String "rustc did not report its version"
+    }
+  }
+}
+
+// The verbose output's keyed lines are read by KEY, never by position. rustc's own release notes
+// have added fields to this block, so an index would silently name a different field after a
+// toolchain bump, while a key that stops being emitted returns Absent and refuses.
+fn rustc_version_verbose_release_line(stdout: String) -> String {
+  match split(s: stdout, delimiter: "\n") |> first {
+    Present { value: line } => line
+    Absent => ""
+  }
+}
+
+fn rustc_version_verbose_field(stdout: String, key: String) -> String? {
+  split(s: stdout, delimiter: "\n")
+    |> filter(line => starts_with(line, prefix: concat(key, ": ")))
+    |> map(line => trim(s: split(s: line, delimiter: ": ").skip(n: 1) |> join(separator: ": ")))
+    |> first
+}

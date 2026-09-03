@@ -1,33 +1,38 @@
 module v2.std.effects
 
-import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode }
+import std.effects {
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
+  PostAlways, CreateIfAbsent, KeylessFallback
+}
 
-type IdempotentShape
-  = ReadEffect
-  | UpsertEffect { key_source: KeySource }
-  | DeleteEffect { key_source: KeySource }
-  | CreateIfAbsentEffect { key_source: KeySource }
+// v2.std.effects DISSOLVED onto the single std.effects authority (dag-v2 de-fork,
+// docs/plans/dag-v2-defork-audit.md). The EffectShape<K> / CreateCause<K> TYPE is imported from
+// std, never re-defined here -- what was the v2 fork (EffectShape = IsIdempotent | IsBreaking, a
+// 2-level idempotency-class partition) is GONE: idempotency is DERIVED from the one flat
+// EffectShape (DESIGN 4, ops from inhabitance). This module instantiates the type at K =
+// SubstrateKeySource (interned Symbol) for the substrate-witness harness (idempotency conformance
+// by apply-once == apply-twice Node graphs) and builds shapes by direct construction. It does NOT
+// call std.effects's predicates: those are concrete to EffectShape<std.KeySource> by the emitter
+// generic-function-bound frontier (see std.effects.generic_predicate_frontier_note), and the
+// harness needs only the type + constructors, not the predicates.
 
-type BreakingShape
-  = CreateEffect { cause: BreakingCreateCause }
-  | AppendEffect
+// Renamed from KeySource (P3a-1 self-fork collapse): the bare name KeySource is owned by
+// std.effects (String REST derivation). This carrier is the Symbol substrate instantiation for the
+// Node-witness harness only; no alias back to KeySource.
 
-type BreakingCreateCause
-  = PostAlways
-  | KeylessFallback { method: Symbol }
+// v2's SubstrateKeySource is the SUBSTRATE key representation (interned Symbol), the K
+// instantiation of the single std.effects.EffectShape<K> authority for the Node-witness harness --
+// NOT a fork of std.effects. The verb/cause/idempotency algebra is imported from std; only the key
+// REPRESENTATION differs (Symbol here, String in std's REST derivation). The String/Symbol
+// unification is deferred to the grants key/target re-grounding
+// (docs/plans/effect-namespace-grants.md), never crossed at this seam. dissolve-on = grants grounds
+// key/target on the containment tree (QualifiedName).
 
-type CreateCause
-  = PostAlways
-  | KeylessFallback { method: Symbol }
-  | CreateIfAbsent { key_source: KeySource }
-
-type KeySource
+type SubstrateKeySource
   = PathParam { param: Symbol }
   | InputField { field: Symbol }
-
-type EffectShape
-  = IsIdempotent(IdempotentShape)
-  | IsBreaking(BreakingShape)
 
 type IdempotentOperationRef {
   callable: Symbol
@@ -35,18 +40,18 @@ type IdempotentOperationRef {
 
 type ComposableIdempotentOperationSubject
   = ReadIdempotentSample { operation: IdempotentOperationRef }
-  | UpsertIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
-  | DeleteIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
-  | CreateIfAbsentIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
+  | UpsertIdempotentSample { operation: IdempotentOperationRef, key_source: SubstrateKeySource }
+  | DeleteIdempotentSample { operation: IdempotentOperationRef, key_source: SubstrateKeySource }
+  | CreateIfAbsentIdempotentSample { operation: IdempotentOperationRef, key_source: SubstrateKeySource }
 
 type IdempotentOperationSubject
   = Composable(ComposableIdempotentOperationSubject)
-  | LabelOnlyIdempotentInhabitance { shape: IdempotentShape, label: Symbol }
+  | LabelOnlyIdempotentInhabitance { shape: EffectShape<SubstrateKeySource>, label: Symbol }
 
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sample_state_value } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data sample_read_operation: IdempotentOperationRef = IdempotentOperationRef {
@@ -65,11 +70,13 @@ data sample_create_if_absent_operation: IdempotentOperationRef = IdempotentOpera
   callable: ^sample_create_if_absent_callable
 }
 
-data sample_upsert_key_source: KeySource = InputField { field: ^sample_path_key_slug }
+data sample_upsert_key_source: SubstrateKeySource = InputField { field: ^sample_path_key_slug }
 
-data sample_delete_key_source: KeySource = InputField { field: ^sample_path_key_slug }
+data sample_delete_key_source: SubstrateKeySource = InputField { field: ^sample_path_key_slug }
 
-data sample_create_if_absent_key_source: KeySource = InputField { field: ^sample_path_key_slug }
+data sample_create_if_absent_key_source: SubstrateKeySource = InputField { field: ^sample_path_key_slug }
+
+data sample_create_if_absent_key_b: SubstrateKeySource = InputField { field: ^sample_alt_path_key_slug }
 
 data sample_read_composable: ComposableIdempotentOperationSubject = ReadIdempotentSample {
   operation: sample_read_operation
@@ -103,81 +110,21 @@ data sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotent
   label: ^sample_label_only_callable
 }
 
-fn effect_shape_for_create_cause(cause: CreateCause) -> EffectShape {
-  match cause {
-    CreateIfAbsent { key_source: key_source } =>
-      IsIdempotent(CreateIfAbsentEffect { key_source: key_source })
-    PostAlways =>
-      IsBreaking(CreateEffect { cause: PostAlways })
-    KeylessFallback { method: method } =>
-      IsBreaking(CreateEffect { cause: KeylessFallback { method: method } })
-  }
+fn create_if_absent_shape(key_source: SubstrateKeySource) -> EffectShape<SubstrateKeySource> {
+  CreateEffect { cause: CreateIfAbsent { key_source: key_source } }
 }
 
-fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
-  match a {
-    PathParam { param: pa } => match b {
-      PathParam { param: pb } => pa == pb
-      _ => false
-    }
-    InputField { field: fa } => match b {
-      InputField { field: fb } => fa == fb
-      _ => false
-    }
-  }
-}
-
-fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
-  match shape {
-    IsIdempotent(CreateIfAbsentEffect { key_source: key_source }) => true
-    IsIdempotent(ReadEffect) => false
-    IsIdempotent(UpsertEffect { key_source: key_source }) => false
-    IsIdempotent(DeleteEffect { key_source: key_source }) => false
-    IsBreaking(CreateEffect { cause: PostAlways }) => false
-    IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
-    IsBreaking(AppendEffect) => false
-  }
-}
-
-fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
-  match a {
-    IsIdempotent(CreateIfAbsentEffect { key_source: ka }) =>
-      match b {
-        IsIdempotent(CreateIfAbsentEffect { key_source: kb }) =>
-          key_source_eq(a: ka, b: kb)
-        IsIdempotent(ReadEffect) => false
-        IsIdempotent(UpsertEffect { key_source: key_source }) => false
-        IsIdempotent(DeleteEffect { key_source: key_source }) => false
-        IsBreaking(CreateEffect { cause: PostAlways }) => false
-        IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
-        IsBreaking(AppendEffect) => false
-      }
-    IsIdempotent(ReadEffect) => false
-    IsIdempotent(UpsertEffect { key_source: key_source }) => false
-    IsIdempotent(DeleteEffect { key_source: key_source }) => false
-    IsBreaking(CreateEffect { cause: PostAlways }) => false
-    IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
-    IsBreaking(AppendEffect) => false
-  }
-}
-
-data sample_create_if_absent_key_b: KeySource = InputField { field: ^sample_alt_path_key_slug }
-
-fn create_if_absent_shape(key_source: KeySource) -> EffectShape {
-  effect_shape_for_create_cause(cause: CreateIfAbsent { key_source: key_source })
-}
-
-fn create_always_shape() -> EffectShape {
-  effect_shape_for_create_cause(cause: PostAlways)
+fn create_always_shape() -> EffectShape<SubstrateKeySource> {
+  CreateEffect { cause: PostAlways }
 }
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
-fn key_source_node(key_source: KeySource) -> Node {
+fn key_source_node(key_source: SubstrateKeySource) -> Node {
   match key_source {
     PathParam { param: p } =>
       Node {
@@ -192,7 +139,7 @@ fn key_source_node(key_source: KeySource) -> Node {
             target: atom_node(s: p)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     InputField { field: f } =>
       Node {
@@ -207,63 +154,48 @@ fn key_source_node(key_source: KeySource) -> Node {
             target: atom_node(s: f)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
 
-fn idempotent_shape_node(shape: IdempotentShape) -> Node {
+fn keyed_shape_node(variant_marker: Symbol, key_source: SubstrateKeySource) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: variant_marker },
+        target: atom_node(s: variant_marker)
+      },
+      Edge {
+        label: Named { name: ^idempotent_operation_key_source_field },
+        target: key_source_node(key_source: key_source)
+      },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn effect_shape_node(shape: EffectShape<SubstrateKeySource>) -> Node {
   match shape {
     ReadEffect => atom_node(s: ^effect_shape_variant_read)
     UpsertEffect { key_source: key_source } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          Edge {
-            label: Named { name: ^effect_shape_variant_upsert },
-            target: atom_node(s: ^effect_shape_variant_upsert)
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_key_source_field },
-            target: key_source_node(key_source: key_source)
-          },
-        ],
-        occurrence_id: SyntheticOccurrence
-}
+      keyed_shape_node(variant_marker: ^effect_shape_variant_upsert, key_source: key_source)
     DeleteEffect { key_source: key_source } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          Edge {
-            label: Named { name: ^effect_shape_variant_delete },
-            target: atom_node(s: ^effect_shape_variant_delete)
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_key_source_field },
-            target: key_source_node(key_source: key_source)
-          },
-        ],
-        occurrence_id: SyntheticOccurrence
-}
-    CreateIfAbsentEffect { key_source: key_source } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          Edge {
-            label: Named { name: ^effect_shape_variant_create_if_absent },
-            target: atom_node(s: ^effect_shape_variant_create_if_absent)
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_key_source_field },
-            target: key_source_node(key_source: key_source)
-          },
-        ],
-        occurrence_id: SyntheticOccurrence
-}
+      keyed_shape_node(variant_marker: ^effect_shape_variant_delete, key_source: key_source)
+    CreateEffect { cause: cause } =>
+      match cause {
+        CreateIfAbsent { key_source: key_source } =>
+          keyed_shape_node(variant_marker: ^effect_shape_variant_create_if_absent, key_source: key_source)
+        PostAlways => atom_node(s: ^effect_shape_variant_create_always)
+        KeylessFallback { method: method } => atom_node(s: ^effect_shape_variant_create_keyless)
+      }
+    AppendEffect => atom_node(s: ^effect_shape_variant_append)
+    ExecuteEffect => atom_node(s: ^effect_shape_variant_execute)
   }
 }
 
-fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
+fn classified_idempotent_effect_node(shape: EffectShape<SubstrateKeySource>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -273,10 +205,10 @@ fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
       },
       Edge {
         label: Named { name: ^effect_shape_inner_field },
-        target: idempotent_shape_node(shape: shape)
+        target: effect_shape_node(shape: shape)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -289,36 +221,8 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
         target: atom_node(s: operation.callable)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
-}
-
-fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
-  Node {
-    kind: ComputationNode { behavior: Transform },
-    children: [
-      Edge {
-        label: Named { name: ^idempotent_apply_state_field },
-        target: state
-      },
-      Edge {
-        label: Named { name: ^idempotent_apply_operation_field },
-        target: idempotent_operation_witness_node(subject: subject)
-      },
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn idempotent_operation_apply_once(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
-  idempotent_operation_apply_node(state: state, subject: subject)
-}
-
-fn idempotent_operation_apply_twice(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
-  idempotent_operation_apply_node(
-    state: idempotent_operation_apply_node(state: state, subject: subject),
-    subject: subject
-  )
 }
 
 fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubject) -> Node {
@@ -336,7 +240,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     UpsertIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -351,7 +255,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     DeleteIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -366,7 +270,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     CreateIfAbsentIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -375,7 +279,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
           Edge {
             label: Named { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(
-              shape: CreateIfAbsentEffect { key_source: key_source }
+              shape: CreateEffect { cause: CreateIfAbsent { key_source: key_source } }
             )
           },
           Edge {
@@ -383,29 +287,35 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
 
-data witness_create_if_absent_cause_is_idempotent: Bool = match effect_shape_for_create_cause(
-  cause: CreateIfAbsent { key_source: sample_create_if_absent_key_source }
-) {
-  IsIdempotent(CreateIfAbsentEffect { key_source: sample_create_if_absent_key_source }) => true
-  IsBreaking(CreateEffect { cause: PostAlways }) => false
-  IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
-  IsBreaking(AppendEffect) => false
-  IsIdempotent(ReadEffect) => false
-  IsIdempotent(UpsertEffect { key_source: key_source }) => false
-  IsIdempotent(DeleteEffect { key_source: key_source }) => false
+fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Named { name: ^idempotent_apply_state_field },
+        target: state
+      },
+      Edge {
+        label: Named { name: ^idempotent_apply_operation_field },
+        target: idempotent_operation_witness_node(subject: subject)
+      },
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
 }
 
-data witness_post_always_cause_is_breaking: Bool = match effect_shape_for_create_cause(cause: PostAlways) {
-  IsBreaking(CreateEffect { cause: PostAlways }) => true
-  IsIdempotent(CreateIfAbsentEffect { key_source: key_source }) => false
-  IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
-  IsBreaking(AppendEffect) => false
-  IsIdempotent(ReadEffect) => false
-  IsIdempotent(UpsertEffect { key_source: key_source }) => false
-  IsIdempotent(DeleteEffect { key_source: key_source }) => false
+fn idempotent_operation_apply_once(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
+  idempotent_operation_apply_node(state: state, subject: subject)
+}
+
+fn idempotent_operation_apply_twice(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
+  idempotent_operation_apply_node(
+    state: idempotent_operation_apply_node(state: state, subject: subject),
+    subject: subject
+  )
 }

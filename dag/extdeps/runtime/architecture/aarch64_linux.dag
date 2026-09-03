@@ -1,0 +1,85 @@
+module extdeps.runtime.architecture.aarch64_linux
+
+import extdeps.runtime.abi.aapcs64 {
+  aarch64_inhabitant_x0,
+  aarch64_inhabitant_x1,
+  aarch64_inhabitant_x2,
+  aarch64_inhabitant_x3,
+  aarch64_inhabitant_x4,
+  aarch64_inhabitant_x5,
+  aarch64_inhabitant_x8,
+  aapcs64_linux_syscall_convention,
+}
+import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.abi { ArchitecturalRegister, StackLayout }
+import extdeps.toolchain.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
+import std.os.invocation { SyscallAbiSurface }
+import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
+import std.types { Bool }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst"
+  }
+}
+
+data aarch64_stack_grows_down: StackLayout = { grows_down: true }
+
+data aarch64_general_purpose_registers: List<ArchitecturalRegister> = [
+  aarch64_inhabitant_x0,
+  aarch64_inhabitant_x1,
+  aarch64_inhabitant_x2,
+  aarch64_inhabitant_x3,
+  aarch64_inhabitant_x4,
+  aarch64_inhabitant_x5,
+  aarch64_inhabitant_x8,
+]
+
+data aarch64_linux_architecture_profile: ArchitectureProfile = {
+  architecture: Aarch64,
+  word_width: bit_width(64),
+  pointer_width: bit_width(64),
+  endianness: LittleEndian,
+  page_size: byte_size(4096),
+  default_alignment: byte_size(16),
+  register_file: aarch64_general_purpose_registers,
+  calling_convention: aapcs64_linux_syscall_convention,
+  stack_layout: aarch64_stack_grows_down,
+}
+
+data aarch64_linux_deployment_target: DeploymentTarget = {
+  profile: aarch64_linux_architecture_profile,
+  invocation: SyscallAbiSurface { abi: linux_aarch64_syscall_abi },
+}
+
+fn witness_architecture_is_aarch64() -> Bool {
+  aarch64_linux_architecture_profile.architecture == Aarch64
+}
+
+fn witness_word_width_is_64() -> Bool {
+  bit_width_count(aarch64_linux_architecture_profile.word_width) == 64
+}
+
+fn witness_page_size_is_4096() -> Bool {
+  byte_size_count(aarch64_linux_architecture_profile.page_size) == 4096
+}
+
+fn witness_convention_syscall_number_is_x8() -> Bool {
+  aarch64_linux_architecture_profile.calling_convention.syscall_number == aarch64_inhabitant_x8
+}
+
+fn witness_stack_grows_down() -> Bool {
+  aarch64_linux_architecture_profile.stack_layout.grows_down == true
+}
+
+fn witness_deployment_invocation_matches_linux_abi() -> Bool {
+  match aarch64_linux_deployment_target.invocation {
+    SyscallAbiSurface { abi: a } => a == linux_aarch64_syscall_abi
+    _ => false
+  }
+}

@@ -1,0 +1,70 @@
+module extdeps.colo.equinix
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.equinix",
+      decl_name: "equinix_secaucus_campus",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data equinix_ny2: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY2",
+  address: AddressListed { street: "275 Hartz Way, Secaucus, NJ 07094", citation: "Equinix New York campus pages and PeeringDB fac 36, read 2026-08-18" },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Part of the four-building Secaucus campus interconnected by campus cross-connects.",
+}
+
+data equinix_ny4: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY4",
+  address: AddressListed { street: "755 Secaucus Road, Secaucus, NJ 07094", citation: "Equinix NY4 page, read 2026-08-18" },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "The financial-ecosystem flagship of the campus; the deepest carrier and exchange density in the metro.",
+}
+
+data equinix_ny5: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY5",
+  address: AddressListed { street: "800 Secaucus Road, Secaucus, NJ 07094", citation: "Equinix NY5 page, read 2026-08-18" },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Campus building adjacent to NY4.",
+}
+
+data equinix_ny6: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY6",
+  address: AddressListed { street: "105 Enterprise Avenue, Secaucus, NJ 07094", citation: "Equinix campus listings, read 2026-08-18" },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Campus building; newest of the four in most directory listings.",
+}
+
+data equinix_secaucus_campus: List<ColoFacilityRow> = [equinix_ny2, equinix_ny4, equinix_ny5, equinix_ny6]
+
+data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "equinix.com sales",
+  obligation: "No published cabinet pricing; the operator sells retail cabinets by quote and market surveys consistently place it at the premium end of the metro. Whether to solicit a quote at all is a consumer decision, not a fact about the operator.",
+}

@@ -1,0 +1,165 @@
+module test.claim.evaluation_budget
+
+import std.types { NonEmptyStr, Bool, Int, String }
+import std.contract_identity { ContractIdentity, ContractNamingSurface, ContractName, ContractEpoch }
+import std.measure {
+  nanosecond,
+  nanosecond_count,
+  positive_millisecond,
+  positive_measure_count,
+}
+import std.evaluation_budget {
+  EvaluationClock,
+  ThreadCpu,
+  MonotonicWall,
+  evaluation_clock_key,
+  EvaluationEntryIdentity,
+  EvaluationLimit,
+  LimitUnset,
+  LimitSet,
+  EvaluationBudgetContract,
+  EvaluationBudgetPolicy,
+  EvaluationObservation,
+  EvaluationBudgetAxisAssessment,
+  NoFloorOnClock,
+  EvaluationWithinBudget,
+  EvaluationBudgetExceeded,
+  EvaluationBudgetRefusalConsequence,
+  evaluation_budget_assess,
+  evaluation_budget_entry,
+  evaluation_budget_refusal_consequence,
+  evaluation_budget_consequence_entry,
+  effective_nested_limit_nanos,
+  evaluation_budget_refusal_code,
+}
+
+// ONE FIXTURE POLICY, so every cell below differs from its neighbours in exactly the fact under
+// test. The contract IS the entry: nothing here authors an entry beside it, because nothing can.
+data witness_contract: ContractIdentity<EvaluationBudgetContract> = ContractIdentity {
+  surface: "gunbc.evaluation_budget" as ContractNamingSurface,
+  name: "roadmap_serve_handle" as ContractName,
+  epoch: "2026-09-01.1" as ContractEpoch,
+}
+
+data limit_10ms: EvaluationLimit = LimitSet {
+  limit: positive_millisecond(count: positive_measure_count(predecessor: 9)),
+}
+
+// THE CPU CLOCK IS BOUNDED AND THE WALL CLOCK IS NOT, deliberately: a contract may carry one
+// bounded and one unset axis, and that asymmetry is what makes the no-floor cell reachable without
+// a second fixture that differs in more than one way.
+data witness_policy: EvaluationBudgetPolicy = EvaluationBudgetPolicy {
+  contract: witness_contract,
+  cpu_limit: limit_10ms,
+  wall_limit: LimitUnset,
+}
+
+fn observe(clock: EvaluationClock, nanos: Int) -> EvaluationObservation {
+  EvaluationObservation { clock: clock, elapsed: nanosecond(count: nanos) }
+}
+
+fn assess(clock: EvaluationClock, nanos: Int) -> EvaluationBudgetAxisAssessment {
+  evaluation_budget_assess(policy: witness_policy, observation: observe(clock: clock, nanos: nanos))
+}
+
+// THE SEMANTIC MATRIX, four cells over one bounded axis and one unset axis. Below, equal and above
+// are the graded law; unset is the no-floor state, which is NOT a fourth point on the same scale.
+
+test fn witness_below_limit_meets_the_floor() -> Bool {
+  match assess(clock: ThreadCpu, nanos: 5000000) {
+    NoFloorOnClock { contract: _, clock: _ } => false
+    EvaluationWithinBudget { contract: c, clock: _, elapsed: _, limit: _ } =>
+      (c.name as String) == "roadmap_serve_handle"
+    EvaluationBudgetExceeded { contract: _, clock: _, elapsed: _, limit: _, consequence: _ } => false
+  }
+}
+
+// EQUALITY BELONGS TO THE ADMITTED SIDE BY THE LAW, not by convention: quality runs inversely
+// against elapsed, so meeting the floor is elapsed <= limit.
+test fn witness_equal_elapsed_meets_the_floor() -> Bool {
+  match assess(clock: ThreadCpu, nanos: 10000000) {
+    NoFloorOnClock { contract: _, clock: _ } => false
+    EvaluationWithinBudget { contract: _, clock: _, elapsed: _, limit: _ } => true
+    EvaluationBudgetExceeded { contract: _, clock: _, elapsed: _, limit: _, consequence: _ } => false
+  }
+}
+
+test fn witness_above_limit_breaches_and_names_its_clock_and_contract() -> Bool {
+  match assess(clock: ThreadCpu, nanos: 11000000) {
+    NoFloorOnClock { contract: _, clock: _ } => false
+    EvaluationWithinBudget { contract: _, clock: _, elapsed: _, limit: _ } => false
+    EvaluationBudgetExceeded { contract: c, clock: k, elapsed: _, limit: _, consequence: _ } =>
+      (c.name as String) == "roadmap_serve_handle"
+        && (evaluation_clock_key(c: k) as String) == "thread_cpu"
+  }
+}
+
+// THE CELL THIS MODULE USED TO GET WRONG, and it got it wrong in prose as well as in code. The
+// predecessor asserted that an elapsed value astronomically past any plausible budget "must still
+// be WITHIN budget when no limit is declared" -- collapsing "no floor exists" into "the floor was
+// met". Two unset clocks would then establish that an evaluation-budget quality floor had been
+// MET while establishing nothing whatever. The distinction is the whole content of the dimension:
+// an unbounded axis carries no quality-floor obligation, so it can neither be met nor breached.
+test fn witness_unset_limit_is_no_floor_not_a_met_floor() -> Bool {
+  match assess(clock: MonotonicWall, nanos: 999999999999) {
+    NoFloorOnClock { contract: c, clock: k } =>
+      (c.name as String) == "roadmap_serve_handle"
+        && (evaluation_clock_key(c: k) as String) == "monotonic_wall"
+    EvaluationWithinBudget { contract: _, clock: _, elapsed: _, limit: _ } => false
+    EvaluationBudgetExceeded { contract: _, clock: _, elapsed: _, limit: _, consequence: _ } => false
+  }
+}
+
+// THE POLICY SELECTS THE LIMIT, so the same measurement lands on different arms under the two
+// clocks. This is the discriminating red for the selection itself: a fold that ignored the
+// observed clock, or that let a caller supply the limit, would answer identically here.
+test fn witness_the_clock_selects_which_limit_applies() -> Bool {
+  match assess(clock: ThreadCpu, nanos: 999999999999) {
+    NoFloorOnClock { contract: _, clock: _ } => false
+    EvaluationWithinBudget { contract: _, clock: _, elapsed: _, limit: _ } => false
+    EvaluationBudgetExceeded { contract: _, clock: _, elapsed: _, limit: _, consequence: _ } =>
+      match assess(clock: MonotonicWall, nanos: 999999999999) {
+        NoFloorOnClock { contract: _, clock: _ } => true
+        EvaluationWithinBudget { contract: _, clock: _, elapsed: _, limit: _ } => false
+        EvaluationBudgetExceeded { contract: _, clock: _, elapsed: _, limit: _, consequence: _ } => false
+      }
+  }
+}
+
+// THE CONSEQUENCE EXISTS ONLY WHERE A BREACH DOES, asserted on all three arms rather than only on
+// the breaching one -- an implementation that always produced a consequence would satisfy a
+// one-sided check.
+test fn witness_only_a_breach_produces_a_consequence() -> Bool {
+  match evaluation_budget_refusal_consequence(assessment: assess(clock: ThreadCpu, nanos: 11000000)) {
+    Absent => false
+    Present { value: c } =>
+      (evaluation_budget_consequence_entry(consequence: c).entry as String) == "roadmap_serve_handle"
+        && match evaluation_budget_refusal_consequence(assessment: assess(clock: ThreadCpu, nanos: 5000000)) {
+             Absent =>
+               match evaluation_budget_refusal_consequence(assessment: assess(clock: MonotonicWall, nanos: 999999999999)) {
+                 Absent => true
+                 Present { value: _ } => false
+               }
+             Present { value: _ } => false
+           }
+  }
+}
+
+// THE ENTRY IS PROJECTED FROM THE CONTRACT, never authored beside it: the policy has no entry field
+// to disagree with, and the breach reports the same name the policy carries.
+test fn witness_entry_is_projected_from_the_contract() -> Bool {
+  (evaluation_budget_entry(policy: witness_policy).entry as String) == "roadmap_serve_handle"
+}
+
+// EARLIEST-DEADLINE-WINS, ASSERTED IN BOTH DIRECTIONS. A one-sided check would pass against the
+// seed's current inverted behavior: arm_eval_deadline overwrites with a fresh baseline, so an inner
+// scope requesting a LONGER limit currently wins and extends its caller's bound. The second
+// conjunct is what fails against that.
+test fn witness_nested_limit_takes_the_smaller() -> Bool {
+  (nanosecond_count(n: effective_nested_limit_nanos(outer_remaining_nanos: nanosecond(count: 3000000), inner_limit_nanos: nanosecond(count: 9000000))) == 3000000)
+    && (nanosecond_count(n: effective_nested_limit_nanos(outer_remaining_nanos: nanosecond(count: 9000000), inner_limit_nanos: nanosecond(count: 3000000))) == 3000000)
+}
+
+test fn witness_refusal_code_is_stable() -> Bool {
+  (evaluation_budget_refusal_code() as String) == "evaluation_budget_exceeded"
+}

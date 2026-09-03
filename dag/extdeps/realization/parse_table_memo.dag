@@ -1,0 +1,89 @@
+module extdeps.realization.parse_table_memo
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.optional { Absent }
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  ContentAddressLookup,
+  OverwriteAllowed,
+  MissThenCreate,
+  StructuredArtifact,
+  InProcess,
+  PerFile,
+  None,
+  InProcessNs,
+  Strong,
+  OperatorObserved,
+  ManualPurge,
+  Repo,
+  CapacityUnbounded,
+  ReleasedAtProviderScopeExit,
+}
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data parse_table_memo_seed_handler_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.materialization_carriers",
+    decl_name: "materialization_allows_memo_store",
+    field: WholeDeclaration
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"
+
+data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
+  identity: parse_table_memo_id
+  backing_surface: "gunbc-parse-table-in-process"
+  transport_encoding: CatalogCasContentEncoding
+  key_derivation: {
+
+    key_inputs: ContentAddressed
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: OverwriteAllowed
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: InProcess
+    retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
+    atomicity: PerFile
+    auth: None
+    read_latency: InProcessNs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "locality"
+      evidence: OperatorObserved {
+        note: "scoped to InterpContext; drops with evaluation — within-run memo (design-recompute-memoization §4.1)"
+        observed_at: Absent
+      }
+    },
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "ParseTableSubject = grammar_digest + token_stream_digest (full stream content-address incl. lexemes) + position + production"
+        observed_at: Absent
+      }
+    },
+  ]
+}

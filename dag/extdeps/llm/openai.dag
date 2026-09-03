@@ -1,0 +1,375 @@
+module extdeps.llm.openai
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "platform.openai.com/docs/api-reference/chat/create"
+  }
+}
+
+type OpenAiModel
+  = Gpt4o
+  | Gpt4oMini
+  | O1
+  | O3
+  | O3Mini
+  | O4Mini
+
+type OpenAiModelSpec {
+  model: OpenAiModel
+  model_id: String
+  context_window: Int
+  max_output_tokens: Int
+}
+
+data models: List<OpenAiModelSpec> = [
+  { model: Gpt4o, model_id: "gpt-4o", context_window: 128000, max_output_tokens: 16384 },
+  { model: Gpt4oMini, model_id: "gpt-4o-mini", context_window: 128000, max_output_tokens: 16384 },
+  { model: O1, model_id: "o1", context_window: 200000, max_output_tokens: 100000 },
+  { model: O3, model_id: "o3", context_window: 200000, max_output_tokens: 100000 },
+  { model: O3Mini, model_id: "o3-mini", context_window: 200000, max_output_tokens: 100000 },
+  { model: O4Mini, model_id: "o4-mini", context_window: 200000, max_output_tokens: 100000 }
+]
+
+type ResponseFormat
+  = TextFormat
+  | JsonObjectFormat
+  | JsonSchemaFormat { schema: Json }
+
+type ToolChoice
+  = ToolChoiceAuto
+  | ToolChoiceNone
+  | ToolChoiceRequired
+  | ToolChoiceNamed { name: String }
+
+type OpenAiFinishReason = Stop | Length | ToolCalls | ContentFilter
+
+type FunctionCall {
+  name: String
+  arguments: String
+}
+
+type OpenAiToolCallType
+  = OpenAiToolCallFunction
+  | OpenAiToolCallTypeOther { raw: NonEmptyStr }
+
+data openai_tool_call_function_wire: String = "function"
+
+fn parse_openai_tool_call_type(raw: String) -> OpenAiToolCallType {
+  if raw == openai_tool_call_function_wire { OpenAiToolCallFunction }
+  else { OpenAiToolCallTypeOther { raw: raw } }
+}
+
+fn openai_tool_call_type_label(kind: OpenAiToolCallType) -> String {
+  match kind {
+    OpenAiToolCallFunction => openai_tool_call_function_wire
+    OpenAiToolCallTypeOther { raw: r } => r
+  }
+}
+
+type ToolCall {
+  id: String
+  type: OpenAiToolCallType
+  function: FunctionCall
+}
+
+type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Function
+
+type OpenAiChatMessageContent
+  = OpenAiChatMessageText { text: String }
+  | OpenAiChatMessageParts { parts: List<OpenAiChatMessagePart> }
+
+type OpenAiChatMessageImageUrl {
+  url: String
+  detail: String?
+}
+
+type OpenAiChatMessagePart
+  = OpenAiChatMessageTextPart { text: String }
+  | OpenAiChatMessageImageUrlPart { image_url: OpenAiChatMessageImageUrl }
+
+type OpenAiChatMessage
+  = OpenAiChatMessageSystem { content: OpenAiChatMessageContent }
+  | OpenAiChatMessageDeveloper { content: OpenAiChatMessageContent }
+  | OpenAiChatMessageUser { content: OpenAiChatMessageContent }
+  | OpenAiChatMessageAssistant { content: OpenAiChatMessageContent?, tool_calls: List<ToolCall>?, function_call: FunctionCall? }
+  | OpenAiChatMessageTool { content: OpenAiChatMessageContent, tool_call_id: String }
+  | OpenAiChatMessageFunction { content: String, name: String }
+
+type OpenAiChatCompletion200TopLogprob {
+  token: String
+  bytes: List<Int>?
+  logprob: Float
+}
+
+type OpenAiChatCompletion200TokenLogprob {
+  token: String
+  bytes: List<Int>?
+  logprob: Float
+  top_logprobs: List<OpenAiChatCompletion200TopLogprob>
+}
+
+type OpenAiChatCompletion200Logprobs {
+  content: List<OpenAiChatCompletion200TokenLogprob>?
+  refusal: List<OpenAiChatCompletion200TokenLogprob>?
+}
+
+type OpenAiChatCompletion200UrlCitation {
+  start_index: Int
+  end_index: Int
+  title: String
+  url: String
+}
+
+type OpenAiChatCompletion200Annotation
+  = ChatUrlCitation { url_citation: OpenAiChatCompletion200UrlCitation }
+
+type OpenAiChatCompletion200Message {
+  role: String
+  content: String
+  refusal: String?
+  annotations: List<OpenAiChatCompletion200Annotation>?
+}
+
+type OpenAiChatCompletion200Choice {
+  index: Int
+  message: OpenAiChatCompletion200Message
+  logprobs: OpenAiChatCompletion200Logprobs?
+  finish_reason: OpenAiFinishReason
+}
+
+type OpenAiChatCompletion200CompletionTokenDetails {
+  accepted_prediction_tokens: Int?
+  audio_tokens: Int?
+  reasoning_tokens: Int?
+  rejected_prediction_tokens: Int?
+}
+
+type OpenAiChatCompletion200PromptTokenDetails {
+  audio_tokens: Int?
+  cached_tokens: Int?
+}
+
+type OpenAiChatCompletion200Usage {
+  prompt_tokens: Int
+  completion_tokens: Int
+  total_tokens: Int
+  completion_tokens_details: OpenAiChatCompletion200CompletionTokenDetails?
+  prompt_tokens_details: OpenAiChatCompletion200PromptTokenDetails?
+}
+
+type OpenAiChatCompletion200Body {
+  id: String
+  object: String
+  created: Int
+  model: String
+  choices: List<OpenAiChatCompletion200Choice>
+  usage: OpenAiChatCompletion200Usage
+  service_tier: String?
+  system_fingerprint: String?
+}
+
+data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatCompletion200Message" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "function_call" },
+      VariantPending { variant: "audio" },
+      VariantPending { variant: "non_string_content" },
+      VariantPending { variant: "refusal_without_content" }
+    ],
+    trigger: "model response content/tool/audio coproduct surface"
+  }
+]
+
+data structural_coverage_gap_openai_chat_message_additive_content_parts: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatMessagePart" },
+      Missing { item: "audio_input_part" },
+      Missing { item: "refusal_part" },
+      Missing { item: "file_or_custom_parts" }
+    ],
+    trigger: "OpenAI Chat Completions request content-part spec extension"
+  }
+]
+
+data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ToolCall" },
+      Missing { item: "custom_tool_call" }
+    ],
+    trigger: "OpenAI Chat Completions custom tool-call payload carrier"
+  }
+]
+
+type OpenAiResponsesOutputContentType
+  = OpenAiResponsesOutputText
+  | OpenAiResponsesOutputContentTypeOther { raw: NonEmptyStr }
+
+data openai_responses_output_text_wire: String = "output_text"
+
+fn parse_openai_responses_output_content_type(raw: String) -> OpenAiResponsesOutputContentType {
+  if raw == openai_responses_output_text_wire { OpenAiResponsesOutputText }
+  else { OpenAiResponsesOutputContentTypeOther { raw: raw } }
+}
+
+fn openai_responses_output_content_type_label(kind: OpenAiResponsesOutputContentType) -> String {
+  match kind {
+    OpenAiResponsesOutputText => openai_responses_output_text_wire
+    OpenAiResponsesOutputContentTypeOther { raw: r } => r
+  }
+}
+
+type OpenAiResponsesOutputItemType
+  = OpenAiResponsesOutputMessage
+  | OpenAiResponsesOutputItemTypeOther { raw: NonEmptyStr }
+
+data openai_responses_output_message_wire: String = "message"
+
+fn parse_openai_responses_output_item_type(raw: String) -> OpenAiResponsesOutputItemType {
+  if raw == openai_responses_output_message_wire { OpenAiResponsesOutputMessage }
+  else { OpenAiResponsesOutputItemTypeOther { raw: raw } }
+}
+
+fn openai_responses_output_item_type_label(kind: OpenAiResponsesOutputItemType) -> String {
+  match kind {
+    OpenAiResponsesOutputMessage => openai_responses_output_message_wire
+    OpenAiResponsesOutputItemTypeOther { raw: r } => r
+  }
+}
+
+type OpenAiResponsesStatus
+  = OpenAiResponsesStatusCompleted
+  | OpenAiResponsesStatusFailed
+  | OpenAiResponsesStatusInProgress
+  | OpenAiResponsesStatusIncomplete
+  | OpenAiResponsesStatusCancelled
+  | OpenAiResponsesStatusQueued
+  | OpenAiResponsesStatusOther { raw: NonEmptyStr }
+
+data openai_responses_status_completed_wire: String = "completed"
+data openai_responses_status_failed_wire: String = "failed"
+data openai_responses_status_in_progress_wire: String = "in_progress"
+data openai_responses_status_incomplete_wire: String = "incomplete"
+data openai_responses_status_cancelled_wire: String = "cancelled"
+data openai_responses_status_queued_wire: String = "queued"
+
+fn parse_openai_responses_status(raw: String) -> OpenAiResponsesStatus {
+  if raw == openai_responses_status_completed_wire { OpenAiResponsesStatusCompleted }
+  else if raw == openai_responses_status_failed_wire { OpenAiResponsesStatusFailed }
+  else if raw == openai_responses_status_in_progress_wire { OpenAiResponsesStatusInProgress }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesStatusIncomplete }
+  else if raw == openai_responses_status_cancelled_wire { OpenAiResponsesStatusCancelled }
+  else if raw == openai_responses_status_queued_wire { OpenAiResponsesStatusQueued }
+  else { OpenAiResponsesStatusOther { raw: raw } }
+}
+
+fn openai_responses_status_label(kind: OpenAiResponsesStatus) -> String {
+  match kind {
+    OpenAiResponsesStatusCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesStatusFailed => openai_responses_status_failed_wire
+    OpenAiResponsesStatusInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesStatusIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesStatusCancelled => openai_responses_status_cancelled_wire
+    OpenAiResponsesStatusQueued => openai_responses_status_queued_wire
+    OpenAiResponsesStatusOther { raw: r } => r
+  }
+}
+
+type OpenAiResponsesOutputItemStatus
+  = OpenAiResponsesOutputItemInProgress
+  | OpenAiResponsesOutputItemCompleted
+  | OpenAiResponsesOutputItemIncomplete
+  | OpenAiResponsesOutputItemStatusOther { raw: NonEmptyStr }
+
+fn parse_openai_responses_output_item_status(raw: String) -> OpenAiResponsesOutputItemStatus {
+  if raw == openai_responses_status_in_progress_wire { OpenAiResponsesOutputItemInProgress }
+  else if raw == openai_responses_status_completed_wire { OpenAiResponsesOutputItemCompleted }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesOutputItemIncomplete }
+  else { OpenAiResponsesOutputItemStatusOther { raw: raw } }
+}
+
+fn openai_responses_output_item_status_label(kind: OpenAiResponsesOutputItemStatus) -> String {
+  match kind {
+    OpenAiResponsesOutputItemInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesOutputItemCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesOutputItemIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesOutputItemStatusOther { raw: r } => r
+  }
+}
+
+type OpenAiResponses200OutputContent {
+  type: OpenAiResponsesOutputContentType
+  text: String
+  annotations: List<OpenAiResponses200Annotation>?
+}
+
+data structural_coverage_gap_openai_responses_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiResponses200OutputContent" },
+      JsonPending { field: "logprobs" },
+      VariantPending { variant: "refusal" }
+    ],
+    trigger: "Responses output content coproduct surface"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiResponses200OutputItem" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "reasoning" },
+      VariantPending { variant: "error" },
+      VariantPending { variant: "multimodal_output" }
+    ],
+    trigger: "Responses output item coproduct surface"
+  }
+]
+
+type OpenAiResponses200Annotation
+  = FileCitation { file_id: String, filename: String, index: Int }
+  | ResponsesUrlCitation { start_index: Int, end_index: Int, title: String, url: String }
+  | ContainerFileCitation { container_id: String, file_id: String, filename: String, start_index: Int, end_index: Int }
+  | FilePath { file_id: String, index: Int }
+
+type OpenAiResponses200OutputItem {
+  id: String?
+  type: OpenAiResponsesOutputItemType
+  status: OpenAiResponsesOutputItemStatus?
+  role: String?
+  content: List<OpenAiResponses200OutputContent>
+}
+
+type OpenAiResponses200InputTokenDetails {
+  cached_tokens: Int?
+}
+
+type OpenAiResponses200OutputTokenDetails {
+  reasoning_tokens: Int?
+}
+
+type OpenAiResponses200Usage {
+  input_tokens: Int
+  output_tokens: Int
+  total_tokens: Int?
+  input_tokens_details: OpenAiResponses200InputTokenDetails?
+  output_tokens_details: OpenAiResponses200OutputTokenDetails?
+}
+
+type OpenAiResponses200Body {
+  id: String
+  object: String
+  created_at: Int?
+  status: OpenAiResponsesStatus?
+  model: String
+  output: List<OpenAiResponses200OutputItem>
+  usage: OpenAiResponses200Usage
+  service_tier: String?
+}

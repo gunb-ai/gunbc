@@ -1,0 +1,96 @@
+module test.claim.operation_admit_callers_inert_witness
+
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+// ADMIT_CALLERS ON A SERVICE OPERATION IS ACCEPTED AND INERT.
+//
+// THE CLASS. `admit_callers` is the repository's construction wall: a declaration names who may
+// call it, and anyone else is refused. On a `fn` it works. On a service `operation` the same
+// syntax PARSES, RESOLVES CLEAN, and DOES NOTHING -- every caller is admitted, and nothing warns.
+//
+// WHY THAT IS WORSE THAN THE WALL SIMPLY BEING ABSENT, which is the reason this file exists at
+// all. An absent wall is visible: you go looking, find nothing, and know where you stand. This one
+// is INVISIBLE while reading as present -- an author seals an operation, a reviewer reads the
+// roster as a boundary, and it admits everyone. It is the inert-lens failure at CONSTRUCTION
+// grain, which is the worst place for it, because a construction refusal is the rung people stop
+// checking behind. Measured evidence that the illusion works: the session that found this was one
+// step from reporting "the wall is available" after seeing the declaration parse, and the reviewing
+// session would have believed it.
+//
+// BLAST RADIUS TODAY: ZERO. No operation in the corpus currently carries admit_callers -- checked
+// across every .dag in dag/ and src/v2/, where all 21 occurrences attach to a fn or a sealed type.
+// So this is a LATENT TRAP, not a live hole, and the distinction is deliberate: the first author
+// to reach for it is the one who gets hurt, and they will have no reason to doubt it.
+//
+// TWO INDEPENDENT ROUTES ESTABLISH IT, because two readings of one artifact is not two
+// observations. By EXECUTION: admit_callers added to the real shell.Exec.Run naming only
+// gunbc.command_runner, after which the unadmitted gunbc.package_delivery -- which calls Run five
+// times -- resolved byte-identically to the unsealed baseline. By SOURCE: enforcement lives at
+// exactly one site in the seed, gated on an exact-constructor-declaration lookup and reading the
+// fn admission list; an operation invocation is not a constructor-declaration lookup, so it never
+// reaches that arm, and no operation-call analogue exists.
+//
+// THE RUNG, stated honestly. Not mitigatable -- BELOW it, because no mitigation occurs: nothing
+// refuses, nothing counts, nothing is logged. Attainable ceiling: structurally guaranteed, once
+// the check reaches operation calls; the class is decidable and fully modeled, so nothing but
+// implementation stands between here and there. NEXT-RUNG TRIGGER: an operation-grain construction
+// refusal exists, verified by a correctly-imported unadmitted caller. That trigger is stated in
+// its verified form because its first two attempted verifications were inconclusive for reasons
+// that had nothing to do with the seal -- a missing import, then a fixture whose service did not
+// resolve at all. A trigger that has already been mis-measured twice should carry how to measure it.
+//
+// ON THIS FILE'S SHAPE: the offending sources are compiled as DATA through the guarantee probe
+// corpus rather than being written as modules, which is what lets the positive control and the
+// finding live in one file and run through one invocation. Split apart they would be two
+// observations; together they are a discrimination, and the discrimination is the finding. A
+// refusal here is a resolve error, so an unadmitted call written directly into this module would
+// take the whole file down with it.
+
+// THE CONTROL'S SUBJECT IS THE PURPOSE-BUILT FIXTURE, not a production sealed fn, and that is a
+// COST decision with a measured cause rather than a preference. The first cut of this control
+// forged a caller of extdeps.shell.exec.transport_script_seal; it established the same fact but
+// took 54.9 SECONDS against the floor's 10s per-witness ceiling and grew RSS by about a gigabyte,
+// because compiling that source drags the whole shell/extdeps closure through the census. The
+// fixture's closure is a few declarations, and the operation-form probe beside it costs 516ms for
+// the same reason -- it imports only std.types. Same mechanism, same refusal, two orders of
+// magnitude less work.
+data admit_fn_form_source: String = "module probe_admit_fn_form\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated, mint_sealed_local }\nfn unadmitted_caller() -> LocalValidated {\n  mint_sealed_local(n: 65)\n}\n"
+
+data admit_op_form_source: String = "module probe_admit_op_form\nimport std.types { String, Int }\nservice probe.Svc {\n  operation Sealed {\n    input { arg: String }\n    output { exit_code: Int from \"exit_code\" }\n    readonly\n    admit_callers: [\n      decl_ref(module_path: \"probe_admit_op_form\", decl_name: \"admitted_caller\"),\n    ]\n    transport shell { argv: [\"true\", arg] }\n    exit { 0 => Unit  nonzero => Unit }\n    mock_response { 0 => { exit_code: 0 } \"hermetic\" }\n  }\n}\nfn unadmitted_caller() -> Int {\n  probe.Svc.Sealed(arg: \"x\").exit_code\n}\n"
+
+fn admit_census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// POSITIVE CONTROL, GREEN TODAY. The fn form refuses an unadmitted caller. This is what makes the
+// expected-red below a finding rather than a broken harness: without it, a red could mean the
+// mechanism is inert OR that this file cannot compile a probe at all, and those are different
+// states with different remedies.
+test fn fn_form_admission_refuses_unadmitted_caller() -> Bool {
+  match census_blocking_count_for_class(
+    census: admit_census_of(source: admit_fn_form_source),
+    wanted: "ConstructorCallAdmissionRefused"
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+// THE FINDING, EXPECTED-RED. Identical question at operation grain: a sealed operation whose
+// admit_callers list does not name the caller. This asserts the refusal that OUGHT to occur, so it
+// fails today and is enrolled as known-red rather than left to take the floor down as unexplained
+// breakage. Per DESIGN 4b it does NOT get deleted when the resolver gains operation-grain
+// enforcement -- it flips to a permanent regression control, because deleting the evidence on the
+// climb recreates specification-without-execution one rung up.
+test fn operation_form_admission_refuses_unadmitted_caller() -> Bool {
+  match census_blocking_count_for_class(
+    census: admit_census_of(source: admit_op_form_source),
+    wanted: "ConstructorCallAdmissionRefused"
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}

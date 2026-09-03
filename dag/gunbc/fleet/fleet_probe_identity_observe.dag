@@ -1,0 +1,90 @@
+module gunbc.fleet_probe_identity_observe
+
+import std.types { String, Bool, List }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+
+// Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY observation of
+// (a) whether the fleet automation PUBLIC key is present in the runner-reachable authorized_keys
+// on the host this job runs on (srv1 — the only host locally observable before first auth; srv2-4
+// are recorded pending-first-auth, never assumed either way), and (b) what GCP credential path
+// the runner holds today (the A2 seam precondition for in-run private-key materialization).
+// SECRET HYGIENE: only PUBLIC key material and presence verdicts are read or written — no private
+// key bytes, payload digests, or secret payloads of any kind touch this module.
+data fleet_probe_identity_receipt_path: String = "target/fleet-probe-identity-observe-receipt.txt"
+
+// IT TAKES THE COMMAND, NOT ITS WORDS. As a List<String> parameter this was a laundering seam -- a
+// caller handed it a hand-spelled vector and it built the record on their behalf, so the words
+// never passed a builder. The label stays separate: what a receipt line is CALLED is a fact about
+// the receipt, not the process.
+fn observe_capture_line(label: String, command: ArgvCommand) -> String {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      join([label, " outcome=observed value=", trim(s: t), "\n"], "")
+    ProcessOutputAbsent =>
+      join([label, " outcome=observed-empty value=\n"], "")
+    ProcessRefused { exit_code: _, stderr: e } =>
+      join([label, " outcome=refused cause=", trim(s: e), "\n"], "")
+  }
+}
+
+fn observe_authorized_keys_line(home: String) -> String {
+  let path = concat(home, "/.ssh/authorized_keys")
+  match run_shell_command_capture(command: cat_command(path: path), transport: LocalExec) {
+    ProcessOutputPresent { text: read_text } =>
+    if string_contains(s: read_text, pattern: fleet_automation_ssh_key.material) {
+      join(["authorized-keys home=", home, " outcome=fleet-key-present\n"], "")
+    } else {
+      join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable, key material not found)\n"], "")
+    }
+    ProcessOutputAbsent =>
+      join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable and empty)\n"], "")
+    ProcessRefused { exit_code: _, stderr: e } =>
+      join(["authorized-keys home=", home, " outcome=unreadable cause=", trim(s: e), "\n"], "")
+  }
+}
+
+// ph and jh are USED AS PATHS below, not merely printed, so they match the arms rather than
+// routing through the receipt-text projection: "(refused: ...)" is fine to print and wrong to
+// open. An unreadable home yields "" here and the guarded call below skips the probe entirely
+// rather than reading /.ssh/authorized_keys off a fabricated root.
+
+func fleet_probe_identity_observe_wet() -> ProcessExit
+  uses net: Network
+{
+  let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
+  let passwd_home = run_shell_command_capture(
+    command: posix_sh_program_command(script: "getent passwd \"$(whoami)\" | cut -d: -f6"),
+    transport: LocalExec,
+  )
+  let job_home = run_shell_command_capture(
+    command: posix_sh_program_command(script: "echo \"$HOME\""),
+    transport: LocalExec,
+  )
+  let ph = match passwd_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
+  let jh = match job_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
+  let body = join([
+    join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", process_outcome_receipt_text(outcome: passwd_home), " job-home=", process_outcome_receipt_text(outcome: job_home), "\n"], ""),
+    "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
+    if ph != "" { observe_authorized_keys_line(home: ph) } else { "authorized-keys home=(passwd home unreadable) outcome=not-probed\n" },
+    if jh != ph && jh != "" { observe_authorized_keys_line(home: jh) } else { "" },
+    observe_capture_line(label: "gcloud-binary", command: posix_sh_program_command(script: "command -v gcloud || echo absent")),
+    observe_capture_line(label: "gcloud-auth-list", command: posix_sh_program_command(script: "command -v gcloud >/dev/null && gcloud auth list --format=value(account) 2>&1 || echo gcloud-absent")),
+    observe_capture_line(label: "adc-env", command: posix_sh_program_command(script: "echo \"$\{GOOGLE_APPLICATION_CREDENTIALS:-absent}\"")),
+    observe_capture_line(label: "adc-file-passwd-home", command: posix_sh_program_command(script: "test -f \"$(getent passwd \"$(whoami)\" | cut -d: -f6)/.config/gcloud/application_default_credentials.json\" && echo present || echo absent")),
+  ], "")
+  let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("fleet_probe_identity_observe: receipt publication failed — ", w.error))
+  }
+}

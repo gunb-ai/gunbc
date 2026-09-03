@@ -1,27 +1,88 @@
 module v2.test.round_trip.dag_comment_wall_test
 
-import v2.extdeps.languages.dag {
-  dag_block_comment_fidelity,
-  dag_line_comment_fidelity,
-  DagBlockCommentFailClosed,
-  DagLineCommentFailClosed
-}
-import v2.extdeps.languages.fidelity { FailClosed }
-import v2.std.logic { Bool }
-import v2.std.text { String }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXECUTING half of the comment wall, migrated from src/v1/tests/src/dag_comment_wall_test.rs
+// (v1-test-migration, dag-comment-wall behavior family). The two fidelity rows below assert what
+// the language model DECLARES; on their own they are a declaration, not a refusal — editing the
+// tokenizer back to skipping comments leaves both green (DESIGN 4b rung honesty: a declared row
+// establishes nothing about the acceptance path). These four probes assert what the compiler DOES:
+// each sends a synthetic module through compile_dag_rust_emit_check, the same production compile
+// path and same compile_clean_diagnostic_is_hard authority CI's compile-clean gate uses, reaching
+// the same tokenizer and parser src/v1/tests/src/dag_comment_wall_test.rs drives through
+// parse_with_table. The refusals are discriminating against the accepted control rather than
+// against nothing: dag_comment_wall_clean_source_compiles and the line/block probes differ ONLY by
+// the comment text, so a probe cannot go red for an unrelated defect in the fixture without the
+// control going red with it, and re-admitting comment-skip flips both refusals green while the
+// control stays green. slash_slash_inside_string_literal_accepted is proven twice over: this
+// module's own literal must survive tokenization for the file to run at all, and the string probe
+// compiles through the same path.
 
 fn slash_slash_in_string() -> String {
   "https://example.com"
 }
 
+fn dag_comment_wall_probe_compiles(source: String, path: String) -> Bool {
+  compile_dag_rust_emit_check(source, path, [], [])
+}
+
+test fn dag_comment_wall_clean_source_compiles() -> Bool {
+  dag_comment_wall_probe_compiles(
+    source: "module comment_wall_clean\n\nfn probe() -> Bool { true }\n",
+    path: "src/comment_wall_clean.rs"
+  )
+}
+
+test fn dag_comment_wall_line_comment_refused() -> Bool {
+  !dag_comment_wall_probe_compiles(
+    source: "module comment_wall_line\n\nfn probe() -> Bool { true } // comment\n",
+    path: "src/comment_wall_line.rs"
+  )
+}
+
+test fn dag_comment_wall_block_comment_refused() -> Bool {
+  !dag_comment_wall_probe_compiles(
+    source: "module comment_wall_block\n\n/* comment */\nfn probe() -> Bool { true }\n",
+    path: "src/comment_wall_block.rs"
+  )
+}
+
+test fn dag_comment_wall_slash_slash_inside_string_compiles() -> Bool {
+  dag_comment_wall_probe_compiles(
+    source: "module comment_wall_string\n\nfn url() -> String { \"https://example.com\" }\n",
+    path: "src/comment_wall_string.rs"
+  )
+}
+
 test fn dag_line_comment_is_fail_closed() -> Bool {
-  dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed }
+  dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed }
 }
 
 test fn dag_block_comment_is_fail_closed() -> Bool {
-  dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
+  dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
 test fn slash_slash_inside_string_literal_accepted() -> Bool {
   slash_slash_in_string() == "https://example.com"
+}
+
+data dag_comment_wall_recut_note: String = "THE WALL'S MEANING CHANGED, AND THESE ROWS ARE WHERE THAT IS STATED. It used to assert that comment SYNTAX is unwritable. It now asserts DESIGN 4c's actual rule: prose is not forbidden, unclassified prose is.
+
+Nothing above was edited, because nothing above became wrong — the line probe's comment is TRAILING and the block probe's syntax is still unmodeled, so both still refuse. But they refuse for a different reason than they used to: the annotation channel captures the lexeme and attachment then refuses it with a typed, located diagnostic, where before the tokenizer failed to produce a token at all. A reader who assumes those two probes still prove `// is a parse error` would be wrong, and would conclude the feature had not landed.
+
+What distinguishes the new rule from the old one is the POSITIVE control below: a leading annotation above a module item now compiles through the same production path that refuses the other three. Without it, every probe in this file is a refusal, and a wall that only ever says no is indistinguishable from one that rejects everything."
+
+test fn dag_leading_annotation_above_a_module_item_compiles() -> Bool {
+  dag_comment_wall_probe_compiles(
+    source: "module comment_wall_leading\n\n// prose about the probe\nfn probe() -> Bool { true }\n",
+    path: "src/comment_wall_leading.rs"
+  )
+}
+
+// Body-grain prose stays refused, and this is the discriminating partner of the row above: the two sources differ ONLY in whether the comment sits above the declaration or inside its body, so acceptance cannot be coming from the comment being ignored — an ignored comment would make both compile.
+test fn dag_annotation_inside_a_body_is_still_refused() -> Bool {
+  !dag_comment_wall_probe_compiles(
+    source: "module comment_wall_body\n\nfn probe() -> Bool {\n  // prose inside the body\n  true\n}\n",
+    path: "src/comment_wall_body.rs"
+  )
 }

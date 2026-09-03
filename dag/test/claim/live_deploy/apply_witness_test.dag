@@ -1,0 +1,128 @@
+module test.claim.live_deploy.apply
+
+import gunbc.live_deploy.apply {
+  live_deploy_apply_readiness_gate_with_readiness,
+}
+import gunbc.roadmap_static_site {
+  roadmap_site_digest_readback_script,
+  roadmap_site_roadmap_url_path,
+  roadmap_site_dispatch_url_path,
+}
+import gunbc.live_deploy.spec { deployment_plan_listen_port }
+import gunbc.live_deploy.readiness {
+  service_ready_apply_effect,
+  ServiceReadyApplyEffect,
+  ServiceReadyEvidence,
+}
+import gunbc.live_deploy.service_ready {
+  service_not_ready_reason,
+  ServiceNotReady,
+  live_deploy_service_ready_poll_bound,
+  live_deploy_service_ready_unit_authority,
+  live_deploy_service_ready_endpoint_authority,
+  UnitDiagnosisUnavailable,
+}
+import gunbc.host_effect {
+  ShellCommand,
+  HostOs,
+  host_effect_identity_evidence,
+  LocalShell,
+  HostEffectIntent,
+  HostEffectEvidence,
+  ShellEffectApplied,
+}
+import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import gunbc.fleet_intent { srv1_host }
+import std.realization_reconcile {
+  Reconciliation,
+  reconciliation_converged,
+  Converged,
+  NotConverged,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── RETIRED WITH THE SECOND SLOT ───────────────────────────────────────────────────────────────
+//
+// Three claims lived here — witness_blue_active_selects_green_idle,
+// witness_green_active_selects_blue_idle and
+// witness_unknown_or_unparseable_route_refuses_before_slot_selection — over
+// srv1_blue_green_slot_selection and the tailscale status fixture that fed it. They are retired
+// rather than repointed because their subject was the SELECTOR: which of two slots is currently
+// serving, so the other may be deployed into. With one deployment there is no idle slot to pick
+// and the function is gone, so every one of them would have to be re-pointed at a question nobody
+// asks. DESIGN section 4b's dissolution rule keeps evidence for surviving claims, not evidence
+// whose only subject is retired, and the third claim is the one worth naming: it asserted that an
+// unknown or unparseable route REFUSES instead of guessing a slot. That refusal has no subject
+// either — nothing selects — but the property it protected did not vanish, it moved: the deploy now
+// targets one declared spec, so the route is never inferred from observed state at all. The class
+// is closed by construction rather than by a check, which is the strictly better end state and the
+// reason this retires clean instead of leaving a gap.
+//
+// HONESTLY LOST with them: idle-slot discovery. A deploy into the live slot has no idle twin to
+// stage in, so a bad release is downtime rather than a held-back cutover. That is stated in
+// gunbc.live_deploy.apply single_deployment_note as the accepted cost of the operator's
+// single-deployment ruling, not papered over here.
+
+fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  Converged {
+    evidence: ShellEffectApplied {
+      exit_code: 0,
+      stdout: "live-deploy-mutation-applied",
+      stderr: "",
+    },
+    applied: HostEffectIntent {
+      target: HostOs { node: srv1_host },
+      effect: ShellCommand { script: "mutation-marker" },
+      evidence: host_effect_identity_evidence,
+      transport: LocalShell,
+      privilege_denial: none,
+    },
+  }
+}
+
+fn fixture_service_not_ready_readiness() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  NotConverged {
+    reason: service_not_ready_reason(refusal: ServiceNotReady {
+      unit: live_deploy_service_ready_unit_authority,
+      endpoint: live_deploy_service_ready_endpoint_authority,
+      waited: live_deploy_service_ready_poll_bound,
+      last_probe: "health probe never succeeded",
+      unit_diagnosis: UnitDiagnosisUnavailable,
+    }),
+    applied: service_ready_apply_effect(),
+  }
+}
+
+test fn witness_red_control_mutation_without_readiness_cannot_converge() -> Bool {
+  !reconciliation_converged(
+    r: live_deploy_apply_readiness_gate_with_readiness(
+      mutation: fixture_converged_mutation(),
+      readiness: fixture_service_not_ready_readiness(),
+    )
+  )
+}
+
+test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply() -> Bool {
+  match live_deploy_apply_readiness_gate_with_readiness(
+    mutation: fixture_converged_mutation(),
+    readiness: fixture_service_not_ready_readiness(),
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "ServiceNotReady")
+        && string_contains(s: why, pattern: "health probe never succeeded")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {
+  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
+  let script = roadmap_site_digest_readback_script(port: port)
+  string_contains(s: script, pattern: roadmap_site_roadmap_url_path)
+    && string_contains(s: script, pattern: roadmap_site_dispatch_url_path)
+    && string_contains(s: script, pattern: "roadmap-site-readback")
+    && string_contains(s: script, pattern: "--connect-timeout")
+    && string_contains(s: script, pattern: "--max-time")
+    && !string_contains(s: script, pattern: "healthz json parse failed")
+}

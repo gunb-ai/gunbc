@@ -1,0 +1,505 @@
+module extdeps.systemd.systemctl
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
+  }
+}
+
+data systemctl_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data systemctl_binary_name: NonEmptyStr = "systemctl" as NonEmptyStr
+
+fn systemctl_binary_path() -> NonEmptyStr {
+  systemd_binary_path(name: systemctl_binary_name)
+}
+
+data systemctl_reboot_verb: NonEmptyStr = "reboot" as NonEmptyStr
+
+// The reboot command in the two renderings a sudoers grant and its actuator need. Unlike
+// enable-linger this verb takes no subject -- it reboots the host the grant is installed on -- and
+// that asymmetry is the reason the grant coproduct carries its subject per-variant rather than
+// taking one uniformly: a subject appended here would authorize an argument sudo would then refuse
+// to match, and `systemctl reboot <anything>` is not a command upstream accepts.
+fn systemctl_reboot_argv() -> List<String> {
+  [systemctl_binary_name as String, systemctl_reboot_verb as String]
+}
+
+fn systemctl_reboot_command() -> NonEmptyStr {
+  join([systemctl_binary_path() as String, " ", systemctl_reboot_verb as String], "") as NonEmptyStr
+}
+
+// THE REST OF THIS MODULE STILL SPELLS "systemctl" INLINE, at 24 sites, and that is left alone
+// deliberately rather than overlooked. Most of them sit inside `transport shell { argv: [...] }`
+// rows whose elements are literals in a transport DSL, so routing them through the row above is a
+// different and larger change than routing two argv builders through it. The rows added here exist
+// because a privilege grant needs the absolute and bare renderings to be derived from one authority;
+// converging the remaining sites is a separate, byte-neutral cleanup and is not claimed here.
+
+fn systemctl_daemon_reload_argv() -> List<String> {
+  ["systemctl", "daemon-reload"]
+}
+
+// ENABLE AND START ARE TWO VERBS AND TWO ROWS, AND THE SPELLINGS ARE HOISTED BECAUSE A THIRD
+// CONSUMER ARRIVED. These argv builders spelled their verbs inline while
+// gunbc.executor_privileged_operation needs the same words to build an ABSOLUTE-path argv that a
+// sudoers match is derived from -- so the verb would have been authored a second time in a module
+// whose whole purpose is that a grant and its command have one spelling. The rows carry the verb;
+// the builders below and the privileged operation both read them.
+//
+// enable --now IS DELIBERATELY NOT DERIVABLE FROM THESE. systemctl_enable_now_command exists and
+// keeps its own spelling, because fusing durable boot intent with immediate activity is a
+// DIFFERENT operation from doing both in order, not a shorthand for it: `enable` authorizes a
+// future boot to start the unit under readiness conditions nobody will re-observe at that boot,
+// and `start` acts under conditions observable now. A caller that wants both wants two
+// separately-admitted transitions.
+data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
+
+data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+
+fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_enable_verb as String, unit as String]
+}
+
+// START IS NOT RESTART, AND FOR A SLICE THE DIFFERENCE IS DESTRUCTIVE RATHER THAN STYLISTIC. Stopping a
+// slice kills every process in it (systemd.slice(5)), so `restart` applied to a compile pool would terminate
+// the compilers the pool exists to hold. `start` on an already-active slice is a no-op that re-applies the
+// unit's resource directives, which is what a converger wants. The modeled `Start` operation already exists
+// on the service surface; this is its argv authority for the shell-body realization edge.
+fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_start_verb as String, unit as String]
+}
+
+fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "restart", unit as String]
+}
+
+fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "disable", "--now", unit as String]
+}
+
+fn systemctl_stop_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "stop", unit as String]
+}
+
+// MASK IS NOT A STRONGER DISABLE, IT IS A DIFFERENT OPERATION, and systemctl(1) separates them on
+// two axes this repository has a caller for. FIRST, REACH: `disable` removes the enablement
+// symlinks, which is why it does nothing at all to a STATIC unit -- one with no [Install] section,
+// which has no such symlinks to remove -- and why it never prevents `systemctl start` or activation
+// by another unit. `mask` links the unit name to /dev/null, so activation is refused whatever
+// requests it: a timer, a dependency, or a hand at a terminal. SECOND, AND IT IS THE REASON A
+// TEMPORARY QUIESCENCE WANTS MASK RATHER THAN DISABLE: `disable` DESTROYS the enablement state,
+// so restoring it means re-deciding what that state was, and a restore-by-enable would enable a
+// unit that had been deliberately disabled before the quiescence began. `mask` LAYERS over the
+// existing state and `unmask` removes the layer, leaving prior enablement exactly as it was found.
+// So the pair is state-preserving where enable/disable is state-asserting.
+data systemctl_mask_verb: NonEmptyStr = "mask" as NonEmptyStr
+
+data systemctl_unmask_verb: NonEmptyStr = "unmask" as NonEmptyStr
+
+fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_mask_verb as String, "--now", unit as String]
+}
+
+fn systemctl_unmask_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_unmask_verb as String, unit as String]
+}
+
+data systemctl_set_property_verb: NonEmptyStr = "set-property" as NonEmptyStr
+
+fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
+  [
+    "systemctl",
+    systemctl_set_property_verb as String,
+    unit as String,
+    concat(property as String, concat("=", value as String)),
+  ]
+}
+
+fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
+}
+
+fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+  [
+    "systemctl",
+    "show",
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    "--value",
+  ]
+}
+
+// LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
+// `is-enabled` answers the INSTALL state (whether the unit is wanted by a target), which is a
+// different question from `is-active` (whether it is running now) and from LoadState (whether the
+// manager could parse a unit file for it). A unit can be loaded and active yet not enabled, and
+// would then not come back after a reboot -- so a convergence claim that reads only is-active is
+// answering a question it was not asked.
+fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "is-enabled", unit as String]
+}
+
+// TWO SIBLING BUILDERS WERE DELETED HERE RATHER THAN KEPT FOR SYMMETRY, and counting their references
+// is what decided it. A review read this block as a transport-as-authority fork paralleling the modeled
+// `service systemd.Systemctl` operations. Measuring first split the block three ways: the system-scope
+// `is-enabled` builder and the user-scope `is-active` builder each had exactly ONE reference in the
+// corpus -- their own declaration -- so they were dead, and a dead builder is not a fork to consolidate,
+// it is a row to remove. `IsActive` additionally EXISTS as a modeled operation, so the user-scope
+// builder would have been a genuine second authority the moment anything called it.
+//
+// WHAT SURVIVES AND WHY IT IS NOT A FORK: there is no modeled `IsEnabled` operation at all, so
+// `systemctl_user_is_enabled_argv` forks nothing -- it is the only way this corpus can ask the question,
+// and it has a real consumer. What the review correctly identifies as the standing defect is that
+// `--user` is hand-encoded in the builder name rather than being a SCOPE PARAMETER on the modeled
+// surface; that is true of the pre-existing builders too and is not repaired here.
+//
+// RUNG: mitigatable. NEXT-RUNG TRIGGER: a `scope: SystemdScope` input on the modeled operations, which
+// makes `--user` a value rather than a spelling and lets `IsEnabled` land once for both scopes. Until
+// then this builder is the honest minimum -- one consumer, one question, no modeled surface to fork.
+
+// Enable and start are SEPARATE OPERATIONS, deliberately not `enable --now`. The fused form applies
+// two remedies under one word, so a plan that needed only one of them pays for both, and -- worse --
+// the two facts stop being separately observable in the actuation the way they are separately
+// observable on the host.
+fn systemctl_user_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "enable", unit as String]
+}
+
+fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "start", unit as String]
+}
+
+// RESTART IS A THIRD OPERATION, NOT ENABLE-AND-START SPELLED TOGETHER. It acts on a unit that is
+// already installed and already meant to be running, and it replaces the PROCESS -- which is why the
+// remedy that selects it (gunbc.spark.serving_realization ServingReactivationEffect) is chosen from a
+// running-definition reading and not from anything the install vocabulary observes. Fusing it into
+// enable or start is the defect DCH-0r-a deleted: a restart emitted unconditionally beside an enable
+// is destructive to in-flight work on every converge, and it has no independently matchable identity
+// for a fence to guard.
+fn systemctl_user_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "restart", unit as String]
+}
+
+// STOP AND DISABLE ARE THE RETIREMENT PAIR, AND THEY ARE SEPARATE FOR THE REASON ENABLE AND START
+// ARE. `disable --now` fuses them exactly as `enable --now` fuses the install pair, and the cost is
+// the same distinction: stop ends the RUNNING process, disable removes the install symlinks so the
+// unit does not return at the next boot. A retirement that only stops leaves a unit that comes back
+// on reboot; one that only disables leaves a live server holding the resource the retirement exists
+// to free. They are two facts about a unit and they remain two operations here.
+//
+// `disable` on a unit the manager does not know exits nonzero, and that nonzero is a real answer
+// rather than noise to swallow: it means the retirement was planned against a unit that is not
+// there, which is a disagreement between the observed population and the plan, not a step to make
+// idempotent by flag. Nothing here passes --quiet or ignores the status for that reason.
+fn systemctl_user_stop_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "stop", unit as String]
+}
+
+fn systemctl_user_disable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "disable", unit as String]
+}
+
+// LoadState is the only observation that distinguishes an ABSENT unit from a present one, which is why the
+// `ShowLoadState` operation on the service surface above is its own operation rather than a
+// SystemdUnitProperty arm: that coproduct is numeric cgroup evidence sharing one numeric mock, and a wire
+// value of `not-found` is not a magnitude. Cited to systemd.unit(5) LoadState -- `loaded`, `not-found`,
+// `bad-setting`, `error`, `masked` -- of which `not-found` is the one this corpus reads positively.
+// `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a nonzero exit
+// means the MANAGER was unreadable, which is a different refusal from an absent unit and must not be folded
+// into it.
+fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
+}
+
+fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "status", "--no-pager", "--full", unit as String]
+}
+
+type UnitFileState
+  = UnitEnabled
+  | UnitEnabledRuntime
+  | UnitLinked
+  | UnitMasked
+  | UnitStatic
+  | UnitDisabled
+  | UnitIndirect
+  | UnitGenerated
+  | UnitTransient
+  | UnitBad
+
+service systemd.Systemctl {
+  operation Enable {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "enable", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl enable failed"
+    }
+  }
+
+  operation Restart {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "restart", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl restart failed"
+    }
+  }
+
+  operation DisableNow {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "disable", "--now", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl disable --now failed"
+    }
+  }
+
+  operation Start {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "start", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl start failed"
+    }
+  }
+
+  operation Stop {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "stop", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl stop failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Stop"
+    }
+  }
+
+  operation SetProperty {
+    input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "set-property", "{unit}", "{property}={value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl set-property failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.SetProperty"
+    }
+  }
+
+  operation RevertMemoryCaps {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "revert", "{unit}", "MemoryMax", "MemoryHigh"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl revert MemoryMax MemoryHigh failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.RevertMemoryCaps"
+    }
+  }
+
+  operation DaemonReload {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "daemon-reload"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl daemon-reload failed"
+    }
+  }
+
+  operation IsActive {
+    input { unit: NonEmptyStr }
+    output {
+      state: String from "stdout"
+      active: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "is-active", "{unit}"] }
+    exit {
+      0 => Unit
+      3 => Unit "unit is not active"
+      nonzero => String "systemctl is-active failed"
+    }
+    mock_response {
+      0 => { state: "active", active: true } "hermetic systemd.Systemctl.IsActive active"
+    }
+  }
+
+  operation ShowProperty {
+    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show failed"
+    }
+    mock_response {
+      0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
+    }
+  }
+
+  operation ShowLoadState {
+    input { unit: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property=LoadState", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show LoadState failed"
+    }
+    mock_response {
+      0 => { value: "not-found", success: true } "hermetic systemd.Systemctl.ShowLoadState"
+    }
+  }
+
+  operation ListUnits {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+      state: String = "active",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "list-units",
+        "--type={unit_type}",
+        "--state={state}",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl list-units failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded active running GitHub Actions Runner\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnits (multi-column rows — consumer must take first field only)"
+    }
+  }
+
+  operation Status {
+    input { unit: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "status", "--no-pager", "--full", "{unit}"] }
+    exit {
+      0 => Unit
+      1 => Unit "unit dead, pid file remains (LSB init-script code)"
+      2 => Unit "unit dead, lock file remains (LSB init-script code)"
+      3 => Unit "unit not running (LSB init-script code)"
+      4 => Unit "unit status unknown (LSB init-script code)"
+      nonzero => String "systemctl status failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "● demo.service - Demo\n     Loaded: loaded\n     Active: active (running)",
+        success: true,
+      } "hermetic systemd.Systemctl.Status active"
+    }
+  }
+}
+
+// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
+// on have not been observed by this repository, and sudo resolves the command through its own
+// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
+// consumer -- the NOPASSWD rules that name it.
+data systemctl_program: NonEmptyStr = "systemctl"
+
+// ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
+// contradiction and is not. That split exists because the user-scope consumer converges the two
+// facts separately and observes them separately. This builder serves a different consumer: runner
+// slot activation, where the fused form is what is deployed today and what the sudoers grant on
+// those hosts names. Splitting it here would be a change to a live actuation shipped inside an argv
+// refactor, which is exactly the silent behaviour change this lane keeps refusing to make. If the
+// activation path later wants the two facts apart, that is its own change with its own witness.
+//
+// TWO THINGS ABOUT THE EMITTED WORDS CHANGE HERE AND ARE STATED RATHER THAN SLIPPED IN, because the
+// call site this replaces spelled `sudo` bare with no flag. The elevation now comes from
+// extdeps.sudo.elevation, so the words become that module's absolute /usr/bin/sudo and its -n:
+// non-interactive, which FAILS instead of blocking on a tty that CI does not have. That module mints
+// only the non-interactive form deliberately (interactive sudo is unreachable through it), and every
+// other privileged leaf in this repository already runs that way -- so this aligns one straggler
+// rather than inventing a posture. A reader who wants the old prompting behaviour is asking for a
+// different operation, and should say so with its own row.
+//
+// ELEVATION IS PART OF THE OPERATION, not a prefix the caller assembles: the units live in the
+// system manager, so an unelevated invocation is not a weaker version of this request, it is a
+// different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
+// than being re-spelled as two more literals here.
+fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_binary_path,
+    arguments: append(
+      [sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
+      items: units,
+    ),
+  )
+}

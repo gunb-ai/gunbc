@@ -1,0 +1,479 @@
+module gunbc.spark.training_ready
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.measure { ByteSize, byte_size_count, kibibyte, kibibyte_to_byte_size }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.cell_role {
+  SparkCellRole,
+  SparkServingCell,
+  SparkTrainingCell,
+  spark_cell_role_of,
+  spark_cell_role_eq,
+  SparkCellRoleLookup,
+  SparkCellRoleAbsent,
+  SparkCellRoleUnique,
+  SparkCellRoleAmbiguous,
+}
+import extdeps.iproute2.ss { ss_enumeration_is_empty }
+import extdeps.procps.pgrep { pgrep_exit_no_match }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import gunbc.spark.serving_terminal_health {
+  SparkServingProbeCapture,
+  ProbeNeverRan,
+  ProbeFailed,
+  ProbeAnswered,
+}
+
+// SPARK-PAIR-0 P0. The gate between a host that no longer serves and a host the training fabric may
+// offer. SparkTrainingReadyProof is sole_constructor and has exactly one producer, so a training
+// offer, a capacity measurement or a trainer launch cannot be written against a Spark whose serving
+// retirement was never terminally observed.
+
+// RETIREMENT IS NOT PROVED BY A PROBE THAT FAILED TO RUN.
+//
+// This is the empty-observation narrow at its most expensive, because here the narrow arm is the one
+// that reads as good news. "I could not reach the endpoint" and "the endpoint refused the
+// connection" both produce no serving response, and only the second is evidence that nothing is
+// listening. A retirement verified by the first would hand the trainer a host with a live Ollama
+// server still holding the unified pool -- and the symptom would be an out-of-memory failure inside
+// a training run, attributed to the recipe.
+//
+// So absence is a POSITIVE observation with its own arms, and what counts as evidence is decided per
+// subject rather than by any general rule about failure. NO CONNECTION FAILURE ESTABLISHES ENDPOINT
+// ABSENCE: endpoint absence requires a completed host-local listener enumeration whose exact target
+// population is empty, and a failed or unreached enumeration establishes nothing. A probe that never
+// ran is not evidence either, and a probe that answered with a population is the loud case --
+// something is still serving.
+type SparkServingAbsence
+  = ServingAbsenceUnobserved { cause: NonEmptyStr }
+  | ServingStillPresent { evidence: NonEmptyStr }
+  | ServingAbsent { evidence: NonEmptyStr }
+
+// THE THREE SUBJECTS ARE READ SEPARATELY BECAUSE THEY FAIL SEPARATELY.
+//
+// A stopped process with the unit still enabled comes back at the next boot; a removed unit file
+// with the process still running leaves a server the manager can no longer name; an endpoint that
+// still answers means neither of the first two happened where it mattered. Each is its own read with
+// its own capture, and the proof requires all three -- one fused "is it retired" observation would
+// let any one of them stand in for the other two.
+type SparkServingRetirementObservation sole_constructor {
+  host: HostIdentity
+  endpoint: SparkServingAbsence
+  process: SparkServingAbsence
+  unit: SparkServingAbsence
+}
+
+// THE CANONICAL QUERY OVER THE COPRODUCT RETURNS THE REFUSAL, NOT A BOOLEAN.
+//
+// This replaces an `is_established -> Bool` predicate. A Bool discards the half of the answer the
+// caller needs: the readiness gate has to tell an operator WHICH subject refused and why, and with a
+// predicate it was re-authoring a cause string per axis while the absence value was carrying a
+// better one. Returning the refusal makes the carrier answer for itself, and the caller's three
+// per-axis branches collapse into one fold over the three subjects.
+fn spark_serving_absence_refusal(a: SparkServingAbsence) -> NonEmptyStr? {
+  match a {
+    ServingAbsent { evidence: _ } => none
+    ServingStillPresent { evidence: e } =>
+      Present { value: join(["still present — ", e as String], "") as NonEmptyStr }
+    ServingAbsenceUnobserved { cause: c } =>
+      Present { value: join(["not observed — ", c as String], "") as NonEmptyStr }
+  }
+}
+
+// A NONZERO EXIT IS NOT ABSENCE, AND THIS DECODER SAID IT WAS.
+//
+// The shape this replaces mapped EVERY `ProbeFailed` to `ServingAbsent`, on the reasoning that a
+// dial against a dead port fails. That reasoning is right about one exit code and wrong about all
+// the others, which is the fail-open §5 forbids and is worse here than anywhere: a permission
+// denial, a malformed argv, a DNS failure or an internal error each exits nonzero, and each would
+// have proved a retirement that never happened -- admitting training onto a host with a live server
+// still holding the unified pool. The symptom would be an out-of-memory failure inside a training
+// run, attributed to the recipe.
+//
+// So absence needs a DISCRIMINATING result, and which result discriminates is a property of the
+// TOOL rather than of this module. The three subjects answer in two different shapes, which is
+// exactly why one rule could not cover them:
+//
+//   - a listener enumeration COMPLETES and prints one line per listening socket, so the empty
+//     completed answer is the absence and no status code is asked to carry it. A dial's exit code
+//     cannot: curl(1) 7 is "failed to connect to host or proxy", one status for every reason a
+//     connect failed, so it establishes that curl did not connect and nothing about what is there
+//   - a process scan exits 1 and only 1 to mean nothing matched (pgrep(1), where 2 and 3 mean the
+//     question was never answered)
+//   - a unit query exits ZERO and answers `not-found` on stdout; systemd's own authority records
+//     that a nonzero there means the MANAGER was unreadable, which is a different refusal
+//
+// The unit axis is the one that proves the old rule could not have been patched with a code: its
+// absence evidence arrives as a successful answer, so "nonzero means gone" was not merely too broad
+// there, it was inverted.
+//   - a listening-socket enumeration completes and prints one line per listener, so the EMPTY
+//     completed answer is the absence, and no status code is asked to carry it
+//
+// THE ENDPOINT AXIS USED A DIAL'S EXIT CODE, AND THAT WAS STRONGER THAN ITS SOURCE.
+//
+// It read curl exit 7 as proof that nothing was listening. curl(1) documents 7 as
+// CURLE_COULDNT_CONNECT, "Failed to connect() to host or proxy" -- one code for every reason a
+// connect failed, with curl's own documentation telling callers the numeric code does not carry the
+// complete cause. What a 7 establishes is `curl did not connect`. What the proof needs is that the
+// intended host was reached, that the intended port was tested directly, that no proxy intervened
+// and that no listener exists. A transport failure was standing in the good-news arm of a proof that
+// authorizes training onto the machine -- the same fail-open class as the "any nonzero" decoder this
+// module already repaired once, one rung subtler, and mine.
+//
+// So the endpoint axis enumerates instead of dialing, and the empty answer is a population rather
+// than a status. A connect failure now establishes nothing at all.
+type SparkServingAbsenceEvidence
+  = AbsenceByExitCode { absent_exit_code: Int, tool: NonEmptyStr }
+  | AbsenceByAnsweredLexeme { absent_lexeme: NonEmptyStr, tool: NonEmptyStr }
+  | AbsenceByEmptyEnumeration { tool: NonEmptyStr }
+
+fn spark_serving_endpoint_absence_evidence() -> SparkServingAbsenceEvidence {
+  AbsenceByEmptyEnumeration {
+    tool: "ss -H -l -t -n sport" as NonEmptyStr,
+  }
+}
+
+fn spark_serving_process_absence_evidence() -> SparkServingAbsenceEvidence {
+  AbsenceByExitCode {
+    absent_exit_code: pgrep_exit_no_match,
+    tool: "pgrep" as NonEmptyStr,
+  }
+}
+
+fn spark_serving_unit_absence_evidence() -> SparkServingAbsenceEvidence {
+  AbsenceByAnsweredLexeme {
+    absent_lexeme: systemd_unit_load_state_not_found_wire,
+    tool: "systemctl show --property=LoadState" as NonEmptyStr,
+  }
+}
+
+// A CAST DOES NOT PARSE INSIDE AN `if` CONDITION, so the lexeme comparison is a named function
+// rather than an inline test. The same grammar fact put `host_identity_eq` beside HostIdentity.
+fn spark_serving_answered_lexeme_matches(stdout: String, lexeme: NonEmptyStr) -> Bool {
+  trim(s: stdout) == lexeme as String
+}
+
+fn spark_serving_absence_from_probe(
+  subject: NonEmptyStr,
+  evidence: SparkServingAbsenceEvidence,
+  capture: SparkServingProbeCapture,
+) -> SparkServingAbsence {
+  match capture {
+    ProbeNeverRan { cause: c } =>
+      ServingAbsenceUnobserved {
+        cause: join([subject as String, ": the probe never ran — ", c as String], "") as NonEmptyStr,
+      }
+    ProbeFailed { exit_code: code, stderr: err } =>
+      match evidence {
+        AbsenceByExitCode { absent_exit_code: absent, tool: t } =>
+          if code == absent {
+            ServingAbsent {
+              evidence: join([subject as String, ": ", t as String, " exited ", to_string(code), ", the status that means nothing is there"], "") as NonEmptyStr,
+            }
+          } else {
+            ServingAbsenceUnobserved {
+              cause: join([subject as String, ": ", t as String, " exited ", to_string(code), ", which is a failure and not an absence — ", err], "") as NonEmptyStr,
+            }
+          }
+        AbsenceByAnsweredLexeme { absent_lexeme: _, tool: t } =>
+          ServingAbsenceUnobserved {
+            cause: join([subject as String, ": ", t as String, " exited ", to_string(code), " — this subject proves absence by ANSWERING, so a nonzero exit means the query itself failed — ", err], "") as NonEmptyStr,
+          }
+        AbsenceByEmptyEnumeration { tool: t } =>
+          ServingAbsenceUnobserved {
+            cause: join([subject as String, ": ", t as String, " exited ", to_string(code), " — the enumeration did not complete, so the listener population was never observed — ", err], "") as NonEmptyStr,
+          }
+      }
+    ProbeAnswered { stdout: out } =>
+      match evidence {
+        AbsenceByExitCode { absent_exit_code: _, tool: t } =>
+          ServingStillPresent {
+            evidence: join([subject as String, ": ", t as String, " succeeded — ", out], "") as NonEmptyStr,
+          }
+        AbsenceByAnsweredLexeme { absent_lexeme: lexeme, tool: t } =>
+          if spark_serving_answered_lexeme_matches(stdout: out, lexeme: lexeme) {
+            ServingAbsent {
+              evidence: join([subject as String, ": ", t as String, " answered ", lexeme as String], "") as NonEmptyStr,
+            }
+          } else {
+            ServingStillPresent {
+              evidence: join([subject as String, ": ", t as String, " answered ", trim(s: out)], "") as NonEmptyStr,
+            }
+          }
+        AbsenceByEmptyEnumeration { tool: t } =>
+          if ss_enumeration_is_empty(stdout: out) {
+            ServingAbsent {
+              evidence: join([subject as String, ": ", t as String, " completed and enumerated no listening socket on the serving port"], "") as NonEmptyStr,
+            }
+          } else {
+            ServingStillPresent {
+              evidence: join([subject as String, ": ", t as String, " enumerated a listening socket — ", trim(s: out)], "") as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+// THE OBSERVATION IS BUILT FROM CAPTURES, WHICH IS WHY IT IS SOLE-CONSTRUCTOR.
+//
+// This producer is what the sole_constructor wall is FOR. Without it the carrier is unbuildable
+// outside this module, which is correct and useless -- and the discovery that its own witness could
+// not author a fixture is the check on the check that DESIGN asks for before writing one: a wall
+// whose RED cannot be expressed anywhere is a decoration, and the fix is a producer, never a
+// loosened constructor.
+//
+// Each subject is decoded from its own capture by the same decoder, so the three axes cannot come to
+// disagree about what a failed probe means, and no axis can be asserted directly.
+// WHAT THIS DECODER DOES NOT ESTABLISH, STATED SO IT IS NOT OVERGRADED.
+//
+// SparkServingProbeCapture carries a completion status and stdout, and nothing about where the text
+// came from. So the decoder's semantics are correct -- an empty completed enumeration is absence, a
+// connect failure is not -- while the PROVENANCE of any particular capture is not modelled here at
+// all: nothing in this type says the enumeration ran on srv6, filtered the serving port, ran the
+// argv this module names, or ran after the retirement it is being read against. A dry witness can
+// therefore author ProbeAnswered { stdout: "" } and have it read as an empty ss listing, which is
+// exactly what makes the decoder testable and exactly what the decoder cannot vouch for.
+//
+// That is a boundary obligation rather than a gap to paper over: it belongs to P0-WET, where the
+// generic capture is replaced by a typed executed receipt carrying host, operation identity, the
+// selected port, completion status, stdout, and the retirement generation it followed -- for the
+// pgrep and systemd axes too. Until that lands the honest statement is that the endpoint
+// observation's SEMANTICS are correct and its PRODUCER PROVENANCE is unmodelled.
+fn spark_serving_retirement_observation_from_probes(
+  host: HostIdentity,
+  endpoint_capture: SparkServingProbeCapture,
+  process_capture: SparkServingProbeCapture,
+  unit_capture: SparkServingProbeCapture,
+) -> SparkServingRetirementObservation {
+  SparkServingRetirementObservation {
+    host: host,
+    endpoint: spark_serving_absence_from_probe(
+      subject: "endpoint" as NonEmptyStr,
+      evidence: spark_serving_endpoint_absence_evidence(),
+      capture: endpoint_capture,
+    ),
+    process: spark_serving_absence_from_probe(
+      subject: "process" as NonEmptyStr,
+      evidence: spark_serving_process_absence_evidence(),
+      capture: process_capture,
+    ),
+    unit: spark_serving_absence_from_probe(
+      subject: "unit" as NonEmptyStr,
+      evidence: spark_serving_unit_absence_evidence(),
+      capture: unit_capture,
+    ),
+  }
+}
+
+// MEASURED, AND TIED TO THE OBSERVATION THAT MEASURED IT.
+//
+// A catalogued 128 GB is a fact about the product NVIDIA sells, not about how much of this machine's
+// pool is free right now, and the difference is the whole reason this carrier exists rather than a
+// constant. The quantity is a `std.measure` ByteSize rather than an Int: a bare integer named
+// `_bytes` is a second unit system standing beside the one the corpus already has, and it would
+// erase in the type exactly the distinction these paragraphs argue for in prose -- any integer at
+// all could be handed to the proof. The bytes come from a read on the host, after the retirement, so the number describes a
+// pool the serving process has already let go of. Reading it before would measure the wrong machine
+// state and would be indistinguishable in the type.
+// THE ORDERING IS CARRIED BY THE RETIREMENT ITSELF, NOT ASSERTED BY THE CALLER.
+//
+// The field this replaces was `observed_after_retirement: Bool`. `sole_constructor` protected the
+// carrier while the load-bearing fact walked in through the front door as a bare boolean: any caller
+// could pass `true` with no evidence of ordering whatsoever, and the readiness gate then VALIDATED
+// the assertion it had just been handed. That is validation standing exactly where construction was
+// available, and the tell §5 names applies literally -- the check could be satisfied by editing the
+// argument while the realization lied.
+//
+// So the observation carries the retirement observation it was taken after. A pool reading cannot be
+// constructed without one in hand, and the producer refuses unless that retirement is ESTABLISHED on
+// all three subjects. "Measured before the retirement" is therefore no longer a state a caller can
+// describe: the evidence that the retirement happened is the same value that proves the ordering,
+// because it did not exist to be passed until the retirement had been observed.
+// THERE IS NO HOST FIELD, BECAUSE THE RETIREMENT ALREADY NAMES ONE.
+//
+// A `host: HostIdentity` stood beside `after`, and the readiness gate compared the two. That is two
+// independently authored answers to one identity, reconciled by a check -- the same residual the
+// ordering Bool and the free-pool parameter each were, one field over. Deriving every downstream
+// host from `after.host` leaves one answer, so the carrier cannot name two hosts and there is
+// nothing left to compare.
+//
+// This does not claim the capture was actually produced on that host: nothing in a generic capture
+// establishes where it ran, which stays the P0-WET provenance obligation. It removes only the dry
+// defect, which is the carrier disagreeing with itself.
+type SparkUnifiedPoolObservation sole_constructor {
+  free_pool: ByteSize
+  after: SparkServingRetirementObservation
+  producer: NonEmptyStr
+}
+
+// THE NUMBER MUST ARRIVE WITH THE READ THAT PRODUCED IT.
+//
+// A quantity with no read behind it is a number somebody typed. The capture is what makes it a
+// measurement, so the producer takes both and refuses the pairing that would let a fabricated figure
+// through: a capture that did not answer cannot carry a byte count, whatever ByteSize is passed
+// beside it.
+//
+// THE PARAMETER IS ALREADY A ByteSize, LIFTED AT THE PARSE BOUNDARY RATHER THAN HERE. An earlier
+// shape took a Nat and wrapped it in byte_size on the way in, which put the flat scalar one call
+// deeper than it needed to go for no gain -- pairing a ByteSize with the capture forbids fabrication
+// exactly as well, and the caller that reads MemAvailable is the one place a raw count legitimately
+// exists. Lifting there keeps the unlifted form to the single site that parses it.
+type SparkUnifiedPoolReading
+  = SparkUnifiedPoolRead { observation: SparkUnifiedPoolObservation }
+  | SparkUnifiedPoolUnread { cause: NonEmptyStr }
+
+// THE QUANTITY IS PARSED FROM THE READ, NOT PASSED BESIDE IT.
+//
+// This took `free_pool: ByteSize` as a parameter and copied the capture's stdout into a prose
+// `producer` string. So the capture certified that A read happened while the NUMBER came from the
+// caller: any successful probe, carrying any text at all, could mint a proof for an arbitrary
+// capacity. The paragraph above it already said "a quantity with no read behind it is a number
+// somebody typed" -- the comment was right and the signature did not implement it, which is the same
+// shape as the ordering Bool one field over.
+//
+// The free-pool parameter is gone. The count is decoded from the capture's own stdout, which is the
+// MemAvailable field of /proc/meminfo -- a decimal quantity in KIBIBYTES per proc(5), so the scale
+// conversion is a modeled Kibibyte -> ByteSize rather than a bare multiply. Text that does not parse
+// is a refusal, not a zero and not a default: an answered probe whose body is not a decimal count is
+// a read of something that is not the pool.
+fn spark_unified_pool_observation_from_capture(
+  capture: SparkServingProbeCapture,
+  after: SparkServingRetirementObservation,
+) -> SparkUnifiedPoolReading {
+  let unretired = spark_serving_retirement_refusals(retirement: after)
+  if length(unretired) > 0 {
+    SparkUnifiedPoolUnread {
+      cause: join([
+        "spark_training_ready: the retirement this reading claims to follow is not established — ",
+        join(map(unretired, r => r as String), "; "),
+      ], "") as NonEmptyStr,
+    }
+  } else {
+  match capture {
+    ProbeNeverRan { cause: c } =>
+      SparkUnifiedPoolUnread {
+        cause: join(["spark_training_ready: the pool probe never ran — ", c as String], "") as NonEmptyStr,
+      }
+    ProbeFailed { exit_code: code, stderr: _ } =>
+      SparkUnifiedPoolUnread {
+        cause: join(["spark_training_ready: the pool probe failed, exit ", to_string(code)], "") as NonEmptyStr,
+      }
+    ProbeAnswered { stdout: out } =>
+      match parse_int(s: trim(s: out)) {
+        Absent =>
+          SparkUnifiedPoolUnread {
+            cause: join([
+              "spark_training_ready: the pool probe answered but its body is not a decimal MemAvailable count — ",
+              trim(s: out),
+            ], "") as NonEmptyStr,
+          }
+        Present { value: kib } =>
+          if kib <= 0 {
+            SparkUnifiedPoolUnread {
+              cause: join([
+                "spark_training_ready: the pool probe read a non-positive MemAvailable count — ",
+                to_string(kib),
+              ], "") as NonEmptyStr,
+            }
+          } else {
+            SparkUnifiedPoolRead {
+              observation: SparkUnifiedPoolObservation {
+                free_pool: kibibyte_to_byte_size(k: kibibyte(count: kib)),
+                after: after,
+                producer: join(["/proc/meminfo MemAvailable kB: ", trim(s: out)], "") as NonEmptyStr,
+              },
+            }
+          }
+      }
+  }
+  }
+}
+
+// THE PROOF, SOLE-CONSTRUCTOR AND SINGLE-PRODUCER.
+//
+// It carries what a downstream consumer needs and cannot obtain for itself: which host, and how much
+// pool was actually free once serving let go. Everything else it establishes is carried by the fact
+// that the value EXISTS -- role is training, all three retirement subjects were positively observed
+// absent, and the pool was measured afterwards.
+//
+// This is the shape gunbc.spark.serving_terminal_health already uses for SparkServingServedProof,
+// and it is reused rather than re-invented for the reason §3 gives: the two are one concept -- a
+// value whose existence is the evidence, produced by exactly one decision procedure -- pointed at
+// opposite ends of a host's serving life.
+type SparkTrainingReadyProof sole_constructor {
+  host: HostIdentity
+  free_pool: ByteSize
+}
+
+type SparkTrainingReadiness
+  = SparkTrainingReady { proof: SparkTrainingReadyProof }
+  | SparkTrainingNotReady { cause: NonEmptyStr }
+
+// EVERY REFUSAL ARM NAMES WHICH SUBJECT REFUSED. A single "not ready" would make the operator's next
+// action a guess between four different mornings: reassign the role, re-run the retirement, re-probe
+// a subject that was never read, or re-measure the pool.
+// THE THREE SUBJECTS FOLD INTO ONE REFUSAL LIST, WHICH IS WHY THE PREDICATE WAS THE WRONG SHAPE.
+//
+// With a Bool per axis the gate needed three near-identical branches, each re-authoring a cause the
+// absence value already carried. Asking each subject for its refusal and collecting them reports
+// EVERY unsatisfied axis at once rather than the first, which is what an operator deciding whether
+// to re-probe or re-run the retirement actually needs.
+fn spark_serving_retirement_refusals(retirement: SparkServingRetirementObservation) -> List<NonEmptyStr> {
+  flat_map(
+    [retirement.endpoint, retirement.process, retirement.unit],
+    a => match spark_serving_absence_refusal(a: a) {
+      Absent => []
+      Present { value: r } => [r]
+    },
+  )
+}
+
+// THE GATE READS ONE VALUE, BECAUSE THE PAIRING WAS A THIRD THING TO GET WRONG.
+//
+// This took the retirement and the pool as two arguments and checked that they agreed. They cannot
+// disagree now: the pool carries the retirement it followed, so there is no second retirement to
+// hand in beside it and no arm needed to notice the mismatch. The retirement-not-established arm is
+// gone from here for the same reason -- the pool producer refuses to build a reading over an
+// unestablished retirement, so by the time a pool exists that check has already run and cannot be
+// bypassed. Its discriminating RED did not retire with it; it moved to the producer's claims, which
+// is where the refusal now lives.
+fn spark_training_readiness(
+  pool: SparkUnifiedPoolObservation,
+) -> SparkTrainingReadiness {
+  let retirement = pool.after
+  match spark_cell_role_of(host: retirement.host) {
+    SparkCellRoleAbsent =>
+      SparkTrainingNotReady {
+        cause: "spark_training_ready: the host holds no Spark cell role, so nothing assigned it to training" as NonEmptyStr,
+      }
+    SparkCellRoleAmbiguous { assignments: _ } =>
+      SparkTrainingNotReady {
+        cause: "spark_training_ready: more than one assignment row names this host, so the roster does not decide what the cell is for — an ambiguous role never authorizes training" as NonEmptyStr,
+      }
+    SparkCellRoleUnique { role: role } =>
+      if !spark_cell_role_eq(a: role, b: SparkTrainingCell) {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the host's role is serving — a serving cell is statically reserved and never becomes training capacity by observation" as NonEmptyStr,
+        }
+      } else if byte_size_count(b: pool.free_pool) <= 0 {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the measured free pool is not positive — a non-positive capacity is a failed read, never an offer of nothing" as NonEmptyStr,
+        }
+      } else {
+        SparkTrainingReady {
+          proof: SparkTrainingReadyProof {
+            host: retirement.host,
+            free_pool: pool.free_pool,
+          },
+        }
+      }
+  }
+}
+
+fn spark_training_ready_proof(readiness: SparkTrainingReadiness) -> SparkTrainingReadyProof? {
+  match readiness {
+    SparkTrainingReady { proof: p } => Present { value: p }
+    SparkTrainingNotReady { cause: _ } => none
+  }
+}

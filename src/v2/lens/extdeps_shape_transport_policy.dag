@@ -1,17 +1,5 @@
 module v2.lens.extdeps_shape_transport_policy
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
 
-import v2.std.algebra {
-  any,
-  fold_list,
-  length,
-  list_snoc_item
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, qualified_name_eq }
-import v2.std.text { String }
 
 type ExtdepsTransportKind
   = Shell
@@ -88,6 +76,16 @@ data empty_extdeps_transport_fusion_facts: List<ExtdepsTransportFusionFact> = []
 data empty_extdeps_operation_input_facts: List<ExtdepsOperationInputFact> = []
 data empty_extdeps_embedded_policy_literal_facts: List<ExtdepsEmbeddedPolicyLiteralFact> = []
 
+type ExtdepsModuleFacts {
+  argv_facts: List<ExtdepsTransportArgvFact>
+  embedded_facts: List<ExtdepsEmbeddedPolicyLiteralFact>
+  fusion_facts: List<ExtdepsTransportFusionFact>
+  gist_create_declares_filename_input: Bool
+  gist_create_files_keyed_by_filename: Bool
+  input_facts: List<ExtdepsOperationInputFact>
+  source_nickname_literal_count: Int
+}
+
 fn extdeps_argv_token_is_parameterized_placeholder(token: String) -> Bool {
   string_contains(token, "{") && string_contains(token, "}")
 }
@@ -119,27 +117,35 @@ fn extdeps_data_literal_is_embedded_policy_literal(value: String) -> Bool {
 }
 
 fn extdeps_live_module_embedded_policy_literal_count(module: QualifiedName) -> Int {
-  extdeps_embedded_policy_literal_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_embedded_policy_literal_count(
+    facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).embedded_facts
+  )
 }
 
 fn extdeps_live_module_source_nickname_literal_count(module: QualifiedName) -> Int {
-  module_source_nickname_literal_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_facts_for_qualified_name(module: module).source_nickname_literal_count
 }
 
 fn extdeps_live_module_transport_fusion_fork_count(module: QualifiedName) -> Int {
-  extdeps_transport_fusion_fork_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_fusion_count_for_module(
+    fusion_facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).fusion_facts,
+    module: module
+  )
 }
 
 fn extdeps_live_module_policy_leak_count(module: QualifiedName) -> Int {
-  extdeps_policy_leak_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_policy_leak_count_for_module(
+    argv_facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).argv_facts,
+    module: module
+  )
 }
 
 fn extdeps_live_module_gist_create_declares_filename_input(module: QualifiedName) -> Bool {
-  extdeps_gist_create_declares_filename_input_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_facts_for_qualified_name(module: module).gist_create_declares_filename_input
 }
 
 fn extdeps_live_module_gist_create_files_keyed_by_filename(module: QualifiedName) -> Bool {
-  extdeps_gist_create_files_keyed_by_filename_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_facts_for_qualified_name(module: module).gist_create_files_keyed_by_filename
 }
 
 fn extdeps_module_identity_resolves(module: QualifiedName) -> Bool {
@@ -151,7 +157,10 @@ fn extdeps_live_module_dead_param_count_for_operation(
   service: String,
   operation: String
 ) -> Int {
-  extdeps_dead_param_count_for_qualified_name(
+  let facts = extdeps_shape_transport_policy_facts_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_dead_param_count_for_operation(
+    argv_facts: facts.argv_facts,
+    input_facts: facts.input_facts,
     module: module,
     service: service,
     operation: operation
@@ -159,7 +168,7 @@ fn extdeps_live_module_dead_param_count_for_operation(
 }
 
 fn argv_fact_matches_module(fact: ExtdepsTransportArgvFact, module: QualifiedName) -> Bool {
-  qualified_name_eq(a: fact.module, b: module)
+  fact.module == module
 }
 
 fn argv_fact_matches_operation(
@@ -174,7 +183,7 @@ fn argv_fact_matches_operation(
 }
 
 fn fusion_fact_matches_module(fact: ExtdepsTransportFusionFact, module: QualifiedName) -> Bool {
-  qualified_name_eq(a: fact.module, b: module)
+  fact.module == module
 }
 
 fn input_fact_matches_operation(
@@ -183,7 +192,7 @@ fn input_fact_matches_operation(
   service: String,
   operation: String
 ) -> Bool {
-  qualified_name_eq(a: fact.module, b: module)
+  fact.module == module
     && fact.service == service
     && fact.operation == operation
 }
@@ -579,6 +588,5 @@ fn extdeps_shape_transport_policy_embedded_policy_literal_count(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Each of the four tells is a decidable structural pattern over the argv/Node projection; the lens is interim until the DESIGN sec 3 extdeps de-fusion is realized in the substrate. Grounding authority: the Node-tree argv projection that supersedes the text scan, plus the shape/transport/policy de-fusion model (#5059 corollary). Dissolves on: the four tells (policy leak, transport fusion, dead param, embedded literal) become unwritable once interface-shape, transport-handler and workflow-policy are separated by construction"
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

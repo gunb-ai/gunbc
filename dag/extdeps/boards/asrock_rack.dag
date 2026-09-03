@@ -1,0 +1,899 @@
+module extdeps.boards.asrock_rack
+
+import extdeps.boards.types { BaseboardCatalogRow, DimmPopulation }
+import extdeps.vendor.asrock_rack { asrock_rack }
+import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
+import extdeps.bmc.types {
+  BmcRedfishSurfaceRow,
+  BmcRedfishSurfaceShape,
+  RedfishFanControlResourceAbsent,
+  RedfishInitialDutyControlResource,
+  RedfishLegacyChassisThermal,
+  RedfishThermalSubsystemSensorCollection,
+  BmcFanControllerShape,
+  BmcFanCurve,
+  BmcFanCurveStep,
+  BmcFanPolicyObservation,
+  FanPidAggregatedEntry,
+  FanPidIndependentEntries,
+}
+import extdeps.bmc.capability { BmcCapability, BmcFirmwareCapabilityRow, BmcFirmwareVersion, HistoricalEvidenceSnapshot }
+import extdeps.firmware.types {
+  FirmwarePrerequisiteObservation,
+  PushAcceptedByTarget,
+  PushRefusedByTarget,
+  BmcController,
+  NoFirmwarePrerequisite,
+  RequiresMinimumTargetFirmware,
+  FirmwareReleaseRow,
+  FirmwareSemanticVersion,
+  HostBios,
+  InstantFlashRom,
+  firmware_semantic_version,
+}
+import std.measure { Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.affine_space { point2 }
+import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.standards.micro_atx { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
+import extdeps.cpu.types { CpuSocket }
+import extdeps.cpu.ampere { ampere_lga4926_socket }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.nat { Nat }
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf"
+  }
+}
+
+data asrock_altrad8ud_download_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
+  }
+}
+
+data asrock_altrad8ud_bmc_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/Manual/BMC/ALTRAD8UD-1L2T.pdf"
+  }
+}
+
+data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/blob/main/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md"
+  }
+}
+
+data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
+  model: AsrockRackAltrad8ud1l2t,
+  model_label: "ASRock Rack ALTRAD8UD-1L2T",
+  vendor: asrock_rack,
+  bmc_firmware: OpenBmc,
+}
+
+data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
+data asrock_altrad8ud_redfish_chassis_id: NonEmptyStr = "ALTRAD8UD_1L2T"
+data asrock_altrad8ud_redfish_manager_id: NonEmptyStr = "bmc"
+
+data altrad8ud_openbmc_base_capabilities: List<BmcCapability> = [
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
+  CapabilityAccountManagement,
+  CapabilityFirmwareUpdate,
+]
+
+data altrad8ud_openbmc_2_07_00_capabilities_list: List<BmcCapability> = [
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
+  CapabilityAccountManagement,
+  CapabilityFirmwareUpdate,
+  CapabilityNbdProxyVirtualMedia,
+  CapabilitySerialConsole,
+]
+
+data altrad8ud_openbmc_2_07_00_serial_console_probe: NonEmptyStr = "Historical pre-upgrade observation: IPMI SOL Enabled=true, Privilege=ADMINISTRATOR, Payload Port=623 — confirmed live 2026-07-21 via ipmitool -I lanplus sol info against srv4 (192.168.1.195, then OpenBMC 2.07.00). The current version is a separate temporal observation, never inferred from this receipt."
+
+data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+  },
+  capabilities: altrad8ud_openbmc_2_07_00_capabilities_list,
+}
+
+data asrock_altrad8ud_openbmc_3_06_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: firmware_semantic_version(major: 3, minor: 6, patch: 0),
+  },
+  capabilities: altrad8ud_openbmc_base_capabilities,
+}
+
+data asrock_altrad8ud_openbmc_3_06_00_catalog_authority: ExternalAuthority = asrock_altrad8ud_bmc_manual_authority
+
+data asrock_altrad8ud_openbmc_3_22_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  },
+  capabilities: altrad8ud_openbmc_base_capabilities,
+}
+
+data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  asrock_altrad8ud_openbmc_3_06_00_capabilities,
+  asrock_altrad8ud_openbmc_3_22_00_capabilities,
+]
+
+data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow = asrock_altrad8ud_openbmc_2_07_00_capabilities
+
+// REDFISH SURFACE BY IMAGE. One row per catalogued OpenBMC build for this
+// board; the surface a host presents is derived from its observed version
+// rather than authored beside it (see BmcRedfishSurfaceShape).
+data asrock_altrad8ud_openbmc_2_07_00_redfish_surface: BmcRedfishSurfaceRow = BmcRedfishSurfaceRow {
+  firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+  shape: BmcRedfishSurfaceShape {
+    thermal_surface: RedfishThermalSubsystemSensorCollection,
+    fan_control_surface: RedfishFanControlResourceAbsent,
+  },
+}
+
+data asrock_altrad8ud_openbmc_3_22_00_redfish_surface: BmcRedfishSurfaceRow = BmcRedfishSurfaceRow {
+  firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  shape: BmcRedfishSurfaceShape {
+    thermal_surface: RedfishLegacyChassisThermal,
+    fan_control_surface: RedfishInitialDutyControlResource,
+  },
+}
+
+data asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog: List<BmcRedfishSurfaceRow> = [
+  asrock_altrad8ud_openbmc_2_07_00_redfish_surface,
+  asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+]
+
+// Each row is the surface an OpenBMC build for this board serves, keyed by version alone, because
+// bmcweb's compiled resource set is a property of the image. The 3.22.00 row was MEASURED on both
+// fleet hosts simultaneously on 2026-08-12 by authenticated BMC SSH and loopback Redfish, which
+// makes it a catalog row rather than a per-host note — srv3 (192.168.1.192) and srv4
+// (192.168.1.195), independently flashed on different days, returned legacy Chassis Thermal 200,
+// ThermalSubsystem 404, ThermalSubsystem/Fans 404, a 9-member Sensors collection, and a
+// byte-identical Thermal key shape (12974 and 12975 bytes, differing only in a reading value). Two
+// independently-arrived-at hosts agreeing on every axis is what shows the shape is a function of
+// the image; one host would only establish what that host does. The 2.07.00 row is the historical
+// pre-upgrade snapshot for srv3, retained because the catalog must still answer for an un-upgraded
+// host, not because any fleet member currently runs it.
+
+data asrock_altrad8ud_factory_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
+  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
+  BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
+  BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+]
+
+data asrock_altrad8ud_factory_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
+  control_sensor: "TEMP_SOC",
+  steps: asrock_altrad8ud_factory_temp_soc_fan_curve_steps,
+  minimum_duty: percent(30),
+  sensor_unavailable_duty: percent(75),
+  zone_failsafe_duty: percent(30),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+}
+
+data asrock_altrad8ud_factory_fan_config_digest: Digest = sha256_digest(
+  hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
+)
+
+data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
+  firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+  evidence_scope: HistoricalEvidenceSnapshot,
+  curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+  active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
+  selected_config_path: "/usr/share/swampd/config.json",
+  board_config_path: "/usr/share/swampd/config-asrr.json",
+  controller_service: "phosphor-pid-control.service",
+  controller_binary: "/usr/bin/swampd",
+  controller_shape: FanPidIndependentEntries {
+    entry_names: [
+      "FAN1",
+      "FAN1_2",
+      "FAN2",
+      "FAN2_2",
+      "FAN3",
+      "FAN3_2",
+      "FAN4",
+      "FAN4_2",
+      "FAN5",
+      "FAN5_2",
+    ],
+  },
+  observed_at: 1785110400000,
+}
+
+data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
+  firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  evidence_scope: HistoricalEvidenceSnapshot,
+  curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+  active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
+  selected_config_path: "/usr/share/swampd/config.json",
+  board_config_path: "/usr/share/swampd/config-asrr.json",
+  controller_service: "phosphor-pid-control.service",
+  controller_binary: "/usr/bin/swampd",
+  controller_shape: FanPidAggregatedEntry {
+    entry_name: "FAN1",
+    tach_inputs: ["FAN1", "FAN2", "FAN3", "FAN4", "FAN5"],
+  },
+  observed_at: 1785110400000,
+}
+
+// Authenticated read-only observations on srv3 (OpenBMC 2.07.00) and srv4 (OpenBMC 3.22.00),
+// 2026-07-27: both select /usr/share/swampd/config-asrr.json through /usr/share/swampd/config.json
+// and run /usr/bin/swampd under phosphor-pid-control.service. Both factory images carried the same
+// TEMP_SOC curve. That curve is an observation owned here, not fleet intent. What changed between
+// versions is the PID-entry topology and Redfish resource shape, not the five factory points. The
+// 3.22 web UI /Managers/bmc/FanControl resource exposes InitialDuty; it does not own these thermal
+// curve points.
+
+data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint: BmcwebNbdProxyEndpointVariant = VmSlotIndexEndpoint
+
+data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints: List<BmcwebNbdProxyEndpointVariant> = [NbdSlotEndpoint]
+
+type BmcReadOnlyProbeVerdict = ProbePresent | ProbeAbsent | ProbeInconclusive
+
+type BmcLiveReadOnlyProbeRow {
+  locator: NonEmptyStr
+  verdict: BmcReadOnlyProbeVerdict
+  probed_at: NonEmptyStr
+}
+
+data asrock_srv3_live_bmc_host: NonEmptyStr = "192.168.1.192"
+
+data asrock_srv3_live_readonly_probe_rows: List<BmcLiveReadOnlyProbeRow> = [
+  BmcLiveReadOnlyProbeRow {
+    locator: "/redfish/v1/Managers/bmc FirmwareVersion",
+    verdict: ProbePresent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/redfish/v1/Systems/system/VirtualMedia",
+    verdict: ProbeAbsent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/redfish/v1/Managers/bmc/VirtualMedia",
+    verdict: ProbeAbsent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/vm/0/0 non-upgrade GET",
+    verdict: ProbeInconclusive,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/vm/0/0 ws-upgrade",
+    verdict: ProbePresent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/nbd/0 non-upgrade GET",
+    verdict: ProbeInconclusive,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/nbd/0 ws-upgrade",
+    verdict: ProbeAbsent,
+    probed_at: "2026-07-01",
+  },
+]
+
+data asrock_srv3_live_probe_firmware_version: FirmwareSemanticVersion = firmware_semantic_version(
+  major: 2,
+  minor: 7,
+  patch: 0,
+)
+
+fn live_probe_confirms_shipped_firmware_version() -> Bool {
+  asrock_srv3_live_probe_firmware_version == asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version
+}
+
+fn live_probe_row_is_redfish_vm_absent(row: BmcLiveReadOnlyProbeRow) -> Bool {
+  if row.locator == ("/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr)
+      || row.locator == ("/redfish/v1/Managers/bmc/VirtualMedia" as NonEmptyStr) {
+    row.verdict == ProbeAbsent
+  } else {
+    true
+  }
+}
+
+fn live_probe_confirms_redfish_virtual_media_absent() -> Bool {
+  fold(
+    asrock_srv3_live_readonly_probe_rows,
+    init: true,
+    f: (acc, row) => acc && live_probe_row_is_redfish_vm_absent(row: row)
+  )
+}
+
+fn live_probe_row_matches(locator: NonEmptyStr, verdict: BmcReadOnlyProbeVerdict, row: BmcLiveReadOnlyProbeRow) -> Bool {
+  row.locator == locator && row.verdict == verdict
+}
+
+fn live_probe_has_ws_upgrade_row(locator: NonEmptyStr, verdict: BmcReadOnlyProbeVerdict) -> Bool {
+  fold(
+    asrock_srv3_live_readonly_probe_rows,
+    init: false,
+    f: (acc, row) => acc || live_probe_row_matches(locator: locator, verdict: verdict, row: row)
+  )
+}
+
+fn live_probe_confirms_nbd_proxy_vm_slot_ws_present() -> Bool {
+  live_probe_has_ws_upgrade_row(
+    locator: "/vm/0/0 ws-upgrade" as NonEmptyStr,
+    verdict: ProbePresent
+  )
+    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
+}
+
+fn live_probe_confirms_nbd_slot_ws_absent() -> Bool {
+  live_probe_has_ws_upgrade_row(
+    locator: "/nbd/0 ws-upgrade" as NonEmptyStr,
+    verdict: ProbeAbsent
+  )
+}
+
+// Vendor firmware releases for this board, cited to the product download page.
+// BMC and BIOS are separate FirmwareTarget rows because they are separately
+// versioned and separately flashed: srv4 runs BMC 03.22.00 and still fails to
+// boot, so "this host is on the current firmware" is not a single fact.
+data asrock_altrad8ud_bios_3_10_instant_flash_release: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AsrockRackAltrad8ud1l2t,
+  target: HostBios,
+  version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
+  released_on: 1776124800000,
+  image_kind: InstantFlashRom,
+  image_uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)ROM.zip"
+  },
+  image_bytes: byte_size(count: 5359089),
+  image_digest: Present {
+    value: sha256_digest(
+      hex: "4338f8f23c86ca8fe1a27267153739893b3c27d72f6c09c7af8fbfd22347a223",
+    ),
+  },
+  release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: asrock_altrad8ud_download_authority,
+}
+
+data asrock_altrad8ud_bios_3_10_openbmc_release: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AsrockRackAltrad8ud1l2t,
+  target: HostBios,
+  version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
+  released_on: 1776124800000,
+  image_kind: OpenBmcWebUiTar,
+  image_uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)TAR.zip"
+  },
+  image_bytes: byte_size(count: 5359341),
+  image_digest: Present {
+    value: sha256_digest(
+      hex: "7693421cd665dd674f919856b1d3a46ecdbd80df2626665dcf0376f9cb7b7eb4",
+    ),
+  },
+  release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
+  prerequisite: RequiresMinimumTargetFirmware {
+    target: BmcController,
+    minimum: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  },
+  authority: asrock_altrad8ud_download_authority,
+}
+
+// The bytes the BMC UpdateService actually consumes: the OpenBMC-packaged tar
+// INSIDE the distribution zip above, carrying its own MANIFEST. Modeled apart
+// from the zip because the push artifact and the download artifact are two
+// different byte sequences with two different digests, and pushing the zip
+// (or the raw .ROM) to the UpdateService is a different act from pushing this.
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_name: NonEmptyStr = "obmc-bios-altrad8ud-1l2t-3.10.all.tar"
+
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_bytes: ByteSize = byte_size(count: 33566720)
+
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_digest: Digest = sha256_digest(
+  hex: "e3bb2a26b863f24045e9e3bc950a89cbe3f8a86d7dc1c6c7a243f3afe35416ec",
+)
+
+data asrock_altrad8ud_bios_3_10_obmc_manifest_purpose: NonEmptyStr = "xyz.openbmc_project.Software.Version.VersionPurpose.Host"
+
+data asrock_altrad8ud_bios_3_10_obmc_manifest_machine_name: NonEmptyStr = "altrad8ud-1l2t"
+
+data asrock_altrad8ud_bmc_3_22_00_release: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AsrockRackAltrad8ud1l2t,
+  target: BmcController,
+  version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  released_on: 1776124800000,
+  image_kind: OpenBmcWebUiTar,
+  image_uri: Uri {
+    scheme: Https
+    locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
+  },
+  image_bytes: byte_size(count: 29056000),
+  image_digest: Absent,
+  release_notes: "1. A password change is enforced upon the first login to the WebUI  2. Improved BMC web information  3. Enhanced BMC system compatibility",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: asrock_altrad8ud_download_authority,
+}
+
+data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
+  asrock_altrad8ud_bios_3_10_instant_flash_release,
+  asrock_altrad8ud_bios_3_10_openbmc_release,
+  asrock_altrad8ud_bmc_3_22_00_release,
+]
+
+// Cited from the ALTRAD8UD-1L2T product download table; all rows dated 2026-04-14. The BIOS rows
+// are load-bearing for the 2026-08-11 fleet incident: 'Updated RC to 0ACRB_021' is the MEMORY
+// REFERENCE CODE, and srv3 fails DDR training on Samsung M386A4G40DM0-CPB 32GB 4Rx4 LRDIMMs while
+// running DRAM FW 220414 (2022) under BL1 built 2023-05-17, emitting per-controller WRLVL errors
+// and 'DDR initialization failure. Can't fall back!' on all eight controllers. ONE RELEASE, TWO
+// PACKAGINGS, not interchangeable: the ROM zip carries a bare 33554432-byte ALTRAD8UD-1L2T_3.10.ROM
+// applied from BIOS setup by Instant Flash, unreachable on a host that cannot POST; the TAR zip
+// carries obmc-bios-altrad8ud-1l2t-3.10.all.tar, whose MANIFEST declares
+// purpose=...VersionPurpose.Host, version=3.10, MachineName=altrad8ud-1l2t, Type=bios, and which
+// the BMC UpdateService consumes out-of-band. Every byte count and digest here was MEASURED on
+// 2026-08-11 by acquiring the artifact and hashing it, never transcribed: ROM zip 5359089 bytes,
+// TAR zip 5359341, inner push tar 33566720. The TAR locator was not published on the product page —
+// it was found by probing the vendor download host and confirmed by HTTP 200 plus successful
+// extraction, so it is weaker provenance than a page-published link and should be re-derived if
+// the vendor reorganizes. The BMC 03.22.00 row remains digest-Absent with an unobserved locator:
+// its image_bytes is the page's stated 27.71MB converted, NOT a Content-Length, so it must not be
+// treated as a fetchable artifact until its own locator is observed.
+
+// THE EXECUTED PAIR that establishes the BIOS-tar prerequisite. Same 33566720
+// bytes, two hosts of this board model, opposite outcomes — which is what makes
+// the minimum evidence rather than an inference from the vendor page (which
+// states no such dependency at all).
+data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
+  board: AsrockRackAltrad8ud1l2t,
+  subject: HostBios,
+  image_kind: OpenBmcWebUiTar,
+  gating_target: BmcController,
+  gating_version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+  outcome: PushRefusedByTarget {
+    diagnostic: "Invalid ExtendedVersion: primary-all. Please check MANIFEST file!",
+  },
+  observed_at: 1786579200000,
+}
+
+data asrock_altrad8ud_bios_310_push_accepted_at_bmc_322: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
+  board: AsrockRackAltrad8ud1l2t,
+  subject: HostBios,
+  image_kind: OpenBmcWebUiTar,
+  gating_target: BmcController,
+  gating_version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  outcome: PushAcceptedByTarget,
+  observed_at: 1786582800000,
+}
+
+data asrock_altrad8ud_bios_openbmc_prerequisite_evidence: List<FirmwarePrerequisiteObservation> = [
+  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+]
+
+// Irreducible rationale only; the executed pair is carried as FirmwarePrerequisiteObservation rows
+// above, and prerequisite_evidence_verdict checks the declared minimum against them. What those
+// rows cannot express: the vendor product page states NO such dependency, so the minimum is an
+// executed finding, not a documented one; the refusal on srv3 arrived only AFTER a 33 MB upload
+// and a host power-off, and Redfish reported TaskState=Exception with no machine-readable cause,
+// so the vendor diagnostic in the refusal row was readable only from the BMC journal over
+// authenticated SSH; and the Instant Flash ROM packaging carries NoFirmwarePrerequisite because it
+// never passes through the BMC, which is why the prerequisite belongs to the PACKAGING rather
+// than the release.
+
+// The DOCUMENTED DIMM populations. A population absent from this list is an
+// unsupported configuration whose boot failure proves nothing about the
+// modules installed in it — note in particular that the four-module
+// population is A1+B1+E1+F1 and is NOT one module per channel.
+data asrock_altrad8ud_documented_dimm_populations: List<DimmPopulation> = [
+  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "E1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "B1", "E1", "F1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation {
+    board: AsrockRackAltrad8ud1l2t,
+    slots: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"],
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+// Board integration facts only: HOW the Ampere consoles are routed. The board
+// does not own the meanings of Ampere SCP tokens, and its ordinary AMI POST
+// code table is a different namespace that does not decode P012/E588/P029.
+data asrock_altrad8ud_scp_console_tcp_port: Nat = 2202
+
+// ---------------------------------------------------------------------------
+// THE BOARD'S MECHANICAL FACTS, converged here from the former extdeps.boards.asrock module. Both
+// modules described the SAME physical board against two public surfaces of the same vendor — the
+// product page and the manual PDF — the section 3 fork: one concept, two authorities, nothing
+// structural keeping their slot counts, socket rows or vendor edges in agreement. The mechanical
+// facts are rows in this subject module now, and the product page they were read from is the
+// authority this module ALREADY declared as asrock_altrad8ud_download_authority, so the
+// convergence removes a module without adding a second citation of one page.
+// ---------------------------------------------------------------------------
+
+data asrock_altrad8ud_mechanical_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.asrock_rack",
+      decl_name: "asrock_altrad8ud_1l2t_mechanical",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: asrock_altrad8ud_download_authority,
+  further_citations: []
+}
+
+// ASRock Rack ALTRAD8UD-1L2T, read 2026-08-18 from the vendor product page: the commodity
+// single-socket Ampere Altra board. When a shared baseboard-profile authority lands on main,
+// this row re-grounds onto it.
+type AsrockAltrad8ud1l2tMechanical {
+  board_label: NonEmptyStr
+  form_factor_label: NonEmptyStr
+  processor_socket_count: Nat
+  socket: CpuSocket
+  processor_support_label: NonEmptyStr
+  dimm_slots_total: Nat
+  dimms_per_channel: Nat
+  ddr4_max_data_rate: MegatransfersPerSecond
+  network_label: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAltrad8ud1l2tMechanical {
+  board_label: "ASRock Rack ALTRAD8UD-1L2T",
+  form_factor_label: "deep micro-ATX (9.6 x 10.5 in)",
+  processor_socket_count: 1,
+  socket: ampere_lga4926_socket,
+  processor_support_label: "LGA 4926, Ampere Altra / Altra Max",
+  dimm_slots_total: 8,
+  dimms_per_channel: 1,
+  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
+  network_label: "2x 10GbE (Intel X550) + 1x 1GbE (Intel i210) per the vendor page",
+  citation: "asrockrack.com product page for ALTRAD8UD-1L2T, read 2026-08-18",
+}
+
+data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM per channel on the vendor page - the board exposes eight of the SoC's memory channels, so the one-DIMM-per-channel population IS the full population; there is no second-DIMM headroom on this platform, unlike the 16-slot dual-socket boards and the 32-slot 2DPC systems."
+
+// ---------------------------------------------------------------------------------------------
+// BOARD GEOMETRY, read first-party from the vendor manual this module already cites.
+//
+// PROVENANCE, stated before the numbers because it is the fact that decides how they may be used.
+// extdeps_external_authority_anchor names download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf. That
+// document was FETCHED AND READ by the authoring session — download.asrock.com answers 200 from
+// this environment, unlike the general web, which is refused — so these are a first-party read of
+// the manual and not the relayed grade extdeps.climbing_holds.atomik is stamped with. Section 1.4
+// "Motherboard Layout" carries the outline as leader dimensions: 26.7 cm (10.5 in) by 24.4 cm
+// (9.6 in).
+//
+// WHAT THIS REPLACES. asrock_altrad8ud_1l2t_mechanical carries form_factor_label, a String reading
+// "deep micro-ATX (9.6 x 10.5 in)". That row states a MEASUREMENT in prose, which DESIGN §4c names
+// as the thing a typed carrier must hold instead — a String cannot be asked whether a chassis panel
+// clears the board. The label is left standing because it also carries a FORM-FACTOR CLAIM, which
+// is a different fact from an outline and is not established by these two lengths.
+//
+// THE AXES, AND AN ERROR THIS FILE SHIPPED ONCE. The board is 244 mm ALONG THE REAR I/O EDGE and
+// 267 mm DEEP: the manual prints 24.4 cm (9.6 in) and 26.7 cm (10.5 in), and the vendor calls the
+// form factor "deep micro-ATX (9.6 x 10.5 in)".
+//
+// An earlier revision transposed these and asserted the board was 267 mm WIDE against micro-ATX's
+// 244 mm, concluding that a micro-ATX hole pattern would be laid out 23 mm too narrow. That was
+// backwards and the conclusion inverts. The board is 244 mm along the rear I/O edge — the micro-ATX
+// width exactly — and deeper. The error mattered: it is the difference between "the standard pattern
+// does not apply" and "the standard pattern applies except at known positions".
+//
+// THIS PARAGRAPH CARRIED THREE DEAD CLAIMS UNTIL THE STANDARD SPLIT FORCED THEM INTO VIEW, and they
+// are recorded because the way they survived is more instructive than any of them.
+//
+// It cited `extdeps.standards.atx_2_2 deep_micro_atx_axis_note`, a symbol DELETED earlier in this
+// same program. It said that module "deliberately does not supply that grid", which became false the
+// moment the grid was added. And it repeated the retracted claim that the FRONT ROW MOVES OUTWARD BY
+// THE EXTRA 0.9 IN — retracted in the standard module hours before, and still asserted here.
+//
+// All three are the same failure: a correction was applied where it was pointed out and the CLASS
+// was treated as closed. The front row does not move. 8.950 in is measured from Datum B, itself
+// 0.400 in from the edge, so L and M sit at 9.350 in on a deep board and a standard-depth board
+// alike; the extra depth extends the board PAST them, which is what the front-overhang row records.
+//
+// The outline is still NOT a conformance claim. Matching two edge dimensions is not the same as
+// carrying the specification's hole grid, and populating that grid is not envelope conformance
+// either — extdeps.standards.micro_atx records why those are separate claims.
+// ---------------------------------------------------------------------------------------------
+fn asrock_altrad8ud_board_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 31) }
+
+// Micrometres, for the reason std.spatial_frame records and extdeps.printing.fdm repeats: the
+// quantum is chosen from the smallest distinction the frame must preserve, not from the largest
+// value it must hold. Whole millimetres are sufficient for these two extents and are NOT sufficient
+// for what will be drawn in this frame next — DIMM slot pitch and standoff positions — and a frame
+// whose quantum is retro-fitted after coordinates exist in it silently rescales every one of them.
+// x is ALONG THE REAR I/O EDGE, y is DEPTH FROM THAT EDGE. The axis assignment is stated here
+// because the frame carries no axis names and the numbers alone do not disclose which is which —
+// which is exactly how the transposition above survived review the first time.
+//
+// THE EXTENTS ARE THE INCH FIGURES CONVERTED EXACTLY, NOT THE ROUNDED MILLIMETRES, and an earlier
+// revision got this wrong in a way that produced a live contradiction inside this one module.
+//
+// The vendor states 9.6 x 10.5 in and presents 244 x 267 mm beside it. Those mm are rounded: the
+// exact conversions are 243.840 and 266.700. The earlier outline carried 244000 and 267000 µm while
+// asrock_altrad8ud_front_overhang below carried 29210 µm, which derives from 266700 − 237490. So the
+// module asserted a depth of 267000 and an overhang computed from 266700, disagreeing by 300 µm —
+// both spellings treated as exact in different rows, which is the same defect this session had
+// already fixed once in extdeps.standards.atx_2_2 and failed to sweep for here.
+//
+// One representation owns it, and it is the exact one: a micrometre frame can hold 243840 and
+// 266700 losslessly, so there is no reason to spend precision on a presentational rounding. The
+// overhang is now derivable from the rows above it rather than merely consistent with them, and
+// w_the_overhang_derives_from_the_outline asserts exactly that subtraction.
+fn asrock_altrad8ud_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
+  axis_aligned_rectangle2(
+    min: point2(frame: asrock_altrad8ud_board_frame(), x: 0, y: 0),
+    max: point2(frame: asrock_altrad8ud_board_frame(), x: 243840, y: 266700)
+  )
+}
+
+data asrock_altrad8ud_board_outline_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.boards.asrock_rack",
+    decl_name: "asrock_altrad8ud_board_outline",
+    field: WholeDeclaration
+  },
+  authority: extdeps_external_authority_anchor
+}
+
+// THE MOUNTING-HOLE POSITION IS SUPPLIED, AND WHAT IS REFUSED IS NARROWER THAN IT ONCE WAS.
+//
+// This paragraph previously said "THE MOUNTING HOLES ARE NOT HERE, AND THEIR ABSENCE IS THE POINT",
+// that the module "refuses to hold them rather than deriving them from the micro-ATX pattern", and
+// that deriving them "would place standoffs against a 244 mm-wide pattern on a 267 mm-wide board".
+// By the time it was read, all three were false: the correspondence roster below supplies exactly
+// which standard locations this board populates, and the 267-mm-wide clause is the AXIS
+// TRANSPOSITION that was retracted in two other modules while surviving verbatim here. The board is
+// 244 mm along the rear I/O edge and 266.700 mm deep.
+//
+// IT WAS CITED BY A REVIEW AS EVIDENCE OF DISCIPLINE, which is the part worth recording. A stale
+// annotation does not merely rot quietly; it is read, and a refusal that no longer holds gets
+// counted as a wall. That is strictly worse than no annotation, because it earns credit for a
+// property the module does not have. This is the fourth stale-claim instance in this program and the
+// class is the same each time: the correction is applied where it was pointed out and the CLASS is
+// treated as closed. A retraction is not done until the retracted WORDING is swept for.
+//
+// WHAT IS ACTUALLY REFUSED, stated at the grain that is still true: the exact hole positions on THIS
+// PHYSICAL BOARD are not measured. Section 1.4 draws the standoffs as unlabelled circles and
+// dimensions none of them, so the manual establishes no coordinate. What the roster below carries is
+// a CORRESPONDENCE -- which named standard location each drawn hole is -- inferred from a to-scale
+// figure and discharged physically at FIT. The standard's coordinates are exact and are
+// extdeps.standards.micro_atx's; the claim that this board sits on them is an inference; and the
+// board's own hole diameter and underside keep-outs remain unmeasured, which is what
+// asrock_altrad8ud_open_mounting_unknowns enumerates.
+//
+// The absorbing fallback the old paragraph warned about is still a real hazard and is still refused:
+// substituting the nearby standard for a measurement nobody took. The difference is that the refusal
+// now sits on the product-specific facts that are genuinely absent, rather than on a grid that this
+// module does supply.
+
+data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "drive.google.com/file/d/1z36tmUWAwOwXWy6ASmaPWJNzKoZggBs8/view"
+  }
+}
+
+// WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
+// route, so the grade is readable from the constructor rather than from prose beside it.
+type BoardLocationStanding
+  = HoleCorrespondenceInferred
+  | HoleAbsenceExplicitlyDirected
+  | HoleNotObservedInDrawing
+  | HolePhysicallyConfirmedPresent
+  | HolePhysicallyConfirmedAbsent
+
+// WHY a location must stay empty. Distinct from the standing that established it.
+type StandoffProhibitionCause
+  = ProductSaysRemove
+  | NoAdmittedBoardHole
+
+// WHAT IS DONE at a standard location by a chassis built for this board.
+type StandoffPlacementDecision
+  = StandoffAdmitted
+  | StandoffProhibited { cause: StandoffProhibitionCause }
+
+// The join, and the reason the two types are worth separating: this is total, so a new standing arm
+// cannot be added without deciding what a chassis does about it. FIT will add exactly that — the
+// physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
+fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
+  match standing {
+    HoleCorrespondenceInferred => StandoffAdmitted
+    HolePhysicallyConfirmedPresent => StandoffAdmitted
+    HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
+    HoleNotObservedInDrawing => StandoffProhibited { cause: NoAdmittedBoardHole }
+    HolePhysicallyConfirmedAbsent => StandoffProhibited { cause: NoAdmittedBoardHole }
+  }
+}
+
+type BoardStandardLocationCorrespondence sole_constructor {
+  location: MountingLocationId
+  standing: BoardLocationStanding
+}
+
+fn board_location_correspondence(
+  location: MountingLocationId,
+  standing: BoardLocationStanding,
+) -> BoardStandardLocationCorrespondence {
+  BoardStandardLocationCorrespondence { location: location, standing: standing }
+}
+
+// Coordinates are deliberately ABSENT from these rows. A correspondence names a location; the
+// location owns its position. Copying the coordinates here would fork the grid — the exact defect
+// this session already paid for once, where the coupon's holes were computed a second time instead
+// of being read from the ladder that defined them.
+// HOW THE CORRESPONDENCE BELOW WAS ESTABLISHED, and its exact strength.
+//
+// A scale reading of the section 1.4 motherboard-layout figure over the operator-supplied grid
+// overlay cited above. The figure is to scale: its measured outline aspect ratio agrees with
+// 10.5/9.6 to within a thousandth, which is the check that makes reading positions off it legitimate
+// at all. Seven marked holes then land on micro-ATX grid values, J is marked on the figure as a
+// standoff to remove, and S is not drawn.
+//
+// What that establishes is WHICH standard locations this board populates. It does NOT establish the
+// coordinates — those are the standard's — and it is not a vendor statement of conformance. The
+// aspect-ratio agreement is deliberately not carried as a datum: it was a one-off sanity check with
+// no instrument behind it, and DESIGN section 6 says a number worth re-deriving is worth an entry
+// point while one that is not is not an instrument at all.
+data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocationCorrespondence> = [
+  board_location_correspondence(location: LocF, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocM, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocC, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocH, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocL, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocB, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocR, standing: HoleCorrespondenceInferred),
+  board_location_correspondence(location: LocJ, standing: HoleAbsenceExplicitlyDirected),
+  board_location_correspondence(location: LocS, standing: HoleNotObservedInDrawing),
+]
+
+
+// THE DEEP EXTENSION, and the cassette requirement that falls out of it.
+//
+// The front mounting row L/M sits at 9.350 in from the rear edge — the ORDINARY micro-ATX position,
+// not a moved one. An earlier revision of this file claimed the extra depth pushed that row outward
+// from a nominal 8.95; it does not. 8.950 is measured from Datum B, which is itself 0.400 in from
+// the board edge, so 0.400 + 8.950 = 9.350 on a standard-depth board and on this one alike.
+//
+// What the extra depth does is leave board hanging PAST the last mounting row: 10.500 - 9.350 =
+// 1.150 in, 29.21 mm, against 0.250 in on an ordinary micro-ATX board. Power and SlimSAS connectors
+// sit near that edge and take insertion force on unsupported PCB. A non-conductive front-edge
+// support is therefore a cassette candidate rather than a nicety — gated on an underside-component
+// keep-out measurement, since a support that fouls a solder joint is worse than none.
+// THE AXIS ASSIGNMENT IS A CONSTRUCTOR, NOT A COMMENT, and this program earned that the hard way.
+//
+// The extents of this board were transposed once and the error survived review, three separate
+// retractions, and an approving review that quoted the stale prose back as evidence of discipline.
+// Every one of those defences was a SENTENCE. The annotation above the outline said "x is along the
+// rear I/O edge, y is depth" and it was true and it prevented nothing, because no Accepted program
+// can read it -- DESIGN section 4c says exactly that about annotations, and a fact that only prose
+// carries is a fact the compiler cannot check.
+//
+// So the assignment moves into the type system. There are exactly two ways to lay a rectangular
+// board into a 2-D frame, and they are the two arms below. A transposition is then a DIFFERENT
+// CONSTRUCTOR rather than a different comment: it cannot be introduced by editing prose, and every
+// consumer that reads an extent must say which axis it means.
+//
+// Why a two-arm coproduct rather than a record of two roles: a record permits x and y to carry the
+// SAME role, which is not a transposition but a nonsense state, and DESIGN section 4b prefers the
+// invalid state to have no constructor over having a validator.
+type BoardPlaneOrientation
+  = XAlongRearIoYDepth
+  | XDepthYAlongRearIo
+
+// The readouts. These are the only sanctioned way to ask this module for an extent, and they are
+// named for the PHYSICAL EDGE rather than for an axis letter, so a caller cannot ask for "x" and
+// receive whatever x happens to mean today.
+fn board_extent_along_rear_io(orientation: BoardPlaneOrientation, x: Micrometer, y: Micrometer) -> Micrometer {
+  match orientation {
+    XAlongRearIoYDepth => x
+    XDepthYAlongRearIo => y
+  }
+}
+
+fn board_extent_depth(orientation: BoardPlaneOrientation, x: Micrometer, y: Micrometer) -> Micrometer {
+  match orientation {
+    XAlongRearIoYDepth => y
+    XDepthYAlongRearIo => x
+  }
+}
+
+// This board's orientation, declared once. The outline's max point is authored in this orientation
+// and the readouts below are the accessors every consumer should use.
+data asrock_altrad8ud_orientation: BoardPlaneOrientation = XAlongRearIoYDepth
+
+data asrock_altrad8ud_extent_along_rear_io: Micrometer = board_extent_along_rear_io(
+  orientation: asrock_altrad8ud_orientation,
+  x: micrometer(count: 243840),
+  y: micrometer(count: 266700)
+)
+
+data asrock_altrad8ud_extent_depth: Micrometer = board_extent_depth(
+  orientation: asrock_altrad8ud_orientation,
+  x: micrometer(count: 243840),
+  y: micrometer(count: 266700)
+)
+
+// NOMINAL, NOT AS-MANUFACTURED, and the distinction is the difference between arithmetic and
+// physics. 243840 x 266700 um is the EXACT CONVERSION of the vendor's published nominal 9.6 x 10.5
+// in. It is not the exact as-built extent of any board on the operator's desk: PCB routing carries a
+// real tolerance, and no board here has been measured. Naming these "exact" without qualification
+// invites the promotion that matters -- exact ARITHMETIC silently read as ZERO PHYSICAL TOLERANCE --
+// and a cassette clearance derived on that reading would be tight by an unknown amount.
+//
+// So: these are nominal-profile facts, admissible for layout and for deciding which standard grid
+// applies. Any clearance that depends on the board's real edge needs a product tolerance or an
+// as-held measurement, which asrock_altrad8ud_open_mounting_unknowns already tracks as unmeasured.
+data asrock_altrad8ud_board_depth_nominal_exact: Micrometer = micrometer(count: 266700)
+data asrock_altrad8ud_front_mounting_row_offset: Micrometer = micrometer(count: 237490)
+data asrock_altrad8ud_front_overhang: Micrometer = micrometer(count: 29210)
+
+// THE OPEN MOUNTING UNKNOWNS, AS A CLOSED TYPE RATHER THAN A PARAGRAPH.
+//
+// An earlier revision carried these five as one NonEmptyStr. DESIGN section 4c names a dissolution
+// condition as something that belongs in a typed carrier specifically, and the reason is mechanical:
+// a paragraph cannot be counted, cannot be discharged one item at a time, and cannot refuse. This
+// can. Each arm names one product-specific fact that the standard does not supply, and the total
+// derivation beside it names what discharges it — so an arm added later cannot be left without a
+// route, and the roster going empty is a real, checkable event rather than someone editing prose.
+//
+// Note what is NOT in here: the standard LOCATIONS. Those are exact. Everything below is a fact
+// about this physical product that no specification can answer.
+type Altrad8udMountingUnknown
+  = HoleCorrespondencePhysicallyUnconfirmed
+  | ProductHoleDiameterUnmeasured
+  | UndersideKeepOutUnmeasured
+  | MountingHoleGroundBondUnknown
+  | StandoffHeightAndPadUnmeasured
+
+type MountingUnknownDischarge
+  = DischargedByMountingTheBoard
+  | DischargedByCalipers
+  | DischargedByContinuityMeter
+
+// Total by construction: a new unknown must be given a discharge route here or fail to compile.
+fn mounting_unknown_discharge(u: Altrad8udMountingUnknown) -> MountingUnknownDischarge {
+  match u {
+    HoleCorrespondencePhysicallyUnconfirmed => DischargedByMountingTheBoard
+    ProductHoleDiameterUnmeasured => DischargedByCalipers
+    UndersideKeepOutUnmeasured => DischargedByCalipers
+    StandoffHeightAndPadUnmeasured => DischargedByCalipers
+    MountingHoleGroundBondUnknown => DischargedByContinuityMeter
+  }
+}
+
+// MountingHoleGroundBondUnknown governs the FUNCTIONAL board-to-chassis bond only. Protective earth
+// is bolted to rack metal and must survive board, standoff and cassette removal, so no entry in this
+// roster sits on the safety path — see the grounding section of the printed-chassis program.
+data asrock_altrad8ud_open_mounting_unknowns: List<Altrad8udMountingUnknown> = [
+  HoleCorrespondencePhysicallyUnconfirmed,
+  ProductHoleDiameterUnmeasured,
+  UndersideKeepOutUnmeasured,
+  MountingHoleGroundBondUnknown,
+  StandoffHeightAndPadUnmeasured,
+]

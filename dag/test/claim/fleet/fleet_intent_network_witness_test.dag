@@ -1,0 +1,133 @@
+module test.claim.fleet_intent_network
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn fleet_intent_network_container_to_bmc_allowed() -> Bool {
+  network_reachability(from: ContainerRunner, to: BmcManagement)
+}
+
+test fn fleet_intent_network_container_to_host_lan_denied() -> Bool {
+  network_reachability(from: ContainerRunner, to: HostLan) == false
+}
+
+// THE COUNT ORACLE IS REPLACED, NOT BUMPED, AND THAT IS THE POINT OF THIS EDIT (DCH-0, 2026-09-02).
+// The row here read `list_length(items: fleet_intent_network.endpoints) == 11`. Enrolling srv5/srv6
+// turns it red at 11 -> 13, and the tempting repair -- editing the literal to 13 -- is the change
+// detector DESIGN §5 names in terms: a measurement copied from the same current tree is not an
+// oracle, and automating the literal's update collapses the assertion to `measure() == measure()`.
+// A count also cannot distinguish "every expected endpoint is present" from "some other endpoint
+// answered instead": it stays green under any substitution of one row for another, which is exactly
+// the fabrication the srv5/srv6 row below was originally written to catch and which the count could
+// not see.
+//
+// So completeness is asserted as an IDENTITY JOIN over the endpoint labels, in both directions and
+// with duplicates refused, against the roster of rows this module declares by name. This is the same
+// shape gunbc.spark.serving_observation_scope `spark_observation_coverage` already uses for
+// observation coverage, and it is deliberately the same shape rather than a second one -- missing
+// and foreign are different defects (an endpoint dropped from the list versus an endpoint in the
+// list that no named row declares), so the join is read in both directions rather than as one count.
+//
+// THE RESIDUAL, STATED RATHER THAN IMPLIED. The expected roster below is AUTHORED, not discovered:
+// a NetworkEndpoint declared in gunbc.fleet_intent_network and added to neither this roster nor the
+// topology list is invisible to this witness. Closing that needs the subject universe discovered
+// from the module's own declarations -- a lens over the Node tree, not something a claim witness can
+// express -- so that lens is this row's next-rung trigger. What the join does buy over the count is
+// exact: every named row must be reachable in the topology, and every topology member must be a
+// named row, each exactly once.
+
+fn topology_endpoint_labels(items: List<NetworkEndpoint>) -> List<String> {
+  map(items, e => e.label)
+}
+
+fn topology_label_multiplicity(labels: List<String>, needle: String) -> Int {
+  length(filter(labels, l => l == needle))
+}
+
+fn topology_labels_missing(expected: List<String>, actual: List<String>) -> List<String> {
+  filter(expected, e => topology_label_multiplicity(labels: actual, needle: e) == 0)
+}
+
+fn topology_labels_duplicated(labels: List<String>) -> List<String> {
+  filter(labels, l => topology_label_multiplicity(labels: labels, needle: l) > 1)
+}
+
+data declared_topology_endpoints: List<NetworkEndpoint> = [
+  operator_lan_gateway_endpoint,
+  srv1_host_lan_endpoint,
+  srv2_host_lan_endpoint,
+  srv3_host_lan_endpoint,
+  srv4_host_lan_endpoint,
+  srv5_host_lan_endpoint,
+  srv6_host_lan_endpoint,
+  srv1_bmc_endpoint,
+  srv2_bmc_endpoint,
+  srv3_bmc_endpoint,
+  srv4_bmc_endpoint,
+  srv1_tailscale_endpoint,
+  srv2_tailscale_endpoint,
+]
+
+test fn fleet_intent_network_topology_membership_is_an_identity_join() -> Bool {
+  let expected = topology_endpoint_labels(items: declared_topology_endpoints)
+  let actual = topology_endpoint_labels(items: fleet_intent_network.endpoints)
+  length(topology_labels_missing(expected: expected, actual: actual)) == 0
+    && length(topology_labels_missing(expected: actual, actual: expected)) == 0
+    && length(topology_labels_duplicated(labels: actual)) == 0
+    && length(topology_labels_duplicated(labels: expected)) == 0
+}
+
+test fn fleet_intent_network_srv1_addresses_holds() -> Bool {
+  srv1_host_lan_endpoint.address == "192.168.1.185"
+    && srv1_bmc_endpoint.address == "192.168.1.183"
+}
+
+// The count row above is a tripwire, not a fact about srv3 — it reds on ANY topology edit and says
+// nothing about WHICH endpoint appeared. This row is the discriminating half for the 2026-07-24
+// srv3 host addition, mirroring fleet_intent_network_srv1_addresses_holds: srv3 must be modeled
+// with BOTH of its interfaces distinguished by role (its BMC at .192 was modeled since the srv3
+// onboarding lane; its host OS at .221 was not, so a model that named srv3 could still not name the
+// machine). Asserting both addresses AND the role split is what makes a regression that collapses
+// host onto BMC — the exact confusion this row was added to end — go red rather than merely
+// shifting a count.
+
+test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
+  srv3_host_lan_endpoint.address == "192.168.1.221"
+    && srv3_host_lan_endpoint.role == HostOperatingSystem
+    && srv3_bmc_endpoint.address == "192.168.1.192"
+    && srv3_bmc_endpoint.role == BmcOutOfBand
+}
+
+// DCH-0 (2026-09-02). THIS ROW IS THE INVERSE OF THE ONE IT REPLACES, and the replacement is the
+// honest shape rather than a deletion. The prior row asserted that srv5/srv6 were NAMED as
+// HostIdentity slots and bound to NO endpoint in the topology -- naming is not enrollment -- and it
+// was written to red the moment someone authored an address for a machine that had not arrived.
+// Enrollment has now been taken as a decision by the DCH-0 roadmap node, so that assertion is false
+// by intent and cannot simply be retired: retiring it would leave the addresses themselves
+// unwitnessed, which is precisely the fabrication half the old row was defending.
+//
+// So the guard is inverted and kept discriminating, mirroring the srv3 row above: both slots are
+// enrolled, each bound to its own identity, at the address its CR1000A static reservation carries in
+// gunbc.spark.dgx_procurement (srv5 -> spark_a3ee_reservation 192.168.1.226, srv6 ->
+// spark_3bd5_reservation 192.168.1.225, joined by the attributable
+// dgx_spark_router_binding_operator_allocation), with the role split asserted so a model that
+// collapses a Spark's host OS onto some other attachment role reds rather than shifting a count.
+// Swapping the two addresses -- the live risk, since the ascending-order tie-break no longer
+// describes them after the wifi re-key -- reds here.
+//
+// WHAT THIS ROW DOES NOT ASSERT, and must not be read as asserting: that either address was observed
+// from a host. It pins the corpus against the transcribed reservation authority, which is a §3
+// citation check, not a readback. The live observed-vs-desired reconciliation of the rendered
+// serving unit on both hosts is outstanding and is reported by
+// gunbc.spark.serving_observation_scope `spark_observation_coverage`, which answers
+// SparkObservationIncomplete with srv5 and srv6 in `missing` until a probe transaction supplies them.
+
+test fn fleet_intent_network_srv5_srv6_enrolled_at_their_reserved_addresses() -> Bool {
+  srv5_host_lan_endpoint.address == "192.168.1.226"
+    && srv5_host_lan_endpoint.role == HostOperatingSystem
+    && srv5_host_lan_endpoint.host == Present { value: operator_host_srv5 }
+    && srv6_host_lan_endpoint.address == "192.168.1.225"
+    && srv6_host_lan_endpoint.role == HostOperatingSystem
+    && srv6_host_lan_endpoint.host == Present { value: operator_host_srv6 }
+    && operator_host_srv5 == "srv5"
+    && operator_host_srv6 == "srv6"
+}

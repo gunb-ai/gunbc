@@ -1,0 +1,66 @@
+module extdeps.runtime.abi.aapcs64
+
+import extdeps.abi { ArchitecturalRegister, CallingConvention }
+import std.types { Bool }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst"
+  }
+}
+
+type Aarch64Gpr = X0 | X1 | X2 | X3 | X4 | X5 | X8
+
+data aarch64_inhabitant_x0: ArchitecturalRegister = X0
+data aarch64_inhabitant_x1: ArchitecturalRegister = X1
+data aarch64_inhabitant_x2: ArchitecturalRegister = X2
+data aarch64_inhabitant_x3: ArchitecturalRegister = X3
+data aarch64_inhabitant_x4: ArchitecturalRegister = X4
+data aarch64_inhabitant_x5: ArchitecturalRegister = X5
+data aarch64_inhabitant_x8: ArchitecturalRegister = X8
+
+data aapcs64_linux_syscall_convention: CallingConvention = {
+  arg0: aarch64_inhabitant_x0,
+  arg1: aarch64_inhabitant_x1,
+  arg2: aarch64_inhabitant_x2,
+  arg3: aarch64_inhabitant_x3,
+  arg4: aarch64_inhabitant_x4,
+  arg5: aarch64_inhabitant_x5,
+  syscall_number: aarch64_inhabitant_x8,
+  return_value: aarch64_inhabitant_x0,
+}
+
+data aapcs64_wrong_syscall_number_convention: CallingConvention = {
+  arg0: aarch64_inhabitant_x0,
+  arg1: aarch64_inhabitant_x1,
+  arg2: aarch64_inhabitant_x2,
+  arg3: aarch64_inhabitant_x3,
+  arg4: aarch64_inhabitant_x4,
+  arg5: aarch64_inhabitant_x5,
+  syscall_number: aarch64_inhabitant_x0,
+  return_value: aarch64_inhabitant_x0,
+}
+
+fn witness_convention_arg0_identity() -> Bool {
+  aapcs64_linux_syscall_convention.arg0 == aarch64_inhabitant_x0
+}
+
+fn witness_convention_syscall_number_resolves_to_x8() -> Bool {
+  aapcs64_linux_syscall_convention.syscall_number == X8
+}
+
+fn witness_convention_return_resolves_to_x0() -> Bool {
+  aapcs64_linux_syscall_convention.return_value == X0
+}
+
+fn witness_convention_arg5_resolves_to_x5() -> Bool {
+  aapcs64_linux_syscall_convention.arg5 == X5
+}
+
+fn witness_distinct_conventions_not_equal() -> Bool {
+  aapcs64_linux_syscall_convention != aapcs64_wrong_syscall_number_convention
+}

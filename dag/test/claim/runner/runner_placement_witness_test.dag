@@ -1,0 +1,367 @@
+module test.claim.runner_placement_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn live_plan() -> RunnerDeploymentPlan {
+  runner_deployment_plan()
+}
+
+fn live_derived() -> List<RunnerHostDeployment> {
+  plan_derived_deployments(p: live_plan())
+}
+
+fn host_is_derived(host: HostIdentity) -> Bool {
+  match runner_host_deployment_for(p: live_plan(), host: host) {
+    HostRunnerDeploymentDerived { deployment: _ } => true
+    HostRunnerDeploymentRefused { refusal: _ } => false
+  }
+}
+
+// THE CONSERVATION PROPERTIES ARE ASSERTED OVER THE HOSTS THAT DERIVED, and the roster is no longer
+// required to be the whole fleet. That is the substantive change: a host whose premise is missing
+// refuses on its own, and the hosts that did derive must still each be internally sound. Asserting
+// hosts.length() == fleet_intent_offers.length() would re-impose the fleet-wide atomicity this
+// carrier exists to remove.
+test fn witness_live_plan_is_conservation_sound() -> Bool {
+  let hosts = live_derived()
+  hosts.length() > 0
+    && plan_derived_run_total(p: live_plan()) == fold(hosts, init: 0, f: (n, h) => n + h.runner_count)
+    && all(hosts, h =>
+        h.runner_count == gunbc_runner_slots_per_host(host: h.identity)
+          && h.runner_count <= host_memory_admitted_width(host: h.identity)
+          && (match host_cpu_admitted_width(host: h.identity) {
+               CpuAdmitsWidth { slots: c } => h.runner_count <= c
+               CpuWidthUnresolved { cause: _ } => false
+             })
+          && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+          && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget_for(host: h.identity))
+          && hardware_thread_count_value(t: h.build_tokens) > 0
+      )
+}
+
+test fn witness_per_runner_cap_within_runner_pool() -> Bool {
+  let hosts = live_derived()
+  hosts.length() > 0
+    && all(hosts, h =>
+        h.runner_count * byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: h.runner_slice_cap)
+      )
+}
+
+test fn witness_live_session_plan_fail_closed() -> Bool {
+  match session_reservation_plan() {
+    SessionReservationUnsound { reason: _ } => true
+    SessionReservationDerived { hosts: _, fleet_concurrent_sessions: _, per_session_reservation: _, coverage_count: _, sample_count: _ } => false
+  }
+}
+
+// THE SUBJECT IS srv3'S DECLARED WIDTH, so the witness selects srv3 rather than reading a fleet
+// aggregate. effective_runners_per_host requires a COMPLETE fleet by design -- a maximum over three
+// hosts is not a maximum over four -- so while srv2 refuses it is unsound, and rewriting this row
+// to accept that unsoundness would have made it green without exercising srv3 at all.
+test fn witness_live_effective_runners_derives_declared_count() -> Bool {
+  match runner_host_deployment_for(p: live_plan(), host: operator_host_srv3) {
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == gunbc_runner_slots_per_host(host: operator_host_srv3)
+    HostRunnerDeploymentRefused { refusal: _ } => false
+  }
+}
+
+test fn witness_sound_manifest_line_is_populated() -> Bool {
+  let hosts = live_derived()
+  hosts.length() > 0
+        && all(hosts, h => {
+            let rendered = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
+            starts_with(s: rendered, prefix: concat(concat("host=", h.identity), " runner_count="))
+          })
+}
+
+test fn witness_regime1_resolves_worst_case_slice() -> Bool {
+  match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }) {
+    SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
+      byte_size_count(b: b) == 40000000000 && byte_size_count(b: c) == 10000000000 && n == 4
+    SessionSliceUnresolved { reason: _ } => false
+  }
+}
+
+test fn witness_mode_unset_is_unresolved() -> Bool {
+  match resolve_session_slice(mode: SessionReservationModeUnset) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  }
+}
+
+test fn witness_coverage_is_distribution_grounded() -> Bool {
+  samples_covered(cap: byte_size(0)) == 0
+    && samples_covered(cap: byte_size(2211908157)) == 6
+    && samples_covered(cap: byte_size(8879844884)) == 13
+}
+
+test fn witness_curve_coverage_monotone_in_cap() -> Bool {
+  let lo = evaluate_operating_point(cap: byte_size(2000000000), n: 6)
+  let hi = evaluate_operating_point(cap: byte_size(8000000000), n: 6)
+  hi.coverage_count >= lo.coverage_count
+    && byte_size_count(b: hi.sessions_slice) >= byte_size_count(b: lo.sessions_slice)
+}
+
+test fn witness_curve_has_full_coverage_option() -> Bool {
+  any(operating_curve(), r => r.coverage_count == r.sample_count)
+}
+
+test fn witness_manifest_drift_red_receipt() -> Bool {
+  !runner_deploy_drifted(committed: expected_runner_deploy_manifest())
+    && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
+}
+
+test fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
+  workload_class_cpu_weight(wc: InteractiveLatencySensitive) > workload_class_cpu_weight(wc: BatchLatencyTolerant)
+}
+
+test fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
+  let hosts = live_derived()
+  hosts.length() > 0
+    && all(hosts, h => string_contains(s: render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol), pattern: " cpu_weight=100"))
+}
+
+test fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
+  workload_class_cpu_weight(wc: BatchLatencyTolerant) != workload_class_cpu_weight(wc: InteractiveLatencySensitive)
+}
+
+test fn witness_session_slice_line_emits_cpu_weight() -> Bool {
+  let rendered = expected_runner_deploy_manifest()
+  string_contains(s: rendered, pattern: "session-slice host=")
+    && string_contains(s: rendered, pattern: " cpu_weight=1000")
+    && string_contains(s: rendered, pattern: " slice_max_bytes=")
+    && string_contains(s: rendered, pattern: " per_session_max_bytes=")
+    && string_contains(s: rendered, pattern: " oom_pressure_kill=true")
+    && string_contains(s: rendered, pattern: " oom_pressure_limit_pct=60")
+}
+
+test fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
+  let fixture = SessionHostReservation {
+    identity: "fixture-host",
+    session_count: 4,
+    per_session_reservation: byte_size(4294967296),
+    workload_class: InteractiveLatencySensitive,
+  }
+  !(string_contains(s: render(doc: session_host_doc(h: fixture), proto: runner_deploy_protocol), pattern: "cpu_weight"))
+}
+
+test fn witness_real_manifest_fields_drive_both_formats() -> Bool {
+  let hosts = live_derived()
+  hosts.length() > 0 &&
+      all(hosts, h => {
+        let text_out = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
+        let json_out = render(doc: serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)), proto: runner_deploy_protocol)
+        text_out != json_out &&
+          string_contains(s: text_out, pattern: concat("host=", h.identity)) &&
+          string_contains(s: json_out, pattern: concat("\"host\": \"", h.identity))
+      })
+}
+
+// THE JSON FORMAT CLAIM MOVES TO A COMPLETE PLAN, because the live fleet no longer produces one.
+// srv2 refuses, so the live entry point renders the INCOMPLETE line and cannot exercise the record
+// shape at all. The fixture is built from the LIVE derived deployments rather than authored fields,
+// so it still fails if the real record shape changes -- it narrows the subject to the hosts that
+// derived, it does not substitute invented data for measured data.
+fn derived_only_plan() -> RunnerDeploymentPlan {
+  RunnerDeploymentPlan {
+    hosts: map(live_derived(), d => HostRunnerDeploymentDerived { deployment: d })
+  }
+}
+
+test fn witness_manifest_json_entry_point_produces_json_format() -> Bool {
+  let full = runner_deploy_manifest_json_for(p: derived_only_plan())
+  string_contains(s: full, pattern: "runner-deploy {") &&
+    string_contains(s: full, pattern: "\"host\": \"") &&
+    string_contains(s: full, pattern: "\"cpu_weight\": \"")
+}
+
+// AND THE LIVE ENTRY POINT REPORTS THE INCOMPLETENESS RATHER THAN A PARTIAL MANIFEST. This is the
+// arm that would have been lost by simply re-pointing the witness above at a fixture: a consumer
+// reading the live JSON must get a refusal naming the host, never a manifest that silently omits it.
+test fn the_live_manifest_json_reports_incompleteness_and_names_the_refused_host() -> Bool {
+  let live = expected_runner_deploy_manifest_json()
+  string_contains(s: live, pattern: "INCOMPLETE")
+    && string_contains(s: live, pattern: "srv2")
+    && !string_contains(s: live, pattern: "runner-deploy {")
+}
+
+
+// THE DISCRIMINATING PAIR FOR THE CONTROL-PLANE CHARGE'S TWO REFUSALS, AND WHY A SINGLE WITNESS
+// WOULD NOT HAVE CAUGHT WHAT THIS ONE CATCHES. host_allocation_verdict distinguishes an
+// OVERSUBSCRIBED host from an UNCHARGEABLE one, and gunbc.ci_runner_placement previously projected
+// both to false through host_allocation_conserves and rendered one string for the pair: "host
+// allocation over-committed ... exceeds host RAM". Both paths refuse, so the collapse read as
+// cautious -- but the two have OPPOSITE remedies: over-committed means take capacity away;
+// unchargeable means go and measure the resident. Reporting the first when the second is true
+// sends the reader to shrink a pool that was never the problem.
+// A witness asserting only that an unmeasured claim refuses would have passed against the defect,
+// because the defective code also refused. The pair discriminates: each arm must produce its OWN
+// cause and NOT the other's.
+fn control_plane_unmeasured_placement() -> FabricControlPlanePlacement {
+  ControlPlaneStaticPinned {
+    host: operator_host_srv1,
+    envelope: ControlPlaneEnvelopeUnmeasured {
+      cause: "witness fixture: the first-canary bundle has not been measured" as NonEmptyStr,
+    },
+  }
+}
+
+fn control_plane_oversized_placement() -> FabricControlPlanePlacement {
+  ControlPlaneStaticPinned {
+    host: operator_host_srv1,
+    envelope: ControlPlaneEnvelopeDeclared {
+      memory_max: byte_size(1099511627776),
+      provenance: "witness fixture: a terabyte, chosen to exceed any modeled host" as NonEmptyStr,
+    },
+  }
+}
+
+// THE CAUSES OF EVERY REFUSED HOST ARE JOINED, not just the first. The carrier this replaces held a
+// single String, so with two hosts refusing for different reasons only one could ever be read --
+// which is exactly the collapse that made a discriminating pair unwritable at fleet grain.
+fn plan_reason_under(p: FabricControlPlanePlacement) -> String {
+  fold(
+    plan_refused_hosts(p: runner_deployment_plan_under_placement(control_plane_placement: p)),
+    init: "",
+    f: (acc, r) => concat(acc, concat(" ", host_deployment_refusal_text(c: r.cause)))
+  )
+}
+
+test fn an_unmeasured_control_plane_reports_unmeasured_and_not_over_commitment() -> Bool {
+  let r = plan_reason_under(p: control_plane_unmeasured_placement())
+  r.contains("unchargeable") && !r.contains("over-committed")
+}
+
+test fn an_oversized_control_plane_reports_over_commitment_and_not_unmeasured() -> Bool {
+  let r = plan_reason_under(p: control_plane_oversized_placement())
+  r.contains("over-committed") && !r.contains("unchargeable")
+}
+
+// AN UNPLACED CONTROL PLANE ADDS NO REFUSAL OF ITS OWN, which is what this row has always meant.
+// It used to assert the whole fleet reason is empty, which stopped being a statement about the
+// control plane once per-host refusal let a host decline for an unrelated cause: srv2 now refuses
+// because its session reservation is unestablished, under every placement, so the old form reds
+// on a fact it never tested. The claim is restated RELATIVELY -- the unplaced arm refuses exactly
+// what the baseline already refuses -- isolating the control plane's contribution instead of
+// requiring the rest of the fleet to be clean.
+test fn the_unplaced_control_plane_adds_no_refusal_of_its_own() -> Bool {
+  let unplaced = plan_reason_under(p: ControlPlaneUnplaced)
+  !unplaced.contains("unchargeable")
+    && !unplaced.contains("over-committed")
+    && plan_reason_under(p: control_plane_unmeasured_placement()).contains("unchargeable")
+}
+
+// THIS IS THE CONTROL, AND IT IS WRITTEN AS AN INEQUALITY ON PURPOSE. The two witnesses above each
+// assert a substring, which can pass for the wrong reason -- if an unrelated edit made every
+// refusal recite both words, both would still be green. The collapsed code emitted ONE string for
+// two causes, so the property that falsifies it directly is that the two causes are
+// DISTINGUISHABLE AT ALL. Under host_allocation_conserves these two reasons were byte-identical
+// and this witness returns false; it is the red the pair above cannot be green without, and it
+// stays enrolled now that the arm is split (DESIGN 4b: a climb dissolves the production machinery
+// it obsoletes, never the evidence that the rung is real).
+test fn the_two_control_plane_refusals_do_not_share_one_reason() -> Bool {
+  plan_reason_under(p: control_plane_unmeasured_placement())
+    != plan_reason_under(p: control_plane_oversized_placement())
+}
+
+// THE DIRECT RED FOR THE DEFECT THIS CARRIER REPLACES. On the preceding shape, srv2's
+// unestablished session reservation set one fleet-level unsound_reason and runner_deployment_plan
+// discarded EVERY host that had derived correctly -- 44 witnesses across six files went red, nine
+// existing only to verify srv3. This asserts both facts: srv2 refuses for its own reason, and srv3
+// derives ANYWAY. On the old carrier the second half was unwritable, because no derived srv3 was
+// left in the result to ask about.
+test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
+  let srv2_refused = match runner_host_deployment_for(p: live_plan(), host: operator_host_srv2) {
+    HostRunnerDeploymentRefused { refusal: r } =>
+      match r.cause {
+        SessionReservationUnestablished { cause: _ } => true
+        PrimaryCpuUnavailable { cause: _ } => false
+        UsableRamUnavailable { cause: _ } => false
+        FixedOverheadUnavailable { cause: _ } => false
+        CompilePoolUnavailable { cause: _ } => false
+        HostAllocationOversubscribedOnHost { cause: _ } => false
+        HostAllocationUnchargeableOnHost { cause: _ } => false
+        ZeroRunnerWidth => false
+        JobserverCitationAbsent { cause: _ } => false
+        HostCpuAllocationUnchargeable { cause: _ } => false
+        RunnerCoreRatioUnresolved { cause: _ } => false
+        HostNotEnrolledInFleet => false
+      }
+    HostRunnerDeploymentDerived { deployment: _ } => false
+  }
+  srv2_refused && host_is_derived(host: operator_host_srv3) && host_is_derived(host: operator_host_srv1)
+}
+
+// A REFUSED HOST MAKES THE FLEET INCOMPLETE, NOT COMPLETE-MINUS-ONE. The incomplete arm must also
+// name the host, so a reader is never left to infer which one was dropped.
+test fn a_refused_host_makes_the_fleet_incomplete() -> Bool {
+  match require_complete_fleet_plan(p: live_plan()) {
+    FleetDeploymentIncomplete { derived_hosts: derived, refused_hosts: refused, known_derived_runs: known } =>
+      refused.length() >= 1
+        && any(refused, r => (r.host as String) == (operator_host_srv2 as String))
+        && derived.length() >= 1
+        && known == fold(derived, init: 0, f: (n, h) => n + h.runner_count)
+    FleetDeploymentComplete { deployments: _, fleet_concurrent_runs: _ } => false
+  }
+}
+
+fn rendered_roster(ds: List<RunnerHostDeployment>) -> String {
+  fold(ds, init: "", f: (acc, d) => concat(acc, render(doc: manifest_host_doc(h: d), proto: runner_deploy_protocol)))
+}
+
+fn refused_fixture(host: HostIdentity, cause: HostRunnerDeploymentRefusal) -> HostRunnerDeploymentStanding {
+  HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: host, cause: cause } }
+}
+
+// TWO INDEPENDENTLY REFUSED HOSTS MUST BOTH BE REPORTED. The String this replaces kept only the
+// FIRST refusal, so this control could not have been written at all: the second cause had nowhere
+// to live. Both causes must be distinct AND both present, so a carrier that merely concatenated one
+// reason twice would fail it.
+test fn two_refused_hosts_are_both_retained() -> Bool {
+  let p = RunnerDeploymentPlan {
+    hosts: [
+      refused_fixture(host: operator_host_srv2, cause: SessionReservationUnestablished { cause: "fixture: srv2 denominator unestablished" }),
+      refused_fixture(host: operator_host_srv4, cause: ZeroRunnerWidth),
+    ],
+  }
+  let refused = plan_refused_hosts(p: p)
+  refused.length() == 2
+    && any(refused, r => (r.host as String) == (operator_host_srv2 as String))
+    && any(refused, r => (r.host as String) == (operator_host_srv4 as String))
+    && host_deployment_refusal_text(c: refused[0].cause) != host_deployment_refusal_text(c: refused[1].cause)
+}
+
+// CHANGING ONE HOST'S REFUSAL CAUSE MUST NOT PERTURB ANOTHER HOST'S DEPLOYMENT. This is the
+// independence property stated directly: the derived roster is computed per host, so it cannot be a
+// function of why some other host refused.
+test fn a_refusal_cause_does_not_reach_a_derived_deployment() -> Bool {
+  let derived = live_derived()
+  let a = RunnerDeploymentPlan {
+    hosts: append(
+      map(derived, d => HostRunnerDeploymentDerived { deployment: d }),
+      items: [refused_fixture(host: operator_host_srv2, cause: SessionReservationUnestablished { cause: "fixture: cause A" })]
+    ),
+  }
+  let b = RunnerDeploymentPlan {
+    hosts: append(
+      map(derived, d => HostRunnerDeploymentDerived { deployment: d }),
+      items: [refused_fixture(host: operator_host_srv2, cause: HostAllocationUnchargeableOnHost { cause: "fixture: an entirely different cause B" })]
+    ),
+  }
+  let da = plan_derived_deployments(p: a)
+  let db = plan_derived_deployments(p: b)
+  da.length() == db.length()
+    && da.length() > 0
+    && rendered_roster(ds: da) == rendered_roster(ds: db)
+}
+
+// A HOST-TARGETED CONVERGE ADMITS srv3 WHILE srv2 IS REFUSED. Convergence is a host-targeted
+// transaction, so the fleet's incompleteness is not a fact about srv3.
+test fn converge_admits_a_derived_host_while_another_is_refused() -> Bool {
+  match fleet_converge_policy_from(plan: live_plan()) {
+    ConvergePolicyDerived { hosts: hs } =>
+      any(hs, h => (h.identity as String) == (operator_host_srv3 as String))
+        && !any(hs, h => (h.identity as String) == (operator_host_srv2 as String))
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}

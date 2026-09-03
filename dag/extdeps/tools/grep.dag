@@ -1,0 +1,32 @@
+module extdeps.tools.grep
+
+import std.types { NonEmptyStr, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/grep/manual/grep.html"
+  }
+}
+
+data grep_cli_tool: CliTool = CliTool {
+  name: "grep",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+service grep.Grep {
+  operation MatchesFixedString {
+    input { pattern: NonEmptyStr, path: NonEmptyStr }
+    output { matches: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["grep", "-qF", "{pattern}", "{path}"] }
+    exit {
+      0 => Unit "pattern found"
+      1 => Unit "pattern not found"
+    }
+  }
+}

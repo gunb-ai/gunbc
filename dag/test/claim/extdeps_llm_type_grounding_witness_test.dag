@@ -1,0 +1,180 @@
+module test.claim.extdeps_llm_type_grounding_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_openai_tool_call_type_known() -> Bool {
+  let row = ToolCall {
+    id: "call_1",
+    type: OpenAiToolCallFunction,
+    function: extdeps.llm.openai.FunctionCall { name: "get_weather", arguments: "{}" },
+  }
+  row.type == OpenAiToolCallFunction
+    && openai_tool_call_type_label(OpenAiToolCallFunction) == "function"
+}
+
+test fn w_openai_tool_call_type_other_accepts_extension() -> Bool {
+  match parse_openai_tool_call_type("custom_tool") {
+    OpenAiToolCallTypeOther { raw: r } => r == "custom_tool"
+    OpenAiToolCallFunction => false
+  }
+}
+
+test fn w_openai_responses_output_content_type() -> Bool {
+  let row = OpenAiResponses200OutputContent {
+    type: OpenAiResponsesOutputText,
+    text: "hello",
+    annotations: none,
+  }
+  row.type == OpenAiResponsesOutputText
+    && openai_responses_output_content_type_label(OpenAiResponsesOutputText) == "output_text"
+}
+
+test fn w_openai_responses_output_content_type_other() -> Bool {
+  match parse_openai_responses_output_content_type("refusal") {
+    OpenAiResponsesOutputContentTypeOther { raw: r } => r == "refusal"
+    OpenAiResponsesOutputText => false
+  }
+}
+
+test fn w_openai_responses_output_item_type() -> Bool {
+  let row = OpenAiResponses200OutputItem {
+    id: Present { value: "msg_1" },
+    type: OpenAiResponsesOutputMessage,
+    status: none,
+    role: none,
+    content: [],
+  }
+  row.type == OpenAiResponsesOutputMessage
+    && openai_responses_output_item_type_label(OpenAiResponsesOutputMessage) == "message"
+}
+
+test fn w_openai_responses_output_item_type_other() -> Bool {
+  match parse_openai_responses_output_item_type("reasoning") {
+    OpenAiResponsesOutputItemTypeOther { raw: r } => r == "reasoning"
+    OpenAiResponsesOutputMessage => false
+  }
+}
+
+test fn w_openai_responses_status_known_and_other() -> Bool {
+  let label_ok = openai_responses_status_label(OpenAiResponsesStatusCompleted) == "completed"
+  let known_routes_to_known = match parse_openai_responses_status("incomplete") {
+    OpenAiResponsesStatusIncomplete => true
+    OpenAiResponsesStatusOther { raw: _ } => false
+    _ => false
+  }
+  let unknown_routes_to_other = match parse_openai_responses_status("future_status") {
+    OpenAiResponsesStatusOther { raw: r } => r == "future_status"
+    _ => false
+  }
+  label_ok && known_routes_to_known && unknown_routes_to_other
+}
+
+test fn w_openai_responses_output_item_status_known_and_other() -> Bool {
+  let row = OpenAiResponses200OutputItem {
+    id: Present { value: "msg_1" },
+    type: OpenAiResponsesOutputMessage,
+    status: Present { value: OpenAiResponsesOutputItemInProgress },
+    role: none,
+    content: [],
+  }
+  let row_ok = match row.status {
+    Present { value: s } => openai_responses_output_item_status_label(s) == "in_progress"
+    Absent => false
+  }
+  let unknown_routes_to_other = match parse_openai_responses_output_item_status("future_item_status") {
+    OpenAiResponsesOutputItemStatusOther { raw: r } => r == "future_item_status"
+    _ => false
+  }
+  row_ok && unknown_routes_to_other
+}
+
+test fn w_openai_error_type_known_and_other() -> Bool {
+  let known = OpenAiErrorDetails {
+    message: "bad",
+    type: OpenAiInvalidRequestError,
+    param: none,
+    code: none,
+  }
+  known.type == OpenAiInvalidRequestError
+    && openai_error_type_label(OpenAiInvalidRequestError) == "invalid_request_error"
+    && match parse_openai_error_type("new_vendor_error") {
+      OpenAiErrorTypeOther { raw: r } => r == "new_vendor_error"
+      OpenAiInvalidRequestError => false
+      OpenAiAuthenticationError => false
+      OpenAiPermissionError => false
+      OpenAiNotFoundError => false
+      OpenAiRateLimitError => false
+      OpenAiApiError => false
+      OpenAiInsufficientQuota => false
+    }
+}
+
+test fn w_anthropic_image_media_type() -> Bool {
+  let source = Base64Image { media_type: ImageJpeg, data: "abc" }
+  match source {
+    Base64Image { media_type: mt, data: _ } =>
+      mt == ImageJpeg
+        && anthropic_image_media_type_label(ImageJpeg) == "image/jpeg"
+    UrlImage { url: _ } => false
+  }
+}
+
+test fn w_anthropic_image_media_type_other() -> Bool {
+  match parse_anthropic_image_media_type("image/heic") {
+    AnthropicImageMediaTypeOther { raw: r } => r == "image/heic"
+    ImageJpeg => false
+    ImagePng => false
+    ImageGif => false
+    ImageWebp => false
+  }
+}
+
+test fn w_cache_control_type() -> Bool {
+  let row = CacheControl { type: CacheEphemeral {} }
+  match row.type {
+    CacheEphemeral {} => cache_control_type_label(CacheEphemeral {}) == "ephemeral"
+  }
+}
+
+test fn w_anthropic_messages_object_type() -> Bool {
+  let body = AnthropicMessages200Body {
+    id: "msg_01",
+    type: MessagesObjectMessage {},
+    role: extdeps.llm.anthropic_messages_api.Assistant {},
+    content: [MessagesTextBlock { text: "hi", citations: none }],
+    model: "claude-sonnet-4-6",
+    stop_reason: EndTurn,
+    stop_sequence: none,
+    usage: AnthropicMessages200Usage {
+      input_tokens: 1,
+      output_tokens: 1,
+      cache_creation_input_tokens: none,
+      cache_read_input_tokens: none,
+      service_tier: Present { value: extdeps.llm.anthropic_messages_api.Standard },
+    },
+    container: none,
+  }
+  match body.type {
+    MessagesObjectMessage {} =>
+      anthropic_messages_object_type_label(MessagesObjectMessage {}) == "message"
+  }
+}
+
+test fn w_anthropic_error_envelope_and_detail_types() -> Bool {
+  let envelope_ok = match anthropic_error_example.type {
+    AnthropicErrorEnvelope {} =>
+      anthropic_error_envelope_type_label(AnthropicErrorEnvelope {}) == "error"
+  }
+  envelope_ok
+    && anthropic_error_example.error.type == AnthropicAuthenticationError
+    && anthropic_error_type_label(AnthropicAuthenticationError) == "authentication_error"
+    && match parse_anthropic_error_type("future_error_kind") {
+      AnthropicErrorTypeOther { raw: r } => r == "future_error_kind"
+      AnthropicAuthenticationError => false
+      AnthropicInvalidRequestError => false
+      AnthropicRateLimitError => false
+      AnthropicOverloadedError => false
+      AnthropicNotFoundError => false
+      AnthropicApiError => false
+    }
+}

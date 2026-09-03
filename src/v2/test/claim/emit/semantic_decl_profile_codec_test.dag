@@ -1,0 +1,80 @@
+module v2.test.emit.semantic_decl_profile_codec
+
+import v2.extdeps.languages.rust {
+  rust_decl_derive_binding_spellings,
+  rust_decl_general_lex,
+  rust_semantic_decl_serialize_profile_bundle_node
+}
+import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclSerializeProfile,
+  decode_semantic_decl_serialize_profile_bundle,
+  semantic_decl_profile_binding_spellings,
+  semantic_decl_profile_lex_rules
+}
+import v2.std.compilers.lexing { LexRules }
+import v2.std.collection { Map }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.compilers.target_model { bound_spelling_from_map, lex_rules_literal_for_class }
+import v2.std.node { Symbol }
+
+fn decoded_profile() -> Outcome<TargetSemanticDeclSerializeProfile> {
+  decode_semantic_decl_serialize_profile_bundle(
+    bundle: rust_semantic_decl_serialize_profile_bundle_node()
+  )
+}
+
+fn lex_literal(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+  lex_rules_literal_for_class(rules: rules, token_class: token_class)
+}
+
+fn binding_spelling(
+  binding_spellings: Map<Symbol, String>,
+  binding: Symbol
+) -> Outcome<String> {
+  bound_spelling_from_map(binding_spellings: binding_spellings, binding: binding)
+}
+
+test fn decoded_lex_derive_enum_copy_matches_live() -> Bool {
+  match decoded_profile() {
+    Accepted { value: ser_profile, diagnostics: _ } =>
+      match semantic_decl_profile_lex_rules(profile: ser_profile) {
+        Accepted { value: decoded_lex, diagnostics: _ } =>
+          match lex_literal(rules: decoded_lex, token_class: ^rust_token_derive_enum_copy) {
+            Accepted { value: decoded, diagnostics: _ } =>
+              match lex_literal(rules: rust_decl_general_lex(), token_class: ^rust_token_derive_enum_copy) {
+                Accepted { value: live, diagnostics: _ } => decoded == live
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn decoded_binding_spellings_match_live() -> Bool {
+  match decoded_profile() {
+    Accepted { value: ser_profile, diagnostics: _ } =>
+      match semantic_decl_profile_binding_spellings(profile: ser_profile) {
+        Accepted { value: decoded_bindings, diagnostics: _ } =>
+          match binding_spelling(
+            binding_spellings: decoded_bindings,
+            binding: ^rust_decl_derive_enum_copy_binding
+          ) {
+            Accepted { value: decoded, diagnostics: _ } =>
+              match binding_spelling(
+                binding_spellings: rust_decl_derive_binding_spellings(),
+                binding: ^rust_decl_derive_enum_copy_binding
+              ) {
+                Accepted { value: live, diagnostics: _ } => decoded == live
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

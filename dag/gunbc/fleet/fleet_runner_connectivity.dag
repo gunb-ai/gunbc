@@ -1,0 +1,706 @@
+module gunbc.fleet_runner_connectivity
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat, nat_range_inclusive }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.realization_reconcile { ShowEffectiveRead, ReadAbsent }
+import product.placement_supply { HostIdentity }
+import extdeps.github.ci_runner {
+  GitHubSelfHostedRunnerRegistration,
+  GitHubRunnerRegistrationStatus,
+  GitHubRunnerOnline,
+  GitHubRunnerOffline,
+  github_runner_registration_is_online,
+  github_runner_registration_is_schedulable,
+}
+import extdeps.github.effect { GitHubOrganizationRef }
+import gunbc.auth.github_apps { gunbai_ci_declared }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, committed_slot_identities }
+import gunbc.runner_lifecycle { runner_slot_instance_name }
+import gunbc.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
+
+data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
+}
+
+// THE ROSTER IS ONE CENTRAL ORG READ, not a per-host poll: slot health is derived by joining the
+// org-level registration roster to stable (host, index) identities. The gunbai-ci GitHub App
+// carries organization_self_hosted_runners read permission for this producer. Local journal mining
+// and per-host gh api calls are not the authority for whether GitHub will schedule work onto a
+// registration.
+//
+// THIS ROW SAYS NOTHING ABOUT COMPLETENESS, AND THAT IS DELIBERATE. It replaces
+// organization_roster_is_one_org_read_note, which asserted that the API 'returns every self-hosted
+// registration for the organization in one response'. That was false and is now decided by
+// OrganizationRunnerRosterEvidence rather than claimed here; a corrected sentence beside a carrier
+// that decides the same question would be a second authority for it (DESIGN section 3). The three
+// facts above are the surviving contents of that row, enumerated rather than swept away with it --
+// a prose row deleted for one reason takes everything in it unless its contents are named first.
+
+// THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths
+// (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows;
+// connected_width counts status == online; schedulable_width counts online AND NOT busy;
+// executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host
+// and does NOT reconcile down when connected collapses during an outage. materialized_width and
+// unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local
+// producer grounds them.
+
+type OrganizationRunnerRosterEvidence
+  = RosterObserved { observed_on: NonEmptyStr, registrations: List<GitHubSelfHostedRunnerRegistration> }
+  | RosterObservedPartial {
+      observed_on: NonEmptyStr
+      registrations: List<GitHubSelfHostedRunnerRegistration>
+      observed_count: Int
+      authority_total: Int
+    }
+  | RosterReadUnavailable { reason: String }
+
+// COMPLETENESS IS DERIVED AT THE BOUNDARY, NEVER ASSERTED BY A CALLER. The org runners API is
+// PAGINATED -- measured 2026-08-27 at total_count 522 against a 100-row page -- so a read that
+// succeeds is not thereby a read that saw everything. A caller cannot hand this constructor a
+// prefix and have it enter as RosterObserved: the only way to that variant is for the observed
+// length to equal the authority's own total, so "I saw all of it" is a computed fact about the
+// response, not a claim about the request (DESIGN section 5, construction over validation).
+fn organization_runner_roster_from_page(
+  observed_on: NonEmptyStr,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  authority_total: Int,
+) -> OrganizationRunnerRosterEvidence {
+  let observed = registrations.length()
+  if observed == authority_total {
+    RosterObserved { observed_on: observed_on, registrations: registrations }
+  } else {
+    RosterObservedPartial {
+      observed_on: observed_on,
+      registrations: registrations,
+      observed_count: observed,
+      authority_total: authority_total,
+    }
+  }
+}
+
+type FleetAchievedRunnerWidths
+  = AchievedWidthsObserved {
+      registered_width: Int
+      connected_width: Int
+      schedulable_width: Int
+      executing_width: Int
+    }
+  | AchievedWidthsUnobserved { reason: String }
+
+type RegistrationSlotDecoding
+  = RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity }
+  | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
+
+// THE DECODER DOES NOT PARSE. Splitting "srv3-06" back into a host and an index would be a SECOND
+// naming authority read in the opposite direction from the first, and the two could disagree
+// undetected. The committed population is finite and enumerable, so decoding is a total decision
+// over it: which committed identity's own name equals this registration's name. That is the
+// forward naming authority read backward (DESIGN section 4, one grammar in both directions), not
+// an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
+// the answer RegistrationNamesNoCommittedSlot, a fact about the fleet rather than about text.
+//
+// THE FORK IS DISSOLVED, AND IT WAS FIVE SITES RATHER THAN THE THREE AN EARLIER REVISION OF THIS
+// NOTE CLAIMED. One rule -- pad a slot index to two digits -- had four independent implementations
+// (runner_lifecycle, runner_host_deploy, runner_incarnation, and host_registration_name_for_slot
+// just below, which reached it through a shared bucketed helper). Three derived the pad
+// arithmetically; runner_incarnation's slot_suffix ENUMERATED indices 1 through 8 with an else arm
+// returning the literal "00". Measured before the fix: srv3-09 from the derived sites, srv3-00
+// from the enumerator -- a COLLISION rather than a wrong name, since every index above 8 produced
+// the same string and two slots would contend for one GitHub registration.
+//
+// All now route through gunbc.build_cache_instance runner_slot_index_suffix, the identity's own
+// module and therefore the rule's layer. Derived, total over Nat, no fall-through to reach. My
+// census of this fork said three sites twice -- to a reviewer and in a PR body -- and it was five;
+// the two I missed reached the rule INDIRECTLY, the same shape as every other undercount in this
+// lane: I grepped for the thing I was looking for rather than enumerating the declarations.
+//
+// ONE INDEPENDENT IMPLEMENTATION SURVIVES DELIBERATELY, in host_converge_slice1_witness_test, which
+// builds its own expected name inline. Not a missed site: a witness that computes its expectation
+// by calling the production function proves only that the function equals itself. Its pad is an
+// independent oracle and consolidating it would convert a check into a tautology.
+fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
+  fold(
+    fleet_hosts(),
+    init: [],
+    f: (acc, h) => concat(acc, committed_slot_identities(host: h))
+  )
+}
+
+fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> RegistrationSlotDecoding {
+  match fold(
+    fleet_committed_slot_identities(),
+    init: none,
+    f: (acc, id) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if runner_slot_instance_name(slot: id) == (reg.name as String) {
+            Present { value: id }
+          } else {
+            none
+          }
+      }
+  ) {
+    Present { value: id } => RegistrationNamesCommittedSlot { slot: id }
+    Absent => RegistrationNamesNoCommittedSlot { registration_name: reg.name }
+  }
+}
+
+type RunnerSlotConnectivityVerdict
+  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
+  | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
+  | SlotConnectivityUnexpectedRegistration {
+      registration_id: Nat
+      registration_name: NonEmptyStr
+      decoded: RegistrationSlotDecoding
+    }
+
+// THIS ARM CARRIES THE REGISTRATION'S OWN IDENTITY AND NOT A SLOT, AND THAT IS THE WHOLE POINT.
+// The other four arms each carry a RunnerSlotIdentity from a LOCAL incarnation, being produced by
+// mapping over local_runner_slot_incarnations. A registration GitHub holds that we never
+// provisioned locally has no incarnation to map from, so it was not mis-reported by those four --
+// it was unsayable, and no check could close it because there was nothing to read. Giving this
+// arm a slot field would rebuild that blindness inside the fix, forcing an unexpected registration
+// to be described in terms of a local slot that by construction does not exist. It carries
+// `decoded` instead, so a consumer can tell the two cases apart -- a registration whose name
+// resolves to a COMMITTED slot identity is the disjointness violation this model exists for (an
+// actions-runner sitting on a fabric-purpose slot), while one resolving to nothing is a foreign
+// runner in the org. Different facts; a single Bool would have merged them.
+
+type FleetRunnerCapacityWidthSnapshot {
+  desired_width: Int
+  materialized_width: Int
+  unit_active_width: Int
+  achieved: FleetAchievedRunnerWidths
+}
+
+// PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06
+// broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered
+// 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3
+// registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with
+// 03 absent. desired_width stays 22 while connected is 1 — derived at
+// incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on
+// 2026-08-06. The live total is DERIVED by fleet_desired_width_total rather than pinned here, so it
+// tracks gunbc_runner_slots_per_host: it read 24 while srv3/srv4 committed 7, and reads 22 since
+// the 2026-08-17 16GiB ruling moved both managed hosts to 6. The incident figure of 22 is a
+// DIFFERENT QUANTITY that happens to share the number — it is what the roster desired on 2026-08-06
+// (5+5+7+5, srv4 row-pinned), and it comes from the pinned per-host rows in
+// incident_pinned_widths_note, never from the live allocation.)
+
+data incident_srv4_committed_width_at_outage: Int = 5
+
+data incident_runner_version: NonEmptyStr = "2.334.0"
+
+data incident_runner_labels: List<NonEmptyStr> = [
+  "self-hosted" as NonEmptyStr,
+  "linux" as NonEmptyStr,
+  "arm64" as NonEmptyStr,
+  "gunbc-heavy" as NonEmptyStr,
+]
+
+fn github_organization_ref() -> GitHubOrganizationRef {
+  GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
+}
+
+fn incident_registration(
+  id: Nat,
+  name: NonEmptyStr,
+  status: GitHubRunnerRegistrationStatus,
+  busy: Bool,
+) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
+    id: id,
+    name: name,
+    status: status,
+    busy: busy,
+    ephemeral: true,
+    version: incident_runner_version,
+    os: "Linux" as NonEmptyStr,
+    labels: incident_runner_labels,
+  }
+}
+
+data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
+  incident_registration(id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 4, name: "srv1-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 5, name: "srv1-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 6, name: "srv2-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 7, name: "srv2-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 8, name: "srv2-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 9, name: "srv3-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 10, name: "srv3-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 11, name: "srv3-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 12, name: "srv3-05", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 13, name: "srv4-01", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 14, name: "srv4-02", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 15, name: "srv4-04", status: GitHubRunnerOffline, busy: false),
+  incident_registration(id: 16, name: "srv4-05", status: GitHubRunnerOffline, busy: false),
+]
+
+fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "2026-08-06" as NonEmptyStr,
+    registrations: incident_2026_08_06_registrations,
+  }
+}
+
+data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_runner_connectivity",
+    decl_name: "organization_runner_roster_show_effective_read",
+    field: WholeDeclaration,
+  }
+}
+
+data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = ReadAbsent {
+  reason: "no live org-level GET /orgs/gunb-ai/actions/runners has executed through the gunbai-ci GitHub App yet; the incident fixture in organization_runner_roster_evidence is the pinned acceptance corpus until this read binds ReadObserved"
+}
+
+fn registration_matches_name(
+  reg: GitHubSelfHostedRunnerRegistration,
+  name: NonEmptyStr,
+) -> Bool {
+  (reg.name as String) == (name as String)
+}
+
+fn find_registration_by_name(
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  name: NonEmptyStr,
+) -> GitHubSelfHostedRunnerRegistration? {
+  fold(
+    registrations,
+    init: none,
+    f: (acc, reg) =>
+      if registration_matches_name(reg: reg, name: name) {
+        Present { value: reg }
+      } else {
+        acc
+      }
+  )
+}
+
+// ACTIVATED WIDTH vs INSTALL-TREE COUNT (operator correction 2026-08-07): counts ACTIVATED units,
+// not install trees. srv1: 50 trees / 5 active; srv3: 8 materialized trees (includes 08) / 5 active
+// — committed width 7 is memory ceiling, not materialization cap. Dormant trees are
+// SlotMaterializedNotActive; stale .runner does not block ADD.
+
+fn materialized_width_for_host(host: HostIdentity) -> Int {
+  if (host as String) == (operator_host_srv1 as String) {
+    5
+  } else if (host as String) == (operator_host_srv2 as String) {
+    5
+  } else if (host as String) == (operator_host_srv3 as String) {
+    5
+  } else if (host as String) == (operator_host_srv4 as String) {
+    5
+  } else {
+    0
+  }
+}
+
+fn unit_active_width_for_host(host: HostIdentity) -> Int {
+  materialized_width_for_host(host: host)
+}
+
+fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
+  join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
+}
+
+fn slot_indices_for_managed_width(width: Int) -> List<Nat> {
+  nat_range_inclusive(lo: 1, hi: width)
+}
+
+fn count_host_registrations_at_width(
+  host: HostIdentity,
+  width: Int,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+) -> Int {
+  fold(
+    slot_indices_for_managed_width(width: width),
+    init: 0,
+    f: (n, slot_index) =>
+      match find_registration_by_name(
+        registrations: registrations,
+        name: host_registration_name_for_slot(host: host, slot_index: slot_index),
+      ) {
+        Present { value: _ } => n + 1
+        Absent => n
+      },
+  )
+}
+
+fn count_host_online_at_width(
+  host: HostIdentity,
+  width: Int,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+) -> Int {
+  fold(
+    slot_indices_for_managed_width(width: width),
+    init: 0,
+    f: (n, slot_index) =>
+      match find_registration_by_name(
+        registrations: registrations,
+        name: host_registration_name_for_slot(host: host, slot_index: slot_index),
+      ) {
+        Present { value: reg } =>
+          if github_runner_registration_is_online(reg: reg) {
+            n + 1
+          } else {
+            n
+          }
+        Absent => n
+      },
+  )
+}
+
+// THE CONVERGED-SEVEN FIXTURE CLUSTER IS DELETED HERE -- six declarations, all dead. It described
+// a fleet that stopped existing with the 2026-08-17 16GiB ruling, and once registrations are
+// decoded against the committed population rather than counted, srv3-07 resolves to no committed
+// slot, so the planner refused it. Its last consumer was retargeted onto the roster below, the
+// same concept authored once: both managed hosts registered 01-05 and online, converged at the
+// materialized width. Keeping the seven-wide rows beside it would be a second name for a fleet
+// state, and a test fixture is not exempt from that.
+data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+]
+
+data width_five_online_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 401, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 402, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 403, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 404, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 405, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+]
+
+data width_five_online_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+  width_five_online_srv3_registrations,
+  width_five_online_srv4_registrations,
+)
+
+fn organization_runner_roster_materialized_slots_online_evidence() -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "2026-08-07" as NonEmptyStr,
+    registrations: width_five_online_managed_registrations,
+  }
+}
+
+fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
+  map(
+    slot_indices_for_managed_width(width: width),
+    i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
+  )
+}
+
+fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
+  concat(
+    local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)),
+    concat(
+      local_incarnations_for_host(host: operator_host_srv2, width: materialized_width_for_host(host: operator_host_srv2)),
+      concat(
+        local_incarnations_for_host(host: operator_host_srv3, width: materialized_width_for_host(host: operator_host_srv3)),
+        local_incarnations_for_host(host: operator_host_srv4, width: materialized_width_for_host(host: operator_host_srv4))
+      )
+    )
+  )
+}
+
+fn partial_roster_unseen_reason(observed_count: Int, authority_total: Int) -> String {
+  concat(
+    concat("roster read was truncated at ", to_string(observed_count)),
+    concat(
+      concat(" of ", to_string(authority_total)),
+      " registrations, so this slot was never looked at -- absence from a prefix is not absence from the authority"
+    )
+  )
+}
+
+// ONE LOOKUP, TWO UNSEEN ANSWERS. The complete and truncated arms must read the prefix the SAME way
+// or they are two decodings of one fact; the only thing that legitimately differs between them is
+// what absence MEANS, so that is the only thing passed in.
+fn registration_verdict_or(
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  incarnation: LocalRunnerSlotIncarnation,
+  unseen: RunnerSlotConnectivityVerdict,
+) -> RunnerSlotConnectivityVerdict {
+  match find_registration_by_name(registrations: registrations, name: incarnation.registration_name) {
+    Absent => unseen
+    Present { value: reg } =>
+      match reg.status {
+        GitHubRunnerOnline =>
+          SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
+        GitHubRunnerOffline =>
+          SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
+      }
+  }
+}
+
+// THE REFUSAL IS PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
+// slot INSIDE the prefix, so refusing the whole roster would be a widen (DESIGN section 5: a
+// failure arm must refuse, never widen) and would stop reconciliation on hosts this read covered
+// perfectly well. Only the ABSENT arm changes: a slot missing from a prefix was never observed to
+// be missing, and rendering it Orphaned is the empty-observation narrow -- could-not-see reported
+// as the verdict "it is gone", whose remedy is a restart at connectivity_replace_action.
+fn runner_slot_connectivity_verdict_for_incarnation(
+  incarnation: LocalRunnerSlotIncarnation,
+  roster: OrganizationRunnerRosterEvidence,
+) -> RunnerSlotConnectivityVerdict {
+  if !incarnation.unit_active {
+    SlotConnectivityUnknown {
+      slot: incarnation.slot,
+      reason: "inactive systemd unit is outside the active-incarnation connectivity model"
+    }
+  } else {
+    match roster {
+      RosterReadUnavailable { reason: r } =>
+        SlotConnectivityUnknown { slot: incarnation.slot, reason: r }
+      RosterObserved { observed_on: _, registrations: regs } =>
+        registration_verdict_or(
+          registrations: regs,
+          incarnation: incarnation,
+          unseen: SlotConnectivityOrphaned { slot: incarnation.slot },
+        )
+      RosterObservedPartial {
+        observed_on: _,
+        registrations: regs,
+        observed_count: seen,
+        authority_total: total,
+      } =>
+        registration_verdict_or(
+          registrations: regs,
+          incarnation: incarnation,
+          unseen: SlotConnectivityUnknown {
+            slot: incarnation.slot,
+            reason: partial_roster_unseen_reason(observed_count: seen, authority_total: total),
+          },
+        )
+    }
+  }
+}
+
+fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
+  let roster = organization_runner_roster_evidence()
+  let incarnations = local_runner_slot_incarnations()
+  match fold(
+    incarnations,
+    init: none,
+    f: (acc, inc) =>
+      if (inc.slot.host as String) == (slot.host as String) && inc.slot.slot_index == slot.slot_index {
+        Present {
+          value: runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+        }
+      } else {
+        acc
+      }
+  ) {
+    Absent =>
+      SlotConnectivityUnknown {
+        slot: slot,
+        reason: "no local incarnation is modeled for this slot identity"
+      }
+    Present { value: v } => v
+  }
+}
+
+fn count_online_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+  fold(
+    registrations,
+    init: 0,
+    f: (n, reg) => if github_runner_registration_is_online(reg: reg) { n + 1 } else { n }
+  )
+}
+
+fn count_schedulable_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+  fold(
+    registrations,
+    init: 0,
+    f: (n, reg) => if github_runner_registration_is_schedulable(reg: reg) { n + 1 } else { n }
+  )
+}
+
+fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+  fold(
+    registrations,
+    init: 0,
+    f: (n, reg) => if github_runner_registration_is_online(reg: reg) && reg.busy { n + 1 } else { n }
+  )
+}
+
+fn fleet_hosts() -> List<HostIdentity> {
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+}
+
+// THE 2026-08-06 CORPUS IS PINNED ON EVERY HOST, NOT JUST srv4, AND THAT IS THE WHOLE POINT. This
+// fold previously pinned srv4 alone and read gunbc_runner_slots_per_host live for srv1-srv3, so a
+// historical incident total silently tracked present-day allocation. The 2026-08-17 16GiB ruling
+// moved srv3 from 7 to 6 and the outage total would have become 21 while
+// incident_2026_08_06_roster_note and its witness both say 22 — a pinned corpus contradicting
+// itself because it was only half pinned.
+//
+// DESIGN section 5's test-oracle discipline is the authority: a historical measurement compared
+// against a literal is legitimate only when the measurement is independently fixed, and half of
+// this one was live. The widths below are what the fleet committed ON 2026-08-06 (srv1 5, srv2 5,
+// srv3 7, srv4 5 with its then-live disk row-pin), summing to the 22 the roster note records.
+// Frozen by date, never to be updated to follow an allocation ruling: a future ruling changes what
+// the fleet desires TODAY, not what it desired during that outage.
+
+data incident_srv1_committed_width_at_outage: Int = 5
+
+data incident_srv2_committed_width_at_outage: Int = 5
+
+data incident_srv3_committed_width_at_outage: Int = 7
+
+fn incident_committed_width_at_outage_for(host: HostIdentity) -> Int {
+  if (host as String) == (operator_host_srv1 as String) {
+    incident_srv1_committed_width_at_outage
+  } else if (host as String) == (operator_host_srv2 as String) {
+    incident_srv2_committed_width_at_outage
+  } else if (host as String) == (operator_host_srv3 as String) {
+    incident_srv3_committed_width_at_outage
+  } else if (host as String) == (operator_host_srv4 as String) {
+    incident_srv4_committed_width_at_outage
+  } else {
+    0
+  }
+}
+
+fn incident_fleet_desired_width_at_outage() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) => n + incident_committed_width_at_outage_for(host: h),
+  )
+}
+
+fn fleet_desired_width_total() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) => n + gunbc_runner_slots_per_host(host: h)
+  )
+}
+
+fn fleet_materialized_width_total() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) => n + materialized_width_for_host(host: h)
+  )
+}
+
+fn fleet_unit_active_width_total() -> Int {
+  fold(
+    fleet_hosts(),
+    init: 0,
+    f: (n, h) => n + unit_active_width_for_host(host: h)
+  )
+}
+
+// A WIDTH OVER A PREFIX IS WRONG, NOT PARTIAL. Unlike the per-slot question, every field here is an
+// AGGREGATE over the whole roster, so there is no sub-question a prefix answers correctly --
+// reporting counts from a truncated read would understate connected width and read as an outage.
+// The truncated arm is therefore unobserved rather than a smaller number.
+fn fleet_achieved_runner_widths_from_roster(
+  roster: OrganizationRunnerRosterEvidence,
+) -> FleetAchievedRunnerWidths {
+  match roster {
+    RosterReadUnavailable { reason: r } => AchievedWidthsUnobserved { reason: r }
+    RosterObservedPartial {
+      observed_on: _,
+      registrations: _,
+      observed_count: seen,
+      authority_total: total,
+    } =>
+      AchievedWidthsUnobserved { reason: partial_roster_unseen_reason(observed_count: seen, authority_total: total) }
+    RosterObserved { observed_on: _, registrations: regs } =>
+      AchievedWidthsObserved {
+        registered_width: regs.length(),
+        connected_width: count_online_registrations(registrations: regs),
+        schedulable_width: count_schedulable_registrations(registrations: regs),
+        executing_width: count_executing_registrations(registrations: regs),
+      }
+  }
+}
+
+fn fleet_runner_capacity_width_snapshot_from_roster(
+  roster: OrganizationRunnerRosterEvidence,
+) -> FleetRunnerCapacityWidthSnapshot {
+  FleetRunnerCapacityWidthSnapshot {
+    desired_width: incident_fleet_desired_width_at_outage(),
+    materialized_width: fleet_materialized_width_total(),
+    unit_active_width: fleet_unit_active_width_total(),
+    achieved: fleet_achieved_runner_widths_from_roster(roster: roster),
+  }
+}
+
+fn fleet_runner_capacity_width_snapshot() -> FleetRunnerCapacityWidthSnapshot {
+  fleet_runner_capacity_width_snapshot_from_roster(roster: organization_runner_roster_evidence())
+}
+
+fn connectivity_verdicts_for_active_incarnations(
+  roster: OrganizationRunnerRosterEvidence,
+) -> List<RunnerSlotConnectivityVerdict> {
+  map(
+    local_runner_slot_incarnations(),
+    inc => runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster)
+  )
+}
+
+fn connectivity_verdict_is_healthy(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityHealthy { slot: _, registration_id: _ } => true
+    _ => false
+  }
+}
+
+fn connectivity_verdict_is_detached(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityDetached { slot: _, registration_id: _ } => true
+    _ => false
+  }
+}
+
+fn connectivity_verdict_is_orphaned(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityOrphaned { slot: _ } => true
+    _ => false
+  }
+}
+
+fn connectivity_verdict_is_unknown(v: RunnerSlotConnectivityVerdict) -> Bool {
+  match v {
+    SlotConnectivityUnknown { slot: _, reason: _ } => true
+    _ => false
+  }
+}
+
+// TRUNCATION IS NOT THIS LAW'S SUBJECT. This function pins the FAILED-read guarantee; the
+// truncated-read guarantee is a different proposition with its own witness (unseen slots must not be
+// Orphaned), and folding both into one predicate would let either hold up the other's evidence.
+fn roster_unavailable_yields_unknown_not_detached(
+  roster: OrganizationRunnerRosterEvidence,
+) -> Bool {
+  match roster {
+    RosterReadUnavailable { reason: _ } =>
+      all(
+        connectivity_verdicts_for_active_incarnations(roster: roster),
+        v => connectivity_verdict_is_unknown(v: v) && !connectivity_verdict_is_detached(v: v)
+      )
+    RosterObserved { observed_on: _, registrations: _ } => true
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => true
+  }
+}

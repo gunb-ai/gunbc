@@ -1,0 +1,38 @@
+module extdeps.provisioning.ubuntu_seeded_install_media_toolchain
+
+import std.types { NonEmptyStr, List, Bool }
+import extdeps.tools { CliTool }
+import extdeps.tools.xorriso { xorriso_cli_tool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/xorriso/"
+  }
+}
+
+type InstallMediaRemasterToolchainRequirement {
+  required_tools: List<CliTool>
+}
+
+data install_media_remaster_toolchain_requirement: InstallMediaRemasterToolchainRequirement = InstallMediaRemasterToolchainRequirement {
+  required_tools: [xorriso_cli_tool],
+}
+
+fn install_media_remaster_toolchain_includes_xorriso(
+  requirement: InstallMediaRemasterToolchainRequirement,
+) -> Bool {
+  fold(
+    requirement.required_tools,
+    init: false,
+    f: (acc, tool) => acc || tool.name == xorriso_cli_tool.name
+  )
+}
+
+fn install_media_remaster_toolchain_is_complete(
+  requirement: InstallMediaRemasterToolchainRequirement,
+) -> Bool {
+  install_media_remaster_toolchain_includes_xorriso(requirement: requirement)
+}

@@ -1,0 +1,46 @@
+module gunbc.guarantee_rung
+
+import std.types { String, Int }
+
+// THE DESIGN section 4b LADDER, AS ITS OWN AUTHORITY BECAUSE IT IS A FACT ABOUT NEITHER RECORD
+// THAT USES IT. A section 4b(3) DROP names two rungs (the one that was held and the one now held);
+// a section 4b(2) STALL names two rungs (the one held and the attainable ceiling). The ladder is
+// what both of them are stated in, so homing it inside either would make one of the two records
+// import the other's module to spell a rung -- an authority edge that says nothing true about
+// either subject, and the shape from which the two carriers' vocabularies drift apart.
+//
+// IT IS A CLOSED VOCABULARY AND IS MODELED AS ONE, so an unrepresentable rung cannot be written
+// and a census over rungs is a fold rather than a text scan. OutsideTheLadder is the rung DESIGN
+// section 4b names as deliberately NOT a rung -- it is carried here because a drop's temporary rung
+// and a stall's current rung both have to be able to say it, and a coproduct that could not would
+// force the two carriers to encode the same absence two different ways.
+
+type GuaranteeRung
+  = OutsideTheLadder
+  | Mitigatable
+  | MechanicallyPreventable
+  | StructurallyGuaranteed
+  | StructurallyImpossible
+
+fn guarantee_rung_label(r: GuaranteeRung) -> String {
+  match r {
+    OutsideTheLadder => "outside the ladder"
+    Mitigatable => "mitigatable"
+    MechanicallyPreventable => "mechanically preventable"
+    StructurallyGuaranteed => "structurally guaranteed"
+    StructurallyImpossible => "structurally impossible"
+  }
+}
+
+
+// THE LADDER'S ORDER, which is a property of the closed vocabulary and not a preference. It exists
+// so "below its ceiling" is decided by a fold instead of by a reader comparing two labels.
+fn guarantee_rung_index(r: GuaranteeRung) -> Int {
+  match r {
+    OutsideTheLadder => 0
+    Mitigatable => 1
+    MechanicallyPreventable => 2
+    StructurallyGuaranteed => 3
+    StructurallyImpossible => 4
+  }
+}

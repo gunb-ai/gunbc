@@ -1,0 +1,364 @@
+module v2.workflow.ci_floor_peak_emit
+
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Do,
+  ExitZero,
+  FailFast,
+  If,
+  Pipeline,
+  PipelineStep,
+  Predicate,
+  Run,
+  While
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+import v2.extdeps.languages.bash_orch_if {
+  bash_nearest_ancestor_locate_assign_command,
+  bash_nearest_ancestor_locate_cond_command,
+  bash_nearest_ancestor_locate_body_command,
+}
+import std.path_intent { NearestAncestorContaining, PathRefStart }
+import std.filesystem.types { RegularFile }
+import std.types { FilePathParts, NonEmptyStr }
+
+// PathPredicate IS DELIBERATELY ABSENT FROM THE std.path_intent IMPORT LIST ABOVE, and And / Not
+// are written std.path_intent.And / std.path_intent.Not at their construction sites.
+// v2.std.orchestration's Predicate and std.path_intent's PathPredicate both carry variants named
+// And, Not and Or, and bringing both TYPES into one module is a hard typecheck refusal — 'variant
+// And appears in both Predicate and PathPredicate' — never a shadowing warning. WHAT THE COLLISION
+// IS KEYED ON was established by execution, because the message points elsewhere: the refusal is
+// reported at std.path_intent's own declaration line, a file this module merely imports, so the
+// obvious first repair — dropping And, Not and Or from the import list and qualifying every
+// construction — CHANGES NOTHING and the identical three errors reappear. What clears it is
+// dropping the TYPE NAME PathPredicate from the import list and annotating the declaration
+// std.path_intent.PathPredicate, the shape the v2.workflow.orchestration_while_emit witness already
+// used and the reason that file compiles while a naive port does not. Two consequences. The
+// refusal itself is CORRECT and wanted (the namespace lane's no-ambiguity-at-any-layer rule), and
+// qualifying is the containment tree answering the question it exists to answer, so renaming
+// either coproduct's boolean connectives to dodge it would be the nickname this repo forbids — a
+// conjunction over path predicates and one over exit-status predicates are both correctly called
+// And. But its LOCUS is wrong: the conflict is created by the importer that brings both types into
+// scope, and blaming the imported declaration sends the reader to a shared std file that is not at
+// fault and cannot be fixed there. Reported as a diagnostic-locus finding on the namespace lane
+// rather than repaired here; std.path_intent and the resolver are load-bearing and this is a
+// leaf-adoption PR.
+
+data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
+
+data ci_floor_peak_nearest_ancestor_spec: NearestAncestorContaining = NearestAncestorContaining {
+  start: PathRefStart { name: "d" as NonEmptyStr },
+  stop_before: FilePathParts { segments: ["sys", "fs", "cgroup"] },
+  relative_entry: FilePathParts { segments: ["memory.peak"] },
+  expected_kind: RegularFile,
+}
+
+// THE CGROUP LOCATE VERTICAL COMPOSEES TWO TYPED AUTHORITIES. extdeps.linux.proc_self_cgroup owns
+// unified-hierarchy membership decode (language-independent).
+// v2.extdeps.languages.bash_proc_self_cgroup lowers membership outcomes to shell assign (refuses
+// missing/ambiguous/malformed distinctly; no head -1; no empty-path widen). std.path_intent
+// NearestAncestorContaining names the nearest-ancestor search policy (start PathRefStart,
+// stop_before mount, relative_entry memory.peak). bash_orch_if composes both lowerings without
+// reimplementing the parser. Peak reset/cat/echo calibration leaves stay raw String — Phase 2 typed
+// filesystem observation.
+
+data ci_floor_peak_path_model_refused_poison: String = "__GUNBC_PATH_INTENT_LOWERING_REFUSED__ floor-peak cgroup path-intent leaf lowering was rejected by v2.extdeps.languages.bash_orch_if; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red (DESIGN 5: refuse, never widen). WHY A POISON RATHER THAN EMPTY TEXT, on the measured facts rather than the intuitive ones: the Run.command seam is String-typed and cannot carry an Outcome, so the refusal arm has to be SOME string, and the sibling witness file's model-text helpers return \"\" there. An earlier draft of this row justified the poison by claiming an empty while-condition is an always-true loop that would spin forever. THAT IS FALSE, tested 2026-08-05 against /bin/sh, /bin/dash and /bin/bash: 'while ; do' is a SYNTAX ERROR in all three, so an empty leaf would fail loudly rather than hang. The real argument is smaller and survives the correction. An empty String is a well-typed, ordinary-looking value flowing through an untyped seam; it says nothing about which lowering refused or why, and its first observable symptom is a shell parse failure inside a generated workflow — attributed to ci.yml at CI runtime, several layers from the path model that actually refused. The poison carries the cause to the place the reader lands. In practice the drift gate catches either one, because both differ from the committed bytes; what the poison buys is a LOCATED refusal instead of an anonymous one, which is the half of DESIGN section 5 that a mere red does not supply."
+
+fn ci_floor_peak_assign_cgroup_dir_command() -> String {
+  let cmd = bash_nearest_ancestor_locate_assign_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
+}
+
+fn ci_floor_peak_while_cond_command() -> String {
+  let cmd = bash_nearest_ancestor_locate_cond_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
+}
+
+fn ci_floor_peak_while_body_command() -> String {
+  let cmd = bash_nearest_ancestor_locate_body_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
+}
+
+data ci_floor_peak_test_f_memory_peak_command: String = "[ -f \"$d/memory.peak\" ]"
+
+data ci_floor_peak_echo_reset_redirect_command: String = "echo reset > \"$d/memory.peak\" 2>/dev/null"
+
+data ci_floor_peak_pre_reset_ok_command: String = "echo \"[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d\""
+
+data ci_floor_peak_pre_reset_unsupported_command: String = "echo \"[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat \"$d/memory.peak\") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)\""
+
+data ci_floor_peak_pre_unavailable_command: String = "echo \"[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)\""
+
+data ci_floor_peak_post_ok_command: String = "echo \"[calibration] floor_peak_post=$(cat \"$d/memory.peak\") floor_outcome=$\{\{ steps.floor.outcome \}\} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)\""
+
+data ci_floor_peak_post_unavailable_command: String = "echo \"[calibration] floor_peak_post floor_outcome=$\{\{ steps.floor.outcome \}\} scope=unavailable (no memory.peak ancestor)\""
+
+data ci_floor_phase_journal_env_name: String = "GUNBC_FLOOR_PHASE_JOURNAL"
+
+data ci_floor_phase_journal_path: String = "target/floor-phase-journal.tsv"
+
+data ci_floor_phase_journal_artifact_name: String = "floor-phase-journal"
+
+data ci_floor_phase_journal_present_command: String = "[ -f \"$GUNBC_FLOOR_PHASE_JOURNAL\" ]"
+
+data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journal] columns: unix_millis pid phase state detail\""
+
+data ci_floor_phase_journal_read_command: String = "echo \"[floor-phase-journal] $(wc -l < $GUNBC_FLOOR_PHASE_JOURNAL) rows retained; full journal in the floor-phase-journal artifact\""
+
+data ci_floor_phase_journal_absent_command: String = "echo \"[floor-phase-journal] absent\""
+
+data ci_floor_wet_witness_row_outcome_receipt_path: String = "target/floor-wet-witness-row-outcome-receipt.tsv"
+
+data ci_floor_wet_witness_row_outcome_receipt_present_command: String = "[ -f \"target/floor-wet-witness-row-outcome-receipt.tsv\" ]"
+
+data ci_floor_wet_witness_row_outcome_receipt_header_command: String = "echo \"[wet-witness-row-outcome-receipt] columns: batch entry function outcome detail\""
+
+data ci_floor_wet_witness_row_outcome_receipt_read_command: String = "echo \"[wet-witness-row-outcome-receipt] $(wc -l < target/floor-wet-witness-row-outcome-receipt.tsv) rows; full receipt in the floor-component-receipt artifact\""
+
+data ci_floor_wet_witness_row_outcome_receipt_absent_command: String = "echo \"[wet-witness-row-outcome-receipt] absent\""
+
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_peak_emit",
+    decl_name: "ci_floor_wet_witness_row_outcome_receipt_if",
+    field: WholeDeclaration
+  }
+}
+
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
+
+data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger))
+
+data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_peak_emit",
+    decl_name: "ci_floor_phase_journal_if",
+    field: WholeDeclaration
+  }
+}
+
+data ci_floor_phase_journal_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
+
+// The symbolic ROADMAP row `shell-effectplan-to-bash` above is intentional. Neighboring
+// shell-emission dissolve markers still carry the pre-existing stale pointer `6-shell-slice0`,
+// which names no roadmap_authority row and is tracked for a separate shell-lane correction; do not
+// normalize this live citation back to that spelling.
+
+data ci_floor_phase_journal_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_phase_journal_shell_emit_dissolution_trigger))
+
+data ci_floor_peak_cgroup_locate_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_floor_peak_emit",
+    decl_name: "ci_cgroup_peak_locate_shell",
+    field: WholeDeclaration
+  }
+}
+
+data ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.")
+
+data ci_floor_peak_cgroup_locate_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger))
+
+fn ci_floor_peak_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: Empty,
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn ci_floor_peak_do(command: String) -> PipelineStep {
+  Do { run: ci_floor_peak_run(command: command) }
+}
+
+fn ci_floor_peak_exit_zero(command: String) -> Predicate {
+  ExitZero { run: ci_floor_peak_run(command: command) }
+}
+
+fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
+  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => ci_floor_peak_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_floor_peak_emit_refused_poison
+  }
+}
+
+// 🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and
+// PipelineStep carries DirnameAscent — so the cgroup ascent while-loop is a typed node in the
+// pipeline instead of derived text at a String seam. TODAY'S EXACT STATE: Predicate is ExitZero |
+// LogMatches | StrEq | StrEmpty | StrNonempty | IntNe | Not | And | Or and PipelineStep is Do |
+// Comment | Exit | If | For | While | Retry | Let | Call — neither has a path member, which is why
+// ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command lower to text HERE. When
+// those arms exist they delete outright and orch_emit_step lowers the model at emission time;
+// ci_floor_peak_nearest_ancestor_spec survives as the arm payload. LANDED IN THIS VERTICAL (not
+// Phase 2 residue): unified-hierarchy membership decode is extdeps.linux.proc_self_cgroup;
+// ci_floor_peak_assign_cgroup_dir_command composes v2.extdeps.languages.bash_proc_self_cgroup
+// membership lowering with that path policy via bash_orch_if; procfs path is extdeps.linux.procfs
+// ProcSelfCgroup. REMAINING Phase 2: the foreign-executor runtime-scan transport in
+// bash_membership_assign_from_source (host_effect_apply typed observation) and peak reset/cat/echo
+// calibration leaves (raw String — typed filesystem observation).
+
+fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
+  While {
+    cond: ExitZero {
+      run: ci_floor_peak_run(command: ci_floor_peak_while_cond_command())
+    },
+    body: Pipeline {
+      steps: [ci_floor_peak_do(command: ci_floor_peak_while_body_command())],
+      on_failure: FailFast
+    }
+  }
+}
+
+fn ci_floor_peak_cgroup_locate_steps() -> List<PipelineStep> {
+  [
+    ci_floor_peak_do(command: ci_floor_peak_assign_cgroup_dir_command()),
+    ci_floor_peak_cgroup_locate_while()
+  ]
+}
+
+fn ci_floor_peak_cgroup_locate_with_scaffold_steps() -> List<PipelineStep> {
+  concat(
+    [ci_floor_peak_do(command: ci_floor_peak_cgroup_locate_runner_scaffold_comment)],
+    ci_floor_peak_cgroup_locate_steps()
+  )
+}
+
+fn ci_floor_peak_cgroup_locate_pipeline() -> Pipeline {
+  Pipeline {
+    steps: ci_floor_peak_cgroup_locate_with_scaffold_steps(),
+    on_failure: FailFast
+  }
+}
+
+fn ci_floor_peak_pre_reset_inner_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_peak_echo_reset_redirect_command),
+    then_: Pipeline {
+      steps: [ci_floor_peak_do(command: ci_floor_peak_pre_reset_ok_command)],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_peak_pre_reset_unsupported_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_peak_pre_peak_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_peak_test_f_memory_peak_command),
+    then_: Pipeline {
+      steps: [ci_floor_peak_pre_reset_inner_if()],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_peak_pre_unavailable_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_peak_pre_pipeline() -> Pipeline {
+  Pipeline {
+    steps: concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_pre_peak_if()]),
+    on_failure: FailFast
+  }
+}
+
+fn ci_floor_peak_post_peak_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_peak_test_f_memory_peak_command),
+    then_: Pipeline {
+      steps: [ci_floor_peak_do(command: ci_floor_peak_post_ok_command)],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_peak_post_unavailable_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_phase_journal_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_phase_journal_present_command),
+    then_: Pipeline {
+      steps: [
+        ci_floor_peak_do(command: ci_floor_phase_journal_header_command),
+        ci_floor_peak_do(command: ci_floor_phase_journal_read_command)
+      ],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_phase_journal_absent_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_wet_witness_row_outcome_receipt_if() -> PipelineStep {
+  If {
+    cond: ci_floor_peak_exit_zero(command: ci_floor_wet_witness_row_outcome_receipt_present_command),
+    then_: Pipeline {
+      steps: [
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_header_command),
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_read_command)
+      ],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_absent_command)],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+fn ci_floor_peak_post_pipeline() -> Pipeline {
+  Pipeline {
+    steps: concat(
+      [
+        ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
+        ci_floor_phase_journal_if(),
+        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
+        ci_floor_wet_witness_row_outcome_receipt_if()
+      ],
+      concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_post_peak_if()])
+    ),
+    on_failure: FailFast
+  }
+}
+
+fn ci_cgroup_peak_locate_shell() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_peak_cgroup_locate_pipeline())
+}
+
+fn ci_floor_peak_pre_script() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_peak_pre_pipeline())
+}
+
+fn ci_floor_peak_post_script() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_peak_post_pipeline())
+}

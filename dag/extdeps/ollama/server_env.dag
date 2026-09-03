@@ -1,0 +1,128 @@
+module extdeps.ollama.server_env
+
+import std.types { NonEmptyStr, String }
+import std.measure { TokenCount, token_count_value, PositiveSlotCount, positive_slot_count_value }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// OLLAMA'S SERVER ENVIRONMENT VARIABLES, WHICH ARE OLLAMA'S NAMES.
+//
+// `OLLAMA_HOST` and `OLLAMA_MODELS` are part of the dependency's configuration surface. Before this
+// module they appeared in the tree exactly once, inside a prose comment, so any consumer needing to
+// configure a server had no choice but to spell the literals itself -- and a consumer that spells an
+// upstream's identifier is a second authority for it (§3), which is how one typo becomes a server
+// that silently binds the wrong address.
+//
+// The variables are modeled as an assignment-producing surface rather than as bare name constants,
+// because the thing a consumer actually needs is `NAME=value` and exposing only the name invites
+// every caller to re-implement the joining.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.ollama.com/faq"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ollama.server_env",
+      decl_name: "OllamaServerEnvVariable",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A closed set of the variables this repository has grounded against the cited surface. It is
+// deliberately small: an unmodeled variable should be absent rather than approximated, so that
+// needing one is a visible modeling step and not a string a caller quietly invents.
+type OllamaServerEnvVariable
+  = OllamaHost
+  | OllamaModels
+  | OllamaContextLength
+  | OllamaNumParallel
+
+fn ollama_server_env_name(variable: OllamaServerEnvVariable) -> NonEmptyStr {
+  match variable {
+    OllamaHost => "OLLAMA_HOST" as NonEmptyStr
+    OllamaModels => "OLLAMA_MODELS" as NonEmptyStr
+    OllamaContextLength => "OLLAMA_CONTEXT_LENGTH" as NonEmptyStr
+    OllamaNumParallel => "OLLAMA_NUM_PARALLEL" as NonEmptyStr
+  }
+}
+
+fn ollama_server_env_assignment(
+  variable: OllamaServerEnvVariable,
+  value: NonEmptyStr,
+) -> NonEmptyStr {
+  join([ollama_server_env_name(variable: variable) as String, "=", value as String], "") as NonEmptyStr
+}
+
+// The address the server listens on. Ollama binds 127.0.0.1:11434 when this is unset; which address
+// a given deployment binds is a deployment fact, so it is a parameter here and never a default.
+fn ollama_host_env_assignment(bind: NonEmptyStr) -> NonEmptyStr {
+  ollama_server_env_assignment(variable: OllamaHost, value: bind)
+}
+
+// Where the server stores and looks for model blobs.
+fn ollama_models_env_assignment(root: NonEmptyStr) -> NonEmptyStr {
+  ollama_server_env_assignment(variable: OllamaModels, value: root)
+}
+
+// THE SERVER'S DEFAULT CONTEXT WINDOW, in tokens -- a default, not a limit, and the distinction is
+// this function's whole subject.
+//
+// WHAT THIS SAID BEFORE, AND WHY IT WAS A MEANING FORK. It read that this is "the context window the
+// SERVER allocates" and "the CONFIGURED limit". Upstream 0.32.9 resolves options in layers -- the
+// environment-derived value first, then the model's own options, then the request's -- and an
+// explicit num_ctx at either later layer REPLACES this one. So it never limited anything: it is the
+// value the server uses when no model or request override applies. Calling it a limit gave one name
+// two materially different contracts, and a deployment reading it as a ceiling would believe it had
+// bounded something a caller can raise at will.
+//
+// Which default a deployment wants is a deployment fact, so it is a parameter here and never a
+// default of ours -- the same reason `ollama_host_env_assignment` refuses to spell a bind address.
+//
+// THE DEFAULT IS NOT THE EFFECTIVE VALUE, and that separation is what a reader most needs. What a
+// loaded runner actually holds is `/api/ps.context_length`, a distinct observation with its own
+// instrument. This assignment cannot be evidence for that reading, and that reading cannot be
+// evidence for this assignment -- a measured 2026-09-01 case had both hosts serving a value this
+// assignment had never been rendered onto them at all, and an /api/ps reading was cited in the
+// consumer as confirmation of a configured value it could not have discriminated.
+fn ollama_context_length_env_assignment(default_context: TokenCount) -> NonEmptyStr {
+  ollama_server_env_assignment(
+    variable: OllamaContextLength,
+    value: to_string(token_count_value(t: default_context)) as NonEmptyStr,
+  )
+}
+
+// HOW MANY REQUESTS ONE LOADED MODEL SERVES CONCURRENTLY. Unset, Ollama chooses for itself, and a
+// host that chose one slot SERIALIZES: a long prefill blocks every other caller for its whole
+// duration, which is not a throughput cost but a queue.
+//
+// THE SLOT COUNT DOES NOT DIVIDE THE CONTEXT WINDOW. That is worth stating in the authority because
+// the opposite was written down and believed. Holding the host and the model fixed and varying only
+// this variable, the runner reports the SAME context_length at one slot and at two, and a larger
+// buffer at two: each slot receives its OWN full window and costs its own cache. The count
+// multiplies memory; it does not divide context.
+//
+// NO FIGURE IS TRANSCRIBED HERE. Re-derive the comparison with the instrument that owns it --
+// `gunbc.spark.serving_observe spark_serving_observe_ci_wet`, whose residency readback is decoded by
+// `gunbc.spark.serving_readback_parse` and already yields both the context_length and the size_vram
+// the comparison needs. A pair of numbers copied into this comment would be unreachable from that
+// producer and would rot without either end being touched.
+//
+// So the two axes do trade inside one memory budget, but multiplicatively rather than by division,
+// and the per-slot price is a property of the REALIZATION -- a compressed-cache architecture pays
+// little per slot and an uncompressed one pays a great deal. A slot count chosen against one model's
+// per-slot cost is not evidence for another's.
+fn ollama_num_parallel_env_assignment(slots: PositiveSlotCount) -> NonEmptyStr {
+  ollama_server_env_assignment(
+    variable: OllamaNumParallel,
+    value: to_string(positive_slot_count_value(slots: slots)) as NonEmptyStr,
+  )
+}

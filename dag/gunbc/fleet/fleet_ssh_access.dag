@@ -1,0 +1,86 @@
+module gunbc.fleet_ssh_access
+
+import std.types { List, NonEmptyStr }
+import extdeps.ssh { SshPublicKey, Ed25519 }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_access_url }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
+
+data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
+
+
+data operator_macbook_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF",
+  comment: "macbook-m4",
+}
+
+data fleet_automation_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN",
+  comment: "fleet-automation@gunbc",
+}
+
+// Measured key identity (bold-eagle-107, msg_7428d9fc, read off the RETAINED private
+// key itself — not recollection): the fleet automation key's SHA256 fingerprint. Typed
+// here beside the public material because a probe principal is (remote_account x
+// key_identity), and the key axis being implicit is exactly what produced bold-eagle's
+// wrong first Spark finding (probing with a fleet-unowned bootstrap key and concluding
+// the fleet key absent while it was present on both hosts).
+data fleet_automation_ssh_key_fingerprint: String = "SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
+
+// Version pinned to the blessed version 1 (SECRET-VERSION-LIFECYCLE-0: evidence must name
+// a version; never the moving `latest` alias). This SecretRef is the SINGLE version
+// authority (review 50872, §3): the CI materialization URL and the requirement row's
+// pinned_version both DERIVE from it via the helpers below, so there is one place the pin
+// lives. Rotating to version 2 edits this one field and everything downstream follows.
+data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "fleet-automation-ssh-key" as NonEmptyStr,
+  version: "1",
+  hash_state: HashPending,
+}
+
+// The version path segment ("versions/1") derived from the SecretRef's version field.
+fn fleet_automation_privkey_version_segment() -> String {
+  concat("versions/", fleet_automation_ssh_privkey_secret.version)
+}
+
+// The Secret Manager access URL built entirely from the SecretRef fields — project,
+// secret, and version all come from the one authority, so the CI fetch cannot drift from
+// the modeled reference.
+fn fleet_automation_privkey_sm_access_url() -> String {
+  secret_ref_access_url(ref: fleet_automation_ssh_privkey_secret)
+}
+
+type SecretOwner {
+  secret: SecretRef
+  accessor_sa: ServiceAccountEmail
+  binding_provenance: NonEmptyStr
+}
+
+data fleet_automation_privkey_owner: SecretOwner = SecretOwner {
+  secret: fleet_automation_ssh_privkey_secret,
+  accessor_sa: fleet_automation_sa_email,
+  binding_provenance: "secretAccessor bound out-of-band 2026-07-21 (least-privilege, mirrors bmc-assimilator); full WIF SecretAccessGrant modeling is follow-up",
+}
+
+type SshAccessPrincipal {
+  posix_account: FleetPosixAccountKey
+  public_key: SshPublicKey
+}
+
+data operator_ssh_principal: SshAccessPrincipal = SshAccessPrincipal {
+  posix_account: FleetAccountOperator,
+  public_key: operator_macbook_ssh_key,
+}
+
+data fleet_authorized_keys: List<SshPublicKey> = [
+  operator_macbook_ssh_key,
+  fleet_automation_ssh_key,
+]
+
+fn fleet_host_authorized_keys() -> List<SshPublicKey> {
+  fleet_authorized_keys
+}

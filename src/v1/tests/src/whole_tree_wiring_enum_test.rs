@@ -55,7 +55,7 @@ fn enumerated_qualified_names(ctx: &InterpContext) -> Vec<String> {
                 },
                 "qualified_name",
             ) {
-                Some(Value::Str(s)) => s.clone(),
+                Some(Value::Str(s)) => s.to_string(),
                 other => panic!("expected qualified_name Str, got {other:?}"),
             }
         })
@@ -72,7 +72,7 @@ fn closure_enumerated_qualified_names(entry_rel: &str) -> Vec<String> {
         &entry_content,
         &[workspace_root().join(FIXTURE_REL)],
     );
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let graph = resolved
         .graph
         .as_ref()

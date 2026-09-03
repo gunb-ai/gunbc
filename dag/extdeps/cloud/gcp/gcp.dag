@@ -1,0 +1,200 @@
+module extdeps.cloud.gcp.gcp
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Secret }
+import v2.std.network { POST }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/apis/design"
+  }
+}
+
+type GcpProjectId = String where non_empty
+
+type ServiceAccountEmail = String
+
+type GcpProject {
+  project_id: GcpProjectId
+  project_number: Int
+  name: String
+}
+
+type GcpServiceAccount {
+  email: ServiceAccountEmail
+  unique_id: String
+  display_name: String?
+  disabled: Bool
+}
+
+type GcpOperation {
+  name: String
+  done: Bool?
+}
+
+type GcpOAuth2AccessTokenStrategy
+  = AdcRefresh { adc_path: FilePath? }
+  | GcloudCli
+
+type GcpCredentialFlow
+  = WorkloadIdentity {
+      audience: NonEmptyStr
+      service_account: ServiceAccountEmail?
+      scopes: List<String>
+    }
+  | InteractiveAuth { scopes: List<String> }
+  | OAuth2AccessToken { strategy: GcpOAuth2AccessTokenStrategy }
+
+type OAuth2Scope {
+  scope: String
+  description: String
+}
+
+data common_scopes: List<OAuth2Scope> = [
+  { scope: "https://www.googleapis.com/auth/cloud-platform", description: "Full access to all GCP resources" },
+  { scope: "https://www.googleapis.com/auth/devstorage.read_write", description: "Read/write access to GCS" },
+  { scope: "https://www.googleapis.com/auth/iam", description: "IAM management" },
+  { scope: "https://www.googleapis.com/auth/pubsub", description: "Pub/Sub access" },
+  { scope: "https://www.googleapis.com/auth/secretmanager", description: "Secret Manager access" }
+]
+
+type WifPool {
+  name: String
+  project: String
+  display_name: String?
+  disabled: Bool
+}
+
+type WifProvider {
+  name: String
+  pool: String
+  issuer_uri: String
+  attribute_mapping: Map<String, String>?
+}
+
+fn wif_pool_resource(project_number: String, pool_id: String) -> String {
+  concat(
+    concat(concat("projects/", project_number), "/locations/global/workloadIdentityPools/"),
+    pool_id
+  )
+}
+
+fn wif_provider_resource(project_number: String, provider: WifProvider) -> String {
+  concat(
+    concat(wif_pool_resource(project_number: project_number, pool_id: provider.pool), "/providers/"),
+    provider.name
+  )
+}
+
+fn wif_principal_set_for_repo(project_number: String, pool_id: String, repository: String) -> String {
+  concat(
+    concat(
+      concat("principalSet://iam.googleapis.com/", wif_pool_resource(project_number: project_number, pool_id: pool_id)),
+      "/attribute.repository/"
+    ),
+    repository
+  )
+}
+
+type GcpService
+  = GcpStorage
+  | GcpIam
+  | GcpIamCredentials
+  | GcpServiceUsage
+  | GcpSecretManager
+  | GcpCloudRun
+  | GcpPubsub
+  | GcpSts
+
+fn gcp_service_wire_label(service: GcpService) -> String {
+  match service {
+    GcpStorage => "storage"
+    GcpIam => "iam"
+    GcpIamCredentials => "iamcredentials"
+    GcpServiceUsage => "serviceusage"
+    GcpSecretManager => "secretmanager"
+    GcpCloudRun => "run"
+    GcpPubsub => "pubsub"
+    GcpSts => "sts"
+  }
+}
+
+fn gcp_service_api_id(service: GcpService) -> String {
+  concat(gcp_service_wire_label(service: service), ".googleapis.com")
+}
+
+type GcpApiEndpoint {
+  service: GcpService
+  base_url: String
+  version: String
+}
+
+data api_endpoints: List<GcpApiEndpoint> = [
+  { service: GcpStorage, base_url: "https://storage.googleapis.com/storage/v1", version: "v1" },
+  { service: GcpIam, base_url: "https://iam.googleapis.com/v1", version: "v1" },
+  { service: GcpSecretManager, base_url: "https://secretmanager.googleapis.com/v1", version: "v1" },
+  { service: GcpCloudRun, base_url: "https://run.googleapis.com/v2", version: "v2" },
+  { service: GcpPubsub, base_url: "https://pubsub.googleapis.com/v1", version: "v1" },
+  { service: GcpSts, base_url: "https://sts.googleapis.com/v1", version: "v1" }
+]
+
+type GcpRegion {
+  name: String
+  zones: List<String>
+  multi_region: Bool
+}
+
+data regions: List<GcpRegion> = [
+  { name: "us-central1", zones: ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"], multi_region: false },
+  { name: "us-east1", zones: ["us-east1-b", "us-east1-c", "us-east1-d"], multi_region: false },
+  { name: "us-east4", zones: ["us-east4-a", "us-east4-b", "us-east4-c"], multi_region: false },
+  { name: "europe-west1", zones: ["europe-west1-b", "europe-west1-c", "europe-west1-d"], multi_region: false },
+  { name: "us", zones: [], multi_region: true },
+  { name: "eu", zones: [], multi_region: true }
+]
+
+service gcloud.Auth {
+  operation Login {
+    input {}
+    output { ok: Bool from "exit_success" }
+    transport shell { argv: ["gcloud", "auth", "login", "--update-adc"] }
+    exit {
+      0 => Unit
+      nonzero => String "Authentication failed"
+    }
+  }
+}
+
+type GoogleOAuth2Refresh200Body {
+  access_token: Secret
+  expires_in: Int
+  token_type: String
+  scope: String?
+}
+
+service oauth2.Google {
+  config { endpoint: "https://oauth2.googleapis.com" }
+
+  operation Refresh {
+    input {
+      client_id: String
+      client_secret: Secret
+      refresh_token: Secret
+    }
+    output {
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
+    }
+
+    idempotent
+    transport rest { method: POST, path: "/token" }
+    response {
+      200 => GoogleOAuth2Refresh200Body
+      400 => GcpOAuth2ErrorShape
+      401 => GcpOAuth2ErrorShape
+      5xx => GcpOAuth2ErrorShape
+    }
+  }
+}

@@ -1,7 +1,7 @@
 module v2.compiler.discovery_enumeration
 
 import v2.std.node { Symbol }
-import v2.std.text { String }
+import std.string_type { String }
 
 type ResolvedDeclRef {
   module: String

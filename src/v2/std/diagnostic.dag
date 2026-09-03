@@ -1,7 +1,8 @@
 module v2.std.diagnostic
 
-import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item, fold_list, freemonoid_empty }
-import v2.std.node { Node }
+import v2.std.algebra { bag_eq, list_append, list_snoc_item, fold_list, freemonoid_empty }
+import std.algebra { Monoid, Semigroup }
+import v2.std.node { Node, Symbol }
 
 type Extent
   = WholeFile
@@ -14,12 +15,14 @@ type LocusAnchor<T> {
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { anchor: LocusAnchor<Node> }
-  | PortLocus { anchor: LocusAnchor<Symbol> }
+  | SourcePortLocus { anchor: LocusAnchor<Symbol>, file: Symbol, extent: Extent }
+  | InvariantPortLocus { anchor: LocusAnchor<Symbol>, invariant: Symbol }
 
 type NoCorrectionReason
   = UserInputBoundary
   | AmbiguousIntent
   | ExternalContractUnknown
+  | CorrectionNotModeled
 
 type Correction
   = Suggested { node: Node }
@@ -55,9 +58,56 @@ fn node_locus(node: Node) -> Locus {
   NodeLocus { anchor: LocusAnchor { at: node } }
 }
 
-fn port_locus(port: Symbol) -> Locus {
-  PortLocus { anchor: LocusAnchor { at: port } }
+fn source_port_locus(port: Symbol, file: Symbol, extent: Extent) -> Locus {
+  SourcePortLocus { anchor: LocusAnchor { at: port }, file: file, extent: extent }
 }
+
+fn invariant_port_locus(port: Symbol, invariant: Symbol) -> Locus {
+  InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: invariant }
+}
+
+// A generic operation may receive its locus before it knows which refusal will fire. The
+// operation owns that classification: textual evidence becomes a source-bearing port locus;
+// every source-independent seed, including a structural node, becomes the exact invariant that
+// actually failed. A port refusal never silently sheds its port identity merely because an
+// upstream stage supplied a node. Callers therefore cannot use another locus arm as an escape
+// from naming the invariant.
+fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
+  match at {
+    Textual { file: file, extent: extent } =>
+      source_port_locus(port: port, file: file, extent: extent)
+    SourcePortLocus { anchor: _, file: file, extent: extent } =>
+      source_port_locus(port: port, file: file, extent: extent)
+    InvariantPortLocus { anchor: _, invariant: _ } =>
+      invariant_port_locus(port: port, invariant: invariant)
+    NodeLocus { anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
+  }
+}
+
+fn textual_whole_file_locus(file: Symbol) -> Locus {
+  Textual { file: file, extent: WholeFile }
+}
+
+fn textual_whole_file_diagnostic(
+  reason: Symbol,
+  module_file: Symbol,
+  correction: Correction
+) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: textual_whole_file_locus(file: module_file),
+    correction: correction
+  }
+}
+
+fn module_unavailable_diagnostic(reason: Symbol, module_file: Symbol) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: reason,
+    module_file: module_file,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  )
+}
+
 fn outcome_accepted<T>(value: T) -> Outcome<T> {
   Accepted { value: value, diagnostics: None }
 }
@@ -82,17 +132,27 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
     Textual { file: fa, extent: ea } => match b {
       Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
       NodeLocus { anchor: _ } => false
-      PortLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
     }
     NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: nb } => na.at == nb.at
-      PortLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
     }
-    PortLocus { anchor: pa } => match b {
+    SourcePortLocus { anchor: pa, file: fa, extent: ea } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: _ } => false
-      PortLocus { anchor: pb } => pa.at == pb.at
+      SourcePortLocus { anchor: pb, file: fb, extent: eb } =>
+        (pa.at == pb.at) && (fa == fb) && extent_eq(a: ea, b: eb)
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+    }
+    InvariantPortLocus { anchor: pa, invariant: ia } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: pb, invariant: ib } => (pa.at == pb.at) && (ia == ib)
     }
   }
 }
@@ -143,11 +203,11 @@ fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
   }
 }
 data diagnostics_monoid: Monoid<Diagnostics> = Monoid {
-  semigroup: Semigroup { magma: Magma { op: diagnostics_merge } },
+  op: diagnostics_merge,
   identity: None
 }
 data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = Semigroup {
-  magma: Magma { op: non_empty_diagnostics_append }
+  op: non_empty_diagnostics_append
 }
 fn rejected_with_pending(
   pending: Diagnostics,

@@ -1,0 +1,272 @@
+module extdeps.cpu.amd
+
+import extdeps.external_authority { ExternalAuthority, FactCitation }
+import std.decl_ref { decl_field_ref }
+import extdeps.uri { Uri, Https }
+import extdeps.cpu.types {
+  ProcessorCoolingMount,
+  SocketedPinGrid,
+  SocketedLandGrid, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray }
+import extdeps.toolchain.types { X86_64 }
+import extdeps.vendor.amd { amd }
+import std.measure { byte_size, hardware_thread_count, hertz, watt }
+import std.types { List }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/processors/desktops/ryzen.html"
+  }
+}
+
+data amd_ryzen_5_3600_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-ryzen-5-3600"
+  }
+}
+
+data amd_ryzen_7_pro_8700ge_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-ryzen-7-pro-8700ge"
+  }
+}
+
+// SOCKET AM5 IS LGA, NOT PGA. Both Zen 4 rows below recorded PinGridArray at 1718 contacts — the
+// termination AMD used through AM4 and abandoned at AM5: the socket is a zero insertion force
+// flip-chip land grid array, so the processor presents lands and the socket the springs. The count
+// was right; the termination was carried over from the AM4 rows. AM5 KEEPS AM4'S COOLER MOUNTING,
+// WHICH IS WHY THE MOUNT IS NOT THE SOCKET. AM4 and AM5 are different sockets by every socket fact
+// — 1331 pin-grid against 1718 land-grid — yet AMD retained the AM4 retention geometry on AM5 so
+// AM4 coolers fit. A compatibility rule reading socket identity gets a real, common case WRONG in
+// the refusing direction: it rejects a cooler that physically fits and that the vendor says fits.
+// This is the discriminating pair for the whole correction, and why both rows below name one mount.
+data amd_am4_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
+  platform_owner: amd,
+  designation: "AM4",
+}
+
+data socket_am5_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Socket_AM5"
+  }
+}
+
+data amd_ryzen_9_7950x3d_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/en/products/cpu/amd-ryzen-9-7950x3d"
+  }
+}
+
+// cores and threads are cited from each model's AMD product page (authorities above). threads is
+// stored as HardwareThreadCount — the comparable unit for hosted-runner vcpus in pricing extdeps.
+data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+  data_capacity_per_core: byte_size(32768),
+  instruction_capacity_per_core: byte_size(32768),
+  line_size: byte_size(64),
+}
+
+data amd_zen2_l1_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "data_capacity_per_core"),
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+data amd_zen2_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+  capacity_per_core: byte_size(524288),
+  line_size: byte_size(64),
+}
+
+data amd_zen2_l2_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l2_cache_geometry", field_name: "capacity_per_core"),
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+data amd_zen2_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: byte_size(33554432),
+  line_size: byte_size(64),
+}
+
+data amd_zen2_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l3_cache_geometry", field_name: "capacity"),
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+// THE AM5 TERMINATION IS CITED, not asserted. Both Zen 4 rows previously read PinGridArray at the
+// correct 1718 count; an uncited socket field let a wrong termination sit beside a right number
+// with nothing to check against.
+//
+// THE SOCKET IS A PLATFORM FACT AND NOW HAS ONE HOME PER PLATFORM, the shape extdeps.cpu.ampere
+// already uses for LGA4926. Each row previously minted its own CpuSocket literal, so the citation
+// lists beside them could name no declaration — which is how a citation ends up keyed by a field
+// SPELLING ("package", a name CpuSocket has not carried since termination and attachment were
+// split) instead of by the declaration the containment tree already names.
+data amd_socket_am4: CpuSocket = CpuSocket {
+  platform_owner: amd,
+  termination: SocketedPinGrid,
+  contact_count: 1331,
+  cooling_mount: amd_am4_cooling_mount,
+}
+
+data amd_socket_am5: CpuSocket = CpuSocket {
+  platform_owner: amd,
+  termination: SocketedLandGrid,
+  contact_count: 1718,
+  cooling_mount: amd_am4_cooling_mount,
+}
+
+data socket_am4_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "termination"),
+    authority: amd_ryzen_5_3600_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "contact_count"),
+    authority: amd_ryzen_5_3600_authority,
+  },
+]
+
+data socket_am5_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "termination"),
+    authority: socket_am5_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "contact_count"),
+    authority: socket_am5_authority,
+  },
+]
+
+data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
+  data_capacity_per_core: byte_size(32768),
+  instruction_capacity_per_core: byte_size(32768),
+  line_size: byte_size(64),
+}
+
+data amd_zen4_l1_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen4_l1_cache_geometry", field_name: "data_capacity_per_core"),
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data amd_zen4_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
+  capacity_per_core: byte_size(1048576),
+  line_size: byte_size(64),
+}
+
+data amd_zen4_l2_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen4_l2_cache_geometry", field_name: "capacity_per_core"),
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data amd_zen4_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
+  capacity: byte_size(67108864),
+  line_size: byte_size(64),
+}
+
+data amd_zen4_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen4_l3_cache_geometry", field_name: "capacity"),
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "3600",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 6,
+  threads: hardware_thread_count(12),
+  nominal_sustained_per_thread_hz: hertz(3600000000),
+  socket: amd_socket_am4,
+  socket_citations: socket_am4_citations,
+  tdp_watts: watt(65),
+  l1_cache: amd_zen2_l1_cache_geometry,
+  l1_cache_citations: amd_zen2_l1_cache_citations,
+  l2_cache: amd_zen2_l2_cache_geometry,
+  l2_cache_citations: amd_zen2_l2_cache_citations,
+  l3_cache: amd_zen2_l3_cache_geometry,
+  l3_cache_citations: amd_zen2_l3_cache_citations,
+}
+
+data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "8700GE",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 8,
+  threads: hardware_thread_count(16),
+  nominal_sustained_per_thread_hz: hertz(3300000000),
+  socket: amd_socket_am5,
+  socket_citations: socket_am5_citations,
+  tdp_watts: watt(65),
+  l1_cache: amd_zen4_l1_cache_geometry,
+  l1_cache_citations: amd_zen4_l1_cache_citations,
+  l2_cache: amd_zen4_l2_cache_geometry,
+  l2_cache_citations: amd_zen4_l2_cache_citations,
+  l3_cache: amd_zen4_l3_cache_geometry,
+  l3_cache_citations: amd_zen4_l3_cache_citations,
+}
+
+data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "7950X3D",
+  oem_listing_id: none,
+  vendor: amd,
+  architecture: X86_64,
+  cores: 16,
+  threads: hardware_thread_count(32),
+  nominal_sustained_per_thread_hz: hertz(4200000000),
+  socket: amd_socket_am5,
+  socket_citations: socket_am5_citations,
+  tdp_watts: watt(120),
+  l1_cache: amd_zen4_l1_cache_geometry,
+  l1_cache_citations: amd_zen4_l1_cache_citations,
+  l2_cache: amd_zen4_l2_cache_geometry,
+  l2_cache_citations: amd_zen4_l2_cache_citations,
+  l3_cache: amd_zen4_l3_cache_geometry,
+  l3_cache_citations: amd_zen4_l3_cache_citations,
+}
+
+data ryzen_5_3600_facts: CpuFacts = CpuFacts {
+  catalog: ryzen_5_3600_catalog,
+  deployment: CpuDeploymentFacts {
+    sustained_per_thread_hz: hertz(3600000000),
+  },
+}
+
+data ryzen_7_pro_8700ge_facts: CpuFacts = CpuFacts {
+  catalog: ryzen_7_pro_8700ge_catalog,
+  deployment: CpuDeploymentFacts {
+    sustained_per_thread_hz: hertz(3300000000),
+  },
+}
+
+data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
+  catalog: ryzen_9_7950x3d_catalog,
+  deployment: CpuDeploymentFacts {
+    sustained_per_thread_hz: hertz(4200000000),
+  },
+}
+
+// THE MODULE'S OWN ROSTER OF CATALOG ROWS, here rather than in a witness so a consumer asking
+// "every AMD processor this repository models" reads one authority, and an author adding a row
+// edits the roster in the same file. The roster is still hand-authored — a genuinely closed
+// denominator would have to be discovered from the module tree, which is lens work — so this
+// narrows the gap rather than closing it, and says so.
+data amd_cpu_catalog_rows: List<CpuModelCatalogRow> = [
+  ryzen_5_3600_catalog,
+  ryzen_7_pro_8700ge_catalog,
+  ryzen_9_7950x3d_catalog,
+]

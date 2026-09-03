@@ -1,0 +1,563 @@
+module v2.compiler.self_host.emitter_producer_provenance
+
+import std.content_hash { content_hash_atom }
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.text { String }
+
+data emitter_producer_provenance_note: String = "Producer/qualification authority for emitted Rust: orthogonal EmitterProducer x EmissionQualification axes, replacing the SelfEmitted state-space conflation (session valiant-crab-382, calm-badger-682 ruling 2026-07-29). A ProducerEmissionReceipt is reachable only through mint_producer_emission_receipt, never as a hand-authored literal in a data row (review 44333), and a receipt advances along the qualification axis only through an admission its current state permits. Structural wall: a V2Emitter* producer is unwritable when v1.compiler.emit_rust is in the realized closure, which is what makes the closure carriers load-bearing rather than descriptive. The roster-authorization half of this module was deleted with the self-host frontier roster; the annotation above type EmitterProducer records what went and what survived."
+
+// HALF OF THIS MODULE WAS DELETED with v2.compiler.self_host.frontier, because that half had
+// exactly one subject: authorizing an EmitterProduced row on the 27-row self-host frontier
+// roster. Gone are the ProducerEmissionOracleRow population and its enrollment/transport-roster
+// joins, the executed-verdict authorization pipeline, AuthorizedEmitterProducedDisposition and
+// its registry bindings, the hand-forgery refusal controls, the ProducerQualifiedCountAxis
+// projections, and the five producer-qualified baselines. Every one of them answered a question
+// about roster rows; with no roster there are no rows to authorize, and the machinery could not
+// be reached even in principle.
+//
+// What survives is the part that was never about the roster: the EmitterProducer x
+// EmissionQualification axes, the realized-closure carriers and the seed-reachability wall over
+// them, the receipt type with its admission-gated advances, the single mint, and the structural
+// equalities. Its live consumers are v2.compiler.self_host.candidate_generation,
+// v2.compiler.self_host.v2_emitter_direct_rust_door_contract and
+// v2.lens.production_qualification_origin_probe — none of which ever read a roster row.
+//
+// An honest note on what the deletion removed in evidence terms: the forgery controls
+// (hand_forged_emitter_produced_authorization_fails_mint_consistency_holds and its siblings)
+// proved that an unauthorized EmitterProduced disposition was unwritable. That claim is not
+// weakened, it is RETIRED — the disposition type it guarded no longer exists, so there is no
+// state left to forge. DESIGN section 4b permits retiring evidence whose only subject is gone;
+// it forbids retiring evidence for a claim that survives. The surviving claims here — that a
+// V2Emitter receipt cannot be minted with the seed emitter in its realized closure, and that a
+// receipt cannot advance past its admission — keep their controls.
+type EmitterProducer
+  = V1SeedEmitter
+  | V2EmitterInterpreted
+  | V2EmitterNative { generation: Int }
+
+type EmissionQualification
+  = SourceProduced
+  | CargoGreen
+  | BehavioralEquivalent
+  | ProductionRouted
+
+// Canonical equality surface for EmissionQualification (reviews 44328/44481 predicate-dissolution):
+// one total match over the substrate coproduct — membership and list-equality queries consume
+// emission_qualification_eq, not hand-rolled has_* predicates.
+
+fn emission_qualification_eq(
+  left: EmissionQualification,
+  right: EmissionQualification
+) -> Bool {
+  match left {
+    SourceProduced =>
+      match right {
+        SourceProduced => true
+        CargoGreen => false
+        BehavioralEquivalent => false
+        ProductionRouted => false
+      }
+    CargoGreen =>
+      match right {
+        SourceProduced => false
+        CargoGreen => true
+        BehavioralEquivalent => false
+        ProductionRouted => false
+      }
+    BehavioralEquivalent =>
+      match right {
+        SourceProduced => false
+        CargoGreen => false
+        BehavioralEquivalent => true
+        ProductionRouted => false
+      }
+    ProductionRouted =>
+      match right {
+        SourceProduced => false
+        CargoGreen => false
+        BehavioralEquivalent => false
+        ProductionRouted => true
+      }
+  }
+}
+
+fn emission_qualifications_list_contains(
+  xs: List<EmissionQualification>,
+  wanted: EmissionQualification
+) -> Bool {
+  any(
+    xs: xs,
+    predicate: fn(q) { emission_qualification_eq(left: q, right: wanted) }
+  )
+}
+
+type EmissionBuildResult
+  = BuildGreen
+  | BuildRefused { cause: Symbol }
+
+type RealizedEmitterClosure {
+  emitter_module_paths: List<String>
+}
+
+// A behavioral probe is a witness that COMPILES the emitted Rust, RUNS it, and COMPARES behavior
+// against the seed. Carrying it as a bare pair of strings made every receipt claim one existed,
+// because there is no unbound spelling of a String pair: an author with no such witness has to
+// write something, and whatever is written becomes the subject that
+// ProducerEmissionExecutedGreenReceipt matching and the BehavioralEquivalent advance later consume.
+// That is the fabricated-plausible-output failure (DESIGN section 5) at the receipt's own
+// self-description. BehavioralProbeUnbound is therefore a real state, not a null: a receipt that
+// has produced source and nothing more says so, and binding becomes meaningful only where an actual
+// compile/run/compare seam exists. The direct Rust door is exactly that case — it observes ingest
+// through emission and stops, so it binds nothing. Dissolve-on: the ProducerEmissionOracleRow and
+// ProducerEmissionExecutedGreenReceipt pairs migrate onto this carrier too, at which point the
+// executed-verdict match keys on a binding rather than on two strings that may name no witness.
+
+type BehavioralProbeBinding
+  = BehavioralProbeUnbound
+  | BehavioralProbeBound { entry: String, function: String }
+
+fn behavioral_probe_binding_eq(left: BehavioralProbeBinding, right: BehavioralProbeBinding) -> Bool {
+  match left {
+    BehavioralProbeUnbound => match right {
+      BehavioralProbeUnbound => true
+      BehavioralProbeBound { entry: _, function: _ } => false
+    }
+    BehavioralProbeBound { entry: le, function: lf } => match right {
+      BehavioralProbeUnbound => false
+      BehavioralProbeBound { entry: re, function: rf } => (le == re) && (lf == rf)
+    }
+  }
+}
+
+type ProducerEmissionReceipt {
+  module_path: String
+  module_source_digest: Hash
+  emitter_source_digest: Hash
+  producer: EmitterProducer
+  qualifications: List<EmissionQualification>
+  rust_target_model_digest: Hash
+  emitted_source_digest: Hash
+  build_result: EmissionBuildResult
+  behavioral_probe: BehavioralProbeBinding
+  realized_closure: RealizedEmitterClosure
+}
+
+data v1_seed_emit_rust_qualified_module: String = "v1.compiler.emit_rust"
+
+data v2_emit_interpreted_qualified_module: String = "v2.compiler.emit"
+
+// Structural authority for the cssl seed-linked behavioral harness
+// (tools.self_host_curated_seed_linked_harness): gunbc compile routes through v1.compile ->
+// v1.compiler.emit_rust. Any receipt minted from this closure MUST be V1SeedEmitter — V2Emitter* is
+// unwritable by construction.
+
+data cssl_harness_realized_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+  emitter_module_paths: [
+    "v1.compile",
+    v1_seed_emit_rust_qualified_module
+  ]
+}
+
+// V2EmitterInterpreted closure for Lane B direct rust door: v2.compiler.emit (serialize_target
+// composed with translate) plus v2.compiler.self_host.candidate_generation
+// (mint_provenanced_rust_artifact entry), without v1.compiler.emit_rust. Landed as first customer
+// in session bright-bear-372.
+
+data v2_interpreted_emitter_closure: RealizedEmitterClosure = RealizedEmitterClosure {
+  emitter_module_paths: [
+    v2_emit_interpreted_qualified_module,
+    "v2.compiler.translate",
+    "v2.compiler.self_host.candidate_generation"
+  ]
+}
+
+fn realized_closure_contains_module(
+  closure: RealizedEmitterClosure,
+  module: String
+) -> Bool {
+  any(
+    xs: closure.emitter_module_paths,
+    predicate: fn(path) { path == module }
+  )
+}
+
+fn seed_emit_rust_reachable(closure: RealizedEmitterClosure) -> Bool {
+  realized_closure_contains_module(
+    closure: closure,
+    module: v1_seed_emit_rust_qualified_module
+  )
+}
+
+fn v2_interpreted_emitter_closure_seed_free_holds() -> Bool {
+  !seed_emit_rust_reachable(closure: v2_interpreted_emitter_closure)
+}
+
+fn realized_closure_for_v2_direct_rust_door_emit_run() -> RealizedEmitterClosure {
+  RealizedEmitterClosure {
+    emitter_module_paths: [
+      "v2.compiler.self_host.candidate_generation",
+      v2_emit_interpreted_qualified_module,
+      "v2.compiler.translate"
+    ]
+  }
+}
+
+// Post-emit-run closure authority for Lane B direct rust door: mint_provenanced_rust_artifact calls this ONLY after generate_rust_emission_candidate (the serialize_target run) succeeds — never as a caller-supplied parameter. Paths name modules on the v2 interpreted emit route excluding v1.compiler.emit_rust.
+fn v2_interpreted_emitter_closure_authority() -> RealizedEmitterClosure {
+  realized_closure_for_v2_direct_rust_door_emit_run()
+}
+
+data v2_emitter_in_seed_emit_rust_closure: String = "V2Emitter* producer mint refused: realized_closure contains v1.compiler.emit_rust (structural construction wall, calm-badger-682 ruling 2026-07-29)"
+
+type EmitterProducerMintAdmission
+  = ProducerMintAdmitted
+  | ProducerMintRefused { cause: Symbol }
+
+// 🟢 Canonical admission fold over EmitterProducer (review 44579 predicate-dissolution):
+// emitter_producer_mint_admission is the ONLY total match classifying producer×realized_closure
+// admissibility — mint_producer_emission_receipt consumes this surface; no parallel hand-rolled
+// Bool admissibility predicates.
+
+fn emitter_producer_mint_admission(
+  producer: EmitterProducer,
+  closure: RealizedEmitterClosure
+) -> EmitterProducerMintAdmission {
+  match producer {
+    V1SeedEmitter => ProducerMintAdmitted
+    V2EmitterInterpreted =>
+      if seed_emit_rust_reachable(closure: closure) {
+        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
+      } else {
+        ProducerMintAdmitted
+      }
+    V2EmitterNative { generation: _ } =>
+      if seed_emit_rust_reachable(closure: closure) {
+        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
+      } else {
+        ProducerMintAdmitted
+      }
+  }
+}
+
+data behavioral_equivalent_qualifications: List<EmissionQualification> = [BehavioralEquivalent]
+
+data source_produced_qualifications: List<EmissionQualification> = [SourceProduced]
+
+data cargo_green_qualifications: List<EmissionQualification> = [SourceProduced, CargoGreen]
+
+data behavioral_equivalent_with_cargo_qualifications: List<EmissionQualification> = [
+  SourceProduced,
+  CargoGreen,
+  BehavioralEquivalent
+]
+
+// THE ONE authority relating a probe binding to a qualification population, consumed by BOTH mint
+// and the behavioral advance so neither can drift from the other. Without it,
+// BehavioralProbeUnbound only DESCRIBED the absence of behavioral evidence while the strongest
+// behavioral qualification stayed writable beside it: the advance predicate read build result and
+// qualifications and never looked at the probe, and mint reconciled the producer against its
+// closure but not the qualifications against the probe. A carrier that records a fact the
+// consequential constructor does not consume is the recurring failure this whole lane exists to
+// remove — the fact is present locally and the wall is absent. The relation: BehavioralEquivalent
+// REQUIRES a bound probe, because that qualification asserts a run happened and a bound probe is
+// the only thing that names what ran. SourceProduced and CargoGreen stay legal beside an unbound
+// probe, because producing source and compiling it are exactly the states that precede behavioral
+// evidence — walling those would make the ordinary pre-behavior receipt unwritable. This makes the
+// newly introduced Unbound state non-promotable; it does NOT claim the Boolean advance argument is
+// itself executed evidence, which remains the separate executed-verdict obligation.
+
+data behavioral_equivalent_without_bound_probe: String = "BehavioralEquivalent refused: the receipt carries BehavioralProbeUnbound, so no witness names the compile/run/compare that qualification asserts"
+
+type BehavioralProbeAdmission
+  = BehavioralProbeConsistent
+  | BehavioralProbeRefused { cause: Symbol }
+
+fn behavioral_probe_qualification_admission(
+  probe: BehavioralProbeBinding,
+  qualifications: List<EmissionQualification>
+) -> BehavioralProbeAdmission {
+  match probe {
+    BehavioralProbeBound { entry: _, function: _ } => BehavioralProbeConsistent
+    BehavioralProbeUnbound =>
+      if emission_qualifications_list_contains(
+        xs: qualifications,
+        wanted: BehavioralEquivalent
+      ) {
+        BehavioralProbeRefused { cause: ^behavioral_equivalent_without_bound_probe }
+      } else {
+        BehavioralProbeConsistent
+      }
+  }
+}
+
+fn producer_receipt_admits_cargo_green_advance(receipt: ProducerEmissionReceipt) -> Bool {
+  emission_qualifications_list_contains(
+    xs: receipt.qualifications,
+    wanted: SourceProduced
+  )
+    && !emission_qualifications_list_contains(
+      xs: receipt.qualifications,
+      wanted: CargoGreen
+    )
+    && !emission_qualifications_list_contains(
+      xs: receipt.qualifications,
+      wanted: BehavioralEquivalent
+    )
+}
+
+fn producer_receipt_admits_behavioral_equivalent_advance(
+  receipt: ProducerEmissionReceipt
+) -> Bool {
+  match behavioral_probe_qualification_admission(
+    probe: receipt.behavioral_probe,
+    qualifications: behavioral_equivalent_with_cargo_qualifications
+  ) {
+    BehavioralProbeRefused { cause: _ } => false
+    BehavioralProbeConsistent =>
+      match receipt.build_result {
+        BuildGreen =>
+          emission_qualifications_list_contains(
+            xs: receipt.qualifications,
+            wanted: CargoGreen
+          )
+            && !emission_qualifications_list_contains(
+              xs: receipt.qualifications,
+              wanted: BehavioralEquivalent
+            )
+        BuildRefused { cause: _ } => false
+      }
+  }
+}
+
+fn advance_producer_emission_receipt_cargo_green(
+  prior: ProducerEmissionReceipt,
+  cargo_green: Bool
+) -> Optional<ProducerEmissionReceipt> {
+  if !cargo_green
+    || !producer_receipt_admits_cargo_green_advance(receipt: prior) {
+    optional_absent()
+  } else {
+    mint_producer_emission_receipt(
+      module_path: prior.module_path,
+      producer: prior.producer,
+      qualifications: cargo_green_qualifications,
+      build_result: BuildGreen,
+      behavioral_probe: prior.behavioral_probe,
+      realized_closure: prior.realized_closure
+    )
+  }
+}
+
+fn advance_producer_emission_receipt_behavioral_equivalent(
+  prior: ProducerEmissionReceipt,
+  behavioral_equivalent: Bool
+) -> Optional<ProducerEmissionReceipt> {
+  if !behavioral_equivalent
+    || !producer_receipt_admits_behavioral_equivalent_advance(receipt: prior) {
+    optional_absent()
+  } else {
+    mint_producer_emission_receipt(
+      module_path: prior.module_path,
+      producer: prior.producer,
+      qualifications: behavioral_equivalent_with_cargo_qualifications,
+      build_result: BuildGreen,
+      behavioral_probe: prior.behavioral_probe,
+      realized_closure: prior.realized_closure
+    )
+  }
+}
+
+fn scaffold_digest_for_module_path(module_path: String) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: ^frontier_producer_receipt_scaffold_digest),
+    b: content_hash_atom(value: module_path)
+  )
+}
+
+fn mint_producer_emission_receipt(
+  module_path: String,
+  producer: EmitterProducer,
+  qualifications: List<EmissionQualification>,
+  build_result: EmissionBuildResult,
+  behavioral_probe: BehavioralProbeBinding,
+  realized_closure: RealizedEmitterClosure
+) -> Optional<ProducerEmissionReceipt> {
+  match behavioral_probe_qualification_admission(
+    probe: behavioral_probe,
+    qualifications: qualifications
+  ) {
+    BehavioralProbeRefused { cause: _ } => optional_absent()
+    BehavioralProbeConsistent =>
+  match emitter_producer_mint_admission(producer: producer, closure: realized_closure) {
+    ProducerMintAdmitted =>
+      optional_present(
+        value: ProducerEmissionReceipt {
+        module_path: module_path,
+        module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
+        emitter_source_digest: scaffold_digest_for_module_path(
+          module_path: match producer {
+            V1SeedEmitter => v1_seed_emit_rust_qualified_module
+            V2EmitterInterpreted => v2_emit_interpreted_qualified_module
+            V2EmitterNative { generation: _ } => v2_emit_interpreted_qualified_module
+          }
+        ),
+        producer: producer,
+        qualifications: qualifications,
+        rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
+        emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
+        build_result: build_result,
+        behavioral_probe: behavioral_probe,
+        realized_closure: realized_closure
+      }
+    )
+    ProducerMintRefused { cause: _ } => optional_absent()
+  }
+  }
+}
+
+fn emitter_producer_eq(left: EmitterProducer, right: EmitterProducer) -> Bool {
+  match left {
+    V1SeedEmitter =>
+      match right {
+        V1SeedEmitter => true
+        V2EmitterInterpreted => false
+        V2EmitterNative { generation: _ } => false
+      }
+    V2EmitterInterpreted =>
+      match right {
+        V1SeedEmitter => false
+        V2EmitterInterpreted => true
+        V2EmitterNative { generation: _ } => false
+      }
+    V2EmitterNative { generation: left_generation } =>
+      match right {
+        V1SeedEmitter => false
+        V2EmitterInterpreted => false
+        V2EmitterNative { generation: right_generation } =>
+          left_generation == right_generation
+      }
+  }
+}
+
+fn emission_build_result_eq(left: EmissionBuildResult, right: EmissionBuildResult) -> Bool {
+  match left {
+    BuildGreen =>
+      match right {
+        BuildGreen => true
+        BuildRefused { cause: _ } => false
+      }
+    BuildRefused { cause: left_cause } =>
+      match right {
+        BuildGreen => false
+        BuildRefused { cause: right_cause } => left_cause == right_cause
+      }
+  }
+}
+
+fn qualifications_list_eq(
+  left: List<EmissionQualification>,
+  right: List<EmissionQualification>
+) -> Bool {
+  if length(xs: left) != length(xs: right) {
+    false
+  } else {
+    fold_list(
+      xs: left,
+      empty: true,
+      cons: fn(ok, left_q) {
+        ok && any(
+          xs: right,
+          predicate: fn(right_q) {
+            emission_qualification_eq(left: left_q, right: right_q)
+          }
+        )
+      }
+    )
+  }
+}
+
+fn realized_closure_eq(left: RealizedEmitterClosure, right: RealizedEmitterClosure) -> Bool {
+  if length(xs: left.emitter_module_paths) != length(xs: right.emitter_module_paths) {
+    false
+  } else {
+    fold_list(
+      xs: left.emitter_module_paths,
+      empty: true,
+      cons: fn(ok, path) {
+        ok && any(
+          xs: right.emitter_module_paths,
+          predicate: fn(right_path) { path == right_path }
+        )
+      }
+    )
+  }
+}
+
+fn producer_emission_receipt_eq(left: ProducerEmissionReceipt, right: ProducerEmissionReceipt) -> Bool {
+  (left.module_path == right.module_path)
+    && (left.module_source_digest == right.module_source_digest)
+    && (left.emitter_source_digest == right.emitter_source_digest)
+    && emitter_producer_eq(left: left.producer, right: right.producer)
+    && qualifications_list_eq(left: left.qualifications, right: right.qualifications)
+    && (left.rust_target_model_digest == right.rust_target_model_digest)
+    && (left.emitted_source_digest == right.emitted_source_digest)
+    && emission_build_result_eq(left: left.build_result, right: right.build_result)
+    && behavioral_probe_binding_eq(left: left.behavioral_probe, right: right.behavioral_probe)
+    && realized_closure_eq(left: left.realized_closure, right: right.realized_closure)
+}
+
+fn fabricated_v1_seed_producer_receipt(module_path: String) -> ProducerEmissionReceipt {
+  ProducerEmissionReceipt {
+    module_path: module_path,
+    module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
+    emitter_source_digest: scaffold_digest_for_module_path(module_path: v1_seed_emit_rust_qualified_module),
+    producer: V1SeedEmitter,
+    qualifications: behavioral_equivalent_qualifications,
+    rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
+    emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
+    build_result: BuildGreen,
+    behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
+    realized_closure: cssl_harness_realized_closure
+  }
+}
+
+fn fabricated_v2_interpreted_producer_receipt(module_path: String) -> ProducerEmissionReceipt {
+  ProducerEmissionReceipt {
+    module_path: module_path,
+    module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
+    emitter_source_digest: scaffold_digest_for_module_path(module_path: v2_emit_interpreted_qualified_module),
+    producer: V2EmitterInterpreted,
+    qualifications: behavioral_equivalent_qualifications,
+    rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
+    emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
+    build_result: BuildGreen,
+    behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
+    realized_closure: cssl_harness_realized_closure
+  }
+}
+
+fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
+  module_path: String
+) -> Bool {
+  match mint_producer_emission_receipt(
+    module_path: module_path,
+    producer: V2EmitterInterpreted,
+    qualifications: behavioral_equivalent_qualifications,
+    build_result: BuildGreen,
+    behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
+    realized_closure: cssl_harness_realized_closure
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

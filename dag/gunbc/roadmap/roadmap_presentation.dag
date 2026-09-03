@@ -1,0 +1,1258 @@
+module gunbc.roadmap_presentation
+
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, Pointer,
+  roadmap_parent_ids,
+  NodeSizing, Unsized, Sized,
+  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
+  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
+}
+import gunbc.roadmap_status {
+  RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
+  item_superseded_by, item_is_done, signoff_accepts,
+  line_ticket, TicketFields, TicketUpdate,
+}
+import gunbc.roadmap_spawner {
+  node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
+}
+import gunbc.roadmap_launch_admission {
+  LaunchCause, Operator, LaunchIdentity, launch_cause_label,
+  LaunchHostStanding, LaunchGraphStanding,
+  LaunchAdmission, LaunchAdmitted, LaunchRefused,
+  launch_admission, launch_admission_label, launch_admission_reason,
+}
+import gunbc.roadmap_provider_events {
+  provider_execution_activity,
+  ProviderEventsRefused,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
+  WorkflowSegmentFailed, WorkflowSegmentRefused,
+  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
+  VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
+  workflow_segment_kind_label,
+}
+import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_workflow_command {
+  legacy_attempt_supersedable_label,
+  attempt_key_short_form,
+}
+import gunbc.workflow_reconcile { WorkflowReconcileReport }
+import extdeps.languages.json.emit {
+  JsonValue, json_object, json_kv, json_string, json_int, json_array,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent,
+  WorkerProcessRunning, WorkerProcessExited,
+  worker_process_evidence_label,
+}
+
+// THE PRESENTATION SEAM (A2, operator-directed 2026-08-01;
+// docs/plans/roadmap-presentation-seam-design.md). One projection layer between the
+// roadmap/workflow authorities and every renderer: the renderer receives an ALREADY-DECIDED
+// presentation — no punctuation splitting, title reconstruction, policy on string content,
+// availability-implies-emphasis, or evidence smuggled into an actuator region. Governing law: a
+// stronger interface makes fewer claims, each at the right altitude, and shows the evidence or
+// consequence that makes it matter; truthful atoms do not compose into a truthful presentation,
+// so hierarchy, causality and relevance are modeled HERE, not improvised per renderer. Regions:
+// Primary (what this work is), Activity (what is happening to it), Action (what the user can
+// do), Evidence (why the activity claim is believed), Disclosure (complete detail).
+// ActivityRegion is NOT a kind of ActuatorRegion — the A1-era fusion of process evidence into
+// the actuator cell is the falsifier specimen this module dissolves. DELIBERATE ABSENCE: no
+// progress_percent field, and none may be added — the seven obligations are independently
+// evidenced facts, not percentage increments; a scalar appears only if the graph establishes one
+// (making the false scalar UNWRITABLE is the §5 construction form of the rule).
+
+// ONE projection authority across server and client (operator constraint 1, 2026-08-01). The
+// dangerous shape is two: the server folding facts to HTML here while client TypeScript
+// separately decides which segment is the summary, which evidence is routine, when an anomaly
+// expands, or whether an action is prominent. Rule: every presentation DECISION lives in this
+// module's pure fns; the dynamic endpoint serializes the DECIDED view fields (summary text,
+// attention key, remaining count, evidence rows, action availability x priority) and the client
+// PAINTS them without policy. Discharged by a parity witness — server-rendered activity state and
+// the client-updated realization of the same facts yield the same semantic regions and labels —
+// landing with the client-realization slice, not as prose.
+
+// The attention axis drives expand/collapse (routine collapses, active work is legible, anomaly
+// expands): Routine renders the one-line summary with the ledger behind disclosure; Anomalous
+// auto-expands the located evidence — the row-level twin of gunbc.roadmap_altitude's section law.
+// A NeedsUser arm was REMOVED (operator review 2026-08-01, minimality): no producer in the corpus
+// yields a waiting-on-human fact yet, and an unconstructible attention state is future
+// vocabulary — the arm returns WITH its producer.
+
+type ActivityAttention
+  = ActivityRoutine
+  | ActivityAnomalous
+
+type ActivityEvidenceRow {
+  label: String
+  value: String
+}
+
+// ActivityView is the decided answer to 'what is happening to this work', derived ONLY from
+// evidence the workflow authorities already establish: a PROJECTION of WorkflowAttemptProgress
+// (itself a pure fail-closed projection over WorkflowAttemptEvidence, per
+// workflow_progress_projection_note), never a second progress authority. remaining_obligation_count
+// projects from the reconcile report's fold result; obligation identity and order come from the
+// canonical segment roster (roadmap_attempt_workflow_segment_kinds via the progress segments); the
+// summary projects from the reconciled Agent segment state, which IS the provider-execution
+// projection — nothing is recomputed here. NoActiveWork is the ROUTINE state and renders NOTHING:
+// no hollow lamps, no seven pending chips; absence earns no row area. ActiveWork carries one
+// consequence-first summary sentence ('Agent turn completed · Verification next', never a raw
+// evidence pair the reader must join), the obligation ledger for disclosure, the derived remaining
+// count, and the evidence rows grounding the summary (session container / worker process — stated
+// as evidence, never as actions). ActiveWorkRefused carries the located reason: a refusal is a
+// first-class state, not a styling variant of progress. CompletedWork is the terminal projection —
+// the receipt-backed outcome, not the machinery. ActivityUnobservable is 'the evidence could not
+// be read', distinct from refusal and absence — collapsing it into either is the state-space
+// conflation §5 names. NAMING: the field is current_activity, not latest_observation — the event
+// authority establishes no temporal order across observation channels, so 'latest' would claim an
+// ordering nobody derived.
+
+type ActivityView
+  = NoActiveWork
+  | ActiveWork {
+      summary: String
+      obligations: List<WorkflowSegment>
+      remaining_obligation_count: Int
+      current_activity: String
+      attention: ActivityAttention
+      evidence: List<ActivityEvidenceRow>
+    }
+  | ActiveWorkRefused {
+      summary: String
+      located_reason: String
+      evidence: List<ActivityEvidenceRow>
+    }
+  | LegacySupersedableAttempt {
+      summary: String
+      located_reason: String
+      attempt_key: String
+      evidence: List<ActivityEvidenceRow>
+    }
+  | CompletedWork {
+      outcome: String
+      evidence: List<ActivityEvidenceRow>
+    }
+  | ActivityUnobservable {
+      reason: String
+    }
+
+// The EXACT constructor over typed attempt facts (operator constraint 3, 2026-08-01): 'active'
+// never means a string heuristic or a disjunction of narrower facts that can disagree (session
+// present OR lamp on OR dispatch accepted OR process exists). The caller states which typed
+// evidence situation holds; the refused and terminal arms are DERIVED from the progress facts, not
+// caller-assertable — a fabricated refusal or completion is unwritable here.
+
+type WorkAttemptFacts
+  = NoActiveAttempt
+  | ActiveAttempt { progress: WorkflowAttemptProgress }
+  | AttemptUnobservable { reason: String }
+
+// ActiveAttempt carries the progress projection ALONE (operator blocker 3, 2026-08-01): the first
+// cut also took process and current_activity as parameters, making disagreement writable — a
+// progress reconciled under WorkerProcessRunning beside an asserted WorkerProcessExited.
+// WorkflowAttemptProgress already carries process (the shared worker_lifecycle evidence) and
+// provider (whose provider_execution_activity IS the canonical current-activity projection), so
+// the seam reads both from one carrier and the fork is unwritable.
+
+// Availability and priority are ORTHOGONAL axes (the A1 recon's 'ten equally loud pills' defect):
+// that an operation is legally available says nothing about how loudly it renders. Availability is
+// a fact about the admission contract — for dispatch it is the projection of
+// gunbc.roadmap_launch_admission, the same decision POST /dispatch and the belt tick consume
+// (RLM-1), so the page can never claim a launch the route would refuse; priority is a presentation
+// decision this seam owns. The renderer derives prominence from BOTH; availability never implies
+// visual primacy. AvailableAsOverride is GONE: the manual out-of-order dispatch it named (a
+// blocked, unsized, review or done row launchable by click) was a second launch authority beside
+// the belt's, removed by the plan; any break-glass path is a separate type, endpoint,
+// authorization and receipt, not an availability arm.
+
+type ActionAvailability
+  = ActionUnavailable
+  | ActionAvailable
+
+type ActionPriority
+  = PrimaryAction
+  | SecondaryAction
+  | DiagnosticAction
+
+type WorkActionKind
+  = DispatchAction
+  | ClearSessionAction
+
+// An available dispatch action carries the LaunchIdentity the admission produced for this render
+// (node, cause=operator, mode, instance, revision), so the page projects the same decision record
+// the route and timer bind to their attempts. Rendered as evidence (data-launch-* attributes), NOT
+// authorization: the button posts only the node id and the route re-observes the host and
+// re-admits. Absent on every unavailable action.
+
+type WorkAction {
+  kind: WorkActionKind
+  availability: ActionAvailability
+  priority: ActionPriority
+  label: String
+  detail: String
+  launch: LaunchIdentity?
+}
+
+type ActionView {
+  primary_action: WorkAction?
+  secondary_actions: List<WorkAction>
+}
+
+// In roadmap context, workflow means the work item's lifecycle; compiler and CI execution workflow
+// stays under v2.workflow. The ruling names seven independent facts, each owned by its existing
+// typed authority: Ready by gunbc.roadmap_spawner.node_is_spawnable; Live by
+// gunbc.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session
+// name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by
+// extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by
+// RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only —
+// not an executable roster, not a re-declaration, never to be enumerated as workflow status data.
+// The facts have no total order and several may hold at once (Live and Landed, Attempted and
+// Superseded, Landed but not Done); a UI may order or group them for presentation only. Proposed
+// and Landed stay blocked until one typed attempt-keyed carrier joins RoadmapNodeId, attempt key,
+// branch, and PullRequest identity. (Re-homed from the deleted gunbc.client_observation_state
+// module, whose four-state lamp vocabulary dissolved into ActivityView at A2; the class it guarded,
+// unknowable-never-rounds-to-absent, is now carried by the ActivityUnobservable/NoActiveWork
+// distinction and its executing witnesses.)
+
+// Lifecycle and scheduling are DISTINCT axes the page previously fused into one status string:
+// lifecycle is the node's own state (open/review/done/superseded; the node_status_symbol decision
+// moved here as its single authority), scheduling is the frontier position (ready/upcoming/done/
+// superseded buckets from spawn_frontier). A row can be lifecycle-open and scheduling-upcoming;
+// collapsing them loses exactly the fact explaining why an open row is not dispatchable-now.
+
+type WorkLifecycle
+  = OpenLifecycle
+  | ReviewLifecycle
+  | DoneLifecycle
+  | SupersededLifecycle
+
+fn work_lifecycle(rn: RoadmapNode, merged: List<Int>) -> WorkLifecycle {
+  if item_superseded_by(item: rn.line) == "" {
+    if signoff_accepts(s: rn.signoff) {
+      DoneLifecycle
+    } else {
+      if item_is_done(item: rn.line, merged: merged) { ReviewLifecycle } else { OpenLifecycle }
+    }
+  } else {
+    SupersededLifecycle
+  }
+}
+
+fn work_lifecycle_key(l: WorkLifecycle) -> String {
+  match l {
+    OpenLifecycle => "open"
+    ReviewLifecycle => "review"
+    DoneLifecycle => "done"
+    SupersededLifecycle => "superseded"
+  }
+}
+
+// Routine-state collapse (the A1 carried-forward miss; the altitude law's interface form — routine
+// collapses, anomaly expands). OpenLifecycle is nearly every row's default, so an 'open' chip on
+// each discriminates nothing and is permanent chrome; the DECIDED rule: the lifecycle chip renders
+// only when the lifecycle departs the default (review/done/superseded). The state stays
+// machine-readable: the row's node-<key> class and the altitude band counts consume
+// work_lifecycle_key regardless, so collapsing the chip erases pixels, never the typed fact.
+fn lifecycle_chip_renders(l: WorkLifecycle) -> Bool {
+  match l {
+    OpenLifecycle => false
+    ReviewLifecycle => true
+    DoneLifecycle => true
+    SupersededLifecycle => true
+  }
+}
+
+// The scheduling axis as a TYPED position, not a Bool (operator blocker 2, 2026-08-01: ready: Bool
+// was anemic and caller-assertable — true could be passed for an upcoming node, and the view had no
+// typed distinction among frontier positions). The arms project from the SAME predicates
+// spawn_frontier filters — node_is_spawnable / node_is_upcoming / node_is_frontier_done /
+// superseded — so scheduling equals frontier-bucket membership by construction (witnessed against
+// spawn_frontier on the live authority, not asserted). SchedulingUpcoming carries its blockers, the
+// unmet parents — why an open row is not dispatchable-now. SchedulingUnplanned is the honest arm
+// for a node outside every bucket (unsized, or not yet admitted to the frontier); collapsing it
+// into Upcoming would fabricate a blocked-on claim with no blockers.
+
+type WorkScheduling
+  = SchedulingReady
+  | SchedulingUpcoming { blockers: List<String> }
+  | SchedulingDone
+  | SchedulingSuperseded
+  | SchedulingUnplanned
+
+fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<String> {
+  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
+  let unmet = filter(xs: parents, predicate: pid =>
+    !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
+  map(unmet, p => p as String)
+}
+
+fn work_scheduling(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> WorkScheduling {
+  if !(item_superseded_by(item: rn.line) == "") {
+    SchedulingSuperseded
+  } else {
+    if node_is_frontier_done(n: rn) {
+      SchedulingDone
+    } else {
+      if node_is_spawnable(n: rn, nodes: nodes, edges: edges) {
+        SchedulingReady
+      } else {
+        if node_is_upcoming(n: rn, nodes: nodes, edges: edges) {
+          SchedulingUpcoming { blockers: scheduling_blockers(rn: rn, nodes: nodes, edges: edges) }
+        } else {
+          SchedulingUnplanned
+        }
+      }
+    }
+  }
+}
+
+fn work_scheduling_key(s: WorkScheduling) -> String {
+  match s {
+    SchedulingReady => "ready"
+    SchedulingUpcoming { blockers: _ } => "upcoming"
+    SchedulingDone => "done"
+    SchedulingSuperseded => "superseded"
+    SchedulingUnplanned => "unplanned"
+  }
+}
+
+// The quiet dependency line under the title, DECIDED here: it renders only for an Upcoming row with
+// more than one blocker — a single parent is already told by the tree nesting, and a ready/done
+// row's dependencies are met, so repeating them is noise re-dismissed on every row. (The A1
+// renderer showed 'requires all' for any node with 2+ parents whatever its position; the seam
+// narrows it to rows where the line answers 'why is this not dispatchable-now', the fact it exists
+// to carry.)
+fn scheduling_dependency_line(s: WorkScheduling) -> String? {
+  match s {
+    SchedulingUpcoming { blockers } =>
+      if count(blockers) > 1 {
+        Present { value: join(["requires all: ", join(blockers, ", ")], "") }
+      } else {
+        none
+      }
+    SchedulingReady => none
+    SchedulingDone => none
+    SchedulingSuperseded => none
+    SchedulingUnplanned => none
+  }
+}
+
+type SupportingFact {
+  label: String
+  value: String
+  href: String
+}
+
+// WorkRowView is the decided row. headline comes from the ticket's own typed field — NEVER from
+// recomposing '**headline** — brief' and re-splitting at punctuation (the round trip this seam
+// deletes; legacy non-ticket lines keep the lead heuristic as a named residue INSIDE this
+// projection only). summary is the row's one purpose-specific supporting claim (why-now /
+// what-it-unlocks), Absent until an honest typed source exists — fabricating it by truncating the
+// brief is prohibited (the explicit A1 re-scope). scheduling is the typed frontier position (its
+// Upcoming arm CARRIES the blockers, so the quiet dependency line reads off the value the action
+// derivation consumed — the first cut's separate blocked_on field was a dual representation and is
+// gone). supporting_facts are demoted metadata (owner, sizing, carriers) rendered only under
+// disclosure; disclosure is the decided full-detail region, serialized by the renderer without
+// touching RoadmapItem.
+
+// The disclosure region, decided: a ticket row projects its typed fields as labeled rows (the A1
+// renderer's label vocabulary, now decided here so the renderer never reads TicketFields); a legacy
+// line whose content is longer than its displayed lead projects the full content as the body; a
+// row with neither has NoDisclosure and renders no details element beyond its supporting facts.
+// Markdown-inline serialization of these strings is the renderer's job — serialization, not
+// decision.
+type DisclosureField {
+  label: String
+  value: String
+}
+
+type DisclosureNote {
+  on: String
+  note: String
+}
+
+type DisclosureView
+  = NoDisclosure
+  | TicketDisclosure {
+      brief: String
+      fields: List<DisclosureField>
+      updates: List<DisclosureNote>
+    }
+  | LegacyBodyDisclosure { content: String }
+
+type WorkRowView {
+  node_id: String
+  headline: String
+  summary: String?
+  lifecycle: WorkLifecycle
+  scheduling: WorkScheduling
+  superseded_by: String
+  activity: ActivityView
+  action: ActionView
+  supporting_facts: List<SupportingFact>
+  disclosure: DisclosureView
+}
+
+fn intricacy_code(i: Intricacy) -> String {
+  match i {
+    IntricacyLow => "i:low"
+    IntricacyMedium => "i:med"
+    IntricacyHigh => "i:high"
+  }
+}
+
+fn volume_code(v: Volume) -> String {
+  match v {
+    VolumeSmall => "v:small"
+    VolumeMedium => "v:med"
+    VolumeLarge => "v:large"
+  }
+}
+
+fn sizing_fact(s: NodeSizing) -> List<SupportingFact> {
+  match s {
+    Unsized => []
+    Sized { intricacy, volume, repo, acceptance } =>
+      [ SupportingFact {
+          label: "sizing",
+          value: join([intricacy_code(i: intricacy), " ", volume_code(v: volume), " ", repo], ""),
+          href: "",
+        } ]
+  }
+}
+
+fn owner_fact(owner: String) -> List<SupportingFact> {
+  if owner == "" { [] } else { [ SupportingFact { label: "owner", value: join(["@", owner], ""), href: "" } ] }
+}
+
+fn carrier_facts(carriers: List<Pointer>) -> List<SupportingFact> {
+  map(carriers, p => SupportingFact { label: "carrier", value: p.label, href: p.path })
+}
+
+fn row_supporting_facts(rn: RoadmapNode) -> List<SupportingFact> {
+  concat(owner_fact(owner: rn.owner), concat(sizing_fact(s: rn.sizing), carrier_facts(carriers: rn.carriers)))
+}
+
+// The typed headline path: a TicketLine's headline IS ticket.headline — one field read, no markdown
+// fusion, no delimiter recovery. Legacy variants (Derivable/Authored/Plain/Superseded) carry one
+// content string and keep the lead-at-first-separator cut as this projection's named residue; when
+// they gain typed headline fields the residue deletes here and nowhere else.
+fn lead_before(full: String, delimiter: String) -> String? {
+  let parts = split(s: full, delimiter: delimiter)
+  if count(parts) > 1 {
+    match parts.first() {
+      Present { value: head } => Present { value: head }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn legacy_lead(full: String) -> String {
+  match lead_before(full: full, delimiter: " — ") {
+    Present { value: head } => head
+    Absent =>
+      match lead_before(full: full, delimiter: ". ") {
+        Present { value: head } => head
+        Absent => full
+      }
+  }
+}
+
+fn row_headline(line: RoadmapItem) -> String {
+  match line {
+    TicketLine { done: _, ticket } => ticket.headline
+    DerivableLine { prs: _, title, description: _ } => legacy_lead(full: title)
+    AuthoredLine { done: _, content } => legacy_lead(full: content)
+    PlainLine { content } => legacy_lead(full: content)
+    SupersededLine { by: _, content } => legacy_lead(full: content)
+  }
+}
+
+fn row_summary(line: RoadmapItem) -> String? {
+  none
+}
+
+fn disclosure_field(label: String, value: String) -> List<DisclosureField> {
+  if value == "" { [] } else { [ DisclosureField { label: label, value: value } ] }
+}
+
+fn ticket_disclosure_fields(t: TicketFields) -> List<DisclosureField> {
+  concat(disclosure_field(label: "displaced cost", value: t.displaced_cost),
+    concat(disclosure_field(label: "current state", value: t.current_state),
+      concat(disclosure_field(label: "first slice", value: t.first_slice),
+        concat(disclosure_field(label: "red control", value: t.red_control),
+          concat(disclosure_field(label: "out of scope", value: t.out_of_scope),
+            concat(disclosure_field(label: "hand-back", value: t.handback),
+              disclosure_field(label: "verified", value: join([t.authored_on, " · last verified ", t.last_verified_on], ""))))))))
+}
+
+fn row_disclosure(line: RoadmapItem) -> DisclosureView {
+  match line_ticket(item: line) {
+    Present { value: t } => TicketDisclosure {
+      brief: t.brief,
+      fields: ticket_disclosure_fields(t: t),
+      updates: map(t.updates, u => DisclosureNote { on: u.on, note: u.note }),
+    }
+    Absent => {
+      let full = match line {
+        DerivableLine { prs: _, title, description: _ } => title
+        AuthoredLine { done: _, content } => content
+        PlainLine { content } => content
+        SupersededLine { by: _, content } => content
+        TicketLine { done: _, ticket } => ""
+      }
+      if full == row_headline(line: line) {
+        NoDisclosure
+      } else {
+        LegacyBodyDisclosure { content: full }
+      }
+    }
+  }
+}
+
+// The action derivation, both axes decided here. Dispatch availability is the LAUNCH ADMISSION'S
+// verdict for cause Operator and nothing else (RLM-1): LaunchAdmitted renders ActionAvailable +
+// PrimaryAction; LaunchRefused renders ActionUnavailable + SecondaryAction carrying the refusal's
+// wire label and reason, so the row explains itself in the route's own words. Done and superseded
+// lifecycles render no dispatch action (the remedy is acceptance history, not a launch). NO LONGER
+// DERIVED: availability from the scheduling position — SchedulingReady used to be Available and
+// every other open row AvailableAsOverride, re-deriving eligibility from the frontier in the page's
+// words while the route derived it differently. NO LONGER FABRICATED (operator blocker 4,
+// 2026-08-01): a ClearSessionAction; cleanup admission is an OBSERVED fact the sessions channel
+// owns (session_action_view), and this fn derives dispatch alone.
+
+type LaunchRowContext {
+  standing: LaunchHostStanding
+  graph: LaunchGraphStanding
+  merged: List<Int>
+}
+
+fn row_launch_admission(ctx: LaunchRowContext, node_id: String) -> LaunchAdmission {
+  launch_admission(
+    cause: Operator,
+    standing: ctx.standing,
+    graph: ctx.graph,
+    merged: ctx.merged,
+    node_id: node_id,
+    reserved: 0,
+  )
+}
+
+fn dispatch_action(lifecycle: WorkLifecycle, admission: LaunchAdmission) -> List<WorkAction> {
+  match lifecycle {
+    DoneLifecycle => []
+    SupersededLifecycle => []
+    OpenLifecycle => [ dispatch_action_of_admission(admission: admission) ]
+    ReviewLifecycle => [ dispatch_action_of_admission(admission: admission) ]
+  }
+}
+
+fn dispatch_action_of_admission(admission: LaunchAdmission) -> WorkAction {
+  match admission {
+    LaunchAdmitted { identity } =>
+      WorkAction {
+        kind: DispatchAction,
+        availability: ActionAvailable,
+        priority: PrimaryAction,
+        label: launch_admission_label(a: admission),
+        detail: launch_admission_reason(a: admission),
+        launch: Present { value: identity },
+      }
+    LaunchRefused { refusal: _ } =>
+      WorkAction {
+        kind: DispatchAction,
+        availability: ActionUnavailable,
+        priority: SecondaryAction,
+        label: launch_admission_label(a: admission),
+        detail: launch_admission_reason(a: admission),
+        launch: none,
+      }
+  }
+}
+
+fn action_view(lifecycle: WorkLifecycle, admission: LaunchAdmission) -> ActionView {
+  let dispatch = dispatch_action(lifecycle: lifecycle, admission: admission)
+  let primary = fold(dispatch, init: none, f: (acc, a) => match a.priority {
+    PrimaryAction => Present { value: a }
+    SecondaryAction => acc
+    DiagnosticAction => acc
+  })
+  let secondary = filter(xs: dispatch, predicate: a => match a.priority {
+    PrimaryAction => false
+    SecondaryAction => true
+    DiagnosticAction => true
+  })
+  ActionView { primary_action: primary, secondary_actions: secondary }
+}
+
+// The summary sentence is consequence-first and derived from the reconcile facts, never hand-held
+// per state: a refused/failed segment names itself with its located detail; an active Agent reads
+// as working; a complete Agent with pending downstream obligations names the NEXT obligation and
+// the remaining count (the ledger's fold result, not a recount). The session-present/process-exited
+// pair projects as its consequence — 'the retained session is no longer running' — with the raw
+// container/process facts demoted to evidence rows; the reader never joins tmux semantics manually.
+
+fn first_non_complete(segments: List<WorkflowSegment>) -> WorkflowSegment? {
+  fold(segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match s.state {
+      WorkflowSegmentComplete => none
+      WorkflowSegmentPending => Present { value: s }
+      WorkflowSegmentActive => Present { value: s }
+      WorkflowSegmentFailed => Present { value: s }
+      WorkflowSegmentRefused => Present { value: s }
+    }
+  })
+}
+
+fn first_refused(segments: List<WorkflowSegment>) -> WorkflowSegment? {
+  fold(segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match s.state {
+      WorkflowSegmentRefused => Present { value: s }
+      WorkflowSegmentFailed => none
+      WorkflowSegmentComplete => none
+      WorkflowSegmentPending => none
+      WorkflowSegmentActive => none
+    }
+  })
+}
+
+fn first_failed(segments: List<WorkflowSegment>) -> WorkflowSegment? {
+  fold(segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match s.state {
+      WorkflowSegmentFailed => Present { value: s }
+      WorkflowSegmentRefused => none
+      WorkflowSegmentComplete => none
+      WorkflowSegmentPending => none
+      WorkflowSegmentActive => none
+    }
+  })
+}
+
+fn segment_kind_is_agent(kind: WorkflowSegmentKind) -> Bool {
+  match kind {
+    EnvironmentWorkflowSegment => false
+    WorkspaceWorkflowSegment => false
+    AgentWorkflowSegment => true
+    VerificationWorkflowSegment => false
+    PublicationWorkflowSegment => false
+    ReviewWorkflowSegment => false
+    GoalAuditWorkflowSegment => false
+  }
+}
+
+fn agent_segment_state(segments: List<WorkflowSegment>) -> WorkflowSegmentState {
+  fold(segments, init: WorkflowSegmentPending, f: (acc, s) =>
+    if segment_kind_is_agent(kind: s.kind) { s.state } else { acc })
+}
+
+// The operator's worked example: 'session container present' beside 'process exited' must never
+// ship as an uninterpreted pair — the projection states the consequence and demotes the raw facts
+// to evidence rows. The reconciliation contract (workflow_progress_projection_note) already makes
+// Agent-complete imply a compatible process exit, but the seam derives the sentence from the
+// process evidence rather than assuming the invariant, so contract drift reads as an odd sentence
+// instead of a silent lie.
+
+fn agent_completion_claim(process: WorkerProcessEvidence) -> String {
+  match process {
+    WorkerProcessExited { exit_code: _, last_command: _ } =>
+      "Agent turn completed; the retained session is no longer running"
+    WorkerProcessRunning { command: _ } => "Agent turn completed"
+    WorkerProcessAbsent => "Agent turn completed; the worker session is gone"
+    WorkerProcessUnobserved { reason: _ } =>
+      "Agent turn completed; the worker process could not be observed"
+  }
+}
+
+// Both evidence rows derive from the ONE process-evidence authority rather than a separate session
+// Bool that could disagree with it: per belt_sessions_observation_separation_note, a running or
+// exited pane implies a present session container, an unobserved pane probe maps a PRESENT session
+// to process-unobserved, and Absent means no container was observed. A second session_present
+// parameter would be the two-facts-one-truth fork §3 forbids.
+
+fn session_container_value(process: WorkerProcessEvidence) -> String {
+  match process {
+    WorkerProcessRunning { command: _ } => "present"
+    WorkerProcessExited { exit_code: _, last_command: _ } => "present"
+    WorkerProcessUnobserved { reason: _ } => "present"
+    WorkerProcessAbsent => "absent"
+  }
+}
+
+fn activity_evidence_rows(process: WorkerProcessEvidence) -> List<ActivityEvidenceRow> {
+  [
+    ActivityEvidenceRow {
+      label: "session container",
+      value: session_container_value(process: process),
+    },
+    ActivityEvidenceRow {
+      label: "worker process",
+      value: worker_process_evidence_label(evidence: process),
+    },
+  ]
+}
+
+fn activity_summary(segments: List<WorkflowSegment>, remaining: Int, process: WorkerProcessEvidence) -> String {
+  match agent_segment_state(segments: segments) {
+    WorkflowSegmentActive => "Agent working"
+    WorkflowSegmentComplete =>
+      match first_non_complete(segments: segments) {
+        Absent => "All obligations complete"
+        Present { value: next } =>
+          join([
+            agent_completion_claim(process: process),
+            " · ",
+            workflow_segment_kind_label(kind: next.kind),
+            " next · ",
+            to_string(remaining),
+            " remaining",
+          ], "")
+      }
+    WorkflowSegmentPending => "Attempt admitted · agent not yet started"
+    WorkflowSegmentFailed => "Agent run failed"
+    WorkflowSegmentRefused => "Agent evidence refused"
+  }
+}
+
+fn activity_view_from_parts(
+  segments: List<WorkflowSegment>,
+  remaining: Int,
+  process: WorkerProcessEvidence,
+  current_activity: String,
+) -> ActivityView {
+  let evidence = activity_evidence_rows(process: process)
+  match first_refused(segments: segments) {
+    Present { value: refused } => ActiveWorkRefused {
+      summary: join([workflow_segment_kind_label(kind: refused.kind), " evidence refused"], ""),
+      located_reason: refused.detail,
+      evidence: evidence,
+    }
+    Absent =>
+      match first_failed(segments: segments) {
+        Present { value: failed } => ActiveWork {
+          summary: join([workflow_segment_kind_label(kind: failed.kind), " failed"], ""),
+          obligations: segments,
+          remaining_obligation_count: remaining,
+          current_activity: current_activity,
+          attention: ActivityAnomalous,
+          evidence: evidence,
+        }
+        Absent =>
+          match first_non_complete(segments: segments) {
+            Absent => CompletedWork {
+              outcome: "All obligations complete",
+              evidence: evidence,
+            }
+            Present { value: _ } => ActiveWork {
+              summary: activity_summary(segments: segments, remaining: remaining, process: process),
+              obligations: segments,
+              remaining_obligation_count: remaining,
+              current_activity: current_activity,
+              attention: ActivityRoutine,
+              evidence: evidence,
+            }
+          }
+      }
+  }
+}
+
+fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityView {
+  match progress.provider {
+    ProviderEventsRefused { activity, detail } =>
+      if activity == legacy_attempt_supersedable_label {
+        LegacySupersedableAttempt {
+          summary: legacy_attempt_supersedable_label,
+          located_reason: detail,
+          attempt_key: attempt_key_short_form(key: progress.attempt_key),
+          evidence: activity_evidence_rows(process: progress.process),
+        }
+      } else {
+        activity_view_from_parts(
+          segments: progress.segments,
+          remaining: progress.reconciliation.remaining_count,
+          process: progress.process,
+          current_activity: provider_execution_activity(state: progress.provider),
+        )
+      }
+    _ =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+  }
+}
+
+fn activity_view_of(facts: WorkAttemptFacts) -> ActivityView {
+  match facts {
+    NoActiveAttempt => NoActiveWork
+    AttemptUnobservable { reason } => ActivityUnobservable { reason: reason }
+    ActiveAttempt { progress } => activity_view_from_progress(progress: progress)
+  }
+}
+
+fn work_row_view(
+  rn: RoadmapNode,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  merged: List<Int>,
+  activity: ActivityView,
+  launch: LaunchRowContext,
+) -> WorkRowView {
+  let lifecycle = work_lifecycle(rn: rn, merged: merged)
+  let scheduling = work_scheduling(rn: rn, nodes: nodes, edges: edges)
+  WorkRowView {
+    node_id: rn.node as String,
+    headline: row_headline(line: rn.line),
+    summary: row_summary(line: rn.line),
+    lifecycle: lifecycle,
+    scheduling: scheduling,
+    superseded_by: item_superseded_by(item: rn.line),
+    activity: activity,
+    action: action_view(lifecycle: lifecycle, admission: row_launch_admission(ctx: launch, node_id: rn.node as String)),
+    supporting_facts: row_supporting_facts(rn: rn),
+    disclosure: row_disclosure(line: rn.line),
+  }
+}
+
+fn activity_attention_key(a: ActivityAttention) -> String {
+  match a {
+    ActivityRoutine => "routine"
+    ActivityAnomalous => "anomalous"
+  }
+}
+
+fn activity_arm_key(a: ActivityView) -> String {
+  match a {
+    NoActiveWork => "none"
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => "active"
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => "refused"
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => "legacy_supersedable"
+    CompletedWork { outcome: _, evidence: _ } => "completed"
+    ActivityUnobservable { reason: _ } => "unobservable"
+  }
+}
+
+// The composition constants BOTH realizations consume (the parity obligation's construction half):
+// the server renderer joins obligation label/state/detail and evidence label/value with exactly
+// these separators, and the emitted client embeds the same values as its string literals — one
+// authority, so the realizations cannot drift on composition without the parity witness
+// reddening. The disclosure summary word is here for the same reason: 'activity' must be the same
+// word whether the details element was server-rendered or client-created.
+
+data activity_state_sep: String = " · "
+data activity_detail_sep: String = " — "
+data activity_evidence_kv_sep: String = ": "
+data activity_disclosure_label: String = "activity"
+
+// The one visible line per arm, decided ONCE for both realizations: the server renderer and the
+// emitted client compose the identical selection (active/refused → summary, completed → outcome,
+// unobservable → the prefixed reason) — the parity witness holds them equal, so a drift in either
+// realization reds rather than shipping two sentences for one state.
+
+fn activity_summary_line(a: ActivityView) -> String {
+  match a {
+    NoActiveWork => ""
+    ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => summary
+    ActiveWorkRefused { summary, located_reason: _, evidence: _ } => summary
+    LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } => summary
+    CompletedWork { outcome, evidence: _ } => outcome
+    ActivityUnobservable { reason } => join(["workflow evidence unobservable — ", reason], "")
+  }
+}
+
+fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "label", value: json_string(s: row.label)),
+    json_kv(key: "value", value: json_string(s: row.value)),
+  ])
+}
+
+// The wire realization of the DECIDED view — what makes the single projection authority real:
+// /workflow.json carries these fields and the client paints them verbatim (arm selects the
+// container's presence and material; summary/outcome/reason are final strings; attention is the
+// expansion key; evidence rows are label/value pairs). The obligation ledger is NOT duplicated
+// here — the attempt payload already carries the canonical segments and the client renders the
+// ledger from those rows; a second segments copy under activity would be the dual representation
+// §3 forbids.
+fn activity_view_json_value(view: ActivityView) -> JsonValue {
+  match view {
+    NoActiveWork => json_object(members: [
+      json_kv(key: "arm", value: json_string(s: "none")),
+    ])
+    ActiveWork { summary, obligations: _, remaining_obligation_count, current_activity, attention, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "active")),
+        json_kv(key: "summary", value: json_string(s: summary)),
+        json_kv(key: "remaining_obligation_count", value: json_int(n: remaining_obligation_count)),
+        json_kv(key: "current_activity", value: json_string(s: current_activity)),
+        json_kv(key: "attention", value: json_string(s: activity_attention_key(a: attention))),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    ActiveWorkRefused { summary, located_reason, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "refused")),
+        json_kv(key: "summary", value: json_string(s: summary)),
+        json_kv(key: "located_reason", value: json_string(s: located_reason)),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    LegacySupersedableAttempt { summary, located_reason, attempt_key, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "legacy_supersedable")),
+        json_kv(key: "summary", value: json_string(s: summary)),
+        json_kv(key: "located_reason", value: json_string(s: located_reason)),
+        json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    CompletedWork { outcome, evidence } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "completed")),
+        json_kv(key: "outcome", value: json_string(s: outcome)),
+        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      ])
+    ActivityUnobservable { reason } =>
+      json_object(members: [
+        json_kv(key: "arm", value: json_string(s: "unobservable")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+  }
+}
+
+fn action_availability_key(a: ActionAvailability) -> String {
+  match a {
+    ActionUnavailable => "unavailable"
+    ActionAvailable => "available"
+  }
+}
+
+fn action_priority_key(p: ActionPriority) -> String {
+  match p {
+    PrimaryAction => "primary"
+    SecondaryAction => "secondary"
+    DiagnosticAction => "diagnostic"
+  }
+}
+
+fn work_action_kind_key(k: WorkActionKind) -> String {
+  match k {
+    DispatchAction => "dispatch"
+    ClearSessionAction => "clear-session"
+  }
+}
+
+// The decided session-facts presentation (operator blocker 5, 2026-08-01). The prior client
+// composed its own visible sentence — 'session · present — ' + process_state — and its own
+// cleanup-button presentation from raw /sessions.json fields: a SECOND presentation authority
+// beside this module for the same evidence. single_projection_authority_note applies to every
+// channel: the sessions observer may update FACTS, it does not author display prose. This view
+// decides the final visible line (presence is proven by wire inclusion, per
+// belt_sessions_json_note), the title-channel detail, and the session action — whose availability
+// comes from the OBSERVED cleanup admission (cleanup_allowed / cleanup_action / cleanup_detail),
+// never inferred from activity state (blocker 4: an active attempt does not prove cleanup is
+// allowed; ActionUnavailable is this arm's real consumer). The wire carries these decided fields
+// under 'facts' and the client paints them verbatim.
+
+type SessionActionView
+  = NoSessionAction
+  | SessionAction {
+      kind: WorkActionKind
+      availability: ActionAvailability
+      priority: ActionPriority
+      label: String
+      detail: String
+    }
+
+type SessionFactsView {
+  line: String
+  detail: String
+  action: SessionActionView
+}
+
+fn session_action_view(cleanup_action: String, cleanup_allowed: Bool, cleanup_detail: String) -> SessionActionView {
+  if cleanup_action == "" {
+    NoSessionAction
+  } else {
+    SessionAction {
+      kind: ClearSessionAction,
+      availability: if cleanup_allowed { ActionAvailable } else { ActionUnavailable },
+      priority: DiagnosticAction,
+      label: cleanup_action,
+      detail: cleanup_detail,
+    }
+  }
+}
+
+fn session_facts_view(
+  process: WorkerProcessEvidence,
+  process_detail: String,
+  provider: String,
+  configured_provider: String,
+  provider_readiness: String,
+  session_name: String,
+  cleanup_action: String,
+  cleanup_allowed: Bool,
+  cleanup_detail: String,
+) -> SessionFactsView {
+  SessionFactsView {
+    line: join(["session · present — ", worker_process_evidence_label(evidence: process)], ""),
+    detail: join([
+      "provider ", provider,
+      " (configured ", configured_provider,
+      ", readiness ", provider_readiness, ") — ", session_name,
+      if process_detail == "" { "" } else { join([" · ", process_detail], "") },
+    ], ""),
+    action: session_action_view(
+      cleanup_action: cleanup_action,
+      cleanup_allowed: cleanup_allowed,
+      cleanup_detail: cleanup_detail,
+    ),
+  }
+}
+
+fn session_action_json_value(a: SessionActionView) -> JsonValue {
+  match a {
+    NoSessionAction => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "none")),
+    ])
+    SessionAction { kind, availability, priority, label, detail } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: work_action_kind_key(k: kind))),
+        json_kv(key: "availability", value: json_string(s: action_availability_key(a: availability))),
+        json_kv(key: "priority", value: json_string(s: action_priority_key(p: priority))),
+        json_kv(key: "label", value: json_string(s: label)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+fn session_facts_json_value(v: SessionFactsView) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "line", value: json_string(s: v.line)),
+    json_kv(key: "detail", value: json_string(s: v.detail)),
+    json_kv(key: "action", value: session_action_json_value(a: v.action)),
+  ])
+}
+
+// The local-denominator program claim plus its causal link to the work below (the A1 recon's item
+// 5: without the relation the page is an inventory; with it, it begins to feel causal).
+// ready_obligation_count counts the ready rows the focused program's lanes contribute — v0 states
+// the relation for v1 exit as the focused program; a multi-program workspace generalizes the field
+// to per-program rows.
+type ProgramProgressView {
+  name: String
+  completed: Int
+  total: Int
+  ready_obligation_count: Int
+}
+
+// The composed workspace (operator blocker 6, 2026-08-01): active work surfaces ABOVE the ready
+// queue — a row whose activity is ActiveWork or ActiveWorkRefused outranks any idle Ready row,
+// whatever its frontier bucket. Remaining rows group by typed scheduling position. CompletedWork
+// does NOT join the active band: all obligations complete is a receipt to read, not work in
+// flight, so it stays in its scheduling bucket. program is the causal header claim
+// (ProgramProgressView's consumer — the A1 compact strip re-grounds on this field).
+
+// ONE failure narrated ONCE (operator blocker 6: the observation-refusal altitude split). When the
+// workflow observation channel itself refuses, EVERY row's activity is unknowable from one cause —
+// narrating it per row repeats one fact N times, per channel-banner AND per row N+1 times. Decided
+// rule: the workspace carries one WorkspaceObservationImpact banner with the located reason, and a
+// row whose activity is ActivityUnobservable is COVERED by it (workspace_covers_row_activity), so
+// the renderer suppresses the per-row line — the row's typed state stays unobservable (never
+// rounded to NoActiveWork; the row still carries the honest arm, so the fabrication is
+// unwritable), only its NARRATION is deduplicated. A row-specific unobservable reason under a
+// nominal workspace observation still narrates on its own row.
+
+type ObservationImpactView
+  = ObservationsNominal
+  | WorkspaceObservationImpact {
+      summary: String
+      located_reason: String
+    }
+
+fn observation_impact_view(workflow_refused: String?) -> ObservationImpactView {
+  match workflow_refused {
+    Absent => ObservationsNominal
+    Present { value: reason } => WorkspaceObservationImpact {
+      summary: "workflow observation unavailable",
+      located_reason: reason,
+    }
+  }
+}
+
+fn workspace_covers_row_activity(observation: ObservationImpactView, a: ActivityView) -> Bool {
+  match observation {
+    ObservationsNominal => false
+    WorkspaceObservationImpact { summary: _, located_reason: _ } =>
+      match a {
+        ActivityUnobservable { reason: _ } => true
+        NoActiveWork => false
+        ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+        ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+        LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+        CompletedWork { outcome: _, evidence: _ } => false
+      }
+  }
+}
+
+// Family-once grouping (the A1 carried-forward miss, staged behind the A2 core seam per the design
+// note's witness item 9). A work family is a set of rows generated from ONE authority fn whose
+// shared claim would otherwise repeat per row — the specimen is the closing-contract task
+// generator, whose 'Write the closing check for: X' headline repeated the family claim N times on
+// the daily page. Decided rule: the family claim is stated ONCE as the group header; each member
+// row carries only its DISCRIMINATING SUBJECT — a typed field supplied by the generator that minted
+// the member (the gated node's own ticket headline), NEVER recovered by parsing or prefix-stripping
+// the fused headline (exactly the heuristic class this seam exists to kill; the no-parsing witness
+// plants a subject containing the claim prose and an unlisted lookalike row to prove both
+// directions). Membership is typed facts (WorkFamilyMemberFact rows derived from the generator's
+// own pairs), so an unlisted row whose headline HAPPENS to start with the claim stays ungrouped. An
+// active member leaves its group for the Active band — attention outranks taxonomy — and the group
+// renders only its band's members at the position of its first member, preserving row order.
+
+type WorkFamilyDecl {
+  id: String
+  claim: String
+}
+
+type WorkFamilyMemberFact {
+  family_id: String
+  task_node: String
+  subject: String
+}
+
+type WorkFamilyView {
+  id: String
+  claim: String
+  rows: List<WorkRowView>
+}
+
+type WorkBandEntry
+  = BandRow { row: WorkRowView }
+  | BandFamily { family: WorkFamilyView }
+
+type DailyWorkspaceView {
+  program: ProgramProgressView?
+  observation: ObservationImpactView
+  active: List<WorkRowView>
+  ready: List<WorkBandEntry>
+  upcoming: List<WorkBandEntry>
+  done: List<WorkBandEntry>
+  superseded: List<WorkBandEntry>
+}
+
+fn row_is_active_work(row: WorkRowView) -> Bool {
+  match row.activity {
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => true
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => true
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => true
+    NoActiveWork => false
+    CompletedWork { outcome: _, evidence: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+fn rows_with_scheduling_key(rows: List<WorkRowView>, key: String) -> List<WorkRowView> {
+  filter(xs: rows, predicate: r => !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == key)
+}
+
+fn family_member_for(members: List<WorkFamilyMemberFact>, node_id: String) -> WorkFamilyMemberFact? {
+  fold(members, init: none, f: (acc, m) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if m.task_node == node_id { Present { value: m } } else { none }
+  })
+}
+
+fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
+  WorkRowView {
+    node_id: row.node_id,
+    headline: subject,
+    summary: row.summary,
+    lifecycle: row.lifecycle,
+    scheduling: row.scheduling,
+    superseded_by: row.superseded_by,
+    activity: row.activity,
+    action: row.action,
+    supporting_facts: row.supporting_facts,
+    disclosure: row.disclosure,
+  }
+}
+
+fn family_band_rows(rows: List<WorkRowView>, members: List<WorkFamilyMemberFact>, family_id: String) -> List<WorkRowView> {
+  fold(rows, init: [], f: (acc, r) => match family_member_for(members: members, node_id: r.node_id) {
+    Present { value: m } =>
+      if m.family_id == family_id { append(acc, items: [family_subject_row(row: r, subject: m.subject)]) } else { acc }
+    Absent => acc
+  })
+}
+
+fn band_entries(
+  rows: List<WorkRowView>,
+  families: List<WorkFamilyDecl>,
+  members: List<WorkFamilyMemberFact>,
+) -> List<WorkBandEntry> {
+  let grouped = fold(rows, init: BandEntriesAcc { entries: [], emitted_family_ids: [] }, f: (acc, r) =>
+    match family_member_for(members: members, node_id: r.node_id) {
+      Absent => BandEntriesAcc {
+        entries: append(acc.entries, items: [BandRow { row: r }]),
+        emitted_family_ids: acc.emitted_family_ids,
+      }
+      Present { value: m } =>
+        if acc.emitted_family_ids |> any(fid => fid == m.family_id) {
+          acc
+        } else {
+          match family_decl_for(families: families, family_id: m.family_id) {
+            Present { value: decl } => BandEntriesAcc {
+              entries: append(acc.entries, items: [BandFamily { family: WorkFamilyView {
+                id: decl.id,
+                claim: decl.claim,
+                rows: family_band_rows(rows: rows, members: members, family_id: m.family_id),
+              } }]),
+              emitted_family_ids: append(acc.emitted_family_ids, items: [m.family_id]),
+            }
+            Absent => BandEntriesAcc {
+              entries: append(acc.entries, items: [BandRow { row: r }]),
+              emitted_family_ids: acc.emitted_family_ids,
+            }
+          }
+        }
+    })
+  grouped.entries
+}
+
+type BandEntriesAcc {
+  entries: List<WorkBandEntry>
+  emitted_family_ids: List<String>
+}
+
+fn family_decl_for(families: List<WorkFamilyDecl>, family_id: String) -> WorkFamilyDecl? {
+  fold(families, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if d.id == family_id { Present { value: d } } else { none }
+  })
+}
+
+fn daily_workspace_view(
+  rows: List<WorkRowView>,
+  program: ProgramProgressView?,
+  observation: ObservationImpactView,
+  families: List<WorkFamilyDecl>,
+  members: List<WorkFamilyMemberFact>,
+) -> DailyWorkspaceView {
+  DailyWorkspaceView {
+    program: program,
+    observation: observation,
+    active: filter(xs: rows, predicate: r => row_is_active_work(row: r)),
+    ready: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "ready"), families: families, members: members),
+    upcoming: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "upcoming"), families: families, members: members),
+    done: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "done"), families: families, members: members),
+    superseded: band_entries(rows: rows_with_scheduling_key(rows: rows, key: "superseded"), families: families, members: members),
+  }
+}

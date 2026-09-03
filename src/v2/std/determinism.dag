@@ -1,18 +1,13 @@
 module v2.std.determinism
-
-import v2.std.node { Symbol }
-
-type NonDetSource
-  = HashIteration
-  | TimeRead
-  | RandomRead
-  | EnvRead
-
-type DeterminismClass
-  = Deterministic
-  | NonDeterministic { source: NonDetSource }
-
 type DeterminismFact {
   signature: Symbol,
-  classification: DeterminismClass
+  classification: std.determinism.Determinism
+}
+
+fn determinism_fact_classification(fact: DeterminismFact) -> std.determinism.Determinism {
+  fact.classification
+}
+
+fn determinism_fact_signature(fact: DeterminismFact) -> Symbol {
+  fact.signature
 }

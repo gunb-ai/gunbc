@@ -1,64 +1,103 @@
 module v2.test.manual.coproduct_reflection_conformance
 
-import v2.std.algebra { bag_eq, Empty, list_snoc_item }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Behavior,
-  CoproductArmPayloadPair,
-  Symbol,
-  syntactic_coproduct_arm_keys,
-  syntactic_coproduct_arm_pairs
+import extdeps.languages.rust.capabilities {
+  RustCapability
 }
-import v2.std.node_query {
+import extdeps.uri { UriScheme, uri_scheme_inhabitants }
+import v2.std.node_reflection {
   coproduct_arm_keys,
-  coproduct_arm_payload_pairs,
   coproduct_nullary_inhabitants
 }
+import v2.test.fixture.coproduct_reflection_generic_wrapper {
+  nullary_reflection_through_generic_wrapper
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
+data reflect_imported_derive_trait_type: Symbol = ^RustCapability
+
+data reflect_uri_scheme_type: Symbol = ^UriScheme
+
+type NullaryReflectionRequestedA
+  = NullaryReflectionRequestedAFirst
+  | NullaryReflectionRequestedASecond
+
+type NullaryReflectionContextB
+  = NullaryReflectionContextBFirst
+  | NullaryReflectionContextBSecond
 
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
 
-fn coproduct_arm_payload_pair_eq(a: CoproductArmPayloadPair, b: CoproductArmPayloadPair) -> Bool {
-  symbol_eq(a: a.label, b: b.label)
-    && symbol_eq(a: a.payload_type_name, b: b.payload_type_name)
+fn behavior_discriminant(value: Behavior) -> Symbol {
+  discriminant(v: value)
 }
 
-fn coproduct_arm_key_set_matches_syntactic(type_name: Symbol) -> Bool {
-  bag_eq(
-    xs: coproduct_arm_keys(type_name: type_name),
-    ys: syntactic_coproduct_arm_keys(type_name: type_name),
-    eq: symbol_eq
+fn connective_discriminant(value: Connective) -> Symbol {
+  discriminant(v: value)
+}
+
+fn imported_derive_trait_discriminant(
+  value: RustCapability
+) -> Symbol {
+  discriminant(v: value)
+}
+
+fn imported_derive_trait_discriminants(
+  inhabitants: List<RustCapability>
+) -> List<Symbol> {
+  fold_list(
+    xs: inhabitants,
+    empty: std.algebra.Empty,
+    cons: fn(acc, value) {
+      list_snoc_item(
+        xs: acc,
+        item: imported_derive_trait_discriminant(value: value)
+      )
+    }
   )
 }
 
-fn coproduct_arm_payload_pair_set_matches_syntactic(type_name: Symbol) -> Bool {
-  bag_eq(
-    xs: coproduct_arm_payload_pairs(type_name: type_name),
-    ys: syntactic_coproduct_arm_pairs(type_name: type_name),
-    eq: coproduct_arm_payload_pair_eq
+test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper() -> Bool {
+  match nullary_reflection_through_generic_wrapper(
+    type_name: reflect_imported_derive_trait_type,
+    discriminant_of: imported_derive_trait_discriminant
+  ) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      bag_eq(
+        xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
+        ys: coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
+        eq: symbol_eq
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn nullary_reflection_context_b_discriminant(
+  value: NullaryReflectionContextB
+) -> Symbol {
+  discriminant(v: value)
+}
+
+fn nullary_reflection_context_b_outcome_is_rejected(
+  result: Outcome<List<NullaryReflectionContextB>>
+) -> Bool {
+  match result {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool {
+  nullary_reflection_context_b_outcome_is_rejected(
+    result: coproduct_nullary_inhabitants(
+      type_name: ^NullaryReflectionRequestedA,
+      discriminant_of: nullary_reflection_context_b_discriminant
+    )
   )
-}
-
-test fn witness_connective_arm_key_set_path3() -> Bool {
-  coproduct_arm_key_set_matches_syntactic(type_name: reflect_connective_type)
-}
-
-test fn witness_behavior_arm_key_set_path3() -> Bool {
-  coproduct_arm_key_set_matches_syntactic(type_name: reflect_behavior_type)
-}
-
-test fn witness_connective_arm_payload_pair_path3() -> Bool {
-  coproduct_arm_payload_pair_set_matches_syntactic(type_name: reflect_connective_type)
-}
-
-test fn witness_behavior_arm_payload_pair_path3() -> Bool {
-  coproduct_arm_payload_pair_set_matches_syntactic(type_name: reflect_behavior_type)
 }
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
@@ -70,28 +109,31 @@ test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
 }
 
 fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
-  fold(
+  fold_list(
     xs: inhabitants,
-    init: Empty,
-    f: fn(acc, v) { list_snoc_item(xs: acc, item: discriminant(v: v)) }
+    empty: std.algebra.Empty,
+    cons: fn(acc, v) { list_snoc_item(xs: acc, item: discriminant(v: v)) }
   )
 }
 
 fn symbol_in_list(sym: Symbol, xs: List<Symbol>) -> Bool {
-  fold(xs, init: false, f: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
 }
 
 fn all_inhabitant_discriminants_are_reflected_arms(
   inhabitants: List<Behavior>,
   arm_keys: List<Symbol>
 ) -> Bool {
-  fold(inhabitants, init: true, f: fn(acc, v) {
+  fold_list(xs: inhabitants, empty: true, cons: fn(acc, v) {
     acc && symbol_in_list(sym: discriminant(v: v), xs: arm_keys)
   })
 }
 
 test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_behavior_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_behavior_type,
+    discriminant_of: behavior_discriminant
+  ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
       bag_eq(
@@ -107,18 +149,55 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
 }
 
 test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_connective_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_connective_type,
+    discriminant_of: connective_discriminant
+  ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn coproduct_reflection_conformance_holds() -> Bool {
-  witness_connective_arm_key_set_path3()
-    && witness_behavior_arm_key_set_path3()
-    && witness_connective_arm_payload_pair_path3()
-    && witness_behavior_arm_payload_pair_path3()
-    && witness_connective_behavior_arm_sets_are_distinct()
-    && witness_behavior_nullary_inhabitant_set_matches_arm_keys()
-    && witness_connective_nullary_inhabitants_fail_closed()
+// THE DRIFT WALL FOR THE ONE DECLARED INHABITANT ROSTER THE COMPILE CLOSURE DEPENDS ON.
+//
+// extdeps.uri uri_scheme_inhabitants exists because v2.std.compilers.target_model must
+// decode a UriScheme from a node WITHOUT host type reflection -- the emitted compiler
+// carries no declaration index, so the reflective form was an unrealized seam there. The
+// price of that repair is a second statement of a fact the type declaration already makes,
+// and this row is what stops the two drifting: reflection over the SAME type, which is
+// available here because a witness runs under the interpreter, must agree arm-for-arm with
+// the roster's discriminants.
+//
+// It is bag equality in both directions on purpose. A roster missing an arm reds because
+// reflection carries a key the roster does not; a roster carrying a stale arm the type no
+// longer declares reds because the roster carries a key reflection does not. A subset check
+// in either direction would have admitted exactly one of those, and the missing-arm case is
+// the one that reaches production as a refusal on a scheme the model does declare.
+fn uri_scheme_discriminant(value: UriScheme) -> Symbol {
+  discriminant(v: value)
+}
+
+fn uri_scheme_roster_discriminants(inhabitants: List<UriScheme>) -> List<Symbol> {
+  fold_list(
+    xs: inhabitants,
+    empty: std.algebra.Empty,
+    cons: fn(acc, value) {
+      list_snoc_item(xs: acc, item: uri_scheme_discriminant(value: value))
+    }
+  )
+}
+
+test fn witness_uri_scheme_declared_roster_matches_reflected_arm_keys() -> Bool {
+  bag_eq(
+    xs: uri_scheme_roster_discriminants(inhabitants: uri_scheme_inhabitants()),
+    ys: coproduct_arm_keys(type_name: reflect_uri_scheme_type),
+    eq: symbol_eq
+  )
+}
+
+// THE NON-VACUITY CONTROL FOR THE ROW ABOVE. bag_eq over two empty lists is true, so a
+// reflection call that silently returned nothing -- the empty-observation narrow -- would
+// green the wall while checking nothing at all.
+test fn witness_uri_scheme_reflected_arm_keys_are_non_empty() -> Bool {
+  length(xs: coproduct_arm_keys(type_name: reflect_uri_scheme_type)) > 0
 }

@@ -1,0 +1,16 @@
+module gunbc.rust_decl_type_overlay
+
+fn rust_decl_type_container_overlay_is_admitted(
+  authored_is_leaf: Bool,
+  closed_alias: Bool,
+  applied_arg_count: Int?,
+  resolved_child_count: Int,
+) -> Bool {
+  let has_applied_args = match applied_arg_count {
+    Present { value: count } => count > 0
+    Absent => false
+  }
+  authored_is_leaf
+    && !closed_alias
+    && (has_applied_args || resolved_child_count > 0)
+}

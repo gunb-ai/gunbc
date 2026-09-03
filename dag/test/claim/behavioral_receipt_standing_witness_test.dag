@@ -1,0 +1,190 @@
+module test.claim.behavioral_receipt_standing_witness
+
+import std.logic { Bool }
+import v2.compiler.self_host.promotion_admission {
+  BehavioralComparisonObservation,
+  ObservedVerdict,
+  BuildOutcome,
+  EquivalenceOutcome,
+  FaultOutcome,
+  BehavioralReceiptStanding,
+  BehavioralCorpus,
+  behavioral_receipt_standing,
+  behavioral_receipt_standing_holds
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// FIXTURE CONTROL for behavioral_receipt_standing, following the house pattern of
+// build_cache_placement_observation_test: construct the observation directly and assert its
+// classification rather than performing the emit-compile-run it describes. That makes these arms
+// authorable at all — the wet path is refused by the hermetic floor by construction, so a control
+// that had to RUN a comparison could never execute here, and the distinction would be tested only
+// where it is USED, never where it is DECIDED.
+//
+// WHAT IT GUARDS. slb_behavioral_receipt_holds collapsed seven authored causes to one bit at three
+// sites, each spelled `ObservationUnavailable { cause: _ } => false`. Exhaustive over
+// ObservationUnavailable, no missing arm, no warning: total at the level examined and blind one
+// level down. The arms below pin that the causes do NOT share a remedy and so must not share a
+// rendering — an unobserved build means the compile never ran, an unobserved equivalence means it
+// ran and reported nothing, an unobserved fault means the fault arm never executed. Three owners.
+//
+// WHY THIS IS NOT A RESTATEMENT OF THE Bool. Every arm below is false under
+// behavioral_receipt_standing_holds, so a witness over the Bool alone could not tell them apart —
+// precisely the defect. The discriminating question is which STANDING each observation produces,
+// and only the standing can answer it.
+
+data corpus_fixture: BehavioralCorpus = BehavioralCorpus {
+  identity: "fixture truth table",
+  expected_cases: 4
+}
+
+fn observation(
+  build: ObservedVerdict<BuildOutcome>,
+  equivalence: ObservedVerdict<EquivalenceOutcome>,
+  fault: ObservedVerdict<FaultOutcome>
+) -> BehavioralComparisonObservation {
+  BehavioralComparisonObservation {
+    corpus: corpus_fixture,
+    cases_compared: 4,
+    build: build,
+    equivalence: equivalence,
+    fault: fault
+  }
+}
+
+fn standing_is_build_unobserved(s: BehavioralReceiptStanding) -> Bool {
+  match s {
+    ReceiptBuildUnobserved { cause: _ } => true
+    ReceiptHolds => false
+    ReceiptBuildFailed { cause: _ } => false
+    ReceiptEquivalenceUnobserved { cause: _ } => false
+    ReceiptBehaviorDiverges { at_case: _ } => false
+    ReceiptFaultUnobserved { cause: _ } => false
+    ReceiptFaultNotCaught { at_case: _ } => false
+  }
+}
+
+fn standing_is_equivalence_unobserved(s: BehavioralReceiptStanding) -> Bool {
+  match s {
+    ReceiptEquivalenceUnobserved { cause: _ } => true
+    ReceiptHolds => false
+    ReceiptBuildUnobserved { cause: _ } => false
+    ReceiptBuildFailed { cause: _ } => false
+    ReceiptBehaviorDiverges { at_case: _ } => false
+    ReceiptFaultUnobserved { cause: _ } => false
+    ReceiptFaultNotCaught { at_case: _ } => false
+  }
+}
+
+fn standing_is_fault_unobserved(s: BehavioralReceiptStanding) -> Bool {
+  match s {
+    ReceiptFaultUnobserved { cause: _ } => true
+    ReceiptHolds => false
+    ReceiptBuildUnobserved { cause: _ } => false
+    ReceiptBuildFailed { cause: _ } => false
+    ReceiptEquivalenceUnobserved { cause: _ } => false
+    ReceiptBehaviorDiverges { at_case: _ } => false
+    ReceiptFaultNotCaught { at_case: _ } => false
+  }
+}
+
+// THE THREE ARMS THE COLLAPSE MADE INDISTINGUISHABLE. Each is a DIFFERENT stage failing to be
+// observed; under the old predicate all three were one `false`.
+test fn unobserved_build_is_not_an_unobserved_comparison() -> Bool {
+  let s = behavioral_receipt_standing(
+    o: observation(
+      build: ObservationUnavailable { cause: ^stage_incomplete },
+      equivalence: ObservationUnavailable { cause: ^comparison_did_not_run },
+      fault: ObservationUnavailable { cause: ^fault_run_did_not_run }
+    )
+  )
+  standing_is_build_unobserved(s: s) && !standing_is_equivalence_unobserved(s: s)
+}
+
+test fn unobserved_comparison_over_a_green_build_names_the_comparison() -> Bool {
+  let s = behavioral_receipt_standing(
+    o: observation(
+      build: Observed { value: BuildGreen },
+      equivalence: ObservationUnavailable { cause: ^comparison_unreported },
+      fault: ObservationUnavailable { cause: ^fault_run_did_not_run }
+    )
+  )
+  standing_is_equivalence_unobserved(s: s) && !standing_is_build_unobserved(s: s)
+}
+
+test fn unobserved_fault_over_an_agreeing_comparison_names_the_fault() -> Bool {
+  let s = behavioral_receipt_standing(
+    o: observation(
+      build: Observed { value: BuildGreen },
+      equivalence: Observed { value: BehaviorAgrees },
+      fault: ObservationUnavailable { cause: ^fault_run_unreported }
+    )
+  )
+  standing_is_fault_unobserved(s: s) && !standing_is_equivalence_unobserved(s: s)
+}
+
+// THE CAUSAL ORDER IS LOAD-BEARING. With the build unobserved, downstream verdicts are meaningless
+// rather than false, so reporting a fault cause here would name a symptom as the finding. This arm
+// pins that an unobserved build wins over a POSITIVE downstream verdict.
+test fn an_unobserved_build_is_reported_over_downstream_agreement() -> Bool {
+  let s = behavioral_receipt_standing(
+    o: observation(
+      build: ObservationUnavailable { cause: ^stage_incomplete },
+      equivalence: Observed { value: BehaviorAgrees },
+      fault: Observed { value: FaultCaught }
+    )
+  )
+  standing_is_build_unobserved(s: s)
+}
+
+// EVERY ONE OF THE ABOVE IS false UNDER THE Bool — the arm proving the witnesses above are not
+// restatements of the predicate they replace: the Bool cannot separate them, which is why the
+// collapse was invisible.
+test fn the_bool_cannot_separate_what_the_standing_separates() -> Bool {
+  let a = behavioral_receipt_standing(
+    o: observation(
+      build: ObservationUnavailable { cause: ^stage_incomplete },
+      equivalence: ObservationUnavailable { cause: ^comparison_did_not_run },
+      fault: ObservationUnavailable { cause: ^fault_run_did_not_run }
+    )
+  )
+  let b = behavioral_receipt_standing(
+    o: observation(
+      build: Observed { value: BuildGreen },
+      equivalence: Observed { value: BehaviorAgrees },
+      fault: ObservationUnavailable { cause: ^fault_run_unreported }
+    )
+  )
+  !behavioral_receipt_standing_holds(s: a)
+    && !behavioral_receipt_standing_holds(s: b)
+    && standing_is_build_unobserved(s: a)
+    && standing_is_fault_unobserved(s: b)
+}
+
+// THE POSITIVE CONTROL. A fully observed, fully agreeing run holds — the standing does not refuse
+// everything.
+test fn a_fully_observed_agreeing_run_holds() -> Bool {
+  let s = behavioral_receipt_standing(
+    o: observation(
+      build: Observed { value: BuildGreen },
+      equivalence: Observed { value: BehaviorAgrees },
+      fault: Observed { value: FaultCaught }
+    )
+  )
+  behavioral_receipt_standing_holds(s: s)
+}
+
+// A CAUGHT FAULT IS REQUIRED, NOT OPTIONAL. A run that built, agreed, and did NOT catch its planted
+// fault has not established the receipt — it established that the comparison cannot tell right from
+// wrong, the claim-entailing-evidence rule at receipt level.
+test fn agreement_without_a_caught_fault_does_not_hold() -> Bool {
+  let s = behavioral_receipt_standing(
+    o: observation(
+      build: Observed { value: BuildGreen },
+      equivalence: Observed { value: BehaviorAgrees },
+      fault: Observed { value: FaultNotCaught { at_case: "planted fault run exited zero" } }
+    )
+  )
+  !behavioral_receipt_standing_holds(s: s)
+}

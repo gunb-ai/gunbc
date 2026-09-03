@@ -1,0 +1,81 @@
+module test.claim.build_latency_actions_collect_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_window: NonEmptyStr = "controlled fixture: two hosts, one build job each, success only" as NonEmptyStr
+
+fn fixture_jobs() -> List<ActionsBuildJobObservation> {
+  [
+    ActionsBuildJobObservation {
+      run_id: "run-a" as NonEmptyStr,
+      job_id: "job-a" as NonEmptyStr,
+      runner_name: "srv1-01" as NonEmptyStr,
+      job_name: "build" as NonEmptyStr,
+      conclusion: "success" as NonEmptyStr,
+      duration: millisecond(count: 600000),
+    },
+    ActionsBuildJobObservation {
+      run_id: "run-b" as NonEmptyStr,
+      job_id: "job-b" as NonEmptyStr,
+      runner_name: "srv2-03" as NonEmptyStr,
+      job_name: "build" as NonEmptyStr,
+      conclusion: "success" as NonEmptyStr,
+      duration: millisecond(count: 240000),
+    },
+    ActionsBuildJobObservation {
+      run_id: "run-c" as NonEmptyStr,
+      job_id: "job-c" as NonEmptyStr,
+      runner_name: "srv1-02" as NonEmptyStr,
+      job_name: "lint" as NonEmptyStr,
+      conclusion: "success" as NonEmptyStr,
+      duration: millisecond(count: 1000),
+    },
+    ActionsBuildJobObservation {
+      run_id: "run-d" as NonEmptyStr,
+      job_id: "job-d" as NonEmptyStr,
+      runner_name: "srv1-04" as NonEmptyStr,
+      job_name: "build" as NonEmptyStr,
+      conclusion: "failure" as NonEmptyStr,
+      duration: millisecond(count: 900000),
+    },
+  ]
+}
+
+test fn witness_population_fold_groups_by_host_and_filters_job_name() -> Bool {
+  let srv1 = build_latency_population_for_host(
+    jobs: fixture_jobs(),
+    host: operator_host_srv1,
+    job_name: gunbc_ci_build_job_name,
+    conclusion: gunbc_ci_build_success_conclusion,
+    window: fixture_window,
+  )
+  let srv2 = build_latency_population_for_host(
+    jobs: fixture_jobs(),
+    host: operator_host_srv2,
+    job_name: gunbc_ci_build_job_name,
+    conclusion: gunbc_ci_build_success_conclusion,
+    window: fixture_window,
+  )
+  (srv1.durations |> length) == 1
+    && (srv2.durations |> length) == 1
+    && measure_count(m: srv1.durations |> skip(n: 0) |> first) == 600000
+    && measure_count(m: srv2.durations |> skip(n: 0) |> first) == 240000
+}
+
+test fn witness_runner_name_maps_to_host_prefix() -> Bool {
+  match host_from_runner_name(runner: "srv3-07" as NonEmptyStr) {
+    Present { value: h } => (h as String) == "srv3"
+    Absent => false
+  }
+}
+
+test fn witness_unknown_runner_name_yields_no_host() -> Bool {
+  match host_from_runner_name(runner: "github-hosted" as NonEmptyStr) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_api_fold_returns_one_population_per_fleet_host() -> Bool {
+  (build_latency_population_from_actions_api(jobs: fixture_jobs(), window: fixture_window) |> length) == 4
+}

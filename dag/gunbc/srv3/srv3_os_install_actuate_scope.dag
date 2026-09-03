@@ -1,0 +1,134 @@
+module gunbc.srv3_os_install_actuate_scope
+
+import gunbc.os_install {
+  OsInstallPlanReady,
+  OsInstallPlanRefused,
+  srv3_os_install_plan_standing,
+  srv3_seeded_os_install_plan_standing,
+  srv3_os_install_plan_autoinstall,
+}
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_ubuntu_install_media_install_path }
+import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
+import gunbc.assimilate.bmc_token_federation { bmc_srv3_secret_name }
+import gunbc.os_install_mechanism {
+  NbdProxyVirtualMediaInstall,
+  OsInstallMechanismRefused,
+  OsInstallMechanismSelected,
+  PxeHttpInstall,
+  VirtualMediaInstall,
+  srv3_install_mechanism_solution,
+}
+import extdeps.os.ubuntu_autoinstall { NoCloudNet, NoCloudLocal }
+import extdeps.uri { uri_wire }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr, Int, Bool, String }
+
+data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
+  reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_actuator_virtual_media_iso_install_path (NoCloudLocal on-ISO). BMC runtime login resolves intent vs observed credential phase (gunbc.srv3_bmc_credential_resolve); destructive boot-once gated by workflow escalation (gunbc.srv3_os_install_actuate_workflow)."
+}
+
+data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
+
+type AutoinstallSeedDeliveryRefusal {
+  seed_url: NonEmptyStr
+  refusal: NonEmptyStr
+}
+
+fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
+  match srv3_install_mechanism_solution {
+    OsInstallMechanismRefused { cause: _ } => none
+    OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall } =>
+        match srv3_os_install_plan_standing {
+          OsInstallPlanRefused { cause: _ } => none
+          OsInstallPlanReady { plan: p } =>
+        match srv3_os_install_plan_autoinstall(plan: p).delivery {
+          NoCloudNet { seed_url: url } =>
+            Present {
+              value: AutoinstallSeedDeliveryRefusal {
+                seed_url: uri_wire(uri: url),
+                refusal: "fail-closed: NoCloudNet autoinstall seed unreachable on NbdProxyVirtualMediaInstall path — no install server serves the nbd-proxy path; stock ISO may boot interactive installer or hang waiting for network seed; prefix:os-install-actuated does NOT solve seed delivery" as NonEmptyStr,
+              }
+            }
+          NoCloudLocal => none
+        }
+        }
+    OsInstallMechanismSelected { mechanism: VirtualMediaInstall } => none
+    OsInstallMechanismSelected { mechanism: PxeHttpInstall } => none
+  }
+}
+
+// THE SEED GAP IS ONLY ASKABLE ONCE A MECHANISM IS SELECTED. This asserted the
+// refusal was Present and fail-closed, which held while srv3 solved to
+// nbd-proxy. srv3_autoinstall_seed_delivery_refusal answers none when the
+// mechanism itself refuses — correctly, because there is no selected path whose
+// seed could be unreachable — so on 3.22.00 the honest answer is Absent. Keeping
+// the old assertion would have required a seed refusal describing the seed of a
+// path that was never selected.
+fn srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses() -> Bool {
+  match srv3_autoinstall_seed_delivery_refusal() {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The seeded plan derives from the same solve, so it refuses with it. The
+// NoCloudLocal delivery this used to assert is not readable off a plan that does
+// not exist, and reading it anyway is the substitution this lane keeps finding.
+fn srv3_seeded_plan_refuses_with_the_solve() -> Bool {
+  match srv3_seeded_os_install_plan_standing {
+    OsInstallPlanRefused { cause: _ } => true
+    OsInstallPlanReady { plan: _ } => false
+  }
+}
+
+data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_authority",
+    decl_name: "roadmap_document",
+    field: WholeDeclaration,
+  }
+}
+
+data srv3_os_install_actuate_credential_debt_marker: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_bmc_credential_resolve",
+    decl_name: "resolve_bmc_credential",
+    field: WholeDeclaration
+  }
+}
+
+fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
+  match srv3_os_install_actuate_credential_debt_marker {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
+  bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
+}
+
+
+fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
+  srv3_actuator_virtual_media_iso_install_path == srv3_seeded_ubuntu_install_media_install_path
+    && string_contains(
+      s: srv3_actuator_virtual_media_iso_install_path as String,
+      pattern: "srv3-seeded.iso",
+    )
+}
+
+// PREP IS NOT INSTALL — still the claim, and now demonstrated more sharply. The
+// credential wiring and the seeded ISO path are prep facts and hold regardless of
+// whether a delivery mechanism is selectable; the plan and seed halves refuse
+// with the solve. That split is exactly the point: prep survives, solving does
+// not, so nothing here can be mistaken for a solved install.
+fn srv3_os_install_actuate_is_actuator_prep_not_install_solved() -> Bool {
+  srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses()
+    && srv3_os_install_actuate_credential_resolution_is_wired()
+    && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
+    && srv3_seeded_plan_refuses_with_the_solve()
+    && srv3_actuator_prep_binds_seeded_iso_path()
+}

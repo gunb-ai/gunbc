@@ -1,10 +1,13 @@
 module v2.std.coercion
 
-import v2.std.algebra { Empty, list_append, list_snoc_item }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Empty }
+import v2.std.algebra { list_append, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v2.std.diagnostic {
   Accepted,
+  bind_outcome,
   Diagnostic,
   ExternalContractUnknown,
   None,
@@ -17,6 +20,11 @@ import v2.std.diagnostic {
   Unavailable,
   outcome_rejected
 }
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_model_declared_inhabitants,
+  target_model_selection_priority
+}
 import v2.std.find_witness {
   CandidateSet,
   FindWitnessResult,
@@ -26,7 +34,7 @@ import v2.std.find_witness {
   TargetSelectionPolicy,
   find_witness,
 }
-import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
+import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v2.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
@@ -123,6 +131,87 @@ fn coercion_candidate_set_from_declared_inhabitants(
       coercion_candidate_set_not_closed_diagnostic(inhabitants_root: inhabitants_root)
     )
   }
+}
+// Identity admission and semantic coercion are distinct judgments.
+// coercion_identity_from_target_model accepts the TargetModel itself — never a caller-supplied
+// CoercionCandidateSet — and reads its unique target_model_edge_declared_inhabitants and
+// target_model_edge_selection_policy children inside this authority. Exact selection from that
+// authored roster grounds CoercionQuality.Identity without claiming a resolved type for source. A
+// candidate roster derived from source cannot enter this API; generic candidate sets remain
+// available only to the semantic coercion path whose source is a compiler-derived
+// CanonicalGrounding. This is the API-level wall between target-model membership and
+// self-certification.
+
+fn coercion_homomorphism_evidence_for_node(
+  source: Node,
+  fw: FindWitnessResult,
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source },
+      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge {
+        label: Named { name: ^coercion_homomorphism_evidence_find_witness },
+        target: fw.witness.evidence
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn coercion_identity_from_target_model(
+  source: Node,
+  target: TargetModel,
+) -> Outcome<CoercionResult> {
+  bind_outcome(
+    o: target_model_declared_inhabitants(target: target),
+    f: fn(inhabitants_root) {
+      bind_outcome(
+        o: target_model_selection_priority(target: target),
+        f: fn(priority) {
+          bind_outcome(
+            o: coercion_candidate_set_from_declared_inhabitants(
+              inhabitants_root: inhabitants_root,
+              closedness_property: ^target_model_edge_declared_inhabitants
+            ),
+            f: fn(candidates) {
+              match find_witness(
+                source_facts: source,
+                candidates: candidates.set,
+                predicate: PreservationPredicate {
+                  algebra: source,
+                  preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+                },
+                multiplicity_policy: TargetSelection {
+                  policy: TargetDeclaredPriority { priority: priority }
+                }
+              ) {
+                Accepted { value: fw, diagnostics: fw_d } =>
+                  Accepted {
+                    value: CoercionResult {
+                      target: fw.candidate,
+                      quality: Identity,
+                      witness: CoercionWitness {
+                        homomorphism: HomomorphismWitness {
+                          rule: ^homomorphism_rule_exact_structural_equality,
+                          evidence: coercion_homomorphism_evidence_for_node(
+                            source: source,
+                            fw: fw
+                          )
+                        }
+                      }
+                    },
+                    diagnostics: fw_d
+                  }
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              }
+            }
+          )
+        }
+      )
+    }
+  )
 }
 fn coercion_quality_for_witness(
   source: CanonicalGrounding,
@@ -223,15 +312,7 @@ fn coercion_homomorphism_evidence(
   source: CanonicalGrounding,
   fw: FindWitnessResult,
 ) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source.node },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
-    ],
-    occurrence_id: SyntheticOccurrence
-}
+  coercion_homomorphism_evidence_for_node(source: source.node, fw: fw)
 }
 fn coercion_fold_exact_structural(
   source: CanonicalGrounding,

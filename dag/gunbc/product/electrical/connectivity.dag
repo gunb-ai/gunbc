@@ -1,0 +1,106 @@
+module product.electrical.connectivity
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+
+// ELECTRICAL CONNECTIVITY IS NOT A PROPERTY OF ONE PRODUCT'S CIRCUIT. These identities and the net
+// relation over them were first written inside product.compute_board.analog, the little RC specimen
+// that emits a SPICE deck, because that is where the first consumer happened to be. The copper
+// carrier then had to import them from there — so a generic PCB authority depended on one product's
+// analog article, and a motherboard could only acquire copper by impersonating that specimen.
+//
+// That is not a layering nicety. AnalogCircuitIntent's component universe is a CLOSED coproduct of
+// resistor, capacitor and independent voltage source: a CPU, a BMC, a DDR slot, a regulator or a
+// connector has no variant there, so the dependency was not merely awkward, it was unsatisfiable.
+// What copper is genuinely about is connectivity — which terminals are the same node — and that
+// question is identical for an RC divider and for an Altra motherboard.
+//
+// So the general grain lives here and the specimen consumes it, rather than the reverse. Nothing in
+// this module names a component KIND, a value, a package, a simulator or a target: a terminal is a
+// component identity plus a terminal identity, and a net is a set of them.
+// AN IDENTITY IS SCOPED TO THE DESIGN IT BELONGS TO, and before this it was not. A component
+// identity and a net identity were board-global branded strings, so VCC on one board was
+// structurally the SAME net as VCC on another: an admitted copper result, a footprint binding or a
+// routing verdict established against one board was replayable against a different board whose
+// labels happened to agree, and nothing in the model could tell the two apart. Every board calls a
+// rail VCC, so the collision is the common case rather than a corner one.
+//
+// The design axis is carried in the identity itself rather than checked at each consumer, because a
+// check is a second representation of a constraint the carrier can hold (DESIGN section 5,
+// construction over validation): with the design inside the identity, two boards' nets are unequal
+// by the same structural equality every join already performs, and there is no separate
+// same-board predicate for a consumer to forget.
+type ElectricalDesignIdentity = NonEmptyStr where brand("ElectricalDesignIdentity")
+
+type ComponentInstanceIdentity {
+  design: ElectricalDesignIdentity
+  local_identity: NonEmptyStr
+}
+
+// A TERMINAL IDENTITY GETS NO DESIGN AXIS, deliberately. A terminal is not board-global to begin
+// with: it is meaningful only relative to the component that has it, and the component already
+// carries the design. Adding a second design field here would let a terminal disagree with its own
+// component about which board it is on -- a state with no meaning and, worse, one a consumer would
+// have to check for. Scope comes from containment, not from repetition.
+type TerminalIdentity = NonEmptyStr where brand("TerminalIdentity")
+
+type NetIdentity {
+  design: ElectricalDesignIdentity
+  local_identity: NonEmptyStr
+}
+
+fn component_instance_identity(design: ElectricalDesignIdentity, local_identity: NonEmptyStr) -> ComponentInstanceIdentity {
+  ComponentInstanceIdentity { design: design, local_identity: local_identity }
+}
+
+fn net_identity(design: ElectricalDesignIdentity, local_identity: NonEmptyStr) -> NetIdentity {
+  NetIdentity { design: design, local_identity: local_identity }
+}
+
+fn design_identity_eq(a: ElectricalDesignIdentity, b: ElectricalDesignIdentity) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn component_identity_eq(a: ComponentInstanceIdentity, b: ComponentInstanceIdentity) -> Bool {
+  design_identity_eq(a: a.design, b: b.design) && a.local_identity == b.local_identity
+}
+
+fn net_identity_eq(a: NetIdentity, b: NetIdentity) -> Bool {
+  design_identity_eq(a: a.design, b: b.design) && a.local_identity == b.local_identity
+}
+
+// The local label, for diagnostics and for target syntax that has no notion of a design. Never used
+// to decide whether two identities are the same -- that is what the _eq functions above are for, and
+// comparing through this would restore exactly the cross-board collision the design axis closes.
+fn component_local_label(c: ComponentInstanceIdentity) -> NonEmptyStr {
+  c.local_identity
+}
+
+fn net_local_label(n: NetIdentity) -> NonEmptyStr {
+  n.local_identity
+}
+
+// A TERMINAL IS REFERENCED BY IDENTITY, NOT BY SPELLING. Naming the component and the terminal
+// separately is what makes "is this terminal on that net" a decidable join rather than a coincidence
+// between two prose fields.
+type ElectricalTerminalRef {
+  component: ComponentInstanceIdentity
+  terminal: TerminalIdentity
+}
+
+type ElectricalNet {
+  identity: NetIdentity
+  members: List<ElectricalTerminalRef>
+}
+
+fn terminal_ref(component: ComponentInstanceIdentity, terminal: TerminalIdentity) -> ElectricalTerminalRef {
+  ElectricalTerminalRef { component: component, terminal: terminal }
+}
+
+fn terminal_ref_equal(a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  component_identity_eq(a: a.component, b: b.component) && (a.terminal as String) == (b.terminal as String)
+}
+
+fn net_contains_terminal(net: ElectricalNet, t: ElectricalTerminalRef) -> Bool {
+  fold(net.members, init: false, f: fn(acc, m) { acc || terminal_ref_equal(a: m, b: t) })
+}

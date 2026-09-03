@@ -1,0 +1,217 @@
+module test.claim.host_axis_caps
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, String, List, list_length }
+import gunbc.host_axis_caps {
+  CapMember,
+  ControlShadowUnit,
+  control_shadow_unit,
+  control_shadow_revert_script,
+  control_shadow_revert_script_matches_extdeps_argv,
+  desired_cap_member,
+  cap_dropin_content,
+  caps_effects,
+  caps_upsert_count,
+  caps_teardown_count,
+  caps_refusal_count,
+  control_shadow_effects,
+  control_shadow_teardown_count,
+  control_shadow_refusal_count,
+  derived_runner_memory_max_cap_member,
+  derived_runner_memory_high_cap_member,
+  derived_runner_memory_cap_members,
+  runner_memory_cap_author_ready_for_shadow_revert,
+  host_axis_caps_author_before_revert_enforced,
+  deploy_memory_cap_apply_script_ordered,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
+  deploy_memory_cap_script_matches_ordered_composition,
+  deploy_memory_cap_shadow_revert_script,
+  deploy_runner_memory_cap_author_script,
+  cap_upsert_script,
+}
+import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
+import gunbc.host_converge {
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import std.measure { byte_size_count }
+
+data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
+data path30: NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr
+data foreign_path: NonEmptyStr = "/etc/systemd/system/actions-runner@.service.d/99-foreign.conf"
+data mem_max: NonEmptyStr = "MemoryMax"
+data swap_max: NonEmptyStr = "MemorySwapMax"
+data bytes16g: NonEmptyStr = "17179869184"
+data bytes32g: NonEmptyStr = "34359738368"
+data bytes8g: NonEmptyStr = "8589934592"
+
+fn srv_caps_desired() -> List<CapMember> {
+  [
+    desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g),
+    desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
+  ]
+}
+
+test fn caps_idempotence_zero_effects() -> Bool {
+  let d = srv_caps_desired()
+  caps_upsert_count(desired: d, observed: d) == 0
+    && caps_teardown_count(desired: d, observed: d) == 0
+    && caps_refusal_count(desired: d, observed: d) == 0
+    && match caps_effects(desired: d, observed: d) {
+         EffectsReady { effects: e } => list_length(items: e) == 0
+         ApplyRefused { refusals: _ } => false
+       }
+}
+
+test fn caps_perturb_names_exactly_the_drifted_row() -> Bool {
+  let d = srv_caps_desired()
+  let observed = [
+    CapMember { dropin_path: path20, content: cap_dropin_content(property: mem_max, bytes_value: bytes8g) },
+    desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
+  ]
+  caps_upsert_count(desired: d, observed: observed) == 1
+    && caps_teardown_count(desired: d, observed: observed) == 0
+    && caps_refusal_count(desired: d, observed: observed) == 0
+    && caps_upsert_count(desired: d, observed: d) == 0
+}
+
+test fn caps_foreign_occupant_refuses_never_deletes() -> Bool {
+  let d = srv_caps_desired()
+  let foreign = CapMember { dropin_path: foreign_path, content: "[Service]\nMemoryMax=1\n" }
+  let observed = [
+    desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g),
+    desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
+    foreign,
+  ]
+  caps_refusal_count(desired: d, observed: observed) == 1
+    && caps_teardown_count(desired: d, observed: observed) == 0
+    && match caps_effects(desired: d, observed: observed) {
+         ApplyRefused { refusals: r } => list_length(items: r) == 1
+         EffectsReady { effects: _ } => false
+       }
+    && caps_teardown_count(
+         desired: [desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g)],
+         observed: d,
+       ) == 1
+}
+
+test fn caps_content_is_derived_not_handspelled() -> Bool {
+  cap_dropin_content(property: mem_max, bytes_value: bytes16g) == "[Service]\nMemoryMax=17179869184\n"
+    && cap_dropin_content(property: swap_max, bytes_value: bytes32g) == "[Service]\nMemorySwapMax=34359738368\n"
+    && cap_dropin_content(property: mem_max, bytes_value: bytes8g) != cap_dropin_content(property: mem_max, bytes_value: bytes16g)
+}
+
+data shadow_unit: NonEmptyStr = "actions-runner@srv1-01.service"
+
+test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
+  let observed = [control_shadow_unit(unit: shadow_unit)]
+  control_shadow_teardown_count(desired: [], observed: observed) == 1
+    && control_shadow_refusal_count(desired: [], observed: observed) == 0
+    && match control_shadow_effects(desired: [], observed: observed) {
+         EffectsReady { effects: e } => list_length(items: e) == 1
+         ApplyRefused { refusals: _ } => false
+       }
+    && control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
+}
+
+test fn control_shadow_idempotence_zero_effects() -> Bool {
+  control_shadow_teardown_count(desired: [], observed: []) == 0
+    && control_shadow_refusal_count(desired: [], observed: []) == 0
+}
+
+test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
+  let max = derived_runner_memory_max_cap_member()
+  let high = derived_runner_memory_high_cap_member()
+  let desired = gunbc_runner_slot_desired()
+  string_contains(s: max.content, pattern: to_string(byte_size_count(b: desired.memory_max)))
+    && string_contains(s: max.dropin_path as String, pattern: "20-fleet-width")
+    && string_contains(s: high.content, pattern: to_string(byte_size_count(b: desired.memory_high)))
+    && string_contains(s: high.dropin_path as String, pattern: "40-fleet-high")
+}
+
+test fn witness_control_shadow_revert_script_matches_extdeps_argv() -> Bool {
+  control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
+}
+
+test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
+  !runner_memory_cap_author_ready_for_shadow_revert(observed: [])
+    && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
+}
+
+// witness_runner_memory_cap_author_script_derived WAS HERE. Its subject
+// (runner_memory_cap_author_script, the converge-side authoring script) is deleted along with the
+// converge apply arm, so the witness goes with it. What it actually checked — that the authored
+// bytes are derived from gunbc.runner_slot_allocation and carry no revert — is still checked on
+// the deploy-side script, which is the one that executes, by
+// witness_cap_author_before_shadow_revert_enforced_in_axis_caps and the two wrong-order REDs
+// below.
+test fn witness_deploy_memory_cap_author_script_derives_allocation_bytes() -> Bool {
+  let desired = gunbc_runner_slot_desired()
+  string_contains(s: deploy_runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_max)))
+    && string_contains(s: deploy_runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_high)))
+    && !string_contains(
+      s: deploy_runner_memory_cap_author_script(),
+      pattern: deploy_memory_cap_shadow_revert_script(units: [shadow_unit]),
+    )
+}
+
+test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool {
+  let units = [shadow_unit]
+  host_axis_caps_author_before_revert_enforced
+    && deploy_memory_cap_script_author_precedes_shadow_revert(
+      script: deploy_memory_cap_apply_script_ordered(units: units),
+      units: units,
+    )
+}
+
+test fn witness_reversed_deploy_script_fails_author_before_shadow_revert_gate() -> Bool {
+  let units = [shadow_unit]
+  let author = deploy_runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_script(units: units)
+  !deploy_memory_cap_script_author_precedes_shadow_revert(script: concat(reverts, author), units: units)
+}
+
+test fn witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate() -> Bool {
+  let units = [shadow_unit]
+  let author = deploy_runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_script(units: units)
+  !deploy_memory_cap_script_author_precedes_shadow_revert(
+    script: concat(concat(reverts, author), "padding"),
+    units: units,
+  )
+}
+
+
+// The quoting these three witnesses pin is the SERIALIZER'S, not this module's: the cap
+// content is a word handed to a bash grammar tree, so an apostrophe inside it is encoded by
+// extdeps.posix.shell_command_language posix_single_quote. Under the former hand-joined
+// spelling ("printf '%s' '" ++ content ++ "' > path") the same content closed the quoting
+// early and the rest of the drop-in became shell words — so each RED below is a real
+// discriminator against that spelling returning, not a restatement of the emitter.
+data apostrophe_cap_content: String = "[Service]\nEnvironment=CAP='quoted'\n"
+
+data apostrophe_cap_member: CapMember = CapMember {
+  dropin_path: path20,
+  content: apostrophe_cap_content,
+}
+
+test fn witness_cap_upsert_script_quotes_content_through_posix_authority() -> Bool {
+  string_contains(
+    s: cap_upsert_script(m: apostrophe_cap_member),
+    pattern: posix_single_quote(spelling: apostrophe_cap_content),
+  )
+}
+
+test fn witness_cap_upsert_script_does_not_emit_raw_apostrophe_content() -> Bool {
+  !string_contains(
+    s: cap_upsert_script(m: apostrophe_cap_member),
+    pattern: concat("'", concat(apostrophe_cap_content, "'")),
+  )
+}
+
+test fn witness_cap_upsert_script_carries_no_hand_spelled_printf_quoting() -> Bool {
+  !string_contains(s: cap_upsert_script(m: apostrophe_cap_member), pattern: "printf '%s' '")
+    && !string_contains(s: deploy_runner_memory_cap_author_script(), pattern: "printf '%s' '")
+}

@@ -1,14 +1,5 @@
 module v2.test.grounding_go.subject_roster
 
-import v2.compiler.eval { TestClaimEvalSubject }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.test.grounding_go.sg_claims {
-  subject_go_g2_g1_3_fact_registry,
-  subject_go_g2_sg1_atom_realizations,
-  subject_go_g2_sg2_projection_absence,
-  subject_go_g2_sg5_collection_absence
-}
 
 data grounding_go_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_go_g2_sg1_atom_realizations,

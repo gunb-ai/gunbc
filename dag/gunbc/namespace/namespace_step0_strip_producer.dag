@@ -1,0 +1,66 @@
+module gunbc.namespace_step0_strip_producer
+
+import std.types { List, NonEmptyStr, String }
+import std.import {
+  ImportStripOutcome,
+  ImportStatementsStripped,
+  ImportStripRefused,
+  ImportStripRefusal,
+  ParsedImportStatement,
+  ParsedImportStatements,
+  ImportStatementsParsed,
+  ImportStatementParseRefused,
+  ImportStatementParseCause,
+  import_statement_parse_cause_label,
+  strip_import_statements,
+}
+import gunbc.parsed_import_statement_production { parsed_import_statements_live }
+import tools.multi_module_compile_fixture { FixtureSource }
+
+// The v1 canary and its receipt producer were deleted at the Step-0-proper cut.  This module now
+// owns only the typed per-source rewrite reused by the live v2 pair and the provenance census.
+// Compilation and judgment belong to those callers; keeping the old fold here would preserve the
+// superseded receipt as a second authority after deleting its root.
+
+type Step0StripProductionRefusalCause
+  = Step0SourceImportsNotParsed {
+      file: NonEmptyStr
+      cause: ImportStatementParseCause
+    }
+  | Step0SourceRewriteRefused {
+      file: NonEmptyStr
+      refusal: ImportStripRefusal
+    }
+
+// One source, rewritten. The parse observation and the rewrite are two different authorities and
+// both can refuse, so the two refusals stay apart: a parse that never ran and a span set the
+// rewrite rejected have different owners and different repairs.
+type Step0SourceStrip
+  = Step0SourceStripped {
+      source: FixtureSource
+      removed_statements: List<String>
+    }
+  | Step0SourceStripRefused {
+      cause: Step0StripProductionRefusalCause
+    }
+
+fn namespace_step0_strip_source(source: FixtureSource) -> Step0SourceStrip {
+  match parsed_import_statements_live(file: source.path as String, source: source.content) {
+    ImportStatementParseRefused { cause: cause } =>
+      Step0SourceStripRefused { cause: Step0SourceImportsNotParsed { file: source.path, cause: cause } }
+    ImportStatementsParsed { statements: statements } =>
+      match strip_import_statements(
+        source_file: source.path as String,
+        source: source.content,
+        statements: statements
+      ) {
+        ImportStripRefused { refusal: refusal } =>
+          Step0SourceStripRefused { cause: Step0SourceRewriteRefused { file: source.path, refusal: refusal } }
+        ImportStatementsStripped { rewritten_source: rewritten, removed_statements: removed } =>
+          Step0SourceStripped {
+            source: FixtureSource { path: source.path, content: rewritten },
+            removed_statements: removed
+          }
+      }
+  }
+}

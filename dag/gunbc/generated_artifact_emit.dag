@@ -1,0 +1,229 @@
+
+module gunbc.generated_artifact_emit
+
+import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
+  RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
+  Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact,
+  EvaluationBudgetConsequenceGeneratedRsArtifact,
+  FileTransportRealizationGeneratedRsArtifact,
+  artifact_path,
+  artifact_commit_policy,
+  CommitRequired, NotCommitted,
+  GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
+  committed_generated_artifacts
+}
+import gunbc.generated_workflow_provenance {
+  generated_workflow_provenance_header,
+  GeneratedWorkflowProvenanceHeaderProduced,
+  GeneratedWorkflowProvenanceHeaderNotApplicable,
+}
+import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
+import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.ci_yaml_validate { ci_yml_parses }
+import gunbc.gitignore_emit { expected_gitignore }
+import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
+import gunbc.roadmap_authority { expected_roadmap_md }
+import gunbc.design_document { expected_design_md }
+import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
+import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
+import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
+import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
+import gunbc.ci_spec { ci_heal_author_commit_regen_command }
+import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.runner_host_grants { runner_host_sudoers_content }
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.plan { expected_plan_md }
+import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
+import gunbc.stage0_crate_layout_emit {
+  expected_stage0_crate_layout_generated_dag,
+  expected_stage0_crate_layout_generated_rs
+}
+import gunbc.stage0_crate_partition_emit {
+  expected_stage0_crate_partition_generated_dag
+}
+import gunbc.stage0_executable_assembly_emit {
+  expected_stage0_executable_assembly_generated_dag
+}
+import gunbc.evaluation_budget_consequence_emit { expected_evaluation_budget_consequence_generated_rs }
+import gunbc.v1_interpreter_dispatch_emit {
+  expected_v1_interpreter_dispatch_generated_rs,
+  V1InterpreterDispatchGenerated,
+  V1InterpreterDispatchGenerationRefused,
+}
+
+type ArtifactGenerationOutcome
+  = ArtifactGenerated { content: String }
+  | ArtifactGenerationRefused { reason: String }
+
+fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: content }
+}
+
+fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+  match a {
+    WitnessFloorYamlArtifact => match expected_witness_floor_yml() {
+      WitnessFloorGenerated { content } => artifact_generated(content: content)
+      WitnessFloorGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
+      FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
+      FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    FleetDesiredAdmissionYamlArtifact => match expected_fleet_desired_yml() {
+      FleetDesiredGenerated { content } => artifact_generated(content: content)
+      FleetDesiredGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    GitignoreArtifact => artifact_generated(content: expected_gitignore())
+    GitattributesArtifact => match expected_gitattributes() {
+      GitattributesGenerated { content } => artifact_generated(content: content)
+      GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
+    }
+    RoadmapArtifact => artifact_generated(content: expected_roadmap_md())
+    DesignArtifact => artifact_generated(content: expected_design_md())
+    DesignFailureModesArtifact => artifact_generated(content: expected_design_failure_modes_md())
+    DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
+    GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
+    GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
+    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command))
+    RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
+    CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
+      CouponProgramGenerated { content } => artifact_generated(content: content)
+      CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_dag())
+    Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_rs())
+    Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_partition_generated_dag())
+    Stage0ExecutableAssemblyGeneratedDagArtifact => artifact_generated(content: expected_stage0_executable_assembly_generated_dag())
+    EvaluationBudgetConsequenceGeneratedRsArtifact =>
+      artifact_generated(content: expected_evaluation_budget_consequence_generated_rs())
+    V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
+      V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
+      V1InterpreterDispatchGenerationRefused { reason } =>
+        ArtifactGenerationRefused { reason: reason }
+    }
+    FileTransportRealizationGeneratedRsArtifact => artifact_generated(content: expected_gunbc_file_transport_generated_rs())
+    AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
+    RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
+      RunnerHostDeployFound { deploy } =>
+        artifact_generated(
+          content: runner_host_sudoers_content(
+            deploy: deploy,
+            artifact_path: artifact_path(a: a),
+          )
+        )
+      RunnerHostDeployUnmodeled { host: unmodeled } =>
+        ArtifactGenerationRefused {
+          reason: concat(
+            "no runner host deploy row for enrolled host ",
+            unmodeled as String
+          )
+        }
+    }
+    PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
+  }
+}
+
+// One bytes boundary owns workflow provenance. A workflow admitted by the commit-policy registry
+// without a provenance projection refuses here; non-workflow artifacts pass through unchanged.
+// This is a rung-3 wall, not a rung-4 constructor removal: the inconsistent pair remains writable
+// in the two authorities, but it cannot produce committed workflow bytes.
+fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+  let generated = artifact_generate_unadorned(a: a)
+  match generated_workflow_provenance_header(a: a) {
+    GeneratedWorkflowProvenanceHeaderProduced { content: header } => match generated {
+      ArtifactGenerated { content } => artifact_generated(content: concat(header, content))
+      ArtifactGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    GeneratedWorkflowProvenanceHeaderNotApplicable => match artifact_commit_policy(a: a) {
+      CommitRequired { consumer: GithubActionsWorkflow } => ArtifactGenerationRefused {
+        reason: "GithubActionsWorkflow artifact has no generated-workflow provenance projection"
+      }
+      CommitRequired { consumer: GitProtocol } => generated
+      CommitRequired { consumer: ProjectDocumentation } => generated
+      CommitRequired { consumer: HostReconciler } => generated
+      NotCommitted => generated
+    }
+  }
+}
+
+// P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED
+// generation outcome rather than calling artifact_generate itself. The two variants whose extra
+// check depends on generation success (Stage0EmitPlanGeneratedDagArtifact,
+// V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time
+// here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO
+// artifact_generate calls per artifact for those two variants, contradicting
+// gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller
+// now supplies the outcome it already produced (observe_generated_artifact reuses its own match
+// result); no second entry point to generation remains.
+
+fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
+  match a {
+    WitnessFloorYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    GitignoreArtifact => true
+    GitattributesArtifact => true
+    RoadmapArtifact => true
+    DesignArtifact => true
+    DesignFailureModesArtifact => true
+    DesignRungDropsArtifact => true
+    GithooksPrePushArtifact => true
+    GithooksPreCommitArtifact => true
+    GeneratedArtifactMergeDriverArtifact => true
+    RunnerDeployArtifact => true
+    CouponCadQueryProgramArtifact => true
+    Stage0CrateLayoutGeneratedDagArtifact => true
+    Stage0CrateLayoutGeneratedRsArtifact => true
+    Stage0CratePartitionGeneratedDagArtifact => true
+    Stage0ExecutableAssemblyGeneratedDagArtifact => true
+    EvaluationBudgetConsequenceGeneratedRsArtifact => true
+    V1InterpreterDispatchGeneratedRsArtifact => match generated {
+      ArtifactGenerated { content: _ } => true
+      ArtifactGenerationRefused { reason: _ } => false
+    }
+    FileTransportRealizationGeneratedRsArtifact => true
+    AutoinstallUserDataArtifact { spec: _ } => true
+    RunnerHostSudoersArtifact { host: _ } => match generated {
+      ArtifactGenerated { content: _ } => true
+      ArtifactGenerationRefused { reason: _ } => false
+    }
+    PlanArtifact { plan: _ } => true
+  }
+}
+
+// WHY A THIRD STATE. The consumer asks "what is the generated body for this path", and the
+// honest answers are three, not two: produced, refused, and NOT A GENERATED ARTIFACT AT ALL.
+// Folding the third into ArtifactGenerationRefused would tell a caller holding an ordinary
+// mirror path that generation FAILED for it, which is false -- nothing was ever supposed to
+// generate it -- and a caller acting on that difference would act wrongly. Two zeros, one
+// spelling, is the conflation DESIGN names; the third variant is what keeps them apart.
+type GeneratedArtifactPathBody
+  = GeneratedArtifactPathBodyProduced { content: String }
+  | GeneratedArtifactPathBodyRefused { reason: String }
+  | GeneratedArtifactPathNotGenerated
+
+// The generated-artifact population, keyed by path instead of by artifact.
+//
+// PURELY A PROJECTION. It mints no roster, forks no dispatch, and edits neither authority it
+// consults: `committed_generated_artifacts` is the population main_wet folds over, `artifact_path`
+// is the artifact->path authority, and `artifact_generate` is the single artifact->content
+// dispatch. This asks those three the question a path-holding consumer has, which is the whole
+// reason it can exist without becoming a second answer to anything.
+fn generated_artifact_body_for_path(path: String) -> GeneratedArtifactPathBody {
+  match committed_generated_artifacts() |> filter(a => artifact_path(a: a) == path) |> first {
+    Absent => GeneratedArtifactPathNotGenerated
+    Present { value: a } =>
+      match artifact_generate(a: a) {
+        ArtifactGenerated { content } => GeneratedArtifactPathBodyProduced { content: content }
+        ArtifactGenerationRefused { reason } => GeneratedArtifactPathBodyRefused { reason: reason }
+      }
+  }
+}

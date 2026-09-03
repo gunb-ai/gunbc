@@ -1,5 +1,8 @@
 module v2.compiler.self_host
 
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import v2.std.algebra { filter, fold_list }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
@@ -8,10 +11,11 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   node_locus,
   Outcome,
-  port_locus,
+  invariant_port_locus,
   Rejected,
   Unavailable,
-  diagnostics_singleton
+  diagnostics_singleton,
+  outcome_accepted
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -19,7 +23,9 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
-import v2.std.node { content_hash, Node, Symbol }
+import v2.compiler.compile { CoreNode }
+import v2.std.node { combine_hash, Hash, Node, Symbol, symbol_identity_digest }
+import v2.std.text { String, string_is_empty }
 import v2.std.witness {
   Holds,
   StructuralPropertyWitness,
@@ -27,10 +33,73 @@ import v2.std.witness {
   Witness
 }
 
-type CoreNode = Node
+// `type CoreNode = Node` WAS DECLARED HERE AND IS DELETED. The identical alias, onto the identical
+// target, was also declared in v2.compiler.compile, and v2.compiler.ingest already imports it from
+// there -- so one concept had two authorities, which DESIGN 3 forbids independently of anything
+// downstream. This module now asks the same authority ingest does.
+//
+// WHAT THE DUPLICATE COST, measured rather than asserted: v1's direct-call argument-type judgment
+// resolves a nominal type by NAME, and a name declared in two modules is census-AMBIGUOUS, so the
+// transparent-alias identity relation (gunbc#8873) excludes it conservatively and cannot decide
+// that CoreNode and Node are the same type. Deleting the v2.* argument-type exemption over the
+// corpus left 67 blocking diagnostics, and 48 of them -- 72% -- were this one duplicate, as
+// `expected Primitive(CoreNode), got Product(Node)` and its reverse across 05_eval.dag,
+// self_host_fixed_point_test.dag, 00_compile.dag and this file.
+//
+// TO BE EXACT ABOUT WHAT THIS DOES AND DOES NOT FIX: it removes this SPECIMEN, not the class. A
+// name legitimately declared in two modules is still unadjudicable, and that is gunbc#8879's
+// row 24. The relation-side repair for the class is still-carp-717's, and the two are
+// complementary rather than alternatives -- theirs makes a legitimate duplicate survivable, this
+// one makes an illegitimate duplicate not exist.
 
 type SourceModels {
-  model_corpus: List<CoreNode>
+  stage1_committed_seed_source: Medium<String>
+  stage2_regen_emitted_source: Medium<String>
+}
+
+// WHAT THIS SYMBOL ACTUALLY GATES, renamed to say so.
+//
+// It read `self_host_equality_authority`, declaring byte identity to be the authority
+// on self-host equality. DESIGN §7 says the opposite in as many words: a byte-identical
+// fixed point is explicitly NOT the goal, because matching bytes forces the emitter to
+// reproduce the seed's warts and thereby cements the seed's accidents. Under the old
+// name the milestone meant the wrong thing in both directions — byte-identical but
+// behaviorally wrong was the fixed point, and cleaner source that behaved identically
+// was not.
+//
+// The machinery underneath was never the problem, and is NOT retired here. Its one
+// production consumer is `v2.workflow.self_host_realized_comparison_claims`
+// `self_host_realized_comparison_staleness_gate_holds`, which compares committed regen
+// output against freshly emitted regen output — a staleness gate, the same shape as the
+// ci.yml drift gate, and a fact worth gating on bytes because bytes are exactly what
+// went stale. Two different facts were fused under one name: what regen drift means,
+// and what self-hosting means. Only the second was wrong.
+//
+// Self-host equality now lives in `v2.compiler.self_host.promotion_admission`, which
+// imports no filesystem surface and cannot read source bytes at all, so the two
+// authorities cannot be confused again by reaching for whichever is nearer.
+//
+// Function and test identities under this module still read `self_host_*` while gating
+// staleness. Renaming them is the remaining half and is blocked, not deferred by taste:
+// `gunbc.witness_deferral_freeze` enumerates
+// `self_host_fixed_point_validate_accepts_matching_regen_bytes` and
+// `self_host_fixed_point_validate_rejects_perturbed_regen_bytes` at identity grain, and
+// a frozen row the tree no longer carries refuses. A rename is a removal plus an
+// addition outside the roster, so it reds the freeze gate. Dissolve-on: those two
+// identities leave the frozen roster, at which point the `self_host_` prefix on the
+// staleness machinery goes with them.
+data regen_staleness_authority: Symbol = ^canonical_emitted_bytes
+
+type SelfHostStageEmission {
+  node: CoreNode
+  source: Medium<String>
+  digest: Hash
+}
+
+type SelfHostFixpointEqual {
+  over: Symbol
+  stage1: SelfHostStageEmission
+  stage2: SelfHostStageEmission
 }
 
 type StructurallyEqual {
@@ -43,16 +112,11 @@ type BootstrapRoundtripEqual {
   expected_stage: CoreNode
 }
 
-type FixedPointEqual {
-  emitted_stage: CoreNode
-  reference_stage: CoreNode
-}
-
 type StageEmissionEquality = Witness<StructurallyEqual>
 
 type BootstrapRoundtripCheck = Witness<BootstrapRoundtripEqual>
 
-type FixedPointCheck = Witness<FixedPointEqual>
+type FixedPointCheck = Witness<SelfHostFixpointEqual>
 
 type PromotionWitness {
   candidate_bootstrap_roundtrip_sub_check: BootstrapRoundtripCheck
@@ -62,50 +126,136 @@ type PromotionWitness {
 fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^self_host_runner_not_realized,
-    at: port_locus(port: ^self_host_runner_port),
+    at: invariant_port_locus(port: ^self_host_runner_port, invariant: ^self_host_runner_not_realized),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn candidate_promotion_witness(
-  stage1_candidate: CoreNode,
-  reference_stage1: CoreNode
-) -> PromotionWitness {
-  PromotionWitness {
-    candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_scaffold(
-      produced_stage: stage1_candidate,
-      expected_stage: reference_stage1
-    ),
-    candidate_fixed_point_sub_check: fixed_point_scaffold(
-      emitted_stage: stage1_candidate,
-      reference_stage: reference_stage1
-    )
+fn self_host_fixpoint_digest_mismatch_diagnostic(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^self_host_fixpoint_digest_mismatch,
+    at: node_locus(node: stage2.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn bootstrap_roundtrip_scaffold(
+fn source_text_code_unit_digest(text: String) -> Hash {
+  symbol_identity_digest(sym: text)
+}
+
+fn canonical_emitted_bytes_digest(source: Medium<String>) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: ^canonical_emitted_bytes),
+    b: source_text_code_unit_digest(text: source.carried)
+  )
+}
+
+fn self_host_stage_emission(
+  node: CoreNode,
+  source: Medium<String>
+) -> SelfHostStageEmission {
+  SelfHostStageEmission {
+    node: node,
+    source: source,
+    digest: canonical_emitted_bytes_digest(source: source)
+  }
+}
+
+fn self_host_fixpoint_equal(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> SelfHostFixpointEqual {
+  SelfHostFixpointEqual {
+    over: regen_staleness_authority,
+    stage1: stage1,
+    stage2: stage2
+  }
+}
+
+fn self_host_snake_closes(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> Bool {
+  stage1.digest == stage2.digest
+}
+
+fn self_host_fixpoint_witness(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> FixedPointCheck {
+  if self_host_snake_closes(stage1: stage1, stage2: stage2) {
+    Holds {
+      value: self_host_fixpoint_equal(stage1: stage1, stage2: stage2)
+    }
+  } else {
+    Violates {
+      diagnostic: self_host_fixpoint_digest_mismatch_diagnostic(
+        stage1: stage1,
+        stage2: stage2
+      )
+    }
+  }
+}
+
+fn source_models_regen_byte_pair_ready(models: SourceModels) -> Bool {
+  !string_is_empty(s: models.stage1_committed_seed_source.carried)
+    && !string_is_empty(s: models.stage2_regen_emitted_source.carried)
+}
+
+fn bootstrap_roundtrip_check(
   produced_stage: CoreNode,
   expected_stage: CoreNode
 ) -> BootstrapRoundtripCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^bootstrap_roundtrip_not_realized,
-      at: node_locus(node: expected_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
+  match stage_emission_equality(
+    emitted_candidate: produced_stage,
+    reference_stage1: expected_stage
+  ) {
+    Holds { value: eq } =>
+      Holds {
+        value: BootstrapRoundtripEqual {
+          produced_stage: eq.right,
+          expected_stage: eq.left
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
 fn fixed_point_scaffold(
-  emitted_stage: CoreNode,
-  reference_stage: CoreNode
+  stage1_node: CoreNode,
+  stage2_node: CoreNode,
+  source_models: SourceModels
 ) -> FixedPointCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^fixed_point_not_realized,
-      at: node_locus(node: reference_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
+  self_host_fixpoint_witness(
+    stage1: self_host_stage_emission(
+      node: stage1_node,
+      source: source_models.stage1_committed_seed_source
+    ),
+    stage2: self_host_stage_emission(
+      node: stage2_node,
+      source: source_models.stage2_regen_emitted_source
+    )
+  )
+}
+
+fn candidate_promotion_witness(
+  stage1_candidate: CoreNode,
+  reference_stage1: CoreNode,
+  source_models: SourceModels
+) -> PromotionWitness {
+  PromotionWitness {
+    candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_check(
+      produced_stage: stage1_candidate,
+      expected_stage: reference_stage1
+    ),
+    candidate_fixed_point_sub_check: fixed_point_scaffold(
+      stage1_node: reference_stage1,
+      stage2_node: stage1_candidate,
+      source_models: source_models
+    )
   }
 }
 
@@ -117,10 +267,20 @@ fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWi
 }
 
 fn self_host_fixed_point_digests_match(
-  emitted_stage1: CoreNode,
-  emitted_stage2: CoreNode
+  stage1_node: CoreNode,
+  stage2_node: CoreNode,
+  source_models: SourceModels
 ) -> Bool {
-  content_hash(n: emitted_stage1) == content_hash(n: emitted_stage2)
+  self_host_snake_closes(
+    stage1: self_host_stage_emission(
+      node: stage1_node,
+      source: source_models.stage1_committed_seed_source
+    ),
+    stage2: self_host_stage_emission(
+      node: stage2_node,
+      source: source_models.stage2_regen_emitted_source
+    )
+  )
 }
 
 fn stage_emission_equality(
@@ -151,12 +311,81 @@ fn stage_emission_equality(
   }
 }
 
+fn boundary_tag_bytes(filename: String, content: String) -> String {
+  concat(filename, concat("\n", content))
+}
+
+fn read_roster_manifest(manifest_path: String) -> List<String> {
+  let raw = filesystem_read(path: manifest_path).content
+  filter(xs: raw.split("\n"), predicate: fn(s) { !string_is_empty(s: s) })
+}
+
+fn fold_side_bytes(root: String, roster: List<String>) -> String {
+  fold_list(
+    xs: roster,
+    empty: "",
+    cons: fn(acc, filename) {
+      let path = concat(root, concat("/", filename))
+      let content = filesystem_read(path: path).content
+      concat(acc, boundary_tag_bytes(filename: filename, content: content))
+    }
+  )
+}
+
+fn source_models_from_roster_and_roots(
+  committed_root: String,
+  emitted_root: String,
+  roster: List<String>
+) -> SourceModels {
+  SourceModels {
+    stage1_committed_seed_source: Medium {
+      carried: fold_side_bytes(root: committed_root, roster: roster),
+      fidelity: Lossless
+    },
+    stage2_regen_emitted_source: Medium {
+      carried: fold_side_bytes(root: emitted_root, roster: roster),
+      fidelity: Lossless
+    }
+  }
+}
+
+fn source_models_from_manifest_and_roots(
+  committed_root: String,
+  emitted_root: String,
+  manifest_path: String
+) -> SourceModels {
+  source_models_from_roster_and_roots(
+    committed_root: committed_root,
+    emitted_root: emitted_root,
+    roster: read_roster_manifest(manifest_path: manifest_path)
+  )
+}
+
 fn self_host_fixed_point_validate(
   stage1_candidate: CoreNode,
   source_models: SourceModels,
   reference_stage1: CoreNode
 ) -> Outcome<PromotionWitness> {
-  Rejected {
-    diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
+  if !source_models_regen_byte_pair_ready(models: source_models) {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
+    }
+  } else {
+    match fixed_point_scaffold(
+      stage1_node: reference_stage1,
+      stage2_node: stage1_candidate,
+      source_models: source_models
+    ) {
+      Holds { value: _ } =>
+        outcome_accepted(
+          value: candidate_promotion_witness(
+            stage1_candidate: stage1_candidate,
+            reference_stage1: reference_stage1,
+            source_models: source_models
+          )
+        )
+      Violates { diagnostic: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d) }
+    }
   }
 }

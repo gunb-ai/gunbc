@@ -1,0 +1,50 @@
+module std.behavioral
+
+
+type SideEffects = ReadOnly | WritesState | WritesExternal
+
+type Severity = Low | Medium | High | Critical
+
+type Confidence = Documented | HighConfidence | MediumConfidence | LowConfidence | Assumed
+
+type PrerequisiteKind = Capability | Credential | Infrastructure | Policy | Tooling | Runtime | Other
+
+type FailureMode {
+  name: String
+  condition: String?
+  http_status: Int?
+  recoverable: Bool
+  retry_safe: Bool
+}
+
+type EdgeCase {
+  description: String
+  trigger: String?
+  severity: Severity
+}
+
+type Prerequisite {
+  description: String
+  kind: PrerequisiteKind
+}
+
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}
+
+type OperationBehavior {
+  side_effects: SideEffects
+  determinism: std.determinism.Determinism
+  failure_modes: List<FailureMode>
+  edge_cases: List<EdgeCase>
+  confidence: Confidence
+  prerequisites: List<Prerequisite>
+  assumptions: List<String>
+  unknowns: List<String>
+}

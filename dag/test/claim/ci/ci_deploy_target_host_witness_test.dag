@@ -1,0 +1,121 @@
+module test.claim.ci_deploy_target_host_witness
+
+import gunbc.ci_spec { gunbc_ci_deploy_srv1_stage }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_srv1_hostname_proves_target() -> Bool {
+  let proof = deploy_target_proof_from_access(access: ci_deploy_srv1_access)
+  deploy_target_host_apply_permitted(
+    proof: proof,
+    observed_hostname: "srv1",
+    observed_runner_name: "actions-runner@srv1-01.service"
+  )
+}
+
+test fn witness_srv2_hostname_refused_for_srv1_deploy() -> Bool {
+  deploy_local_apply_refused_for_observed_host(
+    host: ci_deploy_srv1_access.host.identity,
+    transport: ci_deploy_srv1_access.transport,
+    observed_hostname: "srv2",
+    observed_runner_name: "actions-runner@srv2-09.service"
+  )
+}
+
+test fn witness_srv12_runner_name_refused_for_srv1_deploy() -> Bool {
+  deploy_local_apply_refused_for_observed_host(
+    host: ci_deploy_srv1_access.host.identity,
+    transport: ci_deploy_srv1_access.transport,
+    observed_hostname: "srv12",
+    observed_runner_name: "actions-runner@srv12-01.service"
+  )
+}
+
+test fn witness_ubicloud_runner_name_refused_for_local_apply() -> Bool {
+  deploy_local_apply_refused_for_observed_host(
+    host: ci_deploy_srv1_access.host.identity,
+    transport: ci_deploy_srv1_access.transport,
+    observed_hostname: "ubicloud-runner",
+    observed_runner_name: "ubicloud-standard-16-arm"
+  )
+}
+
+test fn witness_ssh_transport_structural_proof_holds() -> Bool {
+  let ssh_access = deploy_access_with_ssh_transport(
+    access: ci_deploy_srv1_access,
+    ssh_host: operator_host_srv1
+  )
+  deploy_target_ssh_proof_structurally_valid(
+    proof: deploy_target_proof_from_access(access: ssh_access)
+  )
+}
+
+test fn witness_ssh_transport_mismatch_refused() -> Bool {
+  let ssh_access = deploy_access_with_ssh_transport(
+    access: ci_deploy_srv1_access,
+    ssh_host: operator_host_srv2
+  )
+  !deploy_target_ssh_proof_structurally_valid(
+    proof: deploy_target_proof_from_access(access: ssh_access)
+  )
+}
+
+// deploy_runner_label_list_contains carries a qualified name because the bare one was a homonym
+// and this module declares no imports, so every reference resolves out of whatever pool the run
+// assembled. gunbc.design.component declares a byte-identical label_list_contains under different
+// parameter names (xs, x), and a run whose pool contained that module bound THIS module's call
+// sites to it — the witness failed with "no parameter named 'labels' (declared: [xs, x])", a local
+// declaration losing to a pool member. The rename removes the collision at this site. It does not
+// fix the underlying class: one concept (membership in a List<String>) still has three
+// declarations in the corpus — the component one, this one, and std.materialization_ladder
+// string_list_contains — and reference binding still varies with which unrelated files a run
+// loads. Both are recorded on the namespace lane; neither is repaired here.
+fn deploy_runner_label_list_contains(labels: List<String>, needle: String) -> Bool {
+  fold(labels, init: false, f: (acc, l) => acc || (l == needle))
+}
+
+test fn witness_deploy_stage_pins_srv1_runner_label() -> Bool {
+  gunbc_ci_deploy_srv1_stage.runner == gunbc_ci_deploy_srv1_runner_spec()
+    && match gunbc_ci_deploy_srv1_stage.runner {
+      SelfHosted { labels: labels } =>
+        deploy_runner_label_list_contains(labels: labels, needle: "srv1")
+          && deploy_runner_label_list_contains(labels: labels, needle: "self-hosted")
+      _ => false
+    }
+}
+
+test fn witness_deploy_job_not_on_ubicloud_runner() -> Bool {
+  match gunbc_ci_deploy_srv1_stage.runner {
+    RunsOnExpression { expression: _ } => false
+    SelfHosted { labels: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_preflight_script_checks_target_host() -> Bool {
+  let script = deploy_target_host_preflight_script(access: ci_deploy_srv1_access)
+  string_contains(s: script, pattern: "deploy-target-host: PASS host=srv1")
+    && string_contains(s: script, pattern: deploy_target_host_refusal_local)
+    && string_contains(s: script, pattern: "hostname -s")
+    && string_contains(s: script, pattern: "printenv RUNNER_NAME")
+}
+
+test fn witness_local_proof_requires_host_identity() -> Bool {
+  match deploy_target_proof_from_access(access: ci_deploy_srv1_access) {
+    RunnerIdentityOnHost { host: id } => id == operator_host_srv1
+    _ => false
+  }
+}
+
+test fn witness_access_host_is_srv1() -> Bool {
+  ci_deploy_srv1_access.host == srv1_host
+    && match ci_deploy_srv1_access.transport {
+      LocalShell => true
+      _ => false
+    }
+}
+
+test fn witness_observed_hostname_reads_typed_op_hermetic() -> Bool {
+  deploy_target_host_observed_hostname() == "localhost"
+}
+

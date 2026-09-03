@@ -1,0 +1,70 @@
+module gunbc.cli_services
+
+import std.types { FilePath, String }
+import gunbc.cli_invoke {
+  claim_executor_verify_artifacts_transport_argv,
+  gunbc_run_transport_argv
+}
+
+service gunbc.Cli {
+  operation Run {
+    input {
+      workdir: FilePath
+      bin_path: FilePath
+      source_roots: List<String>
+      entry: String
+      function: String
+      claim_run: Bool = false
+    }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "env",
+        "-C",
+        "{workdir}",
+        "{bin_path}",
+        gunbc_run_transport_argv(
+          source_roots: source_roots,
+          entry: entry,
+          function: function,
+          claim_run: claim_run
+        )
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "gunbc run exited nonzero"
+    }
+  }
+
+}
+
+service claim_executor.Executor {
+  operation VerifyBuildArtifacts {
+    input { workdir: FilePath, bin_path: FilePath, artifact_paths: List<String> }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "env",
+        "-C",
+        "{workdir}",
+        "{bin_path}",
+        claim_executor_verify_artifacts_transport_argv(artifact_paths: artifact_paths)
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "claim_executor build-artifact verification failed"
+    }
+  }
+}

@@ -1,6 +1,7 @@
 module v2.compiler.ingest
 
-import v2.std.algebra { Empty, list_append, zip_eq }
+import std.algebra { Empty }
+import v2.std.algebra { list_append }
 import v2.std.collection {
   Absent,
   List,
@@ -13,6 +14,7 @@ import v2.std.collection {
 import v2.std.grammar {
   ParseTree,
   grammar_relation_emitted_rebuild_from_token_spine,
+  grammar_relation_row_forward_token_spine_selection,
   grammar_relation_rules_formal_productions,
   node_atom_identity_optional
 }
@@ -27,7 +29,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_list_from_node,
 }
 import v2.compiler.compile { CoreNode }
-import v2.compiler.infer { infer }
+import v2.compiler.infer { InferredTree, infer }
 import v2.compiler.emit { emit }
 import extdeps.communication.medium { Medium }
 import v2.compiler.translate {
@@ -49,15 +51,54 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 
-fn parse_atom_frontier_class(atom_identity: Symbol, binding_to_class: Map<Symbol, Symbol>) -> Symbol {
-  match map_get(binding_to_class, atom_identity) {
-    Accepted { value: opt, diagnostics: _ } =>
-      match opt {
-        Present { value: token_class } => token_class
-        Absent => atom_identity
+data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is the parse-tree-to-target bridge (neutralize → infer → emit over CoreNode). Curated seed-linked behavioral receipt compares this module-authority constant until full ingest-tree oracle greens under std_dup-resolved cargo."
+
+fn parse_atom_frontier_class_unrecoverable(atom: Node) -> Outcome<Symbol> {
+  outcome_rejected(
+    Diagnostic {
+      reason: ^parse_tree_atom_token_class_not_recoverable,
+      at: node_locus(node: atom),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn parse_atom_frontier_class_direct(
+  atom: Node,
+  atom_identity: Symbol,
+  token_classes: Map<Symbol, Symbol>
+) -> Outcome<Symbol> {
+  bind_outcome(
+    o: map_get(token_classes, atom_identity),
+    f: fn(direct) {
+      match direct {
+        Present { value: token_class } => outcome_accepted(value: token_class)
+        Absent => parse_atom_frontier_class_unrecoverable(atom: atom)
       }
-    Rejected { diagnostics: _ } => atom_identity
-  }
+    }
+  )
+}
+
+fn parse_atom_frontier_class(
+  atom: Node,
+  atom_identity: Symbol,
+  binding_to_class: Map<Symbol, Symbol>,
+  token_classes: Map<Symbol, Symbol>
+) -> Outcome<Symbol> {
+  bind_outcome(
+    o: map_get(binding_to_class, atom_identity),
+    f: fn(bound) {
+      match bound {
+        Present { value: token_class } => outcome_accepted(value: token_class)
+        Absent =>
+          parse_atom_frontier_class_direct(
+            atom: atom,
+            atom_identity: atom_identity,
+            token_classes: token_classes
+          )
+      }
+    }
+  )
 }
 
 fn binding_class_map_merge_tokens(
@@ -101,6 +142,38 @@ fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<Symbol, Symbo
   }
 }
 
+fn token_class_set_merge_row(acc: Map<Symbol, Symbol>, row: Node) -> Map<Symbol, Symbol> {
+  match row_token_spine_tokens(row: row) {
+    Rejected { diagnostics: _ } => acc
+    Accepted { value: tokens, diagnostics: _ } =>
+      fold(
+        tokens,
+        init: acc,
+        f: fn(a, t) {
+          let c = concrete_syntax_token_class(token: t)
+          map_insert(m: a, key: c, value: c)
+        }
+      )
+  }
+}
+
+fn grammar_relation_token_class_set(rules: Node) -> Map<Symbol, Symbol> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        rules.children,
+        init: empty_map(),
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: _ } => token_class_set_merge_row(acc: acc, row: e.target)
+            Positional => acc
+          }
+        }
+      )
+    _ => empty_map()
+  }
+}
+
 fn row_token_spine_tokens(row: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
@@ -110,128 +183,77 @@ fn row_token_spine_tokens(row: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   )
 }
 
+fn parse_tree_frontier_extend(
+  prefix: List<Symbol>,
+  child: Node,
+  binding_to_class: Map<Symbol, Symbol>,
+  token_classes: Map<Symbol, Symbol>
+) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: operational_parse_tree_project_to_formal_captures(
+      captured: child,
+      binding_to_class: binding_to_class,
+      token_classes: token_classes
+    ),
+    f: fn(rest) { outcome_accepted(value: list_append(left: prefix, right: rest)) }
+  )
+}
+
 fn operational_parse_tree_project_to_formal_captures(
   captured: Node,
-  binding_to_class: Map<Symbol, Symbol>
-) -> List<Symbol> {
+  binding_to_class: Map<Symbol, Symbol>,
+  token_classes: Map<Symbol, Symbol>
+) -> Outcome<List<Symbol>> {
   match node_atom_identity_optional(node: captured) {
     Present { value: id } =>
-      list_append(
-        left: Empty,
-        right: [parse_atom_frontier_class(atom_identity: id, binding_to_class: binding_to_class)]
+      bind_outcome(
+        o: parse_atom_frontier_class(
+          atom: captured,
+          atom_identity: id,
+          binding_to_class: binding_to_class,
+          token_classes: token_classes
+        ),
+        f: fn(token_class) {
+          outcome_accepted(value: list_append(left: Empty, right: [token_class]))
+        }
       )
     Absent =>
       fold(
         captured.children,
-        init: Empty,
+        init: outcome_accepted(value: Empty),
         f: fn(acc, edge) {
-          match edge.label {
-            Named { name: n } =>
-              if n == ^grammar_production_identity_node_projection {
-                acc
-              } else {
-                list_append(
-                  left: acc,
-                  right: operational_parse_tree_project_to_formal_captures(
-                    captured: edge.target,
-                    binding_to_class: binding_to_class
+          bind_outcome(
+            o: acc,
+            f: fn(prefix) {
+              match edge.label {
+                Named { name: n } =>
+                  if n == ^grammar_production_identity_node_projection {
+                    outcome_accepted(value: prefix)
+                  } else {
+                    parse_tree_frontier_extend(
+                      prefix: prefix,
+                      child: edge.target,
+                      binding_to_class: binding_to_class,
+                      token_classes: token_classes
+                    )
+                  }
+                Positional =>
+                  parse_tree_frontier_extend(
+                    prefix: prefix,
+                    child: edge.target,
+                    binding_to_class: binding_to_class,
+                    token_classes: token_classes
                   )
-                )
               }
-            Positional =>
-              list_append(
-                left: acc,
-                right: operational_parse_tree_project_to_formal_captures(
-                  captured: edge.target,
-                  binding_to_class: binding_to_class
-                )
-              )
-          }
-        }
-      )
-  }
-}
-
-fn row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
-  bind_outcome(
-    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
-    f: fn(tokens_root) {
-      bind_outcome(
-        o: concrete_syntax_token_list_from_node(list_node: tokens_root),
-        f: fn(tokens) {
-          let classes = fold(
-            tokens,
-            init: Empty,
-            f: fn(acc, t) {
-              list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
             }
           )
-          outcome_accepted(value: classes)
         }
       )
-    }
-  )
-}
-
-type ForwardRowSelection
-  = ForwardRowNone
-  | ForwardRowOne { emitted: Node }
-  | ForwardRowMany
-
-fn forward_row_select_step(acc: ForwardRowSelection, frontier: List<Symbol>, row: Node) -> ForwardRowSelection {
-  match row_token_spine_classes(row: row) {
-    Rejected { diagnostics: _ } => acc
-    Accepted { value: spine, diagnostics: _ } =>
-      if zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y }) {
-        match find_named_child(root: row, name: ^grammar_relation_field_emitted) {
-          Rejected { diagnostics: _ } => acc
-          Accepted { value: row_emitted, diagnostics: _ } =>
-            match acc {
-              ForwardRowNone => ForwardRowOne { emitted: row_emitted }
-              ForwardRowOne { emitted: _ } => ForwardRowMany
-              ForwardRowMany => ForwardRowMany
-            }
-        }
-      } else {
-        acc
-      }
   }
 }
 
 fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -> Outcome<Node> {
-  match rules.kind {
-    TypeNode { connective: Conj } =>
-      match fold(
-        rules.children,
-        init: ForwardRowNone,
-        f: fn(acc, e) {
-          match e.label {
-            Named { name: _ } => forward_row_select_step(acc: acc, frontier: frontier, row: e.target)
-            Positional => acc
-          }
-        }
-      ) {
-        ForwardRowOne { emitted: emitted } => outcome_accepted(value: emitted)
-        ForwardRowMany =>
-          outcome_rejected(d: Diagnostic {
-            reason: ^parse_tree_to_emitted_node_ambiguous_row,
-            at: node_locus(node: rules),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
-        ForwardRowNone =>
-          outcome_rejected(d: Diagnostic {
-            reason: ^parse_tree_to_emitted_node_no_matching_row,
-            at: node_locus(node: rules),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
-      }
-    _ =>
-      outcome_rejected(d: Diagnostic {
-        reason: ^parse_tree_to_emitted_node_no_matching_row,
-        at: node_locus(node: rules),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      })
-  }
+  grammar_relation_row_forward_token_spine_selection(frontier: frontier, rules: rules)
 }
 
 fn concrete_syntax_token_spine_classes(tokens: List<ConcreteSyntaxToken>) -> List<Symbol> {
@@ -274,12 +296,16 @@ fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) 
   bind_outcome(
     o: target_bundle_child(target: source_model, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
-      let binding_to_class = grammar_relation_binding_to_token_class_map(rules: rules)
-      let frontier = operational_parse_tree_project_to_formal_captures(
-        captured: parse_tree,
-        binding_to_class: binding_to_class
+      bind_outcome(
+        o: operational_parse_tree_project_to_formal_captures(
+          captured: parse_tree,
+          binding_to_class: grammar_relation_binding_to_token_class_map(rules: rules),
+          token_classes: grammar_relation_token_class_set(rules: rules)
+        ),
+        f: fn(frontier) {
+          grammar_relation_row_forward_selection(frontier: frontier, rules: rules)
+        }
       )
-      grammar_relation_row_forward_selection(frontier: frontier, rules: rules)
     }
   )
 }
@@ -314,7 +340,9 @@ fn cross_language_compile(
         f: fn(neutralized) {
           bind_outcome(
             o: infer(tree: neutralized),
-            f: fn(inferred) { emit(tree: inferred, target: target_model) }
+            f: fn(inferred) {
+              emit(tree: inferred, target: target_model)
+            }
           )
         }
       )

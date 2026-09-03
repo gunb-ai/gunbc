@@ -2,6 +2,7 @@
 // Source module: extdeps.cargo
 
 use self::CargoDepSource::*;
+use self::CargoEnvironmentVariable::*;
 use self::CargoTarget::*;
 use self::RustEdition::*;
 use self::TestHarness::*;
@@ -11,14 +12,17 @@ pub use crate::extdeps_cargo_version::{
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_types::FilePathParts;
+pub use crate::std_types::{FilePathParts, List, NonEmptyStr};
+use crate::std_workspace_artifact::FootprintProvenance::CitedUpstream;
+use crate::std_workspace_artifact::IgnoreReason::{LocalCacheState, RegenerableFromSource};
+pub use crate::std_workspace_artifact::{
+    FootprintProvenance, IgnoreReason, WorkspaceArtifact, WorkspaceFootprint,
+};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -47,7 +51,7 @@ pub enum RustEdition {
 }
 
 pub fn rust_edition_str(edition: RustEdition) -> String {
-    match edition {
+    match edition.clone() {
         RustEdition::Edition2015 => "2015".to_string(),
         RustEdition::Edition2018 => "2018".to_string(),
         RustEdition::Edition2021 => "2021".to_string(),
@@ -125,12 +129,12 @@ pub fn cargo_target_source_path(
     target: Rc<CargoTarget>,
     package_name: String,
 ) -> Rc<FilePathParts> {
-    match (*target).clone() {
+    match (*target.clone()).clone() {
         CargoTarget::Lib => Rc::new(FilePathParts {
             segments: Rc::new(vec!["src".to_string(), "lib.rs".to_string()]),
         }),
         CargoTarget::Bin { name: name, .. } => {
-            if (name.clone() == package_name) {
+            if (name.clone() == package_name.clone()) {
                 Rc::new(FilePathParts {
                     segments: Rc::new(vec!["src".to_string(), "main.rs".to_string()]),
                 })
@@ -214,6 +218,71 @@ pub fn default_profile() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn cargo_environment_variables_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "doc.rust-lang.org/cargo/reference/environment-variables.html".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum CargoEnvironmentVariable {
+    CargoHomeEnv,
+    CargoTargetDirEnv,
+    CargoBuildJobsEnv,
+    RustcWrapperEnv,
+}
+
+pub fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> String {
+    match variable.clone() {
+        CargoEnvironmentVariable::CargoHomeEnv => "CARGO_HOME".to_string(),
+        CargoEnvironmentVariable::CargoTargetDirEnv => "CARGO_TARGET_DIR".to_string(),
+        CargoEnvironmentVariable::CargoBuildJobsEnv => "CARGO_BUILD_JOBS".to_string(),
+        CargoEnvironmentVariable::RustcWrapperEnv => "RUSTC_WRAPPER".to_string(),
+    }
+}
+
+pub fn cargo_workspace_footprint(
+    target_dir_patterns: Rc<Vec<String>>,
+    cargo_home_pattern: String,
+) -> Rc<WorkspaceFootprint> {
+    Rc::new(WorkspaceFootprint {
+        provenance: Rc::new(FootprintProvenance::CitedUpstream {
+            display: "Cargo build artifacts".to_string(),
+            upstream: "doc.rust-lang.org/cargo/".to_string(),
+        }),
+        artifacts: v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in target_dir_patterns.iter().cloned() {
+                    __result.push(Rc::new(WorkspaceArtifact {
+                        pattern: p.clone(),
+                        meaning: "cargo build output tree (compiled artifacts, incremental state)"
+                            .to_string(),
+                        reason: Rc::new(IgnoreReason::RegenerableFromSource),
+                    }));
+                }
+                __result
+            }),
+            Rc::new(vec![Rc::new(WorkspaceArtifact {
+                pattern: cargo_home_pattern.clone(),
+                meaning: "CARGO_HOME registry/cache; may include git checkouts".to_string(),
+                reason: Rc::new(IgnoreReason::LocalCacheState),
+            })]),
+        ),
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Edition2015;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -226,3 +295,11 @@ pub struct Edition2024;
 pub struct Harness;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoHarness;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CargoHomeEnv;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CargoTargetDirEnv;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CargoBuildJobsEnv;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RustcWrapperEnv;

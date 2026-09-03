@@ -1,0 +1,587 @@
+module test.claim.discovery_census_witness
+
+import extdeps.bazel.label {
+  Label, LabelParse, LabelParsed, LabelRefused,
+  LabelRefusal, RepositoryQualifiedLabel, MissingRepositoryRootPrefix,
+  MultipleColonSeparators, EmptyTargetName, EmptyPackageSegment, DotSegment,
+  TargetPattern, TargetNameContainsSlash,
+  parse_label, render_label, label_eq,
+}
+import gunbc.build_target {
+  BuildTarget, target_identity, is_required_aggregate,
+  required_aggregate_label,
+  AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
+  AggregateStandingsUnindexable,
+  TargetStanding, BuildStanding, TargetCompleted,
+  TestStanding, TestRunByFloor,
+  required_aggregate_standing,
+  RequiredGateDecision, RequiredGateProceeds, RequiredGateStops, required_gate_decision,
+}
+import gunbc.discovery_census {
+  DiscoveredSite, CensusRow,
+  CensusRefusal, SiteModulePathEmpty, SiteLabelRefused, DuplicateSiteIdentity,
+  SiteCensus, CensusAccepted, CensusRefused,
+  discovery_census, census_planned_labels, census_counts, CensusCounts,
+  CensusPartition, census_partition, census_planned_rows, census_declined_rows,
+  RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
+  required_aggregate_from_census,
+}
+// THE TWO PREPARATION-STAGE DECLINES ARE IMPORTED AND ANSWERED `false` EVERYWHERE BELOW.
+// `required_floor_site_disposition` can never RETURN `DeclinedOutsideGateClosure` or
+// `DeclinedDiscoveryExcluded`: both are decided before a module reaches the prepared subject,
+// from facts a module NAME cannot carry. So their arms here are a claim about that
+// unreachability, not an omission padded out to satisfy exhaustiveness.
+// `PlannedAsChangedWitness` is also unreachable here: selection wraps the ordinary disposition
+// later, after this function has answered. Its arms therefore answer false at every direct call.
+import v2.workflow.required_floor {
+  RequiredFloorDisposition,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  required_floor_site_disposition,
+}
+import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.types { String, Bool }
+import std.integer { Int }
+
+// EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
+// so. Without the declaration the floor's fail-closed default reads the module as live-tree
+// reading and DECLINES it: discovered, counted, never run.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------------------------
+// FIXTURES
+// ---------------------------------------------------------------------------------------------
+
+fn hermetic_site(module_path: String, function: String) -> DiscoveredSite {
+  DiscoveredSite {
+    module_path: module_path,
+    function: function,
+    reads_live_tree: SubstrateInputsOnly {}
+  }
+}
+
+fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
+  DiscoveredSite {
+    module_path: module_path,
+    function: function,
+    reads_live_tree: ReadsLiveTree {}
+  }
+}
+
+// A MIXED POPULATION spanning all FIVE disposition arms. Two members read the live tree; one is
+// fixture-declined and the ordinary witnesses are planned, proving live-tree access forms no
+// admission arm of its own.
+// THE LAST SITE IS A REAL MEMBER OF `floor_cost_debt_roster`, spelled as the module/function pair
+// whose qualified identity the roster holds. Without it every partition assertion over the fourth
+// arm would pass at 0 == 0 -- an empty arm makes its own guard vacuous, and the sum below would
+// balance whether or not the census could classify a withheld row at all.
+fn mixed_sites() -> List<DiscoveredSite> {
+  [
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta"),
+    hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
+    live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
+    live_tree_site(module_path: "v2.test.claim.reads_tree_witness", function: "w_reads"),
+    hermetic_site(module_path: "test.claim.live_deploy.some_product_witness", function: "w_product"),
+    hermetic_site(
+      module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+      function: "no_raw_lifecycle_string_survivors_remain"
+    )
+  ]
+}
+
+fn census_rows_of(sites: List<DiscoveredSite>) -> List<CensusRow> {
+  match discovery_census(sites: sites) {
+    CensusAccepted { rows: rows } => rows
+    CensusRefused { cause: _ } => []
+  }
+}
+
+fn rendered_planned_labels(sites: List<DiscoveredSite>) -> List<String> {
+  reverse(fold(census_planned_labels(rows: census_rows_of(sites: sites)), init: [], f: fn(acc, l) {
+    concat([render_label(l: l)], acc)
+  }))
+}
+
+fn list_holds(xs: List<String>, wanted: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x == wanted) })
+}
+
+
+// THE REFUSAL CLASSIFIERS ARE WILDCARD-FREE, so a widened label grammar cannot make an assertion
+// below pass by folding a new family into an arm it already names.
+fn refusal_is_empty_package_segment(c: LabelRefusal) -> Bool {
+  match c {
+    EmptyPackageSegment { text: _ } => true
+    RepositoryQualifiedLabel { repository_text: _ } => false
+    MissingRepositoryRootPrefix { text: _ } => false
+    MultipleColonSeparators { text: _ } => false
+    EmptyTargetName { text: _ } => false
+    DotSegment { segment: _ } => false
+    TargetPattern { pattern: _ } => false
+    TargetNameContainsSlash { name: _ } => false
+  }
+}
+
+fn refusal_is_empty_target_name(c: LabelRefusal) -> Bool {
+  match c {
+    EmptyTargetName { text: _ } => true
+    RepositoryQualifiedLabel { repository_text: _ } => false
+    MissingRepositoryRootPrefix { text: _ } => false
+    MultipleColonSeparators { text: _ } => false
+    EmptyPackageSegment { text: _ } => false
+    DotSegment { segment: _ } => false
+    TargetPattern { pattern: _ } => false
+    TargetNameContainsSlash { name: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SITE -> LABEL MAPPING
+// ---------------------------------------------------------------------------------------------
+
+test fn w_site_label_is_the_module_path_as_package() -> Bool {
+  let rendered = rendered_planned_labels(sites: mixed_sites())
+  list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
+    && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+}
+
+// THE LEADING EMPTY SEGMENT IS THE CONTROL THE OBVIOUS JOIN FAILS. An accumulator that skips the
+// separator while it is still empty renders `.a.b` as `a/b` — a perfectly good package — and the
+// malformed module path is silently repaired into a valid target identity. Here it must refuse,
+// and it must refuse with the label grammar's own cause rather than a generic one.
+test fn w_leading_empty_module_segment_refuses_as_empty_package_segment() -> Bool {
+  match discovery_census(sites: [hermetic_site(module_path: ".alpha.beta", function: "w")]) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        SiteLabelRefused { module_path: m, function: f, cause: lc } =>
+          (m == ".alpha.beta") && (f == "w") && refusal_is_empty_package_segment(c: lc)
+        SiteModulePathEmpty { function: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+fn census_refuses_with_empty_module_path(sites: List<DiscoveredSite>, function: String) -> Bool {
+  match discovery_census(sites: sites) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        SiteModulePathEmpty { function: f } => f == function
+        SiteLabelRefused { module_path: _, function: _, cause: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+fn census_refuses_with_empty_target_name(sites: List<DiscoveredSite>) -> Bool {
+  match discovery_census(sites: sites) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        SiteLabelRefused { module_path: _, function: _, cause: lc } =>
+          refusal_is_empty_target_name(c: lc)
+        SiteModulePathEmpty { function: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+// THE TWO EMPTIES REFUSE APART. An empty module path has no package to name and an empty
+// function has no target to name; collapsing them into one `MalformedSite` would send two
+// different repairs to the same place.
+test fn w_empty_module_path_and_empty_function_refuse_apart() -> Bool {
+  census_refuses_with_empty_module_path(
+    sites: [hermetic_site(module_path: "", function: "w")],
+    function: "w"
+  ) && census_refuses_with_empty_target_name(
+    sites: [hermetic_site(module_path: "a.b", function: "")]
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DISPOSITION, AND ITS ORDER
+// ---------------------------------------------------------------------------------------------
+
+// A fixture member reports the exact prefix whose recipe owns its execution.
+test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "v2.test.fixture.walk_plan_stage.common",
+    identity: "v2.test.fixture.walk_plan_stage.common.some_member"
+  ) {
+    DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.long.slow_witness",
+    identity: "test.claim.long.slow_witness.a_claim"
+  ) {
+    DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
+    Planned => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+// THE PREFIX IS TESTED ON THE AUTHORED MODULE NAME AND NOT ON A DIRECTORY, so a module whose name
+// merely CONTAINS the long-home spelling later in the path is planned. This is the positive
+// control beside the decline above: without it the decline could pass under a `contains` test.
+test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "v2.test.claim.not_test_claim_long.witness",
+    identity: "v2.test.claim.not_test_claim_long.witness.a_claim"
+  ) {
+    Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+test fn w_site_is_planned_when_no_home_matched() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "v2.test.claim.ordinary_witness",
+    identity: "v2.test.claim.ordinary_witness.a_claim"
+  ) {
+    Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+// THE GATE DECLINES ON THE AUTHORED MODULE NAME, and a product witness that is neither long nor
+// a fixture member lands here rather than in Planned. This is the RED for the 2026-08-29 static
+// required gate: before the arm existed this site was planned.
+test fn w_site_outside_the_required_gate_is_declined() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.live_deploy.some_product_witness",
+    identity: "test.claim.live_deploy.some_product_witness.a_claim"
+  ) {
+    DeclinedOutsideRequiredGate => true
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PARTITION
+// ---------------------------------------------------------------------------------------------
+
+// THE FIVE ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
+// because a row holds exactly one disposition and the counting match has no wildcard, so this is
+// the executing evidence for that construction rather than a second wall beside it.
+test fn w_counts_partition_the_offered_population() -> Bool {
+  let counts = census_counts(rows: census_rows_of(sites: mixed_sites()))
+  (counts.offered == 7)
+    && (counts.planned == 3)
+    && (counts.declined_long_module == 1)
+    && (counts.declined_fixture_member == 1)
+    && (counts.declined_outside_required_gate == 1)
+    && (counts.declined_cost_debt == 1)
+    && (counts.declined_outside_gate_closure == 0)
+    && (counts.declined_discovery_excluded == 0)
+    && (counts.offered ==
+        counts.planned + counts.declined_long_module
+          + counts.declined_fixture_member
+          + counts.declined_outside_required_gate
+          + counts.declined_outside_gate_closure
+          + counts.declined_discovery_excluded
+          + counts.declined_cost_debt)
+}
+
+// THE SITE FUNCTION NEVER RETURNS `DeclinedCostDebt`, AND THAT IS A CLAIM ABOUT WHERE THE
+// WITHHOLD IS DECIDED rather than a restatement of the coproduct. Cost debt is not a property
+// of a module's NAME, which is all this function can see; it is a property of a measured
+// identity, which only the caller holds. So the arm exists on the coproduct and is unreachable
+// from here, and this witness is what keeps that true: an edit that taught the site function to
+// answer cost debt from a prefix would go red on all three inputs at once.
+//
+// THE FOURTH ARM IS REACHABLE FROM THE MODEL, AND THESE ARE ITS DISCRIMINATING ROWS.
+//
+// AN EARLIER REVISION OF THIS FILE ASSERTED THE OPPOSITE -- `w_site_disposition_never_answers_cost_debt`
+// claimed the modeled disposition could never produce `DeclinedCostDebt`. That was TRUE of the
+// code and it was the DEFECT, not a property worth guarding: the fold declined 266 identities by
+// name while the model called every one of them `Planned`, so the witness was enshrining a §3
+// single-authority divergence as if it were a contract. Review 57235 named it. The function now
+// takes the qualified identity and consults the roster, so the assertion is inverted rather than
+// deleted: what is checked is that the arm IS produced, and produced in the right precedence.
+
+// A ROSTERED IDENTITY IN AN ORDINARY HOME DECLINES FOR COST. The identity is a real member of
+// `floor_cost_debt_roster`, so this row goes red the moment that roster stops holding it -- it is
+// not a fixture spelling that can drift away from the population it describes.
+test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
+  ) {
+    DeclinedCostDebt => true
+    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
+    DeclinedOutsideRequiredGate => false
+  }
+}
+
+// THE MODULE IS OUTSIDE THE REQUIRED GATE, independently of its one cost-rostered identity.
+// The rostered row above declines for cost because cost precedes the gate. An unrostered sibling
+// in the same module reaches the next decision and declines outside the gate; calling it planned
+// was a stale assertion that ordinary floor selection never executed, until this file changed.
+test fn w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.a_sibling_the_roster_does_not_hold"
+  ) {
+    Planned => false
+    DeclinedOutsideRequiredGate => true
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+// PRECEDENCE: COST DEBT IS LAST. A rostered identity that ALSO declines for a home reason keeps
+// its HOME decline. That is what makes such a roster line surface as STALE -- it never enters the
+// fold's cost-debt seen set -- rather than as a withhold nobody can distinguish from a real one.
+// The host loop mirrors this order and cites this function for it; before review 57235 that
+// citation named a precedence the model did not carry.
+test fn w_home_decline_outranks_cost_debt() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.long.slow_witness",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
+  ) {
+    DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    Planned => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+// EVERY DISCOVERED SITE GETS A ROW, DECLINED OR NOT. A census that dropped the declines would
+// still derive the same `//:required` and would still pass every assertion about it — which is
+// exactly why this is asserted separately from the aggregate below.
+// THE PARTITION RETURNS BOTH SIDES FROM ONE PASS, AND THE DECLINED SIDE IS THE POINT.
+//
+// The routed roster and its exclusions come out of a single traversal, so neither can be produced
+// without the other -- which is what makes "a discovered witness executes" unwritable rather than
+// corrected in prose. The discriminating half is the third assertion: the declined side is
+// NON-EMPTY on this fixture, so a partition that silently kept everything on the planned side
+// (the old `filter` behaviour, had the predicate answered `true` everywhere) goes red here.
+test fn w_partition_returns_both_sides_and_loses_no_row() -> Bool {
+  let rows = census_rows_of(sites: mixed_sites())
+  let split = census_partition(rows: rows)
+  let planned_n = (split.planned |> count)
+  let declined_n = (split.declined |> count)
+  ((planned_n + declined_n) == (rows |> count))
+    && (declined_n > 0)
+    && (planned_n > 0)
+    && (planned_n == ((census_planned_rows(rows: rows)) |> count))
+    && (declined_n == ((census_declined_rows(rows: rows)) |> count))
+}
+
+// POPULATION-LEVEL PAIR FOR THE STATIC GATE: one admitted compiler witness and one product
+// witness outside the gate. Each identity appears on exactly one side, neither disappears, and
+// the union is the offered census. This is the discriminating RED for dropping the fifth arm
+// from census_partition_step: the outside row then reaches runtime pattern-match failure.
+test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
+  let rows = census_rows_of(sites: [
+    hermetic_site(module_path: "v2.test.claim.compiler_witness", function: "w_compiler"),
+    hermetic_site(module_path: "test.claim.live_deploy.product_witness", function: "w_product")
+  ])
+  let split = census_partition(rows: rows)
+  count(rows) == 2
+    && count(split.planned) == 1
+    && count(split.declined) == 1
+    && all(split.planned, r => match r.disposition {
+      Planned => true
+      DeclinedLongModule { matched_prefix: _ } => false
+      DeclinedFixtureMember { matched_prefix: _ } => false
+      DeclinedOutsideRequiredGate => false
+      DeclinedCostDebt => false
+      DeclinedOutsideGateClosure => false
+      DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      PlannedAsChangedWitness => false
+    })
+    && all(split.declined, r => match r.disposition {
+      DeclinedOutsideRequiredGate => true
+      Planned => false
+      DeclinedLongModule { matched_prefix: _ } => false
+      DeclinedFixtureMember { matched_prefix: _ } => false
+      DeclinedCostDebt => false
+      DeclinedOutsideGateClosure => false
+      DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      PlannedAsChangedWitness => false
+    })
+}
+
+test fn w_declined_sites_are_rows_not_omissions() -> Bool {
+  let rows = census_rows_of(sites: mixed_sites())
+  let split = census_partition(rows: rows)
+  (count(rows) == 7) && (count(split.planned) == 3) && (count(split.declined) == 4)
+}
+
+// ---------------------------------------------------------------------------------------------
+// DUPLICATES
+// ---------------------------------------------------------------------------------------------
+
+// THE DUPLICATE IS TWO DECLINED SITES, NOT TWO PLANNED ONES. The host loop this derivation
+// stands beside refuses a duplicate only where it becomes an executable claim, so a declined
+// pair passes there unnoticed; here a census row IS a target identity, and two rows with one
+// identity would make `//:required` name a dependency the standings list can answer twice.
+test fn w_duplicate_identity_refuses_even_when_declined() -> Bool {
+  match discovery_census(sites: [
+    hermetic_site(module_path: "test.claim.long.dup_witness", function: "w"),
+    hermetic_site(module_path: "test.claim.long.dup_witness", function: "w")
+  ]) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        DuplicateSiteIdentity { identity: i } => i == "//test/claim/long/dup_witness:w"
+        SiteModulePathEmpty { function: _ } => false
+        SiteLabelRefused { module_path: _, function: _, cause: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL BESIDE IT: two sites in one module with DIFFERENT function names are two
+// identities and are both accepted. Without this the duplicate refusal could pass by refusing
+// every module that appears twice.
+test fn w_two_functions_in_one_module_are_two_identities() -> Bool {
+  match discovery_census(sites: [
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta")
+  ]) {
+    CensusAccepted { rows: rows } => (rows |> count) == 2
+    CensusRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// //:required, DERIVED
+// ---------------------------------------------------------------------------------------------
+
+// THE AGGREGATE'S DEPENDENCIES ARE THE PLANNED SUBSET AND NOTHING ELSE — asserted as an identity
+// join over the rendered labels, not as a count. A count would pass on any three of the five.
+test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bool {
+  match required_aggregate_from_census(census: discovery_census(sites: mixed_sites())) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } => {
+      let rendered = fold(a.dependencies, init: [], f: fn(acc, l) { concat([render_label(l: l)], acc) })
+      is_required_aggregate(t: a)
+        && (target_identity(t: a) == "//:required")
+        && ((a.dependencies |> count) == 3)
+        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
+        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+        && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
+        && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
+        && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+    }
+  }
+}
+
+// A REFUSED CENSUS DOES NOT PRODUCE AN EMPTY AGGREGATE, AND THE DIFFERENCE IS THE CAUSE A READER
+// IS HANDED. An empty one would refuse downstream as `AggregateNoDependencies` — "requires
+// nothing" — while the real cause was a site that could not be labelled.
+test fn w_refused_census_yields_no_aggregate_and_keeps_the_cause() -> Bool {
+  match required_aggregate_from_census(
+    census: discovery_census(sites: [hermetic_site(module_path: "", function: "w")])
+  ) {
+    RequiredAggregateDerived { aggregate: _ } => false
+    RequiredAggregateUnderivable { cause: c } =>
+      match c {
+        SiteModulePathEmpty { function: f } => f == "w"
+        SiteLabelRefused { module_path: _, function: _, cause: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+// A CENSUS WHOSE EVERY SITE IS DECLINED DERIVES AN AGGREGATE THAT REQUIRES NOTHING, AND THAT
+// AGGREGATE BLOCKS. This is the reading a mis-wired discovery pass produces — every witness
+// declined, `//:required` satisfied over an empty conjunction — and it is refused one module
+// away rather than reported as green here.
+test fn w_all_declined_derives_an_aggregate_that_blocks() -> Bool {
+  let all_declined = [
+    hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
+    hermetic_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member")
+  ]
+  match required_aggregate_from_census(census: discovery_census(sites: all_declined)) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } =>
+      match required_aggregate_standing(aggregate: a, standings: []) {
+        AggregateNoDependencies =>
+          match required_gate_decision(a: AggregateNoDependencies {}) {
+            RequiredGateStops { standing: st } => st == AggregateNoDependencies {}
+            RequiredGateProceeds { dependency_count: _ } => false
+          }
+        AggregateSatisfied { dependency_count: _ } => false
+        AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE WHOLE CHAIN: the derived aggregate, joined against a standing per
+// planned dependency, is SATISFIED. Without this the blocking assertions above could all pass
+// with a census that never derives anything usable.
+test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
+  match required_aggregate_from_census(census: discovery_census(sites: mixed_sites())) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } => {
+      let standings = fold(a.dependencies, init: [], f: fn(acc, l) {
+        concat([
+          TargetStanding {
+            target: l,
+            build: TargetCompleted { success: true },
+            test: TestRunByFloor { disposition: Passed {} }
+          }
+        ], acc)
+      })
+      match required_aggregate_standing(aggregate: a, standings: standings) {
+        AggregateSatisfied { dependency_count: n } => n == 3
+        AggregateNoDependencies => false
+        AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
+      }
+    }
+  }
+}

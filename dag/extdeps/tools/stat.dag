@@ -1,0 +1,118 @@
+module extdeps.tools.stat
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/stat-invocation.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.stat",
+      decl_name: "stat_binary_path",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE AUTHORITY IS GNU COREUTILS, NOT POSIX, and that is a real constraint rather than a citation
+// detail: -c/--format is a GNU extension. POSIX does not specify stat(1) at all, and the BSD
+// utility spells the same request -f with different conversion characters. This module therefore
+// describes the GNU tool; a host that ships the BSD one needs its own authority, not a widened
+// format string here.
+data stat_binary_path: NonEmptyStr = "/usr/bin/stat"
+
+// TWO PROBES, ONE TOKEN EACH, rather than one probe printing "uid:gid". The pair form would need a
+// separator parser -- a second place where the ":" grammar lives, beside the one in
+// extdeps.posix.identity that composes it -- and would have to answer what a partial read means.
+// One token per probe reuses the single-id decoder unchanged, which is the same shape the `id -u` /
+// `id -g` pair already uses.
+fn stat_owner_user_argv(path: String) -> List<String> {
+  [stat_binary_path as String, "-c", "%u", path]
+}
+
+fn stat_owner_group_argv(path: String) -> List<String> {
+  [stat_binary_path as String, "-c", "%g", path]
+}
+
+// %a is the access-mode bits in octal without an invented policy interpretation. Ownership and
+// mode stay as separate token reads because either half can refuse independently and a joined
+// "uid:gid:mode" wire would mint a second delimiter grammar beside the typed consumers.
+fn stat_mode_argv(path: String) -> List<String> {
+  [stat_binary_path as String, "-c", "%a", "--", path]
+}
+
+// %U IS THE OWNER'S NAME, %u IS THE OWNER'S NUMERIC UID, and the pair above answers the numeric
+// question. They are not two spellings of one probe: a receipt line naming "briansrls" and a
+// comparison against uid 1000 need different tokens, and a caller that reached for the wrong one
+// would get a plausible answer of the wrong kind. This builder is the name form, which is what a
+// human-readable ownership receipt wants.
+// `--` ON EVERY ROW, INCLUDING THIS ONE, AND IT IS A ONE-TOKEN BEHAVIOUR CHANGE STATED RATHER THAN
+// SLIPPED IN. The name row previously omitted the end-of-options guard while the type and inode rows
+// carried it, so the same module answered one question two ways. A path beginning with a dash is
+// read as an option without it -- and these operands come from observed host state (a socket path, a
+// /proc entry), which is exactly where such a path can appear. The emitted argv for the one existing
+// consumer (gunbc.command_runner's ownership receipt probe) gains "--" and can lose no meaning: the
+// guard only changes how a leading-dash operand is read, and that reading was wrong before.
+fn stat_owner_user_name_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%U", "--", path])
+}
+
+// %F IS THE HUMAN-READABLE FILE TYPE ("socket", "directory", "regular file") and %i is the inode
+// number. Both take `--` before the operand: a path beginning with a dash would otherwise be read as
+// an option, and these two are the probes whose operand comes from observed host state rather than
+// from a literal, which is exactly where that can happen.
+fn stat_file_type_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%F", "--", path])
+}
+
+fn stat_inode_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
+}
+
+// THE TYPED OBSERVATION, BESIDE THE ARGV BUILDER THAT ALREADY SPELLS IT. `stat_file_type_command`
+// above builds the same words for a caller that needs an ArgvCommand; this operation is the
+// declared, transport-bound form a `.dag` caller can invoke directly. The corpus already carries
+// that pair shape -- `extdeps.shell` declares `operation IsExecutable` and
+// `shell_test_is_executable_argv` side by side -- so this follows an existing precedent rather than
+// inventing a second mechanism. The words are identical, `--` included.
+//
+// A NONZERO EXIT IS NOT AN ABSENCE, AND THAT IS THE WHOLE REASON THIS OPERATION EXISTS. `test -e`
+// answers false both for a path that is not there and for one whose parent directory cannot be
+// searched, so a caller composing boolean tests cannot tell "nothing is here" from "I could not
+// look" -- and those license opposite actions. This operation reports the type token on success and
+// says only that the metadata read FAILED otherwise; deciding absence is the caller's parent
+// enumeration, never this probe's silence.
+//
+// GNU stat USES lstat BY DEFAULT, so `%F` on a symbolic link reports "symbolic link" rather than
+// the type of its target. That is the behaviour the observer wants: a link occupying a name defeats
+// mkdir whether or not its target exists, and a caller that needed the target's type would ask with
+// -L. The default is relied on here deliberately and is part of the cited GNU authority.
+service stat.File {
+  operation FileType {
+    input { path: String }
+    output {
+      file_type: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["/usr/bin/stat", "-c", "%F", "--", "{path}"] }
+    exit {
+      0 => Unit "Metadata read; stdout carries the GNU file-type word"
+      nonzero => String "stat could not read the path's metadata"
+    }
+    mock_response {
+      0 => { file_type: "directory", success: true } "hermetic coreutils stat -c %F"
+    }
+  }
+}

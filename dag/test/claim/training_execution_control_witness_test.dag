@@ -1,0 +1,901 @@
+module test.claim.training_execution_control_witness
+
+import product.training.attempt_graph {
+  TrainingRunAttemptGraph, AttemptGraphAdmission,
+  AttemptGraphAdmitted, AttemptGraphRefused,
+  AttemptGraphRefusal, AttemptWorkOutsideSubject, AttemptRootsInAnotherDemand,
+  AttemptPredecessorAbsent, DuplicateAttemptIdentity, AttemptLineageUnrooted,
+  admit_attempt_graph, graph_admits_attempt,
+}
+import product.training.readback {
+  TrainingRunSubject, subject_of_desired, TrainingCheckpointObservation,
+  TrainingRunReadback, TrainingReadbackAxis,
+  ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
+  OutputReadbackAxis, EffectiveManifestReadbackAxis,
+  TrainingPopulationObservation, TrainingPopulationObserved,
+  TrainingPopulationNotAttempted, TrainingPopulationObservationRefused,
+  TrainingProcessObservation, TrainingProcessRunning, TrainingProcessExited,
+  TrainingAttemptTerminalReceipt, TrainingAttemptSucceeded, TrainingAttemptFailed,
+  TrainingOutputArtifactReceipt, TrainingEffectiveManifestReceipt,
+  TrainingSubjectBoundPopulation, TrainingRunReadbackAdmitted, TrainingRunReadbackRefused,
+  bind_training_run_readback,
+}
+import product.training.observation_cut {
+  TrainingRunReadbackCut, begin_sweep, enumerate_terminals, enumerate_outputs,
+  enumerate_manifests, enumerate_checkpoints, enumerate_processes_and_seal,
+}
+import product.training.composition {
+  TrainingRunEvidenceComposition, TrainingRunCompositionAdmission,
+  TrainingRunEvidenceComposed, TrainingRunCompositionRefused,
+  TrainingRunCompositionRefusal, CompositionSubjectMismatch, CompositionReceiptMismatch,
+  CompositionAxisNotAttempted,
+  admit_training_evidence,
+}
+import product.training.checkpoint {
+  CheckpointComponent, ModelWeights, OptimizerState, SchedulerState, RngState, DataOrderState,
+  CheckpointComponentReceipt, checkpoint_components, checkpoint_component_name,
+  CheckpointPublicationStanding, AtomicallyPublished, PublicationIncomplete, PublicationUnobserved,
+  AdmittedTrainingCheckpoint, CheckpointAdmission, CheckpointAdmitted, CheckpointRefused,
+  CheckpointAdmissionRefusal, CheckpointAttemptOutsideRun, CheckpointComponentMissing,
+  CheckpointComponentDigestMismatch, CheckpointPublicationNotAtomic,
+  CheckpointPublicationStandingUnobserved, CheckpointManifestDiverged,
+  admit_training_checkpoint,
+}
+import product.training.resolution {
+  AxisResolution, AxisResolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations,
+  DropoutPermille, DropoutPermilleAdmitted, DropoutPermilleOutOfRange, dropout_permille,
+  Bf16, NoPacking, MaskPromptTokens,
+  TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired,
+  resolved_training_manifest, TrainingResolvedManifest,
+}
+import product.fabric.execution {
+  Attempt, ExecutionAttemptLineage,
+  InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
+  ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, LeaseIdentity,
+}
+import product.fabric.supply { OfferQuote, QuotedFlatPerGrant }
+import product.training.execution_control {
+  TrainingStartCause, ClaimInitialAttempt, ClaimInfrastructureRetry,
+  ClaimCapabilityEscalation, ClaimRequestedReexecution,
+  TrainingStartTransitionKey, transition_slot,
+  TrainingExecutionClaim, record_claim_dispatch,
+  TrainingStartClaimAdmission, TrainingStartClaimCommitted, TrainingStartClaimAlreadyCommitted,
+  TrainingStartClaimSnapshotStale, TrainingStartClaimRefused, admit_start_claim,
+  TrainingRunExecutionControl, TrainingControlAdmission, TrainingControlAdmitted,
+  TrainingControlRefused, TrainingControlRefusal,
+  ClaimAttemptOutsideGraph, ClaimGrantAttemptMismatch, DuplicateTransitionClaim,
+  admit_execution_control,
+  TrainingRunConvergenceInput, TrainingConvergenceInputAdmission,
+  TrainingConvergenceInputAdmitted, TrainingConvergenceInputSubjectMismatch,
+  admit_convergence_input,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, OfferKey, GrantKey, fabric_identity_eq,
+}
+import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
+import extdeps.currency.currency { Usd }
+import std.measure { MoneyOnce, money_amount_micro, hardware_thread_count }
+import std.integer { PositiveInt }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn ax<T>(v: T) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: "obs-graph" } }
+}
+
+fn dp(n: Nat) -> DropoutPermille? {
+  match dropout_permille(permille: n) {
+    DropoutPermilleAdmitted { value: v } => Present { value: v }
+    DropoutPermilleOutOfRange { offered: _ } => none
+  }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  capacity_class: CustomerExecutableCapacity,
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: ax(v: h(s: "base-A")),
+    dataset_manifest: ax(v: h(s: "dataset-1")),
+    tokenizer: ax(v: h(s: "tok-1")),
+    chat_template: ax(v: h(s: "tmpl-1")),
+    trainer_closure: ax(v: h(s: "trainer-1")),
+    target_modules: ax(v: h(s: "qkv")),
+    optimizer_config: ax(v: h(s: "adamw-1")),
+    scheduler_config: ax(v: h(s: "cosine-1")),
+    learning_rate_schedule: ax(v: h(s: "lr-1")),
+    rank: ax(v: 16),
+    scaling: ax(v: 32),
+    dropout_permille: ax(v: d),
+    sequence_length: ax(v: 4096),
+    packing: ax(v: NoPacking),
+    loss_mask: ax(v: MaskPromptTokens),
+    mixture: ax(v: h(s: "mix-1")),
+    micro_batch: ax(v: 2),
+    gradient_accumulation: ax(v: 8),
+    numeric_format: ax(v: Bf16),
+    seed: ax(v: 7),
+    data_order_seed: ax(v: 99),
+    checkpoint_format: ax(v: h(s: "ckpt-v1")),
+    output_contract: ax(v: h(s: "adapter-out")),
+  }
+}
+
+fn demand_for(work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "brian", key: "demand-1" },
+    work: FabricIdentity { principal: "gunbai", key: work_key },
+    origin: "gunbc.observation.training-graph",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+fn subject_fixture() -> TrainingRunSubject<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: subject_of_desired(desired: dd) }
+          }
+        }
+      }
+  }
+}
+
+fn attempt_id(k: NonEmptyStr) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: "gunbai", key: k }
+}
+
+fn attempt_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  lineage: ExecutionAttemptLineage<NonEmptyStr>,
+) -> Attempt<NonEmptyStr> {
+  Attempt { id: attempt_id(k: k), work: s.work, lineage: lineage, created_at: "2026-08-28T01:00:00Z" }
+}
+
+fn initial(s: TrainingRunSubject<NonEmptyStr>, k: NonEmptyStr) -> Attempt<NonEmptyStr> {
+  attempt_of(s: s, k: k, lineage: InitialAttempt { initiating_demand: s.demand })
+}
+
+fn retry_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: InfrastructureRetry {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.loss",
+    },
+  )
+}
+
+fn escalation_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: CapabilityEscalation {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.exceeded",
+    },
+  )
+}
+
+data digest_a: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data digest_b: NonEmptyStr = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn desired_fixture() -> TrainingRunDesired<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: dd }
+          }
+        }
+      }
+  }
+}
+
+// TWO ATTEMPTS: an initial one and an infrastructure retry of it. This is the ordinary shape the
+// grain witnesses below depend on -- across these two attempts, a failure then a success is
+// history, not a contradiction.
+fn graph_fixture(s: TrainingRunSubject<NonEmptyStr>) -> TrainingRunAttemptGraph<NonEmptyStr>? {
+  match admit_attempt_graph(
+    subject: s,
+    attempts: [
+      Attempt {
+        id: attempt_id(k: "e1"),
+        work: s.work,
+        lineage: InitialAttempt { initiating_demand: s.demand },
+        created_at: "2026-08-28T01:00:00Z",
+      },
+      Attempt {
+        id: attempt_id(k: "e2"),
+        work: s.work,
+        lineage: InfrastructureRetry {
+          prior_attempt: attempt_id(k: "e1"),
+          cause_receipt: "gunbc.observation.loss",
+        },
+        created_at: "2026-08-28T02:00:00Z",
+      },
+    ],
+  ) {
+    AttemptGraphRefused { first: _, more: _ } => none
+    AttemptGraphAdmitted { graph: g } => Present { value: g }
+  }
+}
+
+fn sweep(s: TrainingRunSubject<NonEmptyStr>) -> TrainingRunReadbackCut<NonEmptyStr> {
+  enumerate_processes_and_seal(
+    prior: enumerate_checkpoints(
+      prior: enumerate_manifests(
+        prior: enumerate_outputs(
+          prior: enumerate_terminals(started: begin_sweep(subject: s), receipt: "obs.term"),
+          receipt: "obs.out",
+        ),
+        receipt: "obs.manifest",
+      ),
+      receipt: "obs.ckpt",
+    ),
+    receipt: "obs.proc",
+    composition: "obs.composition",
+  )
+}
+
+fn observed<T>(members: List<T>, receipt: NonEmptyStr) -> TrainingPopulationObservation<T> {
+  TrainingPopulationObserved { members: members, enumeration_receipt: receipt }
+}
+
+fn succeeded_at(k: NonEmptyStr) -> TrainingAttemptTerminalReceipt<NonEmptyStr> {
+  TrainingAttemptTerminalReceipt {
+    attempt: attempt_id(k: k),
+    standing: TrainingAttemptSucceeded,
+    receipt: "gunbc.observation.term-ok",
+  }
+}
+
+fn failed_at(k: NonEmptyStr) -> TrainingAttemptTerminalReceipt<NonEmptyStr> {
+  TrainingAttemptTerminalReceipt {
+    attempt: attempt_id(k: k),
+    standing: TrainingAttemptFailed { detail: "node evicted" },
+    receipt: "gunbc.observation.term-bad",
+  }
+}
+
+fn output_at(k: NonEmptyStr, hex: NonEmptyStr) -> TrainingOutputArtifactReceipt<NonEmptyStr> {
+  TrainingOutputArtifactReceipt {
+    attempt: attempt_id(k: k),
+    artifact: Sha256Digest { hex: hex },
+    materialization: "spark://checkpoints/adapter",
+    receipt: "gunbc.observation.out",
+  }
+}
+
+fn manifest_at(d: TrainingRunDesired<NonEmptyStr>, k: NonEmptyStr) -> TrainingEffectiveManifestReceipt<NonEmptyStr> {
+  TrainingEffectiveManifestReceipt {
+    attempt: attempt_id(k: k),
+    manifest: resolved_training_manifest(resolved: d.resolved),
+    receipt: "gunbc.observation.manifest",
+  }
+}
+
+fn running_at(k: NonEmptyStr) -> TrainingProcessObservation<NonEmptyStr> {
+  TrainingProcessObservation {
+    attempt: attempt_id(k: k),
+    liveness: TrainingProcessRunning,
+    receipt: "gunbc.observation.proc",
+  }
+}
+
+fn compose(
+  d: TrainingRunDesired<NonEmptyStr>,
+  processes: TrainingPopulationObservation<TrainingProcessObservation<NonEmptyStr>>,
+  terminals: TrainingPopulationObservation<TrainingAttemptTerminalReceipt<NonEmptyStr>>,
+  outputs: TrainingPopulationObservation<TrainingOutputArtifactReceipt<NonEmptyStr>>,
+  manifests: TrainingPopulationObservation<TrainingEffectiveManifestReceipt<NonEmptyStr>>,
+) -> TrainingRunEvidenceComposition<NonEmptyStr>? {
+  let s = subject_of_desired(desired: d)
+  match graph_fixture(s: s) {
+    none => none
+    Present { value: g } =>
+      match bind_training_run_readback(
+        desired: d,
+        execution: TrainingSubjectBoundPopulation { subject: s, observation: processes },
+        checkpoints: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.ckpt"),
+        },
+        terminals: TrainingSubjectBoundPopulation { subject: s, observation: terminals },
+        outputs: TrainingSubjectBoundPopulation { subject: s, observation: outputs },
+        effective_manifests: TrainingSubjectBoundPopulation { subject: s, observation: manifests },
+      ) {
+        TrainingRunReadbackRefused { first: _, more: _ } => none
+        TrainingRunReadbackAdmitted { readback: rb } =>
+          match admit_training_evidence(desired: d, graph: g, readback: rb, cut: sweep(s: s)) {
+            TrainingRunCompositionRefused { first: _, more: _ } => none
+            TrainingRunEvidenceComposed { composition: c } => Present { value: c }
+          }
+      }
+  }
+}
+
+fn grant_for(
+  s: TrainingRunSubject<NonEmptyStr>,
+  key: NonEmptyStr,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+) -> ExecutionGrant<NonEmptyStr> {
+  ExecutionGrant {
+    id: FabricIdentity { principal: "gunbai", key: key },
+    object: FabricGrantObject {
+      offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
+      quote: QuotedFlatPerGrant(MoneyOnce {
+        amount: money_amount_micro(count: 1000),
+        currency: Usd,
+      }),
+    },
+    context: FabricGrantContext {
+      demand: demand,
+      work: s.work,
+      attempt: attempt,
+      executor: "spark-1",
+      lease: LeaseIdentity {
+        lease_key: "lease-1",
+        resource_fingerprint: h(s: "slice-1"),
+        generation: 9,
+      },
+      issued_at: "2026-08-28T01:00:00Z",
+      maximum_liability: money_amount_micro(count: 1000000),
+    },
+    evidence: FabricGrantEvidence {
+      fungibility_receipt: "fungibility-1",
+      offer_authority: "offer-authority-1",
+      resource_conservation: "resource-conservation-1",
+      budget_conservation: "budget-conservation-1",
+      principal_authority: "principal-authority-1",
+    },
+    resource_reservations: ["reservation-gpu-1"],
+    money_reservation: "reservation-money-1",
+  }
+}
+
+fn initial_transition(
+  s: TrainingRunSubject<NonEmptyStr>,
+) -> TrainingStartTransitionKey<NonEmptyStr> {
+  TrainingStartTransitionKey { demand: s.demand, work: s.work, cause: ClaimInitialAttempt }
+}
+
+fn retry_transition(
+  s: TrainingRunSubject<NonEmptyStr>,
+  prior: NonEmptyStr,
+) -> TrainingStartTransitionKey<NonEmptyStr> {
+  TrainingStartTransitionKey {
+    demand: s.demand,
+    work: s.work,
+    cause: ClaimInfrastructureRetry {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.loss",
+    },
+  }
+}
+
+fn claim_or_none(
+  a: TrainingStartClaimAdmission<NonEmptyStr>,
+) -> TrainingExecutionClaim<NonEmptyStr>? {
+  match a {
+    TrainingStartClaimCommitted { claim: c } => Present { value: c }
+    TrainingStartClaimAlreadyCommitted { claim: c } => Present { value: c }
+    TrainingStartClaimSnapshotStale { expected_generation: _, observed_generation: _ } => none
+    TrainingStartClaimRefused { cause: _ } => none
+  }
+}
+
+fn admission_name(a: TrainingStartClaimAdmission<NonEmptyStr>) -> NonEmptyStr {
+  match a {
+    TrainingStartClaimCommitted { claim: _ } => "committed"
+    TrainingStartClaimAlreadyCommitted { claim: _ } => "already-committed"
+    TrainingStartClaimSnapshotStale { expected_generation: _, observed_generation: _ } => "stale"
+    TrainingStartClaimRefused { cause: _ } => "refused"
+  }
+}
+
+fn control_refusal_name(r: TrainingControlRefusal<NonEmptyStr>) -> NonEmptyStr {
+  match r {
+    ClaimAttemptOutsideGraph { attempt: _ } => "attempt-outside-graph"
+    ClaimGrantAttemptMismatch { claim_attempt: _, grant_attempt: _ } => "grant-attempt-mismatch"
+    DuplicateTransitionClaim { slot: _ } => "duplicate-transition"
+  }
+}
+
+fn control_refusal_names(a: TrainingControlAdmission<NonEmptyStr>) -> List<NonEmptyStr> {
+  match a {
+    TrainingControlAdmitted { control: _ } => []
+    TrainingControlRefused { first: f, more: m } =>
+      [[control_refusal_name(r: f)], m.map(r => control_refusal_name(r: r))].flat_map(x => x)
+  }
+}
+
+fn desired_other() -> TrainingRunDesired<NonEmptyStr>? {
+  match dp(n: 60) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: dd }
+          }
+        }
+      }
+  }
+}
+
+fn control_fixture(
+  s: TrainingRunSubject<NonEmptyStr>,
+) -> TrainingRunExecutionControl<NonEmptyStr>? {
+  match graph_fixture(s: s) {
+    none => none
+    Present { value: g } =>
+      match admit_execution_control(
+        graph: g,
+        active_claims: [],
+        ledger_generation: 4,
+        observation: "gunbc.observation.control",
+      ) {
+        TrainingControlRefused { first: _, more: _ } => none
+        TrainingControlAdmitted { control: c } => Present { value: c }
+      }
+  }
+}
+
+fn other_control() -> TrainingRunExecutionControl<NonEmptyStr>? {
+  match desired_other() {
+    none => none
+    Present { value: d } => control_fixture(s: subject_of_desired(desired: d))
+  }
+}
+
+// THE RACE THE TRANSITION KEY EXISTS TO EXCLUDE. Two convergence passes both read "execution
+// required" for one run and each chooses its own attempt identity. They claim the SAME semantic
+// transition, so the second compare-and-set finds the slot occupied and receives the first pass's
+// claim -- ONE attempt is committed, not two.
+test fn two_passes_claiming_one_transition_commit_one_attempt() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let k = initial_transition(s: s)
+      let a1 = attempt_id(k: "e1")
+      let a2 = attempt_id(k: "e2")
+      match claim_or_none(a: admit_start_claim(
+        observed_generation: 4,
+        ledger_generation: 4,
+        existing: [],
+        transition: k,
+        attempt: a1,
+        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+      )) {
+        none => false
+        Present { value: first_claim } => {
+          let second = admit_start_claim(
+            observed_generation: 4,
+            ledger_generation: 4,
+            existing: [first_claim],
+            transition: k,
+            attempt: a2,
+            grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+          )
+          admission_name(a: second) == "already-committed"
+            && match claim_or_none(a: second) {
+              none => false
+              Present { value: held } => fabric_identity_eq(left: held.attempt, right: a1)
+            }
+        }
+      }
+    }
+  }
+}
+
+// THE DISCRIMINATING FACT UNDER THAT WITNESS, and the reason the key is not the attempt identity.
+// The two passes chose DIFFERENT attempt identities, so a uniqueness constraint keyed on the
+// attempt would have admitted both mints. The transition slots are equal, which is what excludes
+// the second. Without this control the witness above is satisfied by any key at all.
+test fn an_attempt_identity_key_would_not_have_excluded_the_second_pass() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let k = initial_transition(s: s)
+      !fabric_identity_eq(left: attempt_id(k: "e1"), right: attempt_id(k: "e2"))
+        && transition_slot(k: k) == transition_slot(k: initial_transition(s: s))
+    }
+  }
+}
+
+// A DIFFERENT CAUSE IS A DIFFERENT TRANSITION. An infrastructure retry after a committed initial
+// attempt is not the same semantic step, so the slot is unoccupied and the retry commits. A key
+// that excluded it would have made every run single-attempt and destroyed the escalation history
+// the readback lane exists to keep.
+test fn a_retry_is_a_different_transition_and_commits_beside_the_initial_claim() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let a1 = attempt_id(k: "e1")
+      let a2 = attempt_id(k: "e2")
+      match claim_or_none(a: admit_start_claim(
+        observed_generation: 4,
+        ledger_generation: 4,
+        existing: [],
+        transition: initial_transition(s: s),
+        attempt: a1,
+        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+      )) {
+        none => false
+        Present { value: c1 } =>
+          admission_name(a: admit_start_claim(
+            observed_generation: 4,
+            ledger_generation: 4,
+            existing: [c1],
+            transition: retry_transition(s: s, prior: "e1"),
+            attempt: a2,
+            grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+          )) == "committed"
+      }
+    }
+  }
+}
+
+// A STALE SNAPSHOT IS NEITHER OF THE TWO SUCCESS ANSWERS. The ledger moved under the caller, so
+// everything the caller believes about occupancy was read from a world that no longer exists;
+// answering "already committed" would hand it a claim it has no basis to dispatch, and answering
+// "committed" would mint against a stale read.
+test fn a_stale_snapshot_is_neither_committed_nor_already_committed() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let a1 = attempt_id(k: "e1")
+      admission_name(a: admit_start_claim(
+        observed_generation: 4,
+        ledger_generation: 5,
+        existing: [],
+        transition: initial_transition(s: s),
+        attempt: a1,
+        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+      )) == "stale"
+    }
+  }
+}
+
+// THE GRANT MUST NAME THE ATTEMPT BEING CLAIMED. A claim carrying someone else's authorization
+// would let a run execute under a lease and liability that were never issued for it.
+test fn a_grant_naming_another_attempt_refuses_the_claim() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      admission_name(a: admit_start_claim(
+        observed_generation: 4,
+        ledger_generation: 4,
+        existing: [],
+        transition: initial_transition(s: s),
+        attempt: attempt_id(k: "e1"),
+        grant: grant_for(
+          s: s,
+          key: "grant-1",
+          attempt: attempt_id(k: "e2"),
+          demand: s.demand,
+        ),
+      )) == "refused"
+  }
+}
+
+// AND THE DEMAND, for the same reason one axis apart: a grant issued against another demand carries
+// another budget account's liability.
+test fn a_grant_naming_another_demand_refuses_the_claim() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      admission_name(a: admit_start_claim(
+        observed_generation: 4,
+        ledger_generation: 4,
+        existing: [],
+        transition: initial_transition(s: s),
+        attempt: attempt_id(k: "e1"),
+        grant: grant_for(
+          s: s,
+          key: "grant-1",
+          attempt: attempt_id(k: "e1"),
+          demand: FabricIdentity { principal: "brian", key: "demand-other" },
+        ),
+      )) == "refused"
+  }
+}
+
+// TWO ACTIVE CLAIMS ON ONE SLOT IS THE STATE THE COMPARE-AND-SET IS SUPPOSED TO MAKE UNREACHABLE.
+// If it is ever observed the exclusion did not hold, so the composition refuses rather than letting
+// a downstream fold pick one and report a confident disposition over a broken control plane.
+test fn two_active_claims_on_one_transition_slot_refuse_the_control_composition() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      match graph_fixture(s: s) {
+        none => false
+        Present { value: g } => {
+          let a1 = attempt_id(k: "e1")
+          let a2 = attempt_id(k: "e2")
+          match claim_or_none(a: admit_start_claim(
+            observed_generation: 4,
+            ledger_generation: 4,
+            existing: [],
+            transition: initial_transition(s: s),
+            attempt: a1,
+            grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+          )) {
+            none => false
+            Present { value: c1 } =>
+              match claim_or_none(a: admit_start_claim(
+                observed_generation: 4,
+                ledger_generation: 4,
+                existing: [],
+                transition: initial_transition(s: s),
+                attempt: a2,
+                grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+              )) {
+                none => false
+                Present { value: c2 } =>
+                  control_refusal_names(a: admit_execution_control(
+                    graph: g,
+                    active_claims: [c1, c2],
+                    ledger_generation: 4,
+                    observation: "gunbc.observation.control",
+                  )).any(n => n == "duplicate-transition")
+              }
+          }
+        }
+      }
+  }
+}
+
+// A CLAIM WHOSE ATTEMPT THE GRAPH DOES NOT HOLD IS A CONTROL DEFECT. The claim commits an attempt;
+// if the graph never received it, the two authorities disagree about what was started.
+test fn a_claim_for_an_attempt_outside_the_graph_is_refused() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      match graph_fixture(s: s) {
+        none => false
+        Present { value: g } => {
+          let ax = attempt_id(k: "e9")
+          match claim_or_none(a: admit_start_claim(
+            observed_generation: 4,
+            ledger_generation: 4,
+            existing: [],
+            transition: initial_transition(s: s),
+            attempt: ax,
+            grant: grant_for(s: s, key: "grant-9", attempt: ax, demand: s.demand),
+          )) {
+            none => false
+            Present { value: c } =>
+              control_refusal_names(a: admit_execution_control(
+                graph: g,
+                active_claims: [c],
+                ledger_generation: 4,
+                observation: "gunbc.observation.control",
+              )) == ["attempt-outside-graph"]
+          }
+        }
+      }
+  }
+}
+
+// INDEPENDENT CONTROL DEFECTS ARE ALL REPORTED. An out-of-graph attempt and a duplicated slot are
+// different facts with different remedies, and a first-wins fold would send a reader to fix one and
+// call the control plane repaired.
+test fn independent_control_defects_are_all_reported() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      match graph_fixture(s: s) {
+        none => false
+        Present { value: g } => {
+          let a1 = attempt_id(k: "e1")
+          let a2 = attempt_id(k: "e2")
+          let ax = attempt_id(k: "e9")
+          match claim_or_none(a: admit_start_claim(
+            observed_generation: 4,
+            ledger_generation: 4,
+            existing: [],
+            transition: initial_transition(s: s),
+            attempt: a1,
+            grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+          )) {
+            none => false
+            Present { value: c1 } =>
+              match claim_or_none(a: admit_start_claim(
+                observed_generation: 4,
+                ledger_generation: 4,
+                existing: [],
+                transition: initial_transition(s: s),
+                attempt: a2,
+                grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+              )) {
+                none => false
+                Present { value: c2 } =>
+                  match claim_or_none(a: admit_start_claim(
+                    observed_generation: 4,
+                    ledger_generation: 4,
+                    existing: [],
+                    transition: retry_transition(s: s, prior: "e1"),
+                    attempt: ax,
+                    grant: grant_for(s: s, key: "grant-9", attempt: ax, demand: s.demand),
+                  )) {
+                    none => false
+                    Present { value: cx } => {
+                      let names = control_refusal_names(a: admit_execution_control(
+                        graph: g,
+                        active_claims: [c1, c2, cx],
+                        ledger_generation: 4,
+                        observation: "gunbc.observation.control",
+                      ))
+                      names.any(n => n == "attempt-outside-graph")
+                        && names.any(n => n == "duplicate-transition")
+                    }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+// A DISPATCH RECEIPT CANNOT PRECEDE THE CLAIM. The only route to a dispatched claim is recording it
+// ON a committed one, so the ordering the module rests on is a property of the constructor surface
+// rather than an ordering someone remembered to preserve.
+test fn a_dispatch_receipt_is_recorded_on_an_already_committed_claim() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let a1 = attempt_id(k: "e1")
+      match claim_or_none(a: admit_start_claim(
+        observed_generation: 4,
+        ledger_generation: 4,
+        existing: [],
+        transition: initial_transition(s: s),
+        attempt: a1,
+        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+      )) {
+        none => false
+        Present { value: c } => {
+          let d = record_claim_dispatch(claim: c, dispatch: "gunbc.observation.dispatch")
+          match c.dispatch {
+            Present { value: _ } => false
+            none =>
+              match d.dispatch {
+                none => false
+                Present { value: r } =>
+                  r == "gunbc.observation.dispatch"
+                    && fabric_identity_eq(left: d.attempt, right: a1)
+                    && d.committed_generation == c.committed_generation
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// CONTROL STATE ABOUT ANOTHER RUN DOES NOT JOIN THIS RUN'S EVIDENCE. Without this the convergence
+// input is exactly the beside-each-other pairing this lane has removed three times already.
+test fn control_over_another_subject_does_not_join_the_evidence() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } =>
+          match other_control() {
+            none => false
+            Present { value: ctl } =>
+              match admit_convergence_input(evidence: c, control: ctl) {
+                TrainingConvergenceInputAdmitted { input: _ } => false
+                TrainingConvergenceInputSubjectMismatch {
+                  evidence_subject: _,
+                  control_subject: _,
+                } => true
+              }
+          }
+      }
+    }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE PAIR ABOVE: one subject, both compositions, admitted.
+test fn evidence_and_control_over_one_subject_admit_as_a_convergence_input() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } =>
+          match control_fixture(s: s) {
+            none => false
+            Present { value: ctl } =>
+              match admit_convergence_input(evidence: c, control: ctl) {
+                TrainingConvergenceInputAdmitted { input: i } =>
+                  i.control.ledger_generation == 4
+                TrainingConvergenceInputSubjectMismatch {
+                  evidence_subject: _,
+                  control_subject: _,
+                } => false
+              }
+          }
+      }
+    }
+  }
+}

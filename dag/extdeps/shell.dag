@@ -1,0 +1,481 @@
+module extdeps.shell
+
+import std.types { FilePath, NonEmptyStr, Secret, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
+
+// The script body is a FIXED literal owned here, and root arrives as the positional parameter $1
+// rather than being spliced into it — so no path can escape a quote, which is exactly what a
+// caller-side concat into a single-quoted find string permitted (review 50535). The pipe to sort
+// stays inside the operation because it is load-bearing: find walks directories in filesystem
+// order, and the caller digests the resulting listing into a tree identity, so an unsorted read
+// would make that identity depend on traversal order. It cannot move into the substrate today —
+// std.primitives declares a sort contract but no callable sort exists (probed, 2026-08-08), which
+// is the dissolve-on for folding this ordering back out of the shell. GNU find -printf keeps this
+// operation Linux-only, per the caller's own linux_find_note.
+
+// shell.Find.FilesByNameSorted: root and name_glob arrive as positional parameters ($1, $2) rather
+// than being spliced into the script body, for the same reason as FilesAndSymlinksWithMode above —
+// no path or glob can escape a quote. The pipe to sort stays inside the operation because the
+// caller digests the listing into a manifest and needs traversal-order independence (SHELL-DAG
+// dissolution of package_delivery.dag's protocol-schema-bundle file listing, previously a
+// retained_foreign concat-built find | sort script).
+
+// WHY THE PATTERN SPELLS THE BRACKETS AS `?` RATHER THAN ESCAPING THEM. A /proc fd symlink for a
+// socket reads `socket:[N]`, and find's -lname argument is a GLOB, in which `[...]` is a character
+// class -- so the obvious `-lname "socket:[N]"` silently matches nothing at all, which is the worst
+// possible failure for a probe whose empty result is load-bearing evidence (it is exactly the
+// clause that licenses unlinking a stale socket). Escaping the brackets works but puts backslashes
+// through two layers of quoting; `?` matches the one literal bracket character in each position and
+// is length-anchored, so `socket:?N?` matches `socket:[N]` and cannot match a different inode.
+// Confirmed by execution 2026-08-21 against a live listening socket, WITH the negative control that
+// a non-existent inode returns empty -- a probe whose only observed state is `found nothing` proves
+// nothing, so the pair is the measurement.
+
+// A PIPELINE REPORTS ITS LAST STAGE'S STATUS.
+//
+// `find ... | sort` answered for `sort` and never for `find`, so a find that failed -- an
+// unreadable directory, a path that does not exist -- was reported as EXIT 0 WITH EMPTY OUTPUT.
+// An empty listing and a failed walk became the same observation, which is DESIGN section 5's
+// fabricated plausible output: a consumer cannot distinguish "no matches" from "the walk broke".
+//
+// `set -o pipefail` is NOT the remedy here -- /bin/sh is dash on this platform and aborts on it
+// rather than accepting it -- so the producing stage's status is captured directly and the rows
+// travel through a temporary file, following the in-tree exemplar extdeps.rust.rustc.
+data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
+
+service shell.Find {
+  operation ListDirs {
+    input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
+    output { dirs: List<FilePath> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+
+  operation FilesAndSymlinksWithMode {
+    input { root: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "d=$(mktemp -d) || exit 1; find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
+        "sh", "{root}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+
+  operation Files {
+    input { workdir: FilePath, root: FilePath, name_glob: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["env", "-C", "{workdir}", "find", "{root}", "-name", "{name_glob}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+
+  operation SocketInodeHolders {
+    input { inode: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", "socket:?{inode}?"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "find over /proc fd links failed"
+    }
+  }
+
+  operation FilesByNameSorted {
+    input { root: FilePath, name_glob: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "d=$(mktemp -d) || exit 1; find \"$1\" -type f -name \"$2\" > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
+        "sh", "{root}", "{name_glob}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+}
+
+service shell.Env {
+  operation Get {
+    input { name: NonEmptyStr }
+    output { value: String? from "stdout" }
+    readonly
+    transport shell { argv: ["printenv", "{name}"] }
+    exit {
+      0 => Unit
+      1 => Unit "Variable not set"
+    }
+
+  }
+}
+
+// `command -v` is a POSIX shell builtin (IEEE 1003.1-2017 section 2.9.1.1, Command Search and
+// Execution, invoked here through `sh -c` rather than by name), present wherever a POSIX-conforming
+// shell is -- unlike `which`, an EXTERNAL BINARY (part of debianutils on Debian/Ubuntu, not part of
+// POSIX or a base busybox install) that may be absent on stripped appliance images, BMC firmware
+// shells (Dropbear), or minimal containers. This operation's own assumption is not unconditional
+// either: it still requires a POSIX shell at `sh` on the target's PATH. gunbc.fleet_intent's srv1-4
+// ComputeHost, and gunbc.ci_fleet's own CI/falsifier runner, both carry an `OperatingSystemSurface
+// { distro_or_product: none, ... }` -- no distro or package-set authority anywhere in this fleet,
+// our own runner included (crisp-wren-896 finding, PR #8590; the modeling gap is named at
+// std.os.types operating_system_surface_package_authority_gap_note). This operation's assumption
+// strictly dominates `which`'s -- every target that can run `which` can run `command -v`, and the
+// converse fails on busybox and stripped images -- which is why the former shell.Which.Check
+// operation was deleted rather than kept as a second, narrower-scope choice (crisp-wren-896, PR
+// #8590): a selection rule between two operations is only worth its cost when each is right
+// somewhere the other is wrong, and here nothing was. If even the POSIX-shell assumption cannot be
+// established for a target, the honest realization is a typed refusal, not a silent fall-through
+// inheriting this operation's result as ground truth.
+
+// The probed command name is carried in its OWN argv slot (`{command}` bound to the shell's
+// trailing positional parameter), never concatenated into the `-c` script text -- the same `-c
+// script scriptname arg1` positional-parameter binding shell.Find.FilesAndSymlinksWithMode already
+// uses. The value never touches the string parsed as shell code, so there is no escaping table to
+// maintain and no quoting authority this operation depends on.
+
+service shell.PosixCommandV {
+  operation Check {
+    input { command: NonEmptyStr }
+    output { exists: Bool from "exit_success", path: FilePath? from "stdout" }
+    readonly
+    transport shell { argv: ["sh", "-c", "command -v \"$1\"", "sh", "{command}"] }
+    exit {
+      0 => Unit "Command found"
+      1 => Unit "Command not found"
+    }
+  }
+}
+
+fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
+  ["sh", "-c", "command -v \"$1\"", "sh", command as String]
+}
+
+service shell.Test {
+  operation IsExecutable {
+    input { path: FilePath }
+    output { executable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-x", "{path}"] }
+    exit {
+      0 => Unit "Path is executable"
+      1 => Unit "Path is not executable"
+    }
+  }
+
+  operation IsNonEmpty {
+    input { path: FilePath }
+    output { nonempty: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-s", "{path}"] }
+    exit {
+      0 => Unit "Path exists with size greater than zero"
+      1 => Unit "Path is missing or zero-byte"
+    }
+  }
+
+  operation IsFile {
+    input { path: FilePath }
+    output { is_file: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-f", "{path}"] }
+    exit {
+      0 => Unit "Path is a regular file"
+      1 => Unit "Path is missing or not a regular file"
+    }
+  }
+
+  operation IsDirectory {
+    input { path: FilePath }
+    output { is_directory: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-d", "{path}"] }
+    exit {
+      0 => Unit "Path is a directory"
+      1 => Unit "Path is missing or not a directory"
+    }
+  }
+
+  operation IsWritable {
+    input { path: FilePath }
+    output { writable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-w", "{path}"] }
+    exit {
+      0 => Unit "Path is writable by the effective principal"
+      1 => Unit "Path is missing or not writable by the effective principal"
+    }
+  }
+}
+
+fn shell_test_is_executable_argv(path: FilePath) -> List<String> {
+  ["test", "-x", path as String]
+}
+
+service shell.Uname {
+  operation KernelName {
+    input {}
+    output { name: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["uname", "-s"] }
+    exit {
+      0 => Unit
+      nonzero => String "uname -s failed"
+    }
+  }
+
+  operation Machine {
+    input {}
+    output { machine: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["uname", "-m"] }
+    exit {
+      0 => Unit
+      nonzero => String "uname -m failed"
+    }
+  }
+}
+
+service shell.Mktemp {
+  operation FileInDirectory {
+    input { dir: FilePath }
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-p", "{dir}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mktemp -p failed"
+    }
+  }
+
+  operation Dir {
+    input {}
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-d"] }
+    exit {
+      0 => Unit
+      nonzero => String "mktemp -d failed"
+    }
+  }
+
+  operation DirWithTemplate {
+    input { template: FilePath }
+    output { path: FilePath from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["mktemp", "-d", "{template}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mktemp -d with template failed"
+    }
+  }
+}
+
+service shell.Mkdir {
+  operation Parents {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "-p", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mkdir -p failed"
+    }
+  }
+}
+
+service shell.Link {
+  operation Hard {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["ln", "{source}", "{destination}"] }
+    exit {
+      0 => Unit "Hardlink created; fails if destination exists, which is the exclusivity this relies on"
+      nonzero => String "ln failed"
+    }
+  }
+}
+
+service shell.Symlink {
+  operation AtomicReplace {
+    input { target: FilePath, link: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["ln", "-sfnT", "{target}", "{link}"] }
+    exit {
+      0 => Unit "Symlink published; -T treats link as a normal file (no nest into existing dir); -f replaces existing link"
+      nonzero => String "ln -sfnT failed"
+    }
+  }
+}
+
+service shell.Remove {
+  operation FileForce {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["rm", "-f", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "rm -f failed"
+    }
+  }
+
+  operation RecursiveForce {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["rm", "-rf", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "rm -rf failed"
+    }
+  }
+
+  operation EmptyDirectory {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["rmdir", "{path}"] }
+    exit {
+      0 => Unit "Directory removed; rmdir refuses when non-empty, which is the safety this relies on"
+      nonzero => String "rmdir failed"
+    }
+  }
+}
+
+service shell.Move {
+  operation File {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mv", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mv failed"
+    }
+  }
+
+  operation NoReplaceDirectory {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mv", "-T", "{source}", "{destination}"] }
+    exit {
+      0 => Unit "Directory moved; -T treats destination as a normal path (no nest into an existing dir), equivalent to renameat2(RENAME_NOREPLACE) for directories on Linux"
+      nonzero => String "mv -T failed"
+    }
+  }
+}
+
+service shell.Chmod {
+  operation OwnerOnlyDirectory {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0700", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0700 failed"
+    }
+  }
+
+  operation OwnerReadWriteFile {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0600", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0600 failed"
+    }
+  }
+
+  operation RecursiveWritable {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "-R", "u+w", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod -R u+w failed"
+    }
+  }
+
+  operation RecursiveReadOnly {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "-R", "a-w", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod -R a-w failed"
+    }
+  }
+}
+
+service shell.Copy {
+  operation File {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["cp", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "cp failed"
+    }
+  }
+
+  operation Recursive {
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["cp", "-r", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "cp -r failed"
+    }
+  }
+}
+
+service shell.GCloud {
+  operation AuthPrintAccessToken {
+    input {}
+    output {
+      access_token: Secret from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["gcloud", "auth", "print-access-token"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to get access token"
+    }
+  }
+}

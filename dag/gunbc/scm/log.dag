@@ -1,0 +1,153 @@
+module gunbc.scm.log
+
+// THE LOG VERB: which commits this envelope carries.
+//
+// It answers exactly that one question. It is not a formatting engine: the result is a sequence of
+// typed rows, and turning rows into text is a rendering concern that belongs with the process-output
+// boundary. Nothing here chooses a separator, a column order or a width, because a decision that can
+// only be justified by how the output would LOOK cannot be derived from the envelope, and this
+// module is built entirely from what the envelope carries.
+//
+// WHAT THE ENVELOPE CARRIES: a RepositoryCommit has its minted reference, root, message and explicit
+// ancestry. So a log row can name the commit, name the program it points at, and carry the message.
+// TWO FIELDS A USER WOULD EXPECT ARE ABSENT FROM THE MODEL, and their absence is reported
+// here rather than synthesised:
+//
+//   AUTHOR      -- no commit in this layer records who made it.
+//   TIMESTAMP   -- no commit records when.
+// Each would have to be invented to appear in a row, and inventing them is the fabricated-plausible-
+// output failure DESIGN section 5 forbids at a user-facing boundary.
+
+import std.types { Bool, List, String }
+import gunbc.scm.object_store {
+  NodeRecordAbsent,
+  NodeRecordFound,
+  NodeRecordIsAuthoredSource,
+  ObjectStore,
+  SemanticNodeObjectRef,
+  find_node_record,
+}
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
+
+// WHETHER THIS COMMIT'S PROGRAM IS ACTUALLY HELD, which is decidable here and therefore reported.
+// The envelope's own encoder refuses on RepositoryCommitRootNotInStore, so "this commit names a root
+// the store does not contain" is a state the model already knows how to recognise. Listing such a
+// commit without saying so would present a row that cannot be checked out as though it were
+// ordinary -- the same reasoning that gives gunbc.scm.status its CheckedOutCommitMissing arm, and
+// the same refusal it is derived from.
+// THREE STANDINGS, NOT TWO, BECAUSE THE STORE ANSWERS TWO DIFFERENT NEGATIVES.
+//
+// A commit root must denote a semantic node: it is the thing `checkout` reconstructs. The store also
+// holds authored-source objects, so a locator can be PRESENT and still be the wrong kind of thing
+// for a root. An earlier revision asked `store_contains`, which is deliberately kind-agnostic --
+// it answers about the LOCATOR -- and so reported a file sitting under a commit's root locator as
+// `LoggedCommitRootHeld`: a log row claiming a checkoutable root where checkout refuses. The two
+// negatives have different remedies (fetch the missing object vs. repair a wrong-kind reference), so
+// they are separate arms rather than one Bool.
+type LoggedCommitStanding
+  = LoggedCommitRootHeld
+  | LoggedCommitRootMissingFromStore
+  | LoggedCommitRootIsAuthoredSource
+
+// The row exposes the commit's own opaque identity, not a value derived from its list position or
+// root. Consumers may hand it back as a reference; they must not inspect its ordinal for ordering or
+// recency, because the allocator watermark is uniqueness state rather than chronology.
+type CommitLogRow {
+  reference: RepositoryCommitRef
+  root: SemanticNodeObjectRef
+  message: String
+  standing: LoggedCommitStanding
+}
+
+// AN EMPTY HISTORY IS ITS OWN STATE, NOT AN EMPTY LIST.
+//
+// A consumer handed `[]` has to decide what it means, and the two available readings have different
+// remedies: "this repository has no commits yet" is the ordinary state of a fresh repository
+// (repository_envelope's header: `init` produces no commits and no root, and neither is an error),
+// while "the log produced nothing" is the shape a failed or unperformed observation takes. DESIGN
+// names that collapse the empty-observation narrow and rules it strictly worse than the widen it
+// mirrors, because a widen is merely expensive and a narrow is silently uncovered.
+//
+// Making the distinction structural means no consumer can accidentally treat one as the other:
+// there is no empty CommitLogRows value to confuse with NoCommitsYet, because the fresh-repository
+// case has its own constructor and never produces a row list at all.
+type CommitLog
+  = NoCommitsYet
+  | CommitLogRows { rows: List<CommitLogRow> }
+
+type CommitLogAcc {
+  rows: List<CommitLogRow>
+}
+
+fn logged_commit_standing(store: ObjectStore, root: SemanticNodeObjectRef) -> LoggedCommitStanding {
+  match find_node_record(store: store, identity: root.locator) {
+    NodeRecordFound(_) => LoggedCommitRootHeld
+    NodeRecordAbsent { identity: _ } => LoggedCommitRootMissingFromStore
+    NodeRecordIsAuthoredSource { identity: _ } => LoggedCommitRootIsAuthoredSource
+  }
+}
+
+fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryCommit) -> CommitLogAcc {
+  CommitLogAcc {
+    rows: concat(
+      acc.rows,
+      [
+        CommitLogRow {
+          reference: commit.reference,
+          root: commit.root,
+          message: commit.message,
+          standing: logged_commit_standing(store: store, root: commit.root),
+        },
+      ],
+    ),
+  }
+}
+
+// Rows preserve the authored commit-list order, but references do not derive from that order.
+//
+// WHAT THIS DELIBERATELY DOES NOT CLAIM IS RECENCY, and the reason is a finding rather than a
+// preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. There is no
+// commit-authoring verb -- every RepositoryCommit constructed anywhere in this repository today is
+// constructed by a witness -- so no producer defines what appending means, and no commit carries a
+// timestamp or a parent to recover an order from. Presenting these rows newest-first would therefore
+// manufacture chronology out of position, which is the same fabrication as inventing the timestamp
+// itself, one step less obvious.
+//
+// This is not a tiebreak waiting to be chosen. A tiebreak presumes an ordering basis that is merely
+// partial; here the basis for recency is ABSENT. It becomes derivable the moment a commit verb
+// exists to define it, and at that point this function gains a stated recency order rather than a
+// reinterpretation of position.
+fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
+  if count(envelope.commits) == 0 {
+    NoCommitsYet
+  } else {
+    match fold(
+      envelope.commits,
+      init: CommitLogAcc { rows: [] },
+      f: fn(acc, c) { commit_log_step(store: envelope.store, acc: acc, commit: c) },
+    ) {
+      CommitLogAcc { rows: rows } => CommitLogRows { rows: rows }
+    }
+  }
+}
+
+// Whether every logged commit names a program this repository actually holds. A consumer deciding
+// whether the image is usable wants this without walking the rows itself, and it is a FACT rather
+// than a rendering, so it belongs beside the log rather than in whatever eventually prints it.
+fn commit_log_is_fully_held(log: CommitLog) -> Bool {
+  match log {
+    NoCommitsYet => true
+    CommitLogRows { rows: rows } =>
+      fold(rows, init: true, f: fn(held, r) {
+        if held {
+          match r.standing {
+            LoggedCommitRootHeld => true
+            LoggedCommitRootMissingFromStore => false
+            LoggedCommitRootIsAuthoredSource => false
+          }
+        } else {
+          false
+        }
+      })
+  }
+}

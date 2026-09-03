@@ -1,0 +1,58 @@
+module extdeps.colo.h5
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "h5datacenters.com/new-jersey-colocation.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.h5",
+      decl_name: "h5_secaucus",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data h5_secaucus: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "H5 Data Centers",
+  facility_label: "H5 New Jersey (Secaucus)",
+  address: AddressListed {
+    street: "200B Meadowlands Parkway, Secaucus, NJ 07094",
+    citation: "h5datacenters.com New Jersey pages and datacentermap profile, read 2026-08-18",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Retail colocation operator; the profile read 2026-08-18 lists roughly 38,000 square feet and 5 MW at the Secaucus site, marketed Tier III. Sits on the same Meadowlands Parkway corridor as InterServer TEB2.",
+}
+
+data h5_philadelphia: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "H5 Data Centers",
+  facility_label: "H5 Philadelphia (1500 Spring Garden, 5th floor)",
+  address: AddressListed {
+    street: "1500 Spring Garden Street, 5th Floor, Philadelphia, PA 19130",
+    citation: "datacenterhawk H5 profile for 1500 Spring Garden, read 2026-08-18",
+  },
+  municipality: "Philadelphia",
+  region_code: "PA",
+  facility_note: "H5 floor in the multi-operator 1500 Spring Garden building (the former vXchnge footprint, roughly 72,000 square feet); 365 Data Centers also operates in the same building under its own module.",
+}
+
+data h5_facilities: List<ColoFacilityRow> = [h5_secaucus, h5_philadelphia]
+
+data h5_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "quote request via h5datacenters.com",
+  obligation: "No cabinet or power pricing published on the pages read 2026-08-18; a written quote for the reference load is required.",
+}

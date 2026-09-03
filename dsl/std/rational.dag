@@ -1,6 +1,0 @@
-module std.rational
-
-import std.algebra { Field, FieldOfFractions }
-import std.integer { Int }
-
-type Rational = Field<FieldOfFractions<Int>>

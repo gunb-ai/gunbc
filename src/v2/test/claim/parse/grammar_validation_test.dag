@@ -1,0 +1,548 @@
+module v2.test.parse.grammar_validation_test
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.compilers.lexing { Token }
+import v2.std.grammar {
+  StampClass,
+  Choice,
+  GrammarProduction,
+  GrammarRoot,
+  Nonterminal,
+  Optional,
+  ParseTree,
+  Sequence,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens
+}
+import v2.compiler.parse {
+  ParseSyncState,
+  grammar_has_choice_ambiguity,
+  grammar_has_duplicate_productions,
+  grammar_has_left_recursion,
+  grammar_has_undefined_nonterminals,
+  grammar_lookup_production,
+  grammar_validate_for_parse,
+  parse_production_tree,
+  parse_skip_to_sync,
+}
+import v2.std.witness { Holds, Violates }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, invariant_port_locus }
+import std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.logic { Bool }
+import v2.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  EqualsClaim,
+  manual_claim_anchor
+}
+
+fn validation_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+
+fn validation_outcome_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn validation_terminal_production(name: Symbol) -> GrammarProduction {
+  GrammarProduction {
+    name: name,
+    expression: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+    emitted: grammar_atom(identity: name)
+  }
+}
+
+fn validation_token(class: Symbol, start: Int, end: Int) -> Token {
+  Token { class: class, lexeme: Empty, file: ^validation_file, start: start, end: end }
+}
+
+data validation_dup_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: validation_terminal_production(name: ^validation_start),
+    tail: Cons { head: validation_terminal_production(name: ^validation_start), tail: Empty }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_missing_start_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Nonterminal { production: ^validation_other },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_left_recursive_root: GrammarRoot = GrammarRoot {
+  start: ^validation_rec_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_rec_start,
+      expression: Sequence {
+        left: Nonterminal { production: ^validation_rec_start },
+        right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+      },
+      emitted: grammar_atom(identity: ^validation_rec_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_right_recursive_root: GrammarRoot = GrammarRoot {
+  start: ^validation_rec_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_rec_start,
+      expression: Sequence {
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: Optional { element: Nonterminal { production: ^validation_rec_start } }
+      },
+      emitted: grammar_atom(identity: ^validation_rec_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_two_distinct_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: validation_terminal_production(name: ^validation_start),
+    tail: Cons { head: validation_terminal_production(name: ^validation_other), tail: Empty }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_ambiguous_choice_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Terminal { token_class: ^validation_tok_class, stamp: StampClass },
+        right: Terminal { token_class: ^validation_tok_class_b, stamp: StampClass }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
+  match grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
+        None => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data validation_nullable_ambiguous_choice_root: GrammarRoot = GrammarRoot {
+  start: ^validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^validation_start,
+      expression: Choice {
+        left: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } },
+        right: Optional { element: Terminal { token_class: ^validation_tok_class, stamp: StampClass } }
+      },
+      emitted: grammar_atom(identity: ^validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+fn validation_nullable_ambiguity_validate_rejects() -> Bool {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
+  match grammar_validate_for_parse(root: validation_nullable_ambiguous_choice_root, at: at) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn validation_disjoint_choice_residue_is_none() -> Bool {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
+  match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        None => true
+        Some { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn validation_disjoint_choice_validate_accepts() -> Bool {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
+  match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn validation_lookup_present_holds_named() -> Bool {
+  match grammar_lookup_production(root: validation_two_distinct_root, name: ^validation_other) {
+    Holds { value: production } => production.name == ^validation_other
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn validation_lookup_missing_violates() -> Bool {
+  match grammar_lookup_production(root: validation_two_distinct_root, name: ^validation_missing) {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
+  }
+}
+
+data validation_one_token_list: List<Token> = Cons {
+  head: validation_token(class: ^validation_tok_class, start: 0, end: 1),
+  tail: Empty
+}
+
+data validation_two_token_list: List<Token> = Cons {
+  head: validation_token(class: ^validation_tok_class, start: 0, end: 1),
+  tail: Cons { head: validation_token(class: ^validation_tok_class, start: 1, end: 2), tail: Empty }
+}
+
+fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
+  match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_production_tree(
+        tokens: validation_two_token_list,
+        validated: validated,
+        production_name: ^validation_rec_start
+      )
+  }
+}
+
+fn validation_empty_sync_found() -> Bool {
+  match parse_skip_to_sync(
+    tokens: validation_one_token_list,
+    sync_tokens: grammar_empty_sync_tokens()
+  ) {
+    ParseSyncState { found_sync: found, result: _ } => found
+  }
+}
+
+data claim_duplicate_productions_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_duplicate_productions returns true for duplicate production names",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_duplicate_productions(root: validation_dup_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_distinct_productions_not_duplicate: TestClaim = EqualsClaim {
+  label: "grammar_has_duplicate_productions returns false for distinct production names",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_duplicate_productions(root: validation_two_distinct_root)),
+  rhs: validation_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_lookup_production_present_holds: TestClaim = EqualsClaim {
+  label: "grammar_lookup_production returns Holds with the production matching the requested name",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_lookup_present_holds_named()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_lookup_production_absent_violates: TestClaim = EqualsClaim {
+  label: "grammar_lookup_production returns Violates for a name absent from productions",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_lookup_missing_violates()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_undefined_nonterminal_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_undefined_nonterminals returns true for missing start production",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_undefined_nonterminals(root: validation_missing_start_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_dangling_nonterminal_in_expression_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_undefined_nonterminals returns true when start production references undefined nonterminal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_undefined_nonterminals(root: validation_dangling_ref_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_empty_sync_set_no_token_drain: TestClaim = EqualsClaim {
+  label: "parse_skip_to_sync with empty sync set returns found_sync: false for non-empty input",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_empty_sync_found()),
+  rhs: validation_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_left_recursion_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_left_recursion returns true for A = A 'x' (direct left recursion)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_left_recursion(root: validation_left_recursive_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_right_recursion_not_left_recursive: TestClaim = EqualsClaim {
+  label: "grammar_has_left_recursion returns false for A = 'x' A? (right-recursive, non-left)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_left_recursion(root: validation_right_recursive_root)),
+  rhs: validation_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_right_recursive_parse_succeeds: TestClaim = EqualsClaim {
+  label: "parse_production accepts right-recursive A = 'x' A? on two matching tokens via memoized ParseTable",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(
+    b: validation_outcome_accepted(out: validation_right_recursive_parse_fixture())
+  ),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_choice_ambiguity_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_choice_ambiguity returns true when Choice branches share a FIRST terminal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_ambiguous_choice_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
+  label: "grammar_has_choice_ambiguity returns false when Choice FIRST sets are disjoint",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_choice_ambiguity(root: validation_disjoint_choice_root)),
+  rhs: validation_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_accepts_overlap_with_counted_residue: TestClaim = EqualsClaim {
+  label: "grammar_validate_for_parse accepts non-nullable Choice FIRST overlap as counted typed residue (reason parse_grammar_choice_overlap_residue); runtime routes it to parse_choice_residue_backtrack",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_overlap_choice_validate_accepts_with_residue()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_rejects_nullable_choice_ambiguity: TestClaim = EqualsClaim {
+  label: "grammar_validate_for_parse stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_nullable_ambiguity_validate_rejects()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_disjoint_choice_validate_residue_none: TestClaim = EqualsClaim {
+  label: "disjoint-FIRST Choice validates with zero residue diagnostics (residue channel discriminates overlap from clean)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_disjoint_choice_residue_is_none()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_accepts_disjoint_choice: TestClaim = EqualsClaim {
+  label: "grammar_validate_for_parse accepts grammars whose Choice branches have disjoint FIRST sets",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: validation_disjoint_choice_validate_accepts()),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+// EXECUTING CONTROLS FOR THE LEFT-CORNER RELATION.
+//
+// The `TestClaim` rows above are not reached by floor discovery, which selects column-zero
+// `test fn` declarations — so the direct-left-recursion and right-recursive rows in this file
+// establish nothing at run time today. The rewrite of `grammar_has_left_recursion` from a
+// per-production closure to one shared left-corner relation therefore had no executing regression
+// control, and these rows are it.
+//
+// INDIRECT RECURSION IS THE DISCRIMINATING CASE. A shared relation that only ever expanded one
+// production deep would still answer `true` for `A = A 'x'` and `false` for the right-recursive
+// fixture — every claim this file previously made — while silently missing `A = B 'x'`,
+// `B = A 'x'`. That is precisely the failure a closure rewrite introduces, so the transitive case
+// is asserted directly rather than assumed to follow from the direct one.
+
+data validation_indirect_a: Symbol = ^validation_indirect_a_production
+data validation_indirect_b: Symbol = ^validation_indirect_b_production
+
+fn validation_left_corner_production(name: Symbol, corner: Symbol) -> GrammarProduction {
+  GrammarProduction {
+    name: name,
+    expression: Sequence {
+      left: Nonterminal { production: corner },
+      right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+    },
+    emitted: grammar_atom(identity: name)
+  }
+}
+
+// A = B 'x' , B = A 'x' — neither production is directly left-recursive; the cycle exists only
+// through the transitive left-corner relation.
+data validation_indirect_left_recursive_root: GrammarRoot = GrammarRoot {
+  start: ^validation_indirect_a_production,
+  productions: Cons {
+    head: validation_left_corner_production(
+      name: ^validation_indirect_a_production,
+      corner: ^validation_indirect_b_production
+    ),
+    tail: Cons {
+      head: validation_left_corner_production(
+        name: ^validation_indirect_b_production,
+        corner: ^validation_indirect_a_production
+      ),
+      tail: Empty
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+// A = B 'x' , B = 'x' — one left-corner hop, no cycle. The negative twin of the row above: it
+// shares the indirect SHAPE and differs only in whether the relation closes, so a mechanism that
+// answered `true` for any two-production grammar would be caught here.
+data validation_indirect_terminating_root: GrammarRoot = GrammarRoot {
+  start: ^validation_indirect_a_production,
+  productions: Cons {
+    head: validation_left_corner_production(
+      name: ^validation_indirect_a_production,
+      corner: ^validation_indirect_b_production
+    ),
+    tail: Cons {
+      head: validation_terminal_production(name: ^validation_indirect_b_production),
+      tail: Empty
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+test fn validation_direct_left_recursion_is_detected() -> Bool {
+  grammar_has_left_recursion(root: validation_left_recursive_root)
+}
+
+test fn validation_right_recursion_is_not_left_recursion() -> Bool {
+  grammar_has_left_recursion(root: validation_right_recursive_root) == false
+}
+
+test fn validation_indirect_left_recursion_is_detected_RED() -> Bool {
+  grammar_has_left_recursion(root: validation_indirect_left_recursive_root)
+}
+
+test fn validation_indirect_terminating_is_not_left_recursion() -> Bool {
+  grammar_has_left_recursion(root: validation_indirect_terminating_root) == false
+}
+
+test fn validation_two_distinct_productions_are_not_left_recursive() -> Bool {
+  grammar_has_left_recursion(root: validation_two_distinct_root) == false
+}
+
+// DEPTH, NOT JUST INDIRECTNESS. The two-production cycle above is caught by any relation that
+// expands even once. A five-production cycle is not: it requires the relation to close over five
+// hops, so an implementation that stopped early — a truncated fixpoint, a bounded expansion, a
+// fuel that ran out — answers `false` here while still passing every row above.
+data validation_cycle_5_root: GrammarRoot = GrammarRoot {
+  start: ^validation_cycle_p1,
+  productions: Cons {
+    head: validation_left_corner_production(name: ^validation_cycle_p1, corner: ^validation_cycle_p2),
+    tail: Cons {
+      head: validation_left_corner_production(name: ^validation_cycle_p2, corner: ^validation_cycle_p3),
+      tail: Cons {
+        head: validation_left_corner_production(name: ^validation_cycle_p3, corner: ^validation_cycle_p4),
+        tail: Cons {
+          head: validation_left_corner_production(name: ^validation_cycle_p4, corner: ^validation_cycle_p5),
+          tail: Cons {
+            head: validation_left_corner_production(name: ^validation_cycle_p5, corner: ^validation_cycle_p1),
+            tail: Empty
+          }
+        }
+      }
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+// The same five-hop chain with the cycle broken at the last link: p5 ends in a terminal instead of
+// returning to p1. Identical size and shape, opposite verdict.
+data validation_chain_5_root: GrammarRoot = GrammarRoot {
+  start: ^validation_cycle_p1,
+  productions: Cons {
+    head: validation_left_corner_production(name: ^validation_cycle_p1, corner: ^validation_cycle_p2),
+    tail: Cons {
+      head: validation_left_corner_production(name: ^validation_cycle_p2, corner: ^validation_cycle_p3),
+      tail: Cons {
+        head: validation_left_corner_production(name: ^validation_cycle_p3, corner: ^validation_cycle_p4),
+        tail: Cons {
+          head: validation_left_corner_production(name: ^validation_cycle_p4, corner: ^validation_cycle_p5),
+          tail: Cons {
+            head: validation_terminal_production(name: ^validation_cycle_p5),
+            tail: Empty
+          }
+        }
+      }
+    }
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+test fn validation_five_hop_cycle_is_left_recursive() -> Bool {
+  grammar_has_left_recursion(root: validation_cycle_5_root)
+}
+
+test fn validation_five_hop_chain_is_not_left_recursive() -> Bool {
+  grammar_has_left_recursion(root: validation_chain_5_root) == false
+}

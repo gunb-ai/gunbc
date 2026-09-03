@@ -1,0 +1,31 @@
+module test.claim.http_client_get_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import extdeps.http.client
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "These witnesses drive the real shell/curl transport of http.Client.Get (extdeps/http/client.dag) - the op has no mock_response, so the hermetic discovery corpus refuses it by construction. Excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as declared Wet explicit entries (bin_witness_wet_entries), same lane as the srv3 install-media real-execution witnesses. Network-free: the GET targets a file:// URL over a mktemp fixture, so what is proven by execution is the client shape's transport row - argv realization, stdout-to-body projection, exit-to-success mapping - plus a discriminating RED (missing target refuses, success=false, no fabricated body)."
+
+data http_client_get_fixture_body: String = "gunbc-http-client-get-witness-body"
+
+test fn http_client_get_roundtrip_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let path = concat(dir.path as String, "/fixture")
+  let wrote = Filesystem.Write(path: path, content: http_client_get_fixture_body)
+  let got = http.Client.Get(url: concat("file://", path) as NonEmptyStr)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && got.success && got.body == http_client_get_fixture_body
+}
+
+test fn http_client_get_missing_target_red_control_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let missing = concat(dir.path as String, "/does-not-exist")
+  let got = http.Client.Get(url: concat("file://", missing) as NonEmptyStr)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && got.success == false && got.body == ""
+}

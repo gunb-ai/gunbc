@@ -1,0 +1,187 @@
+module test.claim.runtime_materialization_observation_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import gunbc.spark.serving_observe { spark_serving_runtime_materialization_receipt_probe_argv }
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationObservation,
+  RuntimeMaterializationAbsent,
+  RuntimeMaterializationIncomplete,
+  RuntimeMaterializationComplete,
+  RuntimeMaterializationObservationRefused,
+  RuntimeMaterializationDefect,
+  RuntimeRootPresentButEmpty,
+  RuntimeExecutableMissing,
+  RuntimeMaterializationReceiptMissing,
+  runtime_materialization_defects,
+  runtime_materialization_state_digest,
+  runtime_materialization_was_observed,
+  ollama_runtime_materialization_identity_for_required_release,
+}
+
+fn required_identity() -> NonEmptyStr {
+  ollama_runtime_materialization_identity_for_required_release().digest
+}
+
+fn corrupted_under_a_correct_root() -> RuntimeMaterializationObservation {
+  RuntimeMaterializationIncomplete {
+    identity: ollama_runtime_materialization_identity_for_required_release(),
+    first_defect: RuntimeExecutableMissing { expected_relative_path: "bin/ollama" as NonEmptyStr },
+    further_defects: [],
+  }
+}
+
+// THE KEYSTONE. A correct path name is not proof of a correct runtime: the root is content-addressed
+// by the materialization identity, so its NAME is derivable from the release alone and a directory
+// bearing it proves only that something once decided to create it. A partial tree under that name
+// is INCOMPLETE -- not absent, and not unobservable.
+test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool {
+  match corrupted_under_a_correct_root() {
+    RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
+    RuntimeMaterializationAbsent => false
+    RuntimeMaterializationComplete { identity: _ } => false
+    RuntimeMaterializationObservationRefused { cause: _ } => false
+  }
+}
+
+// IT IS NOT ABSENCE, AND THE DIFFERENCE REACHES THE MEMBER. This claim previously asserted the
+// opposite -- that incomplete and absent "agree on the member" -- which pinned the exact collapse the
+// carrier exists to prevent: the two arms differ in the type and were then made identical before
+// reconcile could act on them. Absence yields MemberAdded and a differing value yields MemberChanged,
+// so erasing this selects a fresh materialization where a repair was owed.
+//
+// The control is two-sided on purpose: incomplete must project SOME value, absent must project NONE,
+// and the value incomplete projects must not equal the desired identity -- otherwise a corrupted root
+// would compare converged.
+test fn an_incomplete_runtime_projects_a_member_and_an_absent_one_does_not() -> Bool {
+  match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
+    Absent => false
+    Present { value: incomplete_digest } =>
+      match runtime_materialization_state_digest(observation: RuntimeMaterializationAbsent) {
+        Present { value: _ } => false
+        Absent =>
+          (incomplete_digest as String) != (required_identity() as String)
+            && runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
+            && runtime_materialization_was_observed(observation: RuntimeMaterializationAbsent)
+      }
+  }
+}
+
+// TWO DIFFERENT DEFECTS ARE TWO DIFFERENT OBSERVED VALUES. A constant "broken" digest would satisfy
+// the claim above while making every partial state indistinguishable, so repairing one defect and
+// introducing another would read as no change at all.
+test fn distinct_defects_project_distinct_state_values() -> Bool {
+  match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
+    Absent => false
+    Present { value: missing_digest } =>
+      match runtime_materialization_state_digest(
+        observation: RuntimeMaterializationIncomplete {
+          identity: ollama_runtime_materialization_identity_for_required_release(),
+          first_defect: RuntimeRootPresentButEmpty,
+          further_defects: [],
+        },
+      ) {
+        Absent => false
+        Present { value: empty_digest } =>
+          (missing_digest as String) != (empty_digest as String)
+      }
+  }
+}
+
+// AND IT IS NOT A REFUSAL, which would be the worse fold: the corruption was SUCCESSFULLY OBSERVED,
+// and calling an established fact an inability to establish it is the collapse this lane has found
+// at every layer. Refusal is reserved for genuinely not knowing, and only it answers false here.
+test fn only_a_refusal_reports_the_runtime_as_unobserved() -> Bool {
+  !runtime_materialization_was_observed(
+    observation: RuntimeMaterializationObservationRefused {
+      cause: "runtime root unreadable: permission denied" as NonEmptyStr,
+    },
+  )
+    && runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
+}
+
+// A complete materialization is the ONLY arm that projects an identity, and it projects the one it
+// was observed to hold. Without this the three negative claims above pass on a projection that
+// simply never answers.
+test fn only_a_complete_materialization_projects_its_identity() -> Bool {
+  match runtime_materialization_state_digest(
+    observation: RuntimeMaterializationComplete {
+      identity: ollama_runtime_materialization_identity_for_required_release(),
+    },
+  ) {
+    Absent => false
+    Present { value: d } => (d as String) == (required_identity() as String)
+  }
+}
+
+// An incomplete materialization carries at least one defect BY CONSTRUCTION -- head plus tail, so
+// "incomplete with nothing wrong" has no constructor. This pins that the accessor agrees with the
+// type rather than quietly returning an empty list the type already forbids.
+test fn an_incomplete_materialization_always_reports_a_defect() -> Bool {
+  length(runtime_materialization_defects(observation: corrupted_under_a_correct_root())) == 1
+    && length(runtime_materialization_defects(
+      observation: RuntimeMaterializationIncomplete {
+        identity: ollama_runtime_materialization_identity_for_required_release(),
+        first_defect: RuntimeRootPresentButEmpty,
+        further_defects: [RuntimeExecutableMissing { expected_relative_path: "bin/ollama" as NonEmptyStr }],
+      },
+    )) == 2
+}
+
+// The settled arms report no defects, so the accessor is not answering the same way for everything.
+test fn a_complete_or_absent_runtime_reports_no_defects() -> Bool {
+  length(runtime_materialization_defects(observation: RuntimeMaterializationAbsent)) == 0
+    && length(runtime_materialization_defects(
+      observation: RuntimeMaterializationComplete {
+        identity: ollama_runtime_materialization_identity_for_required_release(),
+      },
+    )) == 0
+}
+
+// AN EXECUTABLE WITHOUT THE COMPLETION RECEIPT IS NOT A MATERIALIZED RUNTIME.
+//
+// This is the state the observation used to call Complete. The root exists, an executable sits at
+// the expected path, the executable bit is set -- and none of that establishes that the closure was
+// installed, because every one of those facts is true of a stub, a half-extracted tree, or a wrong
+// build someone dropped there. The install sequence writes its receipt LAST precisely so that one
+// file covers the steps a directory listing cannot see, and the observation was not reading it.
+//
+// The claim asserts the DIGEST DIFFERS from a complete one, not merely that the arm is Incomplete.
+// Sharing a digest with Complete is what would let the member converge, which is the actual harm --
+// an arm name that reconcile never reads would be cosmetic.
+test fn a_missing_completion_receipt_is_not_complete() -> Bool {
+  let ident = ollama_runtime_materialization_identity_for_required_release()
+  let no_receipt = RuntimeMaterializationIncomplete {
+    identity: ident,
+    first_defect: RuntimeMaterializationReceiptMissing,
+    further_defects: [],
+  }
+  match runtime_materialization_state_digest(observation: no_receipt) {
+    Absent => false
+    Present { value: partial } =>
+      match runtime_materialization_state_digest(
+        observation: RuntimeMaterializationComplete { identity: ident },
+      ) {
+        Absent => false
+        Present { value: whole } =>
+          (partial as String) != (whole as String)
+            && runtime_materialization_was_observed(observation: no_receipt)
+      }
+  }
+}
+
+// AND THE PROBE ACTUALLY ASKS FOR IT. The arm above is unreachable unless the observer runs a leg
+// that can fail, so this pins the argv: a receipt arm nothing probes for is a state the type can
+// express and the producer can never emit.
+//
+// IT READS THE RECEIPT RATHER THAN TESTING FOR IT. This claim asserted `test -f` -- existence -- and
+// existence is exactly the evidence that could not support the conclusion: a receipt file present at
+// the right path says a file is there, not that it names THIS materialization. A tree left by a
+// previous release carries a receipt too. `cat` is what makes the identity comparison possible, so
+// the claim pins the reading command and explicitly refuses the existence test it used to require.
+test fn the_observer_probes_for_the_completion_receipt() -> Bool {
+  let argv = spark_serving_runtime_materialization_receipt_probe_argv()
+  length(argv) == 2
+    && argv[0] == "cat"
+    && argv[0] != "test"
+    && string_contains(argv[1], "gunbc-materialization-receipt")
+}

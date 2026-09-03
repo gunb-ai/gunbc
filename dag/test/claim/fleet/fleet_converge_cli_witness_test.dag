@@ -1,0 +1,361 @@
+module test.claim.fleet_converge_cli_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn converge_cli_drift_fixture_oid(hex: String) -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => oid
+    Absent => "0000000000000000000000000000000000000000" as GitObjectId
+  }
+}
+
+// THE OPERATOR-FACING REMEDY MUST NAME AN OPERATION THE REPOSITORY WOULD ACTUALLY PERFORM. This arm
+// told a human "tree-sync is the catch-up realization" while gunbc.live_deploy.deployed_tree_report
+// BLOCKS exactly that: a tree-only publication flips the launch admission's revision gate
+// (gunbc.roadmap_launch_admission launch_gate_revision) to admitting while the
+// installed binary is still old, so the next tick dispatches a mixed realization never admitted as a
+// release. The typed verdict was correct throughout, which is why nothing caught it -- no consumer of
+// the VERDICT was wrong, only the sentence a human acts on, and this fn had no witness at all.
+test fn witness_converge_cli_drift_reason_does_not_prescribe_tree_only_sync() -> Bool {
+  let d = converge_cli_drift_fixture_oid(hex: "1111111111111111111111111111111111111111")
+  let l = converge_cli_drift_fixture_oid(hex: "2222222222222222222222222222222222222222")
+  match converge_cli_revision_reason(standing: RevisionDrifted { desired: d, local: l }) {
+    Present { value: reason } =>
+      string_contains(s: reason, pattern: "full host-release publication is required")
+        && !string_contains(s: reason, pattern: "tree-sync is the catch-up")
+        && string_contains(s: reason, pattern: "1111111111111111111111111111111111111111")
+        && string_contains(s: reason, pattern: "2222222222222222222222222222222222222222")
+    Absent => false
+  }
+}
+
+// The converged arm must stay SILENT -- a reason on a converged standing would put a remedy in front
+// of an operator who has nothing to remedy.
+test fn witness_converge_cli_converged_standing_offers_no_remedy() -> Bool {
+  match converge_cli_revision_reason(
+    standing: RevisionConverged {
+      revision: converge_cli_drift_fixture_oid(hex: "3333333333333333333333333333333333333333"),
+    }
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
+  converge_cli_routes_to_slice1(host: "srv1")
+    && match host_converge_slice1_fixture_receipt() {
+      Present { value: receipt } => receipt.host == operator_host_srv1
+      Absent => false
+    }
+}
+
+test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Bool {
+  converge_cli_routes_to_slice1(host: "srv3")
+    && !converge_cli_routes_to_slice1(host: "srv2")
+}
+
+// THE CAUSE THIS ASSERTS HAS NOW CHANGED THREE TIMES, AND THE ROW IS KEPT BECAUSE THE INVARIANT
+// UNDER IT HAS NOT. srv2 first refused because gunbc.host_converge_realize found an unimplemented
+// knob target and said so in prose containing its own module name; then because the converge-side
+// in-process apply was withdrawn outright; and now because its runner deployment refuses at the
+// PLAN, so no converge target is built for it at all. Every version is a fail-closed refusal with
+// applied == 0, and each has been strictly stronger than the last: the first depended on which knob
+// targets happened to be unmodelled, the second on the apply path, and this one on whether the
+// host's session reservation could be established.
+//
+// WHAT THIS ROW EXISTS TO CATCH IS THE STATE IT WOULD HAVE SILENTLY BECOME. When the plan moved to
+// per-host refusal, srv2 stopped appearing among the derived converge targets, and the CLI's Absent
+// arm reported it as UnknownHost -- an enrolled, known, correctly-refused host rendered as an
+// identity outside the fleet. That is the conflation this module already split once (see the
+// applicability note in gunbc.fleet_converge_cli), reintroduced one host over. So the assertion
+// pins the CAUSE, not just the refusal: a row asserting only "srv2 fails closed with applied == 0"
+// would have passed against exactly the defect being removed, because UnknownHost fails closed too.
+test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bool {
+  let host_knobs = converge_cli_run_host_knobs(host: "srv2")
+  let r = converge_cli_run(host: "srv2")
+  host_knobs.host == "srv2"
+    && host_knobs.applied == 0
+    && host_knobs.drifted == 0
+    && converge_verdict_label(v: host_knobs.verdict) == "absent"
+    && !converge_cli_receipt_converged(r: host_knobs)
+    && match host_knobs.reason {
+      Present { value: cause } =>
+        match cause {
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: h, cause: why } =>
+            h == "srv2"
+              && string_contains(s: host_deployment_refusal_text(c: why), pattern: "session_reservation_unestablished")
+          KnobFrontier { reason: _ } => false
+          PolicyUnsound { reason: _ } => false
+          UnknownHost { host: _ } => false
+          SparkPreEnrollment { host: _ } => false
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+          ComputeInventoryAbsent { host: _ } => false
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: _, cause: _ } => false
+        }
+      _ => false
+    }
+    && match r.reason {
+      Present { value: cause } =>
+        match cause {
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: h, cause: why } =>
+            h == "srv2"
+              && string_contains(s: host_deployment_refusal_text(c: why), pattern: "session_reservation_unestablished")
+          KnobFrontier { reason: _ } => false
+          PolicyUnsound { reason: _ } => false
+          UnknownHost { host: _ } => false
+          SparkPreEnrollment { host: _ } => false
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+          ComputeInventoryAbsent { host: _ } => false
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: _, cause: _ } => false
+        }
+      _ => false
+    }
+}
+
+test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
+  let r = converge_cli_run(host: "no-such-fleet-host")
+  r.host == "no-such-fleet-host"
+    && r.applied == 0
+    && r.drifted == 0
+    && converge_verdict_label(v: r.verdict) == "absent"
+    && !converge_cli_receipt_converged(r: r)
+    && match r.reason {
+      Present { value: cause } =>
+        match cause {
+          UnknownHost { host: h } => h == "no-such-fleet-host"
+          PolicyUnsound { reason: _ } => false
+          KnobFrontier { reason: _ } => false
+          SparkPreEnrollment { host: _ } => false
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+          ComputeInventoryAbsent { host: _ } => false
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: _, cause: _ } => false
+        }
+      _ => false
+    }
+}
+
+test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_distinct_causes() -> Bool {
+  let unknown = UnknownHost { host: "no-such-fleet-host" }
+  let inventory_absent = ComputeInventoryAbsent { host: "gunbc-ci-fleet" }
+  match unknown {
+    UnknownHost { host: _ } =>
+      match inventory_absent {
+        ComputeInventoryAbsent { host: _ } => true
+        ConvergeTargetMissingForDerivedHost { host: _ } => false
+        HostDeploymentRefused { host: _, cause: _ } => true
+        UnknownHost { host: _ } => false
+        PolicyUnsound { reason: _ } => false
+        KnobFrontier { reason: _ } => false
+        SparkPreEnrollment { host: _ } => false
+        SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+      }
+    ComputeInventoryAbsent { host: _ } => false
+    ConvergeTargetMissingForDerivedHost { host: _ } => false
+    HostDeploymentRefused { host: _, cause: _ } => false
+    PolicyUnsound { reason: _ } => false
+    KnobFrontier { reason: _ } => false
+    SparkPreEnrollment { host: _ } => false
+    SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+  }
+    && converge_cli_refusal_message(cause: unknown) != converge_cli_refusal_message(cause: inventory_absent)
+    && string_contains(s: converge_cli_refusal_message(cause: unknown), pattern: "unknown fleet host identity")
+    && string_contains(
+      s: converge_cli_refusal_message(cause: inventory_absent),
+      pattern: "absent from compute inventory"
+    )
+}
+
+test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
+  let srv2 = converge_cli_run(host: "srv2")
+  let unknown = converge_cli_run(host: "no-such-fleet-host")
+  match srv2.reason {
+    Present { value: srv2_cause } =>
+      match unknown.reason {
+        Present { value: unknown_cause } =>
+          match srv2_cause {
+            ConvergeTargetMissingForDerivedHost { host: _ } => false
+            HostDeploymentRefused { host: _, cause: _ } =>
+              match unknown_cause {
+                UnknownHost { host: _ } => true
+                PolicyUnsound { reason: _ } => false
+                KnobFrontier { reason: _ } => false
+                SparkPreEnrollment { host: _ } => false
+                SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+                ComputeInventoryAbsent { host: _ } => false
+                ConvergeTargetMissingForDerivedHost { host: _ } => false
+                HostDeploymentRefused { host: _, cause: _ } => false
+              }
+            PolicyUnsound { reason: _ } => false
+            UnknownHost { host: _ } => false
+            SparkPreEnrollment { host: _ } => false
+            SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+            ComputeInventoryAbsent { host: _ } => false
+            KnobFrontier { reason: _ } => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool {
+  let converged = ConvergeCliReceipt { host: "srv9", applied: 3, drifted: 0, verdict: VerdictConverged, reason: none }
+  let refused = ConvergeCliReceipt {
+    host: "srv1",
+    applied: 0,
+    drifted: 0,
+    verdict: converge_verdict(effective: "", expected: "refused"),
+    reason: Present { value: KnobFrontier { reason: "refused" } },
+  }
+  converge_cli_receipt_line(r: converged) == "converge-receipt host=srv9 applied=3 drifted=0 verdict=converged"
+    && converge_cli_receipt_line(r: refused) == "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent"
+}
+
+test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
+  let out = converge_cli_output(host: "no-such-fleet-host")
+  out.line == "converge-receipt host=no-such-fleet-host applied=0 drifted=0 verdict=absent"
+    && !out.converged
+    && match out.reason {
+      Present { value: why } => string_contains(s: why, pattern: "unknown fleet host identity")
+      _ => false
+    }
+}
+
+// Atomic publication: staging file lives beside the final receipt so rename(2) needs
+// directory write permission only — superseding a root-owned stale file without elevation.
+test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() -> Bool {
+  fleet_converge_receipt_staging_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.staging"
+    && fleet_converge_receipt_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.txt"
+}
+
+// Join 1 (operator verdict) — construction rework 2026-08-10, the §5 empty-observation
+// narrow. converge_cli_receipt_join_revision MEETS the knob verdict with the revision
+// standing (converge_verdict_meet), and the RENDERED converge-receipt line is derived from
+// that joint — so a knob run that converged its knobs but never observed the desired
+// revision renders verdict=absent on line 1, NOT converged. This is the exact srv1 defect
+// (applied=0 drifted=0 verdict=converged persisted while the revision was unobserved, and
+// the collector then folded it as converged). RED both directions: an unobserved/drifted
+// standing must never render verdict=converged on the receipt line, and a converged standing
+// must pass the knob verdict through. The end-to-end clause feeds the joint line back through
+// the collector's own parser (parse_converge_receipt_line) and asserts the collector reads
+// NOT-converged — the narrow is closed at the seam the collector actually reads. Also asserts
+// the converge-revision line now carries the OBSERVATION as evidence (observed=/drift/
+// unobserved), never a second verdict= token, so the receipt holds exactly one verdict.
+// The knob run is the srv1 shape: converged with nothing to apply. Against it the joint is
+// exercised on all three revision standings — converged passes the knob verdict through,
+// drift demotes to drifted, and unobserved demotes to absent, each checked on the emitted
+// line as well as the verdict so a line that still said converged could not pass. The
+// end-to-end leg feeds the joint unobserved line back through the collector's OWN parser,
+// because the narrow this claim closes lived at the seam the collector reads rather than in
+// the verdict itself.
+test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
+  let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+  let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+  let knob = ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
+  let joint_ok = converge_cli_receipt_join_revision(r: knob, standing: RevisionConverged { revision: a })
+  let joint_drift = converge_cli_receipt_join_revision(r: knob, standing: RevisionDrifted { desired: a, local: b })
+  let joint_unobs = converge_cli_receipt_join_revision(r: knob, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
+  converge_verdict_label(v: joint_ok.verdict) == "converged"
+    && converge_cli_receipt_converged(r: joint_ok)
+    && string_contains(s: converge_cli_receipt_line(r: joint_ok), pattern: "verdict=converged")
+    && converge_verdict_label(v: joint_drift.verdict) == "drifted"
+    && !converge_cli_receipt_converged(r: joint_drift)
+    && !string_contains(s: converge_cli_receipt_line(r: joint_drift), pattern: "verdict=converged")
+    && converge_verdict_label(v: joint_unobs.verdict) == "absent"
+    && !converge_cli_receipt_converged(r: joint_unobs)
+    && string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=absent")
+    && !string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=converged")
+    && match parse_converge_receipt_line(line: converge_cli_receipt_line(r: joint_unobs)) {
+      Present { value: parsed } => !converge_cli_receipt_converged(r: parsed)
+      Absent => false
+    }
+    && string_contains(s: converge_cli_revision_line(standing: RevisionConverged { revision: a }), pattern: "observed=")
+    && string_contains(s: converge_cli_revision_line(standing: RevisionDrifted { desired: a, local: b }), pattern: "drift desired=")
+    && string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "unobserved cause=")
+    && !string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "verdict=")
+}
+
+// The meet's FULL table, all nine pairs. The joint-verdict witness above drives only the
+// a=VerdictConverged row, so the a=Drifted row -- where the fold carried a wildcard arm
+// until the totalling in this change -- had no executing consumer at all. A wildcard is
+// exactly the shape a later variant silently joins, and the nfr census counted this site
+// as un-migrated modeling for that reason; the enumeration only preserves behaviour if
+// something asserts what the behaviour IS, so the table is the evidence and not the note.
+//
+// Read as a lattice Absent < Drifted < VerdictConverged: the meet is the weaker of the two,
+// commutative, idempotent, with VerdictConverged as the identity and Absent absorbing. The
+// clauses run in that order: Absent absorbing from either side, then the Drifted row the
+// wildcard used to answer, then converged reachable only when both sides are converged.
+test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
+  converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Drifted)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: VerdictConverged)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Drifted)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: VerdictConverged)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Drifted)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: VerdictConverged)) == "converged"
+}
+
+fn revision_fixture_oid(hex: String) -> GitObjectId {
+  match git_sha1_object_id(hex: hex) {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest { hex: hex as Sha1DigestHex },
+      }
+  }
+}
+
+// Join 3 (operator verdict): applicability is TOTAL over the fleet — srv5/srv6 are a
+// typed pre-enrollment refusal DISTINCT from UnknownHost (they are known fleet
+// identities awaiting SPARK-SERVE-0), and every enrolled host lands one arm.
+test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unknown() -> Bool {
+  let r = converge_cli_run(host: "srv5")
+  !converge_cli_receipt_converged(r: r)
+    && match r.reason {
+      Present { value: cause } =>
+        match cause {
+          SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } =>
+            h == "srv5" && string_contains(s: trigger, pattern: "fleet_multi_principal_probe_wet")
+          SparkPreEnrollment { host: _ } => false
+          _ => false
+        }
+      _ => false
+    }
+    && match converge_cli_run(host: "no-such-fleet-host").reason {
+      Present { value: c2 } =>
+        match c2 {
+          UnknownHost { host: _ } => true
+          _ => false
+        }
+      _ => false
+    }
+}
+
+test fn witness_converge_kernel_hostname_trim_strips_whitespace() -> Bool {
+  converge_kernel_short_hostname_from_content(raw: "srv2\n") == "srv2"
+}
+
+test fn witness_converge_codex_runtime_local_locus_refuses_cross_host() -> Bool {
+  !converge_codex_runtime_local_locus_matches_host(host: "srv2")
+    || converge_local_kernel_short_hostname() == "srv2"
+}
+
+test fn witness_codex_runtime_bundle_knob_registered_in_fleet_converge_policy() -> Bool {
+  converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv1)
+    && converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv4)
+}
+
+test fn witness_converge_cli_fleet_compute_hosts_include_srv1_through_srv4() -> Bool {
+  converge_cli_is_fleet_compute_host(host: "srv1")
+    && converge_cli_is_fleet_compute_host(host: "srv4")
+    && !converge_cli_is_fleet_compute_host(host: "srv5")
+}

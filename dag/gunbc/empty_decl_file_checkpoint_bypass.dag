@@ -1,0 +1,66 @@
+module gunbc.empty_decl_file_checkpoint_bypass
+
+import std.types { List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// WHEN A SITE REACHES EMISSION WITH NO DECLARATION IDENTITY, THE IDENTITY-KEYED ROSTER IS NOT
+// CONSULTED AT ALL.
+//
+// v1.compiler.coercion lookup_checkpoint answers straight from the bare-name table when decl_file
+// is the empty string: decl_file_declares_structurally returns false before it reaches
+// structural_declaration_modules_for, so the roster that exists precisely to say "this declaration
+// is structural, refuse the table's spelling" never runs. Every consequence the roster was built to
+// prevent is therefore live for any site whose declaration identity was not threaded to the call.
+//
+// THIS IS NOT THE ARITY DEFECT THE SPLIT CLOSED, AND THE TWO ARE DELIBERATELY NOT FILED TOGETHER.
+// The split (TypeCheckpoint's reference_ / grounding_ spellings) governs what a row may SAY once
+// identity is known. This bypass governs whether identity is CONSULTED. A correct answer to the
+// first question is delivered to the wrong decision whenever the second fails, so closing one does
+// nothing for the other.
+//
+// A KNOWN INSTANCE, kept because it is the one that was measured rather than reasoned:
+// v1.compiler.05_emit emit_literal passes decl_file "" for every String literal, so literal_suffix
+// at production sites answers from the table for every literal regardless of which module the
+// surrounding reference resolves to. That instance already executes as a row in
+// v1.tests.claim.checkpoint_identity_keying_witness_test
+// (literal_suffix_production_call_site_never_threads_declaration_identity).
+
+type BypassInstance {
+  caller: DeclarationRef
+  position: String
+  evidence: DeclarationRef
+}
+
+data empty_decl_file_bypass_instances: List<BypassInstance> = [
+  {
+    caller: decl_ref(module_path: "v1.compiler.05_emit", decl_name: "emit_literal"),
+    position: "String literal rendering: decl_file is passed as the empty string unconditionally",
+    evidence: decl_ref(module_path: "v1.tests.claim.checkpoint_identity_keying_witness_test", decl_name: "literal_suffix_production_call_site_never_threads_declaration_identity"),
+  },
+]
+
+// THE POPULATION IS UNCOUNTED AND NO ESTIMATE IS OFFERED.
+//
+// One instance is listed because it was executed, not because a census found one. No sweep of
+// lookup_checkpoint's transitive call sites for a hardcoded or unthreaded decl_file has been run.
+// The list above is therefore a LOWER BOUND of one, and a reader must not take it as the extent of
+// the class -- an unmeasured population stated as a small number is the fabricated-plausible-output
+// failure applied to a ceiling disclosure.
+type PopulationBasis
+  = UncountedNoSweepRun { named_instances_are: String }
+  | SweptCallSites { sweep: String }
+
+data empty_decl_file_bypass_population: PopulationBasis = UncountedNoSweepRun {
+  named_instances_are: "instances that surfaced while measuring something else; the sweep over lookup_checkpoint's transitive call sites has not been run",
+}
+
+// RUNG. The class sits at MITIGATABLE: nothing refuses when identity is missing -- the table answers
+// and emission proceeds with plausible output. The next rung is a REFUSAL at lookup_checkpoint when
+// decl_file is empty, which is decidable today and blocked only on the call sites that would then
+// refuse being made to thread identity first. That ordering is the whole of the work: the refusal is
+// one arm, the threading is the population above, and the refusal cannot land before the population
+// is known or it converts an uncounted silence into an uncounted red.
+data empty_decl_file_bypass_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: lookup_checkpoint refuses rather than answering from the bare-name table when decl_file is empty, and every production call site threads a resolved declaration file, established by execution against a discriminating red at a site that previously answered from the table. Not satisfied by threading identity at the listed instance alone while the population remains UncountedNoSweepRun -- the sweep is the precondition for the refusal, not a follow-up to it.")
+
+data empty_decl_file_bypass_surfaced_by: DeclarationRef = decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "checkpoint_table_bypasses_identity_note")

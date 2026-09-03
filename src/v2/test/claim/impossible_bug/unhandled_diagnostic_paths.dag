@@ -1,5 +1,6 @@
 module v2.test.impossible_bug.unhandled_diagnostic_paths
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -10,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
+import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -23,9 +24,10 @@ import v2.std.verification {
   RoundTripClaim,
   manual_claim_anchor
 }
+
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -36,7 +38,7 @@ fn safety_subject(op: Symbol, witness: Symbol) -> Node {
       Edge { label: Named { name: ^operation_field }, target: atom_node(s: op) },
       Edge { label: Named { name: ^witness_field }, target: atom_node(s: witness) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

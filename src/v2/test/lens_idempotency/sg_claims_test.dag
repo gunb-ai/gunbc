@@ -1,0 +1,8 @@
+module v2.test.lens_idempotency.sg_claims
+
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+test fn lens_idempotency_write_effect_holds() -> Bool {
+  idempotency_write_effect_claim_holds()
+}

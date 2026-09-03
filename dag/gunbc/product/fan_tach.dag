@@ -1,0 +1,94 @@
+module product.fan_tach
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { RevolutionsPerMinute, rpm, rpm_count }
+import product.placement_supply { HostIdentity }
+
+// GENERIC FAN-TACH VOCABULARY, OWNED ABOVE ANY PARTICULAR FLEET. It lives here rather than in
+// gunbc.* because the judgement that consumes it must not take its input types from one fleet's
+// authority module - that direction makes a reusable mechanism depend on the concrete instances
+// it exists to judge, and the next fleet would have to import ours to describe itself.
+
+// A TACH ENDPOINT IS A RECORD RATHER THAN A STRING, AND THIS IS *NOT* A STRUCTURAL WALL.
+// The distinction is stated first because the obvious reading of this type is the wrong one, and
+// an annotation claiming a wall is worse than no annotation: it gets cited as coverage.
+//
+// WHAT THE SHAPE WAS MEANT TO DO. The previous revision returned List<NonEmptyStr>, which is
+// EXACTLY the type of BmcFanPolicyIntent.required_tach_inputs. "The endpoints where rotation is
+// expected" and "the endpoints the fan controller drives" had become one type, so crossing that
+// boundary needed no helper and no cast - only an assignment nobody would look twice at.
+//
+// WHY THE RECORD DOES NOT CLOSE IT, measured rather than assumed. A MODULE-SCOPE `data` BINDING
+// LOSES ITS DECLARED TYPE AT ITS USE SITES. Discriminating pair, one keyword apart:
+//
+//   fn takes_int(x: Int) -> Int { x }
+//   let  s: NonEmptyStr = "hello"   ...  takes_int(x: s)  -> REFUSED, 2 diagnostics
+//   data s: NonEmptyStr = "hello"   ...  takes_int(x: s)  -> ACCEPTED, 0 diagnostics, and RUNS
+//
+// Every carrier in this area is module-scope `data`, so the check that would enforce this
+// boundary is absent at precisely the position the boundary lives at. A stronger type cannot fix
+// a check that is not consulted: nominal records, branded scalars and monomorphic collections
+// all fail the same way, because the defeat does not depend on the carrier's shape.
+//
+// WHAT THE RECORD DOES BUY, which is real and worth having on its own:
+//   - the crossing becomes VISIBLE to a reader, where a string-to-string assignment was invisible
+//   - it closes a host erasure: srv3/FAN2 and srv4/FAN2 were indistinguishable once flattened to
+//     bare names, so a fleet-wide consumer had to remember which call produced which list
+//
+// RUNG: mitigatable. NOT structurally guaranteed, and this comment exists so that nobody reads
+// the record wrapper as the latter. NEXT-RUNG TRIGGER: the module-scope `data` declared-type
+// check, which is a compiler-floor repair and not a modelling move available here.
+
+type FanTachEndpointIdentity {
+  host: HostIdentity
+  name: NonEmptyStr
+}
+
+// WHAT ONE SAMPLE SAW. Zero and unavailable stay separate: a sensor publishing 0 was read and
+// reports a stopped rotor; a sensor publishing nothing was not read at all.
+type FanTachSample
+  = SampleRotating { speed: RevolutionsPerMinute }
+  | SampleZero
+  | SampleUnavailable
+
+// A WINDOW, NOT A READING, AND THIS IS THE CARRIER THAT MEASUREMENT FORCED.
+//
+// A single timeless value cannot represent what these machines actually do. Measured on the 4U
+// pair 2026-08-26, twenty samples per endpoint: srv2's chassis endpoints read zero between 1 and
+// 4 times in 20 while unambiguously healthy, so an INTERMITTENT ZERO IS THE NORMAL BEHAVIOUR of
+// this firmware's tach surface and a lone sample saying zero proves nothing at all. The same
+// twenty samples show srv1/FAN5 reading zero 16 times - which is a real finding, and one that
+// only exists as a RATE.
+//
+// So the window keeps the counts and the spread rather than a representative value. A previous
+// revision recorded one number per endpoint and lost both the rate and the speed, and in doing
+// so recorded two endpoints as flatly absent when they in fact spin.
+type FanTachWindow {
+  endpoint: FanTachEndpointIdentity
+  sample_count: Int
+  zero_count: Int
+  unavailable_count: Int
+  rotating_count: Int
+  minimum: RevolutionsPerMinute
+  median: RevolutionsPerMinute
+  maximum: RevolutionsPerMinute
+}
+
+fn window_ever_rotated(window: FanTachWindow) -> Bool {
+  window.rotating_count > 0
+}
+
+// ROTATION IS JUDGED BY RATE AGAINST A DECLARED FLOOR, never by a single sample. The floor is a
+// parameter rather than a constant here because what counts as an acceptable duty cycle is a
+// policy question about a particular fleet's telemetry, not a fact about fan tachometers.
+fn window_rotates_at_least(window: FanTachWindow, minimum_rotating: Int) -> Bool {
+  window.rotating_count >= minimum_rotating
+}
+
+fn endpoint_names(endpoints: List<FanTachEndpointIdentity>) -> List<NonEmptyStr> {
+  map(endpoints, endpoint => endpoint.name)
+}
+
+fn window_endpoint_name(window: FanTachWindow) -> NonEmptyStr {
+  window.endpoint.name
+}

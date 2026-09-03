@@ -1,0 +1,542 @@
+module test.claim.temporal_effect_spine
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_intent_hash: ContentHash = content_hash_of_value(value: "temporal-spine-witness-intent-v1" as NonEmptyStr)
+data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr
+data witness_observed_at: Timestamp = "2026-07-02T23:05:00Z"
+
+data witness_intent: EffectAttemptIntent = EffectAttemptIntent {
+  attempt_id: "attempt-witness-1" as NonEmptyStr,
+  intent_hash: witness_intent_hash,
+  target: "srv3" as NonEmptyStr,
+  created_at: "2026-07-02T23:00:00Z",
+}
+
+data witness_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: NamespacePosition {
+    tree: ServiceOpTree { service: "redfish" },
+    path: ["redfish", "v1", "Systems", "system", "Boot"],
+  },
+  action: "redfish.boot-source-override.set" as AuthorizedAction,
+}
+
+type WitnessSubject { label: NonEmptyStr }
+
+data witness_subject: WitnessSubject = WitnessSubject { label: "srv3-boot" as NonEmptyStr }
+
+data witness_request: AuthorizationRequest<WitnessSubject> = authorization_request_for_attempt(
+  intent: witness_intent,
+  escalation_id: witness_escalation_id,
+  scopes: [witness_scope],
+  subject: witness_subject,
+  purpose: "witness: boot srv3 from CD once" as NonEmptyStr,
+  destructive: true,
+)
+
+fn witness_grant(granted_at: Timestamp, expires_at: Timestamp) -> ScopedAuthorization<WitnessSubject> {
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: witness_escalation_id,
+      scopes: [witness_scope],
+      subject: witness_subject,
+      purpose: witness_request.purpose,
+      attempt: witness_request.attempt,
+      intent_hash: witness_intent_hash,
+      granted_by: "operator" as NonEmptyStr,
+      granted_at: granted_at,
+      expires_at: expires_at,
+    },
+    claim: Unclaimed,
+  }
+}
+
+data witness_pending: ScopedAuthorization<WitnessSubject> = AuthorizationPending { request: witness_request }
+
+data witness_step_boot: NonEmptyStr = "boot-once-cd" as NonEmptyStr
+data witness_step_serve: NonEmptyStr = "nbd-serve" as NonEmptyStr
+
+data witness_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr
+
+data foreign_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
+    generation: 1,
+  },
+  observed: LeasePortForeign,
+)
+
+data stale_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+    generation: 2,
+  },
+  observed: LeaseRunningStale,
+)
+
+data expected_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+    generation: 3,
+  },
+  observed: LeaseRunningExpected,
+)
+
+data absent_lease: HeldLease = held_lease(
+  epoch: LeaseEpoch {
+    lease_key: witness_lease_key,
+    resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+    owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+    generation: 0,
+  },
+  observed: LeaseAbsent,
+)
+
+fn converged_serve_receipt() -> EffectStepReceipt {
+  EffectStepReceipt {
+    attempt_id: witness_intent.attempt_id,
+    step_id: witness_step_serve,
+    observation_digest: content_hash_of_value(value: "obs" as NonEmptyStr),
+    verdict_label: "Converged" as NonEmptyStr,
+    plan_label: "Noop" as NonEmptyStr,
+    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
+    read_back_ok: true,
+    recorded_at: "2026-07-02T23:02:00Z",
+  }
+}
+
+test fn missing_approval_awaits_not_apply() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_boot,
+    requires_destructive_approval: true,
+    authorization: witness_pending,
+    lease: expected_lease,
+    prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
+  ) {
+    PlanAwaitApproval { escalation_id: eid } => eid == witness_escalation_id
+    _ => false
+  }
+}
+
+test fn foreign_lease_refuses_not_drain() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    authorization: witness_pending,
+    lease: foreign_lease,
+    prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
+  ) {
+    PlanRefuse { step_id: _, reason: _ } => true
+    PlanDrainThenStart { step_id: _, lease_key: _ } => false
+    _ => false
+  }
+}
+
+test fn stale_lease_drains_not_blind_start() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    authorization: witness_pending,
+    lease: stale_lease,
+    prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
+  ) {
+    PlanDrainThenStart { step_id: sid, lease_key: lk } =>
+      sid == witness_step_serve && lk == witness_lease_key
+    PlanApply { step_id: _ } => false
+    _ => false
+  }
+}
+
+test fn converged_receipt_stale_lease_drains_not_noop() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    authorization: witness_pending,
+    lease: stale_lease,
+    prior: PriorReceipt { receipt: converged_serve_receipt() },
+    observed_at: witness_observed_at,
+  ) {
+    PlanDrainThenStart { step_id: sid, lease_key: lk } =>
+      sid == witness_step_serve && lk == witness_lease_key
+    PlanNoop { step_id: _ } => false
+    _ => false
+  }
+}
+
+test fn applied_without_read_back_refuses() -> Bool {
+  let bad_receipt = EffectStepReceipt {
+    attempt_id: witness_intent.attempt_id,
+    step_id: witness_step_serve,
+    observation_digest: content_hash_of_value(value: "obs" as NonEmptyStr),
+    verdict_label: "Stale" as NonEmptyStr,
+    plan_label: "Apply" as NonEmptyStr,
+    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
+    read_back_ok: false,
+    recorded_at: "2026-07-02T23:01:00Z",
+  }
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    authorization: witness_pending,
+    lease: expected_lease,
+    prior: PriorReceipt { receipt: bad_receipt },
+    observed_at: witness_observed_at,
+  ) {
+    PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "read-back")
+    _ => false
+  }
+}
+
+test fn converged_receipt_expected_lease_yields_noop() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    authorization: witness_pending,
+    lease: expected_lease,
+    prior: PriorReceipt { receipt: converged_serve_receipt() },
+    observed_at: witness_observed_at,
+  ) {
+    PlanNoop { step_id: sid } => sid == witness_step_serve
+    _ => false
+  }
+}
+
+test fn active_grant_covers_matching_intent() -> Bool {
+  match authorize(
+    authorization: witness_grant(
+      granted_at: "2026-07-02T23:00:00Z",
+      expires_at: "2026-07-03T23:00:00Z",
+    ),
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationPermitted { grant: _ } => true
+    AuthorizationRefused { cause: _ } => false
+  }
+}
+
+test fn expired_grant_does_not_authorize_destructive() -> Bool {
+  match authorize(
+    authorization: witness_grant(
+      granted_at: "2026-07-02T22:00:00Z",
+      expires_at: "2026-07-02T23:00:00Z",
+    ),
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationRefused { cause: AuthorizationExpired { expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
+    && match plan_next_step_from_prior_receipt_and_lease(
+      request: witness_request,
+      pending_step_id: witness_step_boot,
+      requires_destructive_approval: true,
+      authorization: witness_grant(
+        granted_at: "2026-07-02T22:00:00Z",
+        expires_at: "2026-07-02T23:00:00Z",
+      ),
+      lease: expected_lease,
+      prior: NoPriorReceipt,
+      observed_at: witness_observed_at,
+    ) {
+      PlanAwaitApproval { escalation_id: _ } => true
+      PlanApply { step_id: _ } => false
+      _ => false
+    }
+}
+
+test fn derived_cursor_uses_last_receipt_step() -> Bool {
+  let receipts = [
+    EffectStepReceipt {
+      attempt_id: witness_intent.attempt_id,
+      step_id: "toolchain-ensure" as NonEmptyStr,
+      observation_digest: content_hash_of_value(value: "a" as NonEmptyStr),
+      verdict_label: "Converged" as NonEmptyStr,
+      plan_label: "Noop" as NonEmptyStr,
+      applied: NoEffectApplied,
+      read_back_ok: true,
+      recorded_at: "2026-07-02T22:58:00Z",
+    },
+    EffectStepReceipt {
+      attempt_id: witness_intent.attempt_id,
+      step_id: witness_step_serve,
+      observation_digest: content_hash_of_value(value: "b" as NonEmptyStr),
+      verdict_label: "Stale" as NonEmptyStr,
+      plan_label: "DrainThenStart" as NonEmptyStr,
+      applied: NoEffectApplied,
+      read_back_ok: false,
+      recorded_at: "2026-07-02T22:59:00Z",
+    },
+  ]
+  let pending = derived_pending_step_id(
+    receipts: receipts,
+    default_step: "toolchain-ensure" as NonEmptyStr,
+  )
+  pending == witness_step_serve
+    && match prior_receipt_for_step(receipts: receipts, step_id: witness_step_serve) {
+      PriorReceipt { receipt: r } => r.step_id == witness_step_serve
+      _ => false
+    }
+}
+
+test fn consumed_grant_does_not_authorize_destructive() -> Bool {
+  match authorize(
+    authorization: consumed_witness_authorization(),
+    request: witness_request,
+    observed_at: witness_observed_at,
+  ) {
+    AuthorizationRefused { cause: AuthorizationAlreadyCompleted { completed_by: who, completed_at: _ } } =>
+      who == witness_request.attempt
+    _ => false
+  }
+    && match plan_next_step_from_prior_receipt_and_lease(
+      request: witness_request,
+      pending_step_id: witness_step_boot,
+      requires_destructive_approval: true,
+      authorization: consumed_witness_authorization(),
+      lease: expected_lease,
+      prior: NoPriorReceipt,
+      observed_at: witness_observed_at,
+    ) {
+      PlanAwaitApproval { escalation_id: _ } => true
+      PlanApply { step_id: _ } => false
+      _ => false
+    }
+}
+
+test fn absent_lease_plans_apply_when_no_prior_receipt() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    authorization: witness_pending,
+    lease: absent_lease,
+    prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
+  ) {
+    PlanApply { step_id: sid } => sid == witness_step_serve
+    _ => false
+  }
+}
+
+test fn inaccessible_lease_refuses() -> Bool {
+  match plan_next_step_from_prior_receipt_and_lease(
+    request: witness_request,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    authorization: witness_pending,
+    lease: held_lease(
+      epoch: LeaseEpoch {
+        lease_key: witness_lease_key,
+        resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
+        owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+        generation: 0,
+      },
+      observed: LeaseInaccessible,
+    ),
+    prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
+  ) {
+    PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "inaccessible")
+    _ => false
+  }
+}
+
+test fn held_lease_observed_verdict_is_a_5_element_bijection_onto_observation_verdict() -> Bool {
+  let absent = held_lease_observed_verdict(observed: LeaseAbsent)
+  let expected = held_lease_observed_verdict(observed: LeaseRunningExpected)
+  let stale = held_lease_observed_verdict(observed: LeaseRunningStale)
+  let foreign = held_lease_observed_verdict(observed: LeasePortForeign)
+  let inaccessible = held_lease_observed_verdict(observed: LeaseInaccessible)
+  match absent {
+    Absent => true
+    _ => false
+  }
+    && match expected {
+      Converged => true
+      _ => false
+    }
+    && match stale {
+      Drifted => true
+      _ => false
+    }
+    && match foreign {
+      Conflict => true
+      _ => false
+    }
+    && match inaccessible {
+      Inaccessible => true
+      _ => false
+    }
+}
+
+test fn decision_for_held_lease_verdict_grounds_each_observation_arm() -> Bool {
+  let noop_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeaseRunningExpected),
+    lease: expected_lease,
+    pending_step_id: witness_step_serve,
+  )
+  let apply_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeaseAbsent),
+    lease: absent_lease,
+    pending_step_id: witness_step_serve,
+  )
+  let drain_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeaseRunningStale),
+    lease: stale_lease,
+    pending_step_id: witness_step_serve,
+  )
+  let refuse_decision = decision_for_held_lease_verdict(
+    verdict: held_lease_observed_verdict(observed: LeasePortForeign),
+    lease: foreign_lease,
+    pending_step_id: witness_step_serve,
+  )
+  match noop_decision {
+    Noop => true
+    _ => false
+  }
+    && match apply_decision {
+      Apply { plan: ApplyAtStep { step_id: s } } => s == witness_step_serve
+      _ => false
+    }
+    && match drain_decision {
+      Apply { plan: DrainThenStartAtStep { step_id: s, lease_key: k } } =>
+        s == witness_step_serve && k == witness_lease_key
+      _ => false
+    }
+    && match refuse_decision {
+      Refuse { reason: r } => string_contains(s: r, pattern: "foreign")
+      _ => false
+    }
+}
+
+test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: millisecond(count: 600000),
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallWithinBudget => true
+    StallBudgetExceeded { step_id: _, elapsed_ms: _, limit_ms: _ } => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanApply { step_id: sid } => sid == witness_step_serve
+      _ => false
+    }
+}
+
+test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
+  let budget = EffectStallBudget {
+    step_id: witness_step_serve,
+    limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
+    elapsed_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+  }
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } => sid == witness_step_serve
+    StallWithinBudget => false
+  }
+    && match next_step_plan_on_stall_budget(
+      pending_plan: PlanApply { step_id: witness_step_serve },
+      budget: budget,
+    ) {
+      PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "stall budget exceeded")
+      PlanApply { step_id: _ } => false
+      _ => false
+    }
+}
+
+test fn stall_cause_fold_router_absent_dominates_silent_installer() -> Bool {
+  match cause_fold_dominant_hang_stall(causes: [
+    HangStallInstallerProgressSilent { elapsed_ms: millisecond(count: 1000000) },
+    HangStallRouterLeaseAbsent { elapsed_ms: millisecond(count: 4600000) },
+  ]) {
+    HangStallRouterLeaseAbsent { elapsed_ms: _ } => true
+    _ => false
+  }
+    && match cause_fold_dominant_hang_stall(causes: [HangStallWithinBudget]) {
+      HangStallWithinBudget => true
+      _ => false
+    }
+}
+
+test fn srv3_stall_budget_limits_match_runbook() -> Bool {
+  srv3_install_hang_no_installer_progress_ms == 900000
+    && srv3_install_hang_no_router_lease_ms == 4500000
+}
+
+test fn srv3_transition_budget_past_limit_is_exceeded_not_within() -> Bool {
+  let past = millisecond(
+    count: millisecond_count(
+      m: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+    ) + 1,
+  )
+  let budget = srv3_os_install_to_host_identity_budget(elapsed: past)
+  match stall_budget_verdict(budget: budget) {
+    StallBudgetExceeded { step_id: sid, elapsed_ms: _, limit_ms: _ } =>
+      string_contains(s: sid, pattern: "os-install-actuated-to-host-identity")
+    StallWithinBudget => false
+  }
+}
+
+test fn held_lease_with_observed_preserves_the_epoch_exactly() -> Bool {
+  let updated = held_lease_with_observed(lease: expected_lease, observed: LeaseInaccessible)
+  let same_epoch = held_lease_epoch(lease: updated) == held_lease_epoch(lease: expected_lease)
+  same_epoch
+    && match updated.observed {
+      LeaseInaccessible => true
+      _ => false
+    }
+}
+
+test fn held_lease_epoch_separates_leases_differing_only_in_generation() -> Bool {
+  let restated = held_lease_with_observed(lease: stale_lease, observed: LeaseRunningExpected)
+  let differs = held_lease_epoch(lease: restated) != held_lease_epoch(lease: expected_lease)
+  let same_owner = restated.epoch.owner_fingerprint == expected_lease.epoch.owner_fingerprint
+  differs && same_owner
+}
+
+test fn held_lease_rebuilds_the_observation_without_a_second_epoch_spelling() -> Bool {
+  let rebuilt = held_lease(
+    epoch: held_lease_epoch(lease: absent_lease),
+    observed: LeasePortForeign,
+  )
+  let restated = held_lease_with_observed(lease: absent_lease, observed: LeasePortForeign)
+  rebuilt == restated
+}
+
+// The completed state is produced by claim_transition_completed, the same constructor a real
+// holder calls after its CAS commits -- hand-writing the terminal arm here would pass this test
+// while the real transition was broken.
+fn consumed_witness_authorization() -> ScopedAuthorization<WitnessSubject> {
+  match witness_grant(granted_at: "2026-07-02T23:00:00Z", expires_at: "2026-07-03T23:00:00Z") {
+    AuthorizationGranted { grant: g, claim: _ } =>
+      AuthorizationGranted {
+        grant: g,
+        claim: claim_transition_completed(
+          attempt: witness_request.attempt,
+          at: witness_observed_at,
+        ),
+      }
+    AuthorizationPending { request: _ } => witness_pending
+  }
+}

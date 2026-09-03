@@ -1,29 +1,113 @@
 module v2.compiler.emit_orchestration
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.emit_shell { emit_shell_stmt }
-import extdeps.languages.bash.program { RawLine }
 import extdeps.communication.medium { Medium }
+import v2.compiler.translate { target_bundle_child }
+import v2.std.node_query { find_named_child }
+import v2.std.orchestration_emit {
+  OrchestrationEmitMedium,
+  OrchRunEmitPlan,
+  orch_construct_run_rawline,
+  orch_construct_retry,
+  orch_construct_retry_1level,
+  orch_construct_seq2,
+  orch_construct_if,
+  orch_construct_if_else,
+  orch_construct_if_block,
+  orch_construct_if_else_block,
+  orch_construct_while,
+  orch_construct_procedure,
+  orch_construct_call,
+  orch_construct_cmdsubst_assign,
+  orch_construct_let_assign
+}
 import v2.extdeps.languages.bash {
-  orch_run_emitted_command,
-  orch_run_target_model,
-  orch_seq2_emitted_command,
-  orch_seq2_target_model,
-  orch_retry_emitted_command,
-  orch_retry_target_model
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_target_model,
+  bash_stmt_with_redir_emitted,
+  bash_stmt_with_redir_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
+  bash_redir_stdout_and_stderr_null_source_text,
+  bash_redir_stderr_null_source_text,
+  bash_redir_stdout_to_stderr_source_text,
+  bash_redir_stdout_null_source_text,
+  bash_redir_to_file_source_text
+}
+import v2.extdeps.languages.bash_orch_tier2 {
+  bash_orch_call_emitted
+}
+import v2.extdeps.languages.bash_orch_if {
+  bash_test_str_eq_emitted,
+  bash_test_str_eq_target_model,
+  bash_test_str_empty_emitted,
+  bash_test_str_empty_target_model,
+  bash_test_str_nonempty_emitted,
+  bash_test_str_nonempty_target_model,
+  bash_test_int_ne_emitted,
+  bash_test_int_ne_target_model,
+  bash_log_matches_grep_emitted,
+  bash_log_matches_grep_target_model,
+  bash_stmt_or_ignore_fail_emitted,
+  bash_stmt_or_ignore_fail_target_model
 }
 import v2.std.orchestration {
   Run,
-  Step,
+  PipelineStep,
   Do,
+  If,
+  Let,
+  Call,
+  While,
   Pipeline,
+  Procedure,
+  Expr,
+  ExprLit,
+  ExprVarRef,
+  ExprCmdSubst,
   EscalationLevel,
+  Predicate,
+  ExitZero,
   LogMatches,
+  StrEq,
+  StrEmpty,
+  StrNonempty,
+  IntNe,
+  Not,
+  And,
+  Or,
+  RedirectSpec,
+  CaptureSpec,
+  DiscardAll,
+  DiscardErr,
+  DiscardOut,
+  StdoutAndStderr,
+  ToFile,
+  IgnoreFail,
+  ExitStatus,
+  TeeTo,
+  CmdSubst,
+  Comment,
+  Exit,
   EnvBinding
 }
-import v2.std.algebra { FreeMonoid, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import v2.std.collection { List, Map, Optional, Present, Absent }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
+import v2.std.collection {
+  List,
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.compiler.target_carriers { lossless_source }
 import v2.std.diagnostic {
   Accepted,
@@ -37,114 +121,805 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Node }
-import v2.std.witness { Violates, Witness }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.node { Node, TypeNode, Conj, Atom, Symbol }
+import v2.std.text { String }
 
-fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^orch_emit_facts_unexpected_consultation,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
+fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_absent()
+}
+
+data orch_emit_unsupported_step_anchor: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^orch_emit_unsupported_step } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn orch_emit_registry_emitted_root(
+  medium: OrchestrationEmitMedium,
+  construct_tag: Symbol
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(
+      target: medium.authority,
+      edge_name: ^target_model_edge_orchestration_emit
+    ),
+    f: fn(registry) {
+      find_named_child(root: registry, name: construct_tag)
+    }
+  )
+}
+
+fn orch_emit_from_registry(
+  medium: OrchestrationEmitMedium,
+  construct_tag: Symbol,
+  target: TargetModel
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  bind_outcome(
+    o: orch_emit_registry_emitted_root(medium: medium, construct_tag: construct_tag),
+    f: fn(emitted_root) {
+      emit(
+        tree: InferredTree {
+          root: emitted_root,
+          facts: PartialFunction { lookup: orch_emit_facts_lookup }
+        },
+        target: target
+      )
+    }
+  )
+}
+
+fn orch_emit_node_spelling(emitted_root: Node, target: TargetModel) -> Outcome<String> {
+  bind_outcome(
+    o: emit(
+      tree: InferredTree {
+        root: emitted_root,
+        facts: PartialFunction { lookup: orch_emit_facts_lookup }
+      },
+      target: target
+    ),
+    f: fn(m) { outcome_accepted(m.carried) }
+  )
+}
+
+data orch_shell_unquoted_path_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
+
+fn orch_shell_unquoted_path_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_unquoted_path_alphabet, pattern: ch)
+}
+
+fn orch_shell_unquoted_path_ok_at(path: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: path, pos: i)
+    if !orch_shell_unquoted_path_char_ok(ch: ch) {
+      false
+    } else {
+      orch_shell_unquoted_path_ok_at(path: path, i: i + 1, n: n)
     }
   }
 }
 
-data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/Step/Retry path reduces onto emit_shell_stmt: an env-FREE Run lowers to a RawLine carrying the command and is delegated to emit_shell_stmt now (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit). An env-BEARING Run lowers to an EnvPrefixed over env plus a RawLine command. The emit-kernel String<->List-Int-codepoint straddle that blocked this is now FIXED by grounding String construction into its native realization (free_monoid_to_string in v1_interpreter.rs, sibling to Int<->Nat PR 5428; the held bash multi-orch_raw weld fixtures have been deleted as receipt; program_multi_orch_raw_byte_identical_holds is the green-by-execution proof). The RESIDUAL blocker is a DIFFERENT, modeling-side gap, not the kernel: EnvBinding has EnvUnset (env -u NAME) and FreeMonoid<EnvBinding> is a LIST, but the bash AST EnvPrefixed models only a single name=value prefix with no EnvUnset node, so an env-bearing Run cannot yet be lowered losslessly. It stays on the orch_run_emitted_command single-string render (orch_emit_run_env_welded) until the bash AST grows an env-unset construct and multi-binding nesting. DISSOLVES WHEN the bash EnvPrefixed AST covers EnvUnset + multi-binding env (modeling follow-on landed by gunbc#5846 'Grow bash AST: EnvUnset node + multi-binding env nesting (dissolve orch_emit_run_env_welded)', which depends on this PR's kernel String grounding and dissolves this welded fn outright; no longer kernel-blocked)."
-
-fn orch_emit_run(r: Run) -> Outcome<Medium<String>> {
-  match list_head(xs: r.env) {
-    HeadAbsent => emit_shell_stmt(s: RawLine { text: r.command })
-    HeadFound { value: _ } => orch_emit_run_env_welded(r: r)
+fn orch_shell_unquoted_path_ok(path: String) -> Bool {
+  let n = string_length(s: path)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_unquoted_path_ok_at(path: path, i: 0, n: n)
   }
 }
 
-fn orch_emit_run_env_welded(r: Run) -> Outcome<Medium<String>> {
-  emit(
-    tree: InferredTree {
-      root: orch_run_emitted_command,
-      facts: Map { lookup: orch_emit_facts_lookup }
-    },
-    target: orch_run_target_model(r: r)
+fn orch_emit_redir_suffix(r: RedirectSpec) -> Outcome<String> {
+  match r {
+    DiscardAll => outcome_accepted(bash_redir_stdout_and_stderr_null_source_text)
+    DiscardErr => outcome_accepted(bash_redir_stderr_null_source_text)
+    DiscardOut => outcome_accepted(bash_redir_stdout_null_source_text)
+    StdoutAndStderr => outcome_accepted(bash_redir_stdout_to_stderr_source_text)
+    ToFile { path: p } =>
+      if !orch_shell_unquoted_path_ok(path: p) {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_to_file_path_invalid))
+      } else {
+        outcome_accepted(bash_redir_to_file_source_text(path: p))
+      }
+  }
+}
+
+fn orch_emit_run_core(r: Run, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  match list_head(xs: r.env) {
+    HeadAbsent =>
+      bind_outcome(
+        o: orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_run_rawline,
+          target: medium.realize_run_rawline(r.command)
+        ),
+        f: fn(m) { outcome_accepted(m.carried) }
+      )
+    HeadFound { value: _ } =>
+      bind_outcome(
+        o: orch_emit_run_from_plan(plan: medium.run_env_plan(r), medium: medium),
+        f: fn(m) { outcome_accepted(m.carried) }
+      )
+  }
+}
+
+fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_redir_suffix(r: redir),
+    f: fn(suffix) {
+      orch_emit_node_spelling(
+        emitted_root: bash_stmt_with_redir_emitted,
+        target: bash_stmt_with_redir_target_model(stmt: stmt, redir: suffix)
+      )
+    }
   )
 }
 
-fn orch_emit_join2(left: String, right: String) -> Outcome<Medium<String>> {
-  emit(
-    tree: InferredTree {
-      root: orch_seq2_emitted_command,
-      facts: Map { lookup: orch_emit_facts_lookup }
-    },
-    target: orch_seq2_target_model(left: left, right: right)
+data orch_shell_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+
+data orch_shell_ident_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789"
+
+fn orch_shell_ident_start_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_start_alphabet, pattern: ch)
+}
+
+fn orch_shell_ident_continue_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_continue_alphabet, pattern: ch)
+}
+
+fn orch_shell_ident_ok_at(binder: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: binder, pos: i)
+    let ok = if i == 0 {
+      orch_shell_ident_start_char_ok(ch: ch)
+    } else {
+      orch_shell_ident_continue_char_ok(ch: ch)
+    }
+    if !ok {
+      false
+    } else {
+      orch_shell_ident_ok_at(binder: binder, i: i + 1, n: n)
+    }
+  }
+}
+
+fn orch_shell_ident_ok(binder: String) -> Bool {
+  let n = string_length(s: binder)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_ident_ok_at(binder: binder, i: 0, n: n)
+  }
+}
+
+fn orch_emit_exit_status_bind(stmt: String, binder: String, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  if !orch_shell_ident_ok(binder: binder) {
+    outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_binder_invalid))
+  } else {
+    bind_outcome(
+      o: orch_emit_join2(left: stmt, right: concat(binder, "=$?"), medium: medium),
+      f: fn(m) { outcome_accepted(m.carried) }
+    )
+  }
+}
+
+fn orch_emit_apply_capture(stmt: String, capture: CaptureSpec, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  match capture {
+    IgnoreFail =>
+      bind_outcome(
+        o: bash_stmt_or_ignore_fail_target_model(stmt: stmt),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_stmt_or_ignore_fail_emitted,
+            target: target
+          )
+        }
+      )
+    ExitStatus { binder: b } =>
+      orch_emit_exit_status_bind(stmt: stmt, binder: b, medium: medium)
+    TeeTo { log: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+    CmdSubst =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_run_capture_unsupported))
+  }
+}
+
+fn orch_emit_run_spelling(r: Run, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_run_core(r: r, medium: medium),
+    f: fn(core) {
+      match r.redirect {
+        Absent =>
+          match r.capture {
+            Absent => outcome_accepted(core)
+            Present { value: cap } =>
+              orch_emit_apply_capture(stmt: core, capture: cap, medium: medium)
+          }
+        Present { value: redir } =>
+          bind_outcome(
+            o: orch_emit_run_with_redir(stmt: core, redir: redir),
+            f: fn(with_redir) {
+              match r.capture {
+                Absent => outcome_accepted(with_redir)
+                Present { value: cap } =>
+                  orch_emit_apply_capture(stmt: with_redir, capture: cap, medium: medium)
+              }
+            }
+          )
+      }
+    }
   )
 }
 
-fn orch_emit_step(s: Step) -> Outcome<Medium<String>> {
+fn orch_emit_run(r: Run, medium: OrchestrationEmitMedium) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  bind_outcome(
+    o: orch_emit_run_spelling(r: r, medium: medium),
+    f: fn(spelling) { outcome_accepted(lossless_source(text: spelling)) }
+  )
+}
+
+fn orch_emit_run_from_plan(
+  plan: OrchRunEmitPlan,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  orch_emit_from_registry(
+    medium: medium,
+    construct_tag: plan.construct_tag,
+    target: plan.target
+  )
+}
+
+fn orch_emit_join2(
+  left: String,
+  right: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  orch_emit_from_registry(
+    medium: medium,
+    construct_tag: orch_construct_seq2,
+    target: medium.realize_seq2(left, right)
+  )
+}
+
+fn orch_emit_predicate(p: Predicate, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  match p {
+    ExitZero { run: r } =>
+      orch_emit_run_spelling(r: r, medium: medium)
+    StrEq { lhs: lhs, rhs: rhs } =>
+      bind_outcome(
+        o: bash_test_str_eq_target_model(lhs: lhs, rhs: rhs),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_test_str_eq_emitted,
+            target: target
+          )
+        }
+      )
+    StrEmpty { operand: operand } =>
+      bind_outcome(
+        o: bash_test_str_empty_target_model(operand: operand),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_test_str_empty_emitted,
+            target: target
+          )
+        }
+      )
+    StrNonempty { operand: operand } =>
+      bind_outcome(
+        o: bash_test_str_nonempty_target_model(operand: operand),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_test_str_nonempty_emitted,
+            target: target
+          )
+        }
+      )
+    IntNe { lhs: lhs, rhs: rhs } =>
+      if !orch_shell_test_operand_ok(operand: lhs) || !orch_shell_test_operand_ok(operand: rhs) {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_int_ne_operand_invalid))
+      } else {
+        bind_outcome(
+          o: bash_test_int_ne_target_model(lhs: lhs, rhs: rhs),
+          f: fn(target) {
+            orch_emit_node_spelling(
+              emitted_root: bash_test_int_ne_emitted,
+              target: target
+            )
+          }
+        )
+      }
+    LogMatches { source: source, pattern: pattern } =>
+      bind_outcome(
+        o: bash_log_matches_grep_target_model(
+          pattern: concat("'", concat(pattern, "'")),
+          source: source
+        ),
+        f: fn(target) {
+          orch_emit_node_spelling(
+            emitted_root: bash_log_matches_grep_emitted,
+            target: target
+          )
+        }
+      )
+    Not { inner: inner } =>
+      bind_outcome(
+        o: orch_emit_predicate(p: inner, medium: medium),
+        f: fn(spelling) {
+          orch_emit_node_spelling(
+            emitted_root: bash_stmt_negation_emitted,
+            target: bash_stmt_negation_target_model(inner: spelling)
+          )
+        }
+      )
+    And { lhs: lhs, rhs: rhs } =>
+      bind_outcome(
+        o: orch_emit_predicate(p: lhs, medium: medium),
+        f: fn(left) {
+          bind_outcome(
+            o: orch_emit_predicate(p: rhs, medium: medium),
+            f: fn(right) {
+              orch_emit_node_spelling(
+                emitted_root: bash_stmt_andor_emitted,
+                target: bash_stmt_andor_target_model(left: left, op: "&&", right: right)
+              )
+            }
+          )
+        }
+      )
+    Or { lhs: lhs, rhs: rhs } =>
+      bind_outcome(
+        o: orch_emit_predicate(p: lhs, medium: medium),
+        f: fn(left) {
+          bind_outcome(
+            o: orch_emit_predicate(p: rhs, medium: medium),
+            f: fn(right) {
+              orch_emit_node_spelling(
+                emitted_root: bash_stmt_andor_emitted,
+                target: bash_stmt_andor_target_model(left: left, op: "||", right: right)
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
+fn orch_emit_call_args(args: List<String>) -> String {
+  fold(args, init: "", f: fn(acc, a) {
+    if acc == "" { a } else { concat(acc, concat(" ", a)) }
+  })
+}
+
+fn orch_emit_cmdsubst_command_spelling(callee: String, args: List<String>) -> String {
+  concat(callee, concat(" ", orch_emit_call_args(args: args)))
+}
+
+fn orch_emit_cmdsubst_word_spelling(callee: String, args: List<String>) -> String {
+  concat("$(", concat(orch_emit_cmdsubst_command_spelling(callee: callee, args: args), ")"))
+}
+
+fn orch_emit_expr_spelling(e: Expr, medium: OrchestrationEmitMedium) -> Outcome<String> {
+  match e {
+    ExprLit { spelling: s } => outcome_accepted(s)
+    ExprVarRef { name: n } => outcome_accepted(concat("$", n))
+    ExprCmdSubst { callee: c, args: args } =>
+      outcome_accepted(orch_emit_cmdsubst_word_spelling(callee: c, args: args))
+  }
+}
+
+fn orch_emit_let_step(
+  name: String,
+  value: Expr,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  match value {
+    ExprCmdSubst { callee: c, args: args } =>
+      orch_emit_from_registry(
+        medium: medium,
+        construct_tag: orch_construct_cmdsubst_assign,
+        target: medium.realize_cmdsubst_assign(
+          name,
+          orch_emit_cmdsubst_command_spelling(callee: c, args: args)
+        )
+      )
+    _ =>
+      bind_outcome(
+        o: orch_emit_expr_spelling(e: value, medium: medium),
+        f: fn(value_spelling) {
+          orch_emit_from_registry(
+            medium: medium,
+            construct_tag: orch_construct_let_assign,
+            target: medium.realize_let_assign(name, value_spelling)
+          )
+        }
+      )
+  }
+}
+
+fn orch_emit_call_step(
+  callee: String,
+  args: List<String>,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  orch_emit_from_registry(
+    medium: medium,
+    construct_tag: orch_construct_call,
+    target: medium.realize_call(callee, orch_emit_call_args(args: args))
+  )
+}
+
+fn orch_emit_procedure(
+  proc: Procedure,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  bind_outcome(
+    o: orch_emit_pipeline(p: proc.body, medium: medium),
+    f: fn(body_medium) {
+      orch_emit_from_registry(
+        medium: medium,
+        construct_tag: orch_construct_procedure,
+        target: medium.realize_procedure(proc.name, body_medium.carried)
+      )
+    }
+  )
+}
+
+// bash_stmt_if_(else_)_tokens (bash_orch_if.dag / bash.dag) spell their then/else bodies with no
+// newline tokens, so a body is inherently a single line. orch_emit_pipeline newline-joins every
+// step of a multi-step then_/else_ Pipeline (orch_seq2) before this fn binds .carried into the row;
+// a >1-step body glued into the single-line row is bash-valid (newline is an ordinary statement
+// separator inside a then/else arm — verified, not a carriage bug) but byte-diverges from a
+// block-formatted expectation. Multi-statement then_/else_ arms are legitimate orchestration intent
+// (if-ladders), so the fix is a second, block-spelled row (bash_stmt_if_block_tokens /
+// bash_stmt_if_else_block_tokens) selected when either arm needs it — never a refusal of the
+// legitimate shape. Single- and zero-step arms keep the original inline row byte-for-byte
+// (orch_pipeline_needs_block_body is false), so every existing consumer's emitted bytes are
+// unchanged.
+
+fn orch_pipeline_needs_block_body(then_: Pipeline, else_: Optional<Pipeline>) -> Bool {
+  if length(xs: then_.steps) > 1 {
+    true
+  } else {
+    match else_ {
+      Absent => false
+      Present { value: else_pipeline } => length(xs: else_pipeline.steps) > 1
+    }
+  }
+}
+
+// A Pipeline arm with zero steps emits "" (orch_emit_pipeline's HeadAbsent case); threaded raw into
+// the if-body token slot that produces invalid bash ("if COND; then ; fi" -- then requires >=1
+// command before the closing separator). orch_if_arm_body_or_noop substitutes the bash no-op ":"
+// for an empty arm's body, uniformly across the inline and block dispatch and regardless of whether
+// the OTHER arm is also empty -- see pipeline_steps_empty_arm_note (v2.std.orchestration) for why
+// both-empty is real intent, not refused.
+
+fn orch_if_arm_body_or_noop(carried: String) -> String {
+  if carried == "" {
+    ":"
+  } else {
+    carried
+  }
+}
+
+fn orch_emit_if_step(
+  cond: Predicate,
+  then_: Pipeline,
+  else_: Optional<Pipeline>,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  let block_body = orch_pipeline_needs_block_body(then_: then_, else_: else_)
+  bind_outcome(
+    o: orch_emit_predicate(p: cond, medium: medium),
+    f: fn(cond_spelling) {
+      bind_outcome(
+        o: orch_emit_pipeline(p: then_, medium: medium),
+        f: fn(then_medium) {
+          let then_body = orch_if_arm_body_or_noop(carried: then_medium.carried)
+          match else_ {
+            Absent =>
+              bind_outcome(
+                o: if block_body {
+                  medium.realize_if_block(cond_spelling, then_body)
+                } else {
+                  medium.realize_if(cond_spelling, then_body)
+                },
+                f: fn(target) {
+                  orch_emit_from_registry(
+                    medium: medium,
+                    construct_tag: if block_body { orch_construct_if_block } else { orch_construct_if },
+                    target: target
+                  )
+                }
+              )
+            Present { value: else_pipeline } =>
+              bind_outcome(
+                o: orch_emit_pipeline(p: else_pipeline, medium: medium),
+                f: fn(else_medium) {
+                  let else_body = orch_if_arm_body_or_noop(carried: else_medium.carried)
+                  bind_outcome(
+                    o: if block_body {
+                      medium.realize_if_else_block(
+                        cond_spelling,
+                        then_body,
+                        else_body
+                      )
+                    } else {
+                      medium.realize_if_else(
+                        cond_spelling,
+                        then_body,
+                        else_body
+                      )
+                    },
+                    f: fn(target) {
+                      orch_emit_from_registry(
+                        medium: medium,
+                        construct_tag: if block_body { orch_construct_if_else_block } else { orch_construct_if_else },
+                        target: target
+                      )
+                    }
+                  )
+                }
+              )
+          }
+        }
+      )
+    }
+  )
+}
+
+fn orch_emit_while_step(
+  cond: Predicate,
+  body: Pipeline,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  bind_outcome(
+    o: orch_emit_predicate(p: cond, medium: medium),
+    f: fn(cond_spelling) {
+      bind_outcome(
+        o: orch_emit_pipeline(p: body, medium: medium),
+        f: fn(body_medium) {
+          bind_outcome(
+            o: medium.realize_while(cond_spelling, body_medium.carried),
+            f: fn(target) {
+              orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_while,
+                target: target
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+data orch_shell_test_operand_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@$\"{}"
+
+fn orch_shell_test_operand_char_ok(ch: String) -> Bool {
+  string_length(s: ch) == 1 && string_contains(s: orch_shell_test_operand_alphabet, pattern: ch)
+}
+
+fn orch_shell_test_operand_ok_at(operand: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: operand, pos: i)
+    if !orch_shell_test_operand_char_ok(ch: ch) {
+      false
+    } else {
+      orch_shell_test_operand_ok_at(operand: operand, i: i + 1, n: n)
+    }
+  }
+}
+
+fn orch_shell_test_operand_ok(operand: String) -> Bool {
+  let n = string_length(s: operand)
+  if n == 0 {
+    false
+  } else {
+    orch_shell_test_operand_ok_at(operand: operand, i: 0, n: n)
+  }
+}
+
+fn orch_shell_exit_status_ok(status: String) -> Bool {
+  orch_shell_test_operand_ok(operand: status)
+}
+
+fn orch_emit_exit_step(status: String) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  if !orch_shell_exit_status_ok(status: status) {
+    outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_operand_invalid))
+  } else {
+    bind_outcome(
+      o: orch_emit_node_spelling(
+        emitted_root: bash_stmt_exit_emitted,
+        target: bash_stmt_exit_target_model(code: status)
+      ),
+      f: fn(spelling) { outcome_accepted(lossless_source(text: spelling)) }
+    )
+  }
+}
+
+fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match s {
-    Do { run: r } => orch_emit_run(r: r)
-    If { cond: _, then_: _, else_: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_if_unsupported))
+    Do { run: r } => orch_emit_run(r: r, medium: medium)
+    Comment { text: t } =>
+      if string_contains(s: t, pattern: "\n") || string_contains(s: t, pattern: "\r") {
+        outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_comment_multiline_refused))
+      } else {
+        orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_run_rawline,
+          target: medium.realize_run_rawline(concat("# ", t))
+        )
+      }
+    Exit { status: st } => orch_emit_exit_step(status: st)
+    If { cond: c, then_: t, else_: e } =>
+      orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
-    While { cond: _, body: _, bound: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_while_unsupported))
-    Retry { body: b, escalations: e, on_exhausted: _ } =>
-      orch_emit_retry(body: b, escalations: e)
+    While { cond: c, body: b } =>
+      orch_emit_while_step(cond: c, body: b, medium: medium)
+    Retry { body: b, escalations: e, on_exhausted: x } =>
+      orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium)
+    Let { name: n, value: v } =>
+      orch_emit_let_step(name: n, value: v, medium: medium)
+    Call { callee: c, args: a } =>
+      orch_emit_call_step(callee: c, args: a, medium: medium)
   }
 }
 
-fn orch_retry_step_command(s: Step) -> Optional<String> {
+data orch_retry_outer_log_var: String = "BUILD_LOG"
+
+data orch_retry_nested_log_var: String = "RETRY_LOG"
+
+// Retry bash templates hardcode tee/grep log vars (BUILD_LOG outer, RETRY_LOG nested).
+// LogMatches.source is admitted only when it equals that template var — a changed source must
+// refuse (^orch_emit_retry_log_source_mismatch), never silently emit the hardcoded name. 🟡
+// dissolve-on: thread source into the grammar rows so the declared name is the emitted name.
+
+fn orch_emit_retry_require_log_source(
+  source: String,
+  expected: String
+) -> Outcome<String> {
+  match source == expected {
+    true => outcome_accepted(source)
+    false =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_log_source_mismatch))
+  }
+}
+
+fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
   match s {
-    Do { run: r } => Present { value: r.command }
-    If { cond: _, then_: _, else_: _ } => Absent
-    For { binder: _, over: _, body: _ } => Absent
-    While { cond: _, body: _, bound: _ } => Absent
-    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+    Do { run: r } => outcome_accepted(r)
+    Comment { text: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Exit { status: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    If { cond: _, then_: _, else_: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    For { binder: _, over: _, body: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    While { cond: _, body: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Let { name: _, value: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    Call { callee: _, args: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
   }
 }
 
-fn orch_retry_body_command(body: Pipeline) -> Optional<String> {
+// orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse
+// (^orch_emit_retry_body_multi_step); empty/non-Do (incl. Comment/Exit) refuse
+// (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can
+// refuse Present redirect/capture (^orch_emit_retry_redirect_present /
+// ^orch_emit_retry_capture_present) rather than silently dropping them. orch_emit_retry refuses
+// nonempty body Run.env (^orch_emit_retry_body_env_present) — the retry bash templates hardcode the
+// first occurrence without body env, so a nonempty env must refuse, never silently drop.
+// Tee/redirect semantics for retry live in the bash retry templates, not on the body Run.
+// Supersedes the Optional<String> Absent conflation interim from PR2a.
+
+fn orch_retry_body_command(body: Pipeline) -> Outcome<Run> {
   match list_head(xs: body.steps) {
-    HeadFound { value: s } => orch_retry_step_command(s: s)
-    HeadAbsent => Absent
+    HeadAbsent =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+    HeadFound { value: s } =>
+      match list_tail(xs: body.steps) {
+        TailFound { tail: rest } =>
+          match is_empty(rest) {
+            false =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_multi_step))
+            true =>
+              orch_retry_step_run(s: s)
+          }
+        TailAbsent =>
+          orch_retry_step_run(s: s)
+      }
   }
 }
 
-fn orch_emit_retry_run(command: String, env: FreeMonoid<EnvBinding>) -> Outcome<Medium<String>> {
-  orch_emit_run(r: Run { command: command, env: env, redirect: Absent, capture: Absent })
+fn orch_emit_retry_run(
+  command: String,
+  env: FreeMonoid<EnvBinding>,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  match redirect {
+    Present { value: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_redirect_present))
+    Absent =>
+      match capture {
+        Present { value: _ } =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_capture_present))
+        Absent =>
+          orch_emit_run(
+            r: Run { command: command, env: env, redirect: Absent, capture: Absent },
+            medium: medium
+          )
+      }
+  }
 }
 
 fn orch_emit_retry_2level(
   command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   pattern1: String,
   pattern2: String,
   warn1: String,
   warn2: String,
   env1: FreeMonoid<EnvBinding>,
-  env2: FreeMonoid<EnvBinding>
-) -> Outcome<Medium<String>> {
+  env2: FreeMonoid<EnvBinding>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
-    o: orch_emit_retry_run(command: command, env: []),
+    o: orch_emit_retry_run(
+      command: command,
+      env: Empty,
+      redirect: redirect,
+      capture: capture,
+      medium: medium
+    ),
     f: fn(m1) {
       bind_outcome(
-        o: orch_emit_retry_run(command: command, env: env1),
+        o: orch_emit_retry_run(
+          command: command,
+          env: env1,
+          redirect: redirect,
+          capture: capture,
+          medium: medium
+        ),
         f: fn(m2) {
           bind_outcome(
-            o: orch_emit_retry_run(command: command, env: env2),
+            o: orch_emit_retry_run(
+              command: command,
+              env: env2,
+              redirect: redirect,
+              capture: capture,
+              medium: medium
+            ),
             f: fn(m3) {
-              emit(
-                tree: InferredTree {
-                  root: orch_retry_emitted_command,
-                  facts: Map { lookup: orch_emit_facts_lookup }
-                },
-                target: orch_retry_target_model(
-                  occ1: m1.carried,
-                  occ2: m2.carried,
-                  occ3: m3.carried,
-                  pattern1: pattern1,
-                  pattern2: pattern2,
-                  warn1: warn1,
-                  warn2: warn2
+              orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_retry,
+                target: medium.realize_retry(
+                  m1.carried,
+                  m2.carried,
+                  m3.carried,
+                  pattern1,
+                  pattern2,
+                  warn1,
+                  warn2,
+                  exhausted
                 )
               )
             }
@@ -155,75 +930,249 @@ fn orch_emit_retry_2level(
   )
 }
 
+fn orch_emit_retry_1level(
+  command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
+  level: EscalationLevel,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  match level.detect {
+    LogMatches { source: src, pattern: grep_pat } =>
+      bind_outcome(
+        o: orch_emit_retry_require_log_source(source: src, expected: orch_retry_outer_log_var),
+        f: fn(_) {
+          bind_outcome(
+            o: orch_emit_retry_run(
+              command: command,
+              env: Empty,
+              redirect: redirect,
+              capture: capture,
+              medium: medium
+            ),
+            f: fn(m1) {
+              bind_outcome(
+                o: orch_emit_retry_run(
+                  command: command,
+                  env: level.env,
+                  redirect: redirect,
+                  capture: capture,
+                  medium: medium
+                ),
+                f: fn(m2) {
+                  orch_emit_from_registry(
+                    medium: medium,
+                    construct_tag: orch_construct_retry_1level,
+                    target: medium.realize_retry_1level(
+                      m1.carried,
+                      m2.carried,
+                      grep_pat,
+                      level.warning.message,
+                      exhausted
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+  }
+}
+
+// Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2
+// via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1)
+// and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse
+// (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads each level's
+// env with the next level's detect (as orch_emit_retry_2level does). 🟡 dissolve-on: that template +
+// reclaim of escalation_step/final rows under a correct cross-level fold.
+
+fn orch_emit_retry_multilevel(
+  command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
+  level1: EscalationLevel,
+  rest: List<EscalationLevel>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_multilevel_unsupported))
+}
+
 fn orch_emit_retry_levels(
   command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
   level1: EscalationLevel,
-  level2: EscalationLevel
-) -> Outcome<Medium<String>> {
+  level2: EscalationLevel,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match level1.detect {
-    LogMatches { source: _, pattern: p1 } =>
-      match level2.detect {
-        LogMatches { source: _, pattern: p2 } =>
-          orch_emit_retry_2level(
-            command: command,
-            pattern1: p1,
-            pattern2: p2,
-            warn1: level1.warning.message,
-            warn2: level2.warning.message,
-            env1: level1.env,
-            env2: level2.env
-          )
-        _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
-      }
+    LogMatches { source: src1, pattern: p1 } =>
+      bind_outcome(
+        o: orch_emit_retry_require_log_source(source: src1, expected: orch_retry_outer_log_var),
+        f: fn(_) {
+          match level2.detect {
+            LogMatches { source: src2, pattern: p2 } =>
+              bind_outcome(
+                o: orch_emit_retry_require_log_source(source: src2, expected: orch_retry_nested_log_var),
+                f: fn(_) {
+                  orch_emit_retry_2level(
+                    command: command,
+                    redirect: redirect,
+                    capture: capture,
+                    pattern1: p1,
+                    pattern2: p2,
+                    warn1: level1.warning.message,
+                    warn2: level2.warning.message,
+                    env1: level1.env,
+                    env2: level2.env,
+                    exhausted: exhausted,
+                    medium: medium
+                  )
+                }
+              )
+            _ =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+          }
+        }
+      )
     _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
   }
 }
 
-fn orch_emit_retry(body: Pipeline, escalations: FreeMonoid<EscalationLevel>) -> Outcome<Medium<String>> {
-  match orch_retry_body_command(body: body) {
-    Present { value: command } =>
-      match list_head(xs: escalations) {
-        HeadFound { value: l1 } =>
-          match list_tail(xs: escalations) {
-            TailFound { tail: t } =>
-              match list_head(xs: t) {
+fn orch_emit_retry_dispatch(
+  command: String,
+  redirect: Optional<RedirectSpec>,
+  capture: Optional<CaptureSpec>,
+  escalations: FreeMonoid<EscalationLevel>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  match list_head(xs: escalations) {
+    HeadAbsent =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
+    HeadFound { value: l1 } =>
+      match list_tail(xs: escalations) {
+        TailAbsent =>
+          orch_emit_retry_1level(
+            command: command,
+            redirect: redirect,
+            capture: capture,
+            level: l1,
+            exhausted: exhausted,
+            medium: medium
+          )
+        TailFound { tail: rest } =>
+          match is_empty(rest) {
+            true =>
+              orch_emit_retry_1level(
+                command: command,
+                redirect: redirect,
+                capture: capture,
+                level: l1,
+                exhausted: exhausted,
+                medium: medium
+              )
+            false =>
+              match list_head(xs: rest) {
                 HeadFound { value: l2 } =>
-                  orch_emit_retry_levels(command: command, level1: l1, level2: l2)
+                  match list_tail(xs: rest) {
+                    TailFound { tail: more } =>
+                      match is_empty(more) {
+                        true =>
+                          orch_emit_retry_levels(
+                            command: command,
+                            redirect: redirect,
+                            capture: capture,
+                            level1: l1,
+                            level2: l2,
+                            exhausted: exhausted,
+                            medium: medium
+                          )
+                        false =>
+                          orch_emit_retry_multilevel(
+                            command: command,
+                            redirect: redirect,
+                            capture: capture,
+                            level1: l1,
+                            rest: concat([l2], more),
+                            exhausted: exhausted,
+                            medium: medium
+                          )
+                      }
+                    TailAbsent =>
+                      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
+                  }
                 HeadAbsent =>
-                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_needs_two_levels))
+                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
               }
-            TailAbsent =>
-              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_needs_two_levels))
           }
-        HeadAbsent =>
-          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
       }
-    Absent =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+  }
+}
+
+fn orch_emit_retry(
+  body: Pipeline,
+  escalations: FreeMonoid<EscalationLevel>,
+  on_exhausted: Pipeline,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
+  match orch_retry_body_command(body: body) {
+    Accepted { value: body_run, diagnostics: _ } =>
+      match is_empty(body_run.env) {
+        false =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_env_present))
+        true =>
+          bind_outcome(
+            o: orch_emit_pipeline(p: on_exhausted, medium: medium),
+            f: fn(exhausted_medium) {
+              orch_emit_retry_dispatch(
+                command: body_run.command,
+                redirect: body_run.redirect,
+                capture: body_run.capture,
+                escalations: escalations,
+                exhausted: exhausted_medium.carried,
+                medium: medium
+              )
+            }
+          )
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
   }
 }
 
 fn orch_emit_unsupported_step_diagnostics(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: node_locus(node: orch_run_emitted_command),
+    at: node_locus(node: orch_emit_unsupported_step_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn orch_emit_steps_from(head_str: String, rest: List<Step>) -> Outcome<Medium<String>> {
+fn orch_emit_steps_from(
+  head_str: String,
+  rest: List<PipelineStep>,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match list_head(xs: rest) {
     HeadAbsent =>
       outcome_accepted(lossless_source(text: head_str))
     HeadFound { value: next } =>
       bind_outcome(
-        o: orch_emit_step(s: next),
+        o: orch_emit_step(s: next, medium: medium),
         f: fn(next_medium) {
           bind_outcome(
-            o: orch_emit_join2(left: head_str, right: next_medium.carried),
+            o: orch_emit_join2(left: head_str, right: next_medium.carried, medium: medium),
             f: fn(joined) {
               match list_tail(xs: rest) {
-                TailFound { tail: t } => orch_emit_steps_from(head_str: joined.carried, rest: t)
+                TailFound { tail: t } =>
+                  orch_emit_steps_from(head_str: joined.carried, rest: t, medium: medium)
                 TailAbsent => outcome_accepted(joined)
               }
             }
@@ -233,17 +1182,24 @@ fn orch_emit_steps_from(head_str: String, rest: List<Step>) -> Outcome<Medium<St
   }
 }
 
-fn orch_emit_pipeline(p: Pipeline) -> Outcome<Medium<String>> {
+fn orch_emit_pipeline(
+  p: Pipeline,
+  medium: OrchestrationEmitMedium
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   match list_head(xs: p.steps) {
     HeadAbsent =>
       outcome_accepted(lossless_source(text: ""))
     HeadFound { value: first } =>
       bind_outcome(
-        o: orch_emit_step(s: first),
+        o: orch_emit_step(s: first, medium: medium),
         f: fn(first_medium) {
           match list_tail(xs: p.steps) {
             TailFound { tail: t } =>
-              orch_emit_steps_from(head_str: first_medium.carried, rest: t)
+              orch_emit_steps_from(
+                head_str: first_medium.carried,
+                rest: t,
+                medium: medium
+              )
             TailAbsent =>
               outcome_accepted(first_medium)
           }

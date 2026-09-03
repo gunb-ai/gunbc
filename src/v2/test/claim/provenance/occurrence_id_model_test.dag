@@ -1,6 +1,7 @@
 module v2.test.provenance.occurrence_id_model
 
-import v2.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
+import std.occurrence_identity { node_occurrence_identity_minted }
+import v2.std.diagnostic { ByteRange, InvariantPortLocus, NodeLocus, SourcePortLocus, Textual, WholeFile }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
@@ -13,9 +14,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_for_structural_equality,
-  node_occurrence_minted,
   node_synthetic,
-  node_with_occurrence_id
+  node_with_occurrence_id,
 }
 import v2.std.occurrence_id {
   alloc_occurrence_id,
@@ -39,8 +39,11 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, Violates }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
@@ -50,7 +53,7 @@ fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
     && !occurrence_id_eq(left: r0.id, right: r2.id)
 }
 
-fn span_index_from_source_round_trip_holds() -> Bool {
+test fn span_index_from_source_round_trip_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let minted = alloc_occurrence_id(alloc: alloc0)
   let id = minted.id
@@ -76,7 +79,8 @@ fn span_index_from_source_round_trip_holds() -> Bool {
                   WholeFile => false
                 }
             NodeLocus { anchor: _ } => false
-            PortLocus { anchor: _ } => false
+            SourcePortLocus { anchor: _, file: _, extent: _ } => false
+            InvariantPortLocus { anchor: _, invariant: _ } => false
           }
         DerivedBy { producer: _, from: _ } => false
         GeneratedBy { generator: _, from: _ } => false
@@ -101,7 +105,7 @@ fn span_index_merge_lookup_from_source_holds(index: SpanIndex, id: OccurrenceId)
   }
 }
 
-fn span_index_merge_disjoint_entries_holds() -> Bool {
+test fn span_index_merge_disjoint_entries_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
@@ -128,7 +132,7 @@ fn span_index_merge_disjoint_entries_holds() -> Bool {
     && span_index_merge_lookup_from_source_holds(index: merged, id: r1.id)
 }
 
-fn span_index_resolve_derived_chain_holds() -> Bool {
+test fn span_index_resolve_derived_chain_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
@@ -157,7 +161,7 @@ fn span_index_resolve_derived_chain_holds() -> Bool {
   }
 }
 
-fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
+test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
@@ -168,31 +172,31 @@ fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let left = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: child }],
-    occurrence_id: node_occurrence_minted(id: m0.id)
+    occurrence_id: node_occurrence_identity_minted(id: m0.id)
   )
   let right = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: child }],
-    occurrence_id: node_occurrence_minted(id: m1.id)
+    occurrence_id: node_occurrence_identity_minted(id: m1.id)
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
     && !(left == right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
-fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
+test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
   let child_left = node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
-    occurrence_id: node_occurrence_minted(id: m0.id)
+    occurrence_id: node_occurrence_identity_minted(id: m0.id)
   )
   let child_right = node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
-    occurrence_id: node_occurrence_minted(id: m1.id)
+    occurrence_id: node_occurrence_identity_minted(id: m1.id)
   )
   let left = node_synthetic(
     kind: TypeNode { connective: Conj },
@@ -206,17 +210,4 @@ fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
     && !(left == right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
     && !(node_for_structural_equality(n: left) == node_for_structural_equality(n: right))
-}
-
-fn occurrence_id_excluded_from_structural_equality() -> Bool {
-  occurrence_id_root_mint_excluded_from_structural_equality()
-    && occurrence_id_nested_mint_excluded_from_structural_equality()
-}
-
-test fn witness_occurrence_id_model_substrate_holds() -> Bool {
-  occurrence_id_allocator_mints_sequential_distinct_ids()
-    && span_index_from_source_round_trip_holds()
-    && span_index_merge_disjoint_entries_holds()
-    && span_index_resolve_derived_chain_holds()
-    && occurrence_id_excluded_from_structural_equality()
 }

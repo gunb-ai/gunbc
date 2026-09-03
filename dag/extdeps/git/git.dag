@@ -1,0 +1,1581 @@
+module extdeps.git
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import std.measure { Percent, percent }
+import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp }
+import v2.std.algebra { length, skip }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs"
+  }
+}
+
+data git_diff_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-diff"
+  }
+}
+
+data git_rev_list_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-rev-list"
+  }
+}
+
+data git_merge_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-merge"
+  }
+}
+
+data git_checkout_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-checkout"
+  }
+}
+
+data git_pathspec_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/gitglossary"
+  }
+}
+
+// GIT'S OWN ANSWER FOR ABSENCE, cited here because it is a fact about git rather than about any caller. `git rev-parse --verify --quiet <ref>` exits 0 with the object id when the ref resolves, exits 1 when it does not, and exits 128 when the repository itself could not be used. That third case is the one worth naming: a caller that reads only zero-versus-nonzero cannot tell a ref that is absent from a store it never reached, and those have opposite remedies -- the first means create it, the second means stop.
+//
+// The codes live with git rather than with a consumer for the ordinary single-authority reason. The first consumer to need one declared the integer locally, which made a fact about upstream behaviour a fact about one module; a second consumer would have declared it again, and a change in git would have had two places to reach.
+
+data git_ref_missing_exit_code: Int = 1
+
+data git_repository_unusable_exit_code: Int = 128
+
+type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
+
+type GitAuthor {
+  name: String
+  email: Email
+  timestamp: Timestamp
+}
+
+type GitBranch {
+  name: String
+  upstream: String?
+  is_head: Bool
+}
+
+type GitRemote {
+  name: String
+  url: NonEmptyStr
+  fetch_refspec: String
+}
+
+type GitWorktreeHead
+  = WorktreeOnBranch { branch: GitBranch }
+  | WorktreeDetached { sha: CommitSha }
+
+type GitWorktree {
+  path: FilePath
+  head: GitWorktreeHead
+  is_main: Bool
+  locked: Bool
+}
+
+type DiffStat {
+  files_changed: Int
+  insertions: Int
+  deletions: Int
+}
+
+type DiffLine
+  = DiffAdded { content: String }
+  | DiffRemoved { content: String }
+  | DiffContext { content: String }
+
+type DiffHunk {
+  file_path: String
+  old_start: Int
+  new_start: Int
+  lines: List<DiffLine>
+}
+
+type GitDiffChangeStatus
+  = DiffAddedStatus
+  | DiffCopiedStatus { similarity: Percent }
+  | DiffDeletedStatus
+  | DiffModifiedStatus
+  | DiffPairingBrokenStatus
+  | DiffRenamedStatus { similarity: Percent }
+  | DiffTypeChangedStatus
+  | DiffUnmergedStatus
+  | DiffUnknownGitStatus { raw: String }
+
+type GitDiffStatusEntry {
+  status: GitDiffChangeStatus
+  path: FilePath
+  old_path: FilePath?
+}
+
+type GitDiffNameStatusParsePending
+  = AwaitingStatusToken
+  | AwaitingSinglePath { status: GitDiffChangeStatus }
+  | AwaitingOldPath { status: GitDiffChangeStatus }
+  | AwaitingNewPath { status: GitDiffChangeStatus, old_path: FilePath }
+
+type GitDiffNameStatusParseState {
+  pending: GitDiffNameStatusParsePending
+  entries: List<GitDiffStatusEntry>
+}
+
+data git_diff_name_status_field_separator: String = from_code_point(0)
+
+fn git_diff_change_status_from_token(token: String) -> GitDiffChangeStatus {
+  let letter = substring(s: token, start: 0, end: 1)
+  let rest = substring(s: token, start: 1, end: string_length(s: token))
+  if letter == "A" { DiffAddedStatus }
+  else if letter == "D" { DiffDeletedStatus }
+  else if letter == "M" { DiffModifiedStatus }
+  else if letter == "T" { DiffTypeChangedStatus }
+  else if letter == "U" { DiffUnmergedStatus }
+  else if letter == "B" { DiffPairingBrokenStatus }
+  else if letter == "R" {
+    match parse_int(s: rest) {
+      Present { value: score } => DiffRenamedStatus { similarity: percent(score) }
+      Absent => DiffUnknownGitStatus { raw: token }
+    }
+  }
+  else if letter == "C" {
+    match parse_int(s: rest) {
+      Present { value: score } => DiffCopiedStatus { similarity: percent(score) }
+      Absent => DiffUnknownGitStatus { raw: token }
+    }
+  }
+  else { DiffUnknownGitStatus { raw: token } }
+}
+
+fn git_diff_name_status_pending_after_status(status: GitDiffChangeStatus) -> GitDiffNameStatusParsePending {
+  match status {
+    DiffRenamedStatus { similarity: _ } => AwaitingOldPath { status: status }
+    DiffCopiedStatus { similarity: _ } => AwaitingOldPath { status: status }
+    _ => AwaitingSinglePath { status: status }
+  }
+}
+
+fn git_diff_name_status_advance(state: GitDiffNameStatusParseState, token: String) -> GitDiffNameStatusParseState {
+  if token == "" {
+    state
+  } else {
+    match state.pending {
+      AwaitingStatusToken => GitDiffNameStatusParseState {
+        pending: git_diff_name_status_pending_after_status(status: git_diff_change_status_from_token(token: token)),
+        entries: state.entries
+      }
+      AwaitingSinglePath { status: status } => GitDiffNameStatusParseState {
+        pending: AwaitingStatusToken,
+        entries: append(state.entries, items: [GitDiffStatusEntry { status: status, path: token, old_path: Absent }])
+      }
+      AwaitingOldPath { status: status } => GitDiffNameStatusParseState {
+        pending: AwaitingNewPath { status: status, old_path: token },
+        entries: state.entries
+      }
+      AwaitingNewPath { status: status, old_path: old_path } => GitDiffNameStatusParseState {
+        pending: AwaitingStatusToken,
+        entries: append(state.entries, items: [GitDiffStatusEntry { status: status, path: token, old_path: Present { value: old_path } }])
+      }
+    }
+  }
+}
+
+type GitDiffNameStatusParseOutcome
+  = GitDiffNameStatusComplete { entries: List<GitDiffStatusEntry> }
+  | GitDiffNameStatusTruncated { pending: GitDiffNameStatusParsePending, entries: List<GitDiffStatusEntry> }
+
+fn git_diff_name_status_parse_state(raw: String) -> GitDiffNameStatusParseState {
+  let tokens = split(s: raw, delimiter: git_diff_name_status_field_separator)
+  fold(
+    tokens,
+    init: GitDiffNameStatusParseState { pending: AwaitingStatusToken, entries: [] },
+    f: git_diff_name_status_advance
+  )
+}
+
+fn git_diff_name_status_parse(raw: String) -> GitDiffNameStatusParseOutcome {
+  let state = git_diff_name_status_parse_state(raw: raw)
+  match state.pending {
+    AwaitingStatusToken => GitDiffNameStatusComplete { entries: state.entries }
+    _ => GitDiffNameStatusTruncated { pending: state.pending, entries: state.entries }
+  }
+}
+
+fn git_diff_status_entry_touched_paths(entry: GitDiffStatusEntry) -> List<FilePath> {
+  match entry.old_path {
+    Present { value: old } => [entry.path, old]
+    Absent => [entry.path]
+  }
+}
+
+fn git_diff_status_touched_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+  append(acc, items: git_diff_status_entry_touched_paths(entry: entry))
+}
+
+fn git_diff_status_entries_touched_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+  fold(entries, init: [], f: git_diff_status_touched_paths_step)
+}
+
+fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
+  match entry.status {
+    DiffDeletedStatus => Present { value: entry.path }
+    DiffRenamedStatus { similarity: _ } => entry.old_path
+    _ => Absent
+  }
+}
+
+fn git_diff_status_departed_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+  match git_diff_status_entry_departed_path(entry: entry) {
+    Present { value: path } => append(acc, items: [path])
+    Absent => acc
+  }
+}
+
+fn git_diff_status_entries_departed_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+  fold(entries, init: [], f: git_diff_status_departed_paths_step)
+}
+
+fn git_diff_status_entries_any_unknown(entries: List<GitDiffStatusEntry>) -> Bool {
+  let unknown_tag = discriminant(v: DiffUnknownGitStatus { raw: "" })
+  fold(entries, init: false, f: fn(acc, entry) {
+    acc || (discriminant(v: entry.status) == unknown_tag)
+  })
+}
+
+data default_remote: String = "origin"
+
+data default_branch_names: List<String> = ["main", "master"]
+
+type GitDiffRange
+  = TwoDot
+  | ThreeDot
+
+fn git_diff_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<String> {
+  match range {
+    TwoDot => [base as String, head as String]
+    ThreeDot => [concat(concat(base as String, "..."), head as String)]
+  }
+}
+
+data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-remote"
+  }
+}
+
+// git for-each-ref is the repository's OWN enumeration surface, and it exists beside ObserveRef and
+// RemoteBranches because neither can answer the question it answers. ObserveRef resolves ONE ref the
+// caller already names, so it cannot report a ref that appeared or vanished -- a check built on it is a
+// check over an authored list, which by construction cannot see an addition. RemoteBranches runs
+// `git branch -r`, whose output is remote-tracking NAMES only, offline, carrying no object id. Neither
+// is a defect in either operation; they answer "where is this ref" and "which remote branches does this
+// clone know about", and the missing question is "what is the COMPLETE ref set, and where does each
+// member point".
+//
+// THE FORMAT IS NUL-SEPARATED FIELDS ON NEWLINE-SEPARATED RECORDS, which is safety rather than
+// convenience: git-check-ref-format(1) forbids space, newline and ASCII control characters inside a ref
+// name, so a record cannot be split by its own content. The symref field is empty for an ordinary ref,
+// which is why fields are NUL-separated rather than space-separated -- a trailing empty field must stay
+// observable instead of collapsing into the separator.
+//
+// THE PROJECTION AND THE ORDER ARE THE OPERATION'S, NOT THE CALLER'S. The format is fixed rather than
+// taken as a format string, because a caller-supplied format would give every consumer a different
+// output grammar and reduce this row to an argv passthrough -- the semantic interface is "enumerate
+// logical ref identities", so the projection belongs to the operation. --sort=refname is pinned for the
+// same reason and one more: a consumer comparing two enumerations digests them, and an unpinned order
+// would make that digest depend on git's default ordering rather than on the ref set, so the same set
+// could hash two ways. It is refname because that is the one field guaranteed unique across the set,
+// which makes the order total rather than merely deterministic.
+//
+// THERE IS NO -z HERE, DELIBERATELY. git-for-each-ref(1) documents no -z option; the NUL comes from %00
+// inside its own format language. Spelling a -z upstream does not have would be a fabricated interface:
+// it would fail at the transport rather than in review, and the extdeps duty is to model what the tool
+// actually accepts. WorktreeListIn does carry -z, because git-worktree(1) documents it.
+//
+// IT IS DELIBERATELY NOT A STORAGE READ. The refs a consumer compares are LOGICAL refs; whether a ref
+// lives loose under .git/refs or inside packed-refs is git storage policy that changes under ordinary
+// maintenance with no ref having moved. Both directions were measured on a live tree: a digest over
+// storage reports a difference where nothing changed, and misses one where a loose ref shadows a stale
+// packed entry.
+// WHAT --sort=refname ORDERS BY, stated because pinning the flag fixes the ORDER and says nothing
+// about the RELATION, and a consumer has to reimplement that relation to check it.
+//
+// git-for-each-ref(1) documents refname as the sort key and the default when --sort is unspecified.
+// The comparison it performs is over the ref name's BYTES: git refnames are byte strings, not
+// characters -- git-check-ref-format(1) constrains which bytes may appear and says nothing about an
+// encoding -- so git's ordering here is bytewise, not a collation.
+//
+// THE CONSUMER'S COMPARATOR IS NOT BYTEWISE, AND THE TWO AGREE FOR A REASON THAT IS NOT OBVIOUS.
+// extdeps.git.enumeration validates this order with std.string_type string_is_lexicographically_before,
+// which compares CODE POINTS. Bytewise and code-point-wise orderings coincide over well-formed UTF-8,
+// because UTF-8 is order-preserving by construction: a code point's encoding sorts, byte for byte, in
+// the same relation as the code point itself. That is a property of the encoding rather than of either
+// comparator, and it is the entire reason the decoder's check does not produce false refusals.
+//
+// IT IS RECORDED HERE BECAUSE NOTHING ELSE CARRIES IT. Before this note the correspondence held by
+// coincidence as far as any reader could tell, which fails in the direction that looks like a bug in
+// git: make std's comparator locale-aware -- an entirely reasonable-looking improvement -- and the
+// decoder begins refusing valid `for-each-ref` output with "ref names are not strictly increasing",
+// a message that accuses the tool rather than the change that broke it.
+//
+// THE BOUNDARY, DECLARED RATHER THAN GUARDED (DESIGN section 4b, outside the modeled guarantee): a
+// refname whose bytes are not well-formed UTF-8 is permitted by git and has no defined relation to a
+// code-point comparator. No refusal is claimed for it here, because whether such a name survives the
+// shell transport into a String at all is unestablished, and a wall whose reachability has not been
+// measured would be asserted coverage rather than a wall. Establishing that is the next rung; what is
+// owed first is a measurement, not a check.
+//
+// NO GIT VERSION IS PINNED ANYWHERE IN THIS MODULE, and ExternalAuthority carries no version field to
+// pin one with -- it holds a Uri and nothing else. DESIGN section 3 asks an extdeps subject to declare
+// its version, so this is a standing gap for the whole module rather than for this operation, named
+// here because the sort semantics are exactly the kind of fact that is version-relative.
+data git_for_each_ref_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-for-each-ref"
+  }
+}
+
+// git worktree list is the roster read this module was missing, and the asymmetry is why it is worth
+// stating: worktree ADD is modeled in both its branch and detached forms, so the substrate could CREATE
+// a linked worktree and could not ENUMERATE one. A consumer that must establish a worktree roster is
+// unchanged across an operation cannot build that on an add, and per-member probing of paths the caller
+// already names carries the same blind spot the for-each-ref annotation describes -- it proves the known
+// members unchanged and cannot see a member that appeared.
+//
+// --porcelain -z IS THE DOCUMENTED STABLE FORM, and git-worktree(1) directs callers to it rather than to
+// interpreting paths under GIT_DIR themselves; the -z framing makes the record boundary independent of
+// path content. Each entry carries the absolute worktree path, its HEAD, its branch or a bare detached
+// marker, and the locked and prunable standings -- exactly the tuple a preservation comparison needs,
+// and none of it recoverable from the filesystem without re-deciding git's own layout.
+// COMPARE-AND-SWAP, AND THE THIRD ARGUMENT IS THE ENTIRE POINT OF THIS OPERATION EXISTING.
+//
+// git-update-ref documents the form `git update-ref <ref> <newvalue> [<oldvalue>]` and states that
+// with <oldvalue> it verifies the ref's current value matches before updating, failing otherwise.
+// That is a real compare-and-swap performed by git under its own ref lock, not a check this layer
+// could do by reading and then writing -- a read-then-write here would carry a window in which
+// another actor moves the ref between the two, and would report success for a transition that
+// overwrote someone else's.
+//
+// THE UNCONDITIONAL FORM ALREADY EXISTED AND IS WHY THIS IS SEPARATE RATHER THAN A PARAMETER.
+// shape_git_bare_update_ref_argv writes `update-ref <ref> FETCH_HEAD` with no expected value, so
+// it cannot fail on a concurrent move; it clobbers. Adding an optional oldvalue to that shaper
+// would make the safe and unsafe forms one call distinguished by whether a caller remembered to
+// pass an argument, which is the state-space conflation this repository keeps finding. Two names,
+// and a caller cannot reach one meaning the other.
+//
+// EXPECTING ABSENCE IS SPELLED BY THE EMPTY STRING, which is git's own convention for "verify the
+// ref does not exist" rather than an invention here.
+data git_update_ref_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-update-ref"
+  }
+}
+
+// THE REFLOG IS READ BECAUSE IT IS THE ONLY EVIDENCE THAT A TRANSITION HAPPENED THROUGH GIT.
+// A converged HEAD proves the destination; it does not distinguish "git moved this ref" from "a
+// file was copied over it", and the whole defect this operation exists to detect is the second.
+// A file-level copy of `refs/**` leaves no reflog entry, so a non-noop transition with an
+// unchanged reflog is exactly the corruption signature.
+//
+// `--format` IS PINNED rather than left to git's default, because the default is affected by the
+// user's configuration and this output is decoded. `%H %gd %gs` is old-to-new-independent: the
+// object, the selector and the subject.
+data git_reflog_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-reflog"
+  }
+}
+
+// UNTRACKED RESIDUE IS WHAT `reset --hard` CANNOT REACH, and reporting a convergence without
+// observing it would be a fabricated plausible output: `reset --hard` moves HEAD, the index and the
+// TRACKED bytes, so a tree that carries strays afterwards is candidate-union-strays and not the
+// candidate. On the deployed tree this is not hypothetical -- the sync being replaced wrote files
+// git never tracked, and they survive the transition untouched.
+//
+// `ls-files --others` rather than `status --porcelain` because the question is exactly "which paths
+// does git not track", with no interest in staged or modified state, and `--exclude-standard` keeps
+// ignored build output out of the answer: a target/ directory is not residue, it is a gitignored
+// artifact the candidate tree also expects to be absent from. `-z` because a path may contain a
+// newline, and a newline-delimited reading of this output would silently split one path into two.
+//
+// THIS OPERATION OBSERVES AND DOES NOT REMOVE. `git clean -fdx` would make the tree match by
+// deleting whatever it found, which widens rather than refuses (DESIGN section 5) and would destroy
+// operator state nobody adjudicated. The consumer refuses and names the residue instead.
+data git_ls_files_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-files"
+  }
+}
+
+// ONE OPERATION MOVES HEAD, THE INDEX AND THE TRACKED BYTES TOGETHER, which is the property the
+// deployed tree lost. The sync it replaces moved tracked bytes by rsync and HEAD by file copy and
+// left the index untouched entirely, so the three could and did disagree -- measured on srv1 as
+// 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. `reset --hard` is ONE
+// GIT-OWNED COMMAND over all three, which is materially better than three uncoordinated transports.
+//
+// THAT IS NOT A CLAIM OF CRASH-ATOMICITY, and an earlier revision of this annotation made one: it
+// said partial application "is not a state it can produce". Git documents this command as updating
+// HEAD, the index and the working tree; it does not document the sequence as a transaction that
+// rolls back, and a kill between the ref write and the file writes leaves exactly the partial state
+// the sentence denied. Nor does the surrounding composition inherit atomicity from it -- `update-ref`
+// gives a compare-and-swap over the ref IT owns, and nothing extends that guarantee across a later
+// worktree reset. The consumer therefore carries an explicit partial-transition outcome rather than
+// relying on this command to make one unreachable.
+//
+// IT IS NOT READONLY AND IT DISCARDS LOCAL MODIFICATIONS, stated plainly because the name does not
+// say so: any uncommitted change in the target worktree is destroyed. That is correct for a
+// deployed tree, whose contents are supposed to be a function of the release and nothing else, and
+// it would be wrong for a working checkout. The caller owns that distinction.
+data git_reset_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-reset"
+  }
+}
+
+data git_worktree_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-worktree"
+  }
+}
+
+// WHY THIS EXISTS BESIDE RemoteBranches, which already lists remote branches. RemoteBranches runs
+// `git branch -r`, whose output is ref NAMES and nothing else, and it reads the local
+// remote-tracking refs rather than asking the remote. Neither property is a defect in it - it
+// answers `which remote branches does this clone know about` - but it cannot answer `what commit is
+// the remote branch AT`, and a consumer that needs an exact head therefore cannot be built on it at
+// all. `git ls-remote --heads` is the ref-advertisement protocol reading: it contacts the remote
+// and returns object id plus full ref name per line, which is the pair an exact-head judgment
+// needs.\n\nThe two are kept separate rather than one being widened because they answer different
+// questions with different freshness: `branch -r` is local and offline, ls-remote is a network read
+// that can fail on its own. Collapsing them would make every name listing pay a network round trip
+// and inherit its failure modes.
+
+type AdvertisedRef {
+  object_id: CommitSha
+  ref_name: String
+}
+
+// The scan REFUSES on a line it cannot read rather than skipping it, and the located line is
+// carried so the refusal names what it choked on. Dropping unparseable lines is the shape DESIGN 5
+// calls the absorbing fallback: the answer would still be a well-formed ref list, so a consumer
+// could not tell a complete advertisement from a partial one, and the deficit's frequency would be
+// zero by construction. A partial ref list is exactly the input that makes an exact-head judgment
+// answer `not published` about a branch that is in fact published.
+
+data ls_remote_reports_termination_not_success_note: String = "IT REPORTS THE EXIT CODE AND NOT A SUCCESS BOOL, WHICH IS A NARROWING FROM ITS FIRST CUT. That cut declared `success: Bool from \"exit_success\"` beside `exit_code`, and the two are not independent: the seed derives exit_success as exactly `exit_code == 0` (v1_interpreter.rs, the shell dispatch output-source match), so the pair carried one fact twice.\\n\\nCARRYING IT TWICE WAS NOT MERELY REDUNDANT, IT MADE A CONTRADICTION WRITABLE. A caller of the deciding function could pass success true beside a nonzero exit code, and the function branched on success - so a failed advertisement read as a successful one and the branch reported unpublished rather than unreadable. That is the ignorance-as-answer conflation this operation exists to prevent, reachable through the operation own output shape. Dropping the Bool makes the contradictory pair unrepresentable rather than merely unlikely, which is why this is construction and not a check.\\n\\nWHICH LAYER OWNS SUCCESS, since something still has to answer it: the caller EXPECTATION does. Process termination, operation observation, caller expectation and log disposition are four facts, and a probe may legitimately use a nonzero exit as an ANSWER rather than a verdict - so an operation that pre-judges its own exit code as success has decided something only its caller can. See gunbc.plans.transport_argv_anemia_dissolution, which measures 148 sibling operations in dag/extdeps still carrying the Bool while 51 preserve the integer. This operation is the first consumer of that correction, not a local exception."
+
+// BOTH THE REPOSITORY AND THE REMOTE NAME ARE PARAMETERS, AND NEITHER IS A LITERAL IN THE ARGV.
+// `origin` is the obvious literal to bake in, because almost every caller wants it - and baking it
+// in would make this operation a model of one checkout's configuration rather than of git's
+// remote-url lookup. Which remote a caller cares about is a caller fact; the operation models the
+// read.\n\nTHE PATH IS A PARAMETER FOR A SHARPER REASON: without it this operation reads whatever
+// repository the process happens to be standing in. Its first consumer asks whether a specific
+// attempt's worktree is bound to the repository a publication subject names, and a read that
+// silently answered for the process's own checkout would confirm the binding for the wrong
+// repository while looking entirely ordinary - the precise class of coincidence the consumer exists
+// to refuse. `git -C <path>` is git's own mechanism for this, so the repository is named rather
+// than inherited.\n\nIt reports exit_code and stderr rather than a success Bool, for the reason
+// ls_remote_reports_termination_not_success_note gives at length: the seed derives exit_success as
+// exactly `exit_code == 0`, so the pair would carry one fact twice and make a contradictory pair
+// writable. It declares no exit block for the reason the note below gives: those arms are parsed,
+// re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized
+// instance.
+
+data ls_remote_carries_no_exit_block_note: String = "WHY LsRemoteHeads DECLARES NO `exit` BLOCK WHILE EVERY SIBLING OPERATION DOES, which is the first thing a reader will notice. The `exit` arms are INERT AT RUN TIME - established by reading the seed, not assumed. The shell dispatch in v1_interpreter.rs maps declared output sources (`stdout`, `stderr`, `exit_success`, `exit_code`, `stdout_lines`) onto the process result and returns a record; it never consults the operation's exit arms and never raises on a nonzero exit. The only consumer of exit_props anywhere outside the parser is v1_compiler_emit_rust.rs, which round-trips them back to source so the self-host fixed point holds. So an exit arm is a declaration that is parsed, re-emitted, and never realized.\\n\\nThat makes this operation's OUTPUTS the realized authority for its outcome: a caller learns whether the read succeeded from `exit_code`/`stderr`, which are values it can match on. (It carried a `success` Bool too until this operation narrowed - see ls_remote_reports_termination_not_success_note directly above, which is the authority for why. Left unfixed, this sentence would have been a stale citation inside the very PR that made it false.) Adding an exit block beside them would be a second representation of the same fact where only one of the two executes - and since this operation is new, authoring one knowing it is inert would be minting a fresh declared-but-unrealized instance rather than inheriting an existing one. The corpus-wide inertness of exit blocks is a real finding and a separate correction; it is not fixed by making one operation diverge from a hundred siblings, and it is not made worse by declining to add the hundred-and-first."
+
+type AdvertisedRefScan
+  = AdvertisedRefsRead { refs: List<AdvertisedRef> }
+  | AdvertisedRefLineUnparsed { line: String, index: Int }
+
+data advertised_ref_heads_prefix: String = "refs/heads/"
+
+fn advertised_ref_branch_name(ref_name: String) -> String {
+  if starts_with(s: ref_name, prefix: advertised_ref_heads_prefix) {
+    substring(
+      s: ref_name,
+      start: advertised_ref_heads_prefix.length(),
+      end: ref_name.length(),
+    )
+  } else {
+    ref_name
+  }
+}
+
+type AdvertisedRefFields {
+  object_id: String
+  ref_name: String
+  seen: Int
+}
+
+fn advertised_ref_field_step(acc: AdvertisedRefFields, p: String) -> AdvertisedRefFields {
+  if acc.seen == 0 {
+    AdvertisedRefFields { object_id: p, ref_name: acc.ref_name, seen: 1 }
+  } else {
+    AdvertisedRefFields { object_id: acc.object_id, ref_name: p, seen: acc.seen + 1 }
+  }
+}
+
+fn parse_advertised_ref_line(line: String) -> AdvertisedRef? {
+  let parts = split(s: line, delimiter: "\t")
+  if count(parts) != 2 {
+    none
+  } else {
+    let fields = fold(
+      parts,
+      init: AdvertisedRefFields { object_id: "", ref_name: "", seen: 0 },
+      f: (acc, p) => advertised_ref_field_step(acc: acc, p: p),
+    )
+    if fields.object_id == "" || fields.ref_name == "" {
+      none
+    } else {
+      Present {
+        value: AdvertisedRef {
+          object_id: fields.object_id as CommitSha,
+          ref_name: fields.ref_name,
+        },
+      }
+    }
+  }
+}
+
+type AdvertisedRefFold {
+  refs: List<AdvertisedRef>
+  index: Int
+  failed_line: String
+  failed_index: Int
+  failed: Bool
+}
+
+fn advertised_ref_step(acc: AdvertisedRefFold, line: String) -> AdvertisedRefFold {
+  if acc.failed {
+    AdvertisedRefFold {
+      refs: acc.refs,
+      index: acc.index + 1,
+      failed_line: acc.failed_line,
+      failed_index: acc.failed_index,
+      failed: true,
+    }
+  } else {
+    match parse_advertised_ref_line(line: line) {
+      Absent =>
+        AdvertisedRefFold {
+          refs: acc.refs,
+          index: acc.index + 1,
+          failed_line: line,
+          failed_index: acc.index,
+          failed: true,
+        }
+      Present { value: r } =>
+        AdvertisedRefFold {
+          refs: acc.refs |> list_push(r),
+          index: acc.index + 1,
+          failed_line: "",
+          failed_index: 0,
+          failed: false,
+        }
+    }
+  }
+}
+
+fn scan_advertised_refs(lines: List<String>) -> AdvertisedRefScan {
+  let folded = fold(
+    lines,
+    init: AdvertisedRefFold {
+      refs: [],
+      index: 0,
+      failed_line: "",
+      failed_index: 0,
+      failed: false,
+    },
+    f: (acc, line) => advertised_ref_step(acc: acc, line: line),
+  )
+  if folded.failed {
+    AdvertisedRefLineUnparsed {
+      line: folded.failed_line,
+      index: folded.failed_index,
+    }
+  } else {
+    AdvertisedRefsRead { refs: folded.refs }
+  }
+}
+
+type GitRemoteRefParts {
+  remote: String
+  ref_name: String
+}
+
+fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
+  let parts = split(s: ref as String, delimiter: "/")
+  GitRemoteRefParts {
+    remote: parts.first(),
+    ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+  }
+}
+
+fn git_remote_ref(parts: GitRemoteRefParts) -> GitRef {
+  concat(concat(parts.remote, "/"), parts.ref_name) as GitRef
+}
+
+fn git_shell_join_argv(argv: List<String>) -> String {
+  fold(argv, init: "", f: (acc, token) => if acc == "" { token } else { concat(concat(acc, " "), token) })
+}
+
+fn shape_git_toplevel_argv() -> List<String> {
+  ["git", "rev-parse", "--show-toplevel"]
+}
+
+fn git_toplevel_shell_subexpr_with_fallback() -> String {
+  concat(
+    "$(", concat(concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), " 2>/dev/null || pwd"), ")")
+  )
+}
+
+fn git_toplevel_shell_subexpr() -> String {
+  concat("$(", concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), ")"))
+}
+
+fn shape_git_fetch_no_tags_argv(remote: String, ref_name: String) -> List<String> {
+  ["git", "fetch", "--no-tags", remote, ref_name]
+}
+
+fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Bool) -> String {
+  let cmd = git_shell_join_argv(argv: shape_git_fetch_no_tags_argv(remote: remote, ref_name: ref_name))
+  if ignore_failure {
+    concat(cmd, " 2>/dev/null || true")
+  } else {
+    cmd
+  }
+}
+
+fn shape_git_fetch_prune_argv(remote: String) -> List<String> {
+  ["git", "fetch", "--prune", remote]
+}
+
+fn git_fetch_prune_shell(remote: String) -> String {
+  git_shell_join_argv(argv: shape_git_fetch_prune_argv(remote: remote))
+}
+
+fn shape_git_show_tree_argv(ref: GitRef) -> List<String> {
+  ["git", "show", "-s", "--format=%T", ref as String]
+}
+
+fn shape_git_head_commit_short_argv() -> List<String> {
+  ["git", "rev-parse", "--short", "HEAD"]
+}
+
+fn shape_git_current_branch_argv() -> List<String> {
+  ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+}
+
+fn shape_git_branch_show_current_argv() -> List<String> {
+  ["git", "branch", "--show-current"]
+}
+
+// PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split).
+// gitglossary(7) 'pathspec' defines the long-form magic word `exclude` — a pathspec of the form
+// `:(exclude)<pattern>` removes matching paths from the set an otherwise-matching pathspec
+// selected, and git requires at least one positive pathspec beside it for there to be a set to
+// subtract from (hence the leading `.` that shape_git_diff_unmerged_pathspec_args emits). This
+// module owns only that SPELLING. The exclusion LIST is a caller's business policy — a workflow
+// fact — and passing pathspec WORDS as a parameter is what keeps this row from becoming the layer
+// inversion §3 names (an argv carrying a literal it should receive as an argument).
+//
+// A PATHSPEC WORD IS NOT A SHELL WORD, AND THIS MODULE DELIBERATELY DOES NOT QUOTE IT.
+// `:(exclude)p` contains `(` and `)`, which are bash metacharacters, so any shell realization that
+// joins this word into a command line unquoted emits a SYNTAX ERROR — proven by execution, not
+// reasoned: the first cut of the heal skew guard did exactly that and `bash -n` rejected the
+// emitted line. git_shell_join_argv is a join over already-spelled words, not a quoter, and must
+// not become one (its existing callers pass words that are already quoted, so quoting there would
+// double-quote them). Quoting therefore belongs to the emitting realization, which is the only
+// layer that knows the target shell — see v2.workflow.ci_heal_skew_guard_emit
+// ci_heal_skew_shell_single_quoted. Callers composing a pathspec into shell MUST quote the whole
+// word.
+
+fn git_pathspec_exclude(path: String) -> String {
+  concat(":(exclude)", path)
+}
+
+// Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step.
+fn git_argv_of_args(args: List<String>) -> List<String> {
+  concat(["git"], args)
+}
+
+fn shape_git_diff_unmerged_args() -> List<String> {
+  ["diff", "--name-only", "--diff-filter=U"]
+}
+
+fn shape_git_diff_unmerged_nul_argv() -> List<String> {
+  git_argv_of_args(args: concat(shape_git_diff_unmerged_args(), ["-z"]))
+}
+
+fn shape_git_diff_unmerged_pathspec_args(pathspec_words: List<String>) -> List<String> {
+  concat(concat(shape_git_diff_unmerged_args(), ["--", "."]), pathspec_words)
+}
+
+fn shape_git_rev_list_ahead_path_limited_args(target: String, path: String) -> List<String> {
+  ["rev-list", concat("HEAD..", target), "--", path]
+}
+
+fn shape_git_merge_no_edit_argv(ref: String) -> List<String> {
+  ["git", "merge", "--no-edit", ref]
+}
+
+fn shape_git_merge_abort_argv() -> List<String> {
+  ["git", "merge", "--abort"]
+}
+
+fn shape_git_checkout_ours_argv() -> List<String> {
+  ["git", "checkout", "--ours", "--"]
+}
+
+fn shape_git_add_argv() -> List<String> {
+  ["git", "add"]
+}
+
+data git_binary_name: NonEmptyStr = "git"
+
+fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
+  ["git", "commit", "--no-verify", "--no-edit"]
+}
+
+fn shape_git_config_argv(key: String, value: String) -> List<String> {
+  ["git", "config", key, value]
+}
+
+// THE PROGRAM AND ITS OPERANDS, NAMED SEPARATELY, so the two addressings of one fact derive from
+// one row instead of agreeing by coincidence: the actuator wants the whole word list, the hook
+// emitter wants a command it can render, and `--local` is spelled once for both.
+//
+// `git` is deliberately NOT an absolute path here, unlike every other binary row in extdeps. These
+// words are emitted into a repository-local hook script that runs in a developer's own checkout,
+// where the git that resolves through PATH is the git that clone is being managed by; pinning
+// /usr/bin/git would name a different program than the one the developer is running.
+fn git_config_local_set_args(key: String, value: String) -> List<String> {
+  ["config", "--local", key, value]
+}
+
+fn shape_git_config_local_argv(key: String, value: String) -> List<String> {
+  append([git_binary_name as String], items: git_config_local_set_args(key: key, value: value))
+}
+
+fn git_config_local_set_command(key: String, value: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_config_local_set_args(key: key, value: value))
+}
+
+fn shape_git_config_get_argv(key: String) -> List<String> {
+  ["git", "config", "--get", key]
+}
+
+fn shape_git_config_local_get_argv(key: String) -> List<String> {
+  ["git", "config", "--local", "--get", key]
+}
+
+fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
+  ["git", "-C", repo as String, "config", "--local", key, value]
+}
+
+fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
+  ["git", "-C", repo as String, "config", "--local", "--get", key]
+}
+
+fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
+  ["git", "rev-parse", "--verify", "--quiet", target]
+}
+
+fn shape_git_rev_parse_head_args() -> List<String> {
+  ["rev-parse", "HEAD"]
+}
+
+fn git_observe_meta_shell_fragment() -> String {
+  concat(
+    "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
+    concat(" commit=$(", concat(git_shell_join_argv(argv: shape_git_head_commit_short_argv()), " 2>/dev/null || echo unknown)"))
+  )
+}
+
+// FORCED, REPOSITORY-ADDRESSED REF EXCHANGE -- FetchForcedRefInRepo and PushForcedRefInRepo.
+// `--force` with an explicit refspec is git's own interface for `make the destination equal the
+// source`, which is what a scratch exchange channel between two processes needs and what a
+// publication does NOT: these are deliberately not the operations git.PublicationTransport
+// declares, and neither is a lease-bearing form. `--quiet` suppresses progress on a channel whose
+// only consumer reads exit_code and stderr. Both take their repository as a parameter rather than
+// inheriting the process working directory, per
+// remote_url_takes_its_repository_as_a_parameter_note, and both report exit_code and stderr rather
+// than a success Bool, per ls_remote_reports_termination_not_success_note.
+
+// THE SIX WRITE/READ OPERATIONS BELOW MODEL GIT'S ORDINARY INTEGRATION SURFACE — stage, commit,
+// branch checkout, merge, and the unmerged-stage read — each taking its repository as a parameter
+// rather than inheriting the process's checkout, for the reason
+// remote_url_takes_its_repository_as_a_parameter_note gives: an operation that answered for
+// whatever directory the process happens to stand in would confirm a result for the wrong
+// repository while looking entirely ordinary. They report exit_code and stderr and NOT a success
+// Bool, per ls_remote_reports_termination_not_success_note: the seed derives exit_success as
+// exactly exit_code == 0, so the pair would carry one fact twice and make a contradictory pair
+// writable. That narrowing matters most for MergeNoEditInRepo, whose nonzero exit is an ANSWER
+// rather than a failure — a caller asking whether a merge left the tree conflicted reads the code,
+// and an operation pre-judging it as unsuccessful would decide something only the caller can. They
+// declare no exit block, per ls_remote_carries_no_exit_block_note: those arms are parsed,
+// re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized
+// instance. Committer identity is deliberately not an input — a caller sets user.email and
+// user.name through ConfigLocalSetInRepo, so identity stays one modeled binding rather than a
+// second per-commit representation.
+
+// Independent repository-coherence observations. WriteTreeInRepo asks git to serialize the
+// repository's actual index; TrackedWorktreeDiffFromInRepo compares tracked working-tree content
+// directly with a named treeish. The latter deliberately does not use status, diff-index or
+// diff-files: each incorporates the index and can therefore report a false difference when the
+// index is the stale side of the three-way state being diagnosed.
+
+// WHY `DiffNameOnlyNoRenames` EXISTS BESIDE `DiffNameOnly`, WHICH IS THE ONLY DIFFERENCE A READER
+// WILL WANT EXPLAINED. `diff.renames` defaults to true, so a pure rename prints only the
+// DESTINATION path: over a `git mv a.txt b.txt`, `git diff --name-only HEAD~1 HEAD` prints `b.txt`
+// alone while the same diff with `--no-renames` prints `a.txt` and `b.txt` (measured in a scratch
+// repository, 2026-09-03). A caller asking which branches touch a path would therefore be told
+// nobody touches it by the branch that is DELETING it -- the answer least safe to be wrong about,
+// and the reason `gunbc.path_writer_set` requires the rename-blind reading.
+//
+// They are two operations rather than one with a flag because they model two different upstream
+// behaviours -- git's rename-detecting diff and its path-literal diff -- and a caller must choose
+// which question it is asking. `DiffNameOnly` remains correct for the destination-only view.
+service git.Core {
+  operation CurrentBranch {
+    input {}
+    output { branch: String from "stdout" }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation RemoteBranches {
+    input {}
+    output { branches: List<String> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "branch", "-r", "--format=%(refname:short)"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation LsRemoteHeads {
+    input { remote: String }
+    output {
+      advertised: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-remote", "--heads", "{remote}"] }
+  }
+
+  operation RemoteUrlIn {
+    input { repository_path: String, remote: String }
+    output {
+      url: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "remote", "get-url", "{remote}"] }
+  }
+
+  operation ForEachRefIn {
+    input { repository_path: String }
+    output {
+      raw: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "git", "-C", "{repository_path}", "for-each-ref",
+        "--sort=refname",
+        "--format=%(refname)%00%(objectname)%00%(symref)"
+      ]
+    }
+  }
+
+  operation WorktreeListIn {
+    input { repository_path: String }
+    output {
+      raw: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "-C", "{repository_path}", "worktree", "list", "--porcelain", "-z"]
+    }
+  }
+
+  operation WriteTreeInRepo {
+    input { repository_path: String }
+    output {
+      tree: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "write-tree"] }
+  }
+
+  operation CommitTreeInRepo {
+    input { repository_path: String, commit: GitRef }
+    output {
+      tree: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "show", "-s", "--format=%T", "{commit}"] }
+  }
+
+  operation TrackedWorktreeDiffFromInRepo {
+    input { repository_path: String, treeish: GitRef }
+    output {
+      paths_nul: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "diff", "--name-only", "-z", "{treeish}", "--"] }
+  }
+
+  operation LsFiles {
+    input {}
+    output { files: List<FilePath> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "ls-files"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation Diff {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output { diff: String from "stdout" }
+    readonly
+    transport shell { argv: ["git", "diff", "{base}", "{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameOnly {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      paths: List<FilePath> from "stdout_lines"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "{base}", "{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameOnlyNoRenames {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      paths: List<FilePath> from "stdout_lines"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "--no-renames", "{base}", "{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameOnlyMerge {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      paths: List<FilePath> from "stdout_lines"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "{base}...{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffUnified0 {
+    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
+    output {
+      diff: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "-U0", git_diff_range_argv(base: base, head: head, range: range)] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameStatus {
+    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-status", "-z", git_diff_range_argv(base: base, head: head, range: range)] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation RevList {
+    input { since: String }
+    output { commits: List<CommitSha> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "rev-list", "{since}..HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation RevListBefore {
+    input { before: String }
+    output { base_ref: CommitSha from "stdout" }
+    readonly
+    transport shell { argv: ["git", "rev-list", "-1", "--before={before}", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid date expression or not a git repository"
+    }
+  }
+
+  operation Show {
+    input { ref: GitRef, path: FilePath }
+    output {
+      content: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "show", "{ref}:{path}"] }
+    exit {
+      0 => Unit
+      128 => String "File not found or invalid ref"
+    }
+  }
+
+  operation FetchNoTags {
+    input { remote: String, ref: String, stall_deadline_seconds: Seconds }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime={stall_deadline_seconds}", "fetch", "--no-tags", "{remote}", "{ref}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed or exceeded its typed no-progress deadline"
+    }
+  }
+
+  operation FetchPrune {
+    input { remote: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "fetch", "--prune", "{remote}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed"
+    }
+  }
+
+  operation HeadCommitShort {
+    input {}
+    output {
+      sha: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--short", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation ConfigLocalGet {
+    input { key: String }
+    output {
+      success: Bool from "exit_success"
+      value: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "config", "--local", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key not found in local config"
+      nonzero => String "Config read failed"
+    }
+  }
+
+  operation ConfigLocalSet {
+    input { key: String, value: String }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "config", "--local", "{key}", "{value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Config set failed"
+    }
+  }
+
+  operation ConfigLocalGetInRepo {
+    input { repo: FilePath, key: String }
+    output {
+      success: Bool from "exit_success"
+      value: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "config", "--local", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key not found in local config"
+      nonzero => String "Config read failed"
+    }
+  }
+
+  operation ConfigLocalSetInRepo {
+    input { repo: FilePath, key: String, value: String }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "config", "--local", "{key}", "{value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Config set failed"
+    }
+  }
+
+  operation InitInRepo {
+    input { repo: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "init", "-q"] }
+    exit {
+      0 => Unit
+      nonzero => String "Init failed"
+    }
+  }
+
+  operation AddAllInRepo {
+    input { repo: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "add", "-A"] }
+  }
+
+  operation CommitInRepo {
+    input { repo: FilePath, message: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "commit", "-q", "-m", "{message}"] }
+  }
+
+  operation CheckoutNewBranchInRepo {
+    input { repo: FilePath, branch: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "checkout", "-q", "-b", "{branch}"] }
+  }
+
+  operation CheckoutNewBranchAtInRepo {
+    input { repo: FilePath, branch: String, start_point: GitRef }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "checkout", "-q", "-b", "{branch}", "{start_point}"] }
+  }
+
+  operation CheckoutBranchInRepo {
+    input { repo: FilePath, branch: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "checkout", "-q", "{branch}"] }
+  }
+
+  operation MergeNoEditInRepo {
+    input { repo: FilePath, branch: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "merge", "--no-edit", "{branch}"] }
+  }
+
+  operation LsFilesUnmergedInRepo {
+    input { repo: FilePath, path: String }
+    output {
+      entries: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-u", "--", "{path}"] }
+  }
+
+  operation LsFilesStageZInRepo {
+    input { repo: FilePath }
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "ls-files", "-z", "--stage"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation LsRemoteRefInRepo {
+    input { repo: FilePath, remote: String, ref_name: String }
+    output {
+      advertised: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "ls-remote", "{remote}", "{ref_name}"] }
+  }
+
+  operation RevParseInRepo {
+    input { repo: FilePath, target: GitRef }
+    output {
+      revision: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "{target}"] }
+  }
+
+  operation FetchForcedRefInRepo {
+    input { repo: FilePath, remote: String, refspec: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
+  }
+
+  operation PushForcedRefInRepo {
+    input { repo: FilePath, remote: String, refspec: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "--force", "{remote}", "{refspec}"] }
+  }
+
+  operation CatFileBlobInRepo {
+    input { repo: FilePath, oid: String }
+    output {
+      content: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "cat-file", "-p", "{oid}"] }
+    exit {
+      0 => Unit
+      128 => String "Not a valid object name"
+    }
+  }
+
+  operation UpdateRefCompareAndSwapInRepo {
+    input { repo: FilePath, ref: String, new_value: String, expected_old: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["git", "-C", "{repo}", "update-ref", "{ref}", "{new_value}", "{expected_old}"]
+    }
+  }
+
+  operation ReflogInRepo {
+    input { repo: FilePath, ref: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "-C", "{repo}", "reflog", "show", "--format=%H %gd %gs", "{ref}"]
+    }
+  }
+
+  operation ListUntrackedInRepo {
+    input { repo: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "-C", "{repo}", "ls-files", "--others", "--exclude-standard", "-z"]
+    }
+  }
+
+  operation ResetHardInRepo {
+    input { repo: FilePath, target: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "reset", "--hard", "{target}"] }
+  }
+}
+
+fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
+  ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
+}
+
+fn shape_git_worktree_add_detached_argv(path: FilePath, commit: GitRef) -> List<String> {
+  ["worktree", "add", "--detach", path as String, commit as String]
+}
+
+fn shape_git_bundle_create_argv(
+  repo: FilePath,
+  bundle: FilePath,
+  source_ref: GitRef,
+) -> List<String> {
+  ["-C", repo as String, "bundle", "create", bundle as String, source_ref as String]
+}
+
+fn shape_git_bundle_verify_argv(bundle: FilePath) -> List<String> {
+  ["bundle", "verify", bundle as String]
+}
+
+fn shape_git_is_shallow_repository_argv(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "rev-parse", "--is-shallow-repository"]
+}
+
+fn shape_git_remote_get_url_argv(
+  repo: FilePath,
+  remote: NonEmptyStr,
+) -> List<String> {
+  ["-C", repo as String, "remote", "get-url", remote as String]
+}
+
+fn shape_git_fetch_unshallow_argv(
+  repo: FilePath,
+  remote: NonEmptyStr,
+) -> List<String> {
+  ["-C", repo as String, "fetch", "--no-tags", "--unshallow", remote as String]
+}
+
+fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
+  ["init", "--bare", path as String]
+}
+
+fn shape_git_init_in_repo_argv(repo: FilePath) -> List<String> {
+  ["git", "-C", repo as String, "init", "-q"]
+}
+
+fn shape_git_bare_fetch_argv(
+  repo: FilePath,
+  bundle: FilePath,
+  source_ref: GitRef,
+) -> List<String> {
+  ["--git-dir", repo as String, "fetch", "--force", bundle as String, source_ref as String]
+}
+
+fn shape_git_bare_update_ref_argv(
+  repo: FilePath,
+  publish_ref: GitRef,
+) -> List<String> {
+  ["--git-dir", repo as String, "update-ref", publish_ref as String, "FETCH_HEAD"]
+}
+
+fn shape_git_clone_branch_argv(
+  origin: FilePath,
+  repo: FilePath,
+  branch: NonEmptyStr,
+) -> List<String> {
+  ["clone", "--branch", branch as String, origin as String, repo as String]
+}
+
+fn shape_git_status_porcelain_argv(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "status", "--porcelain"]
+}
+
+fn shape_git_fetch_remote_argv(repo: FilePath, remote: NonEmptyStr) -> List<String> {
+  ["-C", repo as String, "fetch", remote as String]
+}
+
+fn shape_git_reset_hard_argv(repo: FilePath, target: GitRef) -> List<String> {
+  ["-C", repo as String, "reset", "--hard", target as String]
+}
+
+fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
+  ["-C", repo as String, "rev-parse", target as String]
+}
+
+service git.Worktree {
+  operation Add {
+    input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "worktree", "add", "{path}", "-b", "{branch}", "{remote_ref}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Worktree add failed"
+    }
+  }
+}
+
+// THE URL OF ONE REMOTE, WHICH IS DELIBERATELY LESS THAN A REMOTE.
+//
+// `GitRemote` above carries name, url and fetch_refspec, and is the right shape for describing a
+// remote in full. A deployed tree's desired state is narrower than that: it manages the URL and
+// deliberately does NOT manage the fetch refspec, because the host performs no fetch -- its
+// remote-tracking refs arrive through the tree sync, and advertising a refspec would advertise a
+// fetch that must not happen. Reusing `GitRemote` for that desired state would state a fact about
+// the refspec that nobody intends to hold, so the property is named for what it actually is.
+//
+// This is one property of a remote, not a second representation of one: there is no url field here
+// that competes with `GitRemote.url` for the same question, because a `GitRemoteUrlAt` names a
+// remote IN A REPOSITORY and `GitRemote` names a remote in the abstract.
+
+type GitRemoteName = NonEmptyStr
+
+// Identity is repository x remote NAME, and neither half is optional. Keying on the name alone
+// would fuse every deployment's `origin` into one member; keying on the URL would make a URL
+// correction read as a remove plus an add rather than the change it is.
+type GitRemoteUrlAt {
+  repository_path: FilePath
+  name: GitRemoteName
+}
+
+type GitRemoteUrlMember {
+  at: GitRemoteUrlAt
+  url: NonEmptyStr
+}
+
+// The config key is spelled ONCE, here, so no consumer writes the literal `remote.origin.url`.
+// git's configuration grammar is git's, and a product module that spells a config key is a second
+// authority for it in exactly the way a product module spelling `[Service]` is one for systemd.
+fn git_remote_url_config_key(name: GitRemoteName) -> NonEmptyStr {
+  join(["remote.", name as String, ".url"], "") as NonEmptyStr
+}
+
+// FOUR OUTCOMES, BECAUSE THREE OF THEM DEMAND DIFFERENT ACTIONS.
+//
+// `gunbc.roadmap_publish_observe` `worktree_repository_binding_of` decodes this same operation into
+// three arms and folds "no such remote" together with "not a repository" into one unreadable arm.
+// That is correct for its question, which is only whether a worktree it already trusts is bound to
+// the expected repository. It is wrong for a CONVERGENCE question, where the two differ absolutely:
+// an absent remote is a member to add, and an unusable repository is a plan refusal. Collapsing
+// them would let a malformed or inaccessible repository present as an ordinary absence and license
+// a write against state that was never observed -- the empty-observation narrow DESIGN §5 names,
+// where a read that could not answer is rendered as the answer "nothing is there".
+//
+// The exit codes are git's own, observed live on srv1 2026-08-18: `remote get-url` answers 2 with
+// `error: No such remote 'origin'` for an unconfigured remote, and 128 with `fatal: not a git
+// repository` when the path is not a repository at all.
+//
+// A zero exit with empty stdout is UNREADABLE, not an empty URL, following the precedent
+// `worktree_head_observation_note` sets in the module cited above: git can exit zero and print
+// nothing, and reporting that as an observed URL would put the empty string where an address goes.
+type GitRemoteUrlObservation
+  = GitRemoteUrlObserved { member: GitRemoteUrlMember }
+  | GitRemoteUrlAbsent { at: GitRemoteUrlAt }
+  | GitRemoteUrlRepositoryUnusable { at: GitRemoteUrlAt, exit_code: Int, stderr: String }
+  | GitRemoteUrlReadRefused { at: GitRemoteUrlAt, exit_code: Int, stderr: String }
+
+data git_remote_get_url_no_such_remote_exit: Int = 2
+
+data git_remote_get_url_not_a_repository_exit: Int = 128
+
+fn git_remote_url_observation_of(
+  at: GitRemoteUrlAt,
+  exit_code: Int,
+  stderr: String,
+  url: String,
+) -> GitRemoteUrlObservation {
+  if exit_code == 0 {
+    let observed = url.trim()
+    if string_length(s: observed) == 0 {
+      GitRemoteUrlReadRefused { at: at, exit_code: exit_code, stderr: stderr }
+    } else {
+      GitRemoteUrlObserved {
+        member: GitRemoteUrlMember { at: at, url: observed as NonEmptyStr },
+      }
+    }
+  } else if exit_code == git_remote_get_url_no_such_remote_exit {
+    GitRemoteUrlAbsent { at: at }
+  } else if exit_code == git_remote_get_url_not_a_repository_exit {
+    GitRemoteUrlRepositoryUnusable { at: at, exit_code: exit_code, stderr: stderr }
+  } else {
+    GitRemoteUrlReadRefused { at: at, exit_code: exit_code, stderr: stderr }
+  }
+}

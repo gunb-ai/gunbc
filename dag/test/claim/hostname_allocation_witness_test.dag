@@ -1,0 +1,103 @@
+module test.claim.hostname_allocation_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn allocation_fixture(slot: String, hostname: String) -> HostnameAllocation {
+  HostnameAllocation {
+    fleet_slot: slot as HostIdentity,
+    canonical_hostname: hostname as DnsLabel,
+  }
+}
+
+test fn witness_legacy_srv_allocations_are_byte_identical_to_slot_spelling() -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv1) {
+    Present { value: h1 } =>
+      match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv2) {
+        Present { value: h2 } =>
+          match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv3) {
+            Present { value: h3 } =>
+              match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv4) {
+                Present { value: h4 } =>
+                  (h1 as String) == "srv1"
+                    && (h2 as String) == "srv2"
+                    && (h3 as String) == "srv3"
+                    && (h4 as String) == "srv4"
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_identity_that_is_not_a_dns_label_can_still_have_a_hostname() -> Bool {
+  let roster = [allocation_fixture(slot: "spark_lab#1", hostname: "spark-lab-1")]
+  match parse_dns_label_raw(raw: "spark_lab#1") {
+    Ok { value: _ } => false
+    Err { value: _ } =>
+      match canonical_hostname_in_roster(
+        allocations: roster,
+        fleet_slot: "spark_lab#1" as HostIdentity,
+      ) {
+        Present { value: allocated } => (allocated as String) == "spark-lab-1"
+        Absent => false
+      }
+  }
+}
+
+test fn witness_production_fleet_roster_is_injective() -> Bool {
+  match hostname_allocation_roster_verdict(allocations: gunbc_fleet_hostname_allocations) {
+    HostnameAllocationRosterConsistent => true
+    FleetSlotAllocatedTwice { fleet_slot: _ } => false
+    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => false
+  }
+}
+
+test fn witness_two_identities_may_not_claim_one_canonical_hostname() -> Bool {
+  let roster = [
+    allocation_fixture(slot: "srvA", hostname: "shared"),
+    allocation_fixture(slot: "srvB", hostname: "shared"),
+  ]
+  match hostname_allocation_roster_verdict(allocations: roster) {
+    CanonicalHostnameClaimedTwice { canonical_hostname: dup } => (dup as String) == "shared"
+    HostnameAllocationRosterConsistent => false
+    FleetSlotAllocatedTwice { fleet_slot: _ } => false
+  }
+}
+
+test fn witness_one_identity_may_not_be_allocated_two_hostnames() -> Bool {
+  let roster = [
+    allocation_fixture(slot: "srvA", hostname: "first"),
+    allocation_fixture(slot: "srvA", hostname: "second"),
+  ]
+  match hostname_allocation_roster_verdict(allocations: roster) {
+    FleetSlotAllocatedTwice { fleet_slot: dup } => (dup as String) == "srvA"
+    HostnameAllocationRosterConsistent => false
+    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => false
+  }
+}
+
+test fn witness_colliding_roster_serves_no_hostname_rather_than_a_winner() -> Bool {
+  let roster = [
+    allocation_fixture(slot: "srvA", hostname: "shared"),
+    allocation_fixture(slot: "srvB", hostname: "shared"),
+  ]
+  match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvA" as HostIdentity) {
+    Absent =>
+      match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvB" as HostIdentity) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_lookup_of_unallocated_slot_is_absent_not_reconstructed() -> Bool {
+  let roster = [allocation_fixture(slot: "srvA", hostname: "srv-a")]
+  match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvB" as HostIdentity) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

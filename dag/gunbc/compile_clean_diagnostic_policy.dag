@@ -1,0 +1,162 @@
+module gunbc.compile_clean_diagnostic_policy
+
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+
+import std.types { Int, NonEmptyStr }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type UnlistedImportUseEnforcement
+  = FloorNotYet
+  | Enforced
+
+// Single policy authority for whether UnlistedImportUse blocks compile-clean (issue 11 /
+// ci-floor-child-spawn-attribution section 7). FloorNotYet = advisory (current namespace-lane
+// staging: the resolver emits UnlistedImportUse but compile-clean does not red). Enforced =
+// blocking (terminal promotion when namespace-only resolution deletes the import grammar —
+// DISSOLVES WHEN UnlistedImportUse promoted to an error per
+// namespace_import_closure_behavioral_transport.dag:15). BOTH the floor receipt path
+// (install_or_consume_floor_compile_clean_gate_receipt via floor_compile_clean_emit_ok_via_index)
+// and the standalone CLI transport (gunbc compile --target dag) read this row — never restate the
+// predicate in either consumer (DESIGN section 3).
+
+data compile_clean_unlisted_import_use_enforcement: UnlistedImportUseEnforcement = FloorNotYet
+
+data compile_clean_diagnostic_policy_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.compile_clean_diagnostic_policy",
+    decl_name: "compile_clean_unlisted_import_use_enforcement",
+    field: WholeDeclaration
+  }
+}
+
+fn unlisted_import_use_blocks_compile_clean(enforcement: UnlistedImportUseEnforcement) -> Bool {
+  match enforcement {
+    FloorNotYet => false
+    Enforced => true
+  }
+}
+
+fn compile_clean_unlisted_import_use_blocks() -> Bool {
+  unlisted_import_use_blocks_compile_clean(
+    enforcement: compile_clean_unlisted_import_use_enforcement
+  )
+}
+
+type UnlistedImportBindingSource
+  = ListedImport
+  | PoolCoincidence
+  | DefinerResolvable
+
+// Binding-source attribution for the UnlistedImportUse census (issue 11). ListedImport = the
+// referencing module has an import edge to the definer module but the specific name is absent from
+// that import's name list (classic selective-import SVN miss). PoolCoincidence = no import edge to
+// the definer; the name resolves only because the definer module is already in the compilation pool
+// via an unrelated import elsewhere (#6985 Class B). DefinerResolvable = the reference binds via
+// namespace/containment (qualified projection) without an import edge or pool accident — the
+// terminal namespace-lane shape every row must eventually reach.
+
+data unlisted_import_use_census_hand_rust_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compile_clean_unlisted_import_census hand-Rust transport (CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER) — DISSOLVES WHEN namespace-only resolution deletes the import grammar and binding-source classification is modeled in the substrate (namespace-resolution-design.md section 8), or a floor-enrolled census lens subsumes the host transport; receipt rg cli_run_compile_clean_unlisted_import_census src/v1/stage0 == 1 until deletion.")
+
+data unlisted_import_use_census_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.compile_clean_diagnostic_policy",
+    decl_name: "unlisted_import_use_census_hand_rust_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data compile_clean_unlisted_import_use_enforcement_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: compile_clean_unlisted_import_use_enforcement — DISSOLVES WHEN v1 04_resolve promotes UnlistedImportUse to an error (namespace_import_closure_behavioral_transport.dag:15 scaffold dissolution trigger); the row flips to Enforced and both consumers (floor_compile_clean_emit_ok_via_index + CLI) red together via compile_clean_unlisted_import_use_blocks().")
+
+// HOW BIG CONJUNCT (b) STILL IS, RECORDED AGAINST THE FLIP RATHER THAN LEFT IN AN INBOX.
+//
+// compile_clean_unlisted_import_use_enforcement flips to Enforced on two conditions, and the second
+// -- the corpus burndown of genuine unlisted uses reaching zero -- had no size attached to it
+// anywhere. A dissolution trigger whose remaining work is unmeasured cannot be scheduled, so the
+// row below carries that size at the one place the flip happens.
+//
+// IT IS AN OBSERVATION AND NOT A CORPUS FACT, and the distinction is the whole point of the shape.
+// DESIGN section 6 says to name the instrument rather than transcribe its output, so the numbers
+// travel bound to the producer that made them, to how far that producer was checked, and to how
+// they may be read. The producer is a static extractor written for one sizing pass by session
+// clever-ibex-130: it restricts to genuine type positions and subtracts locals, variants, kernel
+// types, containers, selective imports, glob re-exports and fully-qualified references, but it
+// cannot attribute a binding source, which is exactly the dimension the authority census can. It
+// was hand-checked at ten randomly drawn rows; one false positive was found (a single-line inline
+// coproduct whose variants read as undeclared references), corrected, and the count re-derived.
+// SizedByStandInExtractor with read_as OrderOnlyBothDirections is therefore the honest arm: it says
+// one module in roughly six, not 789 exactly. The over-reporting direction is not hypothetical --
+// it was MEASURED: a floor run compiled an isolated closure containing extdeps.uri, which this
+// extractor flags, and that closure compiled clean.
+//
+// THE AUTHORITY INSTRUMENT EXISTS AND HAS NEVER BEEN INVOKED. cli_run::compile_clean::
+// compile_clean_unlisted_import_census computes this same census over the whole tree WITH the
+// binding-source attribution UnlistedImportBindingSource above declares, and it has no call site
+// outside its own definition. Its entry point was not merely unwired: it was DELETED, as one member
+// of the 25-file unrostered-seed-probe sweep in gunbc#9160, and recorded as a deliberate Delete in
+// gunbc.live_deploy.srv1_residue_rehearsal. That is why the reachability arm is a separate fact
+// from the existence arm -- a function whose bin was deleted reads identically to one that was
+// never wired, and the burndown has consequently never once been measured by its own authority.
+//
+// WHAT THE NEXT READER SHOULD DO, and it is not what it looks like. Restoring reachability from an
+// entry point that already earns its keep is the first task; authoring a new bin is not. A new bin
+// would recreate precisely the unrostered property that got the old one swept, and
+// unlisted_import_use_census_hand_rust_dissolve_trigger above is already a standing retirement
+// obligation on that hand-Rust transport, so a fresh bin would arrive owing its own dissolution.
+//
+// WHY THIS IS A PREREQUISITE AND NOT HYGIENE. At this order, roughly one module in six resolves a
+// type name it never imports. Every tool that compiles a SUBSET of the corpus fails on those
+// modules -- the synthetic-fixture instrument today, and any future projection machinery that has
+// to compute a closure -- while the full-corpus compile stays green and says nothing.
+
+type UnlistedImportUseSizingAuthority
+  = SizedByStandInExtractor { authoring_session: NonEmptyStr }
+  | SizedByAuthorityCensus { census: DeclarationRef }
+
+// READ_AS IS AN AXIS AND NOT A HEDGE. OrderOnlyBothDirections is the honest arm for a stand-in
+// extractor and it is STRICTLY WEAKER than a one-sided bound: the instrument over-reports (a module
+// it flags was measured compiling in an isolated closure -- extdeps.uri, whose `Optional` reference
+// is not the class) AND under-reports (a genuine instance at a position its filter does not scan is
+// invisible to it, and it cannot attribute a binding source at all). Neither direction is bounded,
+// so the number names an ORDER and nothing finer. CertifiedCount is reserved for the authority
+// census below and is unreachable until that census is reachable.
+type SizingReadAs
+  = OrderOnlyBothDirections
+  | CertifiedCount
+
+type AuthorityCensusReachability
+  = AuthorityCensusReachable
+  | AuthorityCensusEntryPointDeleted { deleted_path: NonEmptyStr, swept_as: NonEmptyStr }
+
+type UnlistedImportUseSizingObservation sole_constructor {
+  authority: UnlistedImportUseSizingAuthority
+  denominator_modules: Int
+  modules_carrying: Int
+  module_name_pairs: Int
+  hand_checked_rows: Int
+  hand_checked_false_positives: Int
+  read_as: SizingReadAs
+  authority_census_reachability: AuthorityCensusReachability
+  supersedes_when_reachable: DeclarationRef
+}
+
+data unlisted_import_use_burndown_sizing: UnlistedImportUseSizingObservation = UnlistedImportUseSizingObservation {
+  authority: SizedByStandInExtractor { authoring_session: "clever-ibex-130" as NonEmptyStr },
+  denominator_modules: 4459,
+  modules_carrying: 789,
+  module_name_pairs: 2190,
+  hand_checked_rows: 10,
+  hand_checked_false_positives: 1,
+  read_as: OrderOnlyBothDirections,
+  authority_census_reachability: AuthorityCensusEntryPointDeleted {
+    deleted_path: "src/v1/stage0/src/bin/compile_clean_unlisted_import_census.rs" as NonEmptyStr,
+    swept_as: "unrostered seed probe, gunbc#9160, recorded as a Delete in gunbc.live_deploy.srv1_residue_rehearsal" as NonEmptyStr
+  },
+  supersedes_when_reachable: DeclarationRef {
+    module_path: "gunbc.compile_clean_diagnostic_policy",
+    decl_name: "unlisted_import_use_census_hand_rust_dissolve_trigger",
+    field: WholeDeclaration
+  }
+}

@@ -1,0 +1,411 @@
+module std.types
+
+import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map }
+
+data kernel_type_set: Map<String, Bool> = {
+  "String": true, "Int": true, "Bool": true, "Float": true,
+  "Secret": true, "Json": true, "Unit": true, "Bytes": true
+}
+
+fn is_kernel_type(name: String) -> Bool {
+  match map_get(kernel_type_set, name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// DERIVED FROM THE CARRIER ROSTER, not restated. Every row but one is a spelling that declared
+// `container_arity_row` on its carrier in `std.algebra`, and its arity comes from that carrier's
+// own `algebra_type_param_names` -- so a carrier cannot be listed here with an arity its algebra
+// contradicts, and an eleventh carrier reaches this map by declaring the row rather than by
+// someone remembering to edit it.
+//
+// `Witness` is appended because it is NOT an algebra carrier: it has no profile and no template
+// set, and its parameter name is special-cased in `container_param_names_for` directly below.
+// It is the one hand-authored row left in this map, and it is the reason the memberships in
+// `std.algebra` are declared rather than derived from the profile -- grounding `Witness` as a
+// carrier is that class's next-rung trigger.
+data container_type_arity: Map<String, Int> = map_insert(carrier_container_arity_rows(), "Witness", 1)
+
+fn is_container_type(name: String) -> Bool {
+  match container_expected_arity(name: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn container_expected_arity(name: String) -> Int? {
+  map_get(container_type_arity, name)
+}
+
+fn container_param_names_for(kind_name: String) -> List<String> {
+  if kind_name == "Witness" {
+    ["T"]
+  } else {
+    match map_get(kernel_algebra_profile, kind_name) {
+      Present { value: p } => algebra_type_param_names(profile: p)
+      Absent => []
+    }
+  }
+}
+
+fn container_param_name(kind_name: String, index: Int) -> String? {
+  let names = container_param_names_for(kind_name: kind_name)
+  match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
+    Present { value: name } => Present { value: name }
+    Absent => none
+  }
+}
+
+data ordered_element_collections: Map<String, Bool> = {
+  "List": true
+}
+
+fn is_ordered_element_collection(name: String) -> Bool {
+  map_contains_key(ordered_element_collections, name)
+}
+
+// BOTH MAPS ARE DERIVED FROM THE CARRIER ROSTER in `std.algebra`. What stood here was two
+// spelling-keyed literals whose note explained -- correctly -- why each row was present or
+// absent: `PartialFunction` had to be in the alias map because that map decides what resolves as
+// a container at all, and `FinitelySupportedFunction` had to stay out because
+// `container_alias_canonical_spelling` returns the first sorted key for an algebra and that key
+// would sort ahead of `"Map"`. Those reasons are now FIELDS on the spelling rows they govern
+// (`container_alias_row`, with its `RowAbsent` reason), so they travel with the carrier instead
+// of living in prose beside a literal a later author edits without reading it.
+//
+// A self-mapping row is not a nickname: the value is the ALGEBRA and the key is a SPELLING that
+// resolves to it, which is why `List` and `Set` are keys at all.
+data container_template_algebra_rows: Map<String, String> = carrier_container_algebra_rows()
+
+data container_template_alias_rows: Map<String, String> = carrier_container_alias_rows()
+
+fn container_template_algebra(name: String) -> String? {
+  map_get(container_template_algebra_rows, name)
+}
+
+fn container_template_alias_algebra(name: String) -> String? {
+  map_get(container_template_alias_rows, name)
+}
+
+// THE COMPLETE ROSTER, DERIVED. This list feeds `v1.compiler.coercion` `inhabitant_test_names`,
+// which used to read `concat(canonical_container_names(), ["PointwisePower"])` -- a hand-appended
+// name compensating for one this list omitted. A caller patching its authority's answer is the
+// authority being wrong, not the caller being thorough; the append is gone and the name now
+// arrives from the carrier that declares it.
+//
+// `sorted_map_keys` gives the same ASCII order the hand-written literal held, and `Witness` is
+// appended for the reason `container_type_arity` above states: it is not an algebra carrier.
+fn canonical_container_names() -> List<String> {
+  sorted_map_keys(map_insert(carrier_container_roster_map(), "Witness", true))
+}
+
+type Bool = True | False
+
+type Unit
+
+type Json
+type Bytes
+
+type Char = Int where unicode_scalar, brand("Char")
+
+type List<element> = FreeMonoid<element>
+// BOTH ALIASES NAME THE FINITE CARRIER, the motion the predicate-half change (`PointwisePower`,
+// landed separately) was waiting for. A `Set` or a `Map` in a declaration position has always
+// LOWERED to a finite container -- `im::OrdSet` and `HashMap` in Rust, likewise in Go, Python and
+// TypeScript -- so pointing the aliases at the finite carriers makes the declaration say what the
+// realization already did. The open carriers keep their own names: `std.algebra` `PointwisePower`
+// for a characteristic function, `PartialFunction` for a partial one.
+//
+// The two rows move together because they are one row set. Retargeting `Map` while `Set` still
+// resolved to the predicate would leave the fork intact on the Set side and make the pair
+// inconsistent for the interval, the dual-authority state the replacement-migration doctrine
+// avoids. The transition is atomic in the AUTHORITY sense -- one motion, no interval in which both
+// answers are live -- whatever the diff size.
+//
+// RUNG: STILL MITIGATABLE. This change does NOT make the bad literal unwritable, and saying so
+// would be the inflation DESIGN 4b calls worse than sitting low. `FinitePowerSet` carries `member`
+// and `FinitelySupportedFunction` carries `lookup`, because a finite set answers membership and a
+// finite map answers lookup -- so `Set { member: .. }` and `Map { lookup: .. }` still typecheck.
+// They must: 145 `Map { lookup: .. }` literals are live in the corpus and are re-authored by the
+// following change, not this one.
+//
+// The correction is that the invalid state was never "a literal supplying `member` or `lookup`".
+// It is "a literal supplying ONLY those, on a carrier whose remaining fields promise an
+// enumeration it cannot perform" -- a construction-COMPLETENESS question, and record literals in
+// this substrate do not require every field. So the real NEXT-RUNG TRIGGER is field-completeness
+// enforcement on record construction, which would make the deficient literal unwritable at every
+// carrier at once rather than at these two. Until then the class stays mitigatable and only review
+// sees a new one; what this change buys is that each alias now names a carrier that can answer
+// for it -- the single-authority half, not the wall.
+//
+// CARRIED FORWARD FROM THE PREDICATE-HALF CHANGE (#9055), whose note this row replaces: the
+// fusion was measured, not argued -- `extdeps.languages.rust.types` gave `PointwisePower` the
+// inhabitant `BTreeSet<{0}>`, so a declaration position lowered to `im::OrdSet` while a record
+// literal lowered to the algebra struct, and the two met as a rustc refusal wherever one compiled
+// closure held both (`docs/probes/t3_collection_realization_2026-08-22.md`). That change also
+// closed the predicate half: no `Set { member: .. }` literal survives in `src/v2`, so the Set side
+// of the fork is a spelling question only. Its stated NEXT-RUNG TRIGGER was the Map-side
+// decomposition landing, after which both rows retarget in one motion. That is this row.
+type Set<element> = FinitePowerSet<element>
+type Map<key, value> = FinitelySupportedFunction<key, value>
+
+fn list_length<T>(items: List<T>) -> Int {
+  fold(items, init: 0, f: (acc, _) => acc + 1)
+}
+
+type CommitSha    = String
+
+// The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here,
+// beside CommitSha, the one authority every Git-head consumer already names — it was previously
+// homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a since-deleted
+// receipt family happened to be its first caller, and a second consumer
+// (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam.
+// CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a
+// caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating
+// constructor; callers reach the constructor, the invalid state stops being writable, and this
+// predicate deletes.
+
+fn commit_sha_text_holds(head: String) -> Bool {
+  head.length() == 40 && all(chars(s: head), cp =>
+    (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+  )
+}
+
+type Sha256       = String
+type RetryCount   = Int where range(min: 1, max: 5)
+type HttpStatus   = Int where range(min: 100, max: 599)
+
+type Email        = String
+type Port         = Int where range(min: 1, max: 65535)
+
+type GistId       = String
+type Secret       nominal_opaque = String
+type SecretValue  = Secret where non_empty
+
+type SemVer       = String
+type NonEmptyStr     = String where non_empty
+type LanguageId      = String where non_empty
+type SecretName      = String where non_empty
+
+type PathSegment   = NonEmptyStr where brand("PathSegment")
+
+data path_segment_safety_note: String = "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.
+
+This is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today."
+
+fn path_segment_is_safe(raw: String) -> Bool {
+  !((raw == "")
+    || (raw == ".")
+    || (raw == "..")
+    || string_contains(s: raw, pattern: "/")
+    || string_contains(s: raw, pattern: "\\")
+    || string_contains(s: raw, pattern: "\n")
+    || string_contains(s: raw, pattern: "\x0d")
+    || string_contains(s: raw, pattern: "\x00"))
+}
+type GlobSegment   = NonEmptyStr where brand("GlobSegment")
+
+// TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet
+// on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the
+// values it highlights; a parser reading those values needs them absent. Those are facts about
+// DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's
+// module explaining what a terminal multiplexer strips is filed under the wrong authority, and
+// stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux
+// stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the
+// interaction should be emergent').
+//
+// So the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText;
+// a prompt parser CONSUMES it; the composition is admissible because the types line up, not
+// because one module was written knowing about the other. A raw stdout pipe cannot inhabit the
+// brand, so feeding one to a parser that requires it is a type error rather than a runtime paste
+// of escape bytes the operator discovers when the far end rejects them.
+//
+// It lives in std because it is a property of text, not of any one tool — the same reason
+// FilePath is not owned by whichever dependency happens to open files.
+
+type RenderedTerminalText = String where brand("RenderedTerminalText")
+type FilePathParts {
+  segments: List<PathSegment>
+}
+type GlobPattern {
+  segments: List<GlobSegment>
+}
+type FilePath      = String where non_empty
+
+data file_path_sentinel_scaffold_note: String = "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter)."
+
+type SourceSpan {
+  file: FilePath
+  start: Int
+  end: Int
+}
+
+type Timestamp    = String
+type EpochSecs     = Int where range(min: 0)
+type EpochMs       = Int where range(min: 0)
+type Duration      = Int where range(min: 0)
+type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
+type Seconds       = Int where range(min: 0), brand("Seconds")
+
+type LogicalTime   = NonEmptyStr where brand("LogicalTime")
+
+type IntentId     = NonEmptyStr where brand("IntentId")
+type IssueId      = NonEmptyStr where brand("IssueId")
+type RunKey       = NonEmptyStr where brand("RunKey")
+type ArtifactId   = NonEmptyStr where brand("ArtifactId")
+type LeaseToken   = NonEmptyStr where brand("LeaseToken")
+type WorkerId     = NonEmptyStr where brand("WorkerId")
+type CommentId    = NonEmptyStr where brand("CommentId")
+type SignalKey    = NonEmptyStr where brand("SignalKey")
+
+type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
+type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
+type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
+type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
+
+type GitRef       = String where non_empty
+
+type TopologyNodeKind = Pure | Transport | SubDag | Env
+type DocSourceKind    = Template | Generated | Static
+
+type FermiDepth = Xs | S | M | L | Xl
+
+type TextFilePath   = FilePath
+
+type BinaryFilePath = FilePath
+
+type MimeType = String
+
+type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
+
+type AuthScheme
+  = Bearer
+  | Header { name: String }
+  | Basic { username: String }
+  | ApiKey
+
+type AccessToken {
+  token: Secret
+  scheme: AuthScheme
+  expires_at: Timestamp?
+}
+
+type Credential {
+  token: Secret
+  scheme: AuthScheme
+  header_name: String?
+  source_id: String
+  required_scopes: List<String>
+  expires_in: Int?
+}
+
+type FilesystemHandle = FilePath where brand("FilesystemHandle")
+type NetworkHandle    = Unit where brand("NetworkHandle")
+type ToolHandle       = String where brand("ToolHandle")
+
+type TransportRequest {
+  method: HttpMethod
+  url: String
+  headers: Json
+  body: String
+}
+
+type TransportResponse {
+  status: Int
+  headers: Json
+  body: String
+}
+
+type FileResponse {
+  path: String
+  success: Bool
+  content: String
+}
+
+type ShellResponse {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+type RestResponse {
+  status: Int
+  headers: Json
+  body: Json
+}
+
+type TestResult {
+  name: String
+  ok: Bool
+  stdout: String
+  stderr: String
+  duration_ms: Milliseconds
+}
+
+type Summary {
+  total: Int
+  passed: Int
+  failed: Int
+}
+
+type StageResult {
+  name: String
+  success: Bool
+  stdout: String
+  stderr: String
+  skipped: Bool
+}
+
+type RenderedTextFile {
+  path: String
+  content: String
+}
+
+type ToolEntry {
+  name: String
+  command: String
+  description: String?
+}
+
+type ToolRegistry {
+  tools: List<ToolEntry>
+}
+
+type DagTopology {
+  nodes: List<TopologyNode>
+  edges: List<TopologyEdge>
+  subdag_boundaries: List<String>
+}
+
+type TopologyNode {
+  id: String
+  label: String
+  kind: TopologyNodeKind
+  parent: String?
+}
+
+type TopologyEdge {
+  from: String
+  to: String
+  port: String?
+}
+
+type DagDiff {
+  added: List<String>
+  removed: List<String>
+  changed: List<String>
+}
+
+type PragmaDirective {
+  key: String
+  value: String
+  scope: String?
+}
+
+type DocSource {
+  path: FilePath
+  kind: DocSourceKind
+}
+
+type ReferenceModel<T>

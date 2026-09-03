@@ -1,0 +1,98 @@
+module test.claim.html_markup_xss_witness
+
+import std.markup { Fragment, Element, FragmentText, attr, escape_url }
+import extdeps.uri_validation {
+  validate_href,
+  SafeHref,
+  RejectedHref,
+  DangerousScheme,
+  JavascriptScheme,
+  DataScheme,
+  SchemeNotAllowlisted,
+}
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_javascript_href_rejects() -> Bool {
+  match validate_href(url: "javascript:alert(1)") {
+    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } } => true
+    _ => false
+  }
+}
+
+test fn witness_javascript_href_case_insensitive_rejects() -> Bool {
+  match validate_href(url: "  JAVASCRIPT:alert(1)") {
+    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } } => true
+    _ => false
+  }
+}
+
+test fn witness_data_href_rejects() -> Bool {
+  match validate_href(url: "data:text/html,<script>alert(1)</script>") {
+    RejectedHref { reason: DangerousScheme { scheme: DataScheme } } => true
+    _ => false
+  }
+}
+
+test fn witness_protocol_relative_rejects() -> Bool {
+  match validate_href(url: "//evil.example/x") {
+    RejectedHref { reason: SchemeNotAllowlisted } => true
+    _ => false
+  }
+}
+
+test fn witness_mixed_case_javascript_rejects_fail_closed() -> Bool {
+  match validate_href(url: "JaVaScRiPt:alert(1)") {
+    RejectedHref { reason: SchemeNotAllowlisted } => true
+    _ => false
+  }
+}
+
+test fn witness_relative_href_accepted() -> Bool {
+  match validate_href(url: "/safe/path") {
+    SafeHref { url: u } => u == "/safe/path"
+    _ => false
+  }
+}
+
+test fn witness_https_href_accepted() -> Bool {
+  match validate_href(url: "https://example.com") {
+    SafeHref { url: u } => u == "https://example.com"
+    _ => false
+  }
+}
+
+test fn witness_http_href_accepted() -> Bool {
+  match validate_href(url: "http://example.com") {
+    SafeHref { url: u } => u == "http://example.com"
+    _ => false
+  }
+}
+
+test fn witness_mailto_href_accepted() -> Bool {
+  match validate_href(url: "mailto:user@example.com") {
+    SafeHref { url: u } => u == "mailto:user@example.com"
+    _ => false
+  }
+}
+
+fn javascript_link_node() -> Fragment {
+  Element {
+    tag: "a",
+    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    children: [ FragmentText { content: "x" } ],
+  }
+}
+
+test fn witness_unsafe_href_blocks_serialization() -> Bool {
+  match try_serialize_html_source(node: javascript_link_node()) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
+  }
+}
+
+test fn witness_escape_url_passes_javascript_scheme() -> Bool {
+  escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
+}
+

@@ -1,0 +1,452 @@
+module extdeps.languages.json.grammar
+
+import std.types { String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8259"
+  }
+}
+
+type JsonProductionRow {
+  rfc_section: String
+  lhs: String
+  rhs: String
+  value_variant: String
+}
+
+data json_production_rows: List<JsonProductionRow> = [
+  JsonProductionRow { rfc_section: "3", lhs: "JSON-text", rhs: "ws value ws", value_variant: "JsonValue" },
+  JsonProductionRow { rfc_section: "3", lhs: "value", rhs: "object | array | string | number | literal", value_variant: "JsonValue" },
+  JsonProductionRow { rfc_section: "3", lhs: "object", rhs: "'{' ws member (',' ws member)* '}' | '{' ws '}'", value_variant: "JsonObject" },
+  JsonProductionRow { rfc_section: "3", lhs: "member", rhs: "string ws ':' ws value", value_variant: "JsonKeyValue" },
+  JsonProductionRow { rfc_section: "3", lhs: "array", rhs: "'[' ws value (',' ws value)* ']' | '[' ws ']'", value_variant: "JsonArray" },
+  JsonProductionRow { rfc_section: "3", lhs: "string", rhs: "'\"' char* '\"'", value_variant: "JsonString" },
+  JsonProductionRow { rfc_section: "3", lhs: "number", rhs: "minus? int frac? exp?", value_variant: "JsonNumber" },
+  JsonProductionRow { rfc_section: "3", lhs: "literal", rhs: "'null' | 'true' | 'false'", value_variant: "JsonNull|JsonBool" },
+]
+
+type JsonNumberLexeme = String where brand("JsonNumberLexeme")
+
+type JsonNumberParseRest {
+  rest: String
+  ok: Bool
+}
+
+fn is_json_digit_char(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789", pattern: c)
+}
+
+fn is_json_digit1_char(c: String) -> Bool {
+  (c != "") && string_contains(s: "123456789", pattern: c)
+}
+
+fn json_number_consume_digit_run(s: String) -> JsonNumberParseRest {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: "", ok: true }
+  } else {
+    let first = char_at(s, 0)
+    if !is_json_digit_char(c: first) {
+      JsonNumberParseRest { rest: s, ok: true }
+    } else {
+      let inner = json_number_consume_digit_run(s: substring(s: s, start: 1, end: s.length()))
+      JsonNumberParseRest { rest: inner.rest, ok: inner.ok }
+    }
+  }
+}
+
+fn json_number_consume_int(s: String) -> JsonNumberParseRest {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: s, ok: false }
+  } else if char_at(s, 0) == "0" {
+    JsonNumberParseRest { rest: substring(s: s, start: 1, end: s.length()), ok: true }
+  } else if !is_json_digit1_char(c: char_at(s, 0)) {
+    JsonNumberParseRest { rest: s, ok: false }
+  } else {
+    json_number_consume_digit_run(s: s)
+  }
+}
+
+fn json_number_consume_frac_digits(s: String) -> JsonNumberParseRest {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: "", ok: false }
+  } else {
+    let first = char_at(s, 0)
+    if !is_json_digit_char(c: first) {
+      JsonNumberParseRest { rest: s, ok: false }
+    } else {
+      json_number_consume_digit_run(s: s)
+    }
+  }
+}
+
+fn json_number_consume_optional_frac(s: String) -> JsonNumberParseRest {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: "", ok: true }
+  } else if char_at(s, 0) != "." {
+    JsonNumberParseRest { rest: s, ok: true }
+  } else {
+    let after = substring(s: s, start: 1, end: s.length())
+    let parsed = json_number_consume_frac_digits(s: after)
+    JsonNumberParseRest { rest: parsed.rest, ok: parsed.ok }
+  }
+}
+
+fn json_number_consume_optional_exp(s: String) -> Bool {
+  if s.length() == 0 {
+    true
+  } else {
+    let marker = char_at(s, 0)
+    if marker != "E" && marker != "e" {
+      false
+    } else {
+      let after = substring(s: s, start: 1, end: s.length())
+      let signed = if after.length() > 0 && (char_at(after, 0) == "+" || char_at(after, 0) == "-") {
+        substring(s: after, start: 1, end: after.length())
+      } else {
+        after
+      }
+      let parsed = json_number_consume_frac_digits(s: signed)
+      parsed.ok && parsed.rest.length() == 0
+    }
+  }
+}
+
+fn json_number_lexeme_valid(s: String) -> Bool {
+  if s.length() == 0 {
+    false
+  } else {
+    let body = if starts_with(s: s, prefix: "-") {
+      substring(s: s, start: 1, end: s.length())
+    } else {
+      s
+    }
+    if starts_with(s: s, prefix: "-") && body.length() == 0 {
+      false
+    } else {
+      let int_parsed = json_number_consume_int(s: body)
+      if !int_parsed.ok {
+        false
+      } else {
+        let frac_parsed = json_number_consume_optional_frac(s: int_parsed.rest)
+        if !frac_parsed.ok {
+          false
+        } else {
+          json_number_consume_optional_exp(s: frac_parsed.rest)
+        }
+      }
+    }
+  }
+}
+
+fn json_number_lexeme_unchecked(s: String) -> JsonNumberLexeme {
+  s as JsonNumberLexeme
+}
+
+fn json_number_lexeme(s: String) -> JsonNumberLexeme? {
+  if json_number_lexeme_valid(s: s) {
+    Present { value: json_number_lexeme_unchecked(s: s) }
+  } else {
+    none
+  }
+}
+
+fn json_int_lexeme(n: Int) -> JsonNumberLexeme {
+  json_number_lexeme_unchecked(s: to_string(n))
+}
+
+type JsonTextParseResult
+  = JsonTextParseOk { end: Int }
+  | JsonTextParseFail { end: Int }
+
+type JsonWhitespaceChar
+  = JsonWsSpace
+  | JsonWsNewline
+  | JsonWsCarriageReturn
+  | JsonWsTab
+
+fn json_text_trim_trailing_lf(body: String) -> String {
+  if ends_with(s: body, suffix: "\n") {
+    substring(s: body, start: 0, end: body.length() - 1)
+  } else {
+    body
+  }
+}
+
+fn json_text_parse_fail(end: Int) -> JsonTextParseResult {
+  JsonTextParseFail { end: end }
+}
+
+fn json_text_parse_ok(end: Int) -> JsonTextParseResult {
+  JsonTextParseOk { end: end }
+}
+
+fn json_text_whitespace_char(c: String) -> JsonWhitespaceChar? {
+  if c == " " {
+    Present { value: JsonWsSpace }
+  } else if c == "\n" {
+    Present { value: JsonWsNewline }
+  } else if c == "\r" {
+    Present { value: JsonWsCarriageReturn }
+  } else if c == "\t" {
+    Present { value: JsonWsTab }
+  } else {
+    none
+  }
+}
+
+fn json_text_skip_ws(s: String, i: Int) -> Int {
+  if i >= s.length() {
+    i
+  } else {
+    match json_text_whitespace_char(c: char_at(s: s, pos: i)) {
+      Absent => i
+      Present { value: _ } => json_text_skip_ws(s: s, i: i + 1)
+    }
+  }
+}
+
+fn json_text_starts_with_at(s: String, i: Int, lit: String) -> Bool {
+  substring(s: s, start: i, end: i + lit.length()) == lit
+}
+
+// RFC 8259 section 7: escape = %x22 / %x5C / %x2F / %x62 / %x66 / %x6E / %x72 / %x74 / %x75
+// 4HEXDIG. The set is CLOSED and \u carries exactly four hex digits. This scanner previously
+// consumed the backslash and whatever followed it without deciding whether that character named an
+// escape at all, so every unknown escape was accepted (review 45642 RED). The consequence was not
+// cosmetic and not confined to the scanner: the unescaper's unknown-escape arm dropped the
+// backslash, so `"p\assed"` - which is not JSON - decoded to the string `passed` and satisfied the
+// validation receipt's verdict identity. A malformed document fabricated a pass, which is the
+// fail-open DESIGN 5 forbids at exactly the boundary that exists to prevent it.\n\nThe refusal
+// belongs HERE rather than in the unescaper because the escape set is a grammar production, and
+// deciding it at the span scan means the invalid state never reaches the value builder -
+// construction over validation. It also fixes both readings in one place: parse_json's strings come
+// through this scanner, and so does the span question extdeps.llm.cli asks, so the two cannot
+// disagree about what an escape is.\n\nNOT closed here, declared rather than left silent: RFC 8259
+// also forbids UNESCAPED control characters (%x00-1F) inside a string, and this scanner still
+// admits them. That gap cannot fabricate an identity the way an unknown escape can - a raw control
+// character inside `passed` makes the string unequal to `passed` rather than equal to it - so it is
+// a lesser member of the same family. Dissolve-on: the char production is scanned as a closed set
+// rather than as everything-but-quote-and-backslash.
+
+fn is_json_hex_digit_char(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789abcdefABCDEF", pattern: c)
+}
+
+fn json_text_escape_end(s: String, i: Int) -> Int {
+  if i >= s.length() {
+    0 - 1
+  } else {
+    let e = char_at(s: s, pos: i)
+    if e == "\"" || e == "\\" || e == "/" || e == "b" || e == "f"
+      || e == "n" || e == "r" || e == "t" {
+      i + 1
+    } else if e == "u" {
+      if i + 5 <= s.length()
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 1))
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 2))
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 3))
+        && is_json_hex_digit_char(c: char_at(s: s, pos: i + 4)) {
+        i + 5
+      } else {
+        0 - 1
+      }
+    } else {
+      0 - 1
+    }
+  }
+}
+
+fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
+  if i >= s.length() {
+    json_text_parse_fail(end: i)
+  } else {
+    let c = char_at(s: s, pos: i)
+    if c == "\"" {
+      json_text_parse_ok(end: i + 1)
+    } else if c == "\\" {
+      let after = json_text_escape_end(s: s, i: i + 1)
+      if after < 0 {
+        json_text_parse_fail(end: i)
+      } else {
+        json_text_parse_string_inner(s: s, i: after)
+      }
+    } else {
+      json_text_parse_string_inner(s: s, i: i + 1)
+    }
+  }
+}
+
+fn json_text_parse_string(s: String, i: Int) -> JsonTextParseResult {
+  if char_at(s: s, pos: i) != "\"" {
+    json_text_parse_fail(end: i)
+  } else {
+    json_text_parse_string_inner(s: s, i: i + 1)
+  }
+}
+
+fn json_text_parse_number_digits(s: String, i: Int) -> Int {
+  if i >= s.length() || !is_json_digit_char(c: char_at(s: s, pos: i)) {
+    i
+  } else {
+    json_text_parse_number_digits(s: s, i: i + 1)
+  }
+}
+
+// RFC 8259 number = [minus] int [frac] [exp], and exp = (e/E) [minus/plus] 1*DIGIT — the exponent's
+// digits are REQUIRED. This branch previously consumed the marker and optional sign and then
+// accepted whatever json_text_parse_number_digits returned, so `1e` and `1e+` parsed as complete
+// numbers; a receipt carrying one read as well-formed JSON (review 44043). The guard now mirrors
+// the fraction branch directly above it: no digits means the exponent was never part of the number,
+// so the scan backtracks to after_frac and the stray marker surfaces as unconsumed trailing input,
+// which json_text_parseable and every enclosing production refuse. The sibling lexeme surface
+// json_number_consume_optional_exp always required the digit — the two readings of one RFC
+// production had forked (DESIGN 3), and this restores them to agreement.
+
+fn json_text_parse_number(s: String, i: Int) -> JsonTextParseResult {
+  let start = i
+  let after_minus = if char_at(s: s, pos: i) == "-" { i + 1 } else { i }
+  let after_int = json_text_parse_number_digits(s: s, i: after_minus)
+  if after_int == after_minus && char_at(s: s, pos: after_minus) != "-" {
+    json_text_parse_fail(end: start)
+  } else {
+    let after_frac = if char_at(s: s, pos: after_int) == "." {
+      let d = json_text_parse_number_digits(s: s, i: after_int + 1)
+      if d == after_int + 1 { after_int } else { d }
+    } else {
+      after_int
+    }
+    let end = if char_at(s: s, pos: after_frac) == "e" || char_at(s: s, pos: after_frac) == "E" {
+      let exp = after_frac + 1
+      let signed = if char_at(s: s, pos: exp) == "+" || char_at(s: s, pos: exp) == "-" { exp + 1 } else { exp }
+      let exp_digits = json_text_parse_number_digits(s: s, i: signed)
+      if exp_digits == signed { after_frac } else { exp_digits }
+    } else {
+      after_frac
+    }
+    if end > after_minus { json_text_parse_ok(end: end) } else { json_text_parse_fail(end: start) }
+  }
+}
+
+fn json_text_parse_literal(s: String, i: Int, lit: String) -> JsonTextParseResult {
+  if json_text_starts_with_at(s: s, i: i, lit: lit) {
+    json_text_parse_ok(end: i + lit.length())
+  } else {
+    json_text_parse_fail(end: i)
+  }
+}
+
+fn json_text_parse_array_values(s: String, i: Int) -> JsonTextParseResult {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, pos: p) == "]" {
+    json_text_parse_ok(end: p + 1)
+  } else {
+    match json_text_parse_value(s: s, i: p) {
+      JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+      JsonTextParseOk { end: end } => {
+        let q = json_text_skip_ws(s: s, i: end)
+        if char_at(s: s, pos: q) == "]" {
+          json_text_parse_ok(end: q + 1)
+        } else if char_at(s: s, pos: q) == "," {
+          let next = json_text_skip_ws(s: s, i: q + 1)
+          if char_at(s: s, pos: next) == "]" {
+            json_text_parse_fail(end: next)
+          } else {
+            json_text_parse_array_values(s: s, i: next)
+          }
+        } else {
+          json_text_parse_fail(end: q)
+        }
+      }
+    }
+  }
+}
+
+fn json_text_parse_array(s: String, i: Int) -> JsonTextParseResult {
+  if char_at(s: s, pos: i) != "[" {
+    json_text_parse_fail(end: i)
+  } else {
+    json_text_parse_array_values(s: s, i: i + 1)
+  }
+}
+
+fn json_text_parse_object_members(s: String, i: Int) -> JsonTextParseResult {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, pos: p) == "}" {
+    json_text_parse_ok(end: p + 1)
+  } else {
+    match json_text_parse_string(s: s, i: p) {
+      JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+      JsonTextParseOk { end: key_end } => {
+        let c = json_text_skip_ws(s: s, i: key_end)
+        if char_at(s: s, pos: c) != ":" {
+          json_text_parse_fail(end: c)
+        } else {
+          match json_text_parse_value(s: s, i: c + 1) {
+            JsonTextParseFail { end: e } => JsonTextParseFail { end: e }
+            JsonTextParseOk { end: val_end } => {
+              let q = json_text_skip_ws(s: s, i: val_end)
+              if char_at(s: s, pos: q) == "}" {
+                json_text_parse_ok(end: q + 1)
+              } else if char_at(s: s, pos: q) == "," {
+                let next = json_text_skip_ws(s: s, i: q + 1)
+                if char_at(s: s, pos: next) == "}" {
+                  json_text_parse_fail(end: next)
+                } else {
+                  json_text_parse_object_members(s: s, i: next)
+                }
+              } else {
+                json_text_parse_fail(end: q)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn json_text_parse_object(s: String, i: Int) -> JsonTextParseResult {
+  if char_at(s: s, pos: i) != "{" {
+    json_text_parse_fail(end: i)
+  } else {
+    json_text_parse_object_members(s: s, i: i + 1)
+  }
+}
+
+// json_text_parseable used to live here, deciding on the span scanner alone whether a whole
+// document was JSON. That is the same question extdeps.languages.json.parse answers by CONSTRUCTING
+// the value, so the corpus had one procedure deciding whether text is JSON and another deciding
+// what it contains - two readings of one RFC that can disagree (DESIGN 3; review 44043 was that
+// disagreement, on the exponent production, found only because a witness pinned the surfaces
+// together). The whole-document reading now derives from parse_json and lives beside it. What stays
+// here is the SPAN question, which is a different question and has its own consumer:
+// json_text_parse_value answers where a value ends at an offset INSIDE a larger text, which
+// extdeps.llm.cli needs to walk a config document and which parse_json cannot answer because it
+// requires full consumption. RESIDUAL FORK, declared rather than left silent:
+// json_text_parse_object/_array and their counterparts in parse.dag still decide object and array
+// syntax independently - parse.dag reuses the string and number scanners here but recurses on its
+// own for the two container productions. Dissolve-on: extdeps.llm.cli takes its span from
+// parse_json_value_at's next field, at which point
+// json_text_parse_value/_object/_object_members/_array/_array_values/_literal have no consumer and
+// delete, leaving one reading of every production.
+
+fn json_text_parse_value(s: String, i: Int) -> JsonTextParseResult {
+  let p = json_text_skip_ws(s: s, i: i)
+  if p >= s.length() {
+    json_text_parse_fail(end: p)
+  } else {
+    let c = char_at(s: s, pos: p)
+    if c == "{" { json_text_parse_object(s: s, i: p) }
+    else if c == "[" { json_text_parse_array(s: s, i: p) }
+    else if c == "\"" { json_text_parse_string(s: s, i: p) }
+    else if c == "t" { json_text_parse_literal(s: s, i: p, lit: "true") }
+    else if c == "f" { json_text_parse_literal(s: s, i: p, lit: "false") }
+    else if c == "n" { json_text_parse_literal(s: s, i: p, lit: "null") }
+    else if c == "-" || is_json_digit_char(c: c) { json_text_parse_number(s: s, i: p) }
+    else { json_text_parse_fail(end: p) }
+  }
+}

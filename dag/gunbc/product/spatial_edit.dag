@@ -1,0 +1,266 @@
+module product.spatial_edit
+
+import std.types { Bool, List }
+import std.integer { Int }
+import std.affine_space {
+  Point2, point2, Vector2, vector2,
+  SpatialReady, SpatialArithmeticRefused, SpatialFrameRefused, SpatialFrameRefusal,
+  translate_point2,
+  signed_frame_component_count
+}
+import std.checked_arithmetic { IntegerOverflow, CheckedIntReady, CheckedIntOverflow, checked_int_add }
+import std.change { KeyedPatch, KeyedDiffHunk, KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk }
+import std.orthogonal_geometry {
+  OrthogonalRefusal, OrthogonalReady, OrthogonalRefused,
+  orthogonal_loop2, orthogonal_prism3, loop2_vertices, prism3_low, prism3_high,
+}
+import std.orthogonal_topology { EnclosedSpace, enclosed_space, closed_shell_of_prism, space_shell, shell_prism, space_footprint }
+import product.placement_supply { RoomIdentity }
+import product.spatial_world {
+  World, PlacedSpace, world_rooms, WorldVariant, world_variant,
+  WorldConstruction, WorldReady, WorldRefused, realize_variant,
+}
+import v2.std.optional { Present, Absent }
+
+// SPATIAL-5B: EDITING, AND EVERY EDIT IS A DELTA BY CONSTRUCTION.
+//
+// SPATIAL-4A made a variant a base plus a KeyedPatch and gave it no constructor that takes a whole
+// room list. This band is the other half of that: the vocabulary a caller actually wants - move this
+// room, raise that ceiling, add one, remove one - compiled INTO such a patch. There is no function
+// here that returns a World, and that absence is the design: an editor that could hand back a world
+// would let a caller produce one whose relationship to the base is unrecorded, which is exactly what
+// 4A's carrier exists to prevent. What comes out is a patch; realization is 4A's, unchanged.
+//
+// THE EDIT IS RESOLVED AGAINST THE BASE, which is what makes the compare-and-swap real. A move needs
+// the room's CURRENT shape to fill the hunk's `from`, so an edit naming a room the base does not
+// have cannot produce a hunk at all - it refuses here rather than producing a hunk that 4A would
+// then refuse to apply. Both refusals exist and neither is redundant: this one catches an
+// ill-formed edit, 4A's catches a well-formed patch applied to the wrong base.
+//
+// TWO EDITS TO ONE ROOM IN ONE BATCH REFUSE. A keyed patch has one hunk per key, so a batch touching
+// one room twice has no faithful representation - and the two available fabrications are both wrong
+// in the silent way: last-writer-wins discards an edit the caller asked for, and composing them
+// invents an intermediate state the caller never described. Sequencing two edits is expressible, by
+// realizing the first patch and editing the result; it is simply not one patch.
+//
+// GEOMETRY IS RE-ADMITTED, NOT PATCHED. A moved room is built by running the loop and prism mints on
+// the translated coordinates, so a move that would produce a degenerate footprint refuses at the
+// geometry authority rather than sliding past it - this module never assembles an EnclosedSpace by
+// copying one and swapping fields.
+
+type EditRefusal
+  = EditTargetMissing { identity: RoomIdentity }
+  | EditTargetAlreadyPresent { identity: RoomIdentity }
+  | RoomEditedTwiceInOneBatch { identity: RoomIdentity }
+  | EditGeometryRefused { cause: OrthogonalRefusal }
+  | EditArithmeticRefused { cause: IntegerOverflow }
+  | EditFrameRefused { refusal: SpatialFrameRefusal }
+
+type EditConstruction<T>
+  = EditReady { value: T }
+  | EditRefused { cause: EditRefusal }
+
+// A CEILING IS SET, NOT NUDGED, and a move is a displacement rather than a destination. The
+// asymmetry is deliberate and follows from what each operation means: "raise the ceiling to 2700" is
+// how a ceiling is described, and a relative nudge would need the current height to be meaningful to
+// the reader; "move the room 500 east" is how a move is described, and an absolute destination for a
+// polygon would need an anchor vertex nobody has named.
+type RoomEdit
+  = AddRoom { identity: RoomIdentity, space: EnclosedSpace }
+  | RemoveRoom { identity: RoomIdentity }
+  | MoveRoom { identity: RoomIdentity, east: Int, north: Int, up: Int }
+  | SetCeilingHeight { identity: RoomIdentity, high: Int }
+
+fn edit_subject(e: RoomEdit) -> RoomIdentity {
+  match e {
+    AddRoom { identity: i, space: _ } => i
+    RemoveRoom { identity: i } => i
+    MoveRoom { identity: i, east: _, north: _, up: _ } => i
+    SetCeilingHeight { identity: i, high: _ } => i
+  }
+}
+
+fn room_identity_eq(a: RoomIdentity, b: RoomIdentity) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn find_room(rooms: List<PlacedSpace>, identity: RoomIdentity) -> PlacedSpace? {
+  fold(rooms, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
+    })
+}
+
+type VertexAcc {
+  moved: List<Point2>
+  refusal: EditRefusal?
+}
+
+// Each vertex is translated through std.affine_space, which is where the overflow and frame
+// questions already have answers. Re-deriving the translation here with bare integer addition would
+// be a second arithmetic authority, and the one that skips the checks.
+fn move_vertex(acc: VertexAcc, by: Vector2, v: Point2) -> VertexAcc {
+  match acc.refusal {
+    Present { value: c } => VertexAcc { moved: acc.moved, refusal: Present { value: c } }
+    Absent =>
+      match translate_point2(point: v, by: by) {
+        SpatialArithmeticRefused { cause: c } => VertexAcc { moved: acc.moved, refusal: Present { value: EditArithmeticRefused { cause: c } } }
+        SpatialFrameRefused { refusal: r } => VertexAcc { moved: acc.moved, refusal: Present { value: EditFrameRefused { refusal: r } } }
+        SpatialReady { value: p } => VertexAcc { moved: concat(acc.moved, [p]), refusal: none }
+      }
+  }
+}
+
+fn checked_offset(base: Int, delta: Int) -> EditConstruction<Int> {
+  match checked_int_add(a: base, b: delta) {
+    CheckedIntOverflow { cause: c } => EditRefused { cause: EditArithmeticRefused { cause: c } }
+    CheckedIntReady { value: v } => EditReady { value: v }
+  }
+}
+
+// The rebuilt space runs both mints, so the result is admissible geometry or a located refusal -
+// there is no path here that produces an EnclosedSpace the geometry layer would not have minted.
+fn space_from(vertices: List<Point2>, low: Int, high: Int) -> EditConstruction<EnclosedSpace> {
+  match orthogonal_loop2(vertices: vertices) {
+    OrthogonalRefused { cause: c } => EditRefused { cause: EditGeometryRefused { cause: c } }
+    OrthogonalReady { value: l } =>
+      match orthogonal_prism3(footprint: l, low: low, high: high) {
+        OrthogonalRefused { cause: c } => EditRefused { cause: EditGeometryRefused { cause: c } }
+        OrthogonalReady { value: p } => EditReady { value: enclosed_space(shell: closed_shell_of_prism(prism: p)) }
+      }
+  }
+}
+
+fn space_low(s: EnclosedSpace) -> Int {
+  signed_frame_component_count(c: prism3_low(p: shell_prism(s: space_shell(s: s))))
+}
+
+fn space_high(s: EnclosedSpace) -> Int {
+  signed_frame_component_count(c: prism3_high(p: shell_prism(s: space_shell(s: s))))
+}
+
+fn moved_space(current: EnclosedSpace, east: Int, north: Int, up: Int) -> EditConstruction<EnclosedSpace> {
+  let footprint = space_footprint(s: current)
+  let by = vector2(frame: footprint.frame, x: east, y: north)
+  let acc = fold(loop2_vertices(l: footprint), init: VertexAcc { moved: [], refusal: none }, f: (a, v) =>
+    move_vertex(acc: a, by: by, v: v))
+  match acc.refusal {
+    Present { value: c } => EditRefused { cause: c }
+    Absent =>
+      match checked_offset(base: space_low(s: current), delta: up) {
+        EditRefused { cause: c } => EditRefused { cause: c }
+        EditReady { value: low } =>
+          match checked_offset(base: space_high(s: current), delta: up) {
+            EditRefused { cause: c } => EditRefused { cause: c }
+            EditReady { value: high } => space_from(vertices: acc.moved, low: low, high: high)
+          }
+      }
+  }
+}
+
+fn raised_space(current: EnclosedSpace, high: Int) -> EditConstruction<EnclosedSpace> {
+  space_from(vertices: loop2_vertices(l: space_footprint(s: current)), low: space_low(s: current), high: high)
+}
+
+// ONE EDIT, ONE HUNK, AND THE HUNK'S `from` COMES FROM THE BASE. An add is the only arm that does not
+// read the base for a value, and it is the only one that refuses when the room IS there.
+fn edit_to_hunk(base: World, e: RoomEdit) -> EditConstruction<KeyedDiffHunk<RoomIdentity, EnclosedSpace>> {
+  let current = find_room(rooms: world_rooms(w: base), identity: edit_subject(e: e))
+  match e {
+    AddRoom { identity: i, space: s } =>
+      match current {
+        Present { value: _ } => EditRefused { cause: EditTargetAlreadyPresent { identity: i } }
+        Absent => EditReady { value: KeyedDiffAddedHunk { hunk_key: i, to: s } }
+      }
+    RemoveRoom { identity: i } =>
+      match current {
+        Absent => EditRefused { cause: EditTargetMissing { identity: i } }
+        Present { value: r } => EditReady { value: KeyedDiffRemovedHunk { hunk_key: i, from: r.space } }
+      }
+    MoveRoom { identity: i, east: east, north: north, up: up } =>
+      match current {
+        Absent => EditRefused { cause: EditTargetMissing { identity: i } }
+        Present { value: r } =>
+          match moved_space(current: r.space, east: east, north: north, up: up) {
+            EditRefused { cause: c } => EditRefused { cause: c }
+            EditReady { value: s } => EditReady { value: KeyedDiffModifiedHunk { hunk_key: i, from: r.space, to: s } }
+          }
+      }
+    SetCeilingHeight { identity: i, high: high } =>
+      match current {
+        Absent => EditRefused { cause: EditTargetMissing { identity: i } }
+        Present { value: r } =>
+          match raised_space(current: r.space, high: high) {
+            EditRefused { cause: c } => EditRefused { cause: c }
+            EditReady { value: s } => EditReady { value: KeyedDiffModifiedHunk { hunk_key: i, from: r.space, to: s } }
+          }
+      }
+  }
+}
+
+fn count_edits_for(edits: List<RoomEdit>, wanted: RoomIdentity) -> Int {
+  fold(edits, init: 0, f: (n, e) => if room_identity_eq(a: edit_subject(e: e), b: wanted) { n + 1 } else { n })
+}
+
+fn first_double_edit(edits: List<RoomEdit>) -> RoomIdentity? {
+  fold(edits, init: none, f: (found, e) =>
+    match found {
+      Present { value: i } => Present { value: i }
+      Absent =>
+        if count_edits_for(edits: edits, wanted: edit_subject(e: e)) > 1 {
+          Present { value: edit_subject(e: e) }
+        } else {
+          none
+        }
+    })
+}
+
+type HunkAcc {
+  hunks: List<KeyedDiffHunk<RoomIdentity, EnclosedSpace>>
+  refusal: EditRefusal?
+}
+
+fn edits_to_patch(base: World, edits: List<RoomEdit>) -> EditConstruction<KeyedPatch<RoomIdentity, EnclosedSpace>> {
+  match first_double_edit(edits: edits) {
+    Present { value: i } => EditRefused { cause: RoomEditedTwiceInOneBatch { identity: i } }
+    Absent =>
+      let acc = fold(edits, init: HunkAcc { hunks: [], refusal: none }, f: (a, e) =>
+        match a.refusal {
+          Present { value: c } => HunkAcc { hunks: a.hunks, refusal: Present { value: c } }
+          Absent =>
+            match edit_to_hunk(base: base, e: e) {
+              EditRefused { cause: c } => HunkAcc { hunks: a.hunks, refusal: Present { value: c } }
+              EditReady { value: h } => HunkAcc { hunks: concat(a.hunks, [h]), refusal: none }
+            }
+        })
+      match acc.refusal {
+        Present { value: c } => EditRefused { cause: c }
+        Absent => EditReady { value: KeyedPatch { hunks: acc.hunks } }
+      }
+  }
+}
+
+fn edits_to_variant(base: World, edits: List<RoomEdit>) -> EditConstruction<WorldVariant> {
+  match edits_to_patch(base: base, edits: edits) {
+    EditRefused { cause: c } => EditRefused { cause: c }
+    EditReady { value: p } => EditReady { value: world_variant(base: base, delta: p) }
+  }
+}
+
+// THE TWO REFUSAL VOCABULARIES STAY SEPARATE. An edit that could not be COMPILED is this module's
+// refusal; a patch that could not be APPLIED - because the result is not a legal world - is 4A's,
+// and it arrives here unchanged inside its own carrier. Flattening them into one sum would lose the
+// distinction between "the instruction was wrong" and "the instruction was right and the result is
+// not a world", which have different remedies: rewrite the edit, or accept that the layout does not
+// admit it.
+type EditOutcome
+  = EditNotCompiled { cause: EditRefusal }
+  | EditRealized { result: WorldConstruction<World> }
+
+fn apply_edits(base: World, edits: List<RoomEdit>) -> EditOutcome {
+  match edits_to_variant(base: base, edits: edits) {
+    EditRefused { cause: c } => EditNotCompiled { cause: c }
+    EditReady { value: v } => EditRealized { result: realize_variant(v: v) }
+  }
+}

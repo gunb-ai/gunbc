@@ -1,0 +1,165 @@
+module v2.compiler.emit_produced
+
+import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.translate { target_serialize_bodied_arrow_from_model }
+import v2.compiler.target_carriers { target_source_medium }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  ProducedDeclWired,
+  TargetModel,
+  produced_decl_render_from_rows,
+  render_target_text,
+  target_model_with_produced_scaffold
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.algebra { fold_list, list_append }
+import std.algebra { Empty }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  outcome_rejected
+}
+import v2.std.node { Conj, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.text { String }
+
+fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
+  match decl.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: decl.children, index: 0) {
+        Present { value: edge } =>
+          match edge.label {
+            Named { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            Positional =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_unnamed, node: decl)
+                )
+              }
+          }
+        Absent =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_empty, node: decl)
+            )
+          }
+      }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+        )
+      }
+  }
+}
+
+fn emit_produced_decl_with_target(
+  decl: Node,
+  target: TargetModel
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: emit_produced_decl_inner_arrow(decl: decl),
+    f: fn(arrow) {
+      bind_outcome(
+        o: target_serialize_bodied_arrow_from_model(target: target, emitted: arrow),
+        f: fn(text) {
+          target_source_medium(text: render_target_text(t: text), target: target)
+        }
+      )
+    }
+  )
+}
+
+// The compiler reads the TARGET's declared rendering rows and folds them into a
+// bodied-arrow scaffold. It does not know whether the signature leads with a keyword or
+// a return type, which side of a parameter the type sits on, whether a return arrow
+// exists, or how the declaration closes -- every one of those is a row the target
+// declares. A target that registered no rows refuses with a typed, located
+// produced_decl_target_unwired:
+// never a widen, never a fabricated default (DESIGN section 5).
+fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  match target.produced_decl_support {
+    ProducedDeclUnwired =>
+      outcome_rejected(
+        d: emit_produced_decl_diagnostic(reason: ^produced_decl_target_unwired, node: decl)
+      )
+    ProducedDeclWired {
+      render_rows: rows,
+      scaffold_relation_rule_name: rule_name,
+      scaffold_base_row: base_row
+    } =>
+      bind_outcome(
+        o: produced_decl_render_from_rows(rows: rows, decl: decl),
+        f: fn(scaffold) {
+          emit_produced_decl_with_target(
+            decl: decl,
+            target: target_model_with_produced_scaffold(
+              target: target,
+              rule_name: rule_name,
+              base_row: base_row,
+              scaffold: scaffold
+            )
+          )
+        }
+      )
+  }
+}
+
+fn emit_produced_module_append(
+  partial: String,
+  decl: Node,
+  target: TargetModel
+) -> Outcome<String> {
+  bind_outcome(
+    o: emit_produced_decl(decl: decl, target: target),
+    f: fn(medium) {
+      Accepted {
+        value: list_append(
+          left: list_append(left: partial, right: medium.carried),
+          right: emit_module_decl_separator
+        ),
+        diagnostics: None
+      }
+    }
+  )
+}
+
+fn emit_produced_module_step(
+  acc: Outcome<String>,
+  decl: Node,
+  target: TargetModel
+) -> Outcome<String> {
+  bind_outcome(
+    o: acc,
+    f: fn(partial) {
+      emit_produced_module_append(partial: partial, decl: decl, target: target)
+    }
+  )
+}
+
+fn emit_produced_module(decls: List<Node>, target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: fold_list(
+      xs: decls,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, decl) { emit_produced_module_step(acc: acc, decl: decl, target: target) }
+    ),
+    f: fn(joined) { target_source_medium(text: joined, target: target) }
+  )
+}

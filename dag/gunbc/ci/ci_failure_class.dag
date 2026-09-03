@@ -1,0 +1,212 @@
+module gunbc.ci_failure_class
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { String }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
+import extdeps.rust.std_process { StdProcessSpawnOutcome, SpawnFailed, spawn_outcome_log_fragment }
+import extdeps.cache.sccache {
+  sccache_fatal_error_log_fragment,
+  sccache_rustc_wrapper_exit_254_log_fragment,
+  sccache_failed_to_execute_compile_log_fragment
+}
+import extdeps.github.ci_runner { RunnerLifecycleSignal, ShutdownReceived, runner_lifecycle_log_fragment }
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  merge_admission_would_block,
+  GateRosterHash,
+}
+import extdeps.git.object_store { GitObjectId }
+
+type InfraSignature
+  = ResourceTemporarilyUnavailable
+  | ProcessSpawnFailure
+  | SccacheFatalError
+  | SccacheRustcWrapperExit254
+  | SccacheFailedToExecuteCompile
+  | RunnerLost
+  | ClusteredOutOfMemoryKill
+
+type SignatureSite
+  = BuildLog
+  | JobSignal
+
+type FloorFailureClass
+  = Infra { signature: InfraSignature }
+  | Structural { reason: String }
+
+data verdict_infra_signatures: List<InfraSignature> = [
+  ResourceTemporarilyUnavailable,
+  ProcessSpawnFailure,
+  SccacheFatalError,
+  SccacheRustcWrapperExit254,
+  SccacheFailedToExecuteCompile,
+  RunnerLost
+]
+
+fn infra_signature_match_substring(sig: InfraSignature) -> String {
+  match sig {
+    ResourceTemporarilyUnavailable => errno_strerror(e: EAGAIN)
+    ProcessSpawnFailure => spawn_outcome_log_fragment(outcome: SpawnFailed)
+    SccacheFatalError => sccache_fatal_error_log_fragment
+    SccacheRustcWrapperExit254 => sccache_rustc_wrapper_exit_254_log_fragment
+    SccacheFailedToExecuteCompile => sccache_failed_to_execute_compile_log_fragment
+    RunnerLost => runner_lifecycle_log_fragment(signal: ShutdownReceived)
+    ClusteredOutOfMemoryKill => "Out of memory: Killed process"
+  }
+}
+
+fn infra_signature_origin(sig: InfraSignature) -> String {
+  match sig {
+    ResourceTemporarilyUnavailable => "extdeps.runtime.errno (POSIX EAGAIN, errno 11)"
+    ProcessSpawnFailure => "extdeps.rust.std_process (Command::spawn failure)"
+    SccacheFatalError => "extdeps.cache.sccache (server fatal error)"
+    SccacheRustcWrapperExit254 => "extdeps.cache.sccache (rustc wrapper exit 254)"
+    SccacheFailedToExecuteCompile => "extdeps.cache.sccache (failed to execute compile)"
+    RunnerLost => "extdeps.github.ci_runner (runner shutdown signal)"
+    ClusteredOutOfMemoryKill => "kernel cgroup memory.events oom_kill / systemd-oomd (cross-run clustered OOM, evidence-derived; not a log-grep roster signature)"
+  }
+}
+
+fn infra_signature_site(sig: InfraSignature) -> SignatureSite {
+  match sig {
+    ResourceTemporarilyUnavailable => BuildLog
+    ProcessSpawnFailure => BuildLog
+    SccacheFatalError => BuildLog
+    SccacheRustcWrapperExit254 => BuildLog
+    SccacheFailedToExecuteCompile => BuildLog
+    RunnerLost => JobSignal
+    ClusteredOutOfMemoryKill => JobSignal
+  }
+}
+
+fn build_retry_infra_signatures() -> List<InfraSignature> {
+  fold(verdict_infra_signatures, init: [], f: fn(acc, sig) {
+    match infra_signature_site(sig: sig) {
+      BuildLog => concat(acc, [sig])
+      JobSignal => acc
+    }
+  })
+}
+
+fn infra_retry_grep_alternation() -> String {
+  fold(build_retry_infra_signatures(), init: "", f: fn(acc, sig) {
+    let sub = infra_signature_match_substring(sig: sig)
+    if acc == "" { sub } else { concat(concat(acc, "|"), sub) }
+  })
+}
+
+fn reason_matches_infra_signature(reason: String, sig: InfraSignature) -> Bool {
+  string_contains(s: reason, pattern: infra_signature_match_substring(sig: sig))
+}
+
+// PURE BOOTSTRAP RECEIPT and a recorded SINGLE-AUTHORITY FORK (review 45261 asked for the receipt;
+// verifying it surfaced the fork). THIS module is the authority: InfraSignature is a closed sum
+// whose match text is DERIVED from cited upstream models — errno_strerror(EAGAIN),
+// spawn_outcome_log_fragment(SpawnFailed), the sccache fragments,
+// runner_lifecycle_log_fragment(ShutdownReceived) — each carrying an infra_signature_origin naming
+// where the text comes from, and an infra_signature_site saying whether it is build-log or
+// job-signal text. THE FORK: claim_executor.rs falsifier_failure_mode carries a hand-typed
+// substring list covering the same concept, and THAT is the one that runs. classify_failure_reason
+// below has no production consumer at all — only witness tests reach it — so the grounded authority
+// is inert while the ungrounded copy is live, which is the coverage-by-illusion tier DESIGN section
+// 6 names. WHAT THE SEED ADDS in the change carrying this note: an InfraFault sum recording a fault
+// the walk OBSERVES structurally (a claim thread panic, from handle.join() returning Err) plus the
+// field carrying it, replacing a format!-then-contains round-trip through the walk's own rendered
+// line; that fault is the walk's own observation and is NOT a signature this module models, so it
+// is not a second fork of this roster. WHAT IT DOES NOT ADD: no new substring authority — an
+// earlier revision deleted the failed-to-spawn arm from the seed list on surface-local evidence and
+// was retracted, because editing one side of a fork widens divergence instead of closing it.
+// DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node
+// v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION,
+// and it is the fork closure rather than a generic seed deletion: falsifier_failure_mode consumes
+// this module — the seed resolving it and calling classify_failure_reason, the way claim_executor
+// USED TO resolve gunbc.floor_component_receipt through write_floor_component_receipt_at (true
+// from #7467 on 2026-07-30 until #9228 deleted that function on 2026-08-25; the receipt pair
+// itself was deleted 2026-09-01, so the comparison is kept in the past tense as the worked
+// precedent it still is, not as a live route) — at which point the hand-typed list is deleted,
+// classify_failure_reason gains its first production consumer, and the site axis (build-log versus
+// job-signal text) becomes decidable at the call site instead of being flattened away.
+
+fn classify_failure_reason(reason: String) -> FloorFailureClass {
+  fold(verdict_infra_signatures, init: Structural { reason: reason }, f: fn(acc, sig) {
+    match acc {
+      Infra { signature: _ } => acc
+      Structural { reason: r } =>
+        if reason_matches_infra_signature(reason: r, sig: sig) {
+          Infra { signature: sig }
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+type FloorOutcome
+  = NoFailure
+  | FloorFailed { class: FloorFailureClass }
+
+fn classify_floor_exit(e: ProcessExit) -> FloorOutcome {
+  match e {
+    ExitSuccess => NoFailure
+    ExitFailure { code: _, reason: r } => FloorFailed { class: classify_failure_reason(reason: r) }
+  }
+}
+
+fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {
+  match c {
+    Infra { signature: _ } => false
+    Structural { reason: _ } => true
+  }
+}
+
+fn floor_outcome_blocks_merge(o: FloorOutcome) -> Bool {
+  match o {
+    NoFailure => false
+    FloorFailed { class: c } => floor_failure_blocks_merge(c: c)
+  }
+}
+
+fn floor_exit_blocks_merge(e: ProcessExit) -> Bool {
+  floor_outcome_blocks_merge(o: classify_floor_exit(e: e))
+}
+
+type MergeGatingStatus
+  = GatingComputedDeferred
+  | GatingEnforced
+
+data merge_freshness_gating_status: MergeGatingStatus = GatingComputedDeferred
+
+data merge_admission_enforcement_gating_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_failure_class",
+    decl_name: "merge_freshness_gating_status",
+    field: WholeDeclaration
+  }
+}
+
+fn gating_is_enforced(s: MergeGatingStatus) -> Bool {
+  match s {
+    GatingComputedDeferred => false
+    GatingEnforced => true
+  }
+}
+
+fn merge_freshness_verdict_is_consumed_to_block() -> Bool {
+  gating_is_enforced(s: merge_freshness_gating_status)
+}
+
+fn merge_admission_blocks_merge(
+  receipt: MergeAdmissionReceipt,
+  merge_target_tree_hash: GitObjectId,
+  current_roster_hash: GateRosterHash,
+) -> Bool {
+  merge_freshness_verdict_is_consumed_to_block()
+    && merge_admission_would_block(
+      receipt: receipt,
+      merge_target_tree_hash: merge_target_tree_hash,
+      current_roster_hash: current_roster_hash,
+    )
+}

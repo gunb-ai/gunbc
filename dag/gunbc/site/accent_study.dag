@@ -1,0 +1,203 @@
+module gunbc.site.accent_study
+
+import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+import gunbc.site.markup { txt, el, el_class }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.design.theme {
+  Theme, night_theme, day_theme, theme_var_decls,
+  CanvasRole, role_decl,
+}
+import gunbc.design.material {
+  Material, paint, paint_alpha,
+  serialize_rules, BuildRule, StaticRule, decl, CssDecl,
+}
+import gunbc.site.tokens {
+  TextRole, TextDimRole, SurfaceRole,
+}
+import gunbc.site.starlight {
+  StarlightRender, study_candidates, verdigris_patina,
+  lit_variant, edge_variant, candidates_admissible, render_label,
+}
+import extdeps.astronomy.stellar_classification { stellar_color_perception_quote }
+import gunbc.site.constellation { constellation_svg, layer_stars, layer_import_edges }
+import gunbc.site.moodboard { figure_rules }
+import gunbc.design.principles { register_thesis }
+
+// Preview-only study page (ninth pass): the accent decision rendered, not debated. Each candidate
+// panel scopes the SAME four figure role vars to one stellar class's materials — identical fact rows
+// inside, so panels differ only in starlight temperature. The day-atlas exhibit shows day identity
+// is accent-independent (always ink on paper). The verdigris exhibit shows green entering only as
+// patina material on the edges — the one place physics lets green in. Not a committed artifact: the
+// signed class's rows land in tokens.night_theme and this study dissolves.
+
+fn figure_vars_style(figure: Material) -> String {
+  join([
+    "--figure: ", paint(m: figure),
+    "; --figure-lit: ", paint(m: lit_variant(m: figure)),
+    "; --figure-halo: ", paint_alpha(m: figure, alpha_pct: 14),
+    "; --figure-edge: ", paint_alpha(m: edge_variant(m: figure), alpha_pct: 50),
+  ], "")
+}
+
+fn theme_vars_style(t: Theme) -> String {
+  join(map(theme_var_decls(t: t), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
+}
+
+fn candidate_panel(r: StarlightRender) -> Fragment {
+  Element {
+    tag: "div",
+    attributes: [
+      attr(name: "class", value: "panel variant" ),
+      attr(name: "style", value: figure_vars_style(figure: r.figure) ),
+    ],
+    children: [
+      constellation_svg(stars: layer_stars, edges: layer_import_edges),
+      el_class("p", "mono label", [
+        txt(join([render_label(r: r), " · ", paint(m: r.figure)], "")),
+      ]),
+    ],
+  }
+}
+
+fn verdigris_panel() -> Fragment {
+  Element {
+    tag: "div",
+    attributes: [
+      attr(name: "class", value: "panel variant" ),
+      attr(name: "style", value: join([
+        figure_vars_style(figure: g_figure()),
+        "; --figure-edge: ", paint_alpha(m: verdigris_patina, alpha_pct: 65),
+      ], "") ),
+    ],
+    children: [
+      constellation_svg(stars: layer_stars, edges: layer_import_edges),
+      el_class("p", "mono label", [
+        txt(join([
+          "G starlight + verdigris patina on the edges · ", paint(m: verdigris_patina),
+          " — green enters as material, never as starlight (no green stars exist)",
+        ], "")),
+      ]),
+    ],
+  }
+}
+
+fn g_figure() -> Material {
+  fold(study_candidates, init: verdigris_patina, f: (acc, r) => {
+    let candidate_code = r.spectral.code as String
+    if candidate_code == "G" { r.figure } else { acc }
+  })
+}
+
+fn day_panel() -> Fragment {
+  Element {
+    tag: "div",
+    attributes: [
+      attr(name: "class", value: "panel variant day-panel" ),
+      attr(name: "style", value: theme_vars_style(t: day_theme) ),
+    ],
+    children: [
+      constellation_svg(stars: layer_stars, edges: layer_import_edges),
+      el_class("p", "mono label", [
+        txt("the day atlas — indigo ink on paper; identical fact rows, accent-independent"),
+      ]),
+    ],
+  }
+}
+
+fn study_static_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+      role_decl(prop: Background, r: CanvasRole),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: LineHeight, value: "1.55"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+      decl(prop: MaxWidth, value: "54rem"),
+      decl(prop: Margin, value: "0 auto"),
+      decl(prop: Padding, value: "3rem 1.5rem 4rem"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
+      decl(prop: FontSize, value: "1.2rem"),
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: "0.25rem 0 0"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+      decl(prop: FontSize, value: "0.85rem"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: RawProperty { name: "code-spacing" }, value: "0.08em"),
+      decl(prop: TextTransform, value: "lowercase"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MarginTop, value: "2.2rem"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: "1px solid var(--border)"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Padding, value: "1.1rem 1.25rem"),
+      decl(prop: MarginTop, value: "0.8rem"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "day-panel" }, decls: [
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Color, value: "var(--text)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "auto"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      decl(prop: FontSize, value: "0.78em"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "label" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: "0.6rem 0 0"),
+    ] },
+  ]
+}
+
+fn study_root_css() -> String {
+  join([
+    join([":root { ", join(map(theme_var_decls(t: night_theme), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; "), " }"], ""),
+    serialize_rules(rules: concat(study_static_rules(), figure_rules())),
+  ], "\n")
+}
+
+fn accent_study_page() -> Fragment {
+  Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
+    el("head", [
+      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+      el("title", [ txt("gunb.ai — starlight accent study (phase 0, preview only)") ]),
+      el("style", [ txt(study_root_css()) ]),
+    ]),
+    el("body", [
+      el("main", [
+        el("h1", [ txt("starlight accent study") ]),
+        el_class("p", "thesis", [ txt(register_thesis) ]),
+        el_class("p", "thesis", [ txt("the night accent is starlight, so the candidates are stellar classes (Morgan-Keenan); same constellation fact rows in every panel — only the temperature changes. no green panel exists: there are no green stars.") ]),
+        el("h2", [ txt("candidates — pick a temperature") ]),
+        el("div", map(study_candidates, r => candidate_panel(r: r))),
+        el("h2", [ txt("green, where physics allows it — patina, not starlight") ]),
+        verdigris_panel(),
+        el("h2", [ txt("the day identity is accent-independent") ]),
+        day_panel(),
+        el_class("p", "mono label", [ txt(stellar_color_perception_quote) ]),
+      ]),
+    ]),
+  ] }
+}
+
+fn accent_study_html() -> String {
+  match try_serialize_html_source(node: accent_study_page()) {
+    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+    EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
+  }
+}
+
+fn accent_study_preconditions_hold() -> Bool {
+  candidates_admissible(rs: study_candidates)
+}

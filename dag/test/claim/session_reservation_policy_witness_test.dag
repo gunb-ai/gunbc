@@ -1,0 +1,274 @@
+module test.claim.session_reservation_policy_witness_test
+
+// THESE TWELVE WERE AUTHORED AS PLAIN `fn` AND THEREFORE NEVER EXECUTED IN CI.
+//
+// The floor discovers witnesses by scanning source lines for the `test fn ` / `test data ` prefix
+// (v1_compiler cli_run scan_test_decl_lines); a plain `fn name() -> Bool` in a *_witness_test.dag
+// file is invisible to it. So this file passed by hand under claim_batch and was never folded by the
+// required floor -- reads as coverage, carries none, and is cited as coverage. Measured at the
+// promotion: 990 corpus witness files use `test fn` and 9 did not, this among them.
+//
+// Promoted 2026-08-27 with the session-container cut; assertions unchanged, only discoverability.
+// The eight remaining plain-fn files are a pre-existing population, not repaired here, named in
+// the cut's PR body rather than silently swept in.
+
+import std.types { Bool, String, Int }
+import std.measure { byte_size, byte_size_count }
+import gunbc.fleet_intent_network {
+  HostIdentity,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.session_reservation_policy {
+  SessionReservationBytesResolution,
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+  HostSessionReservationSizing,
+  ReservationAllowance, ReservationUnestablished, ReservationSizingAbsent,
+  admit_sizing,
+  SessionAggregateEpochPeakObserved, SessionAggregateDenominatorUnestablished,
+  SessionAggregateUnobserved, SessionAggregateSnapshotObserved,
+  SessionReservationCharged, SessionReservationUnsized,
+  SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
+  session_reservation_sizing_for, host_session_reservation_outcome, session_reservation_bytes,
+  allowance_covers_its_evidence, evidence_floor_bytes,
+  sizing_against_present_residency, sizing_against_absent_residency,
+  srv1_session_aggregate_epoch_peak, srv1_session_aggregate_citation,
+}
+import gunbc.session_residency { SessionsObservedAbsent }
+import gunbc.ci_runner_placement {
+  SessionSliceCharged, SessionSliceUnsized, SessionSliceNotApplicable,
+  host_session_slice_resolution,
+}
+import gunbc.host_converge {
+  session_knobs_for,
+  session_knob_standing_for,
+  SessionKnobsDerived, SessionKnobsNotOwed, SessionKnobsUngrounded,
+}
+
+data fleet: List<HostIdentity> = [
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+]
+
+// THE SIZING TABLE HOLDS ROWS ONLY FOR HOSTS SOMEONE HAS TRIED TO SIZE. srv3 and srv4 are absent by
+// construction rather than enumerated as not-applicable — the point of removing that arm: a sizing
+// authority has no standing to answer the residency question, and an earlier cut answered it anyway
+// on the strength of an ABSENT aggregate reading.
+test fn the_sizing_table_answers_only_how_much() -> Bool {
+  let srv1_allows = match session_reservation_sizing_for(host: operator_host_srv1) {
+    ReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } =>
+      byte_size_count(b: b) == 55834574848
+    ReservationUnestablished { evidence: _, cause: _ } => false
+    ReservationSizingAbsent => false
+  }
+  let srv2_unestablished = match session_reservation_sizing_for(host: operator_host_srv2) {
+    ReservationUnestablished { evidence: _, cause: _ } => true
+    ReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    ReservationSizingAbsent => false
+  }
+  let srv3_absent = match session_reservation_sizing_for(host: operator_host_srv3) {
+    ReservationSizingAbsent => true
+    ReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    ReservationUnestablished { evidence: _, cause: _ } => false
+  }
+  let srv4_absent = match session_reservation_sizing_for(host: operator_host_srv4) {
+    ReservationSizingAbsent => true
+    ReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    ReservationUnestablished { evidence: _, cause: _ } => false
+  }
+  srv1_allows && srv2_unestablished && srv3_absent && srv4_absent
+}
+
+// AN ALLOWANCE AUTHORED FOR A SESSION-FREE HOST MUST REFUSE, and this direction was previously
+// UNINSPECTED: the old shape read the sizing table only inside the residency-true branch, so a row
+// contradicting residency was silently ignored. This is the discriminating RED for that hole -- it
+// drives an allowance through the absent-residency join and requires a disagreement the old code
+// could not have produced.
+test fn an_allowance_on_a_session_free_host_refuses() -> Bool {
+  let planted = ReservationAllowance {
+    bytes: byte_size(55834574848),
+    evidence_floor: srv1_session_aggregate_epoch_peak,
+    operator_reason: "fixture: an allowance authored for a host residency says carries no sessions",
+  }
+  match sizing_against_absent_residency(s: planted, ev: SessionsObservedAbsent { observed_on: "2026-08-26" }) {
+    SessionReservationAuthorityDisagreement { cause: _ } => true
+    SessionReservationCharged { bytes: _, evidence_floor: _ } => false
+    SessionReservationUnsized { cause: _ } => false
+    SessionReservationNotApplicable { residency_evidence: _ } => false
+  }
+}
+
+// THE OTHER DIRECTION, kept beside it so the pair proves the join reads BOTH authorities rather
+// than one. Residency says sessions are present, the sizing table has no row: refuse rather than
+// charge nothing for a population known to exist.
+test fn a_session_host_with_no_sizing_row_refuses() -> Bool {
+  match sizing_against_present_residency(s: ReservationSizingAbsent) {
+    SessionReservationUnsized { cause: _ } => true
+    SessionReservationCharged { bytes: _, evidence_floor: _ } => false
+    SessionReservationNotApplicable { residency_evidence: _ } => false
+    SessionReservationAuthorityDisagreement { cause: _ } => false
+  }
+}
+
+// THE THREE-ARM RESOLUTION DISTINGUISHES THE TWO ABSENCES. The Option it replaces returned Absent
+// for both "safely charge nothing" and "refuse the whole derivation", which have opposite remedies.
+// Asserting only that neither yields bytes would pass against that collapse, so each arm is named.
+test fn the_two_absences_are_distinguishable() -> Bool {
+  let srv1_bytes = match session_reservation_bytes(host: operator_host_srv1) {
+    ReservationBytes { bytes: b } => byte_size_count(b: b) == 55834574848
+    ReservationBytesNotApplicable => false
+    ReservationBytesUnestablished { cause: _ } => false
+  }
+  let srv2_unestablished = match session_reservation_bytes(host: operator_host_srv2) {
+    ReservationBytesUnestablished { cause: _ } => true
+    ReservationBytes { bytes: _ } => false
+    ReservationBytesNotApplicable => false
+  }
+  let srv3_not_applicable = match session_reservation_bytes(host: operator_host_srv3) {
+    ReservationBytesNotApplicable => true
+    ReservationBytes { bytes: _ } => false
+    ReservationBytesUnestablished { cause: _ } => false
+  }
+  srv1_bytes && srv2_unestablished && srv3_not_applicable
+}
+
+// THE INTEGRATION CONTROL, WHOSE ABSENCE LET THE AUTHORITY FORK THROUGH. Six green witnesses over
+// the policy TABLE said nothing about whether any production projection consumed it, so placement
+// could answer 52 GiB while the budget tree charged a flat 20 GiB with every test green. This
+// asserts the projections AGREE, host by host, over the whole fleet.
+fn resolution_agrees_with_bytes(host: HostIdentity) -> Bool {
+  match host_session_slice_resolution(host: host) {
+    SessionSliceCharged { bytes: a } =>
+      match session_reservation_bytes(host: host) {
+        ReservationBytes { bytes: b } => byte_size_count(b: a) == byte_size_count(b: b)
+        ReservationBytesNotApplicable => false
+        ReservationBytesUnestablished { cause: _ } => false
+      }
+    SessionSliceNotApplicable =>
+      match session_reservation_bytes(host: host) {
+        ReservationBytesNotApplicable => true
+        ReservationBytes { bytes: _ } => false
+        ReservationBytesUnestablished { cause: _ } => false
+      }
+    SessionSliceUnsized { reason: _ } =>
+      match session_reservation_bytes(host: host) {
+        ReservationBytesUnestablished { cause: _ } => true
+        ReservationBytes { bytes: _ } => false
+        ReservationBytesNotApplicable => false
+      }
+  }
+}
+
+test fn every_production_projection_agrees_on_every_host() -> Bool {
+  fold(fleet, init: true, f: (acc, h) => acc && resolution_agrees_with_bytes(host: h))
+}
+
+// THE CONVERGE KNOBS FOLLOW THE SAME AUTHORITY, and this is the arm with teeth. The deleted
+// fleet-wide row handed ONE knob list to every host, so a converge would have written srv1's
+// sessions.slice MemoryMax as 20 GiB against a slice already observed peaking at 55216033792.
+// Now a host that owes no reservation emits no knobs, and srv1 emits some.
+test fn converge_knobs_are_derived_per_host() -> Bool {
+  let srv1_has_knobs = session_knobs_for(host: operator_host_srv1).length() > 0
+  let srv2_has_none = session_knobs_for(host: operator_host_srv2).length() == 0
+  let srv3_has_none = session_knobs_for(host: operator_host_srv3).length() == 0
+  srv1_has_knobs && srv2_has_none && srv3_has_none
+}
+
+// AN ALLOWANCE BELOW ITS OWN EVIDENCE FLOOR IS A CONTRADICTION. The planted row is the RED: it
+// carries the real srv1 floor under a smaller allowance, so a check that merely confirmed both
+// fields were present would pass it.
+test fn an_allowance_may_not_sit_below_its_evidence() -> Bool {
+  let inverted = ReservationAllowance {
+    bytes: byte_size(1),
+    evidence_floor: srv1_session_aggregate_epoch_peak,
+    operator_reason: "fixture: an allowance one byte wide beneath a 51.42 GiB observed floor",
+  }
+  let evidenceless = ReservationAllowance {
+    bytes: byte_size(55834574848),
+    evidence_floor: SessionAggregateUnobserved,
+    operator_reason: "fixture: an allowance with no observation under it at all",
+  }
+  allowance_covers_its_evidence(s: session_reservation_sizing_for(host: operator_host_srv1))
+    && !allowance_covers_its_evidence(s: inverted)
+    && !allowance_covers_its_evidence(s: evidenceless)
+}
+
+// AN UNESTABLISHED DENOMINATOR GROUNDS NO FLOOR. srv2 observed a real peak, and that peak is still
+// not a floor on the HOST's demand, because the population it was measured over is incomplete.
+test fn an_unestablished_denominator_grounds_no_floor() -> Bool {
+  match session_reservation_sizing_for(host: operator_host_srv2) {
+    ReservationUnestablished { evidence: e, cause: _ } =>
+      match evidence_floor_bytes(e: e) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    ReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    ReservationSizingAbsent => false
+  }
+}
+
+// THE EVIDENCE CARRIES THE EXECUTION THAT PRODUCED IT, not a description of a function. A prose
+// receipt cannot distinguish one invocation from another, which is exactly the failure that made
+// step 4A necessary.
+test fn the_evidence_names_its_execution() -> Bool {
+  srv1_session_aggregate_citation.run_id == "33007869268"
+    && srv1_session_aggregate_citation.metric == "memory.peak"
+    && srv1_session_aggregate_citation.host == "srv1"
+}
+
+test fn session_reservation_policy_holds() -> Bool {
+  the_two_empty_knob_answers_are_distinguishable()
+    && an_allowance_below_its_evidence_floor_is_refused_not_charged()
+    &&
+  the_sizing_table_answers_only_how_much()
+    && an_allowance_on_a_session_free_host_refuses()
+    && a_session_host_with_no_sizing_row_refuses()
+    && the_two_absences_are_distinguishable()
+    && every_production_projection_agrees_on_every_host()
+    && converge_knobs_are_derived_per_host()
+    && an_allowance_may_not_sit_below_its_evidence()
+    && an_unestablished_denominator_grounds_no_floor()
+    && the_evidence_names_its_execution()
+}
+
+// THE TWO EMPTY ANSWERS ARE NOW DISTINGUISHABLE, AND THIS ARM PROVES IT. Asserting only that srv2
+// and srv3 both yield no knobs passes against the collapsed form this replaces -- both returned the
+// same empty list. The standing separates them: srv3 owes nothing, srv2's reservation could not be
+// grounded, and those have opposite remedies.
+test fn the_two_empty_knob_answers_are_distinguishable() -> Bool {
+  match session_knob_standing_for(host: operator_host_srv3) {
+    SessionKnobsNotOwed { cause: _ } => true
+    SessionKnobsDerived { knobs: _ } => false
+    SessionKnobsUngrounded { cause: _ } => false
+  }
+    && match session_knob_standing_for(host: operator_host_srv2) {
+      SessionKnobsUngrounded { cause: _ } => true
+      SessionKnobsDerived { knobs: _ } => false
+      SessionKnobsNotOwed { cause: _ } => false
+    }
+    && match session_knob_standing_for(host: operator_host_srv1) {
+      SessionKnobsDerived { knobs: ks } => ks.length() > 0
+      SessionKnobsNotOwed { cause: _ } => false
+      SessionKnobsUngrounded { cause: _ } => false
+    }
+}
+
+// AN ALLOWANCE BELOW ITS OWN EVIDENCE FLOOR CANNOT LEAVE THE SIZING FUNCTION AS AN ALLOWANCE. The
+// coverage predicate was consumed by a fixture against srv1 only; admit_sizing puts it on the
+// production path, so a row authored below its floor degrades to ReservationUnestablished instead of
+// being charged. This drives the wall with a constructed violation, since the live rows all pass --
+// otherwise the arm would be green by never being reached.
+test fn an_allowance_below_its_evidence_floor_is_refused_not_charged() -> Bool {
+  match admit_sizing(s: ReservationAllowance {
+    bytes: byte_size(1073741824),
+    evidence_floor: srv1_session_aggregate_epoch_peak,
+    operator_reason: "witness fixture: an allowance deliberately authored far below its own measured floor",
+  }) {
+    ReservationUnestablished { evidence: _, cause: _ } => true
+    ReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    ReservationSizingAbsent => false
+  }
+    && match admit_sizing(s: session_reservation_sizing_for(host: operator_host_srv1)) {
+      ReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => true
+      ReservationUnestablished { evidence: _, cause: _ } => false
+      ReservationSizingAbsent => false
+    }
+}

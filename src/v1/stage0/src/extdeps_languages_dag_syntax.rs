@@ -18,12 +18,10 @@ pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
 };
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -32,7 +30,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
                 Rc::new(ExternalAuthority {
         uri: Rc::new(Uri {
         scheme: UriScheme::Https,
-        locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag".to_string(),
+        locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md#4-the-closed-grounded-substrate".to_string(),
     }),
     })
             };
@@ -44,6 +42,15 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<ItemForm>>> = {
                 Rc::new(vec![Rc::new(ItemForm {
+        kind: ItemFormKind::OtherForm,
+        keyword: "alias".to_string(),
+        has_type_params: false,
+        has_params: false,
+        has_return_type: false,
+        return_required: false,
+        has_uses: false,
+        body_kind: BodyKind::AliasBody,
+    }), Rc::new(ItemForm {
         kind: ItemFormKind::TypeAliasForm,
         keyword: "type".to_string(),
         has_type_params: true,
@@ -145,6 +152,7 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             let mut __m = HashMap::new();
             __m.insert("module".to_string(), true);
             __m.insert("import".to_string(), true);
+            __m.insert("alias".to_string(), true);
             __m.insert("type".to_string(), true);
             __m.insert("fn".to_string(), true);
             __m.insert("func".to_string(), true);
@@ -208,97 +216,97 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
         left_bp: 5,
         right_bp: 6,
         binop: Some(BinOp::Or),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "&&".to_string(),
         left_bp: 7,
         right_bp: 8,
         binop: Some(BinOp::And),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "??".to_string(),
         left_bp: 8,
         right_bp: 9,
         binop: Some(BinOp::NullCoalesce),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "==".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Eq),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "!=".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Ne),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "<".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Lt),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: ">".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Gt),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "<=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Le),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: ">=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Ge),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "+".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Add),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "-".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Sub),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "*".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mul),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "/".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Div),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "%".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mod),
-        algebra_field: None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: "|>".to_string(),
         left_bp: 17,
         right_bp: 18,
-        binop: None,
-        algebra_field: None,
+        binop: std::option::Option::None,
+        algebra_field: std::option::Option::None,
     }), Rc::new(OperatorSpec {
         symbol: ".".to_string(),
         left_bp: 19,
         right_bp: 20,
-        binop: None,
-        algebra_field: None,
+        binop: std::option::Option::None,
+        algebra_field: std::option::Option::None,
     })])
             };
         }

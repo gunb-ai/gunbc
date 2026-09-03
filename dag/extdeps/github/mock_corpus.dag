@@ -1,0 +1,70 @@
+module extdeps.github.mock_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+
+data github_gist_mock_case_create: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Gist.Create",
+  service: "github.Gist",
+  operation: "Create",
+  case_id: 0
+}
+
+data github_pulls_mock_case_list: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.List",
+  service: "github.Pulls",
+  operation: "List",
+  case_id: 0
+}
+
+data github_pulls_mock_case_get: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.Get",
+  service: "github.Pulls",
+  operation: "Get",
+  case_id: 0
+}
+
+data github_pulls_mock_case_diff: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.Diff",
+  service: "github.Pulls",
+  operation: "Diff",
+  case_id: 0
+}
+
+data github_issues_mock_case_create_comment: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Issues.CreateComment",
+  service: "github.Issues",
+  operation: "CreateComment",
+  case_id: 0
+}
+
+data github_pulls_mock_case_list_reviews: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.ListReviews",
+  service: "github.Pulls",
+  operation: "ListReviews",
+  case_id: 0
+}
+
+data github_pulls_mock_case_create_review: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.CreateReview",
+  service: "github.Pulls",
+  operation: "CreateReview",
+  case_id: 0
+}
+
+data github_pulls_mock_case_list_comments: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.ListComments",
+  service: "github.Pulls",
+  operation: "ListComments",
+  case_id: 0
+}
+
+data github_published_mock_corpus: List<PublishedMockCase> = [
+  github_gist_mock_case_create,
+  github_pulls_mock_case_list,
+  github_pulls_mock_case_get,
+  github_pulls_mock_case_diff,
+  github_issues_mock_case_create_comment,
+  github_pulls_mock_case_list_reviews,
+  github_pulls_mock_case_create_review,
+  github_pulls_mock_case_list_comments
+]

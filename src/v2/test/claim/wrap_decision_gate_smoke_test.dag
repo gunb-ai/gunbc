@@ -1,0 +1,43 @@
+module v2.test.claim.wrap_decision_gate_smoke
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.wrap_decision { wrap_decision_gate }
+import v2.std.compilers.lexing { VoidLexRules }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  OwnershipAtFunctionReturn,
+  WrapGateInapplicable,
+  target_carrier_diagnostics_node,
+  target_model_emit_transforms_empty
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import std.algebra { Empty }
+import v2.std.collection { empty_map }
+import v2.std.diagnostic { Accepted }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, TypeNode }
+
+test fn wrap_decision_gate_smoke_bundle_absent_inapplicable() -> Bool {
+  let target = TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: Empty,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+  match wrap_decision_gate(
+    target: target,
+    source_carrier: target_carrier_diagnostics_node(),
+    use_site: OwnershipAtFunctionReturn
+  ) {
+    Accepted { value: WrapGateInapplicable, diagnostics: _ } => true
+    _ => false
+  }
+}

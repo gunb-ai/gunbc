@@ -1,5 +1,6 @@
 module v2.test.impossible_bug.nested_optional_flatten
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -10,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality, SyntheticOccurrence }
+import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -23,9 +24,10 @@ import v2.std.verification {
   RoundTripClaim,
   manual_claim_anchor
 }
+
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -41,11 +43,11 @@ data falsification_nested_optional: Node = Node {
         children: [
           Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data falsification_optional_double_unwrap: Node = Node {
@@ -53,7 +55,7 @@ data falsification_optional_double_unwrap: Node = Node {
   children: [
     Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {

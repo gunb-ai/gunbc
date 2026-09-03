@@ -1,11 +1,12 @@
 module v2.std.refinement_widening_predicate
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer_value_set {
   integer_value_set_contains,
   integer_value_set_strictly_contains
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v2.std.node_query { find_named_child }
 fn refinement_widening_predicate_algebra(
   source: Node,
@@ -15,10 +16,10 @@ fn refinement_widening_predicate_algebra(
     source: source,
     candidate: candidate,
     source_value_set: Node { kind: TypeNode { connective: Atom { identity: ^refinement_value_set_unknown } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 },
     candidate_value_set: Node { kind: TypeNode { connective: Atom { identity: ^refinement_value_set_unknown } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
   )
 }
@@ -52,15 +53,15 @@ fn refinement_widening_predicate_algebra_for_value_sets(
         target: candidate_value_set
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
 fn refinement_widening_value_sets_hold(algebra: Node) -> Bool {
   match find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
-    Accepted { value: source_value_set, diagnostics: None } =>
+    Accepted { value: source_value_set, diagnostics: _ } =>
       match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
-        Accepted { value: candidate_value_set, diagnostics: None } =>
+        Accepted { value: candidate_value_set, diagnostics: _ } =>
           integer_value_set_strictly_contains(container: candidate_value_set, contained: source_value_set)
         Rejected { diagnostics: _ } => false
       }
@@ -70,9 +71,9 @@ fn refinement_widening_value_sets_hold(algebra: Node) -> Bool {
 
 fn refinement_widening_is_strict_coarsening(algebra: Node) -> Bool {
   match find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
-    Accepted { value: source_value_set, diagnostics: None } =>
+    Accepted { value: source_value_set, diagnostics: _ } =>
       match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
-        Accepted { value: candidate_value_set, diagnostics: None } =>
+        Accepted { value: candidate_value_set, diagnostics: _ } =>
           integer_value_set_strictly_contains(container: source_value_set, contained: candidate_value_set)
         Rejected { diagnostics: _ } => false
       }
@@ -86,11 +87,11 @@ fn refinement_widening_bundle_holds(
   algebra: Node,
 ) -> Bool {
   match find_named_child(root: algebra, name: ^refinement_widening_field_source) {
-    Accepted { value: bundled_source, diagnostics: None } =>
+    Accepted { value: bundled_source, diagnostics: _ } =>
       match find_named_child(root: algebra, name: ^refinement_widening_field_candidate) {
-        Accepted { value: bundled_candidate, diagnostics: None } =>
+        Accepted { value: bundled_candidate, diagnostics: _ } =>
           match find_named_child(root: algebra, name: ^refinement_widening_field_source_facts) {
-            Accepted { value: bundled_source_facts, diagnostics: None } =>
+            Accepted { value: bundled_source_facts, diagnostics: _ } =>
               (bundled_source == source_facts)
                 && (bundled_candidate == candidate)
                 && (bundled_source_facts == source_facts)

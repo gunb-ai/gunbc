@@ -1,0 +1,41 @@
+module extdeps.iproute2.ss
+
+import std.types { String, Bool }
+import std.algebra { trim }
+
+// ss(8) from iproute2, cited to the upstream manual. The socket-statistics query this repository
+// consumes is a LISTENING-SOCKET ENUMERATION filtered to one port, whose answer is the population
+// itself rather than a status code.
+
+// ENUMERATION IS THE ONLY SHAPE THAT CAN PROVE NOTHING IS SERVING A PORT.
+//
+// The evidence this replaces was a dial's exit status, and it claimed more than its source
+// establishes. curl(1) documents exit 7 as CURLE_COULDNT_CONNECT, "Failed to connect() to host or
+// proxy" -- one code covering every reason a connect failed, and curl's own documentation tells
+// callers to keep the error buffer because the numeric code does not carry the complete cause. So a
+// 7 establishes `curl did not connect`, which is strictly weaker than the four things a retirement
+// proof needs: that the intended host was reached, that the intended port was tested directly, that
+// no proxy stood in the path, and that no listener exists. A transport failure was being read as
+// the good-news arm of a proof that authorizes training onto the machine.
+//
+// A host-local enumeration answers the actual question. `ss -H -l -t -n 'sport = :PORT'` completes
+// with status 0 and prints ONE LINE PER LISTENING SOCKET on that port; no lines is the observed
+// empty population, not a failure to look. The distinction the exit code could not make is now
+// structural: a query that did not complete exits nonzero and establishes nothing, and a query that
+// completed carries its population as data.
+//
+// Cited to ss(8), iproute2. `-H` suppresses the header so the line count IS the population count,
+// `-l` selects listening sockets, `-t` restricts to TCP, `-n` keeps ports numeric so the filter and
+// the output speak the same vocabulary.
+//
+// The invocation is described here rather than minted as an argv builder, and the success status is
+// not minted at all, because nothing reads either yet: the probe capture site that will issue this
+// command is P0's wet half. A row authored ahead of its consumer is the artifact-with-no-consumer
+// §6 warns about, and this module had two of them within an hour of the same trim being applied to
+// its curl and pgrep neighbours -- which is why the rule is written down here rather than remembered.
+// AN EMPTY COMPLETED ENUMERATION IS AN OBSERVATION, and the trimmed-empty test is what separates it
+// from a query that printed nothing because it never ran. The caller only reaches this on a capture
+// that already carries a successful completion.
+fn ss_enumeration_is_empty(stdout: String) -> Bool {
+  trim(s: stdout) == ""
+}

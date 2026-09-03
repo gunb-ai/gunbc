@@ -1,0 +1,3 @@
+module test.fixture.sole_constructor_order_probe.sealed_variant
+
+type DupShape sole_constructor { tag: Int }

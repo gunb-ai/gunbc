@@ -1,0 +1,130 @@
+module test.claim.html_emit_witness
+
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html {
+  try_serialize_html_source,
+  serialize_html_source,
+  EmitOk,
+  EmitRejected,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sample_button() -> Fragment {
+  Element {
+    tag: "button",
+    attributes: [ attr(name: "class", value: "primary" ) ],
+    children: [ FragmentText { content: "Go" } ],
+  }
+}
+
+test fn witness_html_emit_reduces_and_serializes() -> Bool {
+  match try_serialize_html_source(node: sample_button()) {
+    EmitOk { html: h } => h == "<button class=\"primary\">Go</button>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+test fn witness_html_emit_matches_markup_fold() -> Bool {
+  match try_serialize_html_source(node: sample_button()) {
+    EmitOk { html: h } => h == serialize_html_source(node: sample_button())
+    EmitRejected { reason: _ } => false
+  }
+}
+
+fn hostile_javascript_href() -> Fragment {
+  Element {
+    tag: "a",
+    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    children: [ FragmentText { content: "click" } ],
+  }
+}
+
+fn hostile_data_href() -> Fragment {
+  Element {
+    tag: "a",
+    attributes: [ attr(name: "href", value: "data:text/html,<script>alert(1)</script>" ) ],
+    children: [],
+  }
+}
+
+test fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
+  match try_serialize_html_source(node: hostile_javascript_href()) {
+    EmitRejected { reason: _ } => {
+      let unchecked = serialize_html_source(node: hostile_javascript_href())
+      unchecked == "<a href=\"javascript:alert(1)\">click</a>"
+    }
+    EmitOk { html: _ } => false
+  }
+}
+
+test fn witness_data_reject_discriminates_from_char_escape() -> Bool {
+  match try_serialize_html_source(node: hostile_data_href()) {
+    EmitRejected { reason: _ } => {
+      let unchecked = serialize_html_source(node: hostile_data_href())
+      unchecked.starts_with(prefix: "<a href=\"data:")
+    }
+    EmitOk { html: _ } => false
+  }
+}
+
+test fn witness_serialize_rejects_javascript_href() -> Bool {
+  match try_serialize_html_source(node: hostile_javascript_href()) {
+    EmitRejected { reason: u } =>
+      u == "javascript:alert(1)"
+    EmitOk { html: _ } => false
+  }
+}
+
+test fn witness_serialize_rejects_data_href() -> Bool {
+  match try_serialize_html_source(node: hostile_data_href()) {
+    EmitRejected { reason: u } =>
+      u.starts_with(prefix: "data:")
+    EmitOk { html: _ } => false
+  }
+}
+
+test fn witness_http_href_serializes() -> Bool {
+  match try_serialize_html_source(
+    node: Element {
+      tag: "a",
+      attributes: [ attr(name: "href", value: "https://gunbc.dev" ) ],
+      children: [ FragmentText { content: "home" } ],
+    }
+  ) {
+    EmitOk { html: h } => h == "<a href=\"https://gunbc.dev\">home</a>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+fn trusted_relative_link() -> Fragment {
+  Element {
+    tag: "a",
+    attributes: [ attr(name: "href", value: "/tree/dag" ) ],
+    children: [ FragmentText { content: "dag" } ],
+  }
+}
+
+fn req_a_hostile_but_trusted_scheme() -> Fragment {
+  Element {
+    tag: "a",
+    attributes: [ attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
+    children: [],
+  }
+}
+
+test fn witness_trusted_href_serializes() -> Bool {
+  match try_serialize_html_source(node: trusted_relative_link()) {
+    EmitOk { html: h } => h == "<a href=\"/tree/dag\">dag</a>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+test fn witness_req_a_hostile_href_still_emits_with_html_escaping() -> Bool {
+  match try_serialize_html_source(node: req_a_hostile_but_trusted_scheme()) {
+    EmitOk { html: h } =>
+      h == "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
+    EmitRejected { reason: _ } => false
+  }
+}
+

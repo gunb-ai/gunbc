@@ -1,0 +1,33 @@
+module extdeps.sec.issuer.atlassian
+
+import extdeps.sec.types {
+  Cik,
+  IssuerCatalogRow,
+  Nasdaq,
+  StockTicker,
+}
+import extdeps.vendor.atlassian { atlassian }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0001650372"
+  }
+}
+
+data atlassian_cik_digits: NonEmptyStr = "1650372"
+
+data atlassian_cik: Cik = Cik { digits: atlassian_cik_digits }
+
+data atlassian_ticker: StockTicker = StockTicker { symbol: "TEAM" }
+
+data atlassian_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
+  cik: atlassian_cik,
+  registrant_name: "Atlassian Corp",
+  primary_ticker: atlassian_ticker,
+  exchange: Nasdaq,
+  vendor: atlassian,
+}

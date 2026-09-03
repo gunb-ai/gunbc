@@ -1,26 +1,74 @@
 module v2.std.verdict
 
-import v2.std.algebra { Magma, Monoid, Semigroup, is_empty }
-import v2.std.collection { List, Optional, Absent }
+import std.algebra { Monoid }
+import v2.std.algebra { is_empty }
+import v2.std.collection {
+  List
+}
+import v2.std.optional {
+  Optional,
+  Absent
+}
 import v2.std.diagnostic { Diagnostic, Outcome }
 import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.test_claim_falsification { FalsificationReceipt }
+import v2.std.logic { Bool }
+import v2.std.subject_evidence {
+  BehaviorDivergent,
+  BehaviorEquivalent,
+  BehavioralComparison,
+  EvidenceSubjectCompleted,
+  EvidenceSubjectUnreached,
+  SubjectEvidence,
+  subject_evidence_establishes,
+  subject_evidence_produced_a_verdict
+}
 
 type Verdict<Subj, T>
   = Pass
-  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<Subj, T>> }
+  | SemanticMismatch {
+      actual: Outcome<T>,
+      falsification: Optional<FalsificationReceipt<Subj, T>>
+    }
+  | BuildFailed { actual: Outcome<T>, diagnostic: Diagnostic }
+  | RunFailed { actual: Outcome<T>, diagnostic: Diagnostic }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
+fn verdict_semantic_mismatch<Subj, T>(
+  actual: Outcome<T>,
+  falsification: Optional<FalsificationReceipt<Subj, T>>
+) -> Verdict<Subj, T> {
+  SemanticMismatch { actual: actual, falsification: falsification }
+}
+
+fn verdict_build_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
+  BuildFailed { actual: actual, diagnostic: diagnostic }
+}
+
+fn verdict_run_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
+  RunFailed { actual: actual, diagnostic: diagnostic }
+}
+
 fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
-  Fail { actual: actual, falsification: Absent }
+  verdict_semantic_mismatch(actual: actual, falsification: Absent)
 }
 
 fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict<Subj, T> {
   match a {
     Pass => b
-    Fail { actual: fa, falsification: ff } => Fail { actual: fa, falsification: ff }
+    SemanticMismatch { actual: fa, falsification: ff } =>
+      SemanticMismatch { actual: fa, falsification: ff }
+    BuildFailed { actual: fa, diagnostic: d } =>
+      BuildFailed { actual: fa, diagnostic: d }
+    RunFailed { actual: fa, diagnostic: d } =>
+      RunFailed { actual: fa, diagnostic: d }
     Deferred { actual: da, diagnostic: diag } => match b {
-      Fail { actual: fb, falsification: bf } => Fail { actual: fb, falsification: bf }
+      SemanticMismatch { actual: fb, falsification: bf } =>
+        SemanticMismatch { actual: fb, falsification: bf }
+      BuildFailed { actual: fb, diagnostic: bd } =>
+        BuildFailed { actual: fb, diagnostic: bd }
+      RunFailed { actual: fb, diagnostic: rd } =>
+        RunFailed { actual: fb, diagnostic: rd }
       Deferred { actual: _, diagnostic: _ } => Deferred { actual: da, diagnostic: diag }
       Pass => Deferred { actual: da, diagnostic: diag }
     }
@@ -29,15 +77,15 @@ fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict
 
 fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
   Monoid {
-    semigroup: Semigroup { magma: Magma { op: verdict_combine } },
+    op: verdict_combine,
     identity: Pass
   }
 }
 
 type VerdictTally {
-  pass: Nat
-  fail: Nat
-  deferred: Nat
+  pass: v2.std.nat.Nat
+  fail: v2.std.nat.Nat
+  deferred: v2.std.nat.Nat
 }
 
 data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, deferred: Zero }
@@ -45,7 +93,11 @@ data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, 
 fn verdict_tally_add<Subj, T>(t: VerdictTally, v: Verdict<Subj, T>) -> VerdictTally {
   match v {
     Pass => VerdictTally { pass: Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
-    Fail { actual: _, falsification: _ } =>
+    SemanticMismatch { actual: _, falsification: _ } =>
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+    BuildFailed { actual: _, diagnostic: _ } =>
+      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
+    RunFailed { actual: _, diagnostic: _ } =>
       VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
     Deferred { actual: _, diagnostic: _ } =>
       VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
@@ -58,7 +110,7 @@ fn verdict_tally<Subj, T>(vs: List<Verdict<Subj, T>>) -> VerdictTally {
   })
 }
 
-fn verdict_tally_total(t: VerdictTally) -> Nat {
+fn verdict_tally_total(t: VerdictTally) -> v2.std.nat.Nat {
   nat_add(a: nat_add(a: t.pass, b: t.fail), b: t.deferred)
 }
 
@@ -72,4 +124,107 @@ fn verdict_fold<Subj, T>(
       verdict_combine(a: acc, b: v)
     })
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CLAIM-ENTAILING PROJECTION. `Verdict` mixes two different questions in one coproduct, and
+// every consumer that folds it to a Bool has had to separate them by hand -- which is exactly where
+// they stopped separating them. Pass and SemanticMismatch are SUBJECT VERDICTS: the comparison was
+// performed and this is what it said. BuildFailed, RunFailed and Deferred are NOT verdicts at all:
+// they say the comparison WAS NOT PERFORMED. A build or a run failure is not evidence that the
+// emitted and interpreted programs differ.
+//
+// So the projection below is the one legal reading, and it is stated once here rather than
+// re-derived at each fold:
+//
+//     Pass             -> completed, BehaviorEquivalent
+//     SemanticMismatch -> completed, BehaviorDivergent carrying the difference
+//     BuildFailed      -> subject unreached at build, carrying the diagnostic
+//     RunFailed        -> subject unreached at run, carrying the diagnostic
+//     Deferred         -> subject unreached, deferred, carrying the diagnostic
+//
+// EVERY NON-PASS ARM KEEPS ITS PAYLOAD. The `diagnostic: _` that used to sit on these arms is the
+// tell for the whole class: the payload discarded is the one that decides whether the assertion
+// executed, so discarding it is what made a counterexample and a broken toolchain the same value.
+//
+// WHY THE PHASE AND THE CAUSE TRAVEL IN ONE TYPE rather than as a (phase, cause) pair: a pair
+// admits a build phase beside a run diagnostic, because the two fields are independently writable.
+// Naming them together makes that mismatch unrepresentable instead of merely incorrect.
+type VerdictNotEvaluated
+  = NotEvaluatedAtBuild { diagnostic: Diagnostic }
+  | NotEvaluatedAtRun { diagnostic: Diagnostic }
+  | NotEvaluatedDeferred { diagnostic: Diagnostic }
+
+fn verdict_evidence<Subj, T>(
+  v: Verdict<Subj, T>
+) -> SubjectEvidence<VerdictNotEvaluated, BehavioralComparison<VerdictDifference<Subj, T>>> {
+  match v {
+    Pass => EvidenceSubjectCompleted { outcome: BehaviorEquivalent }
+    SemanticMismatch { actual: a, falsification: f } =>
+      EvidenceSubjectCompleted {
+        outcome: BehaviorDivergent {
+          difference: VerdictDifference { actual: a, falsification: f }
+        }
+      }
+    BuildFailed { actual: _, diagnostic: d } =>
+      EvidenceSubjectUnreached { cause: NotEvaluatedAtBuild { diagnostic: d } }
+    RunFailed { actual: _, diagnostic: d } =>
+      EvidenceSubjectUnreached { cause: NotEvaluatedAtRun { diagnostic: d } }
+    Deferred { actual: _, diagnostic: d } =>
+      EvidenceSubjectUnreached { cause: NotEvaluatedDeferred { diagnostic: d } }
+  }
+}
+
+// THE DIVERGENCE PAYLOAD, carried rather than discarded. `actual` is what the subject produced and
+// `falsification` is the receipt that locates the disagreement when one was constructed. A
+// divergence variant that dropped both would be a Bool wearing a variant's name.
+type VerdictDifference<Subj, T> {
+  actual: Outcome<T>
+  falsification: Optional<FalsificationReceipt<Subj, T>>
+}
+
+// THE TWO CLAIM-SIDE READINGS, replacing the hand-written folds at every consumer.
+//
+// `verdict_establishes_equivalence` is the POSITIVE claim: the comparison ran and agreed. It
+// answers false for a divergence and false for a no-verdict standing, and those two falses are NOT
+// interchangeable -- callers that must tell them apart match `verdict_evidence` directly. What this
+// buys over the hand-written fold it replaces is that the no-verdict arms can no longer be written
+// as a bare `false` beside a discarded diagnostic; they route through the standing, which keeps the
+// cause.
+fn verdict_establishes_equivalence<Subj, T>(v: Verdict<Subj, T>) -> Bool {
+  subject_evidence_establishes(
+    evidence: verdict_evidence(v: v),
+    licenses: fn(outcome) {
+      match outcome {
+        BehaviorEquivalent => true
+        BehaviorDivergent { difference: _ } => false
+      }
+    }
+  )
+}
+
+// `verdict_establishes_divergence` is the DISCRIMINATING RED's claim, and it is the reading the old
+// folds got most dangerously wrong. A probe that asserts "this wrong fixture is refused" must be
+// satisfied ONLY by a comparison that ran and disagreed. Under the old fold a BuildFailed answered
+// false here, which is correct by accident -- but the same shape negated anywhere answers true for
+// a broken toolchain, which is the cause aliasing this carrier exists to make unwritable. Routing
+// through the standing means the no-verdict arms cannot reach either claim.
+fn verdict_establishes_divergence<Subj, T>(v: Verdict<Subj, T>) -> Bool {
+  subject_evidence_establishes(
+    evidence: verdict_evidence(v: v),
+    licenses: fn(outcome) {
+      match outcome {
+        BehaviorDivergent { difference: _ } => true
+        BehaviorEquivalent => false
+      }
+    }
+  )
+}
+
+// WAS A COMPARISON PERFORMED AT ALL. This is what a cause-swap control asserts against, and it is
+// deliberately not the negation of either function above -- both of those answer false for a
+// no-verdict standing, so a control written against them cannot tell a refutation from an execution
+// that never happened.
+fn verdict_produced_a_comparison<Subj, T>(v: Verdict<Subj, T>) -> Bool {
+  subject_evidence_produced_a_verdict(evidence: verdict_evidence(v: v))
 }

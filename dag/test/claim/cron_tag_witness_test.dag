@@ -1,0 +1,8 @@
+module test.claim.cron_tag_witness_test
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn cron_tag_upsert_protocol_keystone_witness() -> Bool {
+  cron_tag_upsert_protocol_keystone_holds()
+}

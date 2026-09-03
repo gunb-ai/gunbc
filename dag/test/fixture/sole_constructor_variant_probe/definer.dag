@@ -1,0 +1,5 @@
+module test.fixture.sole_constructor_variant_probe.definer
+
+type SealedChoice sole_constructor
+  = SealedA { n: Int }
+  | SealedB { s: String }

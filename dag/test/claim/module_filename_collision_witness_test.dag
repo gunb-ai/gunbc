@@ -1,0 +1,91 @@
+module test.claim.module_filename_collision_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT. v1.compiler.emit_core_support module_to_filename maps '.' to '_', so it is
+// MANY-TO-ONE: `mmfc.a_b` and `mmfc_a.b` both render `mmfc_a_b`. Every target emitter names one
+// emitted file per module by that mapping, so before this wall the two modules wrote the same path
+// and whichever was emitted second silently replaced the first -- a wrong artifact with no
+// diagnostic. The mapping cannot be made injective without changing every emitted path and every
+// cross-module reference derived from one, so the residue is REFUSED rather than absorbed, and this
+// file is its executing evidence.
+//
+// WHY THE MULTI-MODULE FIXTURE AND NOT THE SINGLE-MODULE CENSUS. The subject IS a relationship
+// between two modules: no one-module source can express it, and gunbc.compile_diagnostic_census
+// resolves its one synthetic module against the live checkout, so a second module cannot be
+// authored there. tools.multi_module_compile_fixture compiles a caller-authored manifest in
+// isolation, exactly the boundary at which this RED is authorable.
+
+data collide_peer_source: String = "module mmfc_a.b\nfn collide_peer_answer() -> Int { 7 }\n"
+data collide_entry_source: String = "module mmfc.a_b\nimport mmfc_a.b { collide_peer_answer }\nfn collide_entry_answer() -> Int { collide_peer_answer() }\n"
+
+data distinct_peer_source: String = "module mmfc.b\nfn distinct_peer_answer() -> Int { 7 }\n"
+data distinct_entry_source: String = "module mmfc.a_b\nimport mmfc.b { distinct_peer_answer }\nfn distinct_entry_answer() -> Int { distinct_peer_answer() }\n"
+
+fn collision_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("mmfc/peer.dag", collide_peer_source),
+      fixture_source("mmfc/entry.dag", collide_entry_source)
+    ],
+    entry: "mmfc/entry.dag"
+  })
+}
+
+fn distinct_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("mmfc/peer.dag", distinct_peer_source),
+      fixture_source("mmfc/entry.dag", distinct_entry_source)
+    ],
+    entry: "mmfc/entry.dag"
+  })
+}
+
+fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE DISCRIMINATING RED. Two modules whose names differ only by a dot-versus-underscore refuse
+// with the class that names the defect -- not merely "something refused", which a typo in the
+// fixture source would also satisfy.
+test fn dot_underscore_module_pair_refuses_rather_than_overwriting() -> Bool {
+  refused_with_class(collision_run(), "ModuleFilenameCollision")
+}
+
+// THE POSITIVE CONTROL. The same shape with one segment renamed so the two filenames differ
+// compiles clean -- zero diagnostics of ANY severity. Without this the RED above is satisfied by
+// a wall that refuses everything.
+test fn distinct_filenames_still_compile() -> Bool {
+  completed_with_no_diagnostics(distinct_run())
+    && !refused_with_class(distinct_run(), "ModuleFilenameCollision")
+}

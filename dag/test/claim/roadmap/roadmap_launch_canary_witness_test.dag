@@ -1,0 +1,391 @@
+module test.claim.roadmap_launch_canary_witness
+
+import std.types { String, Bool, List }
+import gunbc.roadmap_model {
+  RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, RoadmapEdge,
+  IntricacyLow, VolumeSmall, ManualAcceptance, Sized,
+  SectionElement, Group, SectionGroup,
+}
+import gunbc.roadmap_status {
+  TicketLine, DerivableLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered,
+}
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract, ExecutionContractUnspecified,
+  contract_has_closing_validation,
+}
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_spawner { spawn_frontier, next_spawnable, node_unmet_parent_ids, node_closes_dependency, doc_all_nodes, doc_all_edges }
+import gunbc.roadmap_presentation {
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle, work_lifecycle,
+  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned, work_scheduling }
+import gunbc.roadmap_validation_oracle { OraclePinScope, OraclePinnable, OracleNotPinnable, validation_oracle_scopes }
+import gunbc.roadmap_dispatch_environment {
+  DispatchEnvironmentAdmission, EnvironmentAdmitted, EnvironmentRefused,
+  dispatch_environment_admission_decision,
+}
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_launch_admission {
+  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchExecutionContractMissing, launch_graph_of_document, Operator,
+  launch_admission,
+}
+import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
+import gunbc.roadmap_launch_canary {
+  roadmap_launch_canary_parent_id, roadmap_launch_canary_child_id,
+  roadmap_launch_canary_parent_identity, roadmap_launch_canary_child_identity,
+  roadmap_launch_canary_parent_node_id, roadmap_launch_canary_child_node_id,
+  roadmap_launch_canary_edge, roadmap_launch_canary_execution_contract,
+  roadmap_launch_canary_ticket, roadmap_launch_canary_oracle_entry, roadmap_launch_canary_oracle_function,
+}
+import test.manual.roadmap_launch_canary_oracle {
+  roadmap_launch_canary_nonce,
+  roadmap_launch_canary_expected_sentinel,
+  roadmap_launch_canary_sentinel_completed,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RLM-0 (docs/plans/roadmap-launch-mvp-plan.md): the two-node canary in a SYNTHETIC roadmap graph,
+// decided by the same predicates the live page and belt consume -- gunbc.roadmap_spawner
+// spawn_frontier / next_spawnable / node_unmet_parent_ids and gunbc.roadmap_presentation
+// work_scheduling -- never a readiness re-implemented here. Nothing in this file touches
+// gunbc.roadmap_authority; the canary joins the live authority at RLM-3. Every falsifier is
+// enrolled as a permanent regression control, not a one-off: (a) deleting the edge changes the
+// child's decision, so the edge is shown load-bearing; (b) the blocker is the exact parent identity
+// and a different identity is refused; (c) the oracle predicate is red on the pending sentinel, red
+// on a wrong or missing nonce, green only on the exact expected value; (d) the admission finding,
+// recorded rather than patched because admission is RLM-1's gate: gunbc.roadmap_spawner's Ready
+// frontier admits a node whose execution contract is ExecutionContractUnspecified, and only
+// gunbc.roadmap_dispatch_environment refuses it later -- two answers to one question, which RLM-1's
+// single LaunchAdmission (ExecutionContractMissing) is scoped to collapse.
+
+fn canary_node(
+  identity: RoadmapNodeIdentity,
+  id: RoadmapNodeId,
+  execution: WorkItemExecutionContract,
+  signoff: Signoff,
+) -> RoadmapNode {
+  RoadmapNode {
+    identity: identity,
+    node: id,
+    line: TicketLine { done: false, ticket: roadmap_launch_canary_ticket() },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance },
+    execution: execution,
+    owner: "",
+    signoff: signoff,
+  }
+}
+
+fn canary_parent(signoff: Signoff) -> RoadmapNode {
+  canary_node(
+    identity: roadmap_launch_canary_parent_identity,
+    id: roadmap_launch_canary_parent_node_id(),
+    execution: roadmap_launch_canary_execution_contract(),
+    signoff: signoff,
+  )
+}
+
+fn canary_child() -> RoadmapNode {
+  canary_node(
+    identity: roadmap_launch_canary_child_identity,
+    id: roadmap_launch_canary_child_node_id(),
+    execution: ExecutionContractUnspecified,
+    signoff: Unsigned,
+  )
+}
+
+fn accepted_signoff() -> Signoff {
+  SignedOff {
+    by: "operator",
+    works: RedControlExecuted { witness_module: "test.manual.roadmap_launch_canary_oracle", witness_fn: "roadmap_launch_canary_oracle_completed", executed_on: "2026-08-29" },
+    scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    as_expected: true,
+  }
+}
+
+fn canary_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [RoadmapSection {
+      title: "Roadmap launch canary (synthetic)",
+      elements: [Group { group: SectionGroup { label: "canary", nodes: nodes, edges: edges } }],
+    }],
+  }
+}
+
+fn canary_graph() -> RoadmapDocument {
+  canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()])
+}
+
+fn canary_graph_without_edge() -> RoadmapDocument {
+  canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [])
+}
+
+fn canary_graph_parent_accepted() -> RoadmapDocument {
+  canary_doc(nodes: [canary_parent(signoff: accepted_signoff()), canary_child()], edges: [roadmap_launch_canary_edge()])
+}
+
+fn scheduling_of(doc: RoadmapDocument, id: RoadmapNodeId) -> WorkScheduling? {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  match nodes |> filter(n => n.node == id) |> first {
+    Present { value: n } => Present { value: work_scheduling(rn: n, nodes: nodes, edges: edges) }
+    Absent => Absent
+  }
+}
+
+fn blockers_of(doc: RoadmapDocument, id: RoadmapNodeId) -> List<String> {
+  match scheduling_of(doc: doc, id: id) {
+    Present { value: s } =>
+      match s {
+        SchedulingUpcoming { blockers } => blockers
+        SchedulingReady => []
+        SchedulingDone => []
+        SchedulingSuperseded => []
+        SchedulingUnplanned => []
+      }
+    Absent => []
+  }
+}
+
+fn is_ready(doc: RoadmapDocument, id: RoadmapNodeId) -> Bool {
+  let frontier = spawn_frontier(doc: doc, merged: [])
+  any(frontier.ready, n => n.node == id)
+    && any(next_spawnable(doc: doc, merged: []), n => n.node == id)
+    && (match scheduling_of(doc: doc, id: id) {
+      Present { value: s } => match s {
+        SchedulingReady => true
+        SchedulingUpcoming { blockers: _ } => false
+        SchedulingDone => false
+        SchedulingSuperseded => false
+        SchedulingUnplanned => false
+      }
+      Absent => false
+    })
+}
+
+fn blocked_exactly_by(doc: RoadmapDocument, id: RoadmapNodeId, blocker: String) -> Bool {
+  let frontier = spawn_frontier(doc: doc, merged: [])
+  let blockers = blockers_of(doc: doc, id: id)
+  let unmet = node_unmet_parent_ids(nodes: doc_all_nodes(doc: doc), edges: doc_all_edges(doc: doc), id: id)
+  any(frontier.upcoming, n => n.node == id)
+    && !any(frontier.ready, n => n.node == id)
+    && count(blockers) == 1
+    && any(blockers, b => b == blocker)
+    && count(unmet) == 1
+    && any(unmet, u => (u as String) == blocker)
+}
+
+// Exit receipt: the parent is Ready in the synthetic graph.
+test fn witness_canary_parent_ready() -> Bool {
+  is_ready(doc: canary_graph(), id: roadmap_launch_canary_parent_node_id())
+}
+
+// Exit receipt: the child is blocked, and its one blocker is the exact parent identity.
+test fn witness_canary_child_blocked_by_exact_parent() -> Bool {
+  blocked_exactly_by(
+    doc: canary_graph(),
+    id: roadmap_launch_canary_child_node_id(),
+    blocker: roadmap_launch_canary_parent_id as String,
+  )
+}
+
+// The acceptance event is what unlocks the child: parent accepted -> child Ready, parent Done.
+test fn witness_canary_child_ready_after_parent_accepted() -> Bool {
+  let doc = canary_graph_parent_accepted()
+  let frontier = spawn_frontier(doc: doc, merged: [])
+  is_ready(doc: doc, id: roadmap_launch_canary_child_node_id())
+    && any(frontier.done, n => n.node == roadmap_launch_canary_parent_node_id())
+    && !any(frontier.ready, n => n.node == roadmap_launch_canary_parent_node_id())
+}
+
+// Merge evidence, LOAD-BEARING (review 5059303095): gunbc.roadmap_spawner never reads `merged`, so
+// the only consumer of a merged PR roster is gunbc.roadmap_presentation work_lifecycle ->
+// gunbc.roadmap_status item_is_done, which for a DerivableLine needs every named PR merged. The
+// merged-but-unaccepted parent is therefore built on a DerivableLine naming PR 1 with Unsigned
+// signoff, and the three lifecycle states are witnessed as three distinct decisions:
+// open/unmerged, review/merged-but-unaccepted, done/accepted.
+fn canary_parent_derivable(signoff: Signoff) -> RoadmapNode {
+  RoadmapNode {
+    identity: roadmap_launch_canary_parent_identity,
+    node: roadmap_launch_canary_parent_node_id(),
+    line: DerivableLine { prs: [1], title: "Roadmap launch canary: flip one sentinel", description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance },
+    execution: roadmap_launch_canary_execution_contract(),
+    owner: "",
+    signoff: signoff,
+  }
+}
+
+fn lifecycle_is_review(l: WorkLifecycle) -> Bool {
+  match l {
+    ReviewLifecycle => true
+    OpenLifecycle => false
+    DoneLifecycle => false
+    SupersededLifecycle => false
+  }
+}
+
+fn lifecycle_is_open(l: WorkLifecycle) -> Bool {
+  match l {
+    OpenLifecycle => true
+    ReviewLifecycle => false
+    DoneLifecycle => false
+    SupersededLifecycle => false
+  }
+}
+
+fn lifecycle_is_done(l: WorkLifecycle) -> Bool {
+  match l {
+    DoneLifecycle => true
+    OpenLifecycle => false
+    ReviewLifecycle => false
+    SupersededLifecycle => false
+  }
+}
+
+fn child_blocked_under(parent: RoadmapNode) -> Bool {
+  blocked_exactly_by(
+    doc: canary_doc(nodes: [parent, canary_child()], edges: [roadmap_launch_canary_edge()]),
+    id: roadmap_launch_canary_child_node_id(),
+    blocker: roadmap_launch_canary_parent_id as String,
+  )
+}
+
+// State 2 of 3 (RLM-6 falsifier at the model grain): merged-but-unaccepted parent is in Review,
+// does not close the dependency, and the child stays blocked by it.
+test fn witness_canary_merged_unaccepted_parent_keeps_child_blocked() -> Bool {
+  let parent = canary_parent_derivable(signoff: Unsigned)
+  lifecycle_is_review(l: work_lifecycle(rn: parent, merged: [1]))
+    && !node_closes_dependency(n: parent)
+    && child_blocked_under(parent: parent)
+}
+
+// Negative control for the merge evidence: the same fixture with an empty merged roster is Open,
+// so the review conjunct above is discriminating, not a restatement of "unsigned blocks".
+test fn control_unmerged_parent_is_open_not_review() -> Bool {
+  let parent = canary_parent_derivable(signoff: Unsigned)
+  lifecycle_is_open(l: work_lifecycle(rn: parent, merged: []))
+    && !lifecycle_is_review(l: work_lifecycle(rn: parent, merged: []))
+    && !node_closes_dependency(n: parent)
+    && child_blocked_under(parent: parent)
+}
+
+// State 3 of 3: the accepted signoff is what closes the dependency -- Done, and the child Ready --
+// while the merge roster alone (state 2) never did.
+test fn witness_canary_three_lifecycle_states_are_distinct() -> Bool {
+  let open = canary_parent_derivable(signoff: Unsigned)
+  let accepted = canary_parent_derivable(signoff: accepted_signoff())
+  lifecycle_is_open(l: work_lifecycle(rn: open, merged: []))
+    && lifecycle_is_review(l: work_lifecycle(rn: open, merged: [1]))
+    && lifecycle_is_done(l: work_lifecycle(rn: accepted, merged: [1]))
+    && !node_closes_dependency(n: open)
+    && node_closes_dependency(n: accepted)
+    && child_blocked_under(parent: open)
+    && is_ready(
+      doc: canary_doc(nodes: [accepted, canary_child()], edges: [roadmap_launch_canary_edge()]),
+      id: roadmap_launch_canary_child_node_id(),
+    )
+}
+
+// Falsifier (a): delete the dependency edge -> the child no longer produces the blocked decision.
+// Enrolled as the control that shows the edge is load-bearing in the derivation the page consumes.
+test fn falsifier_deleting_edge_changes_child_decision() -> Bool {
+  let doc = canary_graph_without_edge()
+  !blocked_exactly_by(doc: doc, id: roadmap_launch_canary_child_node_id(), blocker: roadmap_launch_canary_parent_id as String)
+    && is_ready(doc: doc, id: roadmap_launch_canary_child_node_id())
+    && count(blockers_of(doc: doc, id: roadmap_launch_canary_child_node_id())) == 0
+}
+
+// Falsifier (b): a different blocker identity is refused by the exact-identity join.
+test fn falsifier_wrong_blocker_identity_refused() -> Bool {
+  !blocked_exactly_by(
+    doc: canary_graph(),
+    id: roadmap_launch_canary_child_node_id(),
+    blocker: join([roadmap_launch_canary_parent_id as String, "-other"], ""),
+  )
+    && !blocked_exactly_by(
+      doc: canary_graph(),
+      id: roadmap_launch_canary_child_node_id(),
+      blocker: roadmap_launch_canary_child_id as String,
+    )
+}
+
+// Falsifier (c) and the oracle's discrimination: red on base (the committed sentinel is pending),
+// green on exactly the authorized value, red on a wrong or missing nonce.
+// Over the PREDICATE with a literal input, never the live sentinel row: at RLM-5 the canary attempt
+// flips that row, and a floor witness reading it would red the very PR the MVP exists to publish.
+// "Red on base" as a fact about the committed row belongs only to the pinned oracle.
+test fn witness_oracle_red_on_pending_sentinel() -> Bool {
+  !roadmap_launch_canary_sentinel_completed(value: join(["pending:", roadmap_launch_canary_nonce as String], ""))
+}
+
+test fn witness_oracle_green_on_exact_authorized_mutation() -> Bool {
+  roadmap_launch_canary_sentinel_completed(value: join(["completed:", roadmap_launch_canary_nonce as String], ""))
+    && roadmap_launch_canary_sentinel_completed(value: roadmap_launch_canary_expected_sentinel())
+}
+
+test fn falsifier_oracle_red_on_wrong_or_missing_nonce() -> Bool {
+  !roadmap_launch_canary_sentinel_completed(value: "completed:")
+    && !roadmap_launch_canary_sentinel_completed(value: "completed")
+    && !roadmap_launch_canary_sentinel_completed(value: "completed:WRONGNONCE")
+    && !roadmap_launch_canary_sentinel_completed(value: join(["completed:", roadmap_launch_canary_nonce as String, "x"], ""))
+    && !roadmap_launch_canary_sentinel_completed(value: join(["Completed:", roadmap_launch_canary_nonce as String], ""))
+    && !roadmap_launch_canary_sentinel_completed(value: "")
+}
+
+// The contract closes and its oracle is pinnable at exactly the declared entry and function.
+test fn witness_canary_contract_closes_with_pinnable_oracle() -> Bool {
+  let contract = roadmap_launch_canary_execution_contract()
+  let scopes = validation_oracle_scopes(contract: contract)
+  contract_has_closing_validation(contract: contract)
+    && count(scopes) == 1
+    && all(scopes, s => match s {
+      OraclePinnable { oracle } =>
+        oracle.entry as String == roadmap_launch_canary_oracle_entry as String
+          && oracle.function as String == roadmap_launch_canary_oracle_function as String
+      OracleNotPinnable { validation_label: _, reason: _ } => false
+    })
+}
+
+// Falsifier (d), the RLM-0 FINDING, now a REGRESSION CONTROL (RLM-1): a node with an unspecified
+// execution contract and every dependency closed is still on gunbc.roadmap_spawner's Ready frontier
+// (the frontier is a graph position, not a launch verdict) and gunbc.roadmap_dispatch_environment
+// still refuses the contract -- but the LAUNCH question now has one answer, from
+// gunbc.roadmap_launch_admission, and it refuses ExecutionContractMissing before any environment
+// probe. Two producers, one verdict; the split RLM-0 recorded is closed by the single admission.
+test fn finding_unspecified_contract_is_ready_but_environment_refuses() -> Bool {
+  let unbound = canary_node(
+    identity: roadmap_launch_canary_child_identity,
+    id: roadmap_launch_canary_child_node_id(),
+    execution: ExecutionContractUnspecified,
+    signoff: Unsigned,
+  )
+  let doc = canary_doc(nodes: [unbound], edges: [])
+  let frontier_admits = is_ready(doc: doc, id: roadmap_launch_canary_child_node_id())
+  let environment = dispatch_environment_admission_decision(
+    contract: ExecutionContractUnspecified,
+    receipts: [],
+    validation_summary: "",
+  )
+  let admission = launch_admission(
+    cause: Operator,
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: launch_graph_of_document(doc: doc),
+    merged: [],
+    node_id: roadmap_launch_canary_child_node_id() as String,
+    reserved: 0,
+  )
+  frontier_admits
+    && (match environment {
+      EnvironmentRefused { receipts: _, validation_summary: _, reason: _ } => true
+      EnvironmentAdmitted { receipts: _, validation_summary: _ } => false
+    })
+    && (match admission {
+      LaunchRefused { refusal } => match refusal { LaunchExecutionContractMissing { reason: _ } => true _ => false }
+      LaunchAdmitted { identity: _ } => false
+    })
+}

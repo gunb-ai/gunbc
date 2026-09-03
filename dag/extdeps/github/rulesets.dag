@@ -1,0 +1,378 @@
+module extdeps.github.rulesets
+
+import extdeps.github.github { default_api_base, default_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.transports.rest { RestOutcome }
+import extdeps.uri { Uri, Https }
+import std.credentials { EnvVar }
+import v2.std.collection { Absent, Present }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/repos/rules"
+  }
+}
+
+// THIS MODULE OWNS THE INTERFACE SHAPE OF GITHUB'S REPOSITORY RULESETS API AND NOTHING ELSE. Which
+// ruleset this repository wants, which contexts it requires, and what to do when the live ruleset
+// disagrees are business policy and live in gunbc.repo_ruleset — modelling them here would be the
+// layer inversion DESIGN section 3 names, making the upstream authority carry a fact GitHub has no
+// opinion about.
+//
+// THE WIRE RECORDS ARE THE DECODE SURFACE, THE COPRODUCTS ARE THE DOMAIN. GitHub's rule list is
+// heterogeneous — a `deletion` rule carries no parameters, a `required_status_checks` rule a nested
+// object — and open: GitHub adds rule types without asking. A closed coproduct decoded straight off
+// the wire would either refuse on an upstream addition this repository does not care about or
+// silently drop it. So the transport decodes into records whose type tag is the String GitHub sent,
+// and the projections below carry every recognized tag into a closed type WITH an explicit
+// unrecognized arm. An unmodeled rule arrives as a value a consumer must match on, never as an
+// absence.
+
+type RulesetEnforcement
+  = RulesetDisabled
+  | RulesetEvaluate
+  | RulesetActive
+  | UnrecognizedEnforcement { raw: String }
+
+type RulesetTarget
+  = BranchTarget
+  | TagTarget
+  | PushTarget
+  | UnrecognizedTarget { raw: String }
+
+type RulesetRuleType
+  = DeletionRule
+  | NonFastForwardRule
+  | RequiredStatusChecksRule
+  | RequiredLinearHistoryRule
+  | RequiredSignaturesRule
+  | PullRequestRule
+  | CreationRule
+  | UpdateRule
+  | UnrecognizedRuleType { raw: String }
+
+// current_user_can_bypass is documented as one of never / pull_requests_only / always. It is the
+// only response field answering "can the rule be walked past" — the question a required context
+// exists to make unanswerable — so it is decoded rather than skipped.
+type RulesetBypassStanding
+  = BypassNever
+  | BypassPullRequestsOnly
+  | BypassAlways
+  | UnrecognizedBypassStanding { raw: String }
+
+type RequiredStatusCheckWire {
+  context: String
+  integration_id: Int
+}
+
+type RulesetRuleParametersWire {
+  strict_required_status_checks_policy: Bool
+  do_not_enforce_on_create: Bool
+  required_status_checks: List<RequiredStatusCheckWire>
+}
+
+type RulesetRuleWire {
+  type: String
+  parameters: RulesetRuleParametersWire?
+}
+
+type RulesetRefNameConditionWire {
+  include: List<String>
+  exclude: List<String>
+}
+
+type RulesetConditionsWire {
+  ref_name: RulesetRefNameConditionWire
+}
+
+// THE DOCUMENTED 200 SHAPE OF A SINGLE RULESET. The response block below names it; the operations'
+// `output` blocks flatten its top-level keys instead of carrying it as one field, for a mechanical
+// reason: the REST realization projects a JSON object into the output record BY KEY, so an output
+// field named `ruleset` looks for a `ruleset` key GitHub does not send and binds Null. Flattening
+// keeps every documented field, in the documented spelling, reachable — and the response block
+// keeps the shape itself named in one place.
+type RulesetWire {
+  id: Int
+  name: String
+  target: String
+  enforcement: String
+  current_user_can_bypass: String
+  conditions: RulesetConditionsWire
+  rules: List<RulesetRuleWire>
+}
+
+type RulesetSummaryWire {
+  id: Int
+  name: String
+  target: String
+  enforcement: String
+}
+
+fn parse_ruleset_enforcement(raw: String) -> RulesetEnforcement {
+  if raw == "disabled" { RulesetDisabled }
+  else { if raw == "evaluate" { RulesetEvaluate }
+  else { if raw == "active" { RulesetActive }
+  else { UnrecognizedEnforcement { raw: raw } } } }
+}
+
+fn ruleset_enforcement_wire_label(e: RulesetEnforcement) -> String {
+  match e {
+    RulesetDisabled => "disabled"
+    RulesetEvaluate => "evaluate"
+    RulesetActive => "active"
+    UnrecognizedEnforcement { raw: r } => r
+  }
+}
+
+fn parse_ruleset_target(raw: String) -> RulesetTarget {
+  if raw == "branch" { BranchTarget }
+  else { if raw == "tag" { TagTarget }
+  else { if raw == "push" { PushTarget }
+  else { UnrecognizedTarget { raw: raw } } } }
+}
+
+fn ruleset_target_wire_label(t: RulesetTarget) -> String {
+  match t {
+    BranchTarget => "branch"
+    TagTarget => "tag"
+    PushTarget => "push"
+    UnrecognizedTarget { raw: r } => r
+  }
+}
+
+fn parse_ruleset_rule_type(raw: String) -> RulesetRuleType {
+  if raw == "deletion" { DeletionRule }
+  else { if raw == "non_fast_forward" { NonFastForwardRule }
+  else { if raw == "required_status_checks" { RequiredStatusChecksRule }
+  else { if raw == "required_linear_history" { RequiredLinearHistoryRule }
+  else { if raw == "required_signatures" { RequiredSignaturesRule }
+  else { if raw == "pull_request" { PullRequestRule }
+  else { if raw == "creation" { CreationRule }
+  else { if raw == "update" { UpdateRule }
+  else { UnrecognizedRuleType { raw: raw } } } } } } } } }
+}
+
+fn ruleset_rule_type_wire_label(t: RulesetRuleType) -> String {
+  match t {
+    DeletionRule => "deletion"
+    NonFastForwardRule => "non_fast_forward"
+    RequiredStatusChecksRule => "required_status_checks"
+    RequiredLinearHistoryRule => "required_linear_history"
+    RequiredSignaturesRule => "required_signatures"
+    PullRequestRule => "pull_request"
+    CreationRule => "creation"
+    UpdateRule => "update"
+    UnrecognizedRuleType { raw: r } => r
+  }
+}
+
+fn parse_ruleset_bypass_standing(raw: String) -> RulesetBypassStanding {
+  if raw == "never" { BypassNever }
+  else { if raw == "pull_requests_only" { BypassPullRequestsOnly }
+  else { if raw == "always" { BypassAlways }
+  else { UnrecognizedBypassStanding { raw: raw } } } }
+}
+
+fn ruleset_bypass_standing_wire_label(b: RulesetBypassStanding) -> String {
+  match b {
+    BypassNever => "never"
+    BypassPullRequestsOnly => "pull_requests_only"
+    BypassAlways => "always"
+    UnrecognizedBypassStanding { raw: r } => r
+  }
+}
+
+fn ruleset_rule_wire_type(rule: RulesetRuleWire) -> RulesetRuleType {
+  parse_ruleset_rule_type(raw: rule.type)
+}
+
+fn rule_is_required_status_checks(rule: RulesetRuleWire) -> Bool {
+  match ruleset_rule_wire_type(rule: rule) {
+    RequiredStatusChecksRule => true
+    _ => false
+  }
+}
+
+// THREE STATES, NOT AN EMPTY LIST. "Requires no status checks", "requires exactly these", and
+// "carries more than one required_status_checks rule" are different facts with different remedies,
+// and the first and third both render as [] under a projection returning a bare roster. The third
+// is a refusal rather than a merge of the two rosters: GitHub admits at most one such rule per
+// ruleset today, so two means the upstream shape moved and this module's reading of it is no longer
+// established.
+type RequiredStatusCheckStanding
+  = NoRequiredStatusChecksRule
+  | RequiredStatusChecks {
+      contexts: List<String>
+      strict: Bool
+      do_not_enforce_on_create: Bool
+    }
+  | MultipleRequiredStatusChecksRules { count: Int }
+
+fn required_status_check_standing(rules: List<RulesetRuleWire>) -> RequiredStatusCheckStanding {
+  let matched = filter(rules, r => rule_is_required_status_checks(rule: r))
+  if length(matched) == 0 {
+    NoRequiredStatusChecksRule
+  } else {
+    if length(matched) > 1 {
+      MultipleRequiredStatusChecksRules { count: length(matched) }
+    } else {
+      fold(matched, init: NoRequiredStatusChecksRule, f: fn(_, rule) {
+        RequiredStatusChecks {
+          contexts: map(rule.parameters.required_status_checks, c => c.context),
+          strict: rule.parameters.strict_required_status_checks_policy,
+          do_not_enforce_on_create: rule.parameters.do_not_enforce_on_create,
+        }
+      })
+    }
+  }
+}
+
+fn ruleset_rule_types(rules: List<RulesetRuleWire>) -> List<RulesetRuleType> {
+  map(rules, r => ruleset_rule_wire_type(rule: r))
+}
+
+fn required_status_check_row(context: String, integration_id: Int) -> RequiredStatusCheckWire {
+  RequiredStatusCheckWire { context: context, integration_id: integration_id }
+}
+
+fn required_status_checks_rule(
+  checks: List<RequiredStatusCheckWire>,
+  strict: Bool,
+  do_not_enforce_on_create: Bool,
+) -> RulesetRuleWire {
+  RulesetRuleWire {
+    type: ruleset_rule_type_wire_label(t: RequiredStatusChecksRule),
+    parameters: RulesetRuleParametersWire {
+      strict_required_status_checks_policy: strict,
+      do_not_enforce_on_create: do_not_enforce_on_create,
+      required_status_checks: checks,
+    },
+  }
+}
+
+fn parameterless_rule(t: RulesetRuleType) -> RulesetRuleWire {
+  RulesetRuleWire { type: ruleset_rule_type_wire_label(t: t), parameters: none }
+}
+
+fn ref_name_conditions(include: List<String>, exclude: List<String>) -> RulesetConditionsWire {
+  RulesetConditionsWire {
+    ref_name: RulesetRefNameConditionWire { include: include, exclude: exclude }
+  }
+}
+
+// GitHub's documented alias for "whatever this repository's default branch currently is". Naming
+// the branch literally would fork the fact with the repository's own default_branch and go silently
+// wrong the day it is renamed.
+data default_branch_ref_alias: String = "~DEFAULT_BRANCH"
+
+service github.Rulesets {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+  }
+
+  operation List {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      per_page: Int = default_per_page
+    }
+    output {
+      rulesets: List<RulesetSummaryWire>
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/rulesets",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => List<RulesetSummaryWire>
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Get {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ruleset_id: Int
+    }
+    output {
+      id: Int
+      name: String
+      target: String
+      enforcement: String
+      current_user_can_bypass: String
+      conditions: RulesetConditionsWire
+      rules: List<RulesetRuleWire>
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/rulesets/\{ruleset_id\}"
+    }
+    response {
+      200 => RulesetWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Update {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ruleset_id: Int
+      name: String
+      target: String
+      enforcement: String
+      conditions: RulesetConditionsWire
+      rules: List<RulesetRuleWire>
+    }
+    output {
+      id: Int
+      name: String
+      target: String
+      enforcement: String
+      current_user_can_bypass: String
+      conditions: RulesetConditionsWire
+      rules: List<RulesetRuleWire>
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: PUT,
+      path: "/repos/\{owner\}/\{repo\}/rulesets/\{ruleset_id\}",
+      body: {
+        name: name,
+        target: target,
+        enforcement: enforcement,
+        conditions: conditions,
+        rules: rules,
+      }
+    }
+    response {
+      200 => RulesetWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}

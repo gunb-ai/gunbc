@@ -1,0 +1,154 @@
+module std.roster_frontier
+
+import std.keyed_row { KeyedRow }
+import std.decl_ref {
+  DeclarationRef,
+  DeclField,
+  WholeDeclaration,
+  NamedField,
+  decl_ref,
+  decl_field_ref,
+  declaration_ref_display_key,
+  declaration_ref_eq,
+  declaration_ref_in_list,
+}
+import std.dissolution {
+  DissolutionCondition,
+  BoundDissolution,
+  UnboundDissolution,
+  DeclarationAppears,
+  dissolution_trigger_ref,
+  DissolutionUnbound,
+  DissolutionPending,
+  DissolutionFired,
+  dissolution_status,
+  bound_dissolution,
+  unbound_dissolution,
+}
+import std.keyed_roster {
+  KeyedRosterBuild,
+  KeyedRosterBuilt,
+  KeyedRosterBuildDuplicateKey,
+  keyed_roster_build,
+}
+import std.types { NonEmptyStr }
+
+type FrontierSubject
+  = PathSubject { path: String }
+  | DeclSubject { ref: DeclarationRef }
+
+type FrontierRow {
+  subject: FrontierSubject
+  reason: NonEmptyStr
+  dissolution: DissolutionCondition
+}
+
+fn frontier_row_path(path: String, reason: String, dissolution: DissolutionCondition) -> FrontierRow {
+  FrontierRow {
+    subject: PathSubject { path: path },
+    reason: reason as NonEmptyStr,
+    dissolution: dissolution,
+  }
+}
+
+fn frontier_row_decl(ref: DeclarationRef, reason: String, dissolution: DissolutionCondition) -> FrontierRow {
+  FrontierRow {
+    subject: DeclSubject { ref: ref },
+    reason: reason as NonEmptyStr,
+    dissolution: dissolution,
+  }
+}
+
+fn frontier_row_well_formed(row: FrontierRow) -> Bool {
+  !(row.reason as String == "")
+    && match row.dissolution {
+      BoundDissolution { trigger: t } =>
+        !(dissolution_trigger_ref(trigger: t).module_path == "")
+          && !(dissolution_trigger_ref(trigger: t).decl_name == "")
+      UnboundDissolution { description: d } => !(d as String == "")
+    }
+    && match row.subject {
+      PathSubject { path: p } => !(p == "")
+      DeclSubject { ref: r } => !(r.module_path == "") && !(r.decl_name == "")
+    }
+}
+
+fn frontier_rows_well_formed(rows: List<FrontierRow>) -> Bool {
+  fold(rows, init: true, f: fn(acc, row) { acc && frontier_row_well_formed(row: row) })
+}
+
+fn frontier_subject_eq(a: FrontierSubject, b: FrontierSubject) -> Bool {
+  a == b
+}
+
+fn frontier_subject_key(subject: FrontierSubject) -> String {
+  match subject {
+    PathSubject { path: p } => p
+    DeclSubject { ref: r } => declaration_ref_display_key(ref: r)
+  }
+}
+
+fn frontier_rows_to_keyed_rows(rows: List<FrontierRow>) -> List<KeyedRow<FrontierSubject, FrontierRow>> {
+  map(rows, row => KeyedRow { row_key: row.subject, value: row })
+}
+
+fn frontier_rows_keyed_roster_build(rows: List<FrontierRow>) -> KeyedRosterBuild<FrontierSubject, FrontierRow> {
+  keyed_roster_build(
+    incomings: frontier_rows_to_keyed_rows(rows: rows),
+    key_eq: frontier_subject_eq,
+  )
+}
+
+fn frontier_path_subjects(rows: List<FrontierRow>) -> List<String> {
+  map(rows, row => frontier_subject_key(subject: row.subject))
+}
+
+fn frontier_units(rows: List<FrontierRow>) -> List<String> {
+  frontier_path_subjects(rows: rows)
+}
+
+fn concat_frontier_row_groups(groups: List<List<FrontierRow>>) -> List<FrontierRow> {
+  flat_map(groups, group => group)
+}
+
+type FrontierExpiryReport {
+  unbound_count: Int
+  pending_count: Int
+  fired_still_present_count: Int
+}
+
+fn fold_frontier_expiry(
+  rows: List<FrontierRow>,
+  present_decls: List<DeclarationRef>,
+) -> FrontierExpiryReport {
+  fold(
+    rows,
+    init: FrontierExpiryReport { unbound_count: 0, pending_count: 0, fired_still_present_count: 0 },
+    f: fn(acc, row) {
+      match dissolution_status(condition: row.dissolution, present_decls: present_decls) {
+        DissolutionUnbound =>
+          FrontierExpiryReport {
+            unbound_count: acc.unbound_count + 1,
+            pending_count: acc.pending_count,
+            fired_still_present_count: acc.fired_still_present_count,
+          }
+        DissolutionPending =>
+          FrontierExpiryReport {
+            unbound_count: acc.unbound_count,
+            pending_count: acc.pending_count + 1,
+            fired_still_present_count: acc.fired_still_present_count,
+          }
+        DissolutionFired =>
+          FrontierExpiryReport {
+            unbound_count: acc.unbound_count,
+            pending_count: acc.pending_count,
+            fired_still_present_count: acc.fired_still_present_count + 1,
+          }
+      }
+    },
+  )
+}
+
+fn frontier_expiry_clean(report: FrontierExpiryReport) -> Bool {
+  report.fired_still_present_count == 0
+}

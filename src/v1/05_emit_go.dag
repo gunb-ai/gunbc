@@ -1,72 +1,58 @@
 module v1.compiler.emit_go
 
+import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
-  Node, InferredNode, Resolved, CompilerError,
-  VarBindingKind, FunctionValueBinding,
-  import_is_all, module_imports, module_items,
-  param_node_type_expr,
-  authored_name_at, NewlineIndex,
-  expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
-  param_node_name_at, resource_use_name_at,
-  MatchPattern, LiteralValue,
-  TextFile, SourceSpan,
-  resource_use_resource,
-  BinOp, NullCoalesce,
-  UnaryOpKind, StringPart,
-  DeclaredFuncSig,
-  transport_has_auth, transport_auth_header_name,
-  transport_headers, transport_env,
-  ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
-  ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
-  ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
-  ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
-  ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node,
-  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
-  ServiceMethodSemantics,
-  Text, Interpolation,
-  FieldSummary, FieldAccessStyle,
-  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
-  arg_value, arm_body, arm_pattern, arm_guard,
-  field_init_node_name_at, field_init_node_value,
-  if_condition, if_then_branch, if_else_branch,
-  match_scrutinee, match_arm_nodes,
-  let_value, let_body,
-  field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics,
-  record_lit_type_name_at,
-  lambda_body, cast_expr, cast_target, return_value,
-  foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
-  index_base, index_expr, slice_base, slice_start, slice_end,
-  with_required_cardinality,
-  Connective, Conj, Disj,
-  CardOptional,
-  is_rest_transport, is_shell_transport, is_file_transport
+  Node, InferredNode, Resolved, CompilerError, VarBindingKind, FunctionValueBinding,
+  import_is_all, module_imports, module_items, param_node_type_expr, authored_name_at,
+  NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
+  param_node_name_at, resource_use_name_at, MatchPattern, TextFile, SourceSpan,
+  resource_use_resource, NullCoalesce, UnaryOpKind, StringPart, DeclaredFuncSig,
+  transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData,
+  NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
+  ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
+  make_expr_node, MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics, Text, Interpolation, FieldSummary, FieldAccessStyle, StoredField,
+  EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, arg_value, arm_body, arm_pattern,
+  arm_guard, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch,
+  if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base,
+  field_access_field_at, method_receiver, expr_field_access_summary,
+  expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target,
+  return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
+  index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality,
+  Connective, Conj, Disj, CardOptional, is_rest_transport, is_shell_transport
 }
 
 import v1.compiler.artifact { RenderTarget, Go }
+
 import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
+
 import v1.compiler.languages {
   scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
   is_string_like, CaseVisibility
 }
+
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
+
 import v1.compiler.infer_types { resolved_type, normalize_access_type_node, node_is_keyed_collection }
-import v1.compiler.infer_method {
-}
+
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
+
 import v1.compiler.infer_items {
   ResolvedGraph, TypedModule,
   ItemInfo
 }
+
 import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
+
 import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
   expr_span
 }
+
 import std.induction { SubValueUnknown }
 
 import v1.compiler.runtime_go { go_runtime_source }
@@ -82,7 +68,7 @@ import v1.compiler.emit {
   lookup_item,
   is_null_coalesce, emit_null_coalesce,
   has_nested_records_node,
-  typed_named_arg_matches, order_typed_call_args,
+  order_typed_call_args,
   is_tco_eligible,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls,
@@ -99,11 +85,13 @@ import v1.compiler.emit {
   emit_typed_match_unified,
   emit_unified_typed_expr,
   emit_tco_unified, emit_unified_pattern, test_file_path, emit_unified_typed_func_body,
-  emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch
+  emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch,
+  BoundOperation
 }
+
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
-  escape_json_string, module_to_filename, make_indent,
+  escape_json_string, module_to_filename, module_filename_collision_diagnostics, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
@@ -116,6 +104,10 @@ import v1.compiler.emit_core_support {
   is_resource_def_item, extract_test_projections
 }
 
+
+
+
+
 fn go_emit_module_root() -> String { "generated" }
 
 fn go_v2rt_import_path() -> String {
@@ -123,6 +115,10 @@ fn go_v2rt_import_path() -> String {
 }
 
 fn emit_go(typed: ResolvedGraph) -> EmitResult {
+  let filename_collisions = module_filename_collision_diagnostics(typed: typed)
+  if filename_collisions |> count > 0 {
+    return EmitResult { files: [], diagnostics: filename_collisions }
+  }
   let registry = typed.item_registry
   let test_projections = extract_test_projections(typed: typed)
   let module_files = typed.modules |> map(tm => emit_go_module(typed_module: tm, registry: registry))
@@ -130,7 +126,7 @@ fn emit_go(typed: ResolvedGraph) -> EmitResult {
     |> map(tm => emit_go_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
       projections: test_projections |> filter(p => p.module_name == authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
-    |> filter(f => f.path != "")
+    |> filter(f => string_length(s: f.content) > 0)
   let go_mod = emit_go_mod(module_name: go_emit_module_root())
   let v2rt_file = emit_go_v2rt_module()
   let files = concat([go_mod, v2rt_file], module_files, test_files)
@@ -185,7 +181,7 @@ fn go_test_signature_comment(projection: TestProjection) -> String {
 
 fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
   if projections |> count == 0 {
-    TextFile { path: "", content: "" }
+    TextFile { path: "<none>", content: "" }
   } else {
     let package_name = go_package_name(module_name: module_name)
     let tests_str = projections
@@ -444,12 +440,11 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     render_pattern: pat => emit_unified_pattern(pattern: pat, target: Go, source_indices: scope.type_env.source_indices))
 }
 
-fn emit_go_transport_body(transport: Node, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
+fn emit_go_transport_body(bound: BoundOperation, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   emit_unified_transport_dispatch(
-    transport: transport, op_name: op_name, source_indices: source_indices, depth: depth, target: Go,
+    bound: bound, op_name: op_name, source_indices: source_indices, depth: depth, target: Go,
     render_rest: (n, t, d, si) => emit_go_rest_call(op_name: n, transport: t, depth: d, source_indices: si),
     render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si),
-    render_file: (n, d) => emit_go_file_call(op_name: n, depth: d),
     render_local: (n, d) => emit_go_local_call(op_name: n, depth: d))
 }
 
@@ -458,8 +453,8 @@ fn emit_go_service_def(item: Node, registry: Map<String, ItemInfo>, env: TypeEnv
     item: item, target: Go, registry: registry, env: env,
     render_service_fields: (name, transport, ops, si) =>
       emit_go_service_struct(name: name, fallback_transport: transport, op_children: ops, source_indices: si),
-    render_transport_body: (transport, op_name, si, depth) =>
-      emit_go_transport_body(transport: transport, op_name: op_name, source_indices: si, depth: depth))
+    render_transport_body: (bound, op_name, si, depth) =>
+      emit_go_transport_body(bound: bound, op_name: op_name, source_indices: si, depth: depth))
 }
 
 fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -521,16 +516,6 @@ fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_indic
   )
   let all_lines = concat([cmd_line, dir_line], env_lines, [run_lines])
   all_lines |> join(separator: "\n")
-}
-
-fn emit_go_file_call(op_name: String, depth: Int) -> String {
-  let prefix = make_indent(level: depth)
-  concat(
-    prefix, "path := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BasePath)\n",
-    "data, err := os.ReadFile(path)\n",
-    "if err != nil {\n\treturn \"\", fmt.Errorf(\"reading file: %w\", err)\n}\n",
-    "return string(data), nil"
-  )
 }
 
 fn emit_go_local_call(op_name: String, depth: Int) -> String {

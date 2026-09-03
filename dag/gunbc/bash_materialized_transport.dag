@@ -1,0 +1,28 @@
+module gunbc.bash_materialized_transport
+
+import extdeps.shell.exec { TransportScript, transport_script_seal }
+import v2.workflow.effect_plan_bash_materialize {
+  EffectPlanBashMaterialization,
+  EffectPlanBashMaterialized,
+  EffectPlanBashMaterializationRefused,
+}
+
+// THE EMITTED-BASH ROUTE to a TransportScript, and the second of the two decls named in
+// extdeps.shell.exec.transport_script_seal's admit_callers.
+//
+// It takes the MATERIALIZATION, not its `source` text. That is the whole point: a caller cannot hand
+// this function a String it built itself, so the only bash text that can reach a shell through this
+// route is text an effect plan actually materialized. Handing over `source` and letting callers pass a
+// bare String would have made this a second free minter wearing a policy name — the exact shape the
+// deleted extdeps.shell.exec.transport_script_from_body had.
+//
+// The refusal arm returns Absent rather than an empty script: a plan that refused to materialize has no
+// script, and rendering that as an empty (successfully executing, no-op) one is the fabricated plausible
+// output DESIGN 5 forbids. The caller must match on the absence.
+fn bash_materialized_transport(materialization: EffectPlanBashMaterialization) -> TransportScript? {
+  match materialization {
+    EffectPlanBashMaterialized { source: source } =>
+      Present { value: transport_script_seal(body: source) }
+    EffectPlanBashMaterializationRefused { refusal: _ } => Absent
+  }
+}

@@ -1,0 +1,42 @@
+module gunbc.install_media
+
+
+type SeededInstallMediaObservation
+  = MediaAbsent
+  | MediaConverged
+  | MediaDrifted
+
+type SeededInstallMediaPlan
+  = Remaster
+  | ReplaceAtomically
+  | RefuseStale
+
+fn classify_seeded_install_media(
+  obs: SeededInstallMediaObservation,
+) -> ObservationVerdict {
+  match obs {
+    MediaAbsent => Absent
+    MediaConverged => Converged
+    MediaDrifted => Drifted
+  }
+}
+
+fn decision_for_seeded_install_media_obs(
+  obs: SeededInstallMediaObservation,
+) -> UpsertDecision<SeededInstallMediaPlan> {
+  match obs {
+    MediaAbsent => Apply { plan: ReplaceAtomically }
+    MediaConverged => Noop
+    MediaDrifted => Apply { plan: Remaster }
+  }
+}
+
+fn classify_seeded_install_media_upsert(
+  obs: SeededInstallMediaObservation,
+) -> std.upsert_decision.UpsertClassification<SeededInstallMediaPlan> {
+  let verdict = classify_seeded_install_media(obs: obs)
+  UpsertClassification {
+    verdict: verdict,
+    decision: decision_for_seeded_install_media_obs(obs: obs),
+  }
+}

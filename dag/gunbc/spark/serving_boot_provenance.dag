@@ -1,0 +1,284 @@
+module gunbc.spark.serving_boot_provenance
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.measure { Microsecond, microsecond, microsecond_count }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
+import std.algebra { trim }
+import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.systemd.systemctl { systemctl_show_property_argv }
+import extdeps.systemd { ActiveEnterTimestampMonotonic }
+import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
+
+// DURABILITY IS OBSERVED, NOT CAUSED, and that is the whole point of this module.
+//
+// THE PROBLEM IT REPLACES. "Does the serving unit survive a reboot" was going to be answered by
+// rebooting the host: issue `systemctl reboot`, wait, replan, require empty. That needs the managed
+// account to hold reboot authority it does not have, and the alternative offered was a human
+// rebooting the machine by hand -- out-of-band actuation, which is the failure this repository names
+// rather than a cautious choice. Either way the receipt exists only on runs where somebody rebooted.
+//
+// WHAT REBOOT-TESTING IS ACTUALLY A PROXY FOR. Not "the machine can restart" -- nobody doubts that.
+// It is "was this unit started BY SYSTEMD AT BOOT, or by a hand that will not be there next time".
+// That is the enablement fact, and it is exactly what an enable-without-start cannot deliver and a
+// start-without-enable fakes until the next power cycle.
+//
+// AND THAT FACT IS DIRECTLY READABLE. systemd records when a unit entered the active state, in
+// microseconds on the monotonic clock, which is zeroed at boot. A unit that entered active a few
+// seconds into the boot was brought up by the manager during startup; one that entered active hours
+// in was started by something else, later. No reboot is required to read it, no privilege is
+// required to read it, and both reads are already classified INERT in gunbc.readback_independence
+// (`systemctl show` reads the manager's recorded state and starts nothing), so the probe cannot
+// establish what it reports.
+//
+// WHAT THIS BUYS BEYOND THE REBOOT TEST. Any reboot becomes evidence -- an operator's, a power cut,
+// a kernel update -- rather than only the ones automation caused. The receipt lands on EVERY
+// converge instead of on the rare runs that power-cycled something. And the fleet stops needing a
+// standing authority to destroy host availability in order to answer a question about a unit file.
+//
+// THE HONEST LIMIT, stated because it is real: this establishes that the unit came up WITH THE
+// CURRENT BOOT. It cannot manufacture a boot, so a host that has not restarted since the unit was
+// enabled reports exactly that -- BootProvenanceUnitPredatesNoBoot -- which is an honest "not yet
+// established", never a pass. What it removes is the need to CAUSE the boot, not the need for one to
+// happen.
+
+// THE MICROSECONDS ARE CARRIED AS Microsecond, NOT AS Int, and the comment that used to explain the
+// scale is why. This module previously said "Both are converted to microseconds so the comparison is
+// between like magnitudes rather than between a number and a string that happens to sort" -- a
+// sentence doing a type's job. systemd reports ActiveEnterTimestampMonotonic in bare microseconds and
+// /proc/uptime reports seconds, so the two arrive at DIFFERENT scales and are made to agree by hand;
+// with both sides bare `Int` nothing stops a later edit feeding the seconds value straight in, and the
+// comparison would silently be a million times wrong while still typechecking. `Measure<Time, Micro,
+// Nat>` makes that unwritable rather than warned against, and `Nat` is the honest carrier besides: a
+// monotonic timestamp and an uptime are both non-negative, so the negative half of `Int` was a state
+// with no meaning that every consumer had to ignore.
+type SparkServingBootProvenance
+  = UnitStartedByManagerAtBoot { active_enter_monotonic: Microsecond, uptime: Microsecond }
+  | UnitStartedAfterBoot { active_enter_monotonic: Microsecond, uptime: Microsecond }
+  | UnitNotActiveAtAll
+  | BootProvenanceUnobserved { cause: NonEmptyStr }
+
+fn spark_serving_active_enter_probe_argv() -> List<String> {
+  concat(
+    ["systemctl", "--user"],
+    skip(systemctl_show_property_argv(
+      unit: spark_serving_unit_name as NonEmptyStr,
+      property: ActiveEnterTimestampMonotonic,
+    ), n: 1),
+  )
+}
+
+// THE RELATIONAL ORIGIN. `default.target` is what the user manager reaches when every unit
+// wanted by it has come up, and gunbc-spark-serving.service is WantedBy=default.target
+// (verified on both hosts, 2026-08-22). So a unit that came up as part of the startup
+// transaction necessarily enters active NO LATER than the target does, and one started by hand
+// afterwards enters active strictly later. Both sides of that comparison are observed on the
+// host; nothing in it is fitted.
+fn spark_serving_default_target_enter_probe_argv() -> List<String> {
+  concat(
+    ["systemctl", "--user"],
+    skip(systemctl_show_property_argv(
+      unit: spark_serving_default_target_name as NonEmptyStr,
+      property: ActiveEnterTimestampMonotonic,
+    ), n: 1),
+  )
+}
+
+data spark_serving_default_target_name: String = "default.target"
+
+fn spark_serving_uptime_probe_argv() -> List<String> {
+  ["cat", "/proc/uptime"]
+}
+
+
+// systemd reports the monotonic timestamp as bare microseconds; /proc/uptime reports seconds with
+// two decimals. Both are converted to microseconds so the comparison is between like magnitudes
+// rather than between a number and a string that happens to sort.
+// THE COMPARISON IS RELATIONAL AND HAS NO CONSTANT IN IT, and the constant it replaced was not
+// merely mis-fitted -- it compared against the WRONG ORIGIN, which is a different defect and one
+// that adjusting the value could never have repaired.
+//
+// What was here: active_enter <= 10,000,000us, a window measured from KERNEL boot. Measured
+// 2026-08-22 on both converged hosts (run 32543249175 and a paired hand probe), the user manager
+// does not itself reach active until ~10.6s into kernel boot, because lingering has to bring the
+// user session up first. So a user unit that came up PERFECTLY with its manager was GUARANTEED to
+// fall outside a kernel-boot window: the check had no true-positive path for the thing it was
+// built to detect, and it duly reported both durable hosts as not durable for two days.
+//
+// Widening the window would have greened both hosts by accident and left the defect intact until a
+// host with a 12s session setup hit it. That is the "fitting a constant to a host until the check
+// means nothing" the deleted carrier warned about, reached by a route it did not anticipate -- so
+// the warning was under-scoped, not wrong.
+//
+// The relation: the unit came up with the startup transaction exactly when it entered active NO
+// LATER than default.target did. Measured 2026-08-22:
+//   srv5  unit 10,670,729us  default.target 10,675,297us   inside by 4,568us
+//   srv6  unit 10,627,595us  default.target 10,632,705us   inside by 5,110us
+// Both sides are observed on the host and neither is authored here. A unit hand-started hours
+// later enters active far past the target, so the predicate can still be FALSE -- which is why
+// this is a relation and not `entered >= manager_start`, a comparison that would have been
+// trivially true for every unit and traded a false negative for silent false positives.
+fn spark_serving_classify_boot_provenance(
+  active_enter: SshSessionExecResult,
+  default_target_enter: SshSessionExecResult,
+  uptime: SshSessionExecResult,
+) -> SparkServingBootProvenance {
+  if active_enter.success == false {
+    BootProvenanceUnobserved {
+      cause: join([
+        "ActiveEnterTimestampMonotonic probe failed exit=", to_string(active_enter.exit_code),
+        " stderr=", active_enter.stderr,
+      ], "") as NonEmptyStr,
+    }
+  } else if default_target_enter.success == false {
+    BootProvenanceUnobserved {
+      cause: join([
+        "default.target ActiveEnterTimestampMonotonic probe failed exit=",
+        to_string(default_target_enter.exit_code),
+        " stderr=", default_target_enter.stderr,
+      ], "") as NonEmptyStr,
+    }
+  } else if uptime.success == false {
+    BootProvenanceUnobserved {
+      cause: join([
+        "/proc/uptime probe failed exit=", to_string(uptime.exit_code),
+        " stderr=", uptime.stderr,
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match parse_int(s: trim(s: active_enter.stdout)) {
+      Absent =>
+        if trim(s: active_enter.stdout) == "0" || trim(s: active_enter.stdout) == "" {
+          UnitNotActiveAtAll
+        } else {
+          BootProvenanceUnobserved {
+            cause: join([
+              "ActiveEnterTimestampMonotonic is not a monotonic microsecond count: ",
+              trim(s: active_enter.stdout),
+            ], "") as NonEmptyStr,
+          }
+        }
+      Present { value: entered_us } =>
+        if entered_us == 0 {
+          UnitNotActiveAtAll
+        } else {
+          match spark_serving_uptime_microseconds(stdout: uptime.stdout) {
+            Absent =>
+              BootProvenanceUnobserved {
+                cause: join(["/proc/uptime is not parseable: ", trim(s: uptime.stdout)], "") as NonEmptyStr,
+              }
+            Present { value: up } =>
+              match checked_int_magnitude(a: entered_us) {
+                CheckedNatOverflow { cause: _ } =>
+                  BootProvenanceUnobserved {
+                    cause: "ActiveEnterTimestampMonotonic is not representable as a microsecond count" as NonEmptyStr,
+                  }
+                CheckedNatReady { value: entered_nat } => {
+                  let entered = microsecond(count: entered_nat)
+                  match parse_int(s: trim(s: default_target_enter.stdout)) {
+                    Absent =>
+                      BootProvenanceUnobserved {
+                        cause: join([
+                          "default.target ActiveEnterTimestampMonotonic is not a monotonic microsecond count: ",
+                          trim(s: default_target_enter.stdout),
+                        ], "") as NonEmptyStr,
+                      }
+                    Present { value: target_us } =>
+                      if target_us == 0 {
+                        BootProvenanceUnobserved {
+                          cause: "default.target reports no active-enter, so the startup transaction has no observed end to compare against" as NonEmptyStr,
+                        }
+                      } else if entered_nat <= target_us {
+                        UnitStartedByManagerAtBoot { active_enter_monotonic: entered, uptime: up }
+                      } else {
+                        UnitStartedAfterBoot { active_enter_monotonic: entered, uptime: up }
+                      }
+                  }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+// /proc/uptime is "SECONDS.FF IDLE\n". Only the whole-second part is taken and scaled: the
+// hundredths carry no information at the resolution this comparison works at, and parsing a decimal
+// to keep them would be inventing precision the decision does not use.
+fn spark_serving_uptime_microseconds(stdout: String) -> Microsecond? {
+  match split(trim(s: stdout), " ").first() {
+    Absent => none
+    Present { value: secs_field } =>
+      match split(secs_field, ".").first() {
+        Absent => none
+        Present { value: whole } =>
+          match parse_int(s: whole) {
+            Absent => none
+            Present { value: n } =>
+              if n < 0 {
+                none
+              } else {
+                match checked_int_magnitude(a: n * 1000000) {
+                  CheckedNatOverflow { cause: _ } => none
+                  CheckedNatReady { value: scaled } => Present { value: microsecond(count: scaled) }
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE ONLY ARM THAT ESTABLISHES DURABILITY, and the three that do not are distinct on purpose. A
+// unit started after boot has NOT been shown to survive one; a unit that is not active has not been
+// shown to do anything; an unobserved probe has shown nothing at all. Collapsing any of them into
+// "not durable" would report a measurement nobody took.
+// THIS IS A DIAGNOSTIC, NOT THE DURABILITY RECEIPT, and the distinction was a real error in this
+// module's first revision. A window comparison says a unit entered active NEAR boot; a correctly
+// enabled user service can legitimately enter active well after any window, because user-manager
+// start and lingering are ordered against everything else the boot is doing. A slow boot would
+// therefore report a durable host as not durable, and the tempting remedy -- widen the window --
+// is fitting a constant to a host until the check means nothing.
+//
+// gunbc.spark.serving_durability holds the terminal proof: the kernel mints a fresh boot_id every
+// boot, so a changed boot_id is the machine stating the previous boot ended rather than an inference
+// from timing. What THIS answers, and answers well, is why a host that did reboot came back
+// unconverged -- which the boot_id comparison cannot tell you.
+fn spark_serving_boot_provenance_establishes_durability(p: SparkServingBootProvenance) -> Bool {
+  match p {
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => true
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// THE WIRE STATES WHAT WAS MEASURED, NOT WHAT WAS CONCLUDED. This arm used to print "the unit is
+// running but did NOT come up with this boot" -- an assertion of fact the instrument could not
+// support and which was, on the live fleet, false: both converged hosts were reported as
+// not-durable for two days by a check with no true-positive path (see the classification comment
+// above). A diagnostic stating a conclusion its own carrier cannot reach is fabricated plausible
+// output at the wire layer, DESIGN section 5, and this one propagated into operator reports.
+//
+// Now that the comparison is relational, the wire can say the measured thing plainly: whether the
+// unit entered active before or after default.target. That is a fact about one observed ordering,
+// not an inference about a boot nobody watched. Note what it still does NOT claim -- that the
+// host would survive a reboot. Coming up with the manager on THIS boot is evidence for auto-start,
+// and full reboot durability still needs a boot_id compared across an actual boot.
+fn spark_serving_boot_provenance_wire(p: SparkServingBootProvenance) -> String {
+  match p {
+    UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
+      join([
+        "boot-provenance=started-by-manager-at-boot active_enter_us=", to_string(microsecond_count(e)),
+        " uptime_us=", to_string(microsecond_count(u)),
+        " -- the unit entered active no later than default.target, so it came up WITH the manager startup transaction",
+      ], "")
+    UnitStartedAfterBoot { active_enter_monotonic: e, uptime: u } =>
+      join([
+        "boot-provenance=started-after-boot active_enter_us=", to_string(microsecond_count(e)),
+        " uptime_us=", to_string(microsecond_count(u)),
+        " -- the unit entered active AFTER default.target did, so it was not part of the manager startup transaction",
+      ], "")
+    UnitNotActiveAtAll => "boot-provenance=unit-not-active"
+    BootProvenanceUnobserved { cause: c } =>
+      join(["boot-provenance=unobserved ", c as String], "")
+  }
+}

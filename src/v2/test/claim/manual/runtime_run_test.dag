@@ -1,5 +1,6 @@
 module v2.test.manual.runtime_run
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   eval_context_with_semantics,
@@ -8,10 +9,21 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.std.algebra { length }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { List, Map }
+import v2.std.collection {
+  List,
+  Map
+}
+import v2.std.optional {
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent
+}
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostics,
   Outcome,
   Rejected,
   diagnostics_singleton
@@ -22,7 +34,6 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -56,26 +67,29 @@ import v2.workflow.runtime_run {
 import v2.workflow.scheduler { RunnableFrontier }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.extdeps.runtimes.v2_effect_io_pure { effect_io_pure_unit_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data runtime_run_node_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runtime_run_node_a_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data runtime_run_node_b: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runtime_run_node_b_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data runtime_run_nodes: List<Node> = [runtime_run_node_a, runtime_run_node_b]
 data runtime_run_dependencies: List<DependencyView> = []
 
-fn runtime_run_termination_proof() -> TerminationProof {
-  TerminationProof {
+fn runtime_run_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
     non_increasing: [],
-    strict: RankingDimension { measured: ^runtime_run_descent_dimension }
+    strict: v2.std.cardinality.RankingDimension { measured: ^runtime_run_descent_dimension }
   }
 }
 
@@ -87,22 +101,20 @@ fn runtime_run_facts_for(node: Node) -> InferredFacts {
   )
 }
 
-fn runtime_run_fact_lookup(node: Node) -> Witness<InferredFacts> {
+fn runtime_run_fact_lookup(node: Node) -> Optional<InferredFacts> {
   if node == runtime_run_node_a {
-    Holds { value: runtime_run_facts_for(node: runtime_run_node_a) }
+    optional_present(value: runtime_run_facts_for(node: runtime_run_node_a))
   } else if node == runtime_run_node_b {
-    Holds { value: runtime_run_facts_for(node: runtime_run_node_b) }
+    optional_present(value: runtime_run_facts_for(node: runtime_run_node_b))
   } else {
-    Violates {
-      diagnostic: eval_diagnostic(reason: ^runtime_run_facts_miss, node: node)
-    }
+    optional_absent()
   }
 }
 
 fn runtime_run_test_tree() -> InferredTree {
   InferredTree {
     root: runtime_run_node_a,
-    facts: Map { lookup: runtime_run_fact_lookup }
+    facts: PartialFunction { lookup: runtime_run_fact_lookup }
   }
 }
 
@@ -164,22 +176,22 @@ fn runtime_run_bind_value(
 
 fn runtime_run_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: runtime_run_allocate_literal },
-    transform: TransformInterpreter { call_primitive: runtime_run_reject_primitive },
-    branch: BranchInterpreter { choose_branch: runtime_run_reject_branch },
-    loop: LoopInterpreter { step_loop: runtime_run_reject_loop },
-    bind: BindInterpreter { bind_value: runtime_run_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: runtime_run_allocate_literal, identity: ^runtime_run_allocate_literal },
+    transform: TransformInterpreter { call_primitive: runtime_run_reject_primitive, identity: ^runtime_run_reject_primitive },
+    branch: BranchInterpreter { choose_branch: runtime_run_reject_branch, identity: ^runtime_run_reject_branch },
+    loop: LoopInterpreter { step_loop: runtime_run_reject_loop, identity: ^runtime_run_reject_loop },
+    bind: BindInterpreter { bind_value: runtime_run_bind_value, identity: ^runtime_run_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn runtime_run_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^runtime_run_allocate_literal_sym,
-    call_primitive: ^runtime_run_reject_primitive_sym,
-    choose_branch: ^runtime_run_reject_branch_sym,
-    step_loop: ^runtime_run_reject_loop_sym,
-    bind_value: ^runtime_run_bind_value_sym,
+    allocate_literal: ^runtime_run_allocate_literal,
+    call_primitive: ^runtime_run_reject_primitive,
+    choose_branch: ^runtime_run_reject_branch,
+    step_loop: ^runtime_run_reject_loop,
+    bind_value: ^runtime_run_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
@@ -192,7 +204,7 @@ fn runtime_run_context() -> EvalContext {
   )
 }
 
-fn runtime_run_step_appends_receipt_holds() -> Bool {
+test fn runtime_run_step_appends_receipt_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
   let state = runtime_run_step_from_frontier(
@@ -204,7 +216,7 @@ fn runtime_run_step_appends_receipt_holds() -> Bool {
   length(xs: state.log.entries) == 1 && state.scheduled == [runtime_run_node_a]
 }
 
-fn runtime_run_completes_both_nodes_holds() -> Bool {
+test fn runtime_run_completes_both_nodes_holds() -> Bool {
   match runtime_run(
     nodes: runtime_run_nodes,
     dependencies: runtime_run_dependencies,
@@ -217,7 +229,7 @@ fn runtime_run_completes_both_nodes_holds() -> Bool {
   }
 }
 
-fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
+test fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
   let state = runtime_run_step_from_frontier(
@@ -230,8 +242,3 @@ fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
   state.scheduled == [runtime_run_node_a] && length(xs: state.log.entries) == 1
 }
 
-test fn runtime_run_claims_hold() -> Bool {
-  runtime_run_step_appends_receipt_holds()
-    && runtime_run_completes_both_nodes_holds()
-    && runtime_run_step_is_bounded_to_frontier_holds()
-}

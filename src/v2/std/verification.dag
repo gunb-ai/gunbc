@@ -1,6 +1,7 @@
 module v2.std.verification
 
-import v2.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { any, fold_list, list_append, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
@@ -9,11 +10,13 @@ import v2.std.diagnostic {
   Accepted,
   Correction,
   Diagnostic,
+  Diagnostics,
   Extent,
   Locus,
   NodeLocus,
   NonEmptyDiagnostics,
-  PortLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
   Outcome,
   Rejected,
   Suggested,
@@ -231,7 +234,8 @@ fn locus_evaluation_nodes(at: Locus) -> List<Node> {
   match at {
     NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
     Textual { file: _, extent: _ } => Empty
-    PortLocus { anchor: _ } => Empty
+    SourcePortLocus { anchor: _, file: _, extent: _ } => Empty
+    InvariantPortLocus { anchor: _, invariant: _ } => Empty
   }
 }
 

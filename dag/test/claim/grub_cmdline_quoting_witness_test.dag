@@ -1,0 +1,22 @@
+module test.claim.grub_cmdline_quoting
+
+import std.logic { Bool }
+import extdeps.bootloader.grub { GrubMenuEntry, grub_menuentry_render }
+import extdeps.firmware.kernel_cmdline { KernelKeyValue, KernelFlag }
+
+test fn grub_quotes_semicolon_cmdline_args_only() -> Bool {
+  let entry = GrubMenuEntry {
+    title: "gunbc autoinstall",
+    linux_image: "/casper/vmlinuz",
+    linux_cmdline: [
+      KernelKeyValue { key: "ip", value: "dhcp" },
+      KernelKeyValue { key: "ds", value: "nocloud;s=/cdrom/nocloud/srv4/" },
+      KernelFlag { name: "autoinstall" },
+    ],
+    initrd_image: "/casper/initrd",
+  }
+  let r = grub_menuentry_render(entry: entry)
+  string_contains(s: r, pattern: "\"ds=nocloud;s=/cdrom/nocloud/srv4/\"")
+    && string_contains(s: r, pattern: " ip=dhcp ")
+    && (string_contains(s: r, pattern: "\"ip=dhcp\"") == false)
+}

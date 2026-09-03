@@ -10,9 +10,13 @@ import v2.std.anti_unification {
   ChainGeneralization, anti_unify_chain, hole_node, fillings_all_leaves, template_has_hole
 }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.algebra { FreeMonoid, zip_eq }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { zip_eq }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])

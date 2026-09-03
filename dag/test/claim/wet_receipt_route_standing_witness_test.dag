@@ -1,0 +1,148 @@
+module test.claim.wet_receipt_route_standing_witness
+
+import std.logic { Bool }
+import v2.std.algebra { fold_list, length }
+import v2.std.optional { Absent, Present }
+import v2.compiler.self_host.wet_receipt_route_standing {
+  WetReceiptIdentity,
+  WetReceiptRouteStanding,
+  wet_receipt_route_standings,
+  wet_receipt_standing_for,
+  wet_receipt_standing_receipt,
+  wet_receipt_standing_is_executable,
+  wet_receipt_standing_is_revoked_on_measured_red,
+  wet_receipt_standing_is_never_established,
+  wet_receipt_expected_fault_marker_for_module,
+  wet_receipt_fault_marker
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// THE CONTROL FOR THE ROW-GRAIN ROUTE AUTHORITY, and what it asserts is deliberately NOT a census.
+// A witness that pinned `exactly 6 revoked, exactly 10 never-established, exactly 1 executable`
+// would be a count copied from the current tree, which DESIGN section 5 rules out as an oracle:
+// restoring one binding would red it, and automating its update would collapse it to measure() ==
+// measure(). Completeness here is an IDENTITY JOIN over a closed universe, not a count equality.
+//
+// So the arms below assert the DERIVATION instead: that a receipt which IS a known-red entry
+// derives BindingRevokedOnMeasuredRed and one that is not derives BindingNeverEstablished; that the
+// partition is total; and that the fault marker equals the exact string the driver source prints,
+// which is an external oracle (dag/gunbc/instruments/self_host_00_compile_shims/witness_main.rs)
+// rather than a measurement of this tree. Restoring a binding changes the standings and must NOT
+// red this file -- that is the correct behaviour, because the roster is meant to move and the
+// derivation is not.
+
+// AN EXTERNAL ORACLE, NOT A TREE MEASUREMENT. The expected string is what the 00_compile driver
+// actually prints on its inject-fault path. If the derivation ever produced a different marker, the
+// harness would look for a line no driver emits and report an undetected fault that was detected.
+test fn wet_receipt_fault_marker_matches_the_driver_source() -> Bool {
+  wet_receipt_expected_fault_marker_for_module(module_path: "src/v2/compiler/00_compile.dag")
+    == "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: FAIL"
+}
+
+// A MALFORMED PASS MARKER YIELDS NO FAULT MARKER RATHER THAN A FABRICATED ONE. Deriving a marker
+// from a stem that does not exist would produce a string no driver prints, which reads as a fault
+// that was not detected -- a fabricated plausible output at the point the evidence is consumed.
+test fn wet_receipt_fault_marker_refuses_a_malformed_pass_marker() -> Bool {
+  wet_receipt_fault_marker(pass_marker: "SOMETHING ELSE ENTIRELY") == ""
+    && wet_receipt_expected_fault_marker_for_module(module_path: "src/v2/compiler/not_a_module.dag") == ""
+}
+
+// THE TWO UNAVAILABLE CAUSES ARE DERIVED FROM THE KNOWN-RED AUTHORITY, NOT AUTHORED. parse_engine_hooks
+// is an ExecutionWitnessKind known_red row on gunbc.explicit_witness_admission; 00_compile is not.
+// Both lack a binding, so a single unavailable arm would render them identically -- which is exactly
+// the collapse this type exists to prevent.
+test fn known_red_receipt_derives_revoked_on_measured_red() -> Bool {
+  match wet_receipt_standing_for(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+      function: "self_host_parse_engine_hooks_behavioral_receipt_holds"
+    }
+  ) {
+    Absent => false
+    Present { value: s } => wet_receipt_standing_is_revoked_on_measured_red(standing: s)
+  }
+}
+
+test fn unmeasured_receipt_derives_never_established_not_red() -> Bool {
+  match wet_receipt_standing_for(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag",
+      function: "self_host_00_compile_behavioral_receipt_holds"
+    }
+  ) {
+    Absent => false
+    Present { value: s } =>
+      wet_receipt_standing_is_never_established(standing: s)
+        && !wet_receipt_standing_is_revoked_on_measured_red(standing: s)
+  }
+}
+
+// THE TEMPLATE ROW NEEDS NO BINDING AND IS NOT RENDERED AS MISSING ONE. Asking the binding roster
+// about a template row would answer Absent and report a fact that is not missing.
+test fn template_row_is_executable_without_a_module_binding() -> Bool {
+  match wet_receipt_standing_for(
+    receipt: WetReceiptIdentity {
+      entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
+      function: "self_host_logic_behavioral_receipt_holds"
+    }
+  ) {
+    Absent => false
+    Present { value: s } => wet_receipt_standing_is_executable(standing: s)
+  }
+}
+
+// TOTALITY OF THE PARTITION. Every row is exactly one of executable, revoked-on-red, or
+// never-established -- no row is two of them and no row is none of them. This is what makes a count
+// over any one arm meaningful without any arm's count being pinned here.
+fn standing_inhabits_exactly_one_arm(standing: WetReceiptRouteStanding) -> Bool {
+  let e = wet_receipt_standing_is_executable(standing: standing)
+  let r = wet_receipt_standing_is_revoked_on_measured_red(standing: standing)
+  let n = wet_receipt_standing_is_never_established(standing: standing)
+  (e && !r && !n) || (!e && r && !n) || (!e && !r && n)
+}
+
+test fn every_row_inhabits_exactly_one_arm() -> Bool {
+  fold_list(
+    wet_receipt_route_standings,
+    empty: true,
+    cons: fn(acc, standing) { acc && standing_inhabits_exactly_one_arm(standing: standing) }
+  )
+}
+
+// NO ROW NAMES A TRANSPORT THAT DOES NOT EXIST. An Obsolete row would mean the roster cites a module
+// the transport authority no longer configures -- the stale-citation class, at row grain.
+test fn no_row_is_obsolete() -> Bool {
+  fold_list(
+    wet_receipt_route_standings,
+    empty: true,
+    cons: fn(acc, standing) {
+      acc
+        && (
+          wet_receipt_standing_is_executable(standing: standing)
+            || wet_receipt_standing_is_revoked_on_measured_red(standing: standing)
+            || wet_receipt_standing_is_never_established(standing: standing)
+        )
+    }
+  )
+}
+
+// EVERY ROW IS REACHABLE BY ITS OWN IDENTITY. A row whose identity does not find itself would make
+// the standing unaskable for the receipt it describes, which is how a row-grain authority silently
+// degenerates into a list nobody can query.
+test fn every_row_is_reachable_by_its_own_identity() -> Bool {
+  fold_list(
+    wet_receipt_route_standings,
+    empty: true,
+    cons: fn(acc, standing) {
+      let r = wet_receipt_standing_receipt(standing: standing)
+      match wet_receipt_standing_for(receipt: r) {
+        Absent => false
+        Present { value: found } => {
+          let fr = wet_receipt_standing_receipt(standing: found)
+          acc && fr.entry == r.entry && fr.function == r.function
+        }
+      }
+    }
+  )
+}

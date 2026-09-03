@@ -1,0 +1,14 @@
+module extdeps.linux.mock_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+
+data linux_edac_rasmcctl_mock_case_correctable_counts: PublishedMockCase = PublishedMockCase {
+  operation_key: "diagnostic.edac.RasMcCtl.CorrectableCounts",
+  service: "diagnostic.edac.RasMcCtl",
+  operation: "CorrectableCounts",
+  case_id: 0
+}
+
+data linux_published_mock_corpus: List<PublishedMockCase> = [
+  linux_edac_rasmcctl_mock_case_correctable_counts,
+]

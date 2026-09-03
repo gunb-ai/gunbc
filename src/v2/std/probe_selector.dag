@@ -1,15 +1,7 @@
 module v2.std.probe_selector
 
-import v2.std.algebra {
-  Cons,
-  Empty,
-  contains,
-  count_where,
-  filter,
-  fold_list,
-  fold_list_right,
-  length
-}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { contains, count_where, filter, fold_list, fold_list_right, length }
 import v2.std.change { AffectedSet }
 import v2.std.collection { List }
 import v2.std.logic { Bool }

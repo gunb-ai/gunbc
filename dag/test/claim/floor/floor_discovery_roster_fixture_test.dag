@@ -1,0 +1,8 @@
+module test.claim.floor_discovery_roster_fixture
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn floor_discovery_roster_fixture_witness() -> Bool { true }

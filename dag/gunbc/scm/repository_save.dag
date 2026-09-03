@@ -1,0 +1,156 @@
+module gunbc.scm.repository_save
+
+// WRITING A REPOSITORY TO A PATH, WITH THE ADJUDICATION AHEAD OF THE WRITE.
+//
+// The mirror of `gunbc.scm.repository_load`, split from it for the reason `extdeps.languages.json`
+// splits `parse` from `emit`: reading and writing are two directions of one grammar, not one
+// operation with a mode flag. They fail differently and are consumed separately -- a caller that
+// only loads must not link a writer.
+//
+// THIS MODULE EXISTS BECAUSE `encode_repository` CANNOT REFUSE. It returns a JsonValue, so its only
+// honest treatment of an unrepresentable repository is an empty reference that `decode_repository`
+// rejects later. `repository_envelope`'s header states the consequence, the whole reason this
+// module calls the CHECKED encoder: by the time an unrepresentable repository is caught on load,
+// the bytes are on disk, the write has reported success, and the corruption surfaces to WHOEVER
+// LOADS IT rather than whoever caused it. Lifting the adjudication ahead of the write keeps the
+// fault with its author.
+//
+// SO THE ORDER IS LOAD-BEARING, NOT INCIDENTAL: encode-checked, THEN write. No arm in this type
+// reports a write for a repository that failed adjudication, because no such call is made -- the
+// refusal returns before `Filesystem.Write` is reached. That is the construction form of the rule
+// (DESIGN section 5), not a check that the write was skipped.
+//
+// THE THREE ARMS HAVE TWO DIFFERENT OWNERS, the same discipline the load side carries:
+//
+//   save refused by codec  the CALLER's fact about the VALUE. This repository cannot be written by
+//                          any writer to any path: a commit root absent from the store, a checkout
+//                          selecting a commit that is not there. Changing the path does not help.
+//   file unwritable        the HOST's fact about the PATH. The repository is well-formed; the
+//                          directory is missing, or read-only, or the disk is full. Changing the
+//                          path may well help.
+//
+// Collapsing them would tell a caller to fix their repository when their directory is read-only,
+// or to check permissions when their repository is inconsistent. Opposite remedies, as on the load
+// side.
+//
+// EVERY ARM CARRIES THE PATH, as the load arms do: a refusal that does not say what it was writing
+// is not located.
+//
+// NOT `WriteOwnerOnly`. A repository document is not a secret, and narrowing its mode here would be
+// a deployment policy fact smuggled into the persistence operation -- the layer inversion DESIGN
+// section 3 names. A caller with a confidentiality requirement states it; this module does not
+// decide it on their behalf.
+
+import std.types { String, Int }
+import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesystem_established_absence_path }
+import extdeps.languages.json.emit { serialize_json }
+import std.measure { ByteSize, byte_size }
+import std.checked_arithmetic { nat_magnitude }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryEncodeOutcome,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  RepositoryEncodeRefusal,
+  encode_repository_checked,
+}
+
+// THE BYTE COUNT IS A MAGNITUDE, NOT A NUMBER, and it is carried as one. `ByteSize` is
+// `std.measure`'s `Measure<Memory, One, Nat>`, the single authority for a quantity of bytes, so
+// this row reuses the magnitude the repository already models rather than a bare `Int` whose unit
+// lives only in a field name. The raw scalar is legitimate at the `extdeps.filesystem` boundary
+// under cited-spec fidelity -- the host really does report an `Int` -- and what the rule forbids
+// is propagating it inward, the step this type used to take (review 56828).
+//
+// AND THE CROSSING REFUSES RATHER THAN CLAMPS, which is why there is a fourth arm. `ByteSize`
+// counts a `Nat`, the host reports an `Int`, and the only available crossing
+// (`std.checked_arithmetic` `nat_magnitude`) takes an ABSOLUTE VALUE -- applied to a negative it
+// would turn a nonsense report into a plausible byte count, the fabricated-plausible-output
+// failure in one line. So the negative is refused as its own arm carrying what the host said, and
+// `nat_magnitude` is applied only on the non-negative domain where it is the identity. A boundary
+// obligation (DESIGN section 4b): external reality observed, typed, and admitted or refused -- not
+// a class on the ladder, so no next-rung trigger.
+//
+// NO WITNESS COVERS THAT FOURTH ARM AND THAT IS A LIMIT, NOT AN OVERSIGHT. Reaching it requires a
+// host write that SUCCEEDS and then reports a negative count, which no substrate-only fixture can
+// author -- this module's witness is `SubstrateInputsOnly`, and a real write refuses at the
+// hermetic boundary before any count is produced. So the arm is reachable by the mechanism and
+// unreachable by any input this repository can currently express. It is kept because the
+// alternative is not "no arm" but `nat_magnitude` silently turning the negative into a byte
+// count; deleting the arm would delete the refusal, not the case.
+type RepositorySave
+  = RepositorySaved { path: String, written: ByteSize }
+  | RepositorySaveRefusedByCodec { path: String, cause: RepositoryEncodeRefusal }
+  | RepositoryFileUnwritable { path: String, error: String }
+  | RepositoryWriteByteCountUnrepresentable { path: String, reported: Int }
+
+// CREATING A REPOSITORY IS NOT SAVING ONE, AND THE DIFFERENCE IS THE WRITE ITSELF.
+//
+// save_repository writes unconditionally, which is correct for its subject: persisting a repository
+// that already exists must replace the bytes that are there. Initialization is the opposite subject
+// -- it must happen ONLY where nothing exists -- and for a long time it was expressed as "observe an
+// absence, then call save_repository". That is two operations with a gap, and an actor creating the
+// file in the gap makes the save truncate exactly the bytes the observation was taken to protect.
+// The observation was honest; the write was not conditioned on it.
+//
+// No re-observation closes that. The fix is that the existence test and the creation become ONE act,
+// which is what Filesystem.WriteCreateNew provides -- so this function refuses a path that exists
+// rather than checking whether it exists. Construction over validation (DESIGN section 5) at a
+// boundary where validation structurally cannot win.
+//
+// The refusal reuses RepositoryFileUnwritable rather than minting a create-specific arm: the caller's
+// remedy is the same -- the bytes are not yours to write and the host says why -- and the error text
+// is the host's own. A second arm would be a second spelling of one outcome (section 3), and one that
+// classified the cause from the error TEXT would be a heuristic standing in for an observation.
+// THE CREATE THAT AN ESTABLISHED ABSENCE AUTHORIZES, AND THE ONLY ONE IT CAN.
+//
+// create_repository below takes a bare String, which is right for its own subject -- a caller that
+// has some other reason to create at a path may use it. It is the WRONG entry for a caller whose
+// permission came from an absence, because taking the token and a separate path lets the two name
+// different subjects and nothing detects it. Review on gunbc#10026 found exactly that: init matched
+// ScmInitMayCreate(_), threw the token away, and wrote to an independently computed path.
+//
+// So the absence-authorized create derives its target from the token itself. There is no second
+// target to disagree with, which is the difference between a capability that is CONSUMED and one
+// that is merely carried past the actuation.
+fn create_repository_at_absence(
+  absence: FilesystemEstablishedAbsence,
+  repo: RepositoryEnvelope,
+) -> RepositorySave {
+  create_repository(path: filesystem_established_absence_path(absence: absence), repo: repo)
+}
+
+fn create_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } => {
+      let write = Filesystem.WriteCreateNew(path: path, content: serialize_json(v: v))
+      if !write.success {
+        RepositoryFileUnwritable { path: path, error: write.error }
+      } else if write.bytes_written < 0 {
+        RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
+      } else {
+        RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+      }
+    }
+  }
+}
+
+fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } => {
+      let write = Filesystem.Write(path: path, content: serialize_json(v: v))
+      if !write.success {
+        RepositoryFileUnwritable { path: path, error: write.error }
+      } else if write.bytes_written < 0 {
+        RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
+      } else {
+        RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+      }
+    }
+  }
+}

@@ -1,6 +1,21 @@
 module v1.compiler.infer_items
 
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
 import std.types { SourceSpan }
+
+import std.interface_summary {
+  InterfaceSummary,
+  ExportEntry,
+  ExportFn,
+  ExportType,
+  ExportData,
+  ExportService,
+  ExportKind,
+  signature_contract,
+  interface_summary_rollup
+}
+
 import v1.std.core {
   Node, ErrorNode,
   make_param_node, param_node_name_at, param_node_type_expr,
@@ -10,21 +25,26 @@ import v1.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   Connective, Conj, Disj, NoConnective,
   node_name_span, no_span,
-  NewlineIndex, authored_name_at
+  NewlineIndex, authored_name_at,
 }
+import std.occurrence_identity { OccurrenceTransport, OccurrenceSynthetic }
+
 import v1.compiler.infer_types {
   child_type_node
 }
-import std.induction { SubValueUnknown }
+
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding
+  TypeEnv, TypeEnvCache, empty_type_env_cache
 }
+
 import v1.compiler.infer_sigs {
   ResolvedFuncEnv
 }
+
 import v1.compiler.infer_emit_info {
   EmitGraphInfo
 }
+
 
 type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
 
@@ -39,12 +59,112 @@ type ItemInfo {
   has_non_tail_self_call: Bool
 }
 
+type ModuleInterface {
+  summary: InterfaceSummary
+  env: TypeEnv
+  cache: TypeEnvCache
+}
+
+data typed_module_interface_body_dual_field_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.")
+
+// WHETHER THIS MODULE'S ITEMS WERE CHECKED AT ALL, STATED BY THE PRODUCER.
+//
+// `typecheck_module` has an early return: when `build_type_env` yields errors it hands back a
+// `TypedModule` with an empty `items` list and never reaches item analysis. Without this field
+// the two states -- completed with nothing to check, and abandoned before checking -- reach every
+// downstream reader as the same empty list, so a consumer must INFER which it holds from
+// "items is empty AND there are error diagnostics". That inference is unreliable: a module that
+// COMPLETED and has item-level errors presents identically.
+//
+// The fact lives here rather than on `TypecheckModuleResult` because `realize_module`
+// destructures that result and inserts only `.typed` into the module index -- a progress field on
+// the result alone would be discarded one line after it was set, which is this same defect one
+// level out.
+//
+// WHY NO READER CHANGES BEHAVIOR IN THE CHANGE THAT INTRODUCES THIS, stated here because a field
+// with no behavior change is the shape most likely to be mistaken for a sweep that was skipped.
+// The readers of `items` were partitioned and each partition decided, not blanket-migrated:
+//
+// EMIT-SIDE READERS ARE UNREACHABLE WITH AN ABANDONED MODULE, by derivation rather than by
+// inspection. `v1.compiler.compile` `emittable_graph` returns `none` when ANY diagnostic in the run
+// satisfies `is_interpreter_blocking_diagnostic`, so emit is skipped whole. Abandonment requires a
+// diagnostic satisfying `is_error_diagnostic`, and the only two kinds that are error-but-not-blocking
+// are `ComplexityUnknown` and `ServiceConfigReferenceJudgmentDeferred`, whose sole mint sites are
+// `v1.compiler.compile` complexity analysis and `v1.compiler.infer` `infer_service_config_properties`
+// -- both downstream of `build_type_env`, so neither can appear among its diagnostics. Abandonment
+// therefore implies a blocking diagnostic, and no abandoned module reaches emit, `dag_collect`, or
+// the target serializers. That is join-unreachability, not mere emptiness.
+//
+// PRE-GATE READERS ARE REACHABLE AND WERE MEASURED, NOT ASSUMED. `extract_func_entries` and
+// `extract_ownership_proofs` run before the gate, as do `build_variant_export_surface`,
+// `build_imported_variants`, `merge_scope_from_imports`, `build_enum_variant_shape_sets`,
+// `build_emit_graph_info` and `v1.compiler.service`'s callee registry. The live hypothesis was
+// CASCADE MISATTRIBUTION: an abandoned module publishes an empty export surface, so a module
+// importing it gets blamed for the abandoned module's failure. IT IS FALSIFIED BY EXECUTION. A
+// two-module fixture whose provider declares a field of an undefined type -- an `UnresolvedType`
+// from `resolve_env_bindings`, which is exactly an abandoning diagnostic -- and whose consumer
+// imports and calls that provider's function produces ONE diagnostic, `unresolved type
+// 'NoSuchTypeAnywhere'`, located in the PROVIDER. The consumer is not blamed and no cascade appears.
+// Positive control: the same fixture with the provider's type corrected compiles clean and emits.
+// The three rewire rebuilds pass `progress` through unchanged because they rebuild a module's
+// bindings, never its checking status.
+//
+// SO THE VALUE OF THIS FIELD IS REPRESENTATIONAL, AND SAYING SO IS THE POINT. The conflation was
+// costing an out-of-band consumer, not a production one: a demand oracle built to score resolution
+// producers read `items` and could not tell an abandoned module from a genuine single-ask module,
+// which anti-correlated its error with the defect it was built to find and killed it as an
+// instrument. That receipt is recorded in `gunbc.v1_maintenance_standing`
+// `v1_maintenance_typecheck_progress_admission_note`. A reader that treated abandoned as empty and
+// was WRONG to would be this same conflation moved one layer out; none was found, and the partition
+// above is the evidence for that claim rather than an assurance.
+//
+// THE EVIDENCE FOR THIS DISTINCTION IS NOT ENROLLED, AND THAT IS A DECLARED DROP RATHER THAN AN
+// OVERSIGHT. Per DESIGN 4b(2) this class is 'can climb after one grounding', not 'cannot climb'.
+// NEITHER WITNESS HARNESS THAT REACHES THE PRODUCTION COMPILE PATH CAN EXPRESS THE SUBJECT, by a
+// census of the registered host builtins rather than by assumption. `compile_dag_rust_emit_check`
+// observes EMITTED RUST, and the unreachability derived above is exactly what forecloses it: an
+// abandoned module never reaches emit, so the harness that could observe the field is structurally
+// unreachable for the only input that sets the interesting variant. `compile_dag_diagnostic_census`
+// returns diagnostic rows -- `{ diagnostic_class, subject_name, blocking, count }` -- which carry no
+// per-module typecheck progress, and it takes a single source string, so the two-module fixture that
+// produced the Partition-2 receipt is not authorable there either.
+//
+// THE SUBSTITUTE WAS REFUSED ON PURPOSE. A single-module pair -- one abandoning on `UnresolvedType`,
+// one declaring only a type -- is authorable and would go green, but it discriminates by DIAGNOSTIC
+// COUNT, which was observable before this field existed and stays observable if the field is deleted.
+// That probe is permanently green with respect to the thing it would claim to witness: DESIGN 4b's
+// decoration, worse than absent because it would be cited as this carrier's evidence. A Rust unit
+// test can read the field directly and has been out of CI since 2026-07-11, so it would be inert.
+//
+// NEXT-RUNG TRIGGER: a per-module progress projection on the census the host already builds. It is
+// NOT built here because it is a new exported observation surface on the frozen seed, which is the
+// PublicSurfaceGrowth question the admitting ruling explicitly did not settle -- building it on the
+// strength of that admission would breach the admission's own limit clause. BOUNDED POPULATION: one
+// field on one carrier. WHAT REMAINS TRUE MEANWHILE: the five construction sites are covered by the
+// compiler's own missing-field refusal, confirmed by execution -- deleting the field at one site
+// refuses with `missing required field 'progress' in literal of type 'TypedModule'` naming that site.
+// That is a SHAPE fact, that the sites keep setting the field, and it is NOT evidence that the
+// distinction is meaningful; the two must not be read as one.
+//
+// NO CAUSE PAYLOAD, DELIBERATELY. The abandoning diagnostics already ride in the result's
+// `diagnostics`; a cause enum with a single member today would be a second representation of what
+// those diagnostics say. When a second abandonment reason exists, it gets a variant here.
+type ModuleTypecheckProgress
+  = ItemsChecked
+  | AbandonedBeforeItems
+
+data module_typecheck_progress_sibling_field_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: this field STATES the truth and leaves every reader structurally free not to hear it. A consumer may go on reading TypedModule.items and ignore progress forever, which is the conflation preserved beside its own repair -- validation where DESIGN 5 wants construction. THE TERMINAL SHAPE puts the item population INSIDE the completed arm, so that reading items structurally requires handling whether any items were measured: TypecheckItemAnalysis = ItemAnalysisCompleted { items, receipt } | ItemAnalysisUnreached { stopped_at, cause }, with the abandoned arm carrying NO empty list for a careless consumer to read as a completed empty module. It is not built here on the evidence recorded in the annotation above: the arm shape forces every TypedModule.items reader to change, which reopens exactly the sweep the reader partition retired, and the ruling that admitted this change was on the narrow repair rather than on a reader migration. DISSOLVES WHEN the item population moves inside the completed arm and this field has no separate existence.")
+
 type TypedModule {
   module: Node
   items: List<Node>
+  progress: ModuleTypecheckProgress
   type_env: TypeEnv
+  type_env_cache: TypeEnvCache
+  interface: ModuleInterface
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
+  occurrence_transport: OccurrenceTransport?
 }
 
 type TypedGraph {
@@ -65,6 +185,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
     TypeVariable { id: _ } => []
+    Divergent => []
     Resolved { node: rt } =>
         let has_structure = rt.connective != NoConnective
         if has_structure {
@@ -73,18 +194,18 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
             if rt.ident_span == none {
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)
-                make_field_node(name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span, name_span: node_name_span(n: child))
+                make_field_node(occurrence_identity: OccurrenceSynthetic, name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key_properties: [], span: span, name_span: node_name_span(n: child))
               )
             } else {
-              [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
+              [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, name_span: no_span())]
             }
           } else {
-            [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
+            [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, name_span: no_span())]
           }
         } else if rt.connective == Conj && rt.children |> count == 0 {
           []
         } else {
-          [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
+          [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key_properties: [], span: span, name_span: no_span())]
         }
     }
   }
@@ -107,20 +228,4 @@ fn item_kind(item: Node) -> ItemKind {
     OtherItem
   }
   kind
-}
-
-fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
-  fold(items, init: init, f: (acc, item) =>
-    let is_coproduct = item.connective == Disj
-    if is_coproduct {
-      fold(item.children, init: acc, f: (vacc, child) =>
-        let child_name = authored_name_at(source_indices: source_indices, node: child)
-        map_insert(vacc, child_name, TypeBinding {
-          name: child_name,
-          resolved: item,
-          provenance: SubValueUnknown
-        })
-      )
-    } else { acc }
-  )
 }

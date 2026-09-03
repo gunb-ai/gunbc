@@ -1,0 +1,208 @@
+module std.literal_elaboration
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
+
+// THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
+// decision procedure, emission and ingestion are the same homomorphism check read in two directions).
+//
+// A kernel literal (`0`, `"x"`, `true`, `^s`) is a value of the KERNEL type the parser mints for it.
+// When such a literal reaches a typed boundary -- a call argument, a declared return, a record
+// field, a data initializer, an annotated let, the other operand of a binary operator -- the
+// boundary names a DESTINATION declaration. Three things can be true of that pair, and they are
+// three outcomes, never one row with a flag:
+//   DirectLiteral     the destination realizes the kernel type itself (a host numeric, the kernel
+//                     type, a native-realizing alias): the literal is already its own value.
+//   ViaHomomorphism   the destination is a STRUCTURAL declaration that SUPPLIES the literal: one
+//                     declared homomorphism from the kernel value into the destination's own
+//                     constructors (a Peano numeral into Zero/Succ, a text into a FreeMonoid of
+//                     scalars). The typed tree carries the destination and the homomorphism at the
+//                     occurrence; emission renders the image and never re-decides from spelling.
+//   Refused           the roster is defective at this key (two rows for one destination).
+// A destination with NO row and no native realization is not refused HERE: whether a kernel
+// numeral inhabits such a declaration is the inhabitance judgment's question and it already owns
+// that refusal (v1.compiler.infer declared_type_inhabitance). Answering it twice would be the two-
+// authority state DESIGN section 3 forbids; this judgment introduces values, it does not police them.
+//
+// GENERIC BY CONSTRUCTION. The judgment is keyed on (source kind, exact destination DeclarationRef)
+// and the image is produced by a closed roster of UNFOLDINGS, one arm per structural shape a kernel
+// value can be unfolded into. A consumer that needs a new destination adds one ROW to the corpus
+// roster (gunbc.structural_realization_bindings) and, if its destination's shape is new, one
+// unfolding ARM here -- never a second elaboration fold and never a per-destination special case
+// in inference or emission. The Peano arm is the first inhabitant; the FreeMonoid-of-scalars arm
+// is the structural-text lane's (XL-0T) to add beside it.
+//
+// WHY A NEGATIVE-VALUE REFUSAL IS ABSENT ON PURPOSE (DESIGN section 4b: ask whether the RED is
+// authorable before writing the check). A kernel integer literal is never negative -- `-3` parses
+// as a unary negation applied to the literal `3`, and the negation is an ordinary expression that
+// reaches inference through its own arm, not through this judgment. A ValueOutsideHomomorphismDomain
+// arm for the Peano unfolding would therefore be permanently green and would be cited as coverage.
+
+type LiteralSourceKind
+  = KernelIntLiteral
+  | KernelStringLiteral
+  | KernelFloatLiteral
+  | KernelBoolLiteral
+  | KernelSymbolLiteral
+  | KernelNullLiteral
+
+fn literal_source_kind_of(value: LiteralValue) -> LiteralSourceKind {
+  match value {
+    LitInt { value: _ } => KernelIntLiteral
+    LitStr { value: _ } => KernelStringLiteral
+    LitFloat { value: _ } => KernelFloatLiteral
+    LitBool { value: _ } => KernelBoolLiteral
+    LitSymbol { value: _ } => KernelSymbolLiteral
+    LitNull => KernelNullLiteral
+  }
+}
+
+fn literal_source_kind_label(kind: LiteralSourceKind) -> String {
+  match kind {
+    KernelIntLiteral => "kernel_int_literal"
+    KernelStringLiteral => "kernel_string_literal"
+    KernelFloatLiteral => "kernel_float_literal"
+    KernelBoolLiteral => "kernel_bool_literal"
+    KernelSymbolLiteral => "kernel_symbol_literal"
+    KernelNullLiteral => "kernel_null_literal"
+  }
+}
+
+fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
+  literal_source_kind_label(kind: a) == literal_source_kind_label(kind: b)
+}
+
+// HOW A KERNEL VALUE IS UNFOLDED INTO A DESTINATION'S CONSTRUCTORS. Each arm names the destination's
+// own constructors by exact DeclarationRef -- the unfolding is a fact about the destination, so a
+// renamed variant is a changed row, never a stale spelling inside the compiler.
+//   PeanoUnfold    a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
+//                  n deep around the nullary `zero`.
+//   BooleanUnfold  a kernel bool unfolds to the destination's nullary true or false constructor
+//                  (v2.std.logic Bool = True | False, declared structural on purpose).
+//   UnicodeScalarSequenceUnfold
+//                  a kernel string literal unfolds to the sequence of its Unicode scalar values
+//                  (std.unicode.types, definition D76) -- the unique monoid homomorphism from the
+//                  kernel string into a free monoid over Char, where Char = Int where unicode_scalar
+//                  (std.types) realizes each element as the scalar Int itself. The image is carried
+//                  as the language's canonical FreeMonoid introduction (the list-literal node) with
+//                  one scalar Int literal per element, NOT as a cons^n(empty) constructor nesting:
+//                  the map is canonical (no constructor names to carry, hence no fields on this arm),
+//                  a per-element nesting is O(n^2) under a sequence-backed carrier where the flat
+//                  introduction is O(n) (DESIGN section 6, bare minimum cost), and a nesting n deep
+//                  exceeds the emitter's bounded recursion fuel on ordinary prose-length literals.
+//                  SCALARS, NEVER BYTES: the element values are code points read at the character
+//                  grain, so a non-ASCII literal's length and elements observe scalar count and
+//                  scalar values, not its UTF-8 encoding.
+type LiteralUnfolding
+  = PeanoUnfold { zero: DeclarationRef, succ: DeclarationRef, prev_field: NonEmptyStr }
+  | BooleanUnfold { true_variant: DeclarationRef, false_variant: DeclarationRef }
+  | UnicodeScalarSequenceUnfold
+
+// THE DESTINATION KEY SURVIVES RESOLUTION. `destination` names the declaration the resolved
+// boundary type actually presents. For a nominal destination (v2.std.nat.Nat, v2.std.logic.Bool)
+// that is the declaration itself and `element` is Absent. For the text carrier the resolver
+// deliberately peels every `type X = FreeMonoid<Char>` spelling to the one structural carrier
+// (String is a container-alias spelling, `std.types` `container_template_alias_rows`, so no
+// nominal brand survives the peel BY DESIGN) -- keying a row on the alias module's spelling would
+// key it on information resolution has already, correctly, discarded. The row therefore keys on
+// the STRUCTURE: destination = std.algebra.FreeMonoid with element = std.types.Char, which is
+// exactly what every text-typed boundary presents after the peel, and is the identity the
+// homomorphism is true OF (a string over an alphabet IS the free monoid over that alphabet).
+// FreeMonoid over any other element (a plain list) carries no row and stays DirectLiteral.
+type LiteralHomomorphism {
+  source_kind: LiteralSourceKind
+  destination: DeclarationRef
+  element: DeclarationRef?
+  producer: LiteralUnfolding
+}
+
+fn homomorphism_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
+  match a {
+    Present { value: ae } =>
+      match b {
+        Present { value: be } => declaration_ref_eq(a: ae, b: be)
+        Absent => false
+      }
+    Absent => match b { Present { value: _ } => false  Absent => true }
+  }
+}
+
+type LiteralHomomorphismLookup
+  = LiteralHomomorphismFound { row: LiteralHomomorphism }
+  | LiteralHomomorphismAbsent
+  | LiteralHomomorphismAmbiguous { row_count: Int }
+
+fn literal_homomorphism_for(
+  rows: List<LiteralHomomorphism>,
+  source_kind: LiteralSourceKind,
+  destination: DeclarationRef,
+  element: DeclarationRef?
+) -> LiteralHomomorphismLookup {
+  let matching = rows |> filter(r =>
+    literal_source_kind_eq(a: r.source_kind, b: source_kind)
+      && declaration_ref_eq(a: r.destination, b: destination)
+      && homomorphism_element_eq(a: r.element, b: element))
+  let n = matching |> count
+  if n == 0 {
+    LiteralHomomorphismAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => LiteralHomomorphismFound { row: row }
+      Absent => LiteralHomomorphismAbsent
+    }
+  } else {
+    LiteralHomomorphismAmbiguous { row_count: n }
+  }
+}
+
+type LiteralElaborationRefusal
+  = HomomorphismDuplicated { source_kind: LiteralSourceKind, destination: DeclarationRef, row_count: Int }
+
+fn literal_elaboration_refusal_message(cause: LiteralElaborationRefusal) -> String {
+  match cause {
+    HomomorphismDuplicated { source_kind: k, destination: d, row_count: n } =>
+      concat(
+        "literal elaboration: ", literal_source_kind_label(kind: k), " into ",
+        d.module_path as String, ".", d.decl_name as String,
+        " has more than one declared homomorphism (gunbc.structural_realization_bindings authoring defect)"
+      )
+  }
+}
+
+// THE DECISION. `destination_realizes_natively` is the caller's answer to "does this declaration
+// realize the kernel type itself" (v1.compiler.coercion decl_file_realizes_natively / the exact
+// Rust binding), passed in rather than re-derived so this module stays target-agnostic.
+type LiteralElaborationOutcome
+  = DirectLiteral
+  | ViaHomomorphism { homomorphism: LiteralHomomorphism }
+  | LiteralElaborationRefused { cause: LiteralElaborationRefusal }
+
+fn elaborate_literal_at(
+  rows: List<LiteralHomomorphism>,
+  source_kind: LiteralSourceKind,
+  destination: DeclarationRef,
+  element: DeclarationRef?,
+  destination_realizes_natively: Bool
+) -> LiteralElaborationOutcome {
+  if destination_realizes_natively {
+    DirectLiteral
+  } else {
+    match literal_homomorphism_for(rows: rows, source_kind: source_kind, destination: destination, element: element) {
+      LiteralHomomorphismFound { row: row } => ViaHomomorphism { homomorphism: row }
+      LiteralHomomorphismAbsent => DirectLiteral
+      LiteralHomomorphismAmbiguous { row_count: n } =>
+        LiteralElaborationRefused { cause: HomomorphismDuplicated { source_kind: source_kind, destination: destination, row_count: n } }
+    }
+  }
+}
+
+// WHAT THE TYPED TREE CARRIES at an elaborated occurrence: the source kind, the exact destination,
+// and the homomorphism selected. The occurrence itself is the node this record sits on (its
+// occurrence identity), so it is not duplicated here. Only ViaHomomorphism occurrences carry a
+// record -- a DirectLiteral is the ordinary literal node and needs nothing said about it.
+type LiteralElaboration {
+  source_kind: LiteralSourceKind
+  destination: DeclarationRef
+  homomorphism: LiteralHomomorphism
+}

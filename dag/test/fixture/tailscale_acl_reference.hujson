@@ -1,0 +1,45 @@
+{
+    // Member baseline: full tailnet reach for human operators.
+    "grants": [
+        {"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
+        {
+            // Quarantine: tag:ci may ONLY reach the dashboard plane on tcp:3737.
+            // 100.65.94.55 is the CURRENT dashboard host (pre-cutover); delete post-cutover
+            // when dashboard lives on srv1/srv2 as tag:dashboard — see dashboard_cutover_mac_dissolution_trigger.
+            "src": ["tag:ci"],
+            "dst": ["100.65.94.55", "tag:dashboard"],
+            "ip":  ["tcp:3737"]
+        },
+        // Dashboard admin plane: dashboard<->dashboard all ports.
+        {"src": ["tag:dashboard"], "dst": ["tag:dashboard"], "ip": ["*"]},
+        // Docker-context-over-SSH: dashboard may reach tag:ci on tcp:22 only.
+        {"src": ["tag:dashboard"], "dst": ["tag:ci"], "ip": ["tcp:22"]}
+    ],
+    "ssh": [
+        {
+            "action": "accept",
+            "src":    ["autogroup:member"],
+            "dst":    ["autogroup:self"],
+            "users":  ["autogroup:nonroot", "root"]
+        },
+        {
+            "action": "accept",
+            "src":    ["autogroup:member"],
+            "dst":    ["tag:ci"],
+            "users":  ["autogroup:nonroot"]
+        },
+        {
+            "action": "accept",
+            "src":    ["tag:dashboard"],
+            "dst":    ["tag:ci"],
+            "users":  ["autogroup:nonroot", "root"]
+        }
+    ],
+    "nodeAttrs": [
+        {"target": ["autogroup:member"], "attr": ["funnel"]}
+    ],
+    "tagOwners": {
+        "tag:ci":        ["autogroup:admin"],
+        "tag:dashboard": ["autogroup:admin"]
+    }
+}

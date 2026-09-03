@@ -1,0 +1,39 @@
+module v2.test.language_model.python_r1
+
+test fn python_r1_fixture_pair_wired() -> Bool {
+  python_r1_fixture().claim_id == leaf_model_claim_python_r1_int_surface_spelling
+    && python_r1_fixture().surface_spelling_fact == ^python_surface_spelling_int
+    && python_r1_fixture().encoding_spelling_fact == ^python_facts_field_encoding
+    && python_r1_fixture().happy.source == python_r1_happy_fixture_source
+    && python_r1_fixture().falsification.fixture.source == python_r1_falsification_fixture_source
+}
+fn python_r1_pending_verification_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^python_r1_pending_verification_reason,
+    at: Textual { file: ^python_r1_pending_verification_reason, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+data python_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
+  claim_id: leaf_model_claim_python_r1_int_surface_spelling,
+  happy_verdict: verdict_fail(
+    actual: outcome_rejected(d: python_r1_pending_verification_diagnostic())
+  ),
+  falsification_verdict: verdict_fail(
+    actual: outcome_rejected(d: python_r1_pending_verification_diagnostic())
+  )
+}
+
+test fn python_r1_verification_receipt_claim_id_wired() -> Bool {
+  python_r1_verification_run_receipt_default.claim_id == leaf_model_claim_python_r1_int_surface_spelling
+}
+
+test fn python_r1_fixture_pair_carries_python_dag_fact_anchors() -> Bool {
+  python_r1_fixture().surface_spelling_fact == ^python_surface_spelling_int
+    && python_r1_fixture().encoding_spelling_fact == ^python_facts_field_encoding
+}
+
+data python_r1_modeled_falsification_expectation: TargetPythonExerciseVerdict = TargetPythonExecRejected {
+  diagnostic_code: ^target_diagnostic_python_name_error_undefined_name
+}

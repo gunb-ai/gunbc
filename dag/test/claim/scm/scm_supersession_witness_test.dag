@@ -1,0 +1,253 @@
+module test.claim.scm_supersession_witness
+
+// THE DESTRUCTIVE OPERATION, DRIVEN END TO END, WITH EVERY REFUSAL REACHED.
+//
+// `gunbc.scm.supersession` exists because a `LoadStanding -> Bool` authorized destroying a
+// generation while carrying nothing that could be joined to the generation it destroyed. These
+// witnesses execute the replacement: each varies exactly ONE of the facts the Bool could not carry
+// and asserts that the swap refuses, PAIRED in every case against the admitting configuration so
+// that a relation refusing everything would fail here rather than pass vacuously.
+//
+// WHAT IS NOT WITNESSED HERE AND WHY. The two construction walls -- `SupersessionEvidence` and
+// `SupersessionWarrant` being `sole_constructor`, and both mints being `admit_callers`-sealed -- have
+// no authorable RED inside an accepted module: a record literal for either type in THIS file is a
+// compile-time refusal, so a witness asserting it cannot be written at all (DESIGN section 4b: a
+// check whose RED is unauthorable is a decoration). They were measured by probe instead, and both
+// refusals, their control, and the ceiling they do not reach are recorded on
+// `gunbc.scm.supersession` `supersession_applied`. What keeps them honest in the
+// enrolled suite is that every route to an applied supersession below runs through `observe_generation`.
+//
+// dissolve-on: none. DESIGN section 4b(4) -- the evidence stays enrolled when the rung is real.
+
+import std.types { Bool, String }
+import std.decl_ref { DeclarationRef }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
+import gunbc.scm.object_store {
+  ObjectId, ObjectStore, Stored, LocatorCollision,
+  empty_store, store_node, object_id_eq,
+}
+import gunbc.scm.load_standing {
+  LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
+}
+import gunbc.scm.supersession {
+  HeadSlot, SupersessionEvidence, SupersessionOutcome,
+  SupersessionApplied, SupersessionRefused,
+  SupersessionRefusalCause, StandingDoesNotPermit, EvidenceNamesAnotherSlot,
+  EvidenceExaminedAnotherDocument, GenerationMovedUnderEvidence,
+  ProposedGenerationIsTheObserved,
+  observe_generation, supersede_head_slot, supersession_applied,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sup_node(tag: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: tag } }, children: [])
+}
+
+fn sup_identity(tag: Symbol) -> ObjectId {
+  match store_node(store: empty_store(), n: sup_node(tag: tag)) {
+    Stored { store: _, node: n } => n.locator
+    LocatorCollision { identity: i, existing: _, incoming: _ } => i
+  }
+}
+
+// THREE DISTINCT GENERATIONS, so "current", "observed" and "proposed" can be varied independently.
+// A fixture with two would make the compare-and-swap arm and the degenerate-proposal arm
+// indistinguishable.
+fn gen_current() -> ObjectId { sup_identity(tag: ^supersession_generation_current) }
+fn gen_other() -> ObjectId { sup_identity(tag: ^supersession_generation_other) }
+fn gen_proposed() -> ObjectId { sup_identity(tag: ^supersession_generation_proposed) }
+
+fn sup_slot() -> HeadSlot {
+  HeadSlot { slot: "head", generation: gen_current() }
+}
+
+fn sup_authority() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.scm_supersession_witness",
+    decl_name: "sup_evidence",
+  )
+}
+
+// EVIDENCE IS BUILT FROM A SLOT, WHICH IS THE POINT OF THE HELPER TAKING ONE. The witness cannot
+// state an observed generation either -- it can only hand `observe_generation` a slot, exactly as a
+// production caller must.
+fn sup_evidence(slot: HeadSlot, examined_root: ObjectId, standing: LoadStanding) -> SupersessionEvidence {
+  observe_generation(
+    slot: slot,
+    examined_root: examined_root,
+    schema_identity: "gunbc-scm-commit-closure-v3",
+    standing: standing,
+    authority: sup_authority(),
+  )
+}
+
+fn sup_admitting_outcome() -> SupersessionOutcome {
+  let slot = sup_slot()
+  supersede_head_slot(
+    slot: slot,
+    evidence: sup_evidence(slot: slot, examined_root: slot.generation, standing: LoadDocumentMalformed),
+    proposed_generation: gen_proposed(),
+  )
+}
+
+fn refusal_tag(cause: SupersessionRefusalCause) -> String {
+  match cause {
+    StandingDoesNotPermit { standing: _ } => "standing"
+    EvidenceNamesAnotherSlot { evidence_slot: _, actuation_slot: _ } => "slot"
+    EvidenceExaminedAnotherDocument { observed: _, examined: _ } => "examined"
+    GenerationMovedUnderEvidence { observed: _, current: _ } => "moved"
+    ProposedGenerationIsTheObserved { generation: _ } => "degenerate"
+  }
+}
+
+fn outcome_refusal_tag(outcome: SupersessionOutcome) -> String {
+  match outcome {
+    SupersessionApplied { slot: _, warrant: _ } => "applied"
+    SupersessionRefused { cause: c } => refusal_tag(cause: c)
+  }
+}
+
+// THE POSITIVE CONTROL, AND IT ASSERTS THE SWAP RATHER THAN THE VERDICT. An outcome that reported
+// success while leaving the slot on its old generation would pass a verdict-only assertion, and that
+// is exactly the failure a compare-and-swap exists to prevent. The warrant is read too: a receipt
+// naming a generation other than the one destroyed is a receipt of a different event.
+test fn a_malformed_generation_is_superseded_and_the_slot_actually_moves() -> Bool {
+  match sup_admitting_outcome() {
+    SupersessionRefused { cause: _ } => false
+    SupersessionApplied { slot: s, warrant: w } =>
+      object_id_eq(left: s.generation, right: gen_proposed())
+        && object_id_eq(left: w.superseded_generation, right: gen_current())
+        && object_id_eq(left: w.installed_generation, right: gen_proposed())
+        && (w.slot == "head")
+  }
+}
+
+// THE COMPARE-AND-SWAP ARM. Everything the evidence carries is correct; the slot simply moved
+// between the read and the write. Paired against the admitting outcome so that a relation refusing
+// unconditionally cannot satisfy it.
+test fn a_slot_that_moved_under_the_evidence_refuses_and_names_both_generations() -> Bool {
+  let read_slot = sup_slot()
+  let evidence = sup_evidence(
+    slot: read_slot,
+    examined_root: read_slot.generation,
+    standing: LoadDocumentMalformed,
+  )
+  let moved = HeadSlot { slot: "head", generation: gen_other() }
+  let outcome = supersede_head_slot(
+    slot: moved,
+    evidence: evidence,
+    proposed_generation: gen_proposed(),
+  )
+  let named_both = match outcome {
+    SupersessionApplied { slot: _, warrant: _ } => false
+    SupersessionRefused { cause: c } =>
+      match c {
+        GenerationMovedUnderEvidence { observed: o, current: cur } =>
+          object_id_eq(left: o, right: gen_current())
+            && object_id_eq(left: cur, right: gen_other())
+        StandingDoesNotPermit { standing: _ } => false
+        EvidenceNamesAnotherSlot { evidence_slot: _, actuation_slot: _ } => false
+        EvidenceExaminedAnotherDocument { observed: _, examined: _ } => false
+        ProposedGenerationIsTheObserved { generation: _ } => false
+      }
+  }
+  (outcome_refusal_tag(outcome: outcome) == "moved")
+    && named_both
+    && supersession_applied(outcome: sup_admitting_outcome())
+}
+
+// EVIDENCE ABOUT ANOTHER SLOT IS NOT WEAK EVIDENCE ABOUT THIS ONE. Without this arm a reader that
+// found one slot's document malformed could authorize destroying a different slot's generation,
+// which is the same data loss reached by a shorter route.
+test fn evidence_gathered_from_another_slot_refuses() -> Bool {
+  let other = HeadSlot { slot: "staging", generation: gen_current() }
+  let outcome = supersede_head_slot(
+    slot: sup_slot(),
+    evidence: sup_evidence(slot: other, examined_root: other.generation, standing: LoadDocumentMalformed),
+    proposed_generation: gen_proposed(),
+  )
+  (outcome_refusal_tag(outcome: outcome) == "slot")
+    && supersession_applied(outcome: sup_admitting_outcome())
+}
+
+// THE JOIN THE BOOL COULD NOT EXPRESS. The standing is malformed, the slot is right, the slot has
+// not moved -- and the document the reader actually examined is not the one the slot holds. A
+// permission predicate answers `true` to this configuration because it never sees either identity.
+test fn evidence_examined_from_another_document_refuses() -> Bool {
+  let slot = sup_slot()
+  let outcome = supersede_head_slot(
+    slot: slot,
+    evidence: sup_evidence(slot: slot, examined_root: gen_other(), standing: LoadDocumentMalformed),
+    proposed_generation: gen_proposed(),
+  )
+  (outcome_refusal_tag(outcome: outcome) == "examined")
+    && supersession_applied(outcome: sup_admitting_outcome())
+}
+
+// A SUPERSESSION THAT INSTALLS WHAT IS ALREADY THERE IS NOT A NO-OP TO REPORT AS SUCCESS. It is a
+// caller that believes it replaced a malformed generation and did not, and answering `applied` would
+// be the fabricated plausible output DESIGN section 5 forbids.
+test fn proposing_the_generation_already_installed_refuses() -> Bool {
+  let slot = sup_slot()
+  let outcome = supersede_head_slot(
+    slot: slot,
+    evidence: sup_evidence(slot: slot, examined_root: slot.generation, standing: LoadDocumentMalformed),
+    proposed_generation: slot.generation,
+  )
+  (outcome_refusal_tag(outcome: outcome) == "degenerate")
+    && supersession_applied(outcome: sup_admitting_outcome())
+}
+
+// EVERY NON-PERMITTING STANDING REFUSES, AND THE REFUSAL NAMES WHICH ONE. A collapsed permission arm
+// would satisfy the first conjunct and fail the second: `StandingDoesNotPermit` carrying the wrong
+// standing sends a caller to the wrong remedy -- fetch a newer reader when the real answer was
+// supply the missing objects.
+//
+// THE CONJUNCTION IS THE WHOLE POPULATION, and it was not: this claim's name quantifies over EVERY
+// non-permitting standing while it checked four of the five, so `LoadRequiresNodeAtAuthoredSource`
+// could have collapsed to the permitting arm with this claim still green. A universally named claim
+// that enumerates a subset is worse than a narrower name, because the gap is invisible at the call
+// site. `standing_name` below already carried all six arms, which is what makes the omission a
+// stale enumeration rather than a missing vocabulary.
+test fn every_non_permitting_standing_refuses_and_says_which() -> Bool {
+  standing_refusal_is_itself(standing: LoadComplete)
+    && standing_refusal_is_itself(standing: LoadPartial)
+    && standing_refusal_is_itself(standing: LoadUnsupportedProtocol)
+    && standing_refusal_is_itself(standing: LoadIdentityCollision)
+    && standing_refusal_is_itself(standing: LoadRequiresNodeAtAuthoredSource)
+    && supersession_applied(outcome: sup_admitting_outcome())
+}
+
+fn standing_name(s: LoadStanding) -> String {
+  match s {
+    LoadComplete => "complete"
+    LoadPartial => "partial"
+    LoadUnsupportedProtocol => "protocol"
+    LoadDocumentMalformed => "malformed"
+    LoadIdentityCollision => "collision"
+    LoadRequiresNodeAtAuthoredSource => "source_occupied"
+  }
+}
+
+fn standing_refusal_is_itself(standing: LoadStanding) -> Bool {
+  let slot = sup_slot()
+  match supersede_head_slot(
+    slot: slot,
+    evidence: sup_evidence(slot: slot, examined_root: slot.generation, standing: standing),
+    proposed_generation: gen_proposed(),
+  ) {
+    SupersessionApplied { slot: _, warrant: _ } => false
+    SupersessionRefused { cause: c } =>
+      match c {
+        StandingDoesNotPermit { standing: reported } =>
+          standing_name(s: reported) == standing_name(s: standing)
+        EvidenceNamesAnotherSlot { evidence_slot: _, actuation_slot: _ } => false
+        EvidenceExaminedAnotherDocument { observed: _, examined: _ } => false
+        GenerationMovedUnderEvidence { observed: _, current: _ } => false
+        ProposedGenerationIsTheObserved { generation: _ } => false
+      }
+  }
+}

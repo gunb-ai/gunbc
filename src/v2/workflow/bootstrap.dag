@@ -1,6 +1,9 @@
 module v2.workflow.bootstrap
 
-import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, SyntheticOccurrence }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node }
 import v2.std.algebra {
   bag_eq,
   contains,
@@ -16,13 +19,14 @@ import v2.std.language_model {
 import v2.std.compilers.target_model {
   TargetModel,
 }
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
-  v2_evaluator_runtime_wave1
+  v2_evaluator_runtime
 }
 import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
+import std.types { NonEmptyStr }
 
 data v2_stage0_hash: Hash = v2_stage0_hash
 data v2_stage1_hash: Hash = v2_stage1_hash
@@ -79,10 +83,12 @@ type DiverseCompilationRun {
   output_hash: BootstrapHashPin
 }
 
+type IndependentCompilerEvidence
+  = IndependentCompilerEvidenceUnavailable { correction: Unavailable }
+
 type IndependentCompilerPair {
   primary: Symbol
   secondary: Symbol
-  evidence: Symbol
 }
 
 type DiverseCompilationAgreement {
@@ -110,6 +116,31 @@ type FixptStage1Stage2 {
 type SeedHonestyDischarge {
   seed_honesty_axiom: Symbol
   diverse_double_compilation: DiverseCompilationAgreement
+}
+
+type SeedSelfVerifyReceipt {
+  claim: DiverseCompilationRun
+  check: DiverseCompilationRun
+}
+
+type SeedHonestyDecision
+  = SeedHonestyUndecided
+  | IndependentRebuildRequiredFirst { rationale: NonEmptyStr }
+  | FixedPointTrustSufficient { rationale: NonEmptyStr }
+
+data seed_honesty_decision: SeedHonestyDecision = FixedPointTrustSufficient {
+  rationale: "OPERATOR VERDICT 2026-08-02. V1 deletion does not require an independently implemented second compiler. It requires an explicit generation-admission pipeline: each compiler stage executes against a declared requirement revision, binds its exact inputs, outputs, producer and verdict, and prevents downstream use when its local requirements fail. A candidate generation may be produced and inspected but cannot promote itself. Promotion requires declared requirement changes, complete stage and behavioral receipts, no undeclared v1 fallback, and a retained known-good recovery path. Breaking requirement changes require an expand-migrate-contract bridge. The previous generation remains available until the promoted compiler demonstrates that it can produce a valid CHANGED successor, not merely reproduce itself.\n\nWHY DIVERSE DOUBLE COMPILATION IS NOT A PREREQUISITE, STATED SO THE CLASS IT LEAVES OPEN IS NOT UNDERSOLD. DDC protects against compiler-correlated or malicious miscompilation that readable-source review and ordinary fixed-point evidence do NOT rule out. Readability of the seed source is not the defense and must not be cited as one: the classic attack is precisely a binary that miscompiles readable source, and a stage1-equals-stage2 fixed point is exactly what a self-reproducing defect also produces. What is claimed here is narrower and is a mitigation, not a proof. The seed is hand-written Rust in this repository with full readable history; the Rust it emits is committed as plain text and compared against freshly emitted output by the required regen gate on every run; so a perpetuated defect must appear in a readable diff AND survive human review of it, rather than living only in an opaque artifact nobody reads. That is review quality at a declared boundary, and DESIGN 4b places such a class outside the ladder rather than admitting a weak implementation onto it as a rung. The residual accepted by this verdict is explicit: a defect that reproduces itself through both rustc and the emitted text without ever surfacing in that diff is excluded by nothing stated here. It is ranked below the generation-admission program because deleting v1 does not enlarge it -- the exposure is a property of the seed and its host toolchain, which deletion shrinks rather than grows. DDC is retained as a separate trust-hardening program with no prerequisite edge to any v1-exit finish line.\n\nWHAT THIS VERDICT DOES NOT PROTECT, DISPOSED EXPLICITLY RATHER THAN IMPLIED. First: a fixed point does not defeat a self-reproducing defect. Stage1 equalling stage2 is exactly what a defect that reproduces itself also produces, so this verdict ACCEPTS that residual rather than claiming the fixed point rules it out. Second: seed_self_verify_check is a proven decision procedure and NOT the live trust-path authority -- the realized-comparison and regen paths do not route their artifact identities through it. This verdict does not wire that path and must not be read as protecting it; the generation-admission program named above owns it. Third: rollback and fix-forward are different guarantees. Committed emitted Rust gives rollback to any earlier generation, but it does not by itself give fix-forward once a requirements revision has changed what the previous generation can read. The bootstrap reachability invariant in that program is what addresses this, and it is unbuilt today." as NonEmptyStr
+}
+
+data independent_compiler_evidence_dissolve_on_note: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction.")
+
+// The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only
+// seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR.
+
+fn independent_compiler_evidence_unavailable() -> IndependentCompilerEvidence {
+  IndependentCompilerEvidenceUnavailable {
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 type BootstrapPlan {
@@ -169,7 +200,7 @@ fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -198,7 +229,7 @@ fn bootstrap_seed_capability_inventory_root() -> Node {
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -329,7 +360,7 @@ fn bootstrap_projection_runtime_identity_node(runtime: V4EvaluatorRuntime) -> No
   Node {
     kind: TypeNode { connective: Atom { identity: runtime.runtime_identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -337,7 +368,7 @@ fn bootstrap_projection_snapshot_content_hash_pin_node(pin: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: pin } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 fn bootstrap_hash_digest_in_fixture_constants(digest: Hash) -> Bool {
@@ -352,25 +383,25 @@ fn bootstrap_hash_digest_fixture_atom_node(digest: Hash) -> Node {
     Node {
       kind: TypeNode { connective: Atom { identity: v2_stage0_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   } else if digest == v2_stage1_hash {
     Node {
       kind: TypeNode { connective: Atom { identity: v2_stage1_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   } else if digest == v2_stage2_hash {
     Node {
       kind: TypeNode { connective: Atom { identity: v2_stage2_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   } else {
     Node {
       kind: TypeNode { connective: Atom { identity: pinned_v4_fixed_point_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -384,7 +415,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: pin } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       },
       Edge {
@@ -392,7 +423,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
         target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -501,16 +532,16 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
-    && (inputs.snapshot.language_model == seed_capability_language_model())
+    && (inputs.snapshot.language_model.language_identity == seed_capability_language_model().language_identity)
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
-    && (inputs.target_model == rust_mvp1_target_model())
-    && (inputs.runtime_model == v2_evaluator_runtime_wave1())
+    && (inputs.target_model == rust_target_model())
+    && v4_evaluator_runtime_models_equal(a: inputs.runtime_model, b: v2_evaluator_runtime())
 }
 
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
@@ -558,12 +589,43 @@ fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<Converg
 fn independent_compiler_pair_witness(
   primary: Symbol,
   secondary: Symbol,
-  evidence: Symbol
+  evidence: IndependentCompilerEvidence
 ) -> Witness<IndependentCompilerPair> {
-  if (primary != secondary) && (evidence == ^independent_compiler_witness) {
-    Holds { value: IndependentCompilerPair { primary: primary, secondary: secondary, evidence: evidence } }
+  match evidence {
+    IndependentCompilerEvidenceUnavailable { correction: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+  }
+}
+
+fn seed_self_verify_check(
+  claim: DiverseCompilationRun,
+  check: DiverseCompilationRun
+) -> Outcome<SeedSelfVerifyReceipt> {
+  if claim.output == check.output {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_same_artifact)
+      )
+    }
+  } else if !(claim.source == check.source)
+    || !(claim.compiler == check.compiler)
+    || !(claim.output_hash.pin == check.output_hash.pin) {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_provenance_mismatch)
+      )
+    }
+  } else if !(claim.output_hash.digest == check.output_hash.digest) {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: bs_diagnostic(reason: ^bootstrap_self_verify_diverged)
+      )
+    }
   } else {
-    Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
+    Accepted {
+      value: SeedSelfVerifyReceipt { claim: claim, check: check },
+      diagnostics: None
+    }
   }
 }
 
@@ -571,31 +633,12 @@ fn diverse_compilation_agreement_witness(
   primary: DiverseCompilationRun,
   secondary: DiverseCompilationRun,
   independent_compilers: Witness<IndependentCompilerPair>,
+  evidence: IndependentCompilerEvidence,
   agreed_hash: BootstrapHashPin
 ) -> Witness<DiverseCompilationAgreement> {
-  match independent_compilers {
-    Holds { value: pair } =>
-      if (primary.compiler == pair.primary)
-           && (secondary.compiler == pair.secondary)
-           && (primary.source == secondary.source)
-           && (primary.output == secondary.output)
-           && (primary.output_hash.digest == secondary.output_hash.digest)
-           && (agreed_hash.digest == primary.output_hash.digest)
-           && (primary.output_hash.pin == ^pinned_v4_fixed_point_hash_pin)
-           && (secondary.output_hash.pin == ^pinned_v4_fixed_point_hash_pin)
-           && (agreed_hash.pin == ^pinned_v4_fixed_point_hash_pin) {
-        Holds {
-          value: DiverseCompilationAgreement {
-            primary: primary,
-            secondary: secondary,
-            independent_compilers: pair,
-            agreed_hash: agreed_hash
-          }
-        }
-      } else {
-        Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+  match evidence {
+    IndependentCompilerEvidenceUnavailable { correction: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
   }
 }
 
@@ -604,17 +647,8 @@ fn bootstrap_seed_honesty_discharge_witness(
   diverse_double_compilation: Witness<DiverseCompilationAgreement>
 ) -> Witness<SeedHonestyDischarge> {
   match diverse_double_compilation {
-    Holds { value: agreement } =>
-      if axiom == ^seed_honesty_axiom {
-        Holds {
-          value: SeedHonestyDischarge {
-            seed_honesty_axiom: axiom,
-            diverse_double_compilation: agreement
-          }
-        }
-      } else {
-        Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
-      }
+    Holds { value: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
@@ -645,39 +679,9 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
     language_model: seed_capability_language_model(),
     content_hash: bootstrap_canonical_snapshot_content_hash()
   },
-  target_model: rust_mvp1_target_model(),
-  runtime_model: v2_evaluator_runtime_wave1()
+  target_model: rust_target_model(),
+  runtime_model: v2_evaluator_runtime()
 }
-
-type BootstrapEvaluatorCorpusHarnessEntry {
-  runtime_model: V4EvaluatorRuntime
-  stage0_binary: Symbol
-  source_root: Symbol
-  entry_fn: Symbol
-  entry_module: Symbol
-}
-
-fn bootstrap_evaluator_corpus_harness_entry() -> BootstrapEvaluatorCorpusHarnessEntry {
-  BootstrapEvaluatorCorpusHarnessEntry {
-    runtime_model: v2_evaluator_runtime_wave1(),
-    stage0_binary: ^v2_stage0_binary,
-    source_root: ^v2_dag_source,
-    entry_fn: ^run_manual_testclaim_corpus_eval,
-    entry_module: ^v2_test_claim_workflow_testclaim_corpus_runner
-  }
-}
-
-fn bootstrap_evaluator_corpus_harness_well_formed(entry: BootstrapEvaluatorCorpusHarnessEntry) -> Bool {
-  (entry.runtime_model == v2_evaluator_runtime_wave1())
-    && (entry.stage0_binary == ^v2_stage0_binary)
-    && (entry.source_root == ^v2_dag_source)
-    && (entry.entry_fn == ^run_manual_testclaim_corpus_eval)
-    && (entry.entry_module == ^v2_test_claim_workflow_testclaim_corpus_runner)
-}
-
-data bootstrap_manual_corpus_harness: BootstrapEvaluatorCorpusHarnessEntry = bootstrap_evaluator_corpus_harness_entry()
-
-data witness_bootstrap_evaluator_corpus_harness_well_formed: Bool = bootstrap_evaluator_corpus_harness_well_formed(entry: bootstrap_manual_corpus_harness)
 
 data bootstrap_footprint_witness: Witness<BootstrapFootprint> = bootstrap_footprint(inputs: bootstrap_projection_inputs)
 
@@ -709,8 +713,9 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
     independent_compilers: independent_compiler_pair_witness(
       primary: ^v1_pipeline,
       secondary: ^independent_compiler_witness,
-      evidence: ^independent_compiler_witness
+      evidence: independent_compiler_evidence_unavailable()
     ),
+    evidence: independent_compiler_evidence_unavailable(),
     agreed_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: ^pinned_v4_fixed_point_hash_pin }
   )
 )

@@ -1,0 +1,294 @@
+module test.claim.legacy_binding_tap_coverage_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import gunbc.rust_item_identity { RustItemDeclarationRef, RustItemWhole }
+import gunbc.legacy_binding_tap_coverage {
+  TapCoverageCensus, TapCoverageStanding,
+  LegacyBindingTapCoverageObserved, LegacyBindingTapCoverageRefused,
+  TapCoverageRefusalCause, SiteRevisionMismatch, SiteDuplicated,
+  SiteAnswersNothingAndIsCounted, CensusSurveysNoSite,
+  admit_tap_coverage_census,
+  DecisionSiteObservation,
+  OccurrenceIdentityAtSite, OccurrenceIdentityExact, OccurrenceIdentityAbsent,
+  TargetIdentityInOutcome, TargetIdentityExactInOutcome, TargetIdentityComputedThenErased, TargetIdentityNotComputed,
+  AnsweredReferenceFamily, BareCallableReference, QualifiedCallableReference, ConstructorReference, AnswersNoAuthoredReference,
+  TapCoverageRefusal, DecisionSurfaceUnsurveyed, DecisionSurfaceUncitable,
+}
+import gunbc.legacy_binding_tap_coverage_census {
+  tap_coverage_census, tap_coverage_standing, tap_coverage_sites, tap_coverage_refusals,
+}
+
+// THE DERIVATION AND THE MEASURED ROSTER. The mechanism half matters more than usual here because
+// the standing's four counts are DERIVED from two axes rather than stored: tappable, the two REMEDY
+// counts and answers-nothing are computed at read time from occurrence identity and target
+// identity, so nothing can transcribe a verdict that disagrees with the facts beside it. A suite
+// that only executed the production roster would leave that derivation untested in exactly the
+// direction that matters -- a site becoming tappable, or ceasing to be, without the count moving.
+//
+// THE FOUR-CORNER CONTROL IS THE LOAD-BEARING ONE. Tappable requires BOTH halves at the SAME site,
+// and either half alone is worthless: an exact target with no occurrence identity cannot be
+// attributed to the reference that asked for it, and an exact occurrence with an erased target
+// records that something was selected without recording what. Three of the four corners must
+// therefore be non-tappable, and a conjunction written as a disjunction passes every single-axis
+// test.
+//
+// THE REMEDY COUNTS ARE ASSERTED SEPARATELY AND THEY OVERLAP. This suite first asserted ONE
+// not-tappable count of three over those same corners, which permanently ratified a conflation the
+// census exists to refuse: an occurrence-exact site whose target was erased owes OUTCOME WIDENING,
+// not occurrence threading. Two counts of two read the same corners correctly, and they
+// deliberately do not sum to the non-tappable total -- a site deficient on both axes owes both
+// repairs, so forcing a partition would be the same collapse in a tidier shape.
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn a_site(name: String) -> RustItemDeclarationRef {
+  RustItemDeclarationRef { module_path: nes(s: "fixture_module"), decl_name: nes(s: name), field: RustItemWhole }
+}
+
+fn probe(
+  name: String,
+  occurrence: OccurrenceIdentityAtSite,
+  target: TargetIdentityInOutcome,
+  families: List<AnsweredReferenceFamily>,
+) -> DecisionSiteObservation {
+  DecisionSiteObservation {
+    site: a_site(name: name),
+    observed_at_revision: nes(s: "rev-a"),
+    outcome_carrier: nes(s: "FixtureLookup"),
+    families: families,
+    occurrence_identity: occurrence,
+    target_identity: target,
+  }
+}
+
+fn exact_target() -> TargetIdentityInOutcome { TargetIdentityExactInOutcome { carrier: nes(s: "fixture") } }
+fn erased_target() -> TargetIdentityInOutcome {
+  TargetIdentityComputedThenErased { computed_as: nes(s: "fixture"), erased_into: nes(s: "fixture") }
+}
+fn absent_occurrence() -> OccurrenceIdentityAtSite { OccurrenceIdentityAbsent { keyed_by: nes(s: "name: String") } }
+
+fn census_of(sites: List<DecisionSiteObservation>) -> TapCoverageCensus {
+  TapCoverageCensus {
+    census_revision: nes(s: "rev-a"),
+    sites: sites,
+    refusals: [],
+    limitation: nes(s: "fixture"),
+  }
+}
+
+fn observed_counts(
+  s: TapCoverageStanding,
+  surveyed: Int,
+  tappable: Int,
+  occurrence_threading: Int,
+  target_retention: Int,
+  nothing: Int,
+) -> Bool {
+  match s {
+    LegacyBindingTapCoverageObserved {
+      surveyed_sites: sv, tappable_now: t,
+      requiring_occurrence_identity_threading: occ,
+      requiring_target_identity_retention: tgt,
+      answering_no_authored_reference: n, refusal_count: _,
+    } => sv == surveyed && t == tappable && occ == occurrence_threading && tgt == target_retention && n == nothing
+    LegacyBindingTapCoverageRefused { causes: _ } => false
+  }
+}
+
+fn causes_of(s: TapCoverageStanding) -> List<TapCoverageRefusalCause> {
+  match s {
+    LegacyBindingTapCoverageObserved {
+      surveyed_sites: _, tappable_now: _,
+      requiring_occurrence_identity_threading: _,
+      requiring_target_identity_retention: _,
+      answering_no_authored_reference: _, refusal_count: _,
+    } => []
+    LegacyBindingTapCoverageRefused { causes: cs } => cs
+  }
+}
+
+fn count_causes(s: TapCoverageStanding, p: fn(TapCoverageRefusalCause) -> Bool) -> Int {
+  fold(causes_of(s: s), init: 0, f: fn(acc, c) { if p(c) { acc + 1 } else { acc } })
+}
+
+fn is_duplicate(c: TapCoverageRefusalCause) -> Bool {
+  match c {
+    SiteDuplicated { site_key: _ } => true
+    SiteRevisionMismatch { site_key: _, row_revision: _, census_revision: _ } => false
+    SiteAnswersNothingAndIsCounted { site_key: _ } => false
+    CensusSurveysNoSite => false
+  }
+}
+
+fn is_revision_mismatch(c: TapCoverageRefusalCause) -> Bool {
+  match c {
+    SiteRevisionMismatch { site_key: _, row_revision: _, census_revision: _ } => true
+    SiteDuplicated { site_key: _ } => false
+    SiteAnswersNothingAndIsCounted { site_key: _ } => false
+    CensusSurveysNoSite => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. THE FOUR CORNERS. Tappable is a CONJUNCTION over two axes at one site, and a conjunction
+//    mistakenly written as a disjunction passes every test that varies one axis at a time.
+//
+//    AND THE TWO REMEDY COUNTS ARE ASSERTED SEPARATELY HERE BECAUSE THIS SUITE ONCE RATIFIED THEIR
+//    COLLAPSE. It first asserted a single not-tappable count of THREE over these same four corners,
+//    which permanently encoded the occurrence-exact/target-erased corner as owing occurrence
+//    threading -- a repair that site does not need. Two overlapping counts of two are the same four
+//    corners read correctly: each deficient corner owes the repair its own axis names, and the
+//    both-deficient corner owes both. The counts therefore do NOT sum to the non-tappable total,
+//    and a test asserting that they did would be re-imposing the partition that caused the defect.
+// ---------------------------------------------------------------------------
+
+test fn only_the_corner_with_both_halves_is_tappable() -> Bool {
+  let both = probe(name: "both", occurrence: OccurrenceIdentityExact, target: exact_target(), families: [BareCallableReference])
+  let occurrence_only = probe(name: "occ", occurrence: OccurrenceIdentityExact, target: erased_target(), families: [BareCallableReference])
+  let target_only = probe(name: "tgt", occurrence: absent_occurrence(), target: exact_target(), families: [BareCallableReference])
+  let neither = probe(name: "neither", occurrence: absent_occurrence(), target: erased_target(), families: [BareCallableReference])
+  observed_counts(
+    s: admit_tap_coverage_census(c: census_of(sites: [both, occurrence_only, target_only, neither])),
+    surveyed: 4, tappable: 1, occurrence_threading: 2, target_retention: 2, nothing: 0,
+  )
+}
+
+// A SITE THAT ANSWERS NO AUTHORED REFERENCE IS NOT A GAP. It is out of the denominator, and folding
+// it into either remedy count would inflate the price of the tap with work nobody needs done.
+test fn a_site_answering_no_authored_reference_is_neither_tappable_nor_owed_threading() -> Bool {
+  let out = probe(
+    name: "out_of_scope",
+    occurrence: absent_occurrence(),
+    target: TargetIdentityNotComputed { reason: nes(s: "fixture") },
+    families: [AnswersNoAuthoredReference { reason: nes(s: "fixture") }],
+  )
+  observed_counts(s: admit_tap_coverage_census(c: census_of(sites: [out])), surveyed: 1, tappable: 0, occurrence_threading: 0, target_retention: 0, nothing: 1)
+}
+
+// A site answering SEVERAL families, one of which is out of scope, is still in the denominator:
+// answering nothing is a property of the whole roster, not of any one entry in it.
+test fn a_mixed_family_site_stays_in_the_denominator() -> Bool {
+  let mixed = probe(
+    name: "mixed",
+    occurrence: OccurrenceIdentityExact,
+    target: exact_target(),
+    families: [AnswersNoAuthoredReference { reason: nes(s: "fixture") }, ConstructorReference],
+  )
+  observed_counts(s: admit_tap_coverage_census(c: census_of(sites: [mixed])), surveyed: 1, tappable: 1, occurrence_threading: 0, target_retention: 0, nothing: 0)
+}
+
+// ---------------------------------------------------------------------------
+// 2. The admission walls, each with a discriminating red.
+// ---------------------------------------------------------------------------
+
+test fn a_site_measured_at_another_revision_refuses() -> Bool {
+  let stale = DecisionSiteObservation {
+    site: a_site(name: "stale"),
+    observed_at_revision: nes(s: "rev-b"),
+    outcome_carrier: nes(s: "FixtureLookup"),
+    families: [BareCallableReference],
+    occurrence_identity: OccurrenceIdentityExact,
+    target_identity: exact_target(),
+  }
+  let s = admit_tap_coverage_census(c: census_of(sites: [stale]))
+  count_causes(s: s, p: is_revision_mismatch) == 1 && list_length(items: causes_of(s: s)) == 1
+}
+
+test fn a_site_with_no_families_refuses_rather_than_counting_as_out_of_scope() -> Bool {
+  let empty = probe(name: "empty", occurrence: OccurrenceIdentityExact, target: exact_target(), families: [])
+  let s = admit_tap_coverage_census(c: census_of(sites: [empty]))
+  list_length(items: causes_of(s: s)) == 1
+}
+
+test fn duplicate_sites_yield_one_cause_per_excess_row() -> Bool {
+  let p = probe(name: "dup", occurrence: OccurrenceIdentityExact, target: exact_target(), families: [BareCallableReference])
+  count_causes(s: admit_tap_coverage_census(c: census_of(sites: [p, p])), p: is_duplicate) == 1
+    && count_causes(s: admit_tap_coverage_census(c: census_of(sites: [p, p, p])), p: is_duplicate) == 2
+}
+
+test fn an_empty_census_refuses() -> Bool {
+  list_length(items: causes_of(s: admit_tap_coverage_census(c: census_of(sites: [])))) == 1
+}
+
+// ---------------------------------------------------------------------------
+// 3. The measured roster, executed.
+// ---------------------------------------------------------------------------
+
+// THE PRICING RESULT. Zero tappable is the whole finding, and it is asserted alongside the surveyed
+// total so that deleting the roster cannot produce the same zero.
+test fn no_surveyed_callable_site_is_tappable_today() -> Bool {
+  observed_counts(s: tap_coverage_standing(), surveyed: 5, tappable: 0, occurrence_threading: 5, target_retention: 1, nothing: 0)
+}
+
+test fn the_roster_is_bound_to_the_revision_it_was_read_at() -> Bool {
+  (tap_coverage_census().census_revision as String) == "3a8344b5c389"
+}
+
+fn site_named(name: String) -> Bool {
+  fold(tap_coverage_sites(), init: false, f: fn(acc, o) { acc || (o.site.decl_name as String) == name })
+}
+
+test fn the_five_measured_sites_are_the_callable_resolution_surfaces() -> Bool {
+  list_length(items: tap_coverage_sites()) == 5
+    && site_named(name: "callable_lookup_over_candidates")
+    && site_named(name: "lookup_func_sig")
+    && site_named(name: "func_sig_from_global_bare")
+    && site_named(name: "constructor_declaration_for_admission")
+    && site_named(name: "borrowed_census_decl")
+}
+
+fn target_of(name: String, p: fn(TargetIdentityInOutcome) -> Bool) -> Bool {
+  fold(tap_coverage_sites(), init: false, f: fn(acc, o) {
+    acc || ((o.site.decl_name as String) == name && p(o.target_identity))
+  })
+}
+
+fn target_is_exact(t: TargetIdentityInOutcome) -> Bool {
+  match t {
+    TargetIdentityExactInOutcome { carrier: _ } => true
+    TargetIdentityComputedThenErased { computed_as: _, erased_into: _ } => false
+    TargetIdentityNotComputed { reason: _ } => false
+  }
+}
+
+fn target_is_erased(t: TargetIdentityInOutcome) -> Bool {
+  match t {
+    TargetIdentityComputedThenErased { computed_as: _, erased_into: _ } => true
+    TargetIdentityExactInOutcome { carrier: _ } => false
+    TargetIdentityNotComputed { reason: _ } => false
+  }
+}
+
+// THE AXIS DISCRIMINATES, AND THIS IS THE ROW THAT SAYS SO. If every site reported the same target
+// standing, the roster would carry no information beyond its own existence -- the decoration a
+// permanently-uniform measurement always is. Four exact and one erased is the measurement.
+test fn the_target_axis_separates_four_exact_sites_from_one_erased_one() -> Bool {
+  target_of(name: "callable_lookup_over_candidates", p: target_is_exact)
+    && target_of(name: "lookup_func_sig", p: target_is_exact)
+    && target_of(name: "func_sig_from_global_bare", p: target_is_exact)
+    && target_of(name: "constructor_declaration_for_admission", p: target_is_exact)
+    && target_of(name: "borrowed_census_decl", p: target_is_erased)
+}
+
+// THE OCCURRENCE AXIS IS UNIFORMLY ABSENT, and that is a finding rather than a missing measurement:
+// it is what makes threading the precondition for the whole family rather than a per-site repair.
+test fn no_surveyed_site_receives_the_parser_minted_occurrence_identity() -> Bool {
+  fold(tap_coverage_sites(), init: true, f: fn(acc, o) {
+    acc && match o.occurrence_identity {
+      OccurrenceIdentityAbsent { keyed_by: k } => contains(k as String, "name: String")
+      OccurrenceIdentityExact => false
+    }
+  })
+}
+
+// THE UNSURVEYED FAMILIES ARE COUNTED. A one-family census whose roster is its only output reads as
+// a whole-compiler one.
+test fn the_four_unsurveyed_decision_surfaces_are_counted_refusals() -> Bool {
+  list_length(items: tap_coverage_refusals()) == 4
+    && fold(tap_coverage_refusals(), init: true, f: fn(acc, r) {
+         acc && match r {
+           DecisionSurfaceUnsurveyed { surface: s, cause: _ } => (s as String) != ""
+           DecisionSurfaceUncitable { surface: _, cause: _ } => false
+         }
+       })
+}

@@ -1,0 +1,625 @@
+module test.claim.emission_entry_instrument_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INSTRUMENT'S OWN EVIDENCE. Every claim here is a controlled fixture: the input stream and
+// the expected population are authored side by side, so nothing is compared against a measurement
+// taken from the tree the claims are judging.
+//
+// THE REDS ARE THE POINT. A decoder that only ever reported a population has not been shown to
+// report anything -- what makes these two decoders admissible is that a stream they cannot read
+// REFUSES instead of shrinking silently, and each of those refusals is asserted below against an
+// input authored to trigger it.
+
+// ---------------------------------------------------------------------------------------------
+// cargo --message-format=json: the rustc coded-diagnostic population
+// ---------------------------------------------------------------------------------------------
+
+data artifact_line: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"probe\"\},\"executable\":null\}"
+
+data e0308_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":true\}]\}\}"
+
+// A NON-PRIMARY SPAN FIRST. A decode that read spans[0] would answer src/secondary.rs:1 here; the
+// claim asserts src/a.rs:12, so the is_primary read is what the claim is about rather than an
+// accident of ordering.
+data e0599_line_secondary_first: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0599\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/secondary.rs\",\"line_start\":1,\"column_start\":2,\"is_primary\":false\},\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":true\}]\}\}"
+
+data uncoded_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":null,\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[]\}\}"
+
+data build_finished_line: String = "\{\"reason\":\"build-finished\",\"success\":false\}"
+
+data build_finished_ok_line: String = "\{\"reason\":\"build-finished\",\"success\":true\}"
+
+data not_json_line: String = "warning: this line is not json"
+
+// A MALFORMED `is_primary`. Well-formed in every other respect; the flag is a string where a bool
+// is documented. An earlier decode answered `false` for this and so reported the diagnostic with no
+// location at all -- the malformed flag and a genuine `is_primary: false` reaching one answer.
+data e0308_line_primary_flag_malformed: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":\"yes\"\}]\}\}"
+
+// THE CONTROL FOR IT: the same diagnostic with a WELL-FORMED `is_primary: false` and no primary
+// span anywhere. This one is an ordinary reading and must still answer `(no span)`, which is what
+// makes the refusal above a discriminator rather than a blanket refusal of unlocated findings.
+data e0308_line_no_primary_span: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":false\}]\}\}"
+
+fn stream_of(lines: List<String>) -> String {
+  concat(join(lines, "\n"), "\n")
+}
+
+fn scan_of(lines: List<String>) -> CargoDiagnosticScan {
+  cargo_scan_diagnostics(stdout: stream_of(lines: lines))
+}
+
+fn scanned_rows(lines: List<String>) -> List<String> {
+  match scan_of(lines: lines) {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: _, build_succeeded: _, terminal_seen: _ } =>
+      map(ds, d => rustc_diagnostic_row(d: d))
+    scan => [concat("REFUSED: ", cargo_diagnostic_scan_refusal_reason(scan: scan))]
+  }
+}
+
+test fn cargo_population_carries_identity_and_location_per_finding() -> Bool {
+  scanned_rows(lines: [artifact_line, e0308_line, build_finished_line])
+    == ["src/a.rs:12:7\tE0308\tprobe diagnostic"]
+}
+
+test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
+  scanned_rows(lines: [e0599_line_secondary_first, build_finished_line])
+    == ["src/a.rs:12:7\tE0599\tprobe diagnostic"]
+}
+
+// RED: an UNREADABLE primary flag is not a well-formed `false`. The pair below is the whole point:
+// the malformed flag refuses, the well-formed `false` still reads as an unlocated finding. Without
+// the second, a decode that simply refused every span would pass the first and mean nothing.
+test fn an_unreadable_primary_flag_refuses_rather_than_reading_as_not_primary() -> Bool {
+  scanned_rows(lines: [e0308_line_primary_flag_malformed, build_finished_line])
+    == ["REFUSED: compiler-message spans are not readable at line 1"]
+}
+
+test fn a_well_formed_false_primary_flag_still_reads_as_an_unlocated_finding() -> Bool {
+  scanned_rows(lines: [e0308_line_no_primary_span, build_finished_line])
+    == ["(no span)\tE0308\tprobe diagnostic"]
+}
+
+test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool {
+  scanned_rows(lines: [uncoded_line, build_finished_line])
+    == ["(no span)\tuncoded\tprobe diagnostic"]
+}
+
+test fn every_message_is_kept_so_two_findings_are_two_rows() -> Bool {
+  count(scanned_rows(lines: [e0308_line, e0599_line_secondary_first, build_finished_line])) == 2
+}
+
+// RED: a stream this decode cannot read must not report an empty population. The line number is
+// asserted exactly, because a refusal that names the wrong line sends the reader to the wrong place.
+test fn an_unreadable_line_refuses_and_names_it_rather_than_reporting_zero() -> Bool {
+  scanned_rows(lines: [e0308_line, not_json_line, build_finished_line])
+    == ["REFUSED: cargo message line unparseable at line 2"]
+}
+
+// RED: an empty stream is the shape a swallowed or never-started build produces, and reading it as
+// a clean build is the fabricated zero this whole instrument exists to end.
+test fn an_empty_stream_refuses_rather_than_reporting_a_clean_build() -> Bool {
+  match cargo_scan_diagnostics(stdout: "") {
+    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: _, terminal_seen: _ } => false
+    CargoDiagnosticStreamEmpty => true
+    scan => false
+  }
+}
+
+// RED, AND IT IS THE INSTRUMENT'S OWN ORIGIN FAILURE TURNED ON ITSELF: cargo closes every run it
+// performed with a build-finished message, so a stream that parses cleanly and simply STOPS is a
+// killed run's prefix. Reporting its messages as the population is exactly the truncated-observation
+// -reported-as-complete defect this instrument was built after, so it refuses and says how far it got.
+test fn a_stream_with_no_terminal_message_refuses_rather_than_reporting_its_prefix() -> Bool {
+  scanned_rows(lines: [e0308_line, e0599_line_secondary_first])
+    == ["REFUSED: cargo's message stream ended after 2 line(s) with no build-finished message — the run did not complete, so the messages it did emit are a prefix and not a population; reporting them would be a killed process's partial output rendered as a finished measurement"]
+}
+
+// The clean verdict is cargo's OWN, read from the terminal message rather than from a process exit
+// status observed beside the stream.
+test fn the_clean_verdict_is_read_from_cargos_terminal_message() -> Bool {
+  match scan_of(lines: [artifact_line, build_finished_ok_line]) {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: _, build_succeeded: ok, terminal_seen: seen } =>
+      ok && seen && count(ds) == 0
+    scan => false
+  }
+}
+
+test fn a_failing_terminal_message_is_read_as_a_failing_build() -> Bool {
+  match scan_of(lines: [e0308_line, build_finished_line]) {
+    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: ok, terminal_seen: _ } => !ok
+    scan => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// gunbc compile: the emit-stage population
+// ---------------------------------------------------------------------------------------------
+
+data emit_error_line: String = "error[dag/extdeps/cpu/ampere.dag:31:3]: ambiguous anonymous record literal"
+
+data emit_advisory_line: String = "advisory[dag/std/logic.dag:9:1]: method existence undecided"
+
+data emit_summary_two: String = "compiled: 177 files emitted, 2 diagnostics"
+
+data emit_summary_three: String = "compiled: 177 files emitted, 3 diagnostics"
+
+data emit_summary_one: String = "compiled: 177 files emitted, 1 diagnostics"
+
+// The renderer's own closing line, in both of its shapes. This is the anchor that survives a
+// REFUSED compile, where no `compiled:` line is printed at all because no tree was written.
+data emit_severity_summary_two: String = "1 blocking error(s), 1 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)"
+
+data emit_severity_summary_one_error: String = "1 error(s)"
+
+data emit_noise_line: String = "resolved 3892 sources (transitive import closure)"
+
+data emit_scope_line: String = "resolved 27 sources (reference-derived closure), 3897 indexed modules in the name census only"
+
+data emit_whole_tree_scope_line: String = "resolved 3892 sources (transitive import closure)"
+
+fn complete_capture_of(s: String) -> CaptureExtent {
+  CaptureExtent {
+    truncated: false,
+    total: byte_size(count: s.length()),
+    retained: byte_size(count: s.length())
+  }
+}
+
+fn truncated_capture_of(s: String, retained: Int) -> CaptureExtent {
+  CaptureExtent {
+    truncated: true,
+    total: byte_size(count: s.length()),
+    retained: byte_size(count: retained)
+  }
+}
+
+fn emit_read_of(lines: List<String>) -> EmitDiagnosticRead {
+  let s = stream_of(lines: lines)
+  read_emit_diagnostics(stderr: s, capture: complete_capture_of(s: s))
+}
+
+fn emit_read_of_truncated(lines: List<String>) -> EmitDiagnosticRead {
+  let s = stream_of(lines: lines)
+  read_emit_diagnostics(stderr: s, capture: truncated_capture_of(s: s, retained: 16384))
+}
+
+// THE DISCRIMINATING CONTROL FOR THE TRUNCATION ARM, and it is the one the reds alone cannot give.
+//
+// The two truncation claims below establish that a truncated capture REFUSES. They do not establish
+// that truncation is what fires the arm rather than SIZE -- and a refusal that fired on large
+// outputs would refuse every talkative subject whether or not anything was lost, which is the same
+// unmeasurable corpus for a different reason. The arm keys on the host's own `truncated` flag and
+// reads no length anywhere, so the control asserts exactly that: a stream LARGER THAN THE WINDOW,
+// reported COMPLETE, reads its population normally.
+//
+// THE SIZE IS ASSERTED, NOT ASSUMED. `a_large_complete_capture_fixture_exceeds_the_window` pins the
+// fixture above 16 KiB, so a later edit that shrinks the corpus cannot quietly turn the control
+// into a small-input test that passes for the wrong reason -- the guard goes red instead.
+// THE WINDOW IS A MAGNITUDE, NOT A NUMBER. `std.measure` already owns the byte quantity
+// (`ByteSize = Measure<Memory, One, Nat>`), so a bare `Int` here would be a second representation
+// of a concept the corpus has one authority for -- the anemic-leaf modeling DESIGN rules out, and
+// the same move `extdeps.memory` and `extdeps.git.object_store` already make by constructing with
+// `byte_size` and projecting with `byte_size_count` only where arithmetic needs a scalar.
+//
+// THE PROJECTION IS SOUND HERE FOR A STATED REASON RATHER THAN BY ASSUMPTION: `String.length()` is
+// a CHARACTER count, which equals the byte count only for ASCII, and every line composing this
+// fixture is ASCII. That is why the comparison below is a byte comparison at all; a fixture that
+// grew a non-ASCII line would make the two quantities diverge and this claim would be measuring
+// something other than what it says.
+data emit_capture_window: ByteSize = byte_size(count: 16384)
+
+data emit_large_population_count: Int = 400
+
+fn emit_large_complete_stream() -> String {
+  concat(
+    concat(emit_scope_line, "\n"),
+    concat(
+      repeat_string(s: concat(emit_advisory_line, "\n"), n: emit_large_population_count),
+      concat(
+        concat("compiled: 177 files emitted, ", to_string(emit_large_population_count)),
+        concat(
+          concat("\n0 blocking error(s), ", to_string(emit_large_population_count)),
+          " advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)\n"
+        )
+      )
+    )
+  )
+}
+
+test fn a_large_complete_capture_fixture_exceeds_the_window() -> Bool {
+  emit_large_complete_stream().length() > byte_size_count(emit_capture_window)
+}
+
+// THE CONTROL ITSELF: over the window, reported complete, read in full. If the arm keyed on size
+// this would refuse; it reports all 400 members instead.
+test fn a_large_but_complete_capture_is_read_and_not_refused_for_its_size() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: complete_capture_of(s: emit_large_complete_stream())) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: n } =>
+      count(ds) == emit_large_population_count && n == emit_large_population_count
+    read => false
+  }
+}
+
+// AND THE SAME BYTES WITH THE FLAG SET STILL REFUSE, which is what makes the pair a discriminator
+// rather than two unrelated readings: identical input, one bit different, opposite verdicts. Only
+// the host's truncation report can account for the difference, because nothing else changed.
+test fn the_same_large_stream_refuses_when_the_host_reports_it_truncated() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: truncated_capture_of(s: emit_large_complete_stream(), retained: 16384)) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
+}
+
+fn emit_rows(lines: List<String>) -> List<String> {
+  match emit_read_of(lines: lines) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: _ } =>
+      map(ds, d => gunbc_diagnostic_row(d: d))
+    read => [concat("REFUSED: ", emit_diagnostic_read_refusal_reason(read: read))]
+  }
+}
+
+test fn the_emit_population_carries_severity_location_and_message() -> Bool {
+  emit_rows(lines: [emit_scope_line, emit_noise_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two])
+    == [
+      "error\tdag/extdeps/cpu/ampere.dag:31:3\tambiguous anonymous record literal",
+      "advisory\tdag/std/logic.dag:9:1\tmethod existence undecided"
+    ]
+}
+
+test fn blocking_is_counted_from_the_population_not_from_the_summary() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two]) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
+      emit_blocking_count(ds: ds) == 1 && emitted_file_count_text(files: files) == "177"
+    read => false
+  }
+}
+
+// A REFUSED COMPILE prints the rendered diagnostics and its severity summary but NO `compiled:`
+// line, because it wrote no tree. The population is still fully readable, and the file count is
+// the named absent state rather than a zero that would read as an empty emission.
+test fn a_refused_compile_reads_its_population_from_the_severity_summary() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: n } =>
+      count(ds) == 1 && n == 1
+        && emitted_file_count_text(files: files) == "(no tree written — the compiler refused)"
+    read => false
+  }
+}
+
+// RED: the compiler states its total twice on a completed compile, and the two accounts must
+// agree. A disagreement is the decode's own alarm that it is reading a rendering it does not
+// understand, and it stops the line instead of picking one of the two numbers.
+test fn the_compilers_two_own_totals_disagreeing_refuses() -> Bool {
+  emit_rows(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_three, emit_severity_summary_two])
+    == ["REFUSED: the compiler's own two totals disagree: `compiled:` says 3 and the rendered severity summary says 2"]
+}
+
+// RED, AND IT IS THE ONE THAT MAKES THE PROSE DECODE ADMISSIBLE AT ALL: the compiler declares its
+// own total, so a diagnostic shape this decode does not recognise makes the two numbers disagree
+// and stops the line, instead of quietly returning a smaller population.
+test fn a_population_smaller_than_the_compilers_own_total_refuses() -> Bool {
+  emit_rows(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_three])
+    == ["REFUSED: decoded 2 diagnostic line(s) against a compiler-declared total of 3"]
+}
+
+// RED: no summary line means the compile never reached the point where it states its own total, so
+// there is no total to check a population against and no population may be reported.
+test fn output_with_no_summary_line_refuses_rather_than_reporting_zero() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_noise_line]) {
+    EmitSummaryAbsent => true
+    read => false
+  }
+}
+
+test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, "compiled: some files emitted, lots diagnostics"]) {
+    EmitSummaryUnreadable { line: _ } => true
+    read => false
+  }
+}
+
+// RED: one population, two accounts of itself. Taking the last silently discards the first, so a
+// second anchor line refuses. Both anchors are covered because both folds had the same defect.
+test fn a_second_compiled_summary_line_refuses_rather_than_overwriting_the_first() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_summary_one, emit_summary_one]) {
+    EmitAnchorDuplicated { anchor: CompiledSummaryAnchor, count: 2 } => true
+    read => false
+  }
+}
+
+test fn a_second_severity_summary_line_refuses_rather_than_overwriting_the_first() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error, emit_severity_summary_one_error]) {
+    EmitAnchorDuplicated { anchor: SeveritySummaryAnchor, count: 2 } => true
+    read => false
+  }
+}
+
+// RED, AND IT IS THE ONE THAT SURVIVES SELF-EMISSION. `compile --entry` is carried only by the
+// hand-maintained main.rs; the .dag authority renders the Compile variant with no entry field and a
+// whole-tree handler. A compiler that accepted the flag and ignored it would print an ordinary
+// summary over the WHOLE FIRST SOURCE ROOT, and a per-entry instrument would report that as one
+// entry's population. Requiring the compiler's own scope marker refuses that substitution.
+test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool {
+  match emit_read_of(lines: [emit_whole_tree_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitScopeUnconfirmed => true
+    read => false
+  }
+}
+
+// RED: A TRUNCATED STREAM IS NOT A COMPILER THAT FAILED TO SCOPE. The input below is a WELL-FORMED,
+// entry-scoped, readable population -- the very lines the control beneath it reads normally -- and
+// the ONLY difference is the host's report that it kept a bounded tail. Without the pair, an arm
+// that simply refused everything would pass this and mean nothing.
+test fn a_truncated_capture_refuses_under_its_own_name() -> Bool {
+  match emit_read_of_truncated(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
+}
+
+// THE OTHER HALF OF THE DISCRIMINATION, and the one that keeps the arm from swallowing a real
+// finding: a stream that WAS truncated and ALSO lost its scope marker still refuses for truncation,
+// because truncation is the fact that explains the missing marker. Its opposite -- an untruncated
+// stream with no marker -- is the whole-tree substitution, and it must keep landing on
+// EmitScopeUnconfirmed. That claim is a_whole_tree_compile_is_not_read_as_an_entry_population above,
+// which is now this arm's control rather than merely its neighbour.
+test fn truncation_is_reported_ahead_of_a_missing_marker_it_explains() -> Bool {
+  match emit_read_of_truncated(lines: [emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
+}
+
+// THE REFUSAL REPORTS AN OVERAGE, NOT A VERDICT, and this claim is what stops the two new capture
+// keys being decoration. A refusal that merely said "truncated" would leave the reader knowing a
+// wall exists and not what it would take to move it; the numbers below are the difference. The
+// fixture pins an exact discarded count, so a decode that reported the total, the retained, or a
+// sign-flipped difference in that position would fail rather than merely read oddly.
+test fn the_truncation_refusal_carries_how_far_over_the_window_the_stream_ran() -> Bool {
+  let stream = emit_large_complete_stream()
+  let expected_discarded = stream.length() - 16384
+  match read_emit_diagnostics(stderr: stream, capture: truncated_capture_of(s: stream, retained: 16384)) {
+    EmitOutputTruncated { extent: e } =>
+      capture_overage_bytes(extent: e) == expected_discarded
+        && string_contains(
+             s: emit_diagnostic_read_refusal_reason(read: EmitOutputTruncated { extent: e }),
+             pattern: concat(to_string(expected_discarded), " byte(s) from the HEAD")
+           )
+    read => false
+  }
+}
+
+// THE CONTROL: the flag is the host's judgment and is CARRIED, never re-derived from the sizes.
+// A capture whose total equals its retained is not truncated, and a decode that inferred truncation
+// from `total > retained` would agree with this one by accident -- so the discriminating case is a
+// capture the host calls truncated whose sizes are EQUAL. It must still refuse.
+test fn truncation_follows_the_hosts_flag_and_not_a_size_comparison() -> Bool {
+  let stream = stream_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error])
+  match read_emit_diagnostics(
+    stderr: stream,
+    capture: CaptureExtent {
+      truncated: true,
+      total: byte_size(count: stream.length()),
+      retained: byte_size(count: stream.length())
+    }
+  ) {
+    EmitOutputTruncated { extent: e } => capture_overage_bytes(extent: e) == 0
+    read => false
+  }
+}
+
+test fn an_entry_scoped_compile_is_read_normally() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: _ } => count(ds) == 1
+    read => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The carrier: an unreached stage and a zero-diagnostic measurement must not render alike
+// ---------------------------------------------------------------------------------------------
+
+data specimen_subject: EmissionMeasurementSubject = EmissionMeasurementSubject {
+  scope: EntryScope { entry: "dag/extdeps/cpu/ampere.dag" },
+  render_target: RustRender,
+  source_revision: "c271b75829" as CommitSha,
+  working_tree: WorkingTreeClean,
+  compiler: sha256_digest(hex: "aa" as NonEmptyStr),
+  assembler: sha256_digest(hex: "bb" as NonEmptyStr),
+  assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/gunbc/instruments/self_host_std_bridge_shims" }
+}
+
+data unreached_specimen: EmissionMeasurement = EmissionSubjectUnestablished {
+  entry: "dag/extdeps/cpu/ampere.dag",
+  stage: StageBinaries,
+  cause: "binaries not buildable"
+}
+
+data clean_specimen: EmissionMeasurement = EmissionMeasured {
+  subject: specimen_subject,
+  emitted_files: FilesEmitted { count: 177 },
+  emit_diagnostics: [],
+  emitted_artifact_identity: specimen_subject.compiler,
+  rustfmt_parse_observation: RustfmtParseObservation {
+    producer: "rustfmt --emit stdout --edition 2021",
+    files_observed: 1,
+    refused_files: []
+  },
+  cargo_clean: true,
+  cargo_diagnostics: [],
+  cargo_lines_scanned: 4
+}
+
+// THE WHOLE CARRIER'S REASON FOR EXISTING, asserted rather than described. A count of zero and an
+// unreached stage are different values, they render to different text, and only one of them counts
+// as a completed measurement.
+test fn an_unreached_stage_and_a_zero_population_are_not_the_same_reading() -> Bool {
+  emission_measurement_completed(m: unreached_specimen) == false
+    && emission_measurement_completed(m: clean_specimen) == true
+    && emission_report_text(m: unreached_specimen) != emission_report_text(m: clean_specimen)
+}
+
+test fn an_unreached_report_names_the_stage_and_carries_no_counts() -> Bool {
+  string_contains(s: emission_report_text(m: unreached_specimen), pattern: "outcome\tsubject-unestablished\tstage\tbinaries")
+    && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
+}
+
+test fn a_measured_report_states_both_populations() -> Bool {
+  string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "cargo_population\t0")
+    && string_contains(
+      s: emission_report_text(m: clean_specimen),
+      pattern: "cargo_error_population\t0\tcoded\t0\tcodeless\t0\treconciliation\tcoded+codeless=total"
+    )
+}
+
+// PROVENANCE, ASSERTED RATHER THAN CLAIMED IN PROSE. A population is attributable only if the
+// report says which compiler produced it; a measurement carries that binding and an unestablished
+// subject carries no population to attribute.
+test fn a_measured_report_names_the_compiler_that_produced_it() -> Bool {
+  string_contains(s: emission_report_text(m: clean_specimen), pattern: "compiler\taa")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "source_revision\tc271b75829")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "working_tree\tclean")
+}
+
+// THE EXTENT CLAIM, and it is the one that stops a count being read as a total. v1's emit body is a
+// sequence of early returns, so a population taken over a refused emit may be a prefix of unknown
+// length. A measured entry and a refused one must therefore not report their counts the same way.
+data refused_specimen: EmissionMeasurement = EmissionEmitRefused {
+  subject: specimen_subject,
+  exit_code: 1,
+  emit_diagnostics: [],
+  emitted_files: FilesNotWritten
+}
+
+test fn a_refused_emit_population_is_never_reported_as_complete() -> Bool {
+  string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\tcompleteness-unestablished")
+    && !string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\tcomplete (")
+}
+
+// The counterpart, so the extent is a real discriminator rather than a constant: a compile that
+// wrote a tree ran the emit body to its end, and its population is complete.
+test fn a_completed_emit_population_is_reported_as_complete() -> Bool {
+  string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population_extent\tcomplete (")
+}
+
+// AND THE COUNT NEVER TRAVELS WITHOUT IT. Both are rendered by one expression, so a report that
+// states a population size always states the standing of the set it counted.
+test fn no_report_states_an_emit_population_without_its_extent() -> Bool {
+  string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population\t0")
+    && string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\t")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population_extent\t")
+}
+
+test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bool {
+  !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "compiler\t")
+    && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SCOPE DECIDES THE ARGV. These exist because a String entry could not express the
+// primary/pool distinction, and three whole-corpus runs on 2026-08-28 were reported as
+// whole-corpus while measuring 3109 of 4170 sources -- the compiler said
+// `primary-root population root=dag ... 1061 indexed modules in the name census only` and nothing
+// downstream could contradict it. Asserting the ORDER is the point: primary-precedence means the
+// FIRST --source-root is the subject, so an argv that lists the pool first measures something
+// else under the same name.
+// ---------------------------------------------------------------------------------------------
+
+// ASSERTED AS THE WHOLE ARGV RATHER THAN AS A PREDICATE OVER IT, because ORDER is the fact under
+// test and a membership check cannot see order at all -- an argv listing the pool first contains
+// exactly the same elements and measures a different subject.
+test fn a_primary_root_scope_renders_the_primary_root_before_its_pools() -> Bool {
+  emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  ) |> join(separator: " ")
+    == "compile --source-root src/v2 --source-root dag --output-dir /tmp/o --target rust --dependency-pool-index primary-precedence"
+}
+
+// THE MIRROR OF THE ABOVE, and the pair is the point: the SAME two roots in the other order is the
+// argv that produced 2026-08-28's misreported runs, and it must render differently.
+test fn swapping_which_root_is_primary_renders_a_different_argv() -> Bool {
+  emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender, out_dir: "/tmp/o"
+  ) |> join(separator: " ")
+  != (emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] },
+    render_target: RustRender, out_dir: "/tmp/o"
+  ) |> join(separator: " "))
+}
+
+test fn a_primary_root_scope_names_no_entry() -> Bool {
+  let args = emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  )
+  !any(args, a => a == "--entry")
+}
+
+test fn an_entry_scope_names_its_entry() -> Bool {
+  let args = emission_compile_args(
+    scope: EntryScope { entry: "dag/std/node.dag" },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  )
+  any(args, a => a == "--entry") && any(args, a => a == "dag/std/node.dag")
+}
+
+// THE TARGET REACHES THE ARGV RATHER THAN BEING DESCRIBED BESIDE IT. A subject field that did not
+// render into the invocation would be free to disagree with the run it claims to describe.
+test fn the_render_target_reaches_the_invocation() -> Bool {
+  let rust = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: RustRender, out_dir: "/tmp/o")
+  let dag = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: DagRender, out_dir: "/tmp/o")
+  any(rust, a => a == "rust") && any(dag, a => a == "dag") && !any(rust, a => a == "--target-dag")
+}
+
+// ASSEMBLY REFUSES RATHER THAN FABRICATING AN ENTRY. cssl_assemble takes one --entry-dag; handing
+// it the primary root would assemble a subject the measurement never named.
+test fn assembly_refuses_a_population_scope_instead_of_inventing_an_entry() -> Bool {
+  match emission_scope_entry(sc: PrimaryRootScope { primary_root: "src/v2", dependency_pools: [] }) {
+    ScopeEntry { entry: _ } => false
+    ScopeNamesNoEntry { why: w } => w != ""
+  }
+}
+
+test fn assembly_takes_the_entry_when_the_scope_has_one() -> Bool {
+  match emission_scope_entry(sc: EntryScope { entry: "dag/std/node.dag" }) {
+    ScopeEntry { entry: e } => e == "dag/std/node.dag"
+    ScopeNamesNoEntry { why: _ } => false
+  }
+}
+
+// THE LABEL DISTINGUISHES THE TWO SCOPES, so a persisted receipt cannot render a partial subject
+// as a whole one -- which is exactly what the prose around those three runs did.
+test fn the_scope_label_distinguishes_an_entry_from_a_population() -> Bool {
+  let e = emission_scope_label(sc: EntryScope { entry: "dag/std/node.dag" })
+  let p = emission_scope_label(sc: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] })
+  e != p && e != "" && p != "" && string_contains(s: p, pattern: "src/v2")
+}
+
+// THE JOIN KEY IS NOT THE LABEL, and this pair is the regression control for review 57181. The
+// label reads "entry foo.dag" -- correct prose, WRONG KEY, because it cannot equal a
+// repository-relative path, so a roster join answers Absent for exactly the entry the run was
+// about. measure_scope_emission stamps this key onto its subject-unestablished arms and
+// gunbc.emit_subject_clean_frontier joins on it, so the two must agree by construction.
+test fn an_entry_scopes_join_key_is_its_bare_path_and_not_its_label() -> Bool {
+  let sc = EntryScope { entry: "dag/std/node.dag" }
+  emission_scope_join_key(sc: sc) == "dag/std/node.dag"
+    && emission_scope_join_key(sc: sc) != emission_scope_label(sc: sc)
+}
+
+// AND THE POPULATION ARM PRESENTS THE LABEL DELIBERATELY: prefixed, so it cannot collide with any
+// path and joins to nothing -- the accurate answer, rather than a false match on whichever root it
+// names. Built unkind on purpose: the primary root IS a real entry path.
+test fn a_population_scopes_join_key_cannot_be_mistaken_for_its_primary_root() -> Bool {
+  let sc = PrimaryRootScope { primary_root: "dag/std/node.dag", dependency_pools: [] }
+  emission_scope_join_key(sc: sc) != "dag/std/node.dag"
+    && emission_scope_join_key(sc: sc) == emission_scope_label(sc: sc)
+}

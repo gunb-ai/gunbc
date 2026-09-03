@@ -1,0 +1,90 @@
+module extdeps.tools
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.types { FilePath, NonEmptyStr }
+import extdeps.shell
+import extdeps.tools.gnu_coreutils
+import extdeps.rustup { rustup_install_url }
+import extdeps.brew   { brew_install_url }
+import extdeps.apt
+import extdeps.version { VersionConstraint }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/tools"
+  }
+}
+
+type InstallSource
+  = SourceCoreutils
+  | SourceRustup
+  | SourceBrew { formula: NonEmptyStr }
+  | SourceApt { package: NonEmptyStr }
+  | SourceGitHubRelease {
+      repo: NonEmptyStr
+      tag: NonEmptyStr
+      asset_aarch64: NonEmptyStr
+      asset_x86_64: NonEmptyStr
+      install_path: NonEmptyStr
+    }
+
+type CliTool {
+  name: NonEmptyStr
+  min_version: VersionConstraint?
+  installable_via: List<InstallSource>
+}
+
+type ResolvedTool {
+  tool: CliTool
+  path: FilePath
+}
+
+type ResolveResult
+  = Resolved { resolved: ResolvedTool }
+  | NotFound { tool: CliTool, hint: String }
+
+fn one_hint(source: InstallSource) -> String {
+  match source {
+    SourceCoreutils => "expected from system coreutils (GNU on Linux, BSD on macOS)"
+    SourceRustup => concat("install rustup from ", rustup_install_url)
+    SourceBrew { formula: f } => concat("brew install ", f)
+    SourceApt { package: p } => concat("apt install ", p)
+    SourceGitHubRelease { repo: r, tag: t, install_path: p, asset_aarch64: _, asset_x86_64: _ } =>
+      concat(
+        concat(concat(concat("install ", p as String), " from github.com/"), r as String),
+        concat("/releases/tag/", t as String),
+      )
+  }
+}
+
+fn install_hint(sources: List<InstallSource>) -> String {
+  sources |> map(s => one_hint(source: s)) |> join(separator: " | ")
+}
+
+// Migrated off shell.Which.Check to shell.PosixCommandV.Check (crisp-wren-896, PR #8590): no fleet
+// host's OperatingSystemSurface carries a package-set authority, our own CI/falsifier runner
+// included, so `which`'s external-binary presence was never an established fact here either, and
+// command -v's weaker, dominant POSIX-shell assumption holds everywhere `which` did. UNLIKE the
+// other four migrated call sites, this function reads .path as a resolved filesystem path rather
+// than keying on .exists alone, so TWO hazards genuinely apply here rather than being ruled out:
+// (1) command -v prints the bare NAME rather than a resolved path when the probed command is a
+// shell builtin or alias, not an external binary -- every tool.name this resolves is expected to be
+// an external binary (coreutils, rustup, apt, brew, or a GitHub-release install), so this is not
+// believed to bite in practice, but it is not structurally excluded the way it is for the four
+// .exists-only sites; (2) under WET execution PosixCommandV.Check.path comes back as a bare stdout
+// String rather than a real Optional, so the Present/Absent match below relies on the same
+// Value::Null / Optional realization straddle (DESIGN open thread) that gunbc.host_cli_dependency's
+// which_path_realization_limit_note and gunbc.roadmap_belt_actuate's belt_program_available_note
+// document -- this function has no current live caller in the tree (verified by grep, PR #8590), so
+// the straddle is undischarged debt rather than an observed WET failure.
+
+func resolve(tool: CliTool) -> ResolveResult {
+  let check = shell.PosixCommandV.Check(command: tool.name)
+  match check.path {
+    Present { value: p } => Resolved { resolved: { tool: tool, path: p } }
+    Absent => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }
+  }
+}

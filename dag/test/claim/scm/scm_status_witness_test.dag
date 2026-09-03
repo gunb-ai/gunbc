@@ -1,0 +1,247 @@
+module test.claim.scm_status_witness
+
+import std.types { Bool, String, List, Int }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store {
+  ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision,
+  SemanticNodeTarget,
+}
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  mint_repository_commit,
+}
+import gunbc.scm.merge { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
+import gunbc.scm.authoring { author_requirement, empty_proposal }
+import gunbc.scm.status {
+  repository_status,
+  render_repository_status,
+  status_checkout_is_resolvable,
+  RepositoryStatus,
+  StatusCheckout,
+  NothingCheckedOut,
+  CheckedOutCommit,
+  CheckedOutCommitMissing,
+  StagedRole,
+  StagedBinding,
+  StagedAbsence,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Names qualified: top-level definitions are corpus-wide and the resolver silently selects among
+// duplicates (#8707), which this layer's witness files already document having hit.
+fn status_witness_atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+type StatusWitnessStored { store: ObjectStore, identity: SemanticNodeTarget }
+
+fn status_witness_stored(name: Symbol) -> StatusWitnessStored {
+  match store_node(store: empty_store(), n: status_witness_atom(name: name)) {
+    Stored { store: store, node: node } =>
+      StatusWitnessStored { store: store, identity: node_target_of(reference: node) }
+    LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+      StatusWitnessStored { store: empty_store(), identity: SemanticNodeTarget { locator: identity } }
+  }
+}
+
+fn status_witness_ref(ordinal: Int) -> RepositoryCommitRef {
+  RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
+}
+
+fn status_witness_empty_repository() -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: empty_store(),
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+}
+
+fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
+  let held = status_witness_stored(name: ^r1)
+  let base = RepositoryEnvelope {
+    store: held.store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+  match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none) {
+    RepositoryCommitMinted { repository: minted, reference: reference } => RepositoryEnvelope {
+      store: minted.store,
+      commits: minted.commits,
+      commit_allocator: minted.commit_allocator,
+      checked_out: Present { value: reference },
+    }
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => base
+    RepositoryCommitMintRootMissing { root: _ } => base
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => base
+    RepositoryCommitMintParentMissing { parent: _ } => base
+  }
+}
+
+// A dangling checkout at a CALLER-CHOSEN ordinal. The fixed-ordinal helper below cannot discriminate
+// a renderer that names the selection from one that hard-codes the only ordinal any test ever uses,
+// so the identity claim drives two different ordinals through the same arm.
+fn status_witness_repository_dangling_at(ordinal: Int) -> RepositoryEnvelope {
+  let valid = status_witness_repository_with_checkout()
+  RepositoryEnvelope {
+    store: valid.store,
+    commits: valid.commits,
+    commit_allocator: MintedIdAllocator { next_ordinal: ordinal + 1 },
+    checked_out: Present { value: status_witness_ref(ordinal: ordinal) },
+  }
+}
+
+fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
+  let valid = status_witness_repository_with_checkout()
+  RepositoryEnvelope {
+    store: valid.store,
+    commits: valid.commits,
+    commit_allocator: MintedIdAllocator { next_ordinal: 2 },
+    checked_out: Present { value: status_witness_ref(ordinal: 1) },
+  }
+}
+
+// A FRESH REPOSITORY IS NORMAL, NOT A FAULT. gunbc.scm.repository_envelope's header states that
+// `init` produces no commits and no root and that NEITHER IS AN ERROR, so a status that rendered
+// this as a warning would contradict a stated authority and fabricate a problem the model says does
+// not exist. Asserted rather than assumed, because it is the arm a UI instinct most wants to alarm on.
+test fn a_fresh_repository_reports_nothing_checked_out_and_is_resolvable() -> Bool {
+  let s = repository_status(
+    envelope: status_witness_empty_repository(),
+    pending: empty_proposal(),
+  )
+  status_checkout_is_resolvable(status: s)
+    && s.commit_count == 0
+    && match s.checkout {
+      NothingCheckedOut => true
+      CheckedOutCommit { root: _, message: _ } => false
+      CheckedOutCommitMissing { reference: _ } => false
+    }
+}
+
+// THE DECIDABLE FACT STATUS MUST NOT SKIP. The envelope's own encoder refuses on
+// RepositoryCheckoutNotInCommits, so "the selection names a commit this repository does not have" is
+// decidable here. A status that reported the selection as an ordinary checkout would assert that a
+// commit exists when it may not -- and the two arms are asserted as DIFFERENT values rather than as
+// "not an ordinary checkout", which a fresh repository would also satisfy.
+test fn a_dangling_checkout_is_reported_as_missing_not_as_ordinary() -> Bool {
+  let s = repository_status(
+    envelope: status_witness_repository_with_dangling_checkout(),
+    pending: empty_proposal(),
+  )
+  !status_checkout_is_resolvable(status: s)
+    && match s.checkout {
+      CheckedOutCommitMissing { reference: _ } => true
+      CheckedOutCommit { root: _, message: _ } => false
+      NothingCheckedOut => false
+    }
+}
+
+test fn a_resolvable_checkout_carries_its_commit_message() -> Bool {
+  let s = repository_status(
+    envelope: status_witness_repository_with_checkout(),
+    pending: empty_proposal(),
+  )
+  status_checkout_is_resolvable(status: s)
+    && s.commit_count == 1
+    && match s.checkout {
+      CheckedOutCommit { root: _, message: message } => message == "first"
+      CheckedOutCommitMissing { reference: _ } => false
+      NothingCheckedOut => false
+    }
+}
+
+// THE THREE-STATE CLAIM, AND IT IS THE ONE A SURFACE LOSES BY ACCIDENT. It is not enough that a
+// stated absence differ from a present binding: it must differ from NOT MENTIONED AT ALL, because
+// merge's silence-means-preserve rule makes "role not stated" and "role stated absent" semantically
+// OPPOSITE -- one preserves the target's binding, the other deletes it. This asserts all three are
+// distinguishable in the rendering a user actually reads, which is where the conflation would do its
+// damage.
+test fn stated_absence_not_stated_and_stated_binding_are_three_distinct_renderings() -> Bool {
+  let staged_only = repository_status(
+    envelope: status_witness_empty_repository(),
+    pending: author_requirement(
+      proposal: empty_proposal(),
+      requirement: RequireBinding { role: ^a, value: status_witness_atom(name: ^v1) },
+    ),
+  )
+  let absence_only = repository_status(
+    envelope: status_witness_empty_repository(),
+    pending: author_requirement(
+      proposal: empty_proposal(),
+      requirement: RequireBindingAbsent { role: ^a },
+    ),
+  )
+  let neither = repository_status(
+    envelope: status_witness_empty_repository(),
+    pending: empty_proposal(),
+  )
+  let r_staged = render_repository_status(status: staged_only)
+  let r_absence = render_repository_status(status: absence_only)
+  let r_neither = render_repository_status(status: neither)
+  r_staged != r_absence && r_absence != r_neither && r_staged != r_neither
+}
+
+// THE EMPTY CASE IS RENDERED, NOT LEFT BLANK. "nothing staged" and "this surface did not report
+// staging" are different facts, and rendering the first as silence makes them identical to the
+// reader -- the empty-observation narrow carried to a human.
+// ASSERTED AS AN EXACT RENDERING RATHER THAN A SUBSTRING SEARCH, for two reasons. Exact equality is
+// the more discriminating claim -- a substring test passes against a surface that also emits five
+// lines of fabricated facts beside it. And the corpus already carries TWO separate top-level
+// `string_contains` definitions in two witness files; since top-level names are corpus-wide and the
+// resolver silently selects among duplicates (#8707), adding a third would make that binding
+// arbitrary for every module in the shared scope. The helper this witness would need is itself an
+// instance of the hazard this file is careful about.
+test fn nothing_staged_is_stated_rather_than_rendered_as_silence() -> Bool {
+  let s = repository_status(
+    envelope: status_witness_empty_repository(),
+    pending: empty_proposal(),
+  )
+  render_repository_status(status: s) == "nothing checked out\n0 commits\n  nothing staged"
+}
+
+// The store population is deliberately not reported: it is a fact about REPRESENTATION rather than
+// about the author's intent state, and below-boundary representation is opaque. Asserted so that
+// adding it later is a deliberate decision that turns this red, rather than a drift nobody notices.
+test fn status_does_not_report_store_representation() -> Bool {
+  let s = repository_status(
+    envelope: status_witness_repository_with_checkout(),
+    pending: empty_proposal(),
+  )
+  render_repository_status(status: s) == "on commit: first\n1 commit\n  nothing staged"
+}
+
+// THE REFUSAL NAMES THE COMMIT IT REFUSES ON. Before this claim the arm rendered "the checked-out
+// selection names a commit this repository does not contain" while discarding its `reference`, so
+// the reader could not tell WHICH selection was unresolvable -- unactionable by construction, since
+// no care on their part recovers an identity the renderer dropped. The text of this arm was pinned
+// by nothing, which is how the omission survived beside two arms that were pinned.
+//
+// TWO ORDINALS, NOT ONE, AND THAT IS THE WHOLE POINT OF THE CLAIM. A single case is satisfied by a
+// renderer that prints a constant, which is the defect being repaired wearing a number. Driving 1
+// and 7 through the same arm makes the assertion about the SELECTION rather than about the string:
+// the only implementation that passes both is one that reads `reference`.
+test fn a_dangling_checkout_names_the_commit_it_cannot_resolve() -> Bool {
+  let one = repository_status(
+    envelope: status_witness_repository_dangling_at(ordinal: 1),
+    pending: empty_proposal(),
+  )
+  let seven = repository_status(
+    envelope: status_witness_repository_dangling_at(ordinal: 7),
+    pending: empty_proposal(),
+  )
+  render_repository_status(status: one)
+      == "the checked-out selection names commit 1, which this repository does not contain\n1 commit\n  nothing staged"
+    && render_repository_status(status: seven)
+      == "the checked-out selection names commit 7, which this repository does not contain\n1 commit\n  nothing staged"
+}

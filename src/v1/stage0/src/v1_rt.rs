@@ -3,12 +3,9 @@
 
 #![allow(unused_variables, dead_code)]
 
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{HashMap, OrdSet as BTreeSet, Vector as Vec};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
-#[cfg(feature = "text_lookup_work_counter")]
-use std::cell::Cell;
 
 #[cfg(feature = "text_lookup_work_counter")]
 thread_local! {
@@ -66,6 +63,195 @@ pub fn record_source_chars_index_lookup() {
 #[cfg(not(feature = "text_lookup_work_counter"))]
 pub fn record_source_chars_index_lookup() {}
 
+/// Read-only silent-pick telemetry for resolution divergence census slice 2.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GlobalBareLcpPickSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub candidate_count: usize,
+    pub chosen_module_path: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GlobalBareLcpTieSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub candidate_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FnParentFirstHitSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub parent_match_count: usize,
+    pub chosen_parent_module: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SilentPickTelemetry {
+    pub global_bare_lcp_picks: std::vec::Vec<GlobalBareLcpPickSite>,
+    pub global_bare_lcp_ties: std::vec::Vec<GlobalBareLcpTieSite>,
+    pub fn_parent_first_hits: std::vec::Vec<FnParentFirstHitSite>,
+}
+
+thread_local! {
+    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(false) };
+    static RESOLUTION_SILENT_PICK: RefCell<SilentPickTelemetry> = RefCell::new(SilentPickTelemetry::default());
+}
+
+pub fn resolution_silent_pick_enable() {
+    RESOLUTION_SILENT_PICK.with(|t| *t.borrow_mut() = SilentPickTelemetry::default());
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.set(true));
+}
+
+pub fn resolution_silent_pick_disable() -> SilentPickTelemetry {
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.set(false));
+    RESOLUTION_SILENT_PICK.with(|t| std::mem::take(&mut *t.borrow_mut()))
+}
+
+pub fn resolution_silent_pick_is_enabled() -> bool {
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.get())
+}
+
+pub fn resolution_silent_pick_record_global_bare_lcp_pick(
+    env_module_path: String,
+    name: String,
+    candidate_count: i64,
+    chosen_module_path: String,
+) {
+    let candidate_count = candidate_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || candidate_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .global_bare_lcp_picks
+            .push(GlobalBareLcpPickSite {
+                env_module_path,
+                name,
+                candidate_count,
+                chosen_module_path,
+            });
+    });
+}
+
+pub fn resolution_silent_pick_record_global_bare_lcp_tie(
+    env_module_path: String,
+    name: String,
+    candidate_count: i64,
+) {
+    let candidate_count = candidate_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || candidate_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .global_bare_lcp_ties
+            .push(GlobalBareLcpTieSite {
+                env_module_path,
+                name,
+                candidate_count,
+            });
+    });
+}
+
+// NameResolutionPolicy gate (namespace-resolution-design.md 13, 8 step 4): default
+// true = NamespaceOnlyY — strict unique-on-chain in the type/value path and
+// exactly-one across the fn parent closure, with typed Ambiguous refusals.
+// false = ImportScoped (legacy resolver, byte-for-byte). Host-side setter only;
+// no .dag surface can flip it (no escape hatch — a flip is an explicit host decision).
+thread_local! {
+    static NAME_RESOLUTION_POLICY_NAMESPACE_ONLY: Cell<bool> = const { Cell::new(true) };
+}
+
+pub fn name_resolution_policy_set_namespace_only(enabled: bool) {
+    NAME_RESOLUTION_POLICY_NAMESPACE_ONLY.with(|e| e.set(enabled));
+}
+
+pub fn name_resolution_policy_is_namespace_only() -> bool {
+    NAME_RESOLUTION_POLICY_NAMESPACE_ONLY.with(|e| e.get())
+}
+
+// N1a measurement arm (type-ref hit≠bind discriminator): default false = production
+// fail-open path. Host-side setter only — compile_dag_diagnostic_census arms for the
+// nested synthetic compile; no .dag surface can flip it (same shape as
+// name_resolution_policy — no escape hatch).
+thread_local! {
+    static TYPE_REF_HIT_NE_BIND_MEASURE: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn type_ref_hit_ne_bind_measure_set(enabled: bool) {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|e| e.set(enabled));
+}
+
+pub fn type_ref_hit_ne_bind_measure_active() -> bool {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|e| e.get())
+}
+
+pub fn with_type_ref_hit_ne_bind_measure<T>(f: impl FnOnce() -> T) -> T {
+    TYPE_REF_HIT_NE_BIND_MEASURE.with(|c| {
+        let prev = c.get();
+        c.set(true);
+        let out = f();
+        c.set(prev);
+        out
+    })
+}
+
+pub fn resolution_silent_pick_record_fn_parent_first_hit(
+    env_module_path: String,
+    name: String,
+    parent_match_count: i64,
+    chosen_parent_module: String,
+) {
+    let parent_match_count = parent_match_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || parent_match_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .fn_parent_first_hits
+            .push(FnParentFirstHitSite {
+                env_module_path,
+                name,
+                parent_match_count,
+                chosen_parent_module,
+            });
+    });
+}
+
+// Vec here is im's persistent Vector (one realization with the
+// interpreter's Value::List). VecCompat papers the std-Vec API deltas the
+// emitter's method rows rely on (first/push/with_capacity; join via VecJoin)
+// so emitted call sites stay identical across carriers.
+pub trait VecCompat<T> {
+    fn first(&self) -> Option<&T>;
+    fn push(&mut self, item: T);
+    fn with_capacity(capacity: usize) -> Self;
+}
+
+impl<T: Clone> VecCompat<T> for Vec<T> {
+    fn first(&self) -> Option<&T> {
+        self.front()
+    }
+    fn push(&mut self, item: T) {
+        self.push_back(item);
+    }
+    fn with_capacity(_capacity: usize) -> Self {
+        Vec::new()
+    }
+}
+
+pub trait VecJoin {
+    fn join(&self, sep: &str) -> String;
+}
+
+impl VecJoin for Vec<String> {
+    fn join(&self, sep: &str) -> String {
+        self.iter().cloned().collect::<std::vec::Vec<_>>().join(sep)
+    }
+}
+
 pub trait V2Concat {
     fn v1_concat(self, other: Self) -> Self;
 }
@@ -77,7 +263,7 @@ impl V2Concat for String {
     }
 }
 
-impl<T> V2Concat for Vec<T> {
+impl<T: Clone> V2Concat for Vec<T> {
     fn v1_concat(mut self, other: Vec<T>) -> Vec<T> {
         self.extend(other);
         self
@@ -88,13 +274,25 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
     a.v1_concat(b)
 }
 
+/// Code-point indexing over UTF-8, with the ASCII fast path bounded by `pos`
+/// rather than by the whole string. A leading run of ASCII bytes makes the byte
+/// offset equal the code-point offset, so nothing past `pos` is examined and the
+/// per-call whole-string `s.is_ascii()` rescan is gone (STRING-INDEX-0). Cost is
+/// O(min(pos, n)) -- the fallback's own cost -- never O(n) unconditionally.
+/// This is the entry point for a caller holding a bare `&str` and therefore no ASCII
+/// fact: it must test, and O(min(pos, n)) is the cheapest honest test. A caller that
+/// holds an `RcStr` carries the fact instead and calls `RcStr::char_at`, which is
+/// O(1) on ASCII text; the interpreter routes every string index that way.
+/// RESIDUAL: a left-to-right walk through THIS function is still O(n^2), and a walk
+/// through the carrier is linear rather than constant per string -- a cursor surface
+/// that does not re-index from zero is that residual's next rung.
 pub fn char_at(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
-    if s.is_ascii() {
-        let bytes = s.as_bytes();
-        if pos >= bytes.len() {
-            return String::new();
-        }
+    let bytes = s.as_bytes();
+    if pos >= bytes.len() {
+        return String::new();
+    }
+    if bytes[..=pos].is_ascii() {
         return String::from(bytes[pos] as char);
     }
     s.chars()
@@ -111,18 +309,33 @@ pub fn string_length(s: &str) -> i64 {
     }
 }
 
+/// The two symbol bridges. `Symbol` is declared to realize as `String` on this target
+/// (extdeps.languages.rust.types), so interning and its inverse are both the identity
+/// HERE and nowhere else: a target whose Symbol is a table index needs a real table, and
+/// its registry rows would say so. These exist because the .dag declarations are
+/// self-calls -- host seams -- and emitting a self-call produces a function that compiles
+/// and never returns (std.primitive_projection symbol_lexeme_seam_disposition_note).
+pub fn symbol_lexeme(sym: String) -> String {
+    sym
+}
+
+pub fn symbol_intern_lexeme(lexeme: String) -> String {
+    lexeme
+}
+
+/// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
 pub fn substring(s: &str, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
     if end <= start {
         return String::new();
     }
-    if s.is_ascii() {
-        let len = s.len();
-        if start >= len {
-            return String::new();
-        }
-        let out_end = end.min(len);
+    let bytes = s.as_bytes();
+    if start >= bytes.len() {
+        return String::new();
+    }
+    let out_end = end.min(bytes.len());
+    if bytes[..out_end].is_ascii() {
         let take_len = out_end.saturating_sub(start);
         record_substring_chars_walked(s, start, take_len);
         return s[start..out_end].to_string();
@@ -152,7 +365,7 @@ pub fn trim(s: String) -> String {
     s.trim().to_string()
 }
 
-pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
+pub fn count<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.len() as i64
 }
 
@@ -173,19 +386,162 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Witness<V> {
-    Holds { value: V },
-    Violates { diagnostic: String },
+/// The string carrier for interpreted values: an `Rc<str>` plus the ASCII fact,
+/// computed ONCE at construction (`RcStr::new`) instead of rescanned on every
+/// index. `char_at`/`substring`/`string_length` above are the no-carrier entry
+/// points for emitted code holding a bare `&str`; they bound their ASCII test by
+/// the requested position, which is O(min(pos, n)) and makes a left-to-right walk
+/// O(n^2). The methods here read the carried flag instead, so a single call is
+/// O(1) on ASCII text and the walk is linear (STRING-INDEX-0).
+///
+/// The flag has exactly one producer -- `RcStr::new` -- so it is the carrier's own
+/// fact rather than a parameter a caller could supply wrongly. Semantics are the
+/// free functions' semantics: each method falls back to the function it shadows
+/// whenever the flag is false, and takes the byte path only under the same
+/// condition that path is already taken there (byte index == code-point index).
+#[derive(Debug, Clone)]
+pub struct RcStr {
+    rc: Rc<str>,
+    is_ascii: bool,
 }
 
-pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Witness<V> {
-    match table.get(&key).cloned() {
-        Some(value) => Witness::Holds { value },
-        None => Witness::Violates {
-            diagnostic: format!("lookup miss for key {}", key),
-        },
+impl RcStr {
+    pub fn new(rc: Rc<str>) -> Self {
+        let is_ascii = rc.is_ascii();
+        RcStr { rc, is_ascii }
     }
+
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.rc
+    }
+
+    #[inline]
+    pub fn is_ascii(&self) -> bool {
+        self.is_ascii
+    }
+
+    /// Owned handle on the underlying allocation, for sites that need a bare `Rc<str>`.
+    pub fn rc(&self) -> Rc<str> {
+        Rc::clone(&self.rc)
+    }
+
+    /// Pointer identity of the underlying allocation, for consumers whose subject is
+    /// sharing rather than content.
+    pub fn ptr_eq(a: &RcStr, b: &RcStr) -> bool {
+        Rc::ptr_eq(&a.rc, &b.rc)
+    }
+
+    pub fn char_at(&self, pos: i64) -> String {
+        if !self.is_ascii {
+            return char_at(&self.rc, pos);
+        }
+        let pos = pos.max(0) as usize;
+        let bytes = self.rc.as_bytes();
+        if pos >= bytes.len() {
+            return String::new();
+        }
+        String::from(bytes[pos] as char)
+    }
+
+    pub fn string_length(&self) -> i64 {
+        if self.is_ascii {
+            self.rc.len() as i64
+        } else {
+            self.rc.chars().count() as i64
+        }
+    }
+
+    pub fn substring(&self, start: i64, end: i64) -> String {
+        if !self.is_ascii {
+            return substring(&self.rc, start, end);
+        }
+        let start = start.max(0) as usize;
+        let end = end.max(0) as usize;
+        if end <= start {
+            return String::new();
+        }
+        let bytes = self.rc.as_bytes();
+        if start >= bytes.len() {
+            return String::new();
+        }
+        let out_end = end.min(bytes.len());
+        record_substring_chars_walked(&self.rc, start, out_end.saturating_sub(start));
+        self.rc[start..out_end].to_string()
+    }
+}
+
+impl std::ops::Deref for RcStr {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl AsRef<str> for RcStr {
+    fn as_ref(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl std::borrow::Borrow<str> for RcStr {
+    fn borrow(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl std::fmt::Display for RcStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&*self.rc, f)
+    }
+}
+
+impl PartialEq for RcStr {
+    fn eq(&self, other: &Self) -> bool {
+        self.rc == other.rc
+    }
+}
+
+impl Eq for RcStr {}
+
+impl PartialOrd for RcStr {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RcStr {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.rc.as_ref().cmp(other.rc.as_ref())
+    }
+}
+
+impl std::hash::Hash for RcStr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.rc.as_ref().hash(state)
+    }
+}
+
+impl From<Rc<str>> for RcStr {
+    fn from(rc: Rc<str>) -> Self {
+        RcStr::new(rc)
+    }
+}
+
+impl From<&str> for RcStr {
+    fn from(s: &str) -> Self {
+        RcStr::new(Rc::from(s))
+    }
+}
+
+impl From<String> for RcStr {
+    fn from(s: String) -> Self {
+        RcStr::new(Rc::from(s.as_str()))
+    }
+}
+
+pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V> {
+    m.get(&key).cloned()
 }
 
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {
@@ -201,7 +557,7 @@ pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> HashMap<K, V> {
     HashMap::new()
 }
 
-pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut map: HashMap<K, V>,
     key: K,
     value: V,
@@ -210,7 +566,7 @@ pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
     map
 }
 
-pub fn map_merge<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut base: HashMap<K, V>,
     overlay: HashMap<K, V>,
 ) -> HashMap<K, V> {
@@ -227,6 +583,12 @@ pub fn map_get<K: std::cmp::Eq + std::hash::Hash, V: Clone>(
 
 pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
+}
+
+pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+    let mut keys = map_keys(m);
+    keys.sort();
+    keys
 }
 
 pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
@@ -252,19 +614,19 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
-pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
+pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
     a.extend(b);
     a
 }
 
-pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> {
-    list.push(item);
+pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
+    list.push_back(item);
     list
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
     let mut v = (*list).clone();
-    v.push(item);
+    v.push_back(item);
     v
 }
 
@@ -274,10 +636,17 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let end = (end.max(0) as usize).min(len).max(start);
     let units = (end.saturating_sub(start)) as u64;
     record_source_chars_slice_walked(units);
-    chars[start..end]
-        .iter()
-        .filter_map(|&cp| char::from_u32(cp as u32))
-        .collect()
+    // Focus caches the current RRB chunk, so per-char access is contiguous-slice
+    // speed; a plain iter().skip(start) walks O(start) per call, which summed
+    // quadratically across a tokenize pass (profiled 2026-07-06).
+    let mut focus = chars.focus();
+    let mut out = String::with_capacity(end - start);
+    for i in start..end {
+        if let Some(ch) = char::from_u32(*focus.index(i) as u32) {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 pub fn parse_int(s: String) -> Option<i64> {
@@ -314,9 +683,7 @@ pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(s: S, x: T) -> bool {
 }
 
 pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut v = (*list).clone();
-    v.reverse();
-    Rc::new(v)
+    Rc::new(list.iter().cloned().rev().collect())
 }
 
 pub fn replace(s: String, from: String, to: String) -> String {
@@ -329,9 +696,21 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
+// take_owned: move out of a uniquely-held Rc; clone when shared. With every
+// container realized persistently (im), the shared-arm clone is cheap
+// structural sharing — an ordinary designed path, not a degradation arm, so
+// no counter and no refusal (the clone-fallback guard class was deleted with
+// the Rc<std container> carriers it policed).
+pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
+    match Rc::try_unwrap(x) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    }
+}
+
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     let mut v = list;
-    Rc::make_mut(&mut v).push(item);
+    Rc::make_mut(&mut v).push_back(item);
     v
 }
 
@@ -341,6 +720,10 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
+// Every rc_* update here rides a persistent carrier (im HashMap/Vector/
+// OrdSet — one realization with the interpreter's Value::Map/List/Set), so
+// make_mut's clone arm is O(1) structural sharing and each update copies an
+// O(log n) node path — a designed update, never a degradation arm.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
@@ -524,6 +907,29 @@ pub fn is_emoji_ident(cp: i64) -> bool {
         .unwrap_or(false)
 }
 
+// FreeMonoid host bridge (String = FreeMonoid<Char>) — relocated from v2_std_algebra
+// so the Char authority (i64 / std.types.Char) is not pinned to v2_std_nat::Nat.
+pub fn freemonoid_empty<T: Clone>() -> Rc<Vec<T>> {
+    Rc::new(Vec::new())
+}
+
+pub fn list_snoc_item<T: Clone>(xs: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
+    let mut out = xs.as_ref().clone();
+    out.push_back(item);
+    Rc::new(out)
+}
+
+pub fn fold_list<T: Clone, A, F>(xs: Rc<Vec<T>>, init: A, f: F) -> A
+where
+    F: Fn(A, T) -> A,
+{
+    let mut acc = init;
+    for item in xs.iter() {
+        acc = f(acc, item.clone());
+    }
+    acc
+}
+
 const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV1A64_PRIME: u64 = 0x100000001b3;
 
@@ -550,6 +956,175 @@ fn expect_hash_digest(s: &str, arg: &str) {
     }
 }
 
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
+/// raw gantt key=value shape (process-absolute millis and rss-mib fields) dissolves into the observation projection.
+#[allow(dead_code)]
+pub const GANTT_CENSUS_MARKER: &str = "[gantt]";
+
+/// Mirror of `gunbc.observation_ci_render.ci_minute_switch_seconds`.
+const OBS_MINUTE_SWITCH_SECONDS: u64 = 90;
+
+pub fn obs_human_duration(ms: u64) -> String {
+    if ms < 1_000 {
+        format!("{ms}ms")
+    } else if ms < OBS_MINUTE_SWITCH_SECONDS * 1_000 {
+        format!("{} seconds", ms / 1_000)
+    } else {
+        format!("{} minutes", ms / 60_000)
+    }
+}
+
+/// Mirror of `gunbc.observation_ci_render.ci_human_elapsed`.
+pub fn obs_human_elapsed(wall_nanos: u128) -> String {
+    if wall_nanos < 1_000_000 {
+        format!("{wall_nanos}ns")
+    } else {
+        obs_human_duration((wall_nanos / 1_000_000) as u64)
+    }
+}
+
+fn obs_phase_emoji() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+}
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.phase_begin_line` —
+/// `ci_event_line(Begin) ∘ ci_render_line`. Justified divergence from the
+/// interpreter seed boundary used by floor prelude marks: `trace_mark` runs
+/// inside compile itself (hand-synced path and interpreter intrinsic), and
+/// calling back into the interpreter to render would recurse. Proven
+/// byte-equal to the `.dag` oracle by the seed RED.
+pub fn render_phase_begin_line_mirror(phase: &str, emoji: bool) -> String {
+    let glyph = if emoji { "🔄" } else { "◐" };
+    format!("{glyph} started {phase}")
+}
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.phase_concluded_line` —
+/// `ci_event_line(Concluded{Done}) ∘ ci_render_line`. Same justified-divergence
+/// note as `render_phase_begin_line_mirror`.
+pub fn render_phase_concluded_line_mirror(phase: &str, elapsed_ms: u64, emoji: bool) -> String {
+    let glyph = if emoji { "✅" } else { "✓" };
+    format!("{glyph} {phase} done in {}", obs_human_duration(elapsed_ms))
+}
+
+/// One drained trace-ledger row: the mark's label with any `.done` suffix removed, the wall
+/// elapsed the mark printed, and the process-tree CPU spent since the mark it closes.
+/// Authority: `gunbc.regen_round_cost` `TraceMark`; `cpu_ms == None` is its `CpuUnreadable`.
+#[derive(Clone, Debug)]
+pub struct TraceLedgerRow {
+    pub label: String,
+    pub wall_ms: u64,
+    pub cpu_ms: Option<u64>,
+}
+
+fn trace_ledger_state() -> &'static std::sync::Mutex<Option<Vec<TraceLedgerRow>>> {
+    static LEDGER: std::sync::OnceLock<std::sync::Mutex<Option<Vec<TraceLedgerRow>>>> =
+        std::sync::OnceLock::new();
+    LEDGER.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Start recording marks. Until armed, `trace_mark` records nothing, so a program that never
+/// drains the ledger never grows it.
+pub fn trace_ledger_arm() {
+    if let Ok(mut ledger) = trace_ledger_state().lock() {
+        *ledger = Some(Vec::new());
+    }
+}
+
+/// Take every row recorded since `trace_ledger_arm` and disarm; `None` when never armed.
+pub fn trace_ledger_drain() -> Option<Vec<TraceLedgerRow>> {
+    trace_ledger_state()
+        .lock()
+        .ok()
+        .and_then(|mut ledger| ledger.take())
+}
+
+/// Process-tree CPU milliseconds — utime + stime + cutime + cstime from `/proc/self/stat` —
+/// or `None` where that accounting is unreadable. A child's CPU lands once it is reaped, so a
+/// mark that closes over a waited child carries that child's CPU; a fabricated 0 would read as
+/// free, which is the direction that looks survivable.
+pub fn trace_process_tree_cpu_ms() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let after_comm = stat.rsplit(')').next()?;
+    let fields: Vec<&str> = after_comm.split_whitespace().collect();
+    let tick = |i: usize| fields.get(i).and_then(|v| v.parse::<u64>().ok());
+    let ticks = tick(11)? + tick(12)? + tick(13)? + tick(14)?;
+    Some(ticks * 1000 / 100)
+}
+
+/// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
+/// CostAccount (std.realization_measurement). Wired (gantt flip): projects Begin/Concluded
+/// on a PhaseSegment via the observation mirrors of `ci_event_line`. Segment wall on
+/// Concluded (matched `.begin`→`.done`, else delta since last mark) — never the old
+/// process-absolute millis field. RSS stays on heartbeat/measurement (`ci_event_line` does
+/// not project `event.rss` — explicit divergence from the deleted rss-mib field).
+///
+/// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
+/// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
+/// `trace_mark(...)` marks in `compile.dag` (+ hand-synced `v1_compiler_compile.rs`), and
+/// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
+/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
+/// per-stage carrier that a floor witness consumes by execution (the same retirement event
+/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)`
+/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
+/// still attributable from the model path.
+pub fn trace_mark(label: String) {
+    use std::sync::{Mutex, OnceLock};
+    use std::time::Instant;
+    static TRACE_T0: OnceLock<Instant> = OnceLock::new();
+    static LAST_MARK: OnceLock<Mutex<(Instant, Option<u64>)>> = OnceLock::new();
+    static OPENS: OnceLock<Mutex<std::collections::HashMap<String, (Instant, Option<u64>)>>> =
+        OnceLock::new();
+    let t0 = TRACE_T0.get_or_init(Instant::now);
+    let last = LAST_MARK.get_or_init(|| Mutex::new((*t0, trace_process_tree_cpu_ms())));
+    let opens = OPENS.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    let emoji = obs_phase_emoji();
+    let now = Instant::now();
+    let cpu_now = trace_process_tree_cpu_ms();
+    let _ = GANTT_CENSUS_MARKER;
+    if let Some(phase) = label.strip_suffix(".begin") {
+        if let Ok(mut map) = opens.lock() {
+            map.insert(phase.to_string(), (now, cpu_now));
+        }
+        if let Ok(mut l) = last.lock() {
+            *l = (now, cpu_now);
+        }
+        eprintln!("{}", render_phase_begin_line_mirror(phase, emoji));
+        return;
+    }
+    let (phase, opened) = match label.strip_suffix(".done") {
+        Some(phase) => (
+            phase.to_string(),
+            opens.lock().ok().and_then(|mut m| m.remove(phase)),
+        ),
+        None => (label.clone(), None),
+    };
+    let (since, since_cpu) = match opened {
+        Some(open) => open,
+        None => last.lock().map(|l| *l).unwrap_or((*t0, None)),
+    };
+    let elapsed_ms = now.saturating_duration_since(since).as_millis() as u64;
+    let cpu_ms = match (cpu_now, since_cpu) {
+        (Some(now_ms), Some(since_ms)) => Some(now_ms.saturating_sub(since_ms)),
+        _ => None,
+    };
+    if let Ok(mut l) = last.lock() {
+        *l = (now, cpu_now);
+    }
+    if let Ok(mut ledger) = trace_ledger_state().lock() {
+        if let Some(rows) = ledger.as_mut() {
+            rows.push(TraceLedgerRow {
+                label: phase.clone(),
+                wall_ms: elapsed_ms,
+                cpu_ms,
+            });
+        }
+    }
+    eprintln!(
+        "{}",
+        render_phase_concluded_line_mirror(&phase, elapsed_ms, emoji)
+    );
+}
+
 /// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`
 /// is the `String` projection of this. Use this directly for arbitrary binary content
 /// (e.g. an executable or serialized payload): routing bytes through `String`/
@@ -572,6 +1147,46 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
     format!("{:016x}", fnv1a64(&bytes))
 }
 
+pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = 1024;
+
+pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let mut attempted: u32 = 0;
+    let (mut staged, staging_path) = loop {
+        if attempted >= GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT {
+            return Err(std::io::Error::other(format!(
+                "gunbc create-new: StagingCandidateBudgetExhausted attempted={} limit={}",
+                attempted, GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT
+            )));
+        }
+        attempted += 1;
+        let seq = GUNBC_CREATE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let candidate = format!("{}.gunbc-create-{}-{}", file_path, std::process::id(), seq);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => break (file, candidate),
+            Err(occupied) if occupied.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(host) => return Err(host),
+        }
+    };
+    if let Err(staging_err) = staged.write_all(content) {
+        let _ = std::fs::remove_file(&staging_path);
+        return Err(staging_err);
+    }
+    if let Err(sync_err) = staged.sync_all() {
+        let _ = std::fs::remove_file(&staging_path);
+        return Err(sync_err);
+    }
+    drop(staged);
+    let published = std::fs::hard_link(&staging_path, file_path);
+    let _ = std::fs::remove_file(&staging_path);
+    published
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,
@@ -581,4 +1196,67 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
     let content =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
+}
+fn int_relu(x: i64) -> i64 {
+    if x > 0 {
+        x
+    } else {
+        0
+    }
+}
+
+/// Opcode wire authority: `extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes`.
+/// Scaffold regen-sync: see `host_kernel_relu_mul_add_op_codes_scaffold_note` until feature:dag-kernel-realization-handler.
+const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];
+
+fn assert_relu_mul_add_op_codes(op_codes: &[i64], _handler: &str) {
+    if op_codes != RELU_MUL_ADD_OP_CODES {
+        panic!("unsupported op_codes in accelerator demo kernel");
+    }
+}
+
+/// Host bridge: `.dag` passes `std.numerical_contract.FmaContractionPolicy`; interpreter maps to 0/1 until target_model emit.
+pub fn contiguous_loop_elementwise_float_kernel(
+    op_codes: &[i64],
+    fma_contraction_policy: i64,
+    a: &[f64],
+    b: &[f64],
+    c: &[f64],
+) -> Vec<f64> {
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_float_kernel");
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let elem = match fma_contraction_policy {
+            0 => {
+                let prod = a[i] * b[i];
+                prod + c[i]
+            }
+            1 => a[i].mul_add(b[i], c[i]),
+            _ => panic!("unknown fma_contraction_policy"),
+        };
+        out.push(if elem > 0.0 { elem } else { 0.0 });
+    }
+    out
+}
+
+/// Integer oracle authority: `gunbc.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).
+/// Host kernel uses `wrapping_*` to mirror release interpreter overflow semantics; demo fixtures
+/// stay in-range under `IntegerExact` — out-of-range inputs are outside the bit-exact bar.
+pub fn contiguous_loop_elementwise_kernel(
+    op_codes: &[i64],
+    a: &[i64],
+    b: &[i64],
+    c: &[i64],
+) -> Vec<i64> {
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_kernel");
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let tmp = a[i].wrapping_mul(b[i]).wrapping_add(c[i]);
+        out.push(int_relu(tmp));
+    }
+    out
 }

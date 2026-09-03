@@ -1,9 +1,24 @@
 module v2.std.compilers.lexing
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
-import v2.std.collection { List }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Empty }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import v2.std.algebra { fold_list, length, list_snoc_item, skip }
+import v2.std.collection {
+  List,
+  list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
 
@@ -21,8 +36,8 @@ type LexCharClass
 
 type LexPattern
   = EmptyPattern
-  | LiteralPattern { text: String }
-  | KeywordPattern { text: String }
+  | LiteralPattern { text: v2.std.text.String }
+  | KeywordPattern { text: v2.std.text.String }
   | CharPattern { char: Char }
   | CharClassPattern { class: LexCharClass }
   | SequencePattern { left: LexPattern, right: LexPattern }
@@ -32,9 +47,20 @@ type LexPattern
   | OneOrMorePattern { element: LexPattern }
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
+// A lexeme reaches exactly one of three destinations, and the third exists because the other two
+// are both wrong for a comment. TriviaRule consumes text and emits nothing, so a comment routed
+// through it is invisible to every parser, lens, census, migration, and SCM operation — readable to
+// humans and absent from the model. TokenRule emits into the SEMANTIC token stream, so a comment
+// routed through it becomes something every parser must filter, perturbs token order, and sits in
+// the path of occurrence allocation. AnnotationRule captures the lexeme as authored-source data
+// that is real, addressable by authoring machinery, and absent from the semantic stream. See DESIGN
+// 4c: source annotations are captured authored-source data, not semantic program data and not
+// discarded trivia.
+
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
+  | AnnotationRule { annotation_class: Symbol, pattern: LexPattern }
 
 type LexRuleSet {
   rules: List<LexRule>
@@ -100,13 +126,84 @@ type Token {
 }
 
 type TokenStream {
-  tokens: List<Token>
+  all: List<Token>
+  pos: Int
+}
+
+fn token_stream_new(all: List<Token>) -> TokenStream {
+  TokenStream { all: all, pos: 0 }
+}
+
+fn token_stream_empty() -> TokenStream {
+  TokenStream { all: Empty, pos: 0 }
+}
+
+fn token_stream_position(stream: TokenStream) -> Int {
+  stream.pos
+}
+
+fn token_stream_all(stream: TokenStream) -> List<Token> {
+  stream.all
+}
+
+fn token_stream_remaining_count(stream: TokenStream) -> Int {
+  length(xs: stream.all) - stream.pos
+}
+
+fn token_stream_remaining(stream: TokenStream) -> List<Token> {
+  skip(xs: stream.all, n: stream.pos)
+}
+
+fn token_stream_first(stream: TokenStream) -> Optional<Token> {
+  list_at_optional(xs: stream.all, index: stream.pos)
+}
+
+fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<Token> {
+  list_at_optional(xs: stream.all, index: stream.pos + offset)
+}
+
+fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
+  TokenStream { all: stream.all, pos: stream.pos + n }
+}
+
+// AnnotationPlacement is NOT declared here. It is the language-agnostic concept and its authority
+// is std.source_annotation, which the v1 seed tokenizer imports too — a second spelling in this
+// module would be the nicknaming defect the source-annotation lane exists to remove. This module
+// owns only what is lexical: the rule variant, the unbound capture, and the artifact.
+
+// Captured at the lexical boundary, before any structural subject is known — hence UNBOUND. It carries no identity of its own: binding it to a subject is the parser's job, and minting an identity for it would draw from the semantic occurrence allocator, which is exactly what DESIGN 4c forbids (adding a comment could then shift declaration identities in the same source and in later-parsed modules). Consecutive leading captures group into one ordered block at attachment; this row is one physical line.
+type UnboundSourceAnnotation {
+  annotation_class: Symbol
+  lexeme: Lexeme
+  placement: AnnotationPlacement
+  file: Symbol
+  start: Int
+  end: Int
+}
+
+// The authored lexical result: the semantic token stream PLUS what the annotation channel captured. Semantic consumers project out `tokens` and see exactly what they saw before this channel existed; annotation-aware consumers take the whole artifact. The projection is the erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer.
+type LexArtifact {
+  tokens: TokenStream
+  annotations: List<UnboundSourceAnnotation>
+}
+
+fn lex_artifact_semantic_tokens(artifact: LexArtifact) -> TokenStream {
+  artifact.tokens
+}
+
+fn lex_artifact_annotations(artifact: LexArtifact) -> List<UnboundSourceAnnotation> {
+  artifact.annotations
+}
+
+fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotation>) -> LexArtifact {
+  LexArtifact { tokens: tokens, annotations: annotations }
 }
 
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
     TriviaRule { pattern: _ } => false
+    AnnotationRule { annotation_class: _, pattern: _ } => false
   }
 }
 
@@ -122,8 +219,8 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
 
 type LexPatternFold<R> {
   empty:       R
-  literal:     fn(String) -> R
-  keyword:     fn(String) -> R
+  literal:     fn(v2.std.text.String) -> R
+  keyword:     fn(v2.std.text.String) -> R
   char:        fn(Char) -> R
   char_class:  fn(LexCharClass) -> R
   sequence:    fn(R, R) -> R
@@ -179,7 +276,7 @@ fn lex_void_lex_rules_evidence_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lex_void_lex_rules_evidence } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -192,4 +289,17 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
 
 fn symbol_intern_lexeme(lexeme: Lexeme) -> Symbol {
   symbol_intern_lexeme(lexeme: lexeme)
+}
+
+data symbol_lexeme_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.std.compilers.lexing",
+    decl_name: "symbol_lexeme",
+    field: WholeDeclaration
+  }
+}
+
+fn symbol_lexeme(sym: Symbol) -> String {
+  symbol_lexeme(sym: sym)
 }

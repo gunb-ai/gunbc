@@ -1,0 +1,13 @@
+module gunbc.site.theme_transition
+
+import gunbc.design.theme_transition {
+  ReframePair, UnthemedColorDecl,
+  color_transition_prop, decl_is_color, decl_is_role_themed, decl_is_literal_color,
+  contains_prop, themed_props_of, rule_selector, rule_decls,
+  merge_pair, reframe_pairs, unthemed_color_decls,
+  reframe_transition_value, reframe_selector, reframe_css,
+  alternate_scheme_query, reframe_watcher_program, reframe_watcher_js,
+  theme_transition_note,
+}
+
+data site_theme_transition_facade_note: String = "L5 instance façade — authority is gunbc.design.theme_transition (Phase-A lift). Import gunbc.design.theme_transition directly."

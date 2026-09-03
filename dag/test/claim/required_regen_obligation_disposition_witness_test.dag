@@ -1,0 +1,254 @@
+module test.claim.required_regen_obligation_disposition_witness
+
+import gunbc.required_regen_obligation_disposition {
+  ObligationLifecycle,
+  Active,
+  RealizationTransferred,
+  AuthorityTransferred,
+  AbsorptionPrepared,
+  AbsorbedIntoBroaderOperation,
+  AbsorptionGap,
+  AbsorptionCoverage,
+  CoverageReceiptUnproduced,
+  CoverageReceiptShowsGap,
+  absorption_coverage_is_refuted,
+  InputPopulationUncovered,
+  OrderingGuaranteeUncovered,
+  RefusalUncovered,
+  ConsumerObligationUncovered,
+  RetirementPrepared,
+  Retired,
+  RetirementProgress,
+  MirrorPopulationStillOccupied,
+  RequiredConsumersRemain,
+  BothObligationsOutstanding,
+  host_deletion_admitted,
+  carrier_deletion_admitted,
+  required_regen_derivation_routes,
+  some_derivation_route_remains_unexamined,
+  refuted_route_count,
+  required_regen_closure_membership_controls,
+  RealizationConformance,
+  RealizationConformanceObserved,
+  required_regen_realization_conformance,
+  conformance_is_observed
+}
+import std.decl_ref { decl_ref }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Declared explicitly: a witness that declares no disposition is treated as ReadsLiveTree and
+// DECLINED -- discovered, counted, never executed. Every assertion here reads substrate values
+// only, so SubstrateInputsOnly is the honest declaration, and without it this evidence would be
+// the inert decoration the carrier it guards warns about.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The live candidate: the carrier stays canonical and a successor realization replaces the
+// hand-written host -- a generated or interpreted realization consuming this same authority.
+data realization_transferred_example: ObligationLifecycle = RealizationTransferred {
+  successor_realization: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
+}
+
+// The other future: the DEFINITION itself moves, so this carrier stops being canonical.
+data authority_transferred_example: ObligationLifecycle = AuthorityTransferred {
+  successor_authority: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_sync_admission"),
+  successor_realization: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
+}
+
+// Retired carries nothing: the arm IS the claim that both populations are empty.
+data fully_retired_example: ObligationLifecycle = Retired
+
+data absorbed_example: ObligationLifecycle = AbsorbedIntoBroaderOperation {
+  absorber: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
+}
+
+data absorption_unproven_example: ObligationLifecycle = AbsorptionPrepared {
+  coverage: CoverageReceiptUnproduced
+}
+
+data absorption_refuted_example: ObligationLifecycle = AbsorptionPrepared {
+  coverage: CoverageReceiptShowsGap { uncovered: RefusalUncovered }
+}
+
+data partially_retired_example: ObligationLifecycle = RetirementPrepared {
+  outstanding: RequiredConsumersRemain
+}
+
+// THE ASYMMETRY, ASSERTED AS A DISAGREEMENT. Asserting each predicate separately is satisfied by a
+// pair that answers false to everything -- the fused row again in typed clothing. The arms
+// DIFFERING is the entire content of the split, so the test requires the difference.
+test fn witness_transfer_admits_host_deletion_but_not_carrier_deletion() -> Bool {
+  host_deletion_admitted(lifecycle: realization_transferred_example)
+    && carrier_deletion_admitted(lifecycle: realization_transferred_example) == false
+}
+
+// THE DEFECT THIS SPLIT REPAIRS, ASSERTED AS A DISAGREEMENT. The arms were one arm carrying a
+// successor AUTHORITY whose carrier deletion answered false, so the carrier's own terminal state
+// left two definitions answering for one operation. Asserting the authority arm's admission alone
+// would stay green if the arms were re-fused with carrier deletion widened to both; asserting the
+// realization arm's refusal alone would stay green if re-fused the other way. Only the arms
+// DIFFERING distinguishes the split from either fusion, so the two are compared, not checked.
+test fn witness_the_two_transfers_disagree_on_carrier_deletion() -> Bool {
+  carrier_deletion_admitted(lifecycle: authority_transferred_example)
+    != carrier_deletion_admitted(lifecycle: realization_transferred_example)
+}
+
+// A completed authority transfer makes the successor canonical, so keeping the old carrier is the
+// dual-authority state SS3 forbids -- both files go.
+test fn witness_authority_transfer_admits_deleting_both() -> Bool {
+  host_deletion_admitted(lifecycle: authority_transferred_example)
+    && carrier_deletion_admitted(lifecycle: authority_transferred_example)
+}
+
+test fn witness_fully_discharged_retirement_admits_both_deletions() -> Bool {
+  host_deletion_admitted(lifecycle: fully_retired_example)
+    && carrier_deletion_admitted(lifecycle: fully_retired_example)
+}
+
+// A RETIREMENT WHOSE OBLIGATIONS ARE NOT ALL DISCHARGED ADMITS NOTHING, and it is now a separate
+// ARM rather than a Retired value that has to be inspected. Two earlier revisions could not test
+// this: a String receipt could claim discharge without exhibiting it, and a discharge LIST made
+// "retired" and "not actually retired" the same constructor -- the exact shape the finding is
+// about: naming a disposition is not proving it.
+test fn witness_partial_retirement_admits_neither_deletion() -> Bool {
+  host_deletion_admitted(lifecycle: partially_retired_example) == false
+    && carrier_deletion_admitted(lifecycle: partially_retired_example) == false
+}
+
+// EVERY incomplete progress state admits neither deletion, asserted across all three rather than
+// on the one the example happens to carry -- otherwise adding a fourth outstanding state could
+// silently admit a deletion from a prepared retirement.
+test fn witness_no_prepared_retirement_admits_any_deletion() -> Bool {
+  ([MirrorPopulationStillOccupied, RequiredConsumersRemain, BothObligationsOutstanding]
+    |> all(g => host_deletion_admitted(lifecycle: RetirementPrepared { outstanding: g }) == false
+             && carrier_deletion_admitted(lifecycle: RetirementPrepared { outstanding: g }) == false))
+}
+
+test fn witness_active_admits_neither_deletion() -> Bool {
+  host_deletion_admitted(lifecycle: Active) == false
+    && carrier_deletion_admitted(lifecycle: Active) == false
+}
+
+// GUARD AGAINST THIS RECUT'S OWN FAILURE MODE. An earlier revision concluded the class could not
+// climb on the strength of ONE refuted route. If routes are marked refuted one at a time, each
+// step locally reasonable, that impossibility claim returns silently -- so the census must go red
+// instead. The exact count also keeps the receipts honest the other way: dropping the refuted
+// route would erase real measured evidence.
+test fn witness_no_impossibility_claim_is_reachable() -> Bool {
+  some_derivation_route_remains_unexamined()
+}
+
+test fn witness_exactly_one_route_is_refuted() -> Bool {
+  refuted_route_count() == 1
+}
+
+// THE FINDING ITSELF, ASSERTED SO IT EXPIRES LOUDLY. If a conformance relation later lands, this
+// goes RED and the census must be revisited rather than stand as a claim about an ended state. A
+// prior revision asserted this over five transcribed counts; the counts are gone and the claim
+// they supported is unchanged -- evidence they were not carrying it. What replaces them is a state
+// that cannot go stale: it asserts that nothing relates the two realizations rather than
+// describing how far apart they are.
+test fn witness_conformance_relation_remains_unobserved() -> Bool {
+  conformance_is_observed(c: required_regen_realization_conformance) == false
+}
+
+// ANTI-VACUITY FOR THE PREDICATE ABOVE: a conformance predicate that answered false for every
+// input would satisfy the witness while proving nothing, so the arm that must displace it is
+// exhibited answering true.
+test fn witness_an_observed_conformance_would_read_observed() -> Bool {
+  conformance_is_observed(c: RealizationConformanceObserved {
+    receipt: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
+  })
+}
+
+// Both arms of the control table, plus anti-vacuity: either arm alone passes over an empty table
+// and reports a rule nobody measured.
+test fn witness_unimported_modules_are_not_emitted() -> Bool {
+  required_regen_closure_membership_controls
+    |> filter(o => o.seed_reachable == false)
+    |> all(o => o.emitted == false)
+}
+
+test fn witness_imported_modules_are_emitted() -> Bool {
+  required_regen_closure_membership_controls
+    |> filter(o => o.seed_reachable)
+    |> all(o => o.emitted)
+}
+
+test fn witness_control_table_populates_both_arms() -> Bool {
+  length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_reachable == false)) > 0
+    && length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_reachable)) > 0
+}
+
+// ABSORPTION'S PREPARED ARM IS WHAT MAKES THE SPLIT A WALL, and this witness would have gone red
+// against the naive version. A COMPLETED absorption shares its deletion truth table with an
+// authority transfer -- both files go -- so no assertion over the completed arm alone can
+// discriminate the two. The INCOMPLETE arm does: an absorption whose coverage is not demonstrated
+// admits neither deletion, which authority transfer never does. Asserted as a disagreement for the
+// same reason the two transfers are: a pair answering false to everything would satisfy separate
+// assertions and re-fuse the arms in typed clothing.
+test fn witness_prepared_absorption_and_authority_transfer_disagree_on_both_deletions() -> Bool {
+  host_deletion_admitted(lifecycle: absorption_unproven_example)
+      != host_deletion_admitted(lifecycle: authority_transferred_example)
+    && carrier_deletion_admitted(lifecycle: absorption_unproven_example)
+      != carrier_deletion_admitted(lifecycle: authority_transferred_example)
+}
+
+// NO GAP ADMITS A DELETION, over the closed gap vocabulary rather than one sampled member -- the
+// arm's meaning is that SOME coverage class is outstanding, so any inhabitant must refuse both.
+test fn witness_no_absorption_gap_admits_any_deletion() -> Bool {
+  ([InputPopulationUncovered, OrderingGuaranteeUncovered, RefusalUncovered,
+    ConsumerObligationUncovered]
+    |> all(g => host_deletion_admitted(
+                  lifecycle: AbsorptionPrepared {
+                    coverage: CoverageReceiptShowsGap { uncovered: g }
+                  }) == false
+             && carrier_deletion_admitted(
+                  lifecycle: AbsorptionPrepared {
+                    coverage: CoverageReceiptShowsGap { uncovered: g }
+                  }) == false))
+}
+
+// THE TWO INCOMPLETENESS STATES AGREE ON EVERY DELETION AND DISAGREE ON WHO OWES THE REMEDY, which
+// is the whole reason they are separate arms and the reason a truth-table test cannot see the
+// split. Asserted as agreement AND disagreement together: either half alone is satisfied by a
+// vocabulary that fused them.
+// THIS NAME IS SHORTER THAN THE CONCEPT WANTS, AND THE REASON IS A FILED PARSER DEFECT RATHER THAN
+// STYLE. The parser will not accept a newline between the parameter list and the return arrow: a
+// signature written as `fn g()` then `  -> Bool {` refuses with "expected return type annotation
+// (-> Type)", and the whole module goes unparseable. Executed both ways by warm-hawk-909 on a
+// controlled pair -- a ONE-CHARACTER name with the break refuses, and the same name with the arrow
+// on one line compiles clean -- so LENGTH IS NOT THE TRIGGER, the break is. The name is short to
+// keep the ARROW on one line, the only fact that makes this form parse; "keep names short" would
+// be false and would send the next author looking at naming.
+test fn witness_unproven_and_refuted_absorption_differ_only_on_refutation() -> Bool {
+  host_deletion_admitted(lifecycle: absorption_unproven_example)
+      == host_deletion_admitted(lifecycle: absorption_refuted_example)
+    && carrier_deletion_admitted(lifecycle: absorption_unproven_example)
+      == carrier_deletion_admitted(lifecycle: absorption_refuted_example)
+    && absorption_coverage_is_refuted(coverage: CoverageReceiptUnproduced)
+      != absorption_coverage_is_refuted(
+           coverage: CoverageReceiptShowsGap { uncovered: RefusalUncovered })
+}
+
+// AN ABSENT OBSERVATION IS NOT A NEGATIVE RESULT. The named direction matters: an unproduced
+// receipt must not read as refuting the absorption, which is the arm that would wrongly indict the
+// broader operation's owner.
+test fn witness_an_unproduced_receipt_does_not_refute_the_absorption() -> Bool {
+  absorption_coverage_is_refuted(coverage: CoverageReceiptUnproduced) == false
+}
+
+// AND EVERY GAP REFUTES, over the closed vocabulary rather than one sampled member.
+test fn witness_every_demonstrated_gap_refutes_the_absorption() -> Bool {
+  ([InputPopulationUncovered, OrderingGuaranteeUncovered, RefusalUncovered,
+    ConsumerObligationUncovered]
+    |> all(g => absorption_coverage_is_refuted(
+                  coverage: CoverageReceiptShowsGap { uncovered: g })))
+}
+
+// THE COMPLETED ARM STILL NEEDS ITS CONTROL, even though it cannot discriminate: without it the
+// prepared witness above is satisfied by an absorption vocabulary that refuses everything, which
+// would make absorption unreachable rather than distinguished.
+test fn witness_completed_absorption_admits_both_deletions() -> Bool {
+  host_deletion_admitted(lifecycle: absorbed_example)
+    && carrier_deletion_admitted(lifecycle: absorbed_example)
+}

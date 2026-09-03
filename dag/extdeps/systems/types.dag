@@ -1,0 +1,67 @@
+module extdeps.systems.types
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.memory.types { MemoryFacts }
+import extdeps.toolchain.types { Architecture }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/System_on_a_chip"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.types",
+      decl_name: "IntegratedComputeSystemCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.systems.types.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type CpuCoreCluster {
+  microarchitecture: NonEmptyStr
+  core_count: HardwareThreadCount
+}
+
+type NetworkPortMedium = WiredEthernet | WirelessLan | ShortRangeWireless | SmartNic
+
+type SystemNetworkPort {
+  medium: NetworkPortMedium
+  product_name: NonEmptyStr?
+  bandwidth: Bandwidth?
+}
+
+// A discrete CpuModelCatalogRow assumes a socketed, homogeneous-core part with cited per-level cache geometry (extdeps.cpu.types); a discrete GpuModelCatalogRow assumes a PCIe-attached card. Neither shape fits a single-package SoC that fuses a heterogeneous-core CPU cluster and a GPU behind one shared memory pool inside a sealed desktop enclosure with its own board-level NIC/storage/PSU facts -- forcing either would either fabricate cache geometry that is not cited anywhere, or silently drop the CPU/network/storage/power facts the product actually ships with. IntegratedComputeSystemCatalogRow is the system-grain shape for that class of product; it NESTS a GpuModelCatalogRow for the embedded GPU (the one piece that already has a grounded, reusable authority) rather than re-deriving GPU facts inline.
+type IntegratedComputeSystemCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  soc_model: NonEmptyStr
+  cpu_architecture: Architecture
+  cpu_core_clusters: List<CpuCoreCluster>
+  gpu: GpuModelCatalogRow
+  memory: MemoryFacts
+  memory_bus_width: BitWidth
+  memory_data_rate: Hertz
+  memory_bandwidth: Bandwidth
+  storage_capacity: ByteSize
+  network_ports: List<SystemNetworkPort>
+  external_power_supply: Watt
+  soc_thermal_design_power: Watt
+}
+
+fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogRow) -> Int {
+  fold(row.cpu_core_clusters, init: 0, f: (acc, cluster) => acc + hardware_thread_count_value(cluster.core_count))
+}

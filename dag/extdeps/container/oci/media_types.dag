@@ -1,0 +1,21 @@
+module extdeps.container.oci.media_types
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.container.oci.types { OciMediaType }
+import std.types { Int }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/media-types.md"
+  }
+}
+
+data oci_image_schema_version: Int = 2
+
+data media_type_oci_image_manifest_v1: OciMediaType = OciImageManifestV1
+data media_type_oci_image_config_v1: OciMediaType = OciImageConfigV1
+data media_type_oci_image_layer_v1_tar_gzip: OciMediaType = OciImageLayerV1TarGzip
+data media_type_oci_image_index_v1: OciMediaType = OciImageIndexV1
+data media_type_oci_descriptor_v1: OciMediaType = OciDescriptorV1

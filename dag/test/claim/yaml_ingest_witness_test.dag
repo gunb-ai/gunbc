@@ -1,0 +1,113 @@
+module test.claim.yaml_ingest_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn round_trips(v: YamlValue) -> Bool {
+  let original = serialize_yaml(v: v)
+  match ingest_yaml_source(src: original) {
+    IngestedYaml { value: reparsed } => serialize_yaml(v: reparsed) == original
+    YamlIngestRejected { reason: _ } => false
+  }
+}
+
+test fn witness_scalar_mapping_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "name", value: yaml_string(s: "ci")),
+    kv(key: "fetch-depth", value: yaml_int(n: 0)),
+    kv(key: "quoted", value: yaml_bool(b: true))
+  ]))
+}
+
+test fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "jobs", value: yaml_sequence(elements: [
+      yaml_mapping(entries: [
+        kv(key: "uses", value: yaml_string(s: "actions/checkout@v4")),
+        kv(key: "with", value: yaml_mapping(entries: [
+          kv(key: "fetch-depth", value: yaml_int(n: 1))
+        ]))
+      ])
+    ]))
+  ]))
+}
+
+test fn witness_block_literal_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "run", value: yaml_string(s: "line one\nline two"))
+  ]))
+}
+
+test fn witness_empty_string_scalar_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
+}
+
+test fn witness_empty_document_rejected() -> Bool {
+  yaml_source_parses(src: "") == false
+}
+
+test fn witness_column_zero_full_line_comment_is_lexically_ignored() -> Bool {
+  match ingest_yaml_source(src: "# generated provenance\nname: witnesses\n") {
+    IngestedYaml { value } => serialize_yaml(v: value) == "name: witnesses\n"
+    YamlIngestRejected { reason: _ } => false
+  }
+}
+
+test fn witness_indented_full_line_comment_is_lexically_ignored() -> Bool {
+  match ingest_yaml_source(src: "root:\n  # comment between block tokens\n  child: x\n") {
+    IngestedYaml { value } => serialize_yaml(v: value) == "root:\n  child: x\n"
+    YamlIngestRejected { reason: _ } => false
+  }
+}
+
+test fn witness_inline_trailing_comment_refuses_instead_of_becoming_scalar_content() -> Bool {
+  match ingest_yaml_source(src: "name: x # trailing comment\n") {
+    IngestedYaml { value: _ } => false
+    YamlIngestRejected { reason } => reason == "inline YAML comments after values are not modeled"
+  }
+}
+
+test fn witness_tab_separated_inline_comment_refuses_instead_of_becoming_scalar_content() -> Bool {
+  match ingest_yaml_source(src: "name: x\t# trailing comment\n") {
+    IngestedYaml { value: _ } => false
+    YamlIngestRejected { reason } => reason == "inline YAML comments after values are not modeled"
+  }
+}
+
+test fn witness_hash_inside_double_quoted_scalar_is_content() -> Bool {
+  round_trips(v: yaml_mapping(entries: [kv(key: "color", value: yaml_string(s: "#123456"))]))
+}
+
+test fn witness_shell_issue_reference_inside_block_literal_is_content() -> Bool {
+  let source = "run: |\n  echo begin\n  # dissolve-on: typed shell realization (#5828)\n"
+  match ingest_yaml_source(src: source) {
+    IngestedYaml { value } => serialize_yaml(v: value) == source
+    YamlIngestRejected { reason: _ } => false
+  }
+}
+
+test fn witness_comment_only_document_is_rejected() -> Bool {
+  !yaml_source_parses(src: "# no document node follows\n")
+}
+
+test fn witness_yaml_comment_boundary_controls_hold() -> Bool {
+  witness_column_zero_full_line_comment_is_lexically_ignored()
+    && witness_indented_full_line_comment_is_lexically_ignored()
+    && witness_inline_trailing_comment_refuses_instead_of_becoming_scalar_content()
+    && witness_tab_separated_inline_comment_refuses_instead_of_becoming_scalar_content()
+    && witness_hash_inside_double_quoted_scalar_is_content()
+    && witness_shell_issue_reference_inside_block_literal_is_content()
+    && witness_comment_only_document_is_rejected()
+}
+
+test fn witness_malformed_scalar_line_rejected() -> Bool {
+  yaml_source_parses(src: "just a bare word\n") == false
+}
+
+test fn witness_bad_nested_indent_rejected() -> Bool {
+  yaml_source_parses(src: "a:\n   b: 1\n") == false
+}
+
+test fn witness_rejection_discriminates_from_valid() -> Bool {
+  yaml_source_parses(src: "a: 1\n") &&
+    !yaml_source_parses(src: "just a bare word\n")
+}

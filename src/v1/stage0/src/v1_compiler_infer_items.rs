@@ -2,16 +2,23 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
-pub use crate::std_induction::SubValueRelation;
-use crate::std_induction::SubValueRelation::SubValueUnknown;
+use self::ModuleTypecheckProgress::*;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
+pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
+pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceTransport};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::empty_type_env_cache;
+pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -24,12 +31,20 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ItemKind {
@@ -54,12 +69,50 @@ pub struct ItemInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleInterface {
+    pub summary: Rc<InterfaceSummary>,
+    pub env: Rc<TypeEnv>,
+    pub cache: Rc<TypeEnvCache>,
+}
+
+pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ModuleTypecheckProgress {
+    ItemsChecked,
+    AbandonedBeforeItems,
+}
+
+pub fn module_typecheck_progress_sibling_field_dissolution_trigger() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("🟡 dissolve-on: this field STATES the truth and leaves every reader structurally free not to hear it. A consumer may go on reading TypedModule.items and ignore progress forever, which is the conflation preserved beside its own repair -- validation where DESIGN 5 wants construction. THE TERMINAL SHAPE puts the item population INSIDE the completed arm, so that reading items structurally requires handling whether any items were measured: TypecheckItemAnalysis = ItemAnalysisCompleted { items, receipt } | ItemAnalysisUnreached { stopped_at, cause }, with the abandoned arm carrying NO empty list for a careless consumer to read as a completed empty module. It is not built here on the evidence recorded in the annotation above: the arm shape forces every TypedModule.items reader to change, which reopens exactly the sweep the reader partition retired, and the ruling that admitted this change was on the narrow repair rather than on a reader migration. DISSOLVES WHEN the item population moves inside the completed arm and this field has no separate existence.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
     pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
+    pub progress: ModuleTypecheckProgress,
     pub type_env: Rc<TypeEnv>,
+    pub type_env_cache: Rc<TypeEnvCache>,
+    pub interface: Rc<ModuleInterface>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub occurrence_transport: Option<Rc<OccurrenceTransport>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -82,60 +135,69 @@ pub fn inferred_to_outputs(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
-    if (inferred.clone() == None) {
+    if (inferred.clone() == std::option::Option::None) {
         Rc::new(vec![])
     } else {
         match (*inferred.clone().unwrap()).clone() {
             InferredNode::CompilerError { .. } => Rc::new(vec![]),
             InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
+            InferredNode::Divergent => Rc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
-                if has_structure {
+                if has_structure.clone() {
                     {
                         let is_product = (rt.connective.clone() == Connective::Conj);
-                        if is_product {
-                            if (rt.ident_span.clone() == None) {
+                        if is_product.clone() {
+                            if (rt.ident_span.clone() == std::option::Option::None) {
                                 Rc::new({
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
                                         __result.push({
-                                            let child_type = child_type_node(child.clone());
-                                            make_field_node(
-                                                authored_name_at(
+                                            let child_type =
+                                                crate::v1_compiler_infer_types::child_type_node(
+                                                    child.clone(),
+                                                );
+                                            crate::v1_std_core::make_field_node(
+                                                Rc::new(
+                                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                                ),
+                                                crate::v1_std_core::authored_name_at(
                                                     source_indices.clone(),
                                                     child.clone(),
                                                 ),
                                                 child_type.clone(),
                                                 Cardinality::Required,
-                                                None,
-                                                None,
+                                                std::option::Option::None,
+                                                Rc::new(vec![]),
                                                 span.clone(),
-                                                node_name_span(child.clone()),
+                                                crate::v1_std_core::node_name_span(child.clone()),
                                             )
                                         });
                                     }
                                     __result
                                 })
                             } else {
-                                Rc::new(vec![make_field_node(
+                                Rc::new(vec![crate::v1_std_core::make_field_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
-                                    None,
-                                    None,
+                                    std::option::Option::None,
+                                    Rc::new(vec![]),
                                     span.clone(),
-                                    no_span(),
+                                    crate::v1_std_core::no_span(),
                                 )])
                             }
                         } else {
-                            Rc::new(vec![make_field_node(
+                            Rc::new(vec![crate::v1_std_core::make_field_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                 "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
-                                None,
-                                None,
+                                std::option::Option::None,
+                                Rc::new(vec![]),
                                 span.clone(),
-                                no_span(),
+                                crate::v1_std_core::no_span(),
                             )])
                         }
                     }
@@ -145,14 +207,15 @@ pub fn inferred_to_outputs(
                     {
                         Rc::new(vec![])
                     } else {
-                        Rc::new(vec![make_field_node(
+                        Rc::new(vec![crate::v1_std_core::make_field_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
-                            None,
-                            None,
+                            std::option::Option::None,
+                            Rc::new(vec![]),
                             span.clone(),
-                            no_span(),
+                            crate::v1_std_core::no_span(),
                         )])
                     }
                 }
@@ -164,23 +227,29 @@ pub fn inferred_to_outputs(
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
-            && (item.transport.clone() == None))
+            && (item.transport.clone() == std::option::Option::None))
         {
             ItemKind::TypeItem
         } else {
-            if (item.transport.clone() != None) {
+            if (item.transport.clone() != std::option::Option::None) {
                 ItemKind::ServiceItem
             } else {
-                if ((item.body.clone() != None) && ((item.uses.clone().len() as i64) > 0)) {
+                if ((item.body.clone() != std::option::Option::None)
+                    && ((item.uses.clone().len() as i64) > 0))
+                {
                     ItemKind::FuncItem
                 } else {
-                    if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0)) {
+                    if ((item.body.clone() != std::option::Option::None)
+                        && ((item.params.clone().len() as i64) > 0))
+                    {
                         ItemKind::FnItem
                     } else {
-                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
+                        if ((item.body.clone() != std::option::Option::None)
+                            && (item.type_annotation.clone() != std::option::Option::None))
+                        {
                             ItemKind::DataItem
                         } else {
-                            if (item.body.clone() != None) {
+                            if (item.body.clone() != std::option::Option::None) {
                                 ItemKind::FnItem
                             } else {
                                 ItemKind::OtherItem
@@ -192,38 +261,6 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
         };
         kind
     }
-}
-
-pub fn variant_locals_from_items(
-    items: Rc<Vec<Rc<Node>>>,
-    init: Rc<HashMap<String, Rc<TypeBinding>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.iter().cloned().fold(
-        init,
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
-            let is_coproduct = (item.connective.clone() == Connective::Disj);
-            if is_coproduct.clone() {
-                item.children.clone().iter().cloned().fold(
-                    acc.clone(),
-                    |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
-                        let child_name = authored_name_at(source_indices.clone(), child.clone());
-                        v1_rt::rc_map_insert(
-                            vacc,
-                            child_name.clone(),
-                            Rc::new(TypeBinding {
-                                name: child_name.clone(),
-                                resolved: item.clone(),
-                                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            }),
-                        )
-                    },
-                )
-            } else {
-                acc.clone()
-            }
-        },
-    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -238,3 +275,7 @@ pub struct DataItem;
 pub struct ServiceItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OtherItem;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ItemsChecked;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AbandonedBeforeItems;

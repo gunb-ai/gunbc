@@ -1,0 +1,52 @@
+module test.claim.floor_batch_clamp_authority_witness
+
+import std.realization_schedule {
+  RunnableBatchClamp,
+  runnable_batch_clamp_ms,
+}
+import std.decl_ref { decl_ref }
+import std.measure { second, millisecond, second_count }
+import std.types { NonEmptyStr }
+import gunbc.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE POPULATION NOW FEEDS THE CLAMP LIST, and that is why this file shrank rather than being
+// deleted. The defect it was written for (gunbc#7869: a refusal reporting clamp_ms=360000 while
+// citing gunbc_ci_floor_batch_clamp_params[0], whose overhead is 240 seconds) needed TWO
+// independently owned populations aligned into one positional list; the second population was the
+// scoped witness batch's own clamp row, deleted 2026-08-15 with affected-set selection. A
+// misattributed citation is therefore no longer constructible, so the discriminating pair and the
+// scoped rate assertions that proved it are removed rather than left asserting against one side of
+// a comparison that has nothing to compare. What survives is the surviving population's own
+// citation, plus the formula control -- because runnable_batch_clamp_ms is still live and its
+// unit-rate arithmetic is still the thing a future clamp row will be read through.
+fn positional_clamp_row_zero() -> RunnableBatchClamp {
+  match gunbc_ci_floor_batch_clamp_params {
+    Empty => gunbc_ci_compile_clean_clamp
+    Cons { head: h, tail: _ } => h
+  }
+}
+
+test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
+  let c = positional_clamp_row_zero()
+  (c.authority.module_path as String == "gunbc.ci_spec")
+    && (c.authority.decl_name as String == "gunbc_ci_floor_batch_clamp_params")
+    && (second_count(s: c.overhead) == 240)
+}
+
+// THE FORMULA CONTROL. A row whose rate is NONZERO must move with the unit count, or nothing in
+// this file distinguishes runnable_batch_clamp_ms from a constant.
+test fn a_nonzero_rate_clamp_does_move_with_the_unit_count() -> Bool {
+  let priced = RunnableBatchClamp {
+    overhead: second(count: 300),
+    per_unit: millisecond(count: 1000),
+    authority: decl_ref(
+      module_path: "test.claim.floor_batch_clamp_authority_witness",
+      decl_name: "a_nonzero_rate_clamp_does_move_with_the_unit_count",
+    ),
+  }
+  (runnable_batch_clamp_ms(clamp: priced, units: 1) == 301000)
+    && (runnable_batch_clamp_ms(clamp: priced, units: 27) == 327000)
+}

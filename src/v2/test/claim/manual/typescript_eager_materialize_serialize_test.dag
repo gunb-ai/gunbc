@@ -1,14 +1,10 @@
 module v2.test.manual.typescript_eager_materialize_serialize
 
-import v2.extdeps.languages.typescript {
-  ts_pr3_identity_serialize_source_witness,
-  ts_wave2a_task_serialize_source_witness
-}
-import v2.std.logic { Bool }
-import v2.std.witness { Holds, Violates }
 
-fn ts_arc1_wave2a_eager_serialize_source_body() -> Bool {
-  match ts_wave2a_task_serialize_source_witness() {
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ts_arc1_eager_serialize_source_body() -> Bool {
+  match ts_task_serialize_source_witness() {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
   }
@@ -21,8 +17,8 @@ fn ts_arc1_pr3_eager_serialize_source_body() -> Bool {
   }
 }
 
-test fn ts_arc1_wave2a_eager_serialize_source_holds() -> Bool {
-  ts_arc1_wave2a_eager_serialize_source_body()
+test fn ts_arc1_eager_serialize_source_holds() -> Bool {
+  ts_arc1_eager_serialize_source_body()
 }
 
 test fn ts_arc1_pr3_eager_serialize_source_holds() -> Bool {

@@ -1,0 +1,93 @@
+module test.claim.githooks_repo_local_git_config_emit
+
+import std.dissolution { dissolution_description }
+
+import gunbc.githooks_repo_local_git_config_emit {
+  emit_repo_local_git_config_converge_shell,
+  githooks_repo_local_git_config_emit_note,
+  githooks_repo_local_git_config_emit_dissolution_trigger,
+  githooks_repo_local_git_config_emit_shell_emit_scaffold,
+}
+import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
+import gunbc.repo_local_git_config {
+  reconcile_install_command,
+  generated_artifact_merge_driver_key,
+  generated_artifact_merge_driver_value,
+  core_hooks_path_key,
+  core_hooks_path_value,
+  RepoLocalGitConfigBinding,
+}
+import extdeps.exec.command { shell_command_render, shell_quote }
+import std.disposition { Scaffold }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn witness_converge_shell_uses_reconcile_install_command() -> Bool {
+  let shell = emit_repo_local_git_config_converge_shell()
+  let merge_cmd = shell_command_render(
+    command: reconcile_install_command(
+      binding: RepoLocalGitConfigBinding {
+        key: generated_artifact_merge_driver_key,
+        value: generated_artifact_merge_driver_value,
+      }
+    )
+  )
+  let hooks_cmd = shell_command_render(
+    command: reconcile_install_command(
+      binding: RepoLocalGitConfigBinding {
+        key: core_hooks_path_key,
+        value: core_hooks_path_value,
+      }
+    )
+  )
+  string_contains(s: shell, pattern: merge_cmd)
+    && string_contains(s: shell, pattern: hooks_cmd)
+}
+
+// THE DISCRIMINATING HALF. The witness above compares the emitted block against the renderer it is
+// built from, so it moves with any renderer and cannot tell a quoted line from an unquoted one — a
+// change detector, not a check (DESIGN section 5). This one asserts the property the value needs:
+// the driver key is followed by its value as ONE shell word. Under the unquoted join this emitter
+// used until the driver value became multi-word, the text after the key is a bare
+// `bash .githooks/generated-artifact-merge %O %A %B %P`, so this claim goes red exactly on the
+// defect it exists to catch.
+
+test fn witness_converge_shell_quotes_multiword_binding_value_as_one_word() -> Bool {
+  let shell = emit_repo_local_git_config_converge_shell()
+  string_contains(
+    s: shell,
+    pattern: concat(
+      concat(shell_quote(arg: generated_artifact_merge_driver_key), " "),
+      shell_quote(arg: generated_artifact_merge_driver_value),
+    ),
+  )
+}
+
+test fn witness_pre_commit_enrolls_converge_shell() -> Bool {
+  let sh = expected_githooks_pre_commit_sh()
+  string_contains(s: sh, pattern: dissolution_description(condition: githooks_repo_local_git_config_emit_dissolution_trigger))
+    && string_contains(s: sh, pattern: "merge.generated-artifact.driver")
+    && string_contains(s: sh, pattern: "core.hooksPath")
+}
+
+test fn witness_pre_push_enrolls_converge_shell() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  string_contains(s: sh, pattern: dissolution_description(condition: githooks_repo_local_git_config_emit_dissolution_trigger))
+    && string_contains(s: sh, pattern: "merge.generated-artifact.driver")
+    && string_contains(s: sh, pattern: "core.hooksPath")
+}
+
+test fn witness_converge_shell_emit_is_scaffold() -> Bool {
+  match githooks_repo_local_git_config_emit_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_degradation_note_names_hooks_path_seed() -> Bool {
+  string_contains(s: githooks_repo_local_git_config_emit_note, pattern: "hooksPath")
+    && string_contains(s: githooks_repo_local_git_config_emit_note, pattern: "degrade")
+    && string_contains(s: dissolution_description(condition: githooks_repo_local_git_config_emit_dissolution_trigger), pattern: "dissolve-on")
+}

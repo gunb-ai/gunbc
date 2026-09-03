@@ -1,0 +1,18 @@
+module extdeps.boot.freestanding_payload
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec_format { EntryPoint }
+import std.types { NonEmptyStr }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/contents.html"
+  }
+}
+
+type FreestandingPayloadRef
+  = EmittedPayload { digest: NonEmptyStr, entry: EntryPoint }
+  | PrebuiltPayload { digest: NonEmptyStr, entry: EntryPoint }
+  | HollowPrebuiltInit { digest: NonEmptyStr, entry: EntryPoint }

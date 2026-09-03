@@ -2,16 +2,39 @@
 // Source module: extdeps.languages.rust.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
+pub use crate::extdeps_languages_rust_capabilities::RustCapability;
+use crate::extdeps_languages_rust_capabilities::RustCapability::*;
+pub use crate::extdeps_languages_rust_capabilities::{
+    nullary_coproduct_derive_traits, payload_coproduct_derive_traits, record_derive_traits_copy,
+    record_derive_traits_heap,
+};
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
+use crate::std_trait_derive_shape::PairCompletionBody::{
+    PairCompletionCanonicalQuotient, PairCompletionNegatedAddend, PairCompletionSumOfProducts,
+};
+use crate::std_trait_derive_shape::PairCompletionComponent::{
+    PairCompletionNeg, PairCompletionPos,
+};
+use crate::std_trait_derive_shape::PairCompletionOp::{
+    PairCompletionOpAdd, PairCompletionOpDiv, PairCompletionOpMul, PairCompletionOpNeg,
+    PairCompletionOpSub,
+};
+use crate::std_trait_derive_shape::PairCompletionOperand::{PairCompletionRhs, PairCompletionSelf};
+pub use crate::std_trait_derive_shape::{pair_completion_body_uses_rhs, pair_completion_op_rows};
+pub use crate::std_trait_derive_shape::{
+    PairCompletionArm, PairCompletionBody, PairCompletionComponent, PairCompletionFactor,
+    PairCompletionOp, PairCompletionOpRow, PairCompletionOperand, PairCompletionTerm,
+};
 use crate::v1_rt;
-use crate::v1_rt::Witness;
-use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -34,7 +57,7 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
-            __m.insert("null".to_string(), "None".to_string());
+            __m.insert("null".to_string(), "std::option::Option::None".to_string());
             __m.insert("and".to_string(), "&&".to_string());
             __m.insert("or".to_string(), "||".to_string());
             __m.insert("not".to_string(), "!".to_string());
@@ -50,11 +73,11 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "Vec<{0}>".to_string());
-            __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
+            __m.insert("set".to_string(), "BTreeSet<{0}>".to_string());
+            __m.insert("pointwise_power".to_string(), "BTreeSet<{0}>".to_string());
             __m.insert("optional".to_string(), "Option<{0}>".to_string());
             __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
-            __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("boolean_algebra".to_string(), "bool".to_string());
             Rc::new(__m)
         };
@@ -65,7 +88,7 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
 pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<SimpleMethodSpec>>> = {
-            serde_json::from_value(serde_json::json!([{"method_name": "count", "template": "({recv}.len() as i64)", "wraps_result": false}, {"method_name": "join", "template": "{recv}.join(&{arg})", "wraps_result": false}, {"method_name": "split", "template": "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "last", "template": "{recv}.last().cloned()", "wraps_result": false}, {"method_name": "first", "template": "{recv}.first().cloned()", "wraps_result": false}, {"method_name": "enumerate", "template": "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "chars", "template": "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "skip", "template": "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "take", "template": "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}]))
+            serde_json::from_value(serde_json::json!([{"method_name": "count", "template": "({recv}.len() as i64)", "wraps_result": false}, {"method_name": "join", "template": "{recv}.join(&{arg})", "wraps_result": false}, {"method_name": "split", "template": "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "last", "template": "{recv}.last().cloned()", "wraps_result": false}, {"method_name": "first", "template": "{recv}.first().cloned()", "wraps_result": false}, {"method_name": "enumerate", "template": "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "chars", "template": "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "skip", "template": "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "take", "template": "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "is_empty", "template": "{recv}.is_empty()", "wraps_result": false}]))
                 .expect("valid data definition")
         };
     }
@@ -75,7 +98,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Rc<HashMap<String, String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
@@ -93,12 +116,9 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
-            v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, spec: _| {
+        v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
+    })
 }
 
 pub fn rust_reserved() -> Rc<Vec<String>> {
@@ -128,10 +148,84 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
+pub fn rust_value_binding_candidate(prefix: String, index: i64) -> String {
+    v1_rt::concat(prefix.clone(), (index.clone()).to_string())
+}
+
+pub fn rust_value_binding_name_absent() -> Option<String> {
+    std::option::Option::None
+}
+
+pub fn rust_value_binding_name_present(candidate: String) -> Option<String> {
+    Some(candidate.clone())
+}
+
+pub fn rust_value_binding_choose_unblocked(
+    found: Option<String>,
+    candidate: String,
+    blocked: Rc<Vec<String>>,
+) -> Option<String> {
+    match found.clone() {
+        Some(_) => found.clone(),
+        std::option::Option::None => {
+            if {
+                let mut __found = false;
+                for local in blocked.iter().cloned() {
+                    if (local.clone() == candidate.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                rust_value_binding_name_absent()
+            } else {
+                rust_value_binding_name_present(candidate.clone())
+            }
+        }
+    }
+}
+
+pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -> Option<String> {
+    {
+        let first_n = Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                blocked
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.push(rust_value_binding_candidate(prefix.clone(), pair.0.clone()));
+            }
+            __result
+        });
+        let candidates = v1_rt::concat(
+            first_n.clone(),
+            Rc::new(vec![rust_value_binding_candidate(
+                prefix.clone(),
+                (blocked.clone().len() as i64),
+            )]),
+        );
+        candidates
+            .iter()
+            .cloned()
+            .fold(std::option::Option::None, |found: _, candidate: String| {
+                rust_value_binding_choose_unblocked(found, candidate.clone(), blocked.clone())
+            })
+    }
+}
+
 pub fn rust_struct_derives() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::record_derive_traits_heap())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -140,7 +234,7 @@ pub fn rust_struct_derives() -> String {
 pub fn rust_struct_derives_copy() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::record_derive_traits_copy())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -149,7 +243,7 @@ pub fn rust_struct_derives_copy() -> String {
 pub fn rust_enum_derives() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -158,10 +252,48 @@ pub fn rust_enum_derives() -> String {
 pub fn rust_enum_derives_copy() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
+            rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits())
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_trait_derive_spelling(derive_trait: RustCapability) -> String {
+    match derive_trait.clone() {
+        RustCapability::RustDebug => "Debug".to_string(),
+        RustCapability::RustClone => "Clone".to_string(),
+        RustCapability::RustCopy => "Copy".to_string(),
+        RustCapability::RustPartialEq => "PartialEq".to_string(),
+        RustCapability::RustEq => "Eq".to_string(),
+        RustCapability::RustPartialOrd => "PartialOrd".to_string(),
+        RustCapability::RustOrd => "Ord".to_string(),
+        RustCapability::RustHash => "std::hash::Hash".to_string(),
+        RustCapability::RustSerialize => "serde::Serialize".to_string(),
+        RustCapability::RustDeserialize => "serde::Deserialize".to_string(),
+        RustCapability::RustAdd => "std::ops::Add".to_string(),
+        RustCapability::RustSub => "std::ops::Sub".to_string(),
+        RustCapability::RustMul => "std::ops::Mul".to_string(),
+        RustCapability::RustDiv => "std::ops::Div".to_string(),
+        RustCapability::RustRem => "std::ops::Rem".to_string(),
+        RustCapability::RustNeg => "std::ops::Neg".to_string(),
+    }
+}
+
+pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<RustCapability>>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "#[derive(".to_string(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for t in traits.iter().cloned() {
+                    __result.push(rust_trait_derive_spelling(t.clone()));
+                }
+                __result
+            })
+            .join(&", ".to_string()),
+        ),
+        ")]".to_string(),
+    )
 }
 
 pub fn rust_serde_tag() -> String {
@@ -303,6 +435,15 @@ pub fn rust_lambda_template() -> String {
     thread_local! {
         static CACHED: String = {
             "|{0}| {1}".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_callable_value_wrap_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Rc::new(move {0})".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -454,7 +595,7 @@ pub struct RuntimeFunction {
 pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<RuntimeFunction>>> = {
-            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_set", "bridge_name": "rc_empty_set", "passes_by_ref": false, "wraps_result": false}, {"name": "set_insert", "bridge_name": "rc_set_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "set_union", "bridge_name": "rc_set_union", "passes_by_ref": false, "wraps_result": false}, {"name": "set_contains", "bridge_name": "set_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "map_is_empty", "bridge_name": "map_is_empty", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "record_source_chars_index_lookup", "bridge_name": "record_source_chars_index_lookup", "passes_by_ref": false, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "starts_with", "bridge_name": "starts_with", "passes_by_ref": false, "wraps_result": false}, {"name": "ends_with", "bridge_name": "ends_with", "passes_by_ref": false, "wraps_result": false}, {"name": "trim", "bridge_name": "trim", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}, {"name": "clamp", "bridge_name": "clamp", "passes_by_ref": false, "wraps_result": false}, {"name": "atom_identity_hash", "bridge_name": "atom_identity_hash", "passes_by_ref": false, "wraps_result": false}, {"name": "hash_combine", "bridge_name": "hash_combine", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_ptr_eq", "bridge_name": "rc_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_vec_ptr_eq", "bridge_name": "rc_vec_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_start", "bridge_name": "is_xid_start", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_continue", "bridge_name": "is_xid_continue", "passes_by_ref": false, "wraps_result": false}, {"name": "is_emoji_ident", "bridge_name": "is_emoji_ident", "passes_by_ref": false, "wraps_result": false}]))
+            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_set", "bridge_name": "rc_empty_set", "passes_by_ref": false, "wraps_result": false}, {"name": "set_insert", "bridge_name": "rc_set_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "set_union", "bridge_name": "rc_set_union", "passes_by_ref": false, "wraps_result": false}, {"name": "set_contains", "bridge_name": "set_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "sorted_map_keys", "bridge_name": "sorted_map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "map_is_empty", "bridge_name": "map_is_empty", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "record_source_chars_index_lookup", "bridge_name": "record_source_chars_index_lookup", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_is_enabled", "bridge_name": "resolution_silent_pick_is_enabled", "passes_by_ref": false, "wraps_result": false}, {"name": "name_resolution_policy_is_namespace_only", "bridge_name": "name_resolution_policy_is_namespace_only", "passes_by_ref": false, "wraps_result": false}, {"name": "type_ref_hit_ne_bind_measure_active", "bridge_name": "type_ref_hit_ne_bind_measure_active", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_record_global_bare_lcp_pick", "bridge_name": "resolution_silent_pick_record_global_bare_lcp_pick", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_record_global_bare_lcp_tie", "bridge_name": "resolution_silent_pick_record_global_bare_lcp_tie", "passes_by_ref": false, "wraps_result": false}, {"name": "resolution_silent_pick_record_fn_parent_first_hit", "bridge_name": "resolution_silent_pick_record_fn_parent_first_hit", "passes_by_ref": false, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "starts_with", "bridge_name": "starts_with", "passes_by_ref": false, "wraps_result": false}, {"name": "ends_with", "bridge_name": "ends_with", "passes_by_ref": false, "wraps_result": false}, {"name": "trim", "bridge_name": "trim", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}, {"name": "clamp", "bridge_name": "clamp", "passes_by_ref": false, "wraps_result": false}, {"name": "atom_identity_hash", "bridge_name": "atom_identity_hash", "passes_by_ref": false, "wraps_result": false}, {"name": "hash_combine", "bridge_name": "hash_combine", "passes_by_ref": false, "wraps_result": false}, {"name": "trace_mark", "bridge_name": "trace_mark", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_ptr_eq", "bridge_name": "rc_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_vec_ptr_eq", "bridge_name": "rc_vec_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_start", "bridge_name": "is_xid_start", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_continue", "bridge_name": "is_xid_continue", "passes_by_ref": false, "wraps_result": false}, {"name": "is_emoji_ident", "bridge_name": "is_emoji_ident", "passes_by_ref": false, "wraps_result": false}, {"name": "symbol_lexeme", "bridge_name": "symbol_lexeme", "passes_by_ref": false, "wraps_result": false}, {"name": "symbol_intern_lexeme", "bridge_name": "symbol_intern_lexeme", "passes_by_ref": false, "wraps_result": false}]))
                 .expect("valid data definition")
         };
     }
@@ -462,12 +603,12 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
-    rt_function_registry().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+    rt_function_registry()
+        .iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+        })
 }
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
@@ -482,12 +623,9 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
-            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
+        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+    })
 }
 
 pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
@@ -502,12 +640,9 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
-            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
+        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+    })
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
@@ -524,25 +659,25 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
+        |acc: Rc<HashMap<String, String>>, entry: _| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
 }
 
 pub fn is_rt_function(name: String) -> bool {
-    v1_rt::map_contains_key(&rt_functions(), name)
+    v1_rt::map_contains_key(&rt_functions(), name.clone())
 }
 
 pub fn rt_bridge_name(name: String) -> String {
     match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
         Some(bridge) => bridge.clone(),
-        None => name.clone(),
+        std::option::Option::None => name.clone(),
     }
 }
 
 pub fn rt_passes_by_ref(name: String) -> bool {
-    v1_rt::map_contains_key(&rt_ref_map_functions(), name)
+    v1_rt::map_contains_key(&rt_ref_map_functions(), name.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -561,4 +696,309 @@ pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<HigherOrderMethodSpec>>>| c.clone())
+}
+
+pub fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
+    Rc::new(
+        qualified_module
+            .clone()
+            .split(&".".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .join(&"_".to_string())
+}
+
+pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
+    v1_rt::concat(
+        rust_qualified_module_mod_basename(qualified_module.clone()),
+        ".rs".to_string(),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RustPairCompletionSpelling {
+    pub capability_key: PairCompletionOp,
+    pub method: String,
+    pub trait_path: String,
+    pub where_bounds: String,
+}
+
+pub fn rust_pair_completion_carrier() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "GroupCompletion".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<RustPairCompletionSpelling>>> = {
+                Rc::new(vec![Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpNeg,
+        method: "neg".to_string(),
+        trait_path: "std::ops::Neg".to_string(),
+        where_bounds: "".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpAdd,
+        method: "add".to_string(),
+        trait_path: "std::ops::Add".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M>,".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpSub,
+        method: "sub".to_string(),
+        trait_path: "std::ops::Sub".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>,".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpMul,
+        method: "mul".to_string(),
+        trait_path: "std::ops::Mul".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone,".to_string(),
+    }), Rc::new(RustPairCompletionSpelling {
+        capability_key: PairCompletionOp::PairCompletionOpDiv,
+        method: "div".to_string(),
+        trait_path: "std::ops::Div".to_string(),
+        where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default,".to_string(),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<RustPairCompletionSpelling>>>| c.clone())
+}
+
+pub fn rust_pair_completion_spelling_for(
+    op: PairCompletionOp,
+) -> Option<Rc<RustPairCompletionSpelling>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for s in rust_pair_completion_spellings().iter().cloned() {
+            if (s.capability_key.clone() == op.clone()) {
+                __result.push(s);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
+pub fn rust_pair_completion_factor_source(factor: Rc<PairCompletionFactor>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            match factor.operand.clone() {
+                PairCompletionOperand::PairCompletionSelf => "self".to_string(),
+                PairCompletionOperand::PairCompletionRhs => "rhs".to_string(),
+            },
+            ".".to_string(),
+        ),
+        match factor.component.clone() {
+            PairCompletionComponent::PairCompletionPos => "pos".to_string(),
+            PairCompletionComponent::PairCompletionNeg => "neg".to_string(),
+        },
+    )
+}
+
+pub fn rust_pair_completion_arm_sources(arm: Rc<PairCompletionArm>) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for term in arm.terms.clone().iter().cloned() {
+            __result.extend(
+                (*Rc::new({
+                    let mut __result = Vec::new();
+                    for f in term.factors.clone().iter().cloned() {
+                        __result.push(rust_pair_completion_factor_source(f.clone()));
+                    }
+                    __result
+                }))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn rust_pair_completion_factor_render(
+    factor: Rc<PairCompletionFactor>,
+    term: Rc<PairCompletionTerm>,
+    later_sources: Rc<Vec<String>>,
+) -> String {
+    {
+        let src = rust_pair_completion_factor_source(factor.clone());
+        let repeats_in_term = (Rc::new({
+            let mut __result = Vec::new();
+            for f in term.factors.clone().iter().cloned() {
+                if (rust_pair_completion_factor_source(f.clone()) == src.clone()) {
+                    __result.push(f);
+                }
+            }
+            __result
+        })
+        .len() as i64);
+        if ((repeats_in_term.clone() > 1) || {
+            let mut __found = false;
+            for s in later_sources.iter().cloned() {
+                if (s.clone() == src.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) {
+            v1_rt::concat(src.clone(), ".clone()".to_string())
+        } else {
+            src.clone()
+        }
+    }
+}
+
+pub fn rust_pair_completion_term_render(
+    term: Rc<PairCompletionTerm>,
+    later_sources: Rc<Vec<String>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for f in term.factors.clone().iter().cloned() {
+            __result.push(rust_pair_completion_factor_render(
+                f.clone(),
+                term.clone(),
+                later_sources.clone(),
+            ));
+        }
+        __result
+    })
+    .join(&" * ".to_string())
+}
+
+pub fn rust_pair_completion_arm_render(
+    arm: Rc<PairCompletionArm>,
+    later_sources: Rc<Vec<String>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for t in arm.terms.clone().iter().cloned() {
+            __result.push(rust_pair_completion_term_render(
+                t.clone(),
+                later_sources.clone(),
+            ));
+        }
+        __result
+    })
+    .join(&" + ".to_string())
+}
+
+pub fn rust_pair_completion_no_later_sources() -> Rc<Vec<String>> {
+    Rc::new(vec![])
+}
+
+pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String {
+    match (*body.clone()).clone() {
+        PairCompletionBody::PairCompletionSumOfProducts { pos, neg, .. } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "{\n        ".to_string(),
+                                                    rust_pair_completion_carrier(),
+                                                ),
+                                                " {\n".to_string(),
+                                            ),
+                                            "            pos: ".to_string(),
+                                        ),
+                                        rust_pair_completion_arm_render(
+                                            pos.clone(),
+                                            rust_pair_completion_arm_sources(neg.clone()),
+                                        ),
+                                    ),
+                                    ",\n".to_string(),
+                                ),
+                                "            neg: ".to_string(),
+                            ),
+                            rust_pair_completion_arm_render(
+                                neg.clone(),
+                                rust_pair_completion_no_later_sources(),
+                            ),
+                        ),
+                        ",\n".to_string(),
+                    ),
+                    "            _phantom: std::marker::PhantomData,\n".to_string(),
+                ),
+                "        }\n".to_string(),
+            ),
+            "    }\n".to_string(),
+        ),
+        PairCompletionBody::PairCompletionNegatedAddend => "{ self + (-rhs) }\n".to_string(),
+        PairCompletionBody::PairCompletionCanonicalQuotient => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "{\n".to_string(),
+                            "        let q = (self.pos - self.neg) / (rhs.pos - rhs.neg);\n"
+                                .to_string(),
+                        ),
+                        "        ".to_string(),
+                    ),
+                    rust_pair_completion_carrier(),
+                ),
+                " { pos: q, neg: M::default(), _phantom: std::marker::PhantomData }\n".to_string(),
+            ),
+            "    }\n".to_string(),
+        ),
+    }
+}
+
+pub fn rust_pair_completion_impl_render(
+    row: Rc<PairCompletionOpRow>,
+    carrier_param_needs_clone: bool,
+) -> String {
+    match rust_pair_completion_spelling_for(row.op.clone()) {
+    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(if carrier_param_needs_clone.clone() {
+        "impl<M: Clone> ".to_string()
+    } else {
+        "impl<M> ".to_string()
+    }, spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
+        " {\n".to_string()
+    } else {
+        v1_rt::concat(v1_rt::concat("\n".to_string(), spelling.where_bounds.clone()), "\n{\n".to_string())
+    }), "    type Output = Self;\n".to_string()), "    fn ".to_string()), spelling.method.clone()), if crate::std_trait_derive_shape::pair_completion_body_uses_rhs(row.body.clone()) {
+        "(self, rhs: Self) -> Self::Output ".to_string()
+    } else {
+        "(self) -> Self::Output ".to_string()
+    }), rust_pair_completion_body_render(row.body.clone())), "}\n".to_string()),
+    std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
+}
+}
+
+pub fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: bool) -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in crate::std_trait_derive_shape::pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone(), carrier_param_needs_clone.clone())); } __result }).join(&"".to_string()))
+}
+
+pub fn rust_supplemental_impls_bool_coproduct() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n".to_string(), "impl From<Bool> for bool {\n".to_string()), "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n".to_string()), "}\n".to_string())
+}
+
+pub fn rust_pair_completion_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn rust_pair_completion_nonpolynomial_body_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }

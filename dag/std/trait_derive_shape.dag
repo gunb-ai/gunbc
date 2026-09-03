@@ -1,0 +1,282 @@
+module std.trait_derive_shape
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.algebra { Cons, Empty }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Target-AGNOSTIC half of the capability model: the ReprGroundingDeriveElemShape source-shape
+// vocabulary and the GENERIC table lookup and completeness predicate, PARAMETERIZED ON THE
+// CAPABILITY CARRIER. THE ROWS ARE NOT HERE and NEITHER IS THE CARRIER. B1 (operator ruling
+// 2026-08-19) replaced the ReprGroundingDeriveTrait coproduct -- sixteen Rust and serde trait names
+// sitting in a std interface -- and moved every Rust-specific row into
+// extdeps.languages.rust.capabilities, so a new target is ROWS in its own extdeps module and never
+// an edit to this fold (DESIGN section 4 N-times-M). WHY THE CARRIER IS A TYPE PARAMETER AND NOT A
+// TYPE, which is the part that was learned the expensive way: an intermediate revision of this
+// migration declared TargetCapabilityKey HERE as Symbol where brand(...), which forced import
+// v2.std.node into this module. required_regen_host compiles stage0 from regen_input_sources, whose
+// roots are HARDCODED to src/v1 and dag (cli_run.rs regen_source_roots) -- src/v2 is not a regen
+// root and never will be, because stage0 IS the v1 seed and a seed that reached into src/v2 would
+// depend on the successor it bootstraps toward. This module is inside that closure:
+// src/v1.compiler.trait_derive_emit and src/v1.compiler.emit_rust both import it. So the import
+// made a closure member depend on a module the closure cannot contain, and required-regen refused
+// BEFORE comparing any bytes. THE INVARIANT, stated so the next person does not rediscover it: A
+// MODULE REACHABLE BY IMPORT FROM src/v1 CANNOT IMPORT v2 ANYTHING. It is closure membership, not
+// seed-projection -- 591 dag/ modules import v2.* quite legally because src/v1 does not reach them.
+// A seed-visible carrier would have satisfied the gate by putting the target-model concept back
+// inside the seed closure, which is the coupling that made the predecessor work by accident; a TYPE
+// PARAMETER removes the dependency instead of relocating it, so this module cannot violate the
+// boundary by construction. There is also no retype target: zero type Symbol declarations exist
+// under src/v1 or dag. Consumed by v2.compiler.trait_derive_completeness at K = TargetCapabilityKey
+// and by v1.compiler.trait_derive_emit at K = RustCapability. NOTHING CAUGHT THIS EXCEPT THE GATE:
+// zero blocking errors on every entry under three source roots, and 9687 of 9687 witnesses green
+// with failed=0 on a self-provenanced floor run. Entry scope is not gate scope, a green floor is
+// not a green regen, and a green regen is not a green corpus -- the three src/v2 consumers of these
+// signatures are outside the regen closure and must be compiled separately.
+
+// Root-4 arm (b): coproduct-native arithmetic + PartialOrd/PartialEq impl blocks for algebra
+// carriers (GroupCompletion<Nat>, Vector). Capability table +
+// repr_grounding_derive_completeness_predicate remain the shared authority;
+// v1.compiler.trait_derive_emit emits impl { … } from shape rows (not #[derive]) through the seed
+// emitter. GroupCompletion<M> pos/neg pair Add/Sub/Mul/Div landed in #7197 (dissolves interim
+// CommutativeSemiring<Magnitude> stubs).
+
+type TargetCapabilityShapeRow<K> {
+  shape: ReprGroundingDeriveElemShape
+  capabilities: List<K>
+}
+
+type TargetCapabilityShapeTable<K> {
+  rows: List<TargetCapabilityShapeRow<K>>
+}
+
+type ReprGroundingDeriveElemShape
+  = ReprDeriveElemKernelString
+  | ReprDeriveElemKernelInt
+  | ReprDeriveElemKernelBool
+  | ReprDeriveElemKernelUnit
+  | ReprDeriveElemNullaryEnumCopy
+  | ReprDeriveElemSymbolWrappedOrdCarrier
+  | ReprDeriveElemPayloadCoproduct
+  | ReprDeriveElemUnknown
+
+fn repr_grounding_derive_shape_has_trait<K>(
+  table: TargetCapabilityShapeTable<K>,
+  shape: ReprGroundingDeriveElemShape,
+  capability_key: K
+) -> Bool {
+  table.rows
+    |> any(row => row.shape == shape
+                  && (row.capabilities |> any(k => k == capability_key)))
+}
+
+fn repr_grounding_derive_completeness_predicate<K>(
+  table: TargetCapabilityShapeTable<K>,
+  required: List<K>,
+  shape: ReprGroundingDeriveElemShape
+) -> Bool {
+  required |> all(k => repr_grounding_derive_shape_has_trait(
+    table: table,
+    shape: shape,
+    capability_key: k
+  ))
+}
+
+// Target-agnostic authority for the Grothendieck pair-completion operator BODIES on
+// GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand
+// components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of
+// factors, a factor names one operand component. Selection (which traits apply) stays in the
+// capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in
+// extdeps.languages.rust.emit. PairCompletionOp IS A DELIBERATE MINT AND THE PREDECESSOR NOTE
+// DECLINED TO MAKE IT, so the reversal is recorded rather than left as drift: that note said it
+// reused ReprGroundingDeriveTrait as the op key RATHER THAN MINTING A PARALLEL OPERATOR ENUM, which
+// was right while one key set was visible to both this module and its consumers. It no longer is --
+// the capability carrier is now a type parameter here and a branded Symbol in v2, and neither can
+// be named from inside the src/v1 regen closure that contains this module. The alternative was to
+// parameterize these rows too, which is impossible: a generic K cannot be CONSTRUCTED, and
+// pair_completion_op_rows constructs its keys. So the choice was mint or move the Grothendieck
+// arithmetic into a target module, and moving it would be the section 3 violation. What is minted
+// is also genuinely smaller and different: five algebraic operators, not sixteen target
+// capabilities, and the mapping between them is the target's business --
+// extdeps.languages.rust.emit joins on this operator identity.
+
+type PairCompletionOperand
+  = PairCompletionSelf
+  | PairCompletionRhs
+
+type PairCompletionComponent
+  = PairCompletionPos
+  | PairCompletionNeg
+
+type PairCompletionFactor {
+  operand: PairCompletionOperand
+  component: PairCompletionComponent
+}
+
+type PairCompletionTerm {
+  factors: List<PairCompletionFactor>
+}
+
+type PairCompletionArm {
+  terms: List<PairCompletionTerm>
+}
+
+type PairCompletionBody
+  = PairCompletionSumOfProducts { pos: PairCompletionArm, neg: PairCompletionArm }
+  | PairCompletionNegatedAddend
+  | PairCompletionCanonicalQuotient
+
+type PairCompletionOp
+  = PairCompletionOpNeg
+  | PairCompletionOpAdd
+  | PairCompletionOpSub
+  | PairCompletionOpMul
+  | PairCompletionOpDiv
+
+type PairCompletionOpRow {
+  op: PairCompletionOp
+  body: PairCompletionBody
+}
+
+fn pair_completion_factor(
+  operand: PairCompletionOperand,
+  component: PairCompletionComponent
+) -> PairCompletionFactor {
+  PairCompletionFactor { operand: operand, component: component }
+}
+
+fn pair_completion_op_rows() -> List<PairCompletionOpRow> {
+  [
+    PairCompletionOpRow {
+      op: PairCompletionOpNeg,
+      body: PairCompletionSumOfProducts {
+        pos: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionNeg)]
+            }
+          ]
+        },
+        neg: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionPos)]
+            }
+          ]
+        }
+      }
+    },
+    PairCompletionOpRow {
+      op: PairCompletionOpAdd,
+      body: PairCompletionSumOfProducts {
+        pos: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionPos)]
+            },
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionRhs, PairCompletionPos)]
+            }
+          ]
+        },
+        neg: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionSelf, PairCompletionNeg)]
+            },
+            PairCompletionTerm {
+              factors: [pair_completion_factor(PairCompletionRhs, PairCompletionNeg)]
+            }
+          ]
+        }
+      }
+    },
+    PairCompletionOpRow { op: PairCompletionOpSub, body: PairCompletionNegatedAddend },
+    PairCompletionOpRow {
+      op: PairCompletionOpMul,
+      body: PairCompletionSumOfProducts {
+        pos: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionPos),
+                pair_completion_factor(PairCompletionRhs, PairCompletionPos)
+              ]
+            },
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionNeg),
+                pair_completion_factor(PairCompletionRhs, PairCompletionNeg)
+              ]
+            }
+          ]
+        },
+        neg: PairCompletionArm {
+          terms: [
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionPos),
+                pair_completion_factor(PairCompletionRhs, PairCompletionNeg)
+              ]
+            },
+            PairCompletionTerm {
+              factors: [
+                pair_completion_factor(PairCompletionSelf, PairCompletionNeg),
+                pair_completion_factor(PairCompletionRhs, PairCompletionPos)
+              ]
+            }
+          ]
+        }
+      }
+    },
+    PairCompletionOpRow { op: PairCompletionOpDiv, body: PairCompletionCanonicalQuotient }
+  ]
+}
+
+fn pair_completion_arm_uses_rhs(arm: PairCompletionArm) -> Bool {
+  arm.terms |> any(term => term.factors |> any(f => match f.operand { PairCompletionRhs => true  PairCompletionSelf => false }))
+}
+
+fn pair_completion_body_uses_rhs(body: PairCompletionBody) -> Bool {
+  match body {
+    PairCompletionSumOfProducts { pos: pos, neg: neg } =>
+      pair_completion_arm_uses_rhs(pos) || pair_completion_arm_uses_rhs(neg)
+    PairCompletionNegatedAddend => true
+    PairCompletionCanonicalQuotient => true
+  }
+}
+
+// Interim carrier identity for capability-table selection of GroupCompletion pair-completion bodies
+// (#7272 A1 / #7286 handoff). The struct trait surface is selected once via
+// v1_emit_struct_from_capability_table (#[derive] attrs + KernelInt arithmetic impl bodies); the
+// old v1_emit_struct_supplemental_impls door is deleted. The rename from supplemental_*_target is
+// NOT the fix while selection is still name-match (module_path == "std.algebra" && name ==
+// "GroupCompletion") — see dissolve-on.
+
+data repr_grounding_group_completion_carrier_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.algebra",
+    decl_name: "Ring",
+    field: WholeDeclaration
+  }
+}
+
+fn repr_grounding_group_completion_carrier(module_path: String, name: String) -> Bool {
+  module_path == "std.algebra" && name == "GroupCompletion"
+}
+
+fn repr_grounding_supplemental_bool_host_bridge_target(module_path: String, name: String) -> Bool {
+  module_path == "std.types" && name == "Bool"
+}
+
+data pair_completion_shape_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolves when v2 derives these rows from the std.algebra Ring/AbelianGroup inhabitance witnesses directly, so the Grothendieck construction is read off the algebra rather than tabulated here; tracked by the numeric-tower grounding lane.")
+
+data pair_completion_uses_rhs_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection car")
+
+data repr_grounding_bool_host_bridge_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3).")
+
+data repr_grounding_group_completion_carrier_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: repr_grounding_group_completion_carrier — name-match module_path/name selection. Dissolves when capability selection for GroupCompletion pair-completion is derived from std.algebra Ring/AbelianGroup inhabitance witnesses (same terminal as pair_completion_shape_dissolve_on / numeric-tower grounding), so the carrier is identified by inhabitance rather than string equality. Terminal trig")
+
+data trait_derive_shape_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISCHARGED BY B1, and recorded rather than deleted because the superseded wording named a type that no longer exists and would misread as pending. It read: ReprGroundingDeriveTrait members that name Rust-specific authorities migrate beside each target's spelling table when a second consumer exists. That migration is done -- the alphabet is re-homed as RustCapability in extdeps.languages.rust.capabilities, and it did NOT wait for a second consumer, because the parameterized shape table (TargetCapabilityShapeTable<K>) removed std's dependency on any carrier instead of relocating it. WHAT REMAINS OWED HERE is a different, smaller fact and is stated so it is not mistaken for the discharged one: this module still names the SOURCE-SHAPE vocabulary (ReprGroundingDeriveElemShape) as a closed coproduct authored by hand, which dissolves when element shape is derived from the declared type's own structure rather than classified by a seed-side match -- the same terminal as pair_completion_shape_dissolve_on.")

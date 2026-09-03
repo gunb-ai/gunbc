@@ -1,0 +1,139 @@
+module test.claim.srv3_unobservable_probe_refuses_witness
+
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+import gunbc.host_effect {
+  LocalShell,
+  EmitArtifactThenThinRun,
+  BootstrapFragment,
+  ThinInvocation,
+  HostEffectTransport,
+}
+import gunbc.host_effect_realize {
+  Srv3HostPredicate,
+  Srv3PredicateHolds,
+  Srv3PredicateFails,
+  Srv3PredicateUnobserved,
+  srv3_apt_tool_present,
+  srv3_predicate_from_typed_argv,
+  srv3_seeded_install_media_toolchain_receipt_line,
+}
+import gunbc.typed_argv_exec {
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import extdeps.ssh.session { SshSessionExecResult }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A TRANSPORT THAT CANNOT PROBE MUST NOT ANSWER "ABSENT".
+//
+// Before this cut srv3_apt_tool_present returned Bool, so the EmitArtifactThenThinRun arm --
+// which has no way to run a probe at all -- answered `false`, and `false` is what a host says
+// when the tool is genuinely missing. srv3_ensure_apt_tool read that `false` and took its
+// install arm, so the tree ran a PRIVILEGED apt install against a host whose state it had
+// never established, then wrote a receipt claiming "Installed".
+//
+// This is the discriminating red for that class. It is red before the cut for a reason worth
+// stating: before the cut the variants below did not exist, so the assertion could not even be
+// written -- the distinction had no representation. That is the shape a construction fix takes,
+// and it is why the fix is a type and not a check.
+
+data unprobeable_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+fn predicate_is_unobserved(p: Srv3HostPredicate) -> Bool {
+  match p {
+    Srv3PredicateUnobserved { reason: _ } => true
+    Srv3PredicateHolds => false
+    Srv3PredicateFails => false
+  }
+}
+
+fn predicate_is_fails(p: Srv3HostPredicate) -> Bool {
+  match p {
+    Srv3PredicateFails => true
+    Srv3PredicateHolds => false
+    Srv3PredicateUnobserved { reason: _ } => false
+  }
+}
+
+// THE RED. A transport with no probe arm reports Unobserved, never Fails.
+test fn unprobeable_transport_reports_unobserved_not_absent() -> Bool {
+  predicate_is_unobserved(
+    p: srv3_apt_tool_present(tool_name: "xorriso" as NonEmptyStr, transport: unprobeable_transport),
+  )
+}
+
+// THE OTHER HALF, stated for what it actually rules out. It says the answer is not Fails --
+// which is the specific confusion that caused the privileged install -- and it is red under a
+// repair that maps the unprobeable arm to Fails.
+test fn unprobeable_transport_does_not_report_absent() -> Bool {
+  predicate_is_fails(
+    p: srv3_apt_tool_present(tool_name: "xorriso" as NonEmptyStr, transport: unprobeable_transport),
+  ) == false
+}
+
+// THE POSITIVE CONTROL, and it is not decoration. Neither test above rules out a function that
+// answers Unobserved for EVERYTHING -- both would still pass, and the carrier would be useless
+// while looking green. An earlier revision of this file claimed the test above provided that
+// guard; it does not, and the claim is corrected here rather than left standing.
+//
+// This exercises the same constructor the probe arms route through, on outcomes built in the
+// test rather than obtained from a host, so it stays pure: a converged success must read Holds
+// and a converged failure must read Fails. Only with these does "Unobserved" carry information.
+data converged_success: TypedArgvExecOutcome = TypedArgvExecConverged {
+  result: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" },
+}
+
+data converged_failure: TypedArgvExecOutcome = TypedArgvExecConverged {
+  result: SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "" },
+}
+
+data refused_outcome: TypedArgvExecOutcome = TypedArgvExecRefused {
+  reason: "witness: the transport refused before the probe ran",
+}
+
+fn predicate_is_holds(p: Srv3HostPredicate) -> Bool {
+  match p {
+    Srv3PredicateHolds => true
+    Srv3PredicateFails => false
+    Srv3PredicateUnobserved { reason: _ } => false
+  }
+}
+
+test fn observed_outcomes_are_not_reported_unobserved() -> Bool {
+  predicate_is_holds(p: srv3_predicate_from_typed_argv(outcome: converged_success))
+    && predicate_is_fails(p: srv3_predicate_from_typed_argv(outcome: converged_failure))
+    && predicate_is_unobserved(p: srv3_predicate_from_typed_argv(outcome: refused_outcome))
+}
+
+
+// THE RECEIPT VOCABULARY MUST STAY TWO-VALUED, and its scope is stated so it is not mistaken
+// for more than it is.
+//
+// A review of this cut caught a real regression it does NOT cover: the first draft moved the
+// was_present probe to AFTER the ensure, so a fresh install re-observed Holds and reported
+// "Present". The receipt was true about the end state and false about which arm the actuator
+// took. That defect is an ORDERING fact between two host probes, and no pure test can observe
+// it -- both probes are host effects, and a witness that mocked them would be asserting against
+// a fabricated host.
+//
+// So this control guards only that the two outcome words remain distinct and reachable. It
+// would NOT have gone red on the ordering bug. Naming that is the difference between a control
+// and a check that looks like one. NEXT-RUNG TRIGGER: an effect-level harness that can sequence
+// observed probe results, at which point the ordering itself becomes assertable.
+test fn receipt_outcome_words_are_distinct() -> Bool {
+  string_contains(
+    s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Installed" as NonEmptyStr),
+    pattern: "outcome=Installed",
+  )
+    && string_contains(
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Present" as NonEmptyStr),
+      pattern: "outcome=Present",
+    )
+}

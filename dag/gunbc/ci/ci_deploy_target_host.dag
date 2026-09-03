@@ -1,0 +1,255 @@
+module gunbc.ci_deploy_target_host
+
+import std.algebra { trim }
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.access { AccessDecision, Permit, Deny, access_policy_refusal, access_refusal_reason }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.shell
+import gunbc.hostname_read {
+  hostname_short_read,
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.ci_fleet { srv1_offer, ComputeOffer }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import extdeps.github.actions { RunnerSpec, SelfHosted }
+
+type DeployTargetHostProof
+  = RunnerIdentityOnHost { host: HostIdentity }
+  | SshExplicitHost { host: HostIdentity, ssh_host: NonEmptyStr }
+
+data deploy_target_host_refusal_local: String = "deploy-target-host: FAIL LocalShell apply refused — runner identity does not prove target host"
+
+data deploy_target_host_refusal_ssh: String = "deploy-target-host: FAIL SshShell ssh_host does not match target host identity"
+
+data deploy_target_host_refusal_prefix: String = "deploy-target-host: typed refusal before mutation"
+
+type DeployTargetHostObservation {
+  hostname: String
+  runner_name: String
+}
+
+fn deploy_target_host_observed_hostname() -> String {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: name } => name
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+}
+
+fn deploy_target_host_observed_runner_name() -> String {
+  let env = shell.Env.Get(name: "RUNNER_NAME" as NonEmptyStr)
+  match env.value {
+    Present { value: raw } => trim(raw)
+    Absent => ""
+  }
+}
+
+fn deploy_target_host_observed() -> DeployTargetHostObservation {
+  DeployTargetHostObservation {
+    hostname: deploy_target_host_observed_hostname(),
+    runner_name: deploy_target_host_observed_runner_name(),
+  }
+}
+
+fn deploy_target_host_decision_reason(d: AccessDecision) -> String {
+  match d {
+    Permit => ""
+    Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
+  }
+}
+
+fn deploy_target_host_check(
+  proof: DeployTargetHostProof,
+  observed: DeployTargetHostObservation
+) -> AccessDecision {
+  if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
+    access_policy_refusal(profile: "deploy-target-host", subject: "runner", action: "deploy", object: "target-host", reason: deploy_target_host_refusal_ssh)
+  } else {
+    if deploy_target_host_apply_permitted(
+      proof: proof,
+      observed_hostname: observed.hostname,
+      observed_runner_name: observed.runner_name
+    ) {
+      Permit
+    } else {
+      match proof {
+        RunnerIdentityOnHost { host: id } =>
+          access_policy_refusal(
+            profile: "deploy-target-host", subject: observed.runner_name, action: "deploy", object: id,
+            reason: concat(
+                concat(
+                  concat(deploy_target_host_refusal_prefix, " — "),
+                  deploy_target_host_refusal_local
+                ),
+                concat(
+                  concat(" expected=", id),
+                  concat(
+                    concat(" hostname=", observed.hostname),
+                    concat(" runner=", observed.runner_name)
+                  )
+                )
+              ),
+          )
+        SshExplicitHost { host: id, ssh_host: h } =>
+          access_policy_refusal(
+            profile: "deploy-target-host", subject: observed.runner_name, action: "deploy", object: id,
+            reason: concat(
+                concat(deploy_target_host_refusal_prefix, " — "),
+                concat(
+                  deploy_target_host_refusal_ssh,
+                  concat(" expected=", concat(id, concat(" ssh_host=", h)))
+                )
+              ),
+          )
+      }
+    }
+  }
+}
+
+fn deploy_target_host_check_observed(proof: DeployTargetHostProof) -> AccessDecision {
+  deploy_target_host_check(proof: proof, observed: deploy_target_host_observed())
+}
+
+fn deploy_target_host_fixture_observation(
+  hostname: String,
+  runner_name: String
+) -> DeployTargetHostObservation {
+  DeployTargetHostObservation { hostname: hostname, runner_name: runner_name }
+}
+
+fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> DeployTargetHostProof {
+  match transport {
+    LocalShell =>
+      RunnerIdentityOnHost { host: host }
+    SshShell { ssh_host: h } =>
+      SshExplicitHost { host: host, ssh_host: h }
+    FleetSsh { target: t, context: _ } =>
+      SshExplicitHost { host: host, ssh_host: t.endpoint }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      RunnerIdentityOnHost { host: host }
+  }
+}
+
+fn deploy_target_ssh_proof_structurally_valid(proof: DeployTargetHostProof) -> Bool {
+  match proof {
+    SshExplicitHost { host: id, ssh_host: h } => h == id
+    RunnerIdentityOnHost { host: _ } => true
+  }
+}
+
+fn runner_name_proves_host_identity(runner_name: String, host: HostIdentity) -> Bool {
+  (runner_name == host)
+    || string_contains(s: runner_name, pattern: concat("@", host, "-"))
+    || string_contains(s: runner_name, pattern: concat("@", host, "."))
+    || ends_with(s: runner_name, suffix: concat("@", host))
+}
+
+fn deploy_target_runner_identity_proves_host(
+  proof: DeployTargetHostProof,
+  observed_hostname: String,
+  observed_runner_name: String
+) -> Bool {
+  match proof {
+    RunnerIdentityOnHost { host: id } =>
+      (observed_hostname == id)
+        || runner_name_proves_host_identity(runner_name: observed_runner_name, host: id)
+    SshExplicitHost { host: _, ssh_host: _ } => true
+  }
+}
+
+fn deploy_target_host_apply_permitted(
+  proof: DeployTargetHostProof,
+  observed_hostname: String,
+  observed_runner_name: String
+) -> Bool {
+  deploy_target_ssh_proof_structurally_valid(proof: proof)
+    && deploy_target_runner_identity_proves_host(
+      proof: proof,
+      observed_hostname: observed_hostname,
+      observed_runner_name: observed_runner_name
+    )
+}
+
+fn deploy_local_apply_refused_for_observed_host(
+  host: HostIdentity,
+  transport: HostEffectTransport,
+  observed_hostname: String,
+  observed_runner_name: String
+) -> Bool {
+  let proof = deploy_target_proof(host: host, transport: transport)
+  match transport {
+    LocalShell =>
+      !deploy_target_host_apply_permitted(
+        proof: proof,
+        observed_hostname: observed_hostname,
+        observed_runner_name: observed_runner_name
+      )
+    SshShell { ssh_host: _ } =>
+      !deploy_target_ssh_proof_structurally_valid(proof: proof)
+    FleetSsh { target: _, context: _ } =>
+      !deploy_target_ssh_proof_structurally_valid(proof: proof)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => true
+  }
+}
+
+fn host_pinned_runner_spec(offer: ComputeOffer, host: HostIdentity) -> RunnerSpec {
+  match runner_spec_from_offer(offer: offer) {
+    SelfHosted { labels: labels } =>
+      SelfHosted { labels: concat(labels, [host]) }
+    other => other
+  }
+}
+
+fn gunbc_ci_deploy_srv1_runner_spec() -> RunnerSpec {
+  host_pinned_runner_spec(offer: srv1_offer, host: operator_host_srv1)
+}
+
+data deploy_target_host_preflight_shell_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
+  match proof {
+    RunnerIdentityOnHost { host: id } =>
+      concat(
+        concat(
+          concat(
+            concat(
+              "HOSTNAME=\"$(hostname -s 2>/dev/null || hostname)\"\n",
+              "RUNNER_NAME=\"$(printenv RUNNER_NAME 2>/dev/null || true)\"\n"
+            ),
+            concat(
+              concat("if [ \"$HOSTNAME\" != \"", id),
+              concat("\" ] && ! echo \"$RUNNER_NAME\" | grep -Eq '@", concat(id, "(-|\\.|$)'; then\n"))
+            )
+          ),
+          concat(
+            concat(
+              concat(
+                concat("  echo \"", deploy_target_host_refusal_local),
+                concat(" expected=", id)
+              ),
+              concat(" hostname=$HOSTNAME runner=$RUNNER_NAME\"\n", "  exit 1\nfi\n")
+            ),
+            concat(concat("echo \"deploy-target-host: PASS host=", id), "\"\n")
+          )
+        ),
+        ""
+      )
+    SshExplicitHost { host: id, ssh_host: h } =>
+      concat(
+        concat(concat("echo \"deploy-target-host: PASS SshShell target=", h), concat(" host=", id)),
+        "\"\n"
+      )
+  }
+}

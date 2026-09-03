@@ -1,0 +1,392 @@
+module extdeps.github.actions
+
+import extdeps.cron.schedule_model { CronSchedule }
+import extdeps.github.log_annotations {
+  LogAnnotation,
+  AnnotationError, AnnotationWarning, AnnotationNotice,
+  AnnotationGroup, AnnotationEndGroup,
+  SetOutput, AddMask, StopCommands,
+  annotation_error_prefix, annotation_warning_prefix, annotation_notice_prefix,
+  annotation_group_prefix, annotation_endgroup,
+  annotation_set_output_prefix, annotation_add_mask_prefix,
+  annotation_stop_commands_prefix
+}
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
+import std.types { NonEmptyStr, SecretName, Unit, String, List }
+import std.os.types { KernelFamily }
+import extdeps.toolchain.types { Architecture }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+  }
+}
+
+type GitHubActionsRuntime {
+  oidc_request_url_env: NonEmptyStr
+  oidc_request_token_env: NonEmptyStr
+}
+
+data github_actions_runtime: GitHubActionsRuntime = {
+  oidc_request_url_env: "ACTIONS_ID_TOKEN_REQUEST_URL"
+  oidc_request_token_env: "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+}
+
+// GITHUB_EVENT_NAME and GITHUB_BASE_REF are default environment variables GitHub Actions sets on
+// every job
+// (docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables, read
+// 2026-07-24). GITHUB_EVENT_NAME carries the wire name of the triggering event (the runtime
+// projection of WorkflowTrigger: push / pull_request / workflow_dispatch / schedule / merge_group).
+// GITHUB_BASE_REF carries the base (target) branch name of a pull request — set ONLY on
+// pull_request / pull_request_target events, empty for every other event. extdeps owns these names
+// (the shape GitHub provides); the policy that maps them to a diff baseline is a workflow-layer
+// fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — DESIGN §3(c)).
+
+data github_event_name_env: NonEmptyStr = "GITHUB_EVENT_NAME"
+
+data github_base_ref_env: NonEmptyStr = "GITHUB_BASE_REF"
+
+data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
+
+// GITHUB_EVENT_PATH is a GitHub Actions DEFAULT ENVIRONMENT VARIABLE — the path to the file holding
+// the full webhook payload for whatever event triggered the run
+// (docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables, read
+// 2026-08-06). It is therefore a fact about the Actions RUNTIME, exactly like github_event_name_env
+// beside it, and not a fact about any one event. It previously lived in extdeps.github.push_event,
+// which made the push payload reader the authority for a variable that carries the pull_request,
+// schedule, and workflow_run payloads just as much. That homing only looked right while push was
+// the sole reader; adding a second event reader made it a §3 fork in waiting — two modules
+// declaring one upstream name, drifting independently. Moved here rather than copied: push_event
+// and workflow_run_event both import it, and there is exactly one declaration of this name in the
+// tree.
+
+data github_event_name_push: String = "push"
+
+data github_event_name_pull_request: String = "pull_request"
+
+data github_event_name_workflow_dispatch: String = "workflow_dispatch"
+
+data github_event_name_merge_group: String = "merge_group"
+
+data github_event_name_schedule: String = "schedule"
+
+data github_event_name_workflow_run: String = "workflow_run"
+
+data workflow_run_activity_completed: String = "completed"
+
+type Workflow {
+  name: String
+  run_name: String?
+  on: List<WorkflowTrigger>
+  concurrency: ConcurrencySpec?
+  jobs: List<Job>
+
+  env: List<YamlKeyValue>?
+  permissions: WorkflowPermissions?
+}
+
+type WorkflowPermissions {
+  contents: PermissionLevel?
+  pull_requests: PermissionLevel?
+  issues: PermissionLevel?
+  actions: PermissionLevel?
+  id_token: PermissionLevel?
+}
+
+type PermissionLevel = PermRead | PermWrite | PermNone
+
+type WorkflowTrigger
+  = Push { branches: List<String>, paths: List<String> }
+  | PullRequest { branches: List<String>, types: List<PullRequestActivity> }
+  | Schedule { cron: CronSchedule }
+  | WorkflowDispatch { inputs: List<DispatchInput> }
+  | WorkflowCall { inputs: List<DispatchInput> }
+  | WorkflowRunCompleted { workflows: List<String>, branches: List<String> }
+  | MergeGroup
+
+type PullRequestActivity
+  = Opened
+  | Synchronize
+  | Reopened
+  | ReadyForReview
+  | Closed
+
+// workflow_run is the event GitHub delivers when a workflow run of ANOTHER workflow reaches a
+// listed activity type
+// (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_run,
+// read 2026-08-06). Two facts about the shape, both load-bearing. THE VARIANT IS COMPLETED-ONLY BY
+// NAME, not by a types field. GitHub documents three activity types (requested, in_progress,
+// completed) and the variant admits exactly one of them, so the activity is carried in the
+// CONSTRUCTOR rather than as a list — a workflow that also wanted `requested` is a different
+// trigger with a different admission story, not a longer list on this one, and an alert holding
+// issues: write must not be able to widen its own activation surface by appending to a list. The
+// day this repo needs a second activity, it is a second variant whose admission is argued
+// separately, and every serializer match answers it fail-closed. THE WORKFLOWS FIELD IS
+// List<String> AND NOT A MINTED WorkflowName. Workflow.name in this module is String, and the
+// workflows filter refers to exactly that name, so a WorkflowName alias would be a second name for
+// one carrier that adds no refinement — the hollow-alias class DESIGN carries as an open
+// construction-wall thread. The referent is the name, so it shares the name's carrier. If
+// Workflow.name ever gains a refinement, this field follows it there rather than being refined
+// separately.
+
+// merge_group is the event GitHub delivers when a merge queue needs checks on a queue-constructed
+// tree
+// (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#merge_group,
+// read 2026-07-16). The variant is nullary because checks_requested is the ONLY documented activity
+// type and GitHub's default when the types filter is omitted — a types parameter with exactly one
+// inhabitant carries no information (the phantom-parameter collapse ruling); the day upstream
+// documents a second activity, the field returns as a closed modeled enum and every serializer
+// match must answer it, fail-closed.
+
+type DispatchInput {
+  name: String
+  description: String?
+  required: Bool
+  default: String?
+  type: DispatchInputType
+}
+
+type DispatchInputType
+  = InputString
+  | InputBoolean
+  | InputChoice { options: List<String> }
+  | InputEnvironment
+
+type SecretScope = StepScope | JobScope | WorkflowScope
+
+type WorkflowSecret {
+  name: SecretName
+  scope: SecretScope
+}
+
+type Job {
+  id: String
+  name: String?
+  runner: RunnerSpec
+  steps: List<Step>
+  needs: List<String>
+
+  env: List<YamlKeyValue>?
+
+  outputs: List<YamlKeyValue>?
+  if_condition: String?
+  timeout_minutes: Int?
+  continue_on_error: Bool?
+  concurrency: ConcurrencySpec?
+
+  permissions: WorkflowPermissions?
+}
+
+type CancelInProgressSpec
+  = CancelInProgressBool { value: Bool }
+  | CancelInProgressExpression { expression: String }
+
+type CancelInProgressWhenQueueMax
+  = QueueMaxCancelInProgressFalse
+  | QueueMaxCancelInProgressExpression { expression: String }
+
+// THE `queue` KEY IS NOT IN GITHUB'S PUBLISHED WORKFLOW SYNTAX, AND ITS BEHAVIOUR HERE IS
+// GROUNDED BY OBSERVATION RATHER THAN BY CITATION. That is the honest position and it is stated on
+// the type rather than left for a reader to assume a doc link exists: raised in review 54384, which
+// asked whether GitHub silently ignores the key -- in which case the queueing guarantee reduces to
+// `cancel-in-progress: false` and the emitted yaml promises something the platform never consumes.
+//
+// Established by execution, not by reading: two workflows differing ONLY in this key, three rapid
+// pushes each, same repository and runner pool. With `queue: max` all four runs completed and none
+// was cancelled; without it, two of four were CANCELLED while pending. So the key is consumed and
+// it changes behaviour in exactly the direction the variant names. The measured receipt lives in
+// the observing layer, per the external-upstream rule that an observation this repository produces
+// is a receipt of ours and not a fact authored inside the upstream module: gunbc.fleet_desired_admission_workflow
+// `fleet_desired_queue_max_measured_receipt`.
+//
+// WHAT IS STILL UNGROUNDED, named so it is not mistaken for settled: an undocumented key can change
+// or be withdrawn without a deprecation, and the 100-pending ceiling is read from GitHub's prose
+// about full queues rather than from a specification of this key. Next-rung trigger: GitHub
+// publishing `queue` in the workflow-syntax authority, at which point this note becomes an ordinary
+// citation row and the receipt becomes a regression control rather than the grounding itself.
+type ConcurrencySpec
+  = ConcurrencyScalar { group: String }
+  | ConcurrencyMappingQueueMax {
+      group: String
+
+      cancel_in_progress: CancelInProgressWhenQueueMax?
+    }
+  | ConcurrencyMappingQueueNotMax {
+      group: String
+
+      cancel_in_progress: CancelInProgressSpec?
+
+      explicit_single: Unit?
+    }
+
+type RunnerSpec
+  = HostedRunner { label: RunnerLabel }
+  | SelfHosted { labels: List<String> }
+
+  | RunsOnExpression { expression: String }
+
+// SELF-HOSTED RUNNER LABEL VOCABULARY - GitHub's names, cited, one authority.
+// The runner agent applies DEFAULT labels automatically at registration: "self-hosted"
+// on every self-hosted runner, an OS label, and an architecture label
+// (docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/
+// using-labels-with-self-hosted-runners, read 2026-08-30). runs-on requires a runner
+// carrying ALL listed labels (AND semantics), and label matching is case-insensitive;
+// the wire strings below are the lowercase forms our registered fleet observably
+// matches. CUSTOM labels (host names like srv1) are user-applied FLEET facts - they are
+// deliberately not enumerated here (an upstream module may not enumerate our hosts, and
+// the typed-topology question is owned by the fabric recut's Cut D program), so
+// self_hosted_labels takes them as an ordinary list.
+data self_hosted_provenance_label: String = "self-hosted"
+
+// THE DEFAULT-LABEL DIRECTORY (operator question 2026-08-30: "are self-hosted and those
+// platform labels like defaults?" - YES, and upstream's docs scatter rather than list
+// them, so THIS ROW IS THE DIRECTORY). Per the using-labels page, every self-hosted
+// runner automatically receives exactly three default labels at registration:
+//   self-hosted           - provenance, applied to every self-hosted runner
+//   linux | windows | macOS  - the runner host's operating system
+//   x64 | ARM | ARM64        - the runner host's processor architecture
+// Everything else a runner carries is a CUSTOM label somebody assigned.
+//
+// ASSIGNMENT MECHANICS, cited from the same page (read 2026-08-30):
+// - at INITIAL configuration only: ./config.sh --labels a,b,c (comma-separated; a label
+//   is created if it does not exist). config.sh CANNOT relabel an existing runner.
+// - for an EXISTING runner: the REST API only.
+// - REPLACING a runner drops its custom labels - reassignment is an obligation of every
+//   runner replacement, which matters for ephemeral/auto-scaled fleets.
+// - A LABEL IS A CLAIM, NOT A MEASUREMENT: default labels may be hand-assigned via
+//   --labels and GitHub "accepts them as given and does not validate that the runner is
+//   actually using that operating system or architecture." So runner labels ground
+//   ROUTING, never facts about the host - a host fact needs its own observation, and a
+//   workflow trusting an arch label on a mislabeled runner gets an Exec format error,
+//   not a refusal.
+
+fn runner_os_label(kernel: KernelFamily) -> String {
+  match kernel {
+    Linux => "linux"
+    Darwin => "macos"
+    WindowsNt => "windows"
+    LinuxGuestOnWindows => "linux"
+  }
+}
+
+fn runner_arch_label(arch: Architecture) -> String {
+  match arch {
+    Aarch64 => "arm64"
+    X86_64 => "x64"
+    X86 => "x86"
+    Arm => "arm"
+    Armv7 => "arm"
+    Riscv64 => "riscv64"
+    Wasm32 => "wasm32"
+    Mips => "mips"
+    Mipsel => "mipsel"
+    Mips64 => "mips64"
+    Mips64el => "mips64el"
+  }
+}
+
+fn self_hosted_labels(kernel: KernelFamily, arch: Architecture, custom: List<String>) -> List<String> {
+  concat(concat([self_hosted_provenance_label, runner_os_label(kernel: kernel)], [runner_arch_label(arch: arch)]), custom)
+}
+
+type RunnerLabel
+  = UbuntuLatest
+  | Ubuntu2404
+  | Ubuntu2404Arm
+  | Ubuntu2204
+  | UbuntuSlim
+  | MacosLatest
+  | Macos14
+  | WindowsLatest
+
+type Step
+  = RunStep {
+      name: String?,
+      id: String?,
+      run: String,
+      shell: ShellType?,
+      env: List<YamlKeyValue>?,
+      working_directory: String?,
+      if_condition: String?,
+      continue_on_error: Bool?,
+      timeout_minutes: Int?
+    }
+  | UsesStep {
+      name: String?,
+      id: String?,
+      uses: ActionRef,
+
+      with: List<YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
+      if_condition: String?,
+      continue_on_error: Bool?,
+      timeout_minutes: Int?
+    }
+
+type ShellType = Bash | Sh | Pwsh | Python | Cmd
+
+type ActionRef {
+  owner: String
+  repo: String
+  ref: String
+}
+
+type ArtifactOp
+  = Upload { name: String, path: String, retention_days: Int?, if_no_files_found: MissingFilesBehavior }
+  | Download { name: String, path: String? }
+
+type MissingFilesBehavior = Warn | ErrorOut | Ignore
+
+data checkout_action: ActionRef = ActionRef {
+  owner: "actions", repo: "checkout", ref: "v5"
+}
+
+data setup_rust_action: ActionRef = ActionRef {
+  owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0"
+}
+
+data cache_action: ActionRef = ActionRef {
+  owner: "actions", repo: "cache", ref: "v5"
+}
+
+data google_auth_action: ActionRef = ActionRef {
+  owner: "google-github-actions", repo: "auth", ref: "v2"
+}
+
+data upload_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "upload-artifact", ref: "v4"
+}
+
+data download_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "download-artifact", ref: "v4"
+}
+
+data action_ref_double_bound_finding_note: String = "review 44886 surfaced this while ActionRef was being used as the SECOND SUBJECT proving Pin<Subject> composes, and the defect it found has nothing to do with pinning. THE DEFECT: upload_artifact_action and download_artifact_action were EACH DECLARED TWICE in this module — an earlier pair at ref v2 and a later pair at ref v4 — so one name carried two different upstream versions and the module silently resolved it by declaration order. Introduced by #6472 (2026-07-11), which added the v4 rows without deleting the v2 rows it superseded. WHICH ONE WON, ESTABLISHED BY EXECUTION RATHER THAN BY READING THE RULE: the emitted .github/workflows/ci.yml carries actions/upload-artifact@v4 and actions/download-artifact@v4 at every occurrence, so the LAST binding wins and the v2 rows were dead. That is the only reason this was a latent defect rather than a live one — the corpus happened to be ordered so the intended version won. Reverse the two blocks and every artifact step in CI silently downgrades to a version GitHub has since deprecated, with nothing anywhere reporting a change. The v2 rows are deleted here and the emitted ci.yml is byte-identical, which is the proof they were genuinely unreachable. WHY THE FIX IS A DELETION AND NOT A RENAME: these were never two concepts needing two names. They are one concept that was edited by addition, so the correct end state is one binding per name (DESIGN section 3 single authority), not a disambiguated pair. WHAT THIS MODULE CANNOT DO ABOUT IT, which is the part worth carrying: a double-bound name is DECIDABLE — it is exactly the unbound/double-bound error the namespace authority already specifies (docs/plans/namespace-resolution-design.md, where a binding edge that is double-bound is an error rather than a last-wins resolution), so the class belongs to that lane as a construction wall, not to a reviewer noticing it. Until that lands, declaration order is load-bearing in every .dag module and nothing says so. dissolve-on: feature:double-bound-declaration-refuses — a second binding of a name in one module is a typed, located refusal at compile time; at that point this note deletes and the class becomes unwritable rather than reviewed. This is the same shape as pin_cited_symbol_verification_note in extdeps.pin: a defect that prose caught once and that only the substrate can stop repeating."
+
+data max_job_timeout_minutes: Int = 360
+
+data default_job_timeout_minutes: Int = 360
+
+data max_matrix_combinations: Int = 256
+
+// STRUCTURAL EQUALITY ON THE UPSTREAM REFERENCE. An action is identified by owner, repo and ref
+// together -- the same owner/repo at two refs is two different actions, which is the distinction
+// action_ref_double_bound_finding_note above records a live defect over.
+//
+// It lives here rather than in a consumer because it is a fact about THIS type. It was declared in
+// gunbc.ci_heal_credential first, and a second consumer asking that module what two ActionRefs mean
+// would have made a credential-healing module the authority on action identity.
+fn action_ref_eq(a: ActionRef, b: ActionRef) -> Bool {
+  a.owner == b.owner && a.repo == b.repo && a.ref == b.ref
+}
+
+// THE INTEGRATION (GitHub App) ID GITHUB ACTIONS PUBLISHES ITS CHECK RUNS UNDER. It is an upstream
+// identity rather than a policy choice: a required_status_checks rule may pin a context to the app
+// allowed to satisfy it, and pinning to this id is what stops an arbitrary third party with commit
+// status write from publishing a green check under the same context name. Read from this
+// repository's own live ruleset row (GET /repos/gunb-ai/gunbc/rulesets, integration_id 15368,
+// 2026-08-27) and consistent with the documented app id for GitHub Actions.
+data github_actions_app_integration_id: Int = 15368

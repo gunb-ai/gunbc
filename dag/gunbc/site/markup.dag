@@ -1,0 +1,23 @@
+module gunbc.site.markup
+
+import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+
+fn txt(s: String) -> Fragment {
+  FragmentText { content: s }
+}
+
+fn el(tag: String, children: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: [], children: children }
+}
+
+fn el_class(tag: String, cls: String, children: List<Fragment>) -> Fragment {
+  Element {
+    tag: tag,
+    attributes: [ attr(name: "class", value: cls ) ],
+    children: children,
+  }
+}
+
+fn el_attrs(tag: String, attributes: List<Attribute>, children: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: attributes, children: children }
+}

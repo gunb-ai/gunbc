@@ -1,0 +1,85 @@
+module test.claim.workflow_default_field_projection_fold_witness_test
+
+// EXECUTING evidence that the v1 emitter constant-folds a field projection into a
+// data record when resolving a workflow parameter's CLI default -- and that it
+// folds EXACTLY that and nothing more.
+//
+// THE DEFECT THIS CLOSES. v1.compiler.emit_rust resolve_param_default handled a
+// default expression in exactly two shapes, a literal and a bare reference to a
+// data declaration whose body is a literal. A field projection into a data record
+// -- `gunbc_repository.owner` -- reached neither arm and fell to the refusing
+// wildcard, so validate_workflow_param_defaults rejected the whole emission with
+// "workflow CLI default for parameter `X` must be a string, int, float, bool
+// literal, or data reference". Whole-tree emission (source roots dag + src/v2)
+// refused with SIX such diagnostics and produced no files at all: four in
+// gunbc.tools.review_codex, two in gunbc.tools.review. Two approach angles, one
+// wall -- review projects the field directly, review_codex names a data
+// declaration WHOSE BODY is the projection, so it traversed the data-reference arm
+// correctly and died one hop further down on the same missing fold.
+//
+// WHY THE FOLD IS THE REPAIR RATHER THAN A WIDENING. The diagnostic already
+// advertises "data reference" as admitted while the data-reference arm could not
+// survive a non-literal body, so the refusal said more than the code did. Folding
+// closes that gap. The alternative -- respelling the projected values as literals
+// at the six call sites -- would have minted a sixth spelling of this repository's
+// identity, which gunbc.repository gunbc_repository_authority_note exists to
+// prevent and which a reviewer has already rejected once on this carrier.
+//
+// THE TWO ARMS BELOW DIFFER IN ONE TOKEN. Both compile the same module: the same
+// record type, the same data declaration, the same workflow func, the same
+// `uses net: Network`. The admitted arm projects `host`, whose authored value is a
+// string literal. The refusing arm projects `joined`, whose authored value is a
+// `concat` call -- still a field projection into the same record, still the same
+// ExprFieldAccess shape, differing only in whether the projected field's value is
+// a constant the emitter may fold. A repair that admitted "any field access" would
+// pass the first arm and FAIL the second, and a repair that folded nothing fails
+// the first. Neither arm is satisfiable by a check that always answers the same
+// way.
+//
+// THE REFUSING ARM READS FALSE FROM compile_dag_rust_emit_check, which is that
+// surface's answer for any hard diagnostic and does not name which one. Its
+// discriminating power therefore comes from its admitted sibling: the two sources
+// are one edit apart, so a false from the refusing arm beside a true from the
+// admitted arm localizes the refusal to the projected field's constancy. This is
+// stated rather than left implicit because a bare `== false` on a compile oracle
+// is otherwise satisfied by any breakage.
+//
+// COST. Each arm is one full frontend-and-emitter crossing, but the fixture
+// imports NOTHING: `Network` is replaced by a locally declared `WdpNet`, which
+// satisfies `uses` (all is_workflow_item asks of it) without pulling std into
+// the closure. That is not a weakening -- the subject is the emitter's treatment
+// of a param default, and which type the `uses` clause names is irrelevant to it.
+// It is the difference between a two-module closure and the whole corpus: the
+// first revision of this file imported std.resources and std.types and the floor
+// measured ONE of its arms at 62567ms CPU against a 5000ms budget, with a 1.12GB
+// RSS growth, failing the run on cost with both arms passing. The import-free
+// fixture compiles in ~27ms locally. Recorded rather than silently fixed, because
+// the cost of a witness is a property of its fixture's import closure and that is
+// not visible from the assertion.
+
+data wdp_admitted_source: String = "module wdp_probe_admit\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.host) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
+
+data wdp_refused_source: String = "module wdp_probe_refuse\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.joined) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
+
+// ADMITTED: the projection folds to the literal the record authored, and the
+// emitted clap default carries exactly that string. The exclusion proves the
+// emitter did not reach the sibling field.
+test fn field_projection_to_a_literal_field_is_folded_into_the_cli_default() -> Bool {
+  compile_dag_rust_emit_check(
+    wdp_admitted_source,
+    "src/main.rs",
+    ["default_value = \"wdp.invalid\""],
+    [".computed"]
+  )
+}
+
+// REFUSED: same shape, same record, non-constant field. The fold widens the
+// admitted set by exactly the foldable projections and not one thing more.
+test fn field_projection_to_a_non_constant_field_still_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    wdp_refused_source,
+    "src/main.rs",
+    [],
+    []
+  ) == false
+}

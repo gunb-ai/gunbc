@@ -1,6 +1,8 @@
 module v2.std.node_shape
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.node {
   Atom,
@@ -13,13 +15,11 @@ import v2.std.node {
   Named,
   Node,
   NodeKind,
-  NodeOccurrenceId,
   NodeShape,
   Positional,
   Symbol,
-  SyntheticOccurrence,
   TypeNode,
-  node_with_occurrence_id
+  node_with_occurrence_id,
 }
 
 fn edge_shape(label: EdgeLabel, target: NodeShape) -> EdgeShape {
@@ -64,7 +64,7 @@ fn stamp_edge_shape_list(shapes: List<EdgeShape>) -> List<Edge> {
   )
 }
 
-fn stamp_node_shape(shape: NodeShape, occurrence_id: NodeOccurrenceId) -> Node {
+fn stamp_node_shape(shape: NodeShape, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: shape.kind,
     children: stamp_edge_shape_list(shapes: shape.children),
@@ -73,5 +73,5 @@ fn stamp_node_shape(shape: NodeShape, occurrence_id: NodeOccurrenceId) -> Node {
 }
 
 fn stamp_node_shape_synthetic(shape: NodeShape) -> Node {
-  stamp_node_shape(shape: shape, occurrence_id: SyntheticOccurrence)
+  stamp_node_shape(shape: shape, occurrence_id: OccurrenceSynthetic)
 }

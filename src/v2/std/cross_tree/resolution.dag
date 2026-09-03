@@ -1,33 +1,4 @@
 module v2.std.cross_tree.resolution
-
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
-import v2.std.cross_tree.import_model {
-  CoFundamental,
-  CrossTreeAdmitted,
-  CrossTreeDenied,
-  CrossTreeImport,
-  DslTree,
-  LessFundamental,
-  MoreFundamental,
-  SourceRootRef,
-  SourceRootSet,
-  TreeFundamentalityOrder,
-  V2Tree,
-  cross_tree_import_admitted,
-  source_root_ref_eq,
-  source_root_set_contains
-}
-import v2.std.layer {
-  LayerPrefix,
-  LayerPrefixCompiler,
-  LayerPrefixExtdeps,
-  LayerPrefixStd,
-  LayerPrefixWorkflow
-}
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty, qualified_name_eq }
-import v2.std.text { String }
-
 type SourceRootBinding {
   module: QualifiedName
   root: SourceRootRef
@@ -60,7 +31,7 @@ fn source_root_index_lookup(
     xs: index,
     empty: SourceRootAbsent,
     cons: fn(acc, binding) {
-      if qualified_name_eq(a: binding.module, b: module) {
+      if binding.module == module {
         match acc {
           SourceRootAbsent => SourceRootResolved { root: binding.root }
           SourceRootResolved { root: prev } =>
@@ -86,48 +57,64 @@ fn tree_fundamentality_order(
     V2Tree =>
       match to_tree {
         V2Tree => CoFundamental
-        DslTree => MoreFundamental
+        DagTree => MoreFundamental
       }
-    DslTree =>
+    DagTree =>
       match to_tree {
         V2Tree => LessFundamental
-        DslTree => CoFundamental
+        DagTree => CoFundamental
       }
   }
 }
 
-fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
+fn layer_prefix_from_dotted_qualified_name(qn: String) -> v2.std.layer.LayerPrefix {
+  layer_prefix_from_qualified_name(
+    qn: qualified_name_from_dotted_string(dotted: qn)
+  )
+}
+
+fn layer_prefix_from_qualified_name(qn: QualifiedName) -> v2.std.layer.LayerPrefix {
   match qn {
-    QnEmpty => LayerPrefixStd
-    QnCons { head: h, tail: t } =>
+    Empty => v2.std.layer.LayerPrefixStd
+    Cons { head: h, tail: t } =>
       if h == ^v2 {
-        match t {
-          QnEmpty => LayerPrefixStd
-          QnCons { head: h2, tail: _ } =>
+        match list_head(xs: t) {
+          HeadAbsent => v2.std.layer.LayerPrefixStd
+          HeadFound { value: h2 } =>
             if h2 == ^std {
-              LayerPrefixStd
+              v2.std.layer.LayerPrefixStd
             } else if h2 == ^extdeps {
-              LayerPrefixExtdeps
+              v2.std.layer.LayerPrefixExtdeps
             } else if h2 == ^compiler {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             } else if h2 == ^workflow {
-              LayerPrefixWorkflow
+              v2.std.layer.LayerPrefixWorkflow
             } else if h2 == ^lens {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             } else if h2 == ^test {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             } else {
-              LayerPrefixCompiler
+              v2.std.layer.LayerPrefixCompiler
             }
         }
       } else if h == ^extdeps {
-        LayerPrefixExtdeps
+        v2.std.layer.LayerPrefixExtdeps
+      } else if h == ^std {
+        v2.std.layer.LayerPrefixStd
+      } else if h == ^compiler {
+        v2.std.layer.LayerPrefixCompiler
+      } else if h == ^lens {
+        v2.std.layer.LayerPrefixCompiler
+      } else if h == ^test {
+        v2.std.layer.LayerPrefixCompiler
+      } else if h == ^workflow {
+        v2.std.layer.LayerPrefixWorkflow
       } else if h == ^gunbc {
-        LayerPrefixWorkflow
+        v2.std.layer.LayerPrefixWorkflow
       } else if h == ^tools {
-        LayerPrefixWorkflow
+        v2.std.layer.LayerPrefixWorkflow
       } else {
-        LayerPrefixStd
+        v2.std.layer.LayerPrefixStd
       }
   }
 }
@@ -171,10 +158,8 @@ fn cross_tree_edge_decision(
             match cross_tree_import_admitted(
               edge: CrossTreeImport {
                 from_tree: from_tree,
-                from_layer: layer_prefix_from_qualified_name(qn: from_qn),
                 from_module: cross_tree_module_path_interim,
                 to_tree: to_tree,
-                to_layer: layer_prefix_from_qualified_name(qn: to_qn),
                 to_module: cross_tree_module_path_interim
               },
               roots: active_roots,

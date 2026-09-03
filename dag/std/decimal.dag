@@ -1,0 +1,140 @@
+module std.decimal
+
+import std.types { String, Int, Bool }
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.bytes { pure_dag_seam_unreachable }
+
+data decimal_note: String = "Positional decimal notation for a FIXED-POINT magnitude: an integer paired with the power of ten it is scaled by. It exists because two unrelated boundaries needed the identical projection and neither is the right owner of it — WebAudio's gain and time arguments are decimal seconds and a linear amplitude in [0, 1], and CSS transform scale factors are decimal ratios. Each carried its magnitude integrally upstream (a fractional literal in a .dag row would be a second representation of the same number), so each needed to divide exactly once, at its own wire. Giving each boundary its own formatter would have put the same numeral logic in two places for no reason other than that the two consumers are far apart in the layer graph, which is the horizontal redundancy DESIGN section 2 names — the concept is one, so it is modeled once and both uses derive.
+
+Trailing zeros are NOT stripped. Both consumers accept them (CSS `scale(0.970)` and JS `0.005000` are exactly the values `scale(0.97)` and `0.005`), so trimming would buy cosmetics in a generated artifact at the cost of another recursive string pass and its own edge cases around an all-zero fraction.
+
+DOMAIN, stated because it is not enforced by the type: value must be non-negative and decimals must be non-negative. A negative value would render its sign inside the whole part and then a positive-looking fraction, which is wrong rather than merely ugly. There is no refusal arm because every caller in the corpus passes a `data` literal, so the domain is checkable where the literals live — and it is checked there, by witness, rather than being asserted here about inputs this function cannot see."
+
+fn decimal_pow10(exponent: Int) -> Int {
+  if exponent <= 0 {
+    1
+  } else {
+    10 * decimal_pow10(exponent: exponent - 1)
+  }
+}
+
+fn zero_pad_left(digits: String, width: Int) -> String {
+  let have = digits.length()
+  if have >= width {
+    digits
+  } else {
+    join([repeat_string(s: "0", n: width - have), digits], "")
+  }
+}
+
+fn fixed_point_wire(value: Int, decimals: Int) -> String {
+  let unit = decimal_pow10(exponent: decimals)
+  let whole = value / unit
+  let frac = value - (whole * unit)
+  if frac == 0 {
+    to_string(whole)
+  } else {
+    join([to_string(whole), ".", zero_pad_left(digits: to_string(frac), width: decimals)], "")
+  }
+}
+
+fn fixed_point_domain_ok(value: Int, decimals: Int) -> Bool {
+  value >= 0 && decimals >= 0
+}
+
+// A SIGNED EXACT DECIMAL, ADDED BECAUSE A CONSUMER NEEDED TO COMPARE TWO NUMERALS RATHER THAN
+// RENDER ONE. Everything above projects an integer OUT to a wire. The prompting reader needs the
+// other direction plus a step: two captured configuration documents write the same coefficient as
+// `30` and `30.0`, and a consumer asking whether the programs agree must answer yes. Comparing
+// lexemes answers no, so the lexeme is not the value.
+//
+// The carrier is `units / 10^fraction_digits`, exact for the whole of RFC 8259's number production
+// minus its exponent form -- no rounding, no binary floating point, so a comparison is of the
+// authored number, not an approximation. A float carrier would make `0.1` and its nearest double
+// indistinguishable: the fabricated-plausible-output failure exactly where the question is whether
+// two documents AGREE.
+//
+// SIGN IS ADMITTED HERE AND IS NOT ADMITTED ABOVE, a real difference in both places:
+// fixed_point_wire's domain note records that a negative value would render its sign inside the
+// whole part, and that stays true, so this type renders through its own projection that splits the
+// sign off first. The deployed program this was built for carries `-8.0` and `-0.5`, so the
+// negative case is the ordinary one.
+type ExactDecimal {
+  units: Int
+  fraction_digits: Int where range(min: 0)
+}
+
+// WHAT THE REFINEMENT ABOVE ACTUALLY BUYS, STATED HONESTLY BECAUSE IT IS LESS THAN IT LOOKS. A
+// literal `fraction_digits: -1` refuses at resolve; a COMPUTED negative reaches the field and is
+// held. So this is mechanically preventable at authored sites, not structurally impossible, and
+// every fn below producing an ExactDecimal owns its own non-negative argument. Next-rung trigger:
+// feature:where-refinement-predicate-coproduct, the one std.content_hash names for its non-literal
+// digest positions.
+// ExactDecimal.fraction_digits carries where range(min: 0), refusing an authored negative literal
+// at resolve but not a computed one. Mechanically preventable, not structural; the same partial-wall
+// behaviour recorded for PositiveFanCount in gunbc.fleet_fan_wiring. Because the wall is partial,
+// every producer routes through admit_exact_decimal below and the canonicaliser DIVERGES rather
+// than reinterpreting a negative scale.
+
+// THE MINT, AND WHY THE CANONICALISER NO LONGER ABSORBS A NEGATIVE SCALE. The first canonicaliser
+// opened `if fraction_digits <= 0` and returned the same units at scale zero, so a computed -4 was
+// silently reinterpreted as an integer, and both the equality and the wire consumed that. A
+// negative scale means something (a value scaled UP by ten to the four); reading it as zero scale
+// is the fabricated plausible output this file exists to prevent, produced by the very function
+// meant to make comparison exact. Found in review of gunbc#9491.
+//
+// So the domain is enforced where a value is BUILT, not assumed where it is read. The
+// canonicaliser's negative arm diverges through the std seam -- the honest projection for a state
+// the mint cannot produce: no plausible number, and no pretending the arm is unreachable by
+// omitting it.
+type ExactDecimalAdmission
+  = ExactDecimalAdmitted { canonical: ExactDecimal }
+  | ExactDecimalScaleRefused { observed_fraction_digits: Int }
+
+fn admit_exact_decimal(units: Int, fraction_digits: Int) -> ExactDecimalAdmission {
+  if fraction_digits < 0 {
+    ExactDecimalScaleRefused { observed_fraction_digits: fraction_digits }
+  } else {
+    ExactDecimalAdmitted {
+      canonical: canonical_exact_decimal(d: ExactDecimal { units: units, fraction_digits: fraction_digits }),
+    }
+  }
+}
+
+// CANONICALISATION IS WHAT MAKES EQUALITY MEAN AGREEMENT. 30 and 30.0 are the same number written
+// two ways, so they must reduce to one representation before any comparison or digest sees them.
+// The reduction strips trailing zeros from the FRACTION only -- 300 with no fraction stays 300,
+// because dropping a zero there would change the number rather than its spelling.
+fn canonical_exact_decimal(d: ExactDecimal) -> ExactDecimal {
+  if d.fraction_digits < 0 {
+    ExactDecimal { units: pure_dag_seam_unreachable(), fraction_digits: 0 }
+  } else if d.fraction_digits == 0 {
+    ExactDecimal { units: d.units, fraction_digits: 0 }
+  } else if d.units - ((d.units / 10) * 10) == 0 {
+    canonical_exact_decimal(d: ExactDecimal { units: d.units / 10, fraction_digits: d.fraction_digits - 1 })
+  } else {
+    d
+  }
+}
+
+// ZERO IS THE ONE CASE THE TRAILING-ZERO RULE ABOVE DOES NOT FINISH ON ITS OWN: 0 with three
+// fraction digits reduces by the loop to 0 with zero fraction digits, which is right -- and 0 units
+// at 0 fraction digits and a units value of -0 are indistinguishable in Int, so no separate
+// negative-zero case exists to reconcile.
+fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> Bool {
+  let ca = canonical_exact_decimal(d: a)
+  let cb = canonical_exact_decimal(d: b)
+  ca.units == cb.units && ca.fraction_digits == cb.fraction_digits
+}
+
+// THE PROJECTION BACK TO A NUMERAL, WHICH IS NOT THE LEXEME IT WAS READ FROM AND DOES NOT CLAIM TO
+// BE. It renders the canonical form, so `30.0` reads in and `30` renders out. That is a round-trip
+// of the VALUE, never of the bytes; a consumer needing the authored bytes keeps the lexeme.
+fn exact_decimal_wire(d: ExactDecimal) -> String {
+  let c = canonical_exact_decimal(d: d)
+  if c.units < 0 {
+    join(["-", fixed_point_wire(value: 0 - c.units, decimals: c.fraction_digits)], "")
+  } else {
+    fixed_point_wire(value: c.units, decimals: c.fraction_digits)
+  }
+}

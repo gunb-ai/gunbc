@@ -1,14 +1,36 @@
 module v2.extdeps.languages.verilog
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.nat { Nat }
-import v2.std.node { Symbol }
+import std.integer { Signedness }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Named,
+  Positional,
+  Symbol,
+  TypeNode,
+}
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.compilers.target_model {
+  EmitSpellingWrap,
+  ProducedDeclUnwired,
+  TargetModel,
+  TokenClassEmitTransform,
+  render_target_text
+}
+import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, formal_production_for_lhs_exact, derive_grammar_relation_row_node }
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
+  ChoicePattern,
   KeywordPattern,
   LexPattern,
   LexRule,
@@ -23,6 +45,12 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
+
+// Signedness consumer migration: verilog imports std.integer.Signedness. Semantic equivalence:
+// verilog signed/unsigned on net, port, and parameter declarations is the same interpretive axis as
+// std.integer Signed/Unsigned — whether a bit pattern is read as two's-complement signed range or
+// unsigned modular arithmetic; no Verilog-specific signedness semantics beyond this axis are
+// modeled on these fields.
 
 type PortDirection
   = Input
@@ -155,10 +183,6 @@ type PackingShape
 type NetVectoredPacking
   = NetUnranged
   | NetRanged { vectoredness: VectorednessClause, range: VectorRange }
-
-type Signedness
-  = Signed
-  | Unsigned
 
 type DriveStrengthClause
   = NoDriveStrength
@@ -593,8 +617,8 @@ type VerilogModule
     }
 
 type VerilogCost {
-  gate_cost: Nat
-  area_cost: Nat
+  gate_cost: v2.std.nat.Nat
+  area_cost: v2.std.nat.Nat
 }
 fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
@@ -615,7 +639,7 @@ fn verilog_identifier_pattern() -> LexPattern {
   }
 }
 
-fn verilog_wave1_lex() -> LexRules {
+fn verilog_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -623,7 +647,28 @@ fn verilog_wave1_lex() -> LexRules {
         verilog_lex_token(token_class: ^verilog_token_ident, pattern: verilog_identifier_pattern()),
         verilog_lex_token(token_class: ^verilog_token_kw_module, pattern: KeywordPattern { text: "module" }),
         verilog_lex_token(token_class: ^verilog_token_kw_endmodule, pattern: KeywordPattern { text: "endmodule" }),
-        verilog_lex_token(token_class: ^verilog_token_semicolon, pattern: LiteralPattern { text: ";" })
+        verilog_lex_token(
+          token_class: ^verilog_token_port_direction,
+          pattern: ChoicePattern {
+            left: KeywordPattern { text: "input" },
+            right: KeywordPattern { text: "output" }
+          }
+        ),
+        verilog_lex_token(token_class: ^verilog_token_kw_wire, pattern: KeywordPattern { text: "wire" }),
+        verilog_lex_token(token_class: ^verilog_token_kw_assign, pattern: KeywordPattern { text: "assign" }),
+        verilog_lex_token(token_class: ^verilog_token_semicolon, pattern: LiteralPattern { text: ";" }),
+        verilog_lex_token(token_class: ^verilog_token_lparen, pattern: LiteralPattern { text: "(" }),
+        verilog_lex_token(token_class: ^verilog_token_rparen, pattern: LiteralPattern { text: ")" }),
+        verilog_lex_token(token_class: ^verilog_token_comma, pattern: LiteralPattern { text: "," }),
+        verilog_lex_token(token_class: ^verilog_token_equals, pattern: LiteralPattern { text: "=" }),
+        verilog_lex_token(token_class: ^verilog_token_unary_operator, pattern: LiteralPattern { text: "~" }),
+        verilog_lex_token(
+          token_class: ^verilog_token_binary_operator,
+          pattern: ChoicePattern {
+            left: LiteralPattern { text: "&" },
+            right: LiteralPattern { text: "|" }
+          }
+        )
       ]
     }
   }
@@ -642,7 +687,7 @@ fn verilog_source_text_module_expr() -> GrammarExpr {
   )
 }
 
-fn verilog_wave1_grammar() -> ParseGrammar {
+fn verilog_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ^verilog_production_source_text_module,
     expression: verilog_source_text_module_expr(),
@@ -669,10 +714,637 @@ fn verilog_source_text_module_formal_production() -> FormalProduction {
   }
 }
 
+// THE BOUNDED EMISSION PROFILE, as formal productions rather than a printer. Every byte of the
+// interlock module derives from these rows: keywords, punctuation, whitespace and operators are
+// grammar facts here, so product.compute_board constructs structure and owns no Verilog syntax.
+//
+// DIRECTION IS A BOUND TERMINAL, NOT AN ALTERNATION, and the reason is a real constraint on
+// alternation. Productions sharing an lhs are selected by UNIQUE STRUCTURAL MATCH against the
+// emitted node (formal_production_unique_lhs_exact_match), and a concrete terminal contributes NO
+// child. So `direction -> kw_input` and `direction -> kw_output` are structurally identical, match
+// indistinguishably, and refuse as grammar_relation_row_backward_selection_ambiguous. TypeScript's
+// params_opt alternation works only because its alternatives differ in child count — empty versus
+// one nonterminal occurrence. Alternation expresses OPTIONALITY and SHAPE, never a choice between
+// two spellings; a spelling choice is a binding, and the lexical class spans both keywords so the
+// same production reparses either one.
+//
+// COMPOSITION IS THE POINT. The port list is right-recursive rather than three hard-coded slots, so
+// a module with two or four ports is the same grammar — a fixed arity would prove a fixture, not a
+// module grammar. Expressions nest through their own nonterminals for the same reason: a row whose
+// token list spelled the whole module would be the hand serializer moved into data.
+fn verilog_emission_formal_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^verilog_production_ansi_port,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^verilog_token_port_direction),
+        grammar_formal_terminal(identity: ^verilog_token_kw_wire),
+        grammar_formal_terminal_free(identity: ^verilog_token_ident)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_port_list,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_port_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port),
+        grammar_formal_terminal(identity: ^verilog_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr,
+      rhs: [grammar_formal_terminal_free(identity: ^verilog_token_ident)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^verilog_token_unary_operator),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr,
+      rhs: [
+        grammar_formal_terminal(identity: ^verilog_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        grammar_formal_terminal_free(identity: ^verilog_token_binary_operator),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        grammar_formal_terminal(identity: ^verilog_token_rparen)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_continuous_assign,
+      rhs: [
+        grammar_formal_terminal(identity: ^verilog_token_kw_assign),
+        grammar_formal_terminal_free(identity: ^verilog_token_ident),
+        grammar_formal_terminal(identity: ^verilog_token_equals),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        grammar_formal_terminal(identity: ^verilog_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_assign_list,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_assign_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_ansi_module_decl,
+      rhs: [
+        grammar_formal_terminal(identity: ^verilog_token_kw_module),
+        grammar_formal_terminal_free(identity: ^verilog_token_ident),
+        grammar_formal_terminal_free(identity: ^verilog_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list),
+        grammar_formal_terminal_free(identity: ^verilog_token_rparen),
+        grammar_formal_terminal(identity: ^verilog_token_semicolon),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list),
+        grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
+      ]
+    )
+  ]
+}
+
+// LAYOUT IS TARGET-OWNED, AND THIS IS WHERE IT LIVES. target_text_seq concatenates exactly, so
+// every space and newline in an emitted module is declared here or does not exist. None of it may
+// return to product.compute_board.
+//
+// WHY THE HEADER AND EXPRESSION PARENTHESES ARE DIFFERENT TOKEN CLASSES. A transform is keyed by
+// token class, so one paren class cannot render " (\n" around a port list and "(" inside an
+// expression; the oracle needs both. The two classes lex the same literal, a REPARSE question
+// called out in the module note rather than papered over here.
+fn verilog_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn verilog_conj(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn verilog_slot(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+// THE EMITTED NODE CARRIES ONE SLOT PER VARIABLE POSITION, and its ARITY is what the backward
+// selector matches on. Hence the expression forms have one, two and three slots rather than a
+// shared shape and an uncompared discriminant: a signal reference carries its name, a unary
+// application operator and operand, a binary one operand, operator and operand. Concrete
+// punctuation contributes no slot, which is why parentheses and keywords are invisible here and
+// live entirely in the layout profile.
+fn verilog_signal_reference(name: Symbol) -> Node {
+  verilog_conj(children: [verilog_slot(target: verilog_atom(id: name))])
+}
+
+fn verilog_unary_application(operator: Symbol, operand: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: operator)),
+    verilog_slot(target: operand)
+  ])
+}
+
+fn verilog_binary_application(left: Node, operator: Symbol, right: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: left),
+    verilog_slot(target: verilog_atom(id: operator)),
+    verilog_slot(target: right)
+  ])
+}
+
+fn verilog_ansi_port(direction: Symbol, name: Symbol) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: direction)),
+    verilog_slot(target: verilog_atom(id: name))
+  ])
+}
+
+fn verilog_port_list_one(port: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: port)])
+}
+
+fn verilog_port_list_cons(port: Node, rest: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: port), verilog_slot(target: rest)])
+}
+
+fn verilog_continuous_assign(lhs: Symbol, value: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: lhs)),
+    verilog_slot(target: value)
+  ])
+}
+
+fn verilog_assign_list_one(assignment: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: assignment)])
+}
+
+fn verilog_assign_list_cons(assignment: Node, rest: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: assignment), verilog_slot(target: rest)])
+}
+
+// THE HEADER PARENTHESES ARE BOUND SLOTS, which lets ONE lexical class serve both the port list and
+// an expression. A transform is keyed by token class, so two classes were needed for " (\n" in the
+// header and "(" in an expression — and two classes lexing the same literal would make reparse
+// ambiguous. A bound slot takes its spelling from its emitted atom instead, so the header carries
+// its own layout and the expression parens stay bare. One class, no lexical ambiguity, same bytes.
+fn verilog_module_declaration(name: Symbol, ports: Node, assignments: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: name)),
+    verilog_slot(target: verilog_atom(id: ^verilog_header_open)),
+    verilog_slot(target: ports),
+    verilog_slot(target: verilog_atom(id: ^verilog_header_close)),
+    verilog_slot(target: assignments)
+  ])
+}
+
+fn verilog_emit_layout_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  let m0 = map_insert(empty_map(), ^verilog_token_kw_module, EmitSpellingWrap { prefix: "", suffix: " " })
+  let m1 = map_insert(m0, ^verilog_token_kw_wire, EmitSpellingWrap { prefix: "", suffix: " " })
+  let m2 = map_insert(m1, ^verilog_token_comma, EmitSpellingWrap { prefix: "", suffix: "\n" })
+  let m3 = map_insert(m2, ^verilog_token_semicolon, EmitSpellingWrap { prefix: "", suffix: "\n" })
+  let m4 = map_insert(m3, ^verilog_token_kw_assign, EmitSpellingWrap { prefix: "  ", suffix: " " })
+  let m5 = map_insert(m4, ^verilog_token_equals, EmitSpellingWrap { prefix: " ", suffix: " " })
+  map_insert(m5, ^verilog_token_kw_endmodule, EmitSpellingWrap { prefix: "", suffix: "\n" })
+}
+
+// THE INTERLOCK EXEMPLAR. The binding symbol in a derived row comes from the EMITTED atom
+// (FormalBindingConjSlotEmittedAtom reads node_atom_identity_optional on the slot), not from the
+// production's binding symbol — the production only says WHICH slot is bound. That lets four ports
+// share one production with four different names, and lets one signal atom serve as port name,
+// assignment target and expression reference at once: the same identity spelled the same way, so
+// forking them would be three names for one thing.
+fn verilog_interlock_ports() -> Node {
+  verilog_port_list_cons(
+    port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good),
+    rest: verilog_port_list_cons(
+      port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_fault),
+      rest: verilog_port_list_cons(
+        port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit),
+        rest: verilog_port_list_one(
+          port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_reset_release)
+        )
+      )
+    )
+  )
+}
+
+fn verilog_interlock_assignments() -> Node {
+  verilog_assign_list_cons(
+    assignment: verilog_continuous_assign(
+      lhs: ^verilog_interlock_power_permit,
+      value: verilog_binary_application(
+        left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+        operator: ^verilog_interlock_op_and,
+        right: verilog_unary_application(
+          operator: ^verilog_interlock_op_not,
+          operand: verilog_signal_reference(name: ^verilog_interlock_fault)
+        )
+      )
+    ),
+    rest: verilog_assign_list_one(
+      assignment: verilog_continuous_assign(
+        lhs: ^verilog_interlock_reset_release,
+        value: verilog_binary_application(
+          left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+          operator: ^verilog_interlock_op_and,
+          right: verilog_signal_reference(name: ^verilog_interlock_power_permit)
+        )
+      )
+    )
+  )
+}
+
+fn verilog_interlock_emitted() -> Node {
+  verilog_module_declaration(
+    name: ^verilog_interlock_module_name,
+    ports: verilog_interlock_ports(),
+    assignments: verilog_interlock_assignments()
+  )
+}
+
+// The spellings the bound slots resolve to. The two directions pad to equal width because the
+// oracle aligns them; that padding is layout and therefore lives here, on the target, exactly
+// like the transforms.
+fn verilog_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(
+                map_insert(
+                  map_insert(
+                    map_insert(
+                      map_insert(empty_map(), ^verilog_interlock_op_not, "~"),
+                      ^verilog_header_open,
+                      " (\n"
+                    ),
+                    ^verilog_header_close,
+                    "\n)"
+                  ),
+                  ^verilog_interlock_module_name,
+                  "board_power_interlock"
+                ),
+              ^verilog_interlock_dir_input,
+              "  input  "
+            ),
+              ^verilog_interlock_dir_output,
+              "  output "
+            ),
+            ^verilog_interlock_conditioned_good,
+            "conditioned_good"
+          ),
+          ^verilog_interlock_fault,
+          "fault"
+        ),
+        ^verilog_interlock_power_permit,
+        "power_permit"
+      ),
+      ^verilog_interlock_reset_release,
+      "reset_release"
+    ),
+    ^verilog_interlock_op_and,
+    " & "
+  )
+}
+
+// THE DERIVED RELATION POPULATION. Nothing here is a hand-authored token list: each row is DERIVED
+// from a formal production plus its exemplar slot, which makes emission the backward reading of the
+// grammar the parser reads forward. A hand-written token row would be the product-local printer
+// wearing a different hat.
+fn verilog_relation_row_for_productions(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  emitted: Node
+) -> Witness<Node> {
+  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
+    Holds { value: production } =>
+      derive_grammar_relation_row_node(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// The same population in reverse authoring order. Selection is structural, so this must derive a
+// byte-identical row; if it did not, the grammar would be an ordered table pretending to be a
+// relation and the first matching row would win.
+fn verilog_emission_formal_productions_reversed() -> List<FormalProduction> {
+  reverse(verilog_emission_formal_productions())
+}
+
+fn verilog_relation_row_for(lhs: Symbol, emitted: Node) -> Witness<Node> {
+  let productions = verilog_emission_formal_productions()
+  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
+    Holds { value: production } =>
+      derive_grammar_relation_row_node(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn verilog_module_relation_row() -> Witness<Node> {
+  verilog_relation_row_for(
+    lhs: ^verilog_production_ansi_module_decl,
+    emitted: verilog_interlock_emitted()
+  )
+}
+
+fn verilog_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn verilog_row_or_empty(lhs: Symbol, emitted: Node) -> Node {
+  match verilog_relation_row_for(lhs: lhs, emitted: emitted) {
+    Holds { value: row } => row
+    Violates { diagnostic: _ } => verilog_conj(children: [])
+  }
+}
+
+// ONE ROW PER PRODUCTION SHAPE, NOT PER OCCURRENCE. Reverse selection matches a row by its
+// PRODUCTION against the emitted child (formal_production_matches_lhs_exact_child), not by atom
+// identity, so the single ansi_port row serves all four ports and the single binary row both
+// assignments. Each row derives from the exemplar sub-node exhibiting its shape, so the exemplar
+// must contain every shape the profile claims to emit.
+fn verilog_first_port() -> Node {
+  verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good)
+}
+
+fn verilog_first_assign() -> Node {
+  verilog_continuous_assign(
+    lhs: ^verilog_interlock_power_permit,
+    value: verilog_binary_application(
+      left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+      operator: ^verilog_interlock_op_and,
+      right: verilog_unary_application(
+        operator: ^verilog_interlock_op_not,
+        operand: verilog_signal_reference(name: ^verilog_interlock_fault)
+      )
+    )
+  )
+}
+
+fn verilog_emission_translation_rules() -> Node {
+  verilog_conj(children: [
+    verilog_named_edge(
+      name: ^grammar_relation_rules_formal_productions,
+      target: formal_productions_catalog_to_node(productions: verilog_emission_formal_productions())
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_module,
+      target: verilog_row_or_empty(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted())
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_port_list_cons,
+      target: verilog_row_or_empty(lhs: ^verilog_production_port_list, emitted: verilog_interlock_ports())
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_port_list_one,
+      target: verilog_row_or_empty(
+        lhs: ^verilog_production_port_list,
+        emitted: verilog_port_list_one(
+          port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_reset_release)
+        )
+      )
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_ansi_port,
+      target: verilog_row_or_empty(lhs: ^verilog_production_ansi_port, emitted: verilog_first_port())
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_assign_list_cons,
+      target: verilog_row_or_empty(lhs: ^verilog_production_assign_list, emitted: verilog_interlock_assignments())
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_assign_list_one,
+      target: verilog_row_or_empty(
+        lhs: ^verilog_production_assign_list,
+        emitted: verilog_assign_list_one(assignment: verilog_first_assign())
+      )
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_continuous_assign,
+      target: verilog_row_or_empty(lhs: ^verilog_production_continuous_assign, emitted: verilog_first_assign())
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_expr_signal_reference,
+      target: verilog_row_or_empty(
+        lhs: ^verilog_production_expr,
+        emitted: verilog_signal_reference(name: ^verilog_interlock_conditioned_good)
+      )
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_expr_unary,
+      target: verilog_row_or_empty(
+        lhs: ^verilog_production_expr,
+        emitted: verilog_unary_application(
+          operator: ^verilog_interlock_op_not,
+          operand: verilog_signal_reference(name: ^verilog_interlock_fault)
+        )
+      )
+    ),
+    verilog_named_edge(
+      name: ^verilog_relation_rule_expr_binary,
+      target: verilog_row_or_empty(
+        lhs: ^verilog_production_expr,
+        emitted: verilog_binary_application(
+          left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+          operator: ^verilog_interlock_op_and,
+          right: verilog_signal_reference(name: ^verilog_interlock_power_permit)
+        )
+      )
+    )
+  ])
+}
+
+fn verilog_emission_target_model() -> TargetModel {
+  TargetModel {
+    bundle: verilog_conj(children: [
+      verilog_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: verilog_emission_translation_rules()
+      )
+    ]),
+    lex: verilog_lex(),
+    binding_spellings: verilog_binding_spellings(),
+    token_class_emit_transforms: verilog_emit_layout_transforms(),
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured,
+    produced_decl_support: ProducedDeclUnwired
+  }
+}
+
+// EMISSION DERIVES ITS ROW FROM THE PROGRAM BEING EMITTED. Row derivation walks the emitted tree
+// and INLINES the tokens of every nested nonterminal, so a derived row carries the whole program's
+// token sequence and serialization replays it. The rules population is therefore not a fixed
+// language table programs select from — selecting a row derived from another program replays THAT
+// program. The composition is real, and it happens at derivation.
+fn verilog_target_model_with_single_row(row: Node) -> TargetModel {
+  TargetModel {
+    bundle: verilog_conj(children: [
+      verilog_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: verilog_conj(children: [
+          verilog_named_edge(
+            name: ^grammar_relation_rules_formal_productions,
+            target: formal_productions_catalog_to_node(productions: verilog_emission_formal_productions())
+          ),
+          verilog_named_edge(name: ^verilog_relation_rule_program, target: row)
+        ])
+      )
+    ]),
+    lex: verilog_lex(),
+    binding_spellings: verilog_binding_spellings(),
+    token_class_emit_transforms: verilog_emit_layout_transforms(),
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured,
+    produced_decl_support: ProducedDeclUnwired
+  }
+}
+
+// WHAT A VERILOG IDENTIFIER MAY BE. A fact about Verilog, so it lives with Verilog. It sat in
+// product.compute_board, so a board module carried the language's reserved-word roster and
+// punctuation set — the second Verilog authority this lane exists to remove. A second target
+// consuming this grammar gets the same admission for free.
+data verilog_reserved_words: List<String> = [
+  "module", "endmodule", "input", "output", "inout", "wire", "reg", "assign",
+  "always", "initial", "begin", "end", "if", "else", "case", "endcase",
+  "posedge", "negedge", "parameter", "localparam", "function", "endfunction",
+  "integer", "real", "time", "genvar", "generate", "endgenerate", "task", "endtask",
+]
+
+data verilog_forbidden_identifier_characters: List<String> = [
+  " ", "\t", "\n", "-", ".", ",", ";", ":", "(", ")", "[", "]", "{", "}",
+  "\"", "'", "/", "\\", "+", "*", "&", "|", "~", "^", "%", "!", "=", "<", ">",
+  "?", "#", "@", "`",
+]
+
+fn verilog_identifier_is_reserved(spelling: String) -> Bool {
+  fold(verilog_reserved_words, init: false, f: fn(acc, w) { acc || w == spelling })
+}
+
+fn verilog_identifier_contains_forbidden(spelling: String) -> Bool {
+  fold(verilog_forbidden_identifier_characters, init: false, f: fn(acc, ch) {
+    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
+  })
+}
+
+fn verilog_identifier_is_admissible(spelling: String) -> Bool {
+  spelling != ""
+    && !verilog_identifier_is_reserved(spelling: spelling)
+    && !verilog_identifier_contains_forbidden(spelling: spelling)
+}
+
+// THE TARGET-OWNED SPELLINGS EVERY VERILOG PROGRAM SHARES: the two port directions and the three
+// boolean operators. A product supplies spellings for ITS identifiers and merges them over these,
+// so no consumer has to know that "input" is padded to align with "output" or that the conjunction
+// renders with surrounding spaces. Those are layout decisions and stay here.
+fn verilog_base_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(empty_map(), ^verilog_header_open, " (\n"),
+              ^verilog_header_close,
+              "\n)"
+            ),
+            ^verilog_dir_input,
+            "  input  "
+          ),
+          ^verilog_dir_output,
+          "  output "
+        ),
+        ^verilog_op_and,
+        " & "
+      ),
+      ^verilog_op_or,
+      " | "
+    ),
+    ^verilog_op_not,
+    "~"
+  )
+}
+
+fn verilog_emission_rules_for_row(row: Node) -> Node {
+  verilog_conj(children: [
+    verilog_named_edge(
+      name: ^grammar_relation_rules_formal_productions,
+      target: formal_productions_catalog_to_node(productions: verilog_emission_formal_productions())
+    ),
+    verilog_named_edge(name: ^verilog_relation_rule_program, target: row)
+  ])
+}
+
+fn verilog_target_model_for(row: Node, spellings: Map<Symbol, String>) -> TargetModel {
+  TargetModel {
+    bundle: verilog_conj(children: [
+      verilog_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: verilog_conj(children: [
+          verilog_named_edge(
+            name: ^grammar_relation_rules_formal_productions,
+            target: formal_productions_catalog_to_node(productions: verilog_emission_formal_productions())
+          ),
+          verilog_named_edge(name: ^verilog_relation_rule_program, target: row)
+        ])
+      )
+    ]),
+    lex: verilog_lex(),
+    binding_spellings: spellings,
+    token_class_emit_transforms: verilog_emit_layout_transforms(),
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured,
+    produced_decl_support: ProducedDeclUnwired
+  }
+}
+
+// EMIT A MODULE. The whole target surface a product needs: hand it a module node and a spelling
+// map, get bytes or a typed refusal. Deriving the row from the node being emitted makes this
+// compositional rather than a replay of some exemplar.
+type VerilogEmission
+  = VerilogEmitted { source: String }
+  | VerilogEmissionRefused { reason: Symbol }
+
+fn verilog_emit_module(module_node: Node, spellings: Map<Symbol, String>) -> VerilogEmission {
+  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: module_node) {
+    Holds { value: row } =>
+      match target_serialize_relation_row_from_model_bounded(
+        4096,
+        verilog_target_model_for(row: row, spellings: spellings),
+        module_node
+      ) {
+        Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: render_target_text(t: text) }
+        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
+      }
+    Violates { diagnostic: d } => VerilogEmissionRefused { reason: d.reason }
+  }
+}
+
 fn verilog_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
-    lex: verilog_wave1_lex(),
-    grammar: verilog_wave1_grammar()
+    lex: verilog_lex(),
+    grammar: verilog_grammar()
   }
 }
 

@@ -1,0 +1,43 @@
+module v2.test.manual.fold_source
+
+import std.algebra { Cons, Empty }
+import v2.std.logic { Bool }
+import v2.std.text { SourceFold, String, fold_source }
+
+type CountAcc {
+  count: Int
+  done: Bool
+}
+
+fn count_init(_source: String) -> CountAcc {
+  CountAcc { count: 0, done: false }
+}
+
+fn count_is_done(acc: CountAcc) -> Bool {
+  acc.done
+}
+
+fn count_step(acc: CountAcc) -> CountAcc {
+  let next = acc.count + 1
+  CountAcc { count: next, done: next >= 3 }
+}
+
+fn count_three_algebra() -> SourceFold<CountAcc> {
+  SourceFold {
+    init: count_init,
+    is_done: count_is_done,
+    step: count_step
+  }
+}
+
+// THE SOURCE MUST BE LONGER THAN THE STOP. With a three-byte source and a fold that stops at
+// three, "stops at is_done" is unobservable: the fold runs out of input on exactly the step the
+// stop would have fired, so an algebra that ignores is_done entirely produces the identical
+// count. Two spare bytes past the stop are what make the assertion discriminating — a step that
+// applies after is_done turns true counts five, not three (verified by mutation, gunbc#8505).
+data src_abcde: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: Cons { head: 100, tail: Cons { head: 101, tail: Empty } } } } }
+
+test fn witness_fold_source_stops_at_is_done() -> Bool {
+  let result = fold_source(src: src_abcde, algebra: count_three_algebra())
+  result.count == 3 && result.done
+}

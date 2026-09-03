@@ -1,9 +1,7 @@
 module v2.test.claim.staging
 
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
-import v2.std.staging { then_outcome, cached_stage, CacheProbe, Hit, Miss }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn s_double(n: Int) -> Outcome<Int> { outcome_accepted(value: n * 2) }
 fn s_inc(n: Int) -> Outcome<Int> { outcome_accepted(value: n + 1) }

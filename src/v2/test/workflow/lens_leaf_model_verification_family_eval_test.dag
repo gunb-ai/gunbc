@@ -1,0 +1,78 @@
+module v2.test.workflow.lens_leaf_model_verification_family_eval
+
+import v2.lens.leaf_model_verification {
+  rust_r1_fixture_pair,
+  rust_r2a_fixture_pair,
+  rust_r2b_debug_fixture_pair,
+  rust_r2b_release_fixture_pair,
+  rust_r3_external_fixture_pair
+}
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.leaf_model_verification {
+  LeafModelFixturePair,
+  TargetCompileAccepted,
+  TargetCompileRejected
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn leaf_model_pair_happy_accepts(pair: LeafModelFixturePair) -> Bool {
+  match pair.expected_happy_verdict {
+    TargetCompileAccepted => true
+    TargetCompileRejected { diagnostic_code: _ } => false
+  }
+}
+
+fn leaf_model_pair_falsification_rejects(pair: LeafModelFixturePair) -> Bool {
+  match pair.falsification.expected_verdict {
+    TargetCompileRejected { diagnostic_code: _ } => true
+    TargetCompileAccepted => false
+  }
+}
+
+fn leaf_model_pair_compile_discriminates(pair: LeafModelFixturePair) -> Bool {
+  leaf_model_pair_happy_accepts(pair: pair)
+    && leaf_model_pair_falsification_rejects(pair: pair)
+}
+
+fn leaf_model_compile_discriminated_pairs() -> List<LeafModelFixturePair> {
+  [
+    rust_r1_fixture_pair(),
+    rust_r2a_fixture_pair(),
+    rust_r3_external_fixture_pair()
+  ]
+}
+
+fn leaf_model_all_rust_pairs() -> List<LeafModelFixturePair> {
+  [
+    rust_r1_fixture_pair(),
+    rust_r2a_fixture_pair(),
+    rust_r2b_debug_fixture_pair(),
+    rust_r2b_release_fixture_pair(),
+    rust_r3_external_fixture_pair()
+  ]
+}
+
+fn lens_leaf_model_verification_family_gate() -> Bool {
+  let compile_pairs = leaf_model_compile_discriminated_pairs()
+  let all_pairs = leaf_model_all_rust_pairs()
+  if is_empty(xs: compile_pairs) {
+    false
+  } else {
+    fold_list(
+      xs: compile_pairs,
+      empty: true,
+      cons: fn(acc, pair) { acc && leaf_model_pair_compile_discriminates(pair: pair) }
+    )
+    && fold_list(
+      xs: all_pairs,
+      empty: true,
+      cons: fn(acc, pair) { acc && leaf_model_pair_happy_accepts(pair: pair) }
+    )
+  }
+}
+
+test data witness_lens_leaf_model_verification_family_gate_closed: Bool = lens_leaf_model_verification_family_gate()

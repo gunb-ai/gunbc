@@ -1,0 +1,48 @@
+module extdeps.colo.evocative
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "evocative.com/data-centers/secaucus-nj-data-center-ewr1/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.evocative",
+      decl_name: "evocative_ewr1",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data evocative_provenance_note: NonEmptyStr = "Evocative is a national colocation operator (Emeryville, CA headquarters per directory profiles) whose EWR1 Secaucus facility entered its footprint through acquisition; directory sources (datacentermap, read 2026-08-18) identify the site as the former Internap Secaucus NYJ004, acquired 2022 - directory grade, not read from the operator's own page. The operator page sells from a single server to an entire suite, which makes this facility retail-grain relevant to this census. See the shared-address note: the building also appears behind Summit's Secaucus selling surface."
+
+data evocative_ewr1: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Evocative",
+  facility_label: "Evocative EWR1 Secaucus",
+  address: AddressListed {
+    street: "1 Enterprise Avenue N, Secaucus, NJ 07094",
+    citation: "street address not printed on the operator's EWR1 page read 2026-08-18; carried from directory profiles (datacentermap 'Evocative EWR1 Data Center in Secaucus | 1 Enterprise Ave N', inflect building profile), secondary source grade",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Operator page (read 2026-08-18): 105k sqft; 10 MW via two 5 MW feeds, expandable to 20 MW; four 1.4 MW APC Symmetra UPS systems; four 2 MW generators in N+1 with 48 hours at full load; four 400-ton air-cooled chillers in N+1; carriers listed Megaport, Verizon, Zayo, Sunesys, Crown Castle, Cogent, Comcast, Cross River Fiber, Lightpath, Lumen, PacketFabric, Evocative IP; fiber access to the Equinix Secaucus campus under one mile away; HIPAA, PCI-DSS, SOC 2 Type II, SOC 3, ISAE 3402, SSAE 18 claimed; colocation sold from a single server to an entire suite.",
+}
+
+data evocative_summit_shared_address_note: NonEmptyStr = "The same 1 Enterprise Avenue N building and a near-identical infrastructure fingerprint appear on Summit's Secaucus page (see extdeps.colo.summit summit_evocative_shared_address_note for the full observation). Neither operator's surface mentions the other; the RFQ must establish who the contracting operator is."
+
+data evocative_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "quote request via evocative.com",
+  obligation: "No pricing is published on the EWR1 page read 2026-08-18. The single-server retail grain the page claims makes this a candidate for the small reversible footprint; the quote must price a 2U placement with BMC isolation and confirm the operator-of-record at 1 Enterprise Avenue N.",
+}
