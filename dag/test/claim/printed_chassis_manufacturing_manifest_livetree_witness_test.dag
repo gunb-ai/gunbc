@@ -14,21 +14,29 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THIS FILE'S EVIDENCE EXECUTES ON DEMAND AND DOES NOT GATE, AND BOTH CLAIMS BELOW MUST BE READ
-// THROUGH THAT. It declares ReadsLiveTree truthfully -- compile_dag_diagnostic_census resolves
-// synthetic sources against the live checkout, and resolve_declaration_ref reads the live decl index
-// -- and the required floor DISCOVERS then DECLINES witness files carrying that disposition
-// (v2.workflow.required_floor RequiredFloorDisposition DeclinedLiveTree). So these are green by
-// execution when run directly and are NOT enrolled in a gating lane. The next-rung trigger is the
-// capability that lets live-tree-reading probes execute on the required floor, not a relabel here:
-// gunbc.guarantee_probe_corpus adjudicates that a SubstrateInputsOnly relabel would be a fabricated
-// fact about a live-tree read.
+// ReadsLiveTree IS TRUTHFUL AND IT NO LONGER MEANS NON-GATING. compile_dag_diagnostic_census
+// resolves synthetic sources against the live checkout, so the declaration is the honest one. What
+// changed is what it BUYS. It used to route the file to RequiredFloorDisposition DeclinedLiveTree --
+// discovered, declined, never run -- and an earlier draft of this annotation said exactly that.
+// v2.workflow.required_floor has since DELETED that arm at the root: the interpreter's
+// hermetic-checkout carve-out already decides the same question per identity at the effect boundary,
+// so the decline was a prediction standing where a decision existed. live_tree_disposition now feeds
+// affected-set eligibility and nothing else. The claim was not wrong when written; it was
+// invalidated by composition with main, which is why review 5103871417 caught it in a file this
+// change never edited.
 //
-// THEY LIVE IN THEIR OWN FILE FOR THAT REASON. The eight substrate-only witnesses in
-// test.claim.printed_chassis_manufacturing_manifest_witness_test DO gate; live_tree_disposition is
-// a per-FILE declaration, so folding this battery in beside them would have silently taken
-// all eight out of the required floor to buy three non-gating ones. The split is what keeps the
-// admission logic enrolled.
+// SO THIS BATTERY'S DISPOSITION IS WHATEVER THE EXACT-HEAD REQUIRED RUN REPORTS, and this annotation
+// deliberately does not predict it. If the identities are planned they execute and they gate; if the
+// census reaches a host effect with no hermetic arm, the interpreter refuses with
+// HermeticHostEffectRefused and the claim reports route_gap, which BLOCKS rather than quietly
+// passing. Either outcome is louder than the silence the deleted arm produced, and neither one is
+// established by a sentence here.
+//
+// THEY LIVE IN THEIR OWN FILE ANYWAY. live_tree_disposition is a per-FILE declaration, so folding
+// this battery in beside the eight substrate-only witnesses in
+// test.claim.printed_chassis_manufacturing_manifest_witness_test would bind those eight to whatever
+// route outcome a live-tree read gets. The split keeps the admission logic's evidence answerable on
+// its own terms.
 
 // THE CATALOG CITATION IS RESOLVED, AND NOT BY ANYTHING IN THIS FILE. Review 59176 observed that the
 // catalog module path was a literal corroborated only by a witness restating it. The carrier repair

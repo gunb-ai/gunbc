@@ -114,8 +114,14 @@ fn refuses_with(tail: List<InventoryEvent>, label: String) -> Bool {
 
 // The admitted ledger, or a hard failure. A witness that silently fell back to an empty ledger when
 // admission refused would turn every assertion below green for the wrong reason, so the refusal arm
-// yields NO ledger at all -- every provenance assertion below then reads Unobserved and FAILS,
-// which is how an admission that stopped working shows up as red rather than as a quiet Unobserved.
+// yields NO ledger at all.
+//
+// THAT MAKES IT SAFE FOR EXACTLY THREE OF THE FOUR EXPECTED STANDINGS AND UNSAFE FOR THE FOURTH. An
+// empty ledger population cannot satisfy Resolved, Duplicate or Conflict, so a row expecting one of
+// those goes red the moment its fixture stops being admissible -- which is what a helper like this
+// is for. It CAN satisfy Unobserved, so a row expecting Unobserved would stay green under fixture
+// failure and prove nothing. Review 5103871417 found that exact row, and it now matches the
+// admission directly instead of routing through here.
 fn admitted(id: InventoryLotIdentity, label: NonEmptyStr, tail: List<InventoryEvent>) -> List<AdmittedInventoryLedger> {
   match admit_inventory_ledger(lot: lot_of(id: id, label: label), events: concat(prologue(id: id), tail)) {
     LedgerAdmitted { admitted: a } => [a]
@@ -178,15 +184,27 @@ test fn w_an_asset_claimed_by_two_lots_refuses_naming_both() -> Bool {
 
 // ROW 5 -- an installation that names only a DIFFERENT asset says nothing about this one. Absent is
 // not the same as resolved-to-nothing, and it must not borrow the sibling's lot.
+//
+// THIS ONE ROW MAY NOT USE THE `admitted` HELPER, and the reason is the helper's refusal arm. It
+// yields [] when admission refuses, and an EMPTY LEDGER POPULATION PRODUCES EXACTLY Unobserved -- so
+// a fixture that stopped being admissible would leave this witness green while proving nothing,
+// which is the absorbing fallback relocated into the evidence. Review 5103871417 found it. Every
+// other row here expects Resolved, Duplicate or Conflict, none of which an empty population can
+// satisfy, so the helper stays safe for them and unusable here. The admission is therefore matched
+// directly, and its refusal arm is an explicit false.
 test fn w_an_unnamed_asset_is_unobserved_not_resolved() -> Bool {
-  match asset_source_lot_standing(
-    ledgers: admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 2, assets: [other()])]),
-    asset: requested()
+  match admit_inventory_ledger(
+    lot: lot_of(id: lot_a(), label: "lot-a" as NonEmptyStr),
+    events: concat(prologue(id: lot_a()), [install(lot: lot_a(), quantity: 2, assets: [other()])])
   ) {
+    LedgerAdmissionRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+    LedgerAdmitted { admitted: ledger } =>
+      match asset_source_lot_standing(ledgers: [ledger], asset: requested()) {
     AssetSourceLotUnobserved { asset: a } => a as String == "spool-a"
     AssetSourceLotResolved { asset: _, lot: _, event_ordinal: _ } => false
     AssetSourceLotEvidenceDuplicate { asset: _, occurrences: _ } => false
     AssetSourceLotConflict { asset: _, first_lot: _, further_lots: _ } => false
+  }
   }
 }
 

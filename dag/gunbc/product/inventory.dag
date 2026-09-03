@@ -568,7 +568,7 @@ fn admit_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> 
 
 fn scan_admitted_ledgers(ledgers: List<AdmittedInventoryLedger>, asset: PhysicalAssetIdentity) -> AssetLotScan {
   fold(ledgers, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, l) {
-    let inner = scan_asset_lot_hits(events: l.events, asset: asset)
+    let inner = scan_one_admitted_ledger(ledger: l, asset: asset)
     AssetLotScan { hits: concat(acc.hits, inner.hits), next_ordinal: acc.next_ordinal + inner.next_ordinal }
   })
 }
@@ -611,44 +611,52 @@ type AssetLotScan sole_constructor {
   next_ordinal: Nat
 }
 
-// The asset may appear more than once WITHIN one event's list, and that counts as more than one
+// THE SCAN TAKES AN ADMITTED LEDGER, AND THE PER-EVENT MATCH LIVES INSIDE IT. An earlier cut kept
+// two production helpers below this wall -- asset_hits_in_event over one raw InventoryEvent and
+// scan_asset_lot_hits over a raw List<InventoryEvent> -- on the reasoning that they sat beneath the
+// admitted-ledger route. That reasoning was wrong, and review 5103871417 named why: "below the
+// admitted route" is a statement about the call graph, and this language has no module-private
+// functions, so both were PUBLIC MINTS of a provenance-bearing carrier whose input was insufficient.
+// A foreign caller could hand scan_asset_lot_hits a lone QuantityInstalled that
+// admit_inventory_ledger refuses and read lot and ordinal straight out of the result. sole_constructor
+// stops a foreign record LITERAL; it does not stop a foreign CALL to an authorized mint.
+//
+// So there is now exactly one door and it takes an AdmittedInventoryLedger. The raw events stay
+// readable -- inspecting admitted history is not the hazard -- and what is gone is any way to obtain
+// an AssetLotScan without first possessing a ledger the fold settled.
+//
+// THE ASSET MAY APPEAR MORE THAN ONCE WITHIN ONE EVENT'S LIST, and that counts as more than one
 // occurrence: a list naming the same asset twice is malformed evidence, not one sighting.
 //
-// ONE FOLD, NOT map OVER filter. The first cut spelled this `map(filter(a, ...), _ => hit)`, which
+// ONE FOLD, NOT map OVER filter. An earlier spelling was `map(filter(a, ...), _ => hit)`, which
 // traverses twice and -- the reason it was caught rather than merely suboptimal -- put a literal
 // `_ =>` inside the match body, where the non-fold-residue detector reads a top-level wildcard arm
 // and flags the function as unrostered residue. The single fold removes both at once: one traversal,
 // and every arm of the match below stays explicitly enumerated, which is what makes adding a
 // variant to InventoryEvent a compile error here rather than a silently dropped event kind.
-fn asset_hits_in_event(event: InventoryEvent, asset: PhysicalAssetIdentity, ordinal: Nat) -> List<AssetLotHit> {
-  match event {
-    QuantityInstalled { lot: l, quantity: _, origin: _, assets: a } =>
-      fold(a, init: [], f: fn(acc, x) {
-        if physical_asset_identity_eq(a: x, b: asset) {
-          concat(acc, [AssetLotHit { lot: l, ordinal: ordinal }])
-        } else {
-          acc
-        }
-      })
-    LotAcquired { lot: _ } => []
-    LotReceived { lot: _, quantity: _ } => []
-    QuantityQualified { lot: _, quantity: _ } => []
-    QuantityQuarantined { lot: _, quantity: _ } => []
-    QuantityReserved { lot: _, quantity: _, holder: _ } => []
-    ReservationReleased { lot: _, quantity: _, holder: _ } => []
-    QuantityRemoved { lot: _, quantity: _ } => []
-    QuantityFailed { lot: _, quantity: _, origin: _ } => []
-    QuantitySold { lot: _, quantity: _, origin: _ } => []
-    QuantityDisposed { lot: _, quantity: _, origin: _ } => []
-  }
-}
-
-fn scan_asset_lot_hits(events: List<InventoryEvent>, asset: PhysicalAssetIdentity) -> AssetLotScan {
-  fold(events, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, e) {
-    AssetLotScan {
-      hits: concat(acc.hits, asset_hits_in_event(event: e, asset: asset, ordinal: acc.next_ordinal)),
-      next_ordinal: acc.next_ordinal + 1
+fn scan_one_admitted_ledger(ledger: AdmittedInventoryLedger, asset: PhysicalAssetIdentity) -> AssetLotScan {
+  fold(ledger.events, init: AssetLotScan { hits: [], next_ordinal: 0 }, f: fn(acc, e) {
+    let found = match e {
+      QuantityInstalled { lot: l, quantity: _, origin: _, assets: a } =>
+        fold(a, init: [], f: fn(inner, x) {
+          if physical_asset_identity_eq(a: x, b: asset) {
+            concat(inner, [AssetLotHit { lot: l, ordinal: acc.next_ordinal }])
+          } else {
+            inner
+          }
+        })
+      LotAcquired { lot: _ } => []
+      LotReceived { lot: _, quantity: _ } => []
+      QuantityQualified { lot: _, quantity: _ } => []
+      QuantityQuarantined { lot: _, quantity: _ } => []
+      QuantityReserved { lot: _, quantity: _, holder: _ } => []
+      ReservationReleased { lot: _, quantity: _, holder: _ } => []
+      QuantityRemoved { lot: _, quantity: _ } => []
+      QuantityFailed { lot: _, quantity: _, origin: _ } => []
+      QuantitySold { lot: _, quantity: _, origin: _ } => []
+      QuantityDisposed { lot: _, quantity: _, origin: _ } => []
     }
+    AssetLotScan { hits: concat(acc.hits, found), next_ordinal: acc.next_ordinal + 1 }
   })
 }
 

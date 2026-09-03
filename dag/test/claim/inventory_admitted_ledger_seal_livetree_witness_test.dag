@@ -27,11 +27,23 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // seals RECORDS, not coproduct arms -- so the subject here is deliberately the record
 // AdmittedInventoryLedger and not the LedgerAdmitted arm that carries it.
 //
-// NON-GATING, AND FOR THE SAME REASON AS ITS SIBLING. compile_dag_diagnostic_census resolves
-// synthetic sources against the live checkout, so this file declares ReadsLiveTree truthfully and
-// the required floor discovers then declines it (v2.workflow.required_floor
-// RequiredFloorDisposition DeclinedLiveTree). The next-rung trigger is the capability that lets
-// live-tree-reading probes execute on the required floor, not a relabel here.
+// ReadsLiveTree IS TRUTHFUL AND IT NO LONGER MEANS NON-GATING. compile_dag_diagnostic_census
+// resolves synthetic sources against the live checkout, so the declaration is the honest one. What
+// changed is what it BUYS. It used to route the file to RequiredFloorDisposition DeclinedLiveTree --
+// discovered, declined, never run -- and an earlier draft of this annotation said exactly that.
+// v2.workflow.required_floor has since DELETED that arm at the root: the interpreter's
+// hermetic-checkout carve-out already decides the same question per identity at the effect boundary,
+// so the decline was a prediction standing where a decision existed. live_tree_disposition now feeds
+// affected-set eligibility and nothing else. The claim was not wrong when written; it was
+// invalidated by composition with main, which is why review 5103871417 caught it in a file this
+// change never edited.
+//
+// SO THIS BATTERY'S DISPOSITION IS WHATEVER THE EXACT-HEAD REQUIRED RUN REPORTS, and this annotation
+// deliberately does not predict it. If the identities are planned they execute and they gate; if the
+// census reaches a host effect with no hermetic arm, the interpreter refuses with
+// HermeticHostEffectRefused and the claim reports route_gap, which BLOCKS rather than quietly
+// passing. Either outcome is louder than the silence the deleted arm produced, and neither one is
+// established by a sentence here.
 
 data forged_source: String = "module probe_ledger_forged_admitted\nimport product.inventory { AdmittedInventoryLedger, ProcurementLot }\nfn forged(lot: ProcurementLot) -> AdmittedInventoryLedger {\n  AdmittedInventoryLedger { lot: lot, events: [] }\n}\n"
 
