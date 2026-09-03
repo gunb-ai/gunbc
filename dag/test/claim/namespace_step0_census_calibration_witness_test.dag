@@ -24,6 +24,11 @@ import tools.reference_occurrence_binding_census {
   ReferenceOccurrenceUnresolved,
   ReferenceOccurrenceAmbiguous,
   ReferenceOccurrenceBindingRefused,
+  OccurrenceEntryRow,
+  OccurrenceEntryRole,
+  EntryAdmittedAsReference,
+  EntryClassifiedAsDeclaration,
+  EntryCarriesNoRole,
   reference_occurrence_binding_census
 }
 import gunbc.compile_clean_diagnostic_policy {
@@ -84,7 +89,7 @@ fn cal_rows_of(entry_source: String) -> List<ReferenceOccurrenceBindingRow> {
     entry: "cal/entry.dag" as NonEmptyStr
   ) {
     ReferenceOccurrenceBindingCensusRefused { cause: _ } => []
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: _, observations: observations } => observations
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, entries: _, denominator: _, observations: observations } => observations
   }
 }
 
@@ -98,7 +103,7 @@ fn cal_denominator_size_of(entry_source: String) -> Int {
     entry: "cal/entry.dag" as NonEmptyStr
   ) {
     ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, entries: _, denominator: denominator, observations: _ } => count(denominator)
   }
 }
 
@@ -112,7 +117,7 @@ fn cal_manifest_without_middle() -> List<FixtureSource> {
 fn cal_denominator_size_without_middle() -> Int {
   match reference_occurrence_binding_census(sources: cal_manifest_without_middle(), entry: "cal/entry.dag" as NonEmptyStr) {
     ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, entries: _, denominator: denominator, observations: _ } => count(denominator)
   }
 }
 
@@ -130,14 +135,14 @@ fn cal_census() -> ReferenceOccurrenceBindingCensus {
 fn cal_observations() -> List<ReferenceOccurrenceBindingRow> {
   match cal_census() {
     ReferenceOccurrenceBindingCensusRefused { cause: _ } => []
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: _, observations: observations } => observations
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, entries: _, denominator: _, observations: observations } => observations
   }
 }
 
 fn cal_denominator_size() -> Int {
   match cal_census() {
     ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, entries: _, denominator: denominator, observations: _ } => count(denominator)
   }
 }
 
@@ -198,11 +203,47 @@ fn cal_row_line(row: ReferenceOccurrenceBindingRow) -> String {
 //     --function step0_calibration_probe
 // It renders one line per observed reference occurrence and exits NONZERO, because a probe that
 // exited 0 would be reporting a verdict it never reached.
+fn cal_entries() -> List<OccurrenceEntryRow> {
+  match cal_census() {
+    ReferenceOccurrenceBindingCensusRefused { cause: _ } => []
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, entries: entries, denominator: _, observations: _ } => entries
+  }
+}
+
+fn cal_entry_role_label(role: OccurrenceEntryRole) -> String {
+  match role {
+    EntryAdmittedAsReference => "admitted-as-reference"
+    EntryClassifiedAsDeclaration => "classified-as-declaration"
+    EntryCarriesNoRole => "carries-no-role"
+  }
+}
+
+fn cal_entries_named(spelling: String) -> List<OccurrenceEntryRow> {
+  cal_entries() |> filter(entry => entry.authored_name == spelling)
+}
+
+fn cal_entry_line(entry: OccurrenceEntryRow) -> String {
+  concat(
+    concat(entry.entry_file as String, concat(" ", entry.authored_name)),
+    concat(" ", cal_entry_role_label(role: entry.role))
+  )
+}
+
+// THE ENTRIES PROBE. The controls below read the `references` view; this one reads the population
+// that view is filtered from, so an absence can be attributed. Run it with --function
+// step0_entries_probe. It exits NONZERO for the same reason the row probe does.
+fn step0_entries_probe() -> ProcessExit {
+  exit_failure(reason: concat(
+    concat("entries=", to_string(count(cal_entries()))),
+    concat("\n", join(cal_entries() |> map(entry => cal_entry_line(entry: entry)), "\n"))
+  ))
+}
+
 fn step0_calibration_probe() -> ProcessExit {
   match cal_census() {
     ReferenceOccurrenceBindingCensusRefused { cause: cause } =>
       exit_failure(reason: concat("census refused: ", cause as String))
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: observations } =>
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, entries: _, denominator: denominator, observations: observations } =>
       exit_failure(reason: concat(
         concat("denominator=", concat(to_string(count(denominator)), concat(" observations=", to_string(count(observations))))),
         concat("\n", join(observations |> map(row => cal_row_line(row: row)), "\n"))
