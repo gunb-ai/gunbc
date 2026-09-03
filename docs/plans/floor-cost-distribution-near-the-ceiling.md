@@ -33,6 +33,25 @@ run and carries the COMPLETE executed population — the `[over-cost]` lines in 
 re-derivable: a second reader would get different numbers with no way to tell a real change from a
 different sample.
 
+**THE TEN SAMPLED RUNS REFUSE AS OF THE DISJOINT-COLUMN ARTIFACT CHANGE, AND THIS INSTRUMENT WAS
+ITSELF THE SPECIMEN THAT MOTIVATED IT.** Every run named in `floor_cost_sampled_runs` predates that
+change: their `required-floor-claim-cost` carries the old shared `cpu_ms` column, in which a
+completed cost and the lower bound of a claim a safety deadline preempted sit in one field with
+only an adjacent `verdict_reached` to separate them. This analysis resolved `cpu_ms` by name,
+refused correctly on a *missing* column, and never asked for that discriminator — so every band,
+every worst-cost fold and every inflation ratio on this page consumed bounds as costs. The bound's
+magnitude is approximately the ceiling that stopped the row, so the "population dense near the
+ceiling" that a histogram over those rows shows is partly manufactured by the ceiling itself.
+
+`claim_cost_columns` no longer resolves the old header, so those runs load as `RunEmpty` and
+`floor_cost_distribution_check` refuses the whole sample. That is the correct fail-closed answer
+rather than a regression — the two populations are not separable in those bytes at all, and
+salvaging "just the completed rows" is unavailable because identifying them is exactly what the old
+artifact cannot do. **The figures this page describes as illustrative should be read as carrying
+that defect, not merely as stale.** Re-pointing `floor_cost_sampled_runs` at runs from the new
+artifact vintage restores the instrument; the derivations are unchanged and their witness runs on a
+hand-built fixture, so nothing but the live figures is waiting on the re-sample.
+
 **An incomplete sample refuses.** `floor_cost_distribution_check` exits non-zero naming every run
 that failed to load. One artifact in an eleventh run (`33667468330`) downloaded empty during the
 original analysis and silently emptied a ten-way identity intersection before it was caught — a run

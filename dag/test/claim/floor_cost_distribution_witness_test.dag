@@ -35,8 +35,20 @@ import gunbc.floor_cost_distribution {
   module_max_cpu,
   repair_ladder,
   identity_inflation_permille,
+  identity_inflation,
+  InflationObservations,
   permille_percentile,
-  implied_clean_run_budget
+  implied_clean_run_budget,
+  ClaimCostReading,
+  ObservedCost,
+  RightCensoredCost,
+  WorstCost,
+  WorstObserved,
+  WorstIsLowerBound,
+  worst_cost_at_least_ms,
+  observed_cpu_ms,
+  cpu_at_least_ms,
+  censored_rows
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,23 +61,54 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Shape: two runs over the same three identities in two modules, one of which ("hot") crosses the
 // 500ms ceiling on run B only. That is the exact shape the real analysis turns on -- a row whose
 // membership in the crossing set depends on the run rather than on the row.
-data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cpu_ms: millisecond(count: 400) , eval_steps: 9000 }
-data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cpu_ms: millisecond(count: 200) , eval_steps: 4000 }
-data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cpu_ms: millisecond(count: 50) , eval_steps: 900 }
+data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cost: ObservedCost { cpu_ms: millisecond(count: 400) }, eval_steps: 9000 }
+data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 200) }, eval_steps: 4000 }
+data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 50) }, eval_steps: 900 }
 
-data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cpu_ms: millisecond(count: 600) , eval_steps: 9000 }
-data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cpu_ms: millisecond(count: 300) , eval_steps: 4400 }
-data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cpu_ms: millisecond(count: 100) , eval_steps: 900 }
+data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cost: ObservedCost { cpu_ms: millisecond(count: 600) }, eval_steps: 9000 }
+data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 300) }, eval_steps: 4400 }
+data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 100) }, eval_steps: 900 }
+
+// THE CENSORED FIXTURE ROW, and it is deliberately given a bound of 502ms against a 500ms
+// ceiling -- the shape every interrupted row in the real artifact has, because a row is stopped
+// approximately AT whatever ceiling stopped it. Its true cost is unknown and unbounded above; the
+// receipt that this cannot be corrected for is gunbc#9629, where one such rendered figure denoted
+// a completed cost of 2,902ms in one case and 355ms in another.
+data row_c_censored: FloorCostRow = FloorCostRow {
+  identity: "m.hot.k",
+  module: "m.hot",
+  cost: RightCensoredCost { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500) },
+  eval_steps: 163840
+}
 
 data run_a: RunCost = RunCost { run: "runA" as NonEmptyStr, rows: [row_a1, row_a2, row_a3] }
 data run_b: RunCost = RunCost { run: "runB" as NonEmptyStr, rows: [row_b1, row_b2, row_b3] }
 data both_runs: List<RunCost> = [run_a, run_b]
 
+// A run carrying one censored row beside two observed ones. Every arm below that must change
+// behaviour in the presence of censoring is witnessed against THIS run and its censor-free peer,
+// so a green can never come from the censored row simply being absent.
+data run_c: RunCost = RunCost { run: "runC" as NonEmptyStr, rows: [row_b2, row_b3, row_c_censored] }
+
 // PARSING: the artifact's own preamble must not become rows.
-data sample_tsv: String = "# summary\texecuted=3\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t1000\t100\nm.mid.y\tm.mid\tpass\ttrue\t201\t200\t900\t100"
+data sample_tsv: String = "# summary\texecuted=3\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t1000\t100\nm.mid.y\tm.mid\tpass\ttrue\tobserved\t201\t200\t\t\t\t\t\t900\t100"
+
+// THE SAME ARTIFACT WITH ONE INTERRUPTED ROW, which is what every real required-floor run
+// produces. Its cost columns are EMPTY and its bound columns are filled -- the two populations do
+// not share a column, so a consumer projecting `observed_cpu_ms` over the file receives nothing
+// for this row rather than a figure that is approximately the ceiling.
+data censored_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t1000\t100\nm.hot.k\tm.hot\tbudget_interrupted\tfalse\tright_censored\t\t\t513\t509\t8000\t500\tcpu_deadline\t163840\t100"
 
 // The layout the current artifact ships, resolved from its own header rather than assumed.
-data sample_columns: ClaimCostColumns = ClaimCostColumns { identity: 0, module: 1, cpu_ms: 5, eval_steps: 6 }
+data sample_columns: ClaimCostColumns = ClaimCostColumns {
+  identity: 0,
+  module: 1,
+  cost_reading: 4,
+  observed_cpu_ms: 6,
+  cpu_at_least_ms: 8,
+  censoring_cpu_limit_ms: 10,
+  eval_steps: 12
+}
 
 // THE OLD VINTAGE, VERBATIM. Run 33661252708's artifact has no `eval_steps` column at all -- the
 // header is one field shorter and index 6 holds `cost_line_ms`, the constant 100. A positional
@@ -81,6 +124,54 @@ test fn an_artifact_without_the_steps_column_yields_no_rows_rather_than_reading_
        }
 }
 
+// THE DISCRIMINATING RED FOR THIS WHOLE CHANGE, AND IT IS A REFUSAL RATHER THAN A REPAIR.
+//
+// An artifact whose header carries the SHARED `cpu_ms` column -- every vintage produced before the
+// reading became a coproduct -- cannot be parsed at all. That is the correct answer and not a
+// regression: in such a file a completed cost and a right-censored bound occupy one column with
+// only an adjacent `verdict_reached` to tell them apart, so the rows cannot be separated into the
+// two populations, and reading them as costs is precisely the defect. A parser that fell back to
+// reading `cpu_ms` for every row would be the absorbing arm DESIGN section 5 forbids.
+//
+// IF THIS TEST GOES GREEN BY THE PARSER ACCEPTING THE OLD HEADER, THE WALL IS GONE.
+test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cost() -> Bool {
+  let shared_header = "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
+  let shared_tsv = concat(concat("# summary\texecuted=1\n", shared_header), "\nm.hot.k\tm.hot\tbudget_interrupted\tfalse\t513\t509\t163840\t100")
+  count(parse_claim_cost_tsv(text: shared_tsv)) == 0
+    && match claim_cost_columns(header_line: shared_header) {
+         Present { value: _ } => false
+         Absent => true
+       }
+}
+
+// AND ITS POSITIVE CONTROL, so the refusal above cannot be satisfied by a parser that rejects
+// everything: the same interrupted row under the DISJOINT header parses, and it parses as a
+// BOUND -- `observed_cpu_ms` answers Absent for it while `cpu_at_least_ms` answers 509.
+test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool {
+  count(parse_claim_cost_tsv(text: censored_tsv)) == 2
+    && match parse_claim_cost_tsv(text: censored_tsv) |> filter(r => r.identity == "m.hot.k") |> first {
+         Absent => false
+         Present { value: r } =>
+           match observed_cpu_ms(reading: r.cost) {
+             Present { value: _ } => false
+             Absent => millisecond_count(m: cpu_at_least_ms(reading: r.cost)) == 509
+           }
+       }
+}
+
+// A ROW WHOSE DECLARED KIND DOES NOT MATCH THE COLUMNS IT FILLED IS REFUSED, never repaired from
+// the other arm. Recovering a figure from the opposite column is exactly the promotion this file
+// exists to prevent, and it would be invisible because the recovered number is well-formed.
+test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row() -> Bool {
+  match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\tobserved\t402\t\t513\t509\t8000\t500\tcpu_deadline\t900\t100", columns: sample_columns) {
+    Present { value: _ } => false
+    Absent => match parse_claim_cost_line(line: "m.x\tm\tbudget_interrupted\tfalse\tright_censored\t402\t400\t\t\t\t\t\t900\t100", columns: sample_columns) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  }
+}
+
 // AND THE POSITIVE CONTROL FOR THAT REFUSAL, so an empty population cannot be read as "the parser
 // is broken": the same rows under a header that DOES carry the column parse normally.
 test fn the_same_shape_with_a_steps_column_parses() -> Bool {
@@ -92,10 +183,14 @@ test fn the_same_shape_with_a_steps_column_parses() -> Bool {
 // whose cpu and steps are swapped, and swapped values are two plausible numbers rather than an
 // error.
 test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
-  let reordered = "identity\tmodule\teval_steps\tcpu_ms\nm.hot.x\tm.hot\t1000\t400"
+  let reordered = "identity\tmodule\teval_steps\tcost_reading\tcpu_at_least_ms\tcensoring_cpu_limit_ms\tobserved_cpu_ms\nm.hot.x\tm.hot\t1000\tobserved\t\t\t400"
   match parse_claim_cost_tsv(text: reordered) |> first {
     Absent => false
-    Present { value: r } => millisecond_count(m: r.cpu_ms) == 400 && r.eval_steps == 1000
+    Present { value: r } =>
+      match observed_cpu_ms(reading: r.cost) {
+        Absent => false
+        Present { value: c } => millisecond_count(m: c) == 400 && r.eval_steps == 1000
+      }
   }
 }
 
@@ -106,7 +201,11 @@ test fn the_summary_and_header_lines_are_not_rows() -> Bool {
 test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool {
   match parse_claim_cost_tsv(text: sample_tsv) |> first {
     Absent => false
-    Present { value: r } => millisecond_count(m: r.cpu_ms) == 400 && r.identity == "m.hot.x" && r.module == "m.hot"
+    Present { value: r } =>
+      match observed_cpu_ms(reading: r.cost) {
+        Absent => false
+        Present { value: c } => millisecond_count(m: c) == 400 && r.identity == "m.hot.x" && r.module == "m.hot"
+      }
   }
 }
 
@@ -116,7 +215,7 @@ test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool
 test fn an_unparseable_line_yields_no_row_rather_than_a_zero_cost_row() -> Bool {
   match parse_claim_cost_line(line: "m.broken\tm\tpass", columns: sample_columns) {
     Present { value: _ } => false
-    Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\t10\tNOT-A-NUMBER\t1\t100", columns: sample_columns) {
+    Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\tobserved\t10\tNOT-A-NUMBER\t\t\t\t\t\t1\t100", columns: sample_columns) {
       Present { value: _ } => false
       Absent => true
     }
@@ -155,19 +254,19 @@ test fn excluding_an_unrelated_module_leaves_the_refusal_standing() -> Bool {
 }
 
 test fn the_worst_row_is_taken_over_every_run_not_the_latest() -> Bool {
-  millisecond_count(m: run_worst_cpu(run: run_a, excluded_modules: [])) == 400
-    && millisecond_count(m: worst_over_runs(runs: both_runs, excluded_modules: [])) == 600
-    && millisecond_count(m: worst_over_runs(runs: both_runs, excluded_modules: ["m.hot"])) == 300
-    && millisecond_count(m: identity_max_cpu(runs: both_runs, identity: "m.mid.y")) == 300
-    && millisecond_count(m: module_max_cpu(runs: both_runs, module: "m.mid")) == 300
+  millisecond_count(m: worst_cost_at_least_ms(w: run_worst_cpu(run: run_a, excluded_modules: []))) == 400
+    && millisecond_count(m: worst_cost_at_least_ms(w: worst_over_runs(runs: both_runs, excluded_modules: []))) == 600
+    && millisecond_count(m: worst_cost_at_least_ms(w: worst_over_runs(runs: both_runs, excluded_modules: ["m.hot"]))) == 300
+    && millisecond_count(m: worst_cost_at_least_ms(w: identity_max_cpu(runs: both_runs, identity: "m.mid.y"))) == 300
+    && millisecond_count(m: worst_cost_at_least_ms(w: module_max_cpu(runs: both_runs, module: "m.mid"))) == 300
 }
 
 // THE LADDER: each step must be CUMULATIVE with the ones before it, not independent.
 test fn the_repair_ladder_accumulates_its_removals() -> Bool {
   let steps = repair_ladder(runs: both_runs, ceiling_ms: millisecond(count: 500), already_excluded: [], order: ["m.hot", "m.mid"])
   count(steps) == 2
-    && millisecond_count(m: steps[0].worst_ms) == 300 && steps[0].runs_refused == 0
-    && millisecond_count(m: steps[1].worst_ms) == 0 && steps[1].runs_refused == 0
+    && millisecond_count(m: worst_cost_at_least_ms(w: steps[0].worst)) == 300 && steps[0].runs_refused == 0
+    && millisecond_count(m: worst_cost_at_least_ms(w: steps[1].worst)) == 0 && steps[1].runs_refused == 0
 }
 
 // INFLATION IS PAIRED ON IDENTITY, and the min_base filter drops rows too small to measure.
@@ -226,7 +325,11 @@ test fn a_complete_sample_produces_no_refusal_lines() -> Bool {
 test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
   match parse_claim_cost_tsv(text: sample_tsv) |> first {
     Absent => false
-    Present { value: r } => r.eval_steps == 1000 && millisecond_count(m: r.cpu_ms) == 400
+    Present { value: r } =>
+      match observed_cpu_ms(reading: r.cost) {
+        Absent => false
+        Present { value: c } => r.eval_steps == 1000 && millisecond_count(m: c) == 400
+      }
   }
 }
 
@@ -271,4 +374,100 @@ test fn an_identity_crossing_in_two_runs_is_counted_twice_and_reported_recurring
   count(rec) == 1
     && count(recurring_crossers(recurrence: rec)) == 1
     && match rec |> first { Absent => false  Present { value: r } => r.runs_crossed == 2 }
+}
+
+// ============================================================================================
+// THE RIGHT-CENSORED POPULATION. Each arm below is paired with a censor-free control over the
+// same shape, so no green here can come from the censored row merely being absent -- which is the
+// failure this whole section exists to make impossible.
+// ============================================================================================
+
+// A BOUND IS NOT A COST, SO IT ENTERS NO BAND -- and the count of what was left out is reportable
+// rather than being the silent difference between the bands and the population.
+//
+// THE RED THIS FORBIDS is the shape that made the class worth filing: were the bound admitted, the
+// censored row would land in whichever band contains its ceiling, manufacturing exactly the
+// "population dense near the ceiling" reading a band histogram is built to test for. Every
+// interrupted row in a real artifact sits at approximately the same ceiling, so the manufactured
+// density is guaranteed for ANY ceiling over ANY population and carries no information at all.
+test fn a_censored_row_enters_no_band_and_is_counted_as_excluded() -> Bool {
+  // run_c holds 300ms and 100ms observed, plus one row censored at >=502ms.
+  censored_rows(rows: run_c.rows) == 1
+    && rows_in_band(rows: run_c.rows, lower_ms: millisecond(count: 500), upper_ms: millisecond(count: 1000)) == 0
+    && rows_in_band(rows: run_c.rows, lower_ms: millisecond(count: 100), upper_ms: millisecond(count: 500)) == 2
+    // THE CONTROL: the same three-row shape with every row observed puts two rows in the top band,
+    // so the zero above is the censoring and not an empty filter.
+    && rows_in_band(rows: run_b.rows, lower_ms: millisecond(count: 300), upper_ms: millisecond(count: 1000)) == 2
+    && censored_rows(rows: run_b.rows) == 0
+}
+
+// THE ONE INFERENCE THE BOUND DOES SUPPORT, AND IT IS ADMITTED. "Was this row known to reach the
+// line" is a LOWER-BOUND question, and a row stopped at a ceiling answers it. Excluding censored
+// rows here would under-count crossings and make the floor read healthier than it is -- the one
+// direction this figure must never err in, because `runs_refused` is built on it.
+//
+// SO THE TWO RULINGS SIT SIDE BY SIDE OVER ONE ROW: it enters no band and it does cross. That is
+// not an inconsistency, it is the whole distinction -- a threshold question against a point
+// question -- and this pair is the executable statement of it.
+test fn a_censored_row_still_counts_as_a_crossing_because_that_question_is_a_lower_bound() -> Bool {
+  count(run_crossings(run: run_c, ceiling_ms: millisecond(count: 500), excluded_modules: [])) == 1
+    && runs_refused(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: []) == 1
+    // AND IT IS STILL EXCLUDABLE BY MODULE, so the counterfactual replay reaches it like any row.
+    && runs_refused(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: ["m.hot"]) == 0
+}
+
+// A MAXIMUM OVER A POPULATION CONTAINING A BOUND IS ITSELF A BOUND, and it says so in its type.
+// This is the arm that a merged host calibration was authored on: the figure looked like a cost,
+// it was folded as one, and no coefficient could have recovered the completed value from it
+// (gunbc#9629 -- one rendered 502ms denoting 2,902ms in one case and 355ms in another).
+//
+// THE CONTROL IS THE CENSOR-FREE RUN, and it must answer WorstObserved. Without it, a function
+// that returned WorstIsLowerBound unconditionally would pass the first half and have destroyed the
+// distinction rather than made it.
+test fn a_maximum_over_a_censored_population_is_typed_as_a_lower_bound() -> Bool {
+  match run_worst_cpu(run: run_c, excluded_modules: []) {
+    WorstObserved { cpu_ms: _ } => false
+    WorstIsLowerBound { at_least_ms: b, censored_rows: n } =>
+      millisecond_count(m: b) == 502 && n == 1
+        && match run_worst_cpu(run: run_b, excluded_modules: []) {
+             WorstIsLowerBound { at_least_ms: _, censored_rows: _ } => false
+             WorstObserved { cpu_ms: c } => millisecond_count(m: c) == 600
+           }
+  }
+}
+
+// THE CENSORING IS UNION-PROPAGATED ACROSS RUNS rather than decided by whichever run held the
+// maximum. Here run_b's observed 600ms is the largest figure in the sample and run_c's censored
+// row is smaller -- so a fold that took the censoring from the WINNING run would report
+// WorstObserved 600 and lose the fact that another run held a row of unknown, possibly larger,
+// cost. A maximum is exact only when every member it ranged over was.
+test fn one_censored_row_in_any_run_makes_the_fleet_wide_worst_a_bound() -> Bool {
+  match worst_over_runs(runs: [run_b, run_c], excluded_modules: []) {
+    WorstObserved { cpu_ms: _ } => false
+    WorstIsLowerBound { at_least_ms: b, censored_rows: n } => millisecond_count(m: b) == 600 && n == 1
+  }
+}
+
+// A RATIO NEEDS TWO COSTS, SO A PAIR WITH A CENSORED MEMBER YIELDS NO OBSERVATION -- AND THE
+// EXCLUSION IS COUNTED, WHICH IS THE HALF THAT KEEPS THIS FROM BECOMING ITS OWN NEIGHBOUR.
+//
+// Dropping censored pairs and reporting the percentile over the survivors is
+// `censored_estimator_drops_its_own_tail` exactly: the excluded pairs are systematically the
+// expensive ones, so the statistic is biased low with no bound, and biased low precisely where the
+// analysis is looking. Returning `censored_pairs` beside `permille` is what makes the exclusion
+// STATED rather than silent, and a caller quoting a percentile without it has re-created that
+// class from this one.
+test fn an_inflation_pair_with_a_censored_member_is_refused_and_counted() -> Bool {
+  // run_b -> run_c pairs on m.mid.y (300->300) and m.mid.z (100->100); m.hot.x has no partner in
+  // run_c and m.hot.k none in run_b, so neither pairs at all.
+  let obs = identity_inflation(base: run_b, other: run_c, min_base_ms: millisecond(count: 50))
+  count(obs.permille) == 2 && obs.paired == 2 && obs.censored_pairs == 0
+    // AND THE ARM THAT REDS IF A BOUND EVER REACHES THE DIVISION: pairing a run against ITSELF
+    // where a censored row does have a partner. m.hot.k pairs with itself, and that pair must be
+    // refused and counted rather than contributing a 1000-permille "no inflation" observation --
+    // which is what dividing the bound by itself would produce, a perfectly plausible number.
+    && match identity_inflation(base: run_c, other: run_c, min_base_ms: millisecond(count: 50)) {
+         InflationObservations { permille: p, paired: pd, censored_pairs: cp } =>
+           count(p) == 2 && pd == 3 && cp == 1
+       }
 }

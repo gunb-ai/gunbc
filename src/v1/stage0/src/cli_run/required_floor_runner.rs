@@ -5720,8 +5720,12 @@ pub fn run_required_floor(
             identity: claim.qualified.clone(),
             module_path: claim.module_path.clone(),
             outcome: witness_execution_outcome_label(&result).to_string(),
-            wall_nanos: receipt.wall_nanos,
-            cpu_nanos: receipt.cpu_nanos,
+            // MINT THE READING FROM THE TERMINALITY, not from the receipt. The receipt's two
+            // clocks are the same numbers either way; what `claim_terminality` adds — and what
+            // reading them straight off the receipt DISCARDED — is whether a deadline preempted
+            // the subject, which is the only thing that decides if those numbers are
+            // measurements or lower bounds.
+            reading: ClaimCostReading::of(&terminality),
             eval_steps: receipt.eval_steps,
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
@@ -6913,7 +6917,16 @@ pub fn run_required_floor(
     let over_cost_members: Vec<&WitnessExecutionOccurrence> = outcome
         .claim_cost
         .iter()
-        .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
+        // `exact_cost_ms` IS THE FILTER'S OWN REFUSAL. It answers `None` for a right-censored
+        // row, so a bound cannot reach the comparison at all — where the predicate previously
+        // relied on the `verdict_reached` conjunct being remembered, the type now supplies it.
+        // The conjunct stays because it is a DIFFERENT fact (an unwound claim has an exact cost
+        // and no completion to judge), and dropping it would judge a panicked row against a
+        // completion line.
+        .filter(|row| {
+            row.verdict_reached
+                && exact_cost_ms(row, cost_basis).is_some_and(|cost| cost > row.cost_line_ms)
+        })
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
     // THE WARNING TIER, RESTORED AT 100ms BY OPERATOR RULING (2026-08-27) AND PRINTED RANKED.
@@ -6940,14 +6953,34 @@ pub fn run_required_floor(
     // lines below and uploaded as a run artifact. A reader who needs row 26 has it; a reader
     // skimming the log gets the head instead of 835 lines that hide every other diagnostic.
     let mut ranked: Vec<&WitnessExecutionOccurrence> = over_cost_members.clone();
-    ranked.sort_by_key(|row| std::cmp::Reverse(observed_cost_ms(row, cost_basis)));
+    // Every member reached the filter above through `Some`, so this cannot rank a bound; the
+    // `unwrap_or(0)` is unreachable rather than a substituted figure, and it sorts such a row to
+    // the BOTTOM where it would be visible rather than into the actionable head.
+    ranked.sort_by_key(|row| std::cmp::Reverse(exact_cost_ms(row, cost_basis).unwrap_or(0)));
     const OVER_COST_PRINT_LIMIT: usize = 25;
     for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
+        // NAMED `observed_*`, and destructured rather than accessed, for the same reason the
+        // artifact's columns are disjoint: this listing is a COMPLETED-cost ranking, and the
+        // former `cpu_ms=` label was a slot a censored figure could be dropped into by a later
+        // edit without anything reading differently. The censored arm is unreachable here — every
+        // member passed `exact_cost_ms` — and it renders the bound's own field names rather than
+        // a cost if that ever stops being true.
+        let (observed_wall_ms, observed_cpu_ms) = match &row.reading {
+            ClaimCostReading::Observed {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => (observed_wall_ms.to_string(), observed_cpu_ms.to_string()),
+            ClaimCostReading::RightCensored(reading) => (
+                format!("at_least_{}", reading.elapsed_wall_at_least_ms),
+                format!("at_least_{}", reading.elapsed_cpu_at_least_ms),
+            ),
+        };
         eprintln!(
-            "[over-cost] {} wall_ms={} cpu_ms={} eval_steps={} line_ms={} outcome={}",
+            "[over-cost] {} observed_wall_ms={} observed_cpu_ms={} eval_steps={} line_ms={} \
+             outcome={}",
             row.identity,
-            row.wall_nanos / 1_000_000,
-            row.cpu_nanos / 1_000_000,
+            observed_wall_ms,
+            observed_cpu_ms,
             row.eval_steps,
             row.cost_line_ms,
             row.outcome
@@ -6982,11 +7015,28 @@ pub fn run_required_floor(
         // column is inclusive of callees and therefore NOT additive. Without it the first thing a
         // reader does is sum the column, which on the first artifact gave ~14x the run's entire
         // claim-side CPU.
+        // SUMMED OVER OBSERVED ROWS ONLY, AND THE EXCLUSION IS COUNTED RATHER THAN SILENT. A
+        // right-censored row has no cost to contribute: adding its lower bound would understate
+        // the total by an unbounded amount while the figure kept reading as a ceiling, which is
+        // the one direction this value must not fail in — it exists so a reader can tell that the
+        // census's inclusive-of-callees column has been over-summed, and a ceiling that is itself
+        // too low cannot do that job. Excluding them makes the ceiling a ceiling ON THE MEASURED
+        // POPULATION, so the count travels beside it and the label below says which population.
         let claim_cpu_total_ms: u128 = outcome
             .claim_cost
             .iter()
-            .map(|row| row.cpu_nanos / 1_000_000)
+            .filter_map(|row| match &row.reading {
+                ClaimCostReading::Observed {
+                    observed_cpu_ms, ..
+                } => Some(*observed_cpu_ms as u128),
+                ClaimCostReading::RightCensored(_) => None,
+            })
             .sum();
+        let claim_cpu_censored_rows = outcome
+            .claim_cost
+            .iter()
+            .filter(|row| matches!(row.reading, ClaimCostReading::RightCensored(_)))
+            .count();
         // A COPY, SORTED FOR A READER. The artifact leaves in identity order; this preview
         // orders by cross-claim recomputation and says so in band, so no consumer can read a
         // log head as the census's own ranking or as a candidate roster.
@@ -6996,12 +7046,16 @@ pub fn run_required_floor(
         eprintln!(
             "[cross-claim-demand] claims_absorbed={} retained_keys={} shared_keys={} \
              omitted_under_floor={} omitted_under_floor_ms={} key_cap_overflow={} \
-             absorb_ms={} absorb_max_ms={} claim_cpu_total_ms={} (observation only; nothing \
+             absorb_ms={} absorb_max_ms={} claim_cpu_observed_total_ms={} \
+             claim_cpu_censored_rows_excluded={} (observation only; nothing \
              refuses on these figures. The absorb runs AFTER each claim's measurement returns, so \
              it is outside every claim's charged window and cannot trip the deadline; absorb_ms \
              is what this instrument cost the run in total. DO NOT SUM THE COST COLUMN: durations \
              are inclusive of callees, so a producer and its callees overlap and the sum counts \
-             the same nanoseconds once per level of nesting -- claim_cpu_total_ms is the ceiling \
+             the same nanoseconds once per level of nesting -- claim_cpu_observed_total_ms is \
+             the ceiling over the MEASURED rows only, with the censored rows counted beside it \
+             because their cost is a lower bound and summing bounds into a ceiling would push \
+             the ceiling down; it is the ceiling \
              any true total must sit under.)",
             disclosure.claims_absorbed,
             rows.len(),
@@ -7011,7 +7065,8 @@ pub fn run_required_floor(
             disclosure.overflow_keys,
             disclosure.absorb_ns_total / 1_000_000,
             disclosure.absorb_ns_max / 1_000_000,
-            claim_cpu_total_ms
+            claim_cpu_total_ms,
+            claim_cpu_censored_rows
         );
         const CROSS_CLAIM_DEMAND_PRINT_LIMIT: usize = 25;
         eprintln!(
@@ -7053,6 +7108,7 @@ pub fn run_required_floor(
                 &rows,
                 &disclosure,
                 claim_cpu_total_ms,
+                claim_cpu_censored_rows,
             )?;
         }
     }

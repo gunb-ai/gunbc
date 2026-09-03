@@ -16,9 +16,13 @@ import gunbc.floor_cost_distribution {
   worst_over_runs,
   module_max_cpu,
   repair_ladder,
-  identity_inflation_permille,
+  identity_inflation,
   permille_percentile,
-  implied_clean_run_budget
+  implied_clean_run_budget,
+  WorstCost,
+  WorstObserved,
+  WorstIsLowerBound,
+  censored_rows
 }
 
 // THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
@@ -100,10 +104,24 @@ fn band_line(b: CostBand) -> String {
   )
 }
 
+// THE WORST FIGURE RENDERS ITS OWN CENSORING, and the `>=` is not decoration: on the censored arm
+// the number is a LOWER BOUND, so printing it bare would put a bound in the field a reader scans
+// for a cost -- the class this instrument's own input was the specimen of. The censored row count
+// travels with it so a reader can see how much of the population the bound stands for.
+fn worst_phrase(w: WorstCost) -> String {
+  match w {
+    WorstObserved { cpu_ms: c } => concat(to_string(millisecond_count(m: c)), "ms")
+    WorstIsLowerBound { at_least_ms: b, censored_rows: n } => concat(
+      concat(">=", concat(to_string(millisecond_count(m: b)), "ms")),
+      concat(" (LOWER BOUND, unbounded above; ", concat(to_string(n), " censored row(s) carry no cost)"))
+    )
+  }
+}
+
 fn ladder_line(s: LadderStep) -> String {
   concat(
     s.removed,
-    concat(concat("\tworst=", to_string(millisecond_count(m: s.worst_ms))), concat("\trefused=", to_string(s.runs_refused)))
+    concat(concat("\tworst=", worst_phrase(w: s.worst)), concat("\trefused=", to_string(s.runs_refused)))
   )
 }
 
@@ -145,7 +163,13 @@ fn floor_cost_distribution_lines(
         Absent => [concat("REFUSED no population for contended run ", contended as String)]
         Present { value: c } => concat(
           concat(
-            [concat("band histogram for run ", c.run as String)],
+            [
+              concat("band histogram for run ", c.run as String),
+              // THE HISTOGRAM'S OWN DISCLOSURE. Its bands sum to the OBSERVED rows only; the
+              // censored rows have no cost to place and are stated here rather than left as a
+              // silent difference between the band total and the population.
+              concat("rows excluded from the bands as right-censored\t", to_string(censored_rows(rows: c.rows)))
+            ],
             cost_bands(rows: c.rows, edges: band_edges) |> map(b => band_line(b: b))
           ),
           [
@@ -169,10 +193,18 @@ fn floor_cost_distribution_lines(
           Present { value: b } => match latest {
             Absent => []
             Present { value: c } => {
-              let infl = identity_inflation_permille(base: b, other: c, min_base_ms: min_base_ms)
+              let obs = identity_inflation(base: b, other: c, min_base_ms: min_base_ms)
               concat(
-                [concat("paired inflation observations\t", to_string(count(infl)))],
-                [50, 90, 95, 99] |> map(p => percentile_line(values: infl, percent: p))
+                [
+                  concat("paired inflation observations\t", to_string(count(obs.permille))),
+                  // THE DENOMINATOR AND THE EXCLUSION, BESIDE THE PERCENTILES THEY QUALIFY. A
+                  // ratio needs two costs, so a pair with a right-censored member yields none --
+                  // and those are systematically the EXPENSIVE pairs, which is what makes an
+                  // unstated exclusion here biased low rather than merely incomplete.
+                  concat("pairs available\t", to_string(obs.paired)),
+                  concat("pairs refused as right-censored\t", to_string(obs.censored_pairs))
+                ],
+                [50, 90, 95, 99] |> map(p => percentile_line(values: obs.permille, percent: p))
               )
             }
           }
@@ -210,6 +242,22 @@ fn floor_cost_distribution_report_for(
 // THE RUN IDS ARE DATA HERE BECAUSE THE FINDING IS ABOUT THESE RUNS. A measurement over "whatever
 // happened to be downloaded" is not re-derivable -- a second reader would get different numbers and
 // have no way to tell a real change from a different sample. Naming them is the citation.
+// EVERY RUN NAMED BELOW PREDATES THE DISJOINT COST COLUMNS AND THEREFORE REFUSES TODAY. Stated
+// here rather than left to be discovered, because a refusing instrument that does not say why
+// reads as broken.
+//
+// These artifacts carry the old shared `cpu_ms` header, in which a completed cost and a
+// right-censored bound occupy one column. `claim_cost_columns` no longer resolves that header, so
+// each run loads as `RunEmpty` and `floor_cost_distribution_check` refuses the sample naming all
+// ten. That is the correct answer and not a regression: the two populations are not separable in
+// those bytes, and the previous behaviour -- reading every row as a completed cost -- is the defect
+// this module was the live specimen of. Re-reading them "just for the observed rows" is not
+// available either, since which rows those are is exactly what the old artifact does not say.
+//
+// WHAT RESTORES IT, and it is one line of data rather than any code: re-point this list at
+// required-floor runs at or after the artifact change, whose `required-floor-claim-cost` carries
+// `cost_reading` and the per-kind columns. The analysis itself is unchanged and its witness runs
+// on a hand-built fixture, so nothing here is waiting on the re-sample except the live figures.
 data floor_cost_sampled_runs: List<NonEmptyStr> = [
   "33668368846" as NonEmptyStr,
   "33670164259" as NonEmptyStr,

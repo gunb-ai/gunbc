@@ -1,0 +1,156 @@
+module v2.workflow.claim_cost_observation
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+// ONE COST FACT, TWO KINDS OF READING, AND THE KINDS DO NOT SHARE A FIELD NAME.
+//
+// REVIVED FROM STALLED DRAFT gunbc#9029, SCOPED DOWN. That draft modelled this coproduct together
+// with an observation BINDING closure -- whether a measurement attempt may certify the required
+// floor -- and a terminal-ledger wire it never finished. Those answer WHICH ATTEMPT MAY CERTIFY,
+// which is a different question with a different invalid state, so they are deliberately not
+// carried here: widening a class's repair to a second class is the shape DESIGN section 6 prices
+// as redundant work. What is revived is the part that repairs THIS class, and it lands with a
+// consumer rather than as a model waiting for one.
+//
+// THE INVALID STATE. An instrument stops because a POLICY THRESHOLD fired before the subject
+// completed. The value it emits is a LOWER BOUND on what completing would have cost, unbounded
+// above -- and it reads as data because it has units. Its magnitude is approximately the CEILING
+// THAT STOPPED IT, so a statistic over such values describes the ceiling and not the machine.
+//
+// WHY A DISCRIMINATOR BESIDE THE NUMBER IS NOT THE REPAIR. The seed's per-claim cost receipt
+// already carried an adjacent `verdict_reached` column, and its own modelled consumer never
+// consulted it -- `gunbc.floor_cost_distribution` resolved `cpu_ms` by name, refused correctly on
+// a MISSING column, and then fed every row's figure into a band histogram, a worst-cost fold and a
+// run-to-run inflation ratio without asking which rows had one. A discriminator a consumer must
+// remember to join on is a warning; the invalid state stays writable.
+//
+// WHY NO MONOTONE CORRECTION RECOVERS THE VALUE, which is why the repair must be a TYPE and can
+// never be a coefficient: gunbc#9629 (2026-08-28) measured the SAME rendered 502ms figure denoting
+// a row whose completed cost was 2,902ms and a row whose completed cost was 355ms -- one nearly six
+// times over the ceiling, one comfortably under it. Same displayed number, opposite subjects. A
+// host calibration authored on that reading was merged and is retracted on main by gunbc#10205.
+//
+// THE MECHANISM IS ALREADY STATED IN THE TREE AND IS CITED RATHER THAN RESTATED:
+// `gunbc.witness_row_cost`, on `witness_cost_seed_timed_out_event`.
+
+// The exact arm. Both clocks measure the whole of what the subject spent, because the subject
+// reached its own end. The `exact_` prefix is on the FIELD, not merely in a comment, so a bound
+// cannot be written into it by a caller who did not read one.
+type ExactCompletionCost {
+  witness_identity: String
+  exact_cpu_ms: Int
+  exact_wall_ms: Int
+}
+
+// The censored arm. `_lower_bound_` is the whole point of the spelling: these are genuine
+// observations of work done up to the stop and LOWER BOUNDS on the completed cost, so a consumer
+// that copies one into a cost slot has to rename it on the way, which is the moment the mistake
+// becomes visible. `censoring_ceiling_ms` travels with them because the bound's magnitude is a
+// property of that ceiling before it is a property of the subject.
+type RightCensoredCost {
+  witness_identity: String
+  cpu_lower_bound_ms: Int
+  wall_lower_bound_ms: Int
+  censoring_ceiling_ms: Int
+}
+
+// The dynamic population's element. A reader that has not yet decided which kind it holds holds
+// THIS, and cannot project a millisecond figure out of it without naming an arm.
+//
+// `CostObservationUnavailable` is not a third reading: it is the honest arm for a row the
+// instrument was asked about and produced nothing for. It exists so that a missing observation
+// refuses as a deficit rather than being defaulted to a zero that sits silently at the bottom of
+// every band -- the absorbing fallback DESIGN section 5 forbids.
+type ClaimCostObservation
+  = ExactCompletionCostObserved { exact: ExactCompletionCost }
+  | RightCensoredCostObserved { censored: RightCensoredCost }
+  | CostObservationUnavailable { witness_identity: String, cause: String }
+
+// THE MIXED-POPULATION ADMISSION, and it REFUSES rather than filtering.
+//
+// Filtering the censored members out and proceeding is the tempting arm and it is the one that
+// must not exist here: it silently converts this class into `censored_estimator_drops_its_own_tail`
+// -- an estimate computed over the observations that survived a threshold on the very variable
+// being estimated, biased low with no bound. The two classes are the OPPOSITE OPERATION on one
+// population, so the repair for either is the creation of the other unless the arm refuses.
+//
+// The refusal carries `population`, `exact` and `censored` as separate counts so that no board
+// quoting a result from this path can state a numerator without its denominator.
+type ExactCompletionPopulationAdmission
+  = ExactCompletionPopulationAdmitted { exact: List<ExactCompletionCost> }
+  | ExactCompletionPopulationRefused {
+      population: Int
+      exact: Int
+      censored: Int
+      unavailable: Int
+      cause: String
+    }
+
+fn exact_completion_population_loop(
+  remaining: List<ClaimCostObservation>,
+  exact: List<ExactCompletionCost>,
+  population: Int,
+  exact_count: Int,
+  censored_count: Int,
+  unavailable_count: Int,
+) -> ExactCompletionPopulationAdmission {
+  match remaining {
+    Empty {} => ExactCompletionPopulationAdmitted { exact: exact }
+    Cons { head: observation, tail: tail } =>
+      match observation {
+        ExactCompletionCostObserved { exact: completed } =>
+          exact_completion_population_loop(
+            remaining: tail,
+            exact: Cons { head: completed, tail: exact },
+            population: population + 1,
+            exact_count: exact_count + 1,
+            censored_count: censored_count,
+            unavailable_count: unavailable_count,
+          )
+        RightCensoredCostObserved { censored: _ } =>
+          ExactCompletionPopulationRefused {
+            population: population + 1,
+            exact: exact_count,
+            censored: censored_count + 1,
+            unavailable: unavailable_count,
+            cause: "right-censored-bound-cannot-serve-as-an-exact-completion-cost",
+          }
+        CostObservationUnavailable { witness_identity: _, cause: _ } =>
+          ExactCompletionPopulationRefused {
+            population: population + 1,
+            exact: exact_count,
+            censored: censored_count,
+            unavailable: unavailable_count + 1,
+            cause: "cost-observation-unavailable",
+          }
+      }
+  }
+}
+
+fn exact_completion_population(
+  observations: List<ClaimCostObservation>,
+) -> ExactCompletionPopulationAdmission {
+  exact_completion_population_loop(
+    remaining: observations,
+    exact: Empty {},
+    population: 0,
+    exact_count: 0,
+    censored_count: 0,
+    unavailable_count: 0,
+  )
+}
+
+// ARITHMETIC OVER COSTS TAKES THE EXACT TYPE AND NOTHING ELSE, which is the leg of the pairing that
+// makes the ceiling structural rather than a better warning. There is no censored arm to match here
+// because the parameter cannot contain one: a caller holding a dynamic population must first pass
+// `exact_completion_population` and handle its refusal. A `cost_observation_kind` field beside a
+// still-common `cpu_ms` would leave this function able to receive a bound, which is why the trigger
+// for this class is the WHOLE pairing and not any one of its parts.
+type RemedyPartition { exact: List<ExactCompletionCost> }
+
+fn remedy_partition(exact: List<ExactCompletionCost>) -> RemedyPartition {
+  RemedyPartition { exact: exact }
+}
