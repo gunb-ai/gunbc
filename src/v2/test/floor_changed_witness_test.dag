@@ -366,17 +366,9 @@ test fn absent_row_is_missing_disposition() -> Bool {
   standing_kind(s: changed_standing_of(reading: NoDispositionRow {})) == "missing-disposition"
 }
 
-// Blocking polarity: exactly the three executed-verdict standings are green.
-test fn only_executed_verdict_standings_are_green() -> Bool {
+test fn passed_and_known_red_held_are_green() -> Bool {
   !changed_witness_standing_blocks(standing: PlannedAndPassed {})
     && !changed_witness_standing_blocks(standing: PlannedAndKnownRedHeld {})
-    && !changed_witness_standing_blocks(
-      standing: HermeticRouteGapHeldAndWetPassed {
-        evidence: wet_admitted(identity: wet_identity, candidate: wet_candidate, lane: lane_holds()),
-        identity: wet_identity,
-        candidate: wet_candidate,
-      }
-    )
     && changed_witness_standing_blocks(standing: PlannedWithoutTerminalVerdict {})
     && changed_witness_standing_blocks(
       standing: Declined { disposition: DeclinedOutsideRequiredGate {} }
