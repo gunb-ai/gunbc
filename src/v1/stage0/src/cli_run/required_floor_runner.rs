@@ -326,10 +326,21 @@ pub struct WetReceiptIdentityRow {
 /// deterministically on the required path. This proves the committed pair is
 /// self-consistent, NOT that the lane produced it — the declared trust boundary for
 /// authenticity is ordinary pull-request approval of the refresh PR.
+/// Returns the envelope AND the digest of the exact bytes it was decoded from.
+///
+/// THE DIGEST IS CARRIED, NEVER RE-DERIVED FROM THE PATH. It used to be computed at the lease
+/// site by a SECOND `std::fs::read` of the same path, ~2500 lines and one whole floor fold
+/// later. Two reads of one path with nothing carrying the first read's bytes to the second is a
+/// window: a write landing between them -- `write_wet_receipt_envelope` from the wet dispatch
+/// binary overwrites an existing receipt by design -- produces an envelope and a digest that
+/// describe DIFFERENT bytes, and the lease's exact-envelope-digest join would then be checked
+/// against a file the decoded envelope did not come from. Returning them together makes that
+/// pair unconstructible rather than merely unlikely, which is the same move the gate already
+/// makes for standing-vs-admission.
 pub(crate) fn read_wet_receipt_envelope(
     json_rel: &str,
     tsv_rel: &str,
-) -> Result<Option<WetReceiptEnvelope>, String> {
+) -> Result<Option<(WetReceiptEnvelope, String)>, String> {
     let json_text = match std::fs::read_to_string(json_rel) {
         Ok(c) => Some(c),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -350,6 +361,10 @@ pub(crate) fn read_wet_receipt_envelope(
             ));
         }
         (Some(j), _) => j,
+    };
+    let envelope_digest = {
+        use sha2::Digest as _;
+        format!("{:x}", sha2::Sha256::digest(json_text.as_bytes()))
     };
     let envelope: WetReceiptEnvelope = serde_json::from_str(&json_text)
         .map_err(|e| format!("wet-lane receipt {json_rel}: {e}"))?;
@@ -383,7 +398,7 @@ pub(crate) fn read_wet_receipt_envelope(
              editing either"
         ));
     }
-    Ok(Some(envelope))
+    Ok(Some((envelope, envelope_digest)))
 }
 
 /// The one canonical TSV rendering of an envelope, shared by the lane's writer and the
@@ -879,12 +894,22 @@ pub(crate) fn wet_lane_receipt_standing(
             computed_digest: computed_subject_digest.to_string(),
         };
     }
-    if e.executor_contract_digest != computed_executor_contract_digest {
-        return WetLaneReceiptStanding::ExecutorSnapshotDifferent {
-            receipt_digest: e.executor_contract_digest.clone(),
-            computed_digest: computed_executor_contract_digest.to_string(),
-        };
-    }
+    // THE EXECUTOR ARM IS DEFERRED TO LAST, DELIBERATELY, AND THE ORDER IS THE GUARANTEE.
+    //
+    // It used to return HERE, fifth of nine, which made `ExecutorSnapshotDifferent` mean only
+    // "executor disagreement was the FIRST blocking arm reached" -- the roster join, the
+    // observed-identity conformance, the outcome-vocabulary check, the age sanity and the
+    // staleness budget were never evaluated on that path. A bootstrap lease then admits on
+    // exactly that arm, so the lease was silently waiving four axes it was never granted
+    // against, and a receipt admitted under it carried NO established roster or identity
+    // conformance at all. The measurement that the rows join the roster exactly was the
+    // author's instrument reading the file, not this function returning true.
+    //
+    // Deferring the comparison to the end inverts that: every later condition is evaluated
+    // first, so reaching this line at all means the standing WOULD have been
+    // `FreshExactSubject` had the digests agreed. The lease therefore waives exactly one axis
+    // -- the one it is granted against -- and any other defect refuses ahead of it.
+    let executor_snapshot_differs = e.executor_contract_digest != computed_executor_contract_digest;
     let row_ids: BTreeSet<&str> = e.rows.iter().map(|r| r.identity.as_str()).collect();
     let missing: Vec<&str> = roster
         .iter()
@@ -941,9 +966,29 @@ pub(crate) fn wet_lane_receipt_standing(
             }
         }
     }
-    let age_secs = evaluated_tree_commit_secs.saturating_sub(e.executed_at_unix_secs);
+    // A NEGATIVE AGE REFUSES; IT DOES NOT CLAMP. `saturating_sub` used to floor this at zero,
+    // which rendered a receipt executed AFTER the tree it is a verdict about as the FRESHEST
+    // possible receipt -- the absorbing arm DESIGN section 5 names, reading bottom-as-ignorance
+    // as bottom-as-answer. `v2.workflow.floor_wet_route` already refuses this; the seed did not,
+    // and the two disagreed on a receipt no honest producer emits and a tampered one does.
+    if e.executed_at_unix_secs > evaluated_tree_commit_secs {
+        return WetLaneReceiptStanding::ContractMismatch {
+            detail: format!(
+                "executed_at {} is later than the evaluated tree's commit time {} — a receipt \
+                 cannot be executed after the tree it is a verdict about",
+                e.executed_at_unix_secs, evaluated_tree_commit_secs
+            ),
+        };
+    }
+    let age_secs = evaluated_tree_commit_secs - e.executed_at_unix_secs;
     if age_secs > staleness_budget_secs {
         return WetLaneReceiptStanding::Expired { age_secs };
+    }
+    if executor_snapshot_differs {
+        return WetLaneReceiptStanding::ExecutorSnapshotDifferent {
+            receipt_digest: e.executor_contract_digest.clone(),
+            computed_digest: computed_executor_contract_digest.to_string(),
+        };
     }
     WetLaneReceiptStanding::FreshExactSubject { age_secs }
 }
@@ -1390,7 +1435,7 @@ mod wet_lane_receipt_tests {
     #[test]
     fn writer_output_reads_back_and_attempt_seq_advances() {
         let (json, tsv) = write_fixture("roundtrip");
-        let envelope = read_wet_receipt_envelope(&json, &tsv)
+        let (envelope, envelope_digest) = read_wet_receipt_envelope(&json, &tsv)
             .expect("read back")
             .expect("present");
         assert_eq!(envelope.attempt_seq, 1);
@@ -1399,10 +1444,43 @@ mod wet_lane_receipt_tests {
         assert_eq!(envelope.subject_digest, "subject-d");
         write_wet_receipt_envelope(&json, &tsv, &one_row(), "subject-d", "exec-d", 2000)
             .expect("rewrite");
-        let second = read_wet_receipt_envelope(&json, &tsv)
+        let (second, _) = read_wet_receipt_envelope(&json, &tsv)
             .expect("read back")
             .expect("present");
         assert_eq!(second.attempt_seq, 2, "latest-attempt seq must advance");
+    }
+
+    /// THE CARRIED DIGEST IS OF THE BYTES THE ENVELOPE WAS DECODED FROM, AND THE DISCRIMINATING
+    /// RED IS THE REWRITE. The digest used to be re-derived from the path at the lease site, so
+    /// a write landing between the decode and that second read produced an envelope and a digest
+    /// describing different bytes. Here the file is REWRITTEN after the first read: the carried
+    /// digest must still match the bytes its own envelope came from, and must NOT match the file
+    /// now on disk. Re-deriving from the path would flip both assertions.
+    #[test]
+    fn carried_digest_names_the_bytes_the_envelope_was_decoded_from() {
+        use sha2::Digest as _;
+        let (json, tsv) = write_fixture("carried_digest");
+        let (first, first_digest) = read_wet_receipt_envelope(&json, &tsv)
+            .expect("read back")
+            .expect("present");
+        let bytes_at_decode = std::fs::read(&json).expect("read json");
+        assert_eq!(
+            first_digest,
+            format!("{:x}", sha2::Sha256::digest(&bytes_at_decode)),
+            "the carried digest must be of the bytes decoded in that same call"
+        );
+        write_wet_receipt_envelope(&json, &tsv, &one_row(), "subject-d", "exec-d", 2000)
+            .expect("rewrite between the reads");
+        let bytes_after_write = std::fs::read(&json).expect("read json again");
+        let digest_from_the_path_now = format!("{:x}", sha2::Sha256::digest(&bytes_after_write));
+        assert_ne!(
+            first_digest, digest_from_the_path_now,
+            "the rewrite must move the on-disk digest, or this test proves nothing"
+        );
+        assert_eq!(
+            first.attempt_seq, 1,
+            "the envelope in hand is still the one decoded before the rewrite"
+        );
     }
 
     /// THE HAND-EDIT RED: flip one projection byte and the drift check refuses. Remove the
@@ -6181,14 +6259,21 @@ pub fn run_required_floor(
         }
         out
     };
-    let wet_route_envelope: Option<WetReceiptEnvelope> = if wet_route_roster.is_empty() {
-        None
-    } else {
-        read_wet_receipt_envelope(
-            &wet_route_receipt_json_rel_path,
-            &wet_route_receipt_tsv_rel_path,
-        )?
-    };
+    let wet_route_envelope_and_digest: Option<(WetReceiptEnvelope, String)> =
+        if wet_route_roster.is_empty() {
+            None
+        } else {
+            read_wet_receipt_envelope(
+                &wet_route_receipt_json_rel_path,
+                &wet_route_receipt_tsv_rel_path,
+            )?
+        };
+    let wet_route_envelope: Option<WetReceiptEnvelope> = wet_route_envelope_and_digest
+        .as_ref()
+        .map(|(e, _)| e.clone());
+    let wet_route_envelope_digest: Option<String> = wet_route_envelope_and_digest
+        .as_ref()
+        .map(|(_, d)| d.clone());
     eprintln!(
         "[floor-wet-route] roster routes {} identity(ies) to the wet receipts lane; committed \
          envelope: {}",
@@ -8736,16 +8821,11 @@ pub fn run_required_floor(
                 let envelope = wet_route_envelope
                     .as_ref()
                     .expect("executor-snapshot standing entails an envelope");
-                let envelope_digest = {
-                    use sha2::Digest as _;
-                    let bytes = std::fs::read(&wet_route_receipt_json_rel_path).map_err(|e| {
-                        format!(
-                            "bootstrap lease: read {}: {e}",
-                            wet_route_receipt_json_rel_path
-                        )
-                    })?;
-                    format!("{:x}", sha2::Sha256::digest(&bytes))
-                };
+                // Carried from the ONE read the envelope was decoded from, never re-derived
+                // from the path -- see `read_wet_receipt_envelope`.
+                let envelope_digest = wet_route_envelope_digest
+                    .clone()
+                    .expect("executor-snapshot standing entails a decoded envelope and its digest");
                 let roster_digest = {
                     use sha2::Digest as _;
                     let joined = roster_sorted.iter().cloned().collect::<Vec<_>>().join("\n");
