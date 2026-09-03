@@ -58,7 +58,8 @@ module gunbc.recurring_failure_mode
 // 23,023 characters. Independent accretion is not disagreement. The class is filed as
 // `premise_that_a_shared_subject_means_disagreement`.
 //
-// SO THE RECEIPTS ARE MODELLED AS PARTS. Two lanes amending two different receipts of one row now
+// SO THE RECEIPTS ARE MODELLED AS SEVERABLE PARTS -- SEVERABLE, NOT TYPED; see the classification
+// paragraph below, which is the honest limit of what this buys. Two lanes amending two receipts now
 // touch two line regions with an unchanged line between them, which is what a three-way merge needs.
 // MEASURED on this carrier's own `state_space_conflation` with `git merge-file`, base/ours/theirs:
 // two lanes EDITING different receipts -> 0 conflicts; two lanes APPENDING a receipt -> 1 conflict.
@@ -78,9 +79,30 @@ module gunbc.recurring_failure_mode
 //
 // TEN ROWS CARRIED `authored: "..." as NonEmptyStr`, a cast on a field declared `String`, dropped
 // here because a list has no such cast. Recorded rather than silently removed: the cast bought
-// nothing, and its presence on ten rows and absence on seventy-one is the kind of drift a typed part
-// makes unwritable. Those counts are read off the derivation base named in the PR body; they are a
+// nothing, and its presence on ten rows and absence on seventy-one is the kind of drift a per-part
+// declaration makes visible. Those counts are read off the derivation base named in the PR body; they are a
 // dated observation about that tree, not an invariant.
+//
+// THE RECEIPTS ARE STILL `String` AND THAT IS AN OPEN SECTION 4c GAP, NAMED HERE RATHER THAN LEFT
+// FOR A READER TO DISCOVER. Section 4c says any invariant, receipt, ruling, citation, status, count
+// or dissolution condition belongs in a typed carrier, and a `List<String>` element still mixes all
+// of those inside one prose blob. THIS CHANGE NEITHER CREATES NOR REPAIRS THAT: the field it
+// replaces was `authored: String`, one larger blob of exactly the same unclassified prose, so the
+// classification rung is unmoved and only the merge geometry improved. Saying the parts are TYPED
+// would be the section 4b(1) inflation this file already warns about one paragraph down, which is
+// why the wording above says SEVERABLE.
+//
+// WHY CLASSIFICATION IS NOT DONE HERE, since a gap named without a reason is just an excuse. The
+// carrier holds 1,837 receipts across 83 rows; classifying them is an authored judgement per
+// receipt, not a derivation, so it cannot ride in on a re-derivation the way this split does and it
+// cannot be verified by the content-hash identity that makes this change safe. Attempting both at
+// once would give up the one property that lets this land at all: that every carried byte is
+// provably unchanged. NEXT-RUNG TRIGGER, a capability rather than an artifact: a receipt variant
+// model whose constructors cover the kinds section 4c enumerates, sufficient for an EXHAUSTIVE
+// match over a row's parts -- at which point an unclassified receipt has no constructor and the
+// prose cannot be written, which is rung 4 rather than a lens. THE SPLIT IS WHAT MAKES THAT
+// AFFORDABLE: classifying a row becomes an edit to one file that conflicts with nobody, where
+// today it is an edit to a shared blob that collides with every concurrent lane.
 //
 // THE RUNG, STATED HONESTLY BECAUSE THIS PARAGRAPH IS WHAT THE NEXT APPENDER READS. The population
 // carries no severable tail. The SHAPE IS NOT ENFORCED -- no lens covers row shape on this carrier
