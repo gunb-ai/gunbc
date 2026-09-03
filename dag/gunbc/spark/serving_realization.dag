@@ -727,10 +727,12 @@ fn spark_serving_reactivation_required(
 // is enforced by execution in test.claim.spark_serving_reactivation_not_executable_witness_test, whose
 // RED is exactly that pairing and which greens again the moment this sum is re-widened.
 //
-// It is admitted properly one gate later, by DCH-0r-c, and the shape is already settled: not
-// membership in this sum but PlannedBoundReactivationExecution { plan, steps }, whose steps are
-// DERIVED from the bound plan rather than authored independently beside it -- the same defect this
-// exclusion holds shut, closed at its root for reactivation instead of inherited from installs.
+// It is admitted properly one gate later, by DCH-0r-c, and that gate has landed WITHOUT touching
+// this sum. gunbc.spark.serving_admission_fence PlannedBoundReactivationExecution carries the bound
+// plan ALONE and derives its steps from it -- the record settled on in the plan carried `steps` as a
+// field, and storing a derived list beside the thing it derives from would have rebuilt this very
+// defect at one remove. So a restart's label beside unrelated commands is not refused over there
+// either: it has no constructor at all, and this exclusion stands unchanged.
 type SparkServingExecutablePlannedEffect
   = PlannedInstallEffect { install: ServingInstallEffect }
   | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
