@@ -716,7 +716,23 @@ data wet_route_model_lags_seed_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "every rule enumerated in this row's population is authored in v2.workflow.floor_wet_route itself, landed on a head whose wet receipt was dispatched AFTER them so the subject digest covers them -- which means the repair rides a re-dispatch rather than waiting for one, and the admitting witness above flips from a recorded observation to a refusal control in the same change. NOT satisfied by the seed continuing to be stricter, which is the state this row exists to count."
 }
 
+data wet_receipt_wall_ms_fabricated_on_refusal_arms_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.workflow.floor_wet_route WetReceiptIdentityRow declares `wall_ms: Milliseconds` NON-OPTIONAL, so the two pre-execution refusal arms in v1_compiler.bin.claim_batch -- entry resolve failed, closure subject failed -- must write a synthesized `0` for a duration that was never measured. NOTHING RAN, so `0ms` is not a fast execution: it is the absence of one, and any consumer that averages, sorts or thresholds on wall_ms without first branching on the outcome wire reads a fabricated measurement. The tell is inside the same struct literal: `observed_entry_rel` and `observed_function` are Optional and correctly written as None on exactly these arms, with an annotation above the type stating that a fabricated observation is the plausible output DESIGN section 5 forbids -- and wall_ms fabricates one two fields later. Found by review 59401 on gunbc#9725; the prose/body disagreement is a specimen of gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters, third face",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: [
+      "v1_compiler.bin.claim_batch -- the entry-resolve-failed receipt arm writes wall_ms: 0",
+      "v1_compiler.bin.claim_batch -- the closure-subject-failed receipt arm writes wall_ms: 0",
+      "v2.workflow.floor_wet_route WetReceiptIdentityRow -- the field whose type forces both"
+    ]
+  },
+  next_rung_trigger: "wall_ms carried as Optional<Milliseconds>, so an unmeasured duration has NO CONSTRUCTOR that produces a number and every consumer must eliminate the absence before arithmetic -- and a wet receipt actually DISPATCHED under that schema, because the schema change alone leaves the committed envelope carrying the old shape. NOT satisfied by a consumer that branches on the outcome wire, which is the mitigation this row is counting; and not by editing the type alone, because v2.workflow.floor_wet_route is a term of its own semantic subject and the change rides a re-dispatch"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  wet_receipt_wall_ms_fabricated_on_refusal_arms_stall,
   wet_route_model_lags_seed_stall,
   wet_lane_seed_admission_pairing_stall,
   authority_target_same_expression_equivalence_stall,
