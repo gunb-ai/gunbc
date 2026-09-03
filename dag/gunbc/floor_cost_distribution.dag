@@ -61,10 +61,18 @@ type ClaimCostReading
   = ObservedCost { cpu_ms: Millisecond }
   | RightCensoredCost { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
 
-// The cost figure a derivation is ENTITLED to, and `Absent` for a censored row. Every consumer
-// that wants a number goes through this, so a bound cannot reach an arithmetic site without the
-// caller writing an `Absent` arm -- the same discipline the seed's `exact_cost_ms` enforces on the
-// producing side.
+// The cost figure a derivation is ENTITLED to treat as a POINT, and `Absent` for a censored row.
+// Every consumer asking a POINT question goes through this, so a bound cannot reach a site that
+// treats it as an exact cost without the caller writing an `Absent` arm -- the same discipline the
+// seed's `exact_cost_ms` enforces on the producing side.
+//
+// THE QUANTIFIER IS OVER POINT QUESTIONS AND NOT OVER ARITHMETIC, which is narrower than it first
+// reads and deliberately so. `row_crossing` matches `RightCensoredCost` directly and does compare
+// its bound, because a CROSSING is a lower-bound question that a bound can legitimately answer.
+// That is not a bypass of this accessor; it is the case split this module exists to force, and it
+// carries a third `RowCrossingUndecidable` arm for the bounds that cannot answer. Writing the
+// quantifier over every arithmetic site would have been the wider claim that this file's own
+// crossing guard falsifies.
 fn observed_cpu_ms(reading: ClaimCostReading) -> Millisecond? {
   match reading {
     ObservedCost { cpu_ms: c } => Present { value: c }
