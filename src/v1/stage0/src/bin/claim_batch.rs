@@ -664,6 +664,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         let query_started = Instant::now();
         let index = process_shared_index(&source_roots);
+        let mut emitted_paths = 0usize;
         for group in &parsed.entry_groups {
             let paths = entry_closure_source_paths(&index, &group.entry).map_err(|why| {
                 eprintln!(
@@ -674,8 +675,17 @@ fn run() -> Result<ExitCode, ExitCode> {
             })?;
             for path in paths {
                 println!("[entry-closure] {}: file={:?}", group.entry, path);
+                emitted_paths += 1;
             }
         }
+        // A terminal positive receipt is load-bearing for a membership query: without it, shell
+        // plumbing that masks a missing/non-running binary can turn zero output into a false
+        // "path is absent" verdict. This line is printed only after every entry answered.
+        println!(
+            "[entry-closure-summary] state=complete entries={} path_rows={}",
+            parsed.entry_groups.len(),
+            emitted_paths
+        );
         eprintln!(
             "[entry-closure-timing] total_ms={} own_query_ms={}",
             invocation_started.elapsed().as_millis(),
