@@ -40,18 +40,50 @@ closeable. All of them ultimately bottom out in four `InterpContext` methods (`s
 | P6 | `str::replace` rewriting a live-HEAD `.dag` file's own text | spelling-keyed EDIT, not lookup | 2 producers, 6 call sites | — |
 | P7 | subprocess ARGV: `--entry <path>` / `--function <name>` | call-by-name through a second door | 35 `--function`, 6 literal `--entry` | 11 |
 
-P6 and P7 were found by the subject-revision pass, not the first sweep. P7 alone is larger than P4 and
-is completely invisible to a `run_in_context` grep — the same "a search written from the known
-specimen returns the specimen's shape" failure, committed twice in this census by its own author.
+**The set is SEVEN KNOWN, NOT PROVABLY CLOSED**, and the method matters more than the number.
 
-**P6 is the only primitive in the set that can fail OPEN.** `str::replace` returns the input unchanged
-when the pattern does not match, so a miss produces a silently unrewritten copy. Its two arms differ:
-if the `"module test.claim.filesystem_write_witness\n"` rewrite misses, the scratch copy declares the
-same module path as the in-tree file and the module-path collision wall refuses (loud); if the
-`"/tmp/gunbc_fs_write_witness"` rewrite misses, the witness writes to the shared `/tmp` path instead
-of its unique scratch directory and nothing reports it (silent, and cross-run interfering). One
-primitive, two arms, one loud and one silent — which is why a per-primitive rung is not meaningful and
-the class is scored per arm.
+**P7 is the find that matters most.** Entry and function names cross into `.dag` through SUBPROCESS
+ARGV — 35 `--function` literals across `bin/interp_recorded_fixture_witness.rs`, `bin/claim_batch.rs`
+and `pre_push.rs`, 6 literal `--entry` `.dag` paths, 11 distinct names. It is the same coupling through
+a second door, it is larger than the primitive this census started from, and it is invisible to every
+`run_in_context`-keyed search. A reader would least expect this door, which is exactly why it went
+unmeasured.
+
+**Method, stated because it is the transferable part.** Each pass of this census was keyed on a
+SYNTAX, and each re-keying found more: a `sym_eq`-keyed sweep missed P3 and P5; a `run_in_context`-keyed
+sweep missed P6 and P7. Both misses were committed by this document's author AFTER being warned that a
+grep written from the known specimen returns only the specimen's shape. The pass that found the
+subprocess door was keyed differently — on **any route by which a name crosses from Rust into the
+`.dag` world**, not on a spelling of a call. That is the formulation any future sweep should use, and
+it is why the count above is reported as known-not-closed. The same error recurred inside the
+instrument at smaller scale: locating P7's names needed `test fn`, not `fn` — a declaration scanner
+keyed on one keyword misses a whole declaration form.
+
+**P6 was the only primitive in the set that could fail OPEN, and this PR repairs it.**
+`str::replace` returns its input unchanged when the pattern is absent, so an ordinary edit to the
+`.dag` literal made the scratch copy silently unrewritten. The two arms differed and only one was
+loud: a missed module-path rewrite produced a same-name duplicate that the module-path collision wall
+refuses, while a missed `/tmp` rewrite made the witness write to the SHARED path instead of its
+per-run scratch directory — unreported, with the damage landing as cross-run interference in some
+other session's witness. Being caught by a neighbouring wall is a property of that wall, not of this
+rewrite, so **all five substitutions across both producers now refuse**, not just the silent one. The
+refusal names the PATTERN and the SOURCE FILE, because whoever trips it will be editing the `.dag`
+with no reason to know a Rust harness depends on its literal text. Evidence: a discriminating RED
+(pattern edited out → refuses, asserting the refusal names both), a positive control (pattern present
+→ substitutes, so the refusal is not a function that refuses everything), and a **counterfactual**
+that runs bare `str::replace` on the identical input and asserts it answers with the source unchanged
+and no error — because `substituted` did not exist before the repair, the RED alone would show only
+that a function which refuses, refuses, and not that the mechanism it replaced failed open. All three
+in `substituted_refuses_on_absent_pattern`. Honest placement: these execute under
+`cargo test --workspace`, not under the required lane, which runs `--lib` only and merely compiles bin
+targets.
+
+*The primitive is not specific to this repository.* While adding that counterfactual, the editing
+script used a Python `str.replace()` whose pattern did not match; it returned the file unchanged, the
+formatter reported an unrelated modification, the command exited 0, and the remote run came back green
+— because it ran the two tests that were already there. The count (`2 passed`, not 3) was the only
+tell; the colour was not. A silent no-op on a missed pattern is the same fail-open arm in a different
+language, and reading a run's test NAMES rather than its exit code is what surfaced it.
 
 **Mint side** — the same coupling in the opposite direction, where the seed CONSTRUCTS a value the
 `.dag` side then destructures: 262 `type_name:`/`variant_name: ctx.sym("Lit")` sites and 198
