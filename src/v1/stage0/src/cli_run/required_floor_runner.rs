@@ -3545,7 +3545,9 @@ fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
                 "SupersededBySingleAuthorityRepair" => false,
                 other => {
                     return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown                          producer={} verdict={other} — the overlap wall cannot decide whether                          this verdict's carriers transfer",
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \
+                         producer={} verdict={other} — the overlap wall cannot decide \
+                         whether this verdict's carriers transfer",
                         row.producer
                     ));
                 }
