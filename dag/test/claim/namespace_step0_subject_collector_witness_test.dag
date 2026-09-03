@@ -3,13 +3,33 @@ module test.claim.namespace_step0_subject_collector_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import tools.multi_module_compile_fixture { FixtureSource }
+import tools.multi_module_compile_fixture {
+  FixtureSource,
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  compile_fixture
+}
 import gunbc.namespace_step0_canary {
   namespace_step0_canary_contract,
   namespace_step0_manifest_identity
 }
 import gunbc.namespace_step0_subject_collector {
   Step0SubjectVector,
+  Step0SubjectMember,
+  Step0TreeEntryDecoded,
+  Step0TreeEntryUndecodable,
+  Step0DeclaredRootAbsent,
+  Step0TreeEntryUnreadable,
+  Step0UnsupportedTreeEntryKind,
+  Step0BlobIdentityUnreadable,
+  Step0BlobNotText,
+  Step0SourceUnreadableAtTree,
+  Step0TreeEntry,
+  step0_decode_tree_entry,
+  step0_entry_is_regular_blob,
   Step0SubjectCollection,
   Step0SubjectCollected,
   Step0SubjectCollectionRefused,
@@ -20,7 +40,6 @@ import gunbc.namespace_step0_subject_collector {
   Step0HeadCommitUnreadable,
   Step0HeadTreeUnreadable,
   Step0TreePathsUnreadable,
-  Step0SourceUnreadableAtTree,
   assemble_step0_subject_vector,
   step0_subject_paths_at,
   step0_subject_vector_paths,
@@ -40,8 +59,26 @@ fn well_formed_tree_hex() -> String {
   "a6a6e0a531e23cc88fbbe01a2fa582b84867c625"
 }
 
-fn one_source() -> List<FixtureSource> {
-  [FixtureSource { path: "dag/std/types.dag" as NonEmptyStr, content: "module std.types\n" }]
+fn member_at(path: String, hex: String) -> List<Step0SubjectMember> {
+  match git_sha1_object_id(hex: hex) {
+    Absent => []
+    Present { value: blob } =>
+      [Step0SubjectMember { path: path as NonEmptyStr, blob: blob, content: "module std.types\n" }]
+  }
+}
+
+fn blob_hex() -> String { "1111111111111111111111111111111111111111" }
+
+// ONE MEMBER UNDER EVERY DECLARED ROOT, because a population that leaves a declared root empty is a
+// refusal in its own right and would otherwise mask the arm each probe is about.
+fn one_member_per_root() -> List<Step0SubjectMember> {
+  concat(
+    member_at(path: "dag/std/types.dag", hex: blob_hex()),
+    concat(
+      member_at(path: "src/v2/std/algebra.dag", hex: blob_hex()),
+      member_at(path: "src/v1/02_parse.dag", hex: blob_hex())
+    )
+  )
 }
 
 fn refusal_is_empty_subject(c: Step0SubjectCollection) -> Bool {
@@ -55,6 +92,11 @@ fn refusal_is_empty_subject(c: Step0SubjectCollection) -> Bool {
       Step0HeadTreeUnreadable { detail: _ } => false
       Step0TreePathsUnreadable { detail: _ } => false
       Step0SourceUnreadableAtTree { path: _, detail: _ } => false
+      Step0TreeEntryUnreadable { record: _ } => false
+      Step0UnsupportedTreeEntryKind { path: _, mode: _, kind: _ } => false
+      Step0BlobIdentityUnreadable { path: _, hex: _ } => false
+      Step0BlobNotText { path: _ } => false
+      Step0DeclaredRootAbsent { root: _ } => false
     }
   }
 }
@@ -70,6 +112,11 @@ fn refusal_is_unreadable_commit(c: Step0SubjectCollection) -> Bool {
       Step0HeadTreeUnreadable { detail: _ } => false
       Step0TreePathsUnreadable { detail: _ } => false
       Step0SourceUnreadableAtTree { path: _, detail: _ } => false
+      Step0TreeEntryUnreadable { record: _ } => false
+      Step0UnsupportedTreeEntryKind { path: _, mode: _, kind: _ } => false
+      Step0BlobIdentityUnreadable { path: _, hex: _ } => false
+      Step0BlobNotText { path: _ } => false
+      Step0DeclaredRootAbsent { root: _ } => false
     }
   }
 }
@@ -85,6 +132,11 @@ fn refusal_is_unreadable_tree(c: Step0SubjectCollection) -> Bool {
       Step0HeadTreeUnreadable { detail: _ } => false
       Step0TreePathsUnreadable { detail: _ } => false
       Step0SourceUnreadableAtTree { path: _, detail: _ } => false
+      Step0TreeEntryUnreadable { record: _ } => false
+      Step0UnsupportedTreeEntryKind { path: _, mode: _, kind: _ } => false
+      Step0BlobIdentityUnreadable { path: _, hex: _ } => false
+      Step0BlobNotText { path: _ } => false
+      Step0DeclaredRootAbsent { root: _ } => false
     }
   }
 }
@@ -127,7 +179,7 @@ test fn an_empty_read_refuses_instead_of_reporting_an_empty_subject() -> Bool {
   refusal_is_empty_subject(c: assemble_step0_subject_vector(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
-    sources: []
+    members: []
   ))
 }
 
@@ -135,7 +187,7 @@ test fn an_unreadable_revision_refuses_before_any_vector_is_built() -> Bool {
   refusal_is_unreadable_commit(c: assemble_step0_subject_vector(
     head_commit_hex: "not-a-sha",
     head_tree_hex: well_formed_tree_hex(),
-    sources: one_source()
+    members: one_member_per_root()
   ))
 }
 
@@ -143,7 +195,7 @@ test fn an_unreadable_tree_refuses_before_any_vector_is_built() -> Bool {
   refusal_is_unreadable_tree(c: assemble_step0_subject_vector(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: "",
-    sources: one_source()
+    members: one_member_per_root()
   ))
 }
 
@@ -154,15 +206,133 @@ test fn a_well_formed_observation_produces_a_vector_bound_to_the_observed_tree()
   match assemble_step0_subject_vector(
     head_commit_hex: well_formed_commit_hex(),
     head_tree_hex: well_formed_tree_hex(),
-    sources: one_source()
+    members: one_member_per_root()
   ) {
     Step0SubjectCollectionRefused { cause: _ } => false
     Step0SubjectCollected { vector: vector } => match git_sha1_object_id(hex: well_formed_tree_hex()) {
       Absent => false
       Present { value: expected_tree } =>
         git_object_id_eq(left: vector.source_tree, right: expected_tree)
-          && step0_subject_vector_size(vector: vector) == 1
+          && step0_subject_vector_size(vector: vector) == 3
           && paths_contain(xs: step0_subject_vector_paths(vector: vector), want: "dag/std/types.dag")
     }
   }
+}
+
+// A DECLARED ROOT THAT THE REVISION DOES NOT POPULATE IS A REFUSAL, not a smaller subject. This is
+// the arm that stops a moved or deleted root from shrinking the population while every other field
+// still agrees with the contract.
+test fn a_declared_root_with_no_members_refuses_rather_than_narrowing_the_subject() -> Bool {
+  match assemble_step0_subject_vector(
+    head_commit_hex: well_formed_commit_hex(),
+    head_tree_hex: well_formed_tree_hex(),
+    members: member_at(path: "dag/std/types.dag", hex: blob_hex())
+  ) {
+    Step0SubjectCollected { vector: _ } => false
+    Step0SubjectCollectionRefused { cause: cause } => match cause {
+      Step0DeclaredRootAbsent { root: root } => root == "src/v2" || root == "src/v1"
+      Step0SubjectVectorEmpty { tree_hex: _ } => false
+      Step0CommitIdentityUnreadable { hex: _ } => false
+      Step0TreeIdentityUnreadable { hex: _ } => false
+      Step0HeadCommitUnreadable { detail: _ } => false
+      Step0HeadTreeUnreadable { detail: _ } => false
+      Step0TreePathsUnreadable { detail: _ } => false
+      Step0SourceUnreadableAtTree { path: _, detail: _ } => false
+      Step0TreeEntryUnreadable { record: _ } => false
+      Step0UnsupportedTreeEntryKind { path: _, mode: _, kind: _ } => false
+      Step0BlobIdentityUnreadable { path: _, hex: _ } => false
+      Step0BlobNotText { path: _ } => false
+    }
+  }
+}
+
+// THE TREE RECORD IS DECODED AS GIT WRITES IT, and a record this decoder cannot read refuses rather
+// than being skipped -- a skipped record is an entry the collector never enumerated, which is the
+// empty-observation narrow one layer below the vector.
+test fn a_tree_record_decodes_into_mode_kind_object_and_path() -> Bool {
+  match step0_decode_tree_entry(record: concat("100644 blob 1111111111111111111111111111111111111111", concat(from_code_point(9), "dag/std/types.dag"))) {
+    Step0TreeEntryUndecodable { record: _ } => false
+    Step0TreeEntryDecoded { entry: entry } =>
+      entry.mode == "100644"
+        && entry.kind == "blob"
+        && entry.object_hex == "1111111111111111111111111111111111111111"
+        && entry.path == "dag/std/types.dag"
+  }
+}
+
+test fn a_record_with_no_path_separator_is_undecodable_rather_than_a_pathless_entry() -> Bool {
+  match step0_decode_tree_entry(record: "100644 blob 1111111111111111111111111111111111111111") {
+    Step0TreeEntryDecoded { entry: _ } => false
+    Step0TreeEntryUndecodable { record: _ } => true
+  }
+}
+
+// A SYMLINK AND A SUBMODULE GITLINK ARE NOT SOURCES. The symlink is the sharp case: same object
+// kind as a file, so kind alone admits it and only the mode tells them apart -- reading one would
+// hand the strip a target path where a module was expected.
+test fn only_a_regular_file_blob_is_a_source_a_symlink_and_a_gitlink_are_not() -> Bool {
+  step0_entry_is_regular_blob(entry: Step0TreeEntry { mode: "100644", kind: "blob", object_hex: blob_hex(), path: "dag/std/types.dag" })
+    && step0_entry_is_regular_blob(entry: Step0TreeEntry { mode: "100755", kind: "blob", object_hex: blob_hex(), path: "dag/std/types.dag" })
+    && !step0_entry_is_regular_blob(entry: Step0TreeEntry { mode: "120000", kind: "blob", object_hex: blob_hex(), path: "dag/std/types.dag" })
+    && !step0_entry_is_regular_blob(entry: Step0TreeEntry { mode: "160000", kind: "commit", object_hex: blob_hex(), path: "dag/std/types.dag" })
+}
+
+// THE DESTRUCTION CONTROL, ON THE SOURCE-POPULATION AXIS RATHER THAN THE IMPORT-EDGE AXIS. Proving
+// a collector "complete" by showing that removing an IMPORT reds is now known to prove nothing:
+// bare-name resolution across the supplied pool recovers the callee, so the import-edge axis is
+// fail-open by measurement (gunbc.namespace_step0_strip_producer's own kernel-typed subject
+// compiles with every import removed). What global resolution CANNOT recover is a declaration whose
+// SOURCE was never supplied. So the falsifier for a dropped member is: compile the pair, then
+// compile it with one whole module omitted, and require the second to refuse.
+//
+// This is what makes the collector's halt-on-first-unreadable-entry load-bearing rather than
+// fastidious: a vector missing one file does not merely under-report, it changes what the
+// containment compile can decide, and it does so in a direction that reads as a Step 0 result.
+// THE FIXTURE CARRIES NO IMPORTS AT ALL, which isolates the axis and doubles as its own evidence:
+// dc.entry reaches dc_provided with no import statement, so the positive half of this control IS
+// the bare-name recovery that makes the import-edge axis fail-open -- and the negative half shows
+// the one thing that recovery cannot do, which is invent a declaration whose source was withheld.
+fn dc_provider_path() -> NonEmptyStr { "dc/provider.dag" as NonEmptyStr }
+
+fn dc_entry_path() -> NonEmptyStr { "dc/entry.dag" as NonEmptyStr }
+
+fn dc_provider_source() -> String {
+  "module dc.provider\n\nfn dc_provided() -> Bool {\n  true\n}\n"
+}
+
+fn dc_entry_source() -> String {
+  "module dc.entry\n\nfn dc_entry() -> Bool {\n  dc_provided()\n}\n"
+}
+
+fn dc_compile(sources: List<FixtureSource>) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture { sources: sources, entry: dc_entry_path() })
+}
+
+fn dc_outcome_is_completed(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn dc_outcome_is_refused(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn dc_probe_complete_population_compiles() -> Bool {
+  dc_outcome_is_completed(outcome: dc_compile(sources: [
+    FixtureSource { path: dc_provider_path(), content: dc_provider_source() },
+    FixtureSource { path: dc_entry_path(), content: dc_entry_source() },
+  ]))
+}
+
+test fn dc_probe_omitting_one_whole_module_refuses() -> Bool {
+  dc_outcome_is_refused(outcome: dc_compile(sources: [
+    FixtureSource { path: dc_entry_path(), content: dc_entry_source() },
+  ]))
 }

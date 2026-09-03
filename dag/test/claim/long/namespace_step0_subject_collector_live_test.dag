@@ -2,12 +2,13 @@ module test.claim.long.namespace_step0_subject_collector_live
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import tools.multi_module_compile_fixture { FixtureSource }
+
 import gunbc.namespace_step0_canary {
   namespace_step0_canary_contract,
   namespace_step0_manifest_identity
 }
 import gunbc.namespace_step0_subject_collector {
+  Step0SubjectMember,
   Step0SubjectCollected,
   Step0SubjectCollection,
   Step0SubjectCollectionRefused,
@@ -42,8 +43,8 @@ fn paths_contain(xs: List<String>, want: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || x == want })
 }
 
-fn source_content_at(sources: List<FixtureSource>, want: String) -> String {
-  fold(sources, init: "", f: fn(acc, s) { if (s.path as String) == want { s.content } else { acc } })
+fn source_content_at(members: List<Step0SubjectMember>, want: String) -> String {
+  fold(members, init: "", f: fn(acc, m) { if (m.path as String) == want { m.content } else { acc } })
 }
 
 fn text_contains(haystack: String, needle: String) -> Bool {
@@ -64,7 +65,7 @@ test fn the_live_collector_carries_this_file_out_of_the_tree_it_pinned() -> Bool
         && (vector.input_subject_manifest as String) == (namespace_step0_manifest_identity() as String)
         && paths_contain(xs: step0_subject_vector_paths(vector: vector), want: self_path)
         && paths_contain(xs: step0_subject_vector_paths(vector: vector), want: collector_path)
-        && text_contains(haystack: source_content_at(sources: vector.sources, want: self_path), needle: self_module_line)
+        && text_contains(haystack: source_content_at(members: vector.members, want: self_path), needle: self_module_line)
         && every_path_is_a_subject_path(xs: step0_subject_vector_paths(vector: vector))
   }
 }

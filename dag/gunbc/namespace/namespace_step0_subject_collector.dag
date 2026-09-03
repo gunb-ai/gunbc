@@ -38,14 +38,45 @@ import gunbc.namespace_step0_canary {
 // A FAILED READ HALTS THE FOLD. A vector missing one file is not a smaller subject: it is a
 // different one, presented under the whole tree's id -- the empty-observation narrow DESIGN 5
 // forbids. So the first unreadable path refuses the collection, named and located.
+//
+// AND COMPLETENESS IS TYPED BY THE COPRODUCT ITSELF, not asserted beside it. There is exactly one
+// arm that yields a vector, and it is reachable only when the whole selected population was read
+// out of the tree; every other outcome -- an unreadable revision, an unreadable tree, a tree entry
+// this collector does not model, a blob it could not read or that is not text, a declared root the
+// revision does not contain -- is a REFUSAL. So no cap, no unsupported git object and no read
+// failure can become a smaller SUCCESSFUL vector: the smaller-successful state has no constructor.
 type Step0SubjectPinRefusal
   = Step0HeadCommitUnreadable { detail: String }
   | Step0HeadTreeUnreadable { detail: String }
   | Step0TreePathsUnreadable { detail: String }
+  | Step0TreeEntryUnreadable { record: String }
+  | Step0UnsupportedTreeEntryKind { path: String, mode: String, kind: String }
+  | Step0BlobIdentityUnreadable { path: String, hex: String }
+  | Step0BlobNotText { path: String }
+  | Step0DeclaredRootAbsent { root: String }
   | Step0SourceUnreadableAtTree { path: String, detail: String }
   | Step0CommitIdentityUnreadable { hex: String }
   | Step0TreeIdentityUnreadable { hex: String }
   | Step0SubjectVectorEmpty { tree_hex: String }
+
+// A MEMBER CARRIES ITS CONTENT IDENTITY, NOT ONLY ITS PATH. Identical import text recurs across the
+// corpus, so a downstream population that names its members by path alone cannot join a removed
+// statement back to the blob it came from; the object id is what the revision itself uses to name
+// content, so it is carried rather than re-derived.
+type Step0SubjectMember {
+  path: NonEmptyStr
+  blob: GitObjectId
+  content: String
+}
+
+// ONE TREE ENTRY, DECODED. mode and kind are kept as git spelled them: a consumer refusing an entry
+// must be able to say WHAT it refused, and "not a regular file" is not a diagnosis.
+type Step0TreeEntry {
+  mode: String
+  kind: String
+  object_hex: String
+  path: String
+}
 
 // sole_constructor, and every field of one instance comes from one revision: the ids and the
 // sources are produced by the same fold, so no caller can pair a vector with a tree it did not
@@ -55,7 +86,7 @@ type Step0SubjectVector sole_constructor {
   source_commit: GitObjectId
   source_tree: GitObjectId
   input_subject_manifest: NonEmptyStr
-  sources: List<FixtureSource>
+  members: List<Step0SubjectMember>
 }
 
 type Step0SubjectCollection
@@ -86,39 +117,150 @@ fn step0_path_in_subject(path: String) -> Bool {
   step0_path_is_dag_source(path: path) && step0_path_has_root(path: path)
 }
 
-fn step0_subject_paths_at(paths_nul: String) -> List<String> {
-  fold(split(s: paths_nul, delimiter: from_code_point(0)), init: [], f: fn(acc, path) {
-    if step0_path_in_subject(path: path) { acc |> list_push(path) } else { acc }
-  })
-}
+// THE RECORD SHAPE IS GIT'S OWN -z CONTRACT: `<mode> <type> <object>\t<path>`, records separated by
+// NUL. A record this decoder cannot read is a refusal and never a skipped entry -- a tree whose
+// records stopped being decodable is a tree we did not enumerate, which is the empty-observation
+// narrow arriving one layer down.
+type Step0TreeEntryDecode
+  = Step0TreeEntryDecoded { entry: Step0TreeEntry }
+  | Step0TreeEntryUndecodable { record: String }
 
-// The read fold. Halted is absorbing and carries the first cause, so a later file cannot repair an
-// earlier one and no partial vector reaches the constructor.
-type Step0SourceRead
-  = Step0SourcesRead { sources: List<FixtureSource> }
-  | Step0SourceReadHalted { cause: Step0SubjectPinRefusal }
-
-fn step0_read_source_at(revision: String, path: String, read: Step0SourceRead) -> Step0SourceRead {
-  match read {
-    Step0SourceReadHalted { cause: cause } => Step0SourceReadHalted { cause: cause }
-    Step0SourcesRead { sources: sources } => {
-      let shown = git.Core.Show(ref: revision as GitRef, path: path)
-      if !shown.success {
-        Step0SourceReadHalted {
-          cause: Step0SourceUnreadableAtTree { path: path, detail: trim(s: shown.stderr) }
-        }
-      } else {
-        Step0SourcesRead {
-          sources: sources |> list_push(FixtureSource { path: path as NonEmptyStr, content: shown.content })
+fn step0_decode_tree_entry(record: String) -> Step0TreeEntryDecode {
+  let halves = split(s: record, delimiter: from_code_point(9))
+  match get(xs: halves, index: 0) {
+    Absent => Step0TreeEntryUndecodable { record: record }
+    Present { value: meta } => match get(xs: halves, index: 1) {
+      Absent => Step0TreeEntryUndecodable { record: record }
+      Present { value: path } => {
+        let fields = split(s: meta, delimiter: " ")
+        match get(xs: fields, index: 0) {
+          Absent => Step0TreeEntryUndecodable { record: record }
+          Present { value: mode } => match get(xs: fields, index: 1) {
+            Absent => Step0TreeEntryUndecodable { record: record }
+            Present { value: kind } => match get(xs: fields, index: 2) {
+              Absent => Step0TreeEntryUndecodable { record: record }
+              Present { value: object_hex } =>
+                Step0TreeEntryDecoded {
+                  entry: Step0TreeEntry { mode: mode, kind: kind, object_hex: object_hex, path: path }
+                }
+            }
+          }
         }
       }
     }
   }
 }
 
-fn step0_read_sources_at(revision: String, paths: List<String>) -> Step0SourceRead {
-  fold(paths, init: Step0SourcesRead { sources: [] }, f: fn(acc, path) {
-    step0_read_source_at(revision: revision, path: path, read: acc)
+// THE ONLY ENTRY KIND THIS COLLECTOR MODELS IS A REGULAR FILE BLOB. A symlink is a blob too --
+// same object type, mode 120000, content that is a target path rather than a source -- so kind
+// alone does not decide it and the mode is checked. A gitlink (a submodule commit) names content
+// this revision does not contain at all. Both refuse by name rather than being read as sources.
+data step0_regular_file_mode: String = "100644"
+
+data step0_executable_file_mode: String = "100755"
+
+fn step0_entry_is_regular_blob(entry: Step0TreeEntry) -> Bool {
+  entry.kind == "blob" && (entry.mode == step0_regular_file_mode || entry.mode == step0_executable_file_mode)
+}
+
+// A NUL BYTE IS THE ONE THING A .dag SOURCE CANNOT CONTAIN, and a blob that carries one did not
+// arrive as the text this collector hands a parser. Selecting on the .dag suffix should mean this
+// never fires; it is the arm that keeps "never" from being an assumption.
+fn step0_content_is_text(content: String) -> Bool {
+  !contains(s: content, substring: from_code_point(0))
+}
+
+fn step0_subject_entries_at(entries_nul: String) -> List<String> {
+  fold(split(s: entries_nul, delimiter: from_code_point(0)), init: [], f: fn(acc, record) {
+    if record == "" { acc } else { acc |> list_push(record) }
+  })
+}
+
+// EVERY DECLARED ROOT MUST BE PRESENT IN THE REVISION. A root that contributes nothing is either a
+// root that moved or a root that was never there, and both make the collected population narrower
+// than the contract's declared scope while looking like a complete one.
+fn step0_root_is_populated(root: String, paths: List<String>) -> Bool {
+  let prefix = concat(root, "/")
+  let n = string_length(s: prefix)
+  fold(paths, init: false, f: fn(acc, path) {
+    acc || (string_length(s: path) > n && substring(s: path, start: 0, end: n) == prefix)
+  })
+}
+
+fn step0_absent_declared_roots(paths: List<String>) -> List<String> {
+  fold(step0_subject_source_roots(), init: [], f: fn(acc, root) {
+    if step0_root_is_populated(root: root, paths: paths) { acc } else { acc |> list_push(root) }
+  })
+}
+
+fn step0_subject_paths_at(paths_nul: String) -> List<String> {
+  fold(split(s: paths_nul, delimiter: from_code_point(0)), init: [], f: fn(acc, path) {
+    if step0_path_in_subject(path: path) { acc |> list_push(path) } else { acc }
+  })
+}
+
+// The read fold. Halted is absorbing and carries the first cause, so a later entry cannot repair an
+// earlier one and no partial vector reaches the constructor.
+type Step0SourceRead
+  = Step0SourcesRead { members: List<Step0SubjectMember> }
+  | Step0SourceReadHalted { cause: Step0SubjectPinRefusal }
+
+fn step0_read_member_at(revision: String, entry: Step0TreeEntry, read: Step0SourceRead) -> Step0SourceRead {
+  match read {
+    Step0SourceReadHalted { cause: cause } => Step0SourceReadHalted { cause: cause }
+    Step0SourcesRead { members: members } =>
+      if !step0_entry_is_regular_blob(entry: entry) {
+        Step0SourceReadHalted {
+          cause: Step0UnsupportedTreeEntryKind { path: entry.path, mode: entry.mode, kind: entry.kind }
+        }
+      } else {
+        match git_sha1_object_id(hex: entry.object_hex) {
+          Absent => Step0SourceReadHalted {
+            cause: Step0BlobIdentityUnreadable { path: entry.path, hex: entry.object_hex }
+          }
+          Present { value: blob } => {
+            let shown = git.Core.Show(ref: revision as GitRef, path: entry.path)
+            if !shown.success {
+              Step0SourceReadHalted {
+                cause: Step0SourceUnreadableAtTree { path: entry.path, detail: trim(s: shown.stderr) }
+              }
+            } else if !step0_content_is_text(content: shown.content) {
+              Step0SourceReadHalted { cause: Step0BlobNotText { path: entry.path } }
+            } else {
+              Step0SourcesRead {
+                members: members |> list_push(Step0SubjectMember {
+                  path: entry.path as NonEmptyStr,
+                  blob: blob,
+                  content: shown.content
+                })
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn step0_read_step(revision: String, record: String, read: Step0SourceRead) -> Step0SourceRead {
+  match read {
+    Step0SourceReadHalted { cause: cause } => Step0SourceReadHalted { cause: cause }
+    Step0SourcesRead { members: _ } => match step0_decode_tree_entry(record: record) {
+      Step0TreeEntryUndecodable { record: bad } => Step0SourceReadHalted {
+        cause: Step0TreeEntryUnreadable { record: bad }
+      }
+      Step0TreeEntryDecoded { entry: entry } =>
+        if step0_path_in_subject(path: entry.path) {
+          step0_read_member_at(revision: revision, entry: entry, read: read)
+        } else {
+          read
+        }
+    }
+  }
+}
+
+fn step0_read_sources_at(revision: String, records: List<String>) -> Step0SourceRead {
+  fold(records, init: Step0SourcesRead { members: [] }, f: fn(acc, record) {
+    step0_read_step(revision: revision, record: record, read: acc)
   })
 }
 
@@ -129,8 +271,9 @@ fn step0_read_sources_at(revision: String, paths: List<String>) -> Step0SourceRe
 fn assemble_step0_subject_vector(
   head_commit_hex: String,
   head_tree_hex: String,
-  sources: List<FixtureSource>
+  members: List<Step0SubjectMember>
 ) -> Step0SubjectCollection {
+  let absent_roots = step0_absent_declared_roots(paths: members |> map(m => m.path as String))
   match git_sha1_object_id(hex: trim(s: head_commit_hex)) {
     Absent => Step0SubjectCollectionRefused {
       cause: Step0CommitIdentityUnreadable { hex: head_commit_hex }
@@ -140,9 +283,14 @@ fn assemble_step0_subject_vector(
         cause: Step0TreeIdentityUnreadable { hex: head_tree_hex }
       }
       Present { value: tree } =>
-        if count(sources) == 0 {
+        if count(members) == 0 {
           Step0SubjectCollectionRefused {
             cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) }
+          }
+        } else if count(absent_roots) > 0 {
+          match first(absent_roots) {
+            Absent => Step0SubjectCollectionRefused { cause: Step0SubjectVectorEmpty { tree_hex: trim(s: head_tree_hex) } }
+            Present { value: root } => Step0SubjectCollectionRefused { cause: Step0DeclaredRootAbsent { root: root } }
           }
         } else {
           Step0SubjectCollected {
@@ -151,7 +299,7 @@ fn assemble_step0_subject_vector(
               source_commit: commit,
               source_tree: tree,
               input_subject_manifest: namespace_step0_manifest_identity(),
-              sources: sources
+              members: members
             }
           }
         }
@@ -174,17 +322,17 @@ fn collect_step0_subject_vector_at(ref: String) -> Step0SubjectCollection {
     if !tree.success {
       Step0SubjectCollectionRefused { cause: Step0HeadTreeUnreadable { detail: trim(s: tree.stderr) } }
     } else {
-      let listed = git.Inspect.ListTreePathsAtRevision(ref: revision as GitRef)
+      let listed = git.Inspect.ListTreeEntriesAtRevision(ref: revision as GitRef)
       if !listed.success {
         Step0SubjectCollectionRefused { cause: Step0TreePathsUnreadable { detail: trim(s: listed.stderr) } }
       } else {
-        match step0_read_sources_at(revision: revision, paths: step0_subject_paths_at(paths_nul: listed.paths_nul)) {
+        match step0_read_sources_at(revision: revision, records: step0_subject_entries_at(entries_nul: listed.entries_nul)) {
           Step0SourceReadHalted { cause: cause } => Step0SubjectCollectionRefused { cause: cause }
-          Step0SourcesRead { sources: sources } =>
+          Step0SourcesRead { members: members } =>
             assemble_step0_subject_vector(
               head_commit_hex: revision,
               head_tree_hex: trim(s: tree.tree),
-              sources: sources
+              members: members
             )
         }
       }
@@ -197,9 +345,17 @@ fn collect_current_step0_subject_vector() -> Step0SubjectCollection {
 }
 
 fn step0_subject_vector_size(vector: Step0SubjectVector) -> Int {
-  count(vector.sources)
+  count(vector.members)
 }
 
 fn step0_subject_vector_paths(vector: Step0SubjectVector) -> List<String> {
-  vector.sources |> map(source => source.path as String)
+  vector.members |> map(member => member.path as String)
+}
+
+// THE PROJECTION THE STRIP PRODUCER TAKES. It is a narrowing -- the producer's subject shape carries
+// path and content and not blob identity -- so it is spelled as a projection FROM the identified
+// population rather than as the collector's output type: production keeps the identities until the
+// strip has completed, and only the call that needs the narrower shape performs the narrowing.
+fn step0_subject_fixture_sources(vector: Step0SubjectVector) -> List<FixtureSource> {
+  vector.members |> map(member => FixtureSource { path: member.path, content: member.content })
 }

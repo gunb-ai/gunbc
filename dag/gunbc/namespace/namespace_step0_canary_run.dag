@@ -27,6 +27,7 @@ import gunbc.namespace_step0_subject_collector {
   Step0SubjectPinRefusal,
   Step0SubjectVector,
   collect_current_step0_subject_vector,
+  step0_subject_fixture_sources,
   step0_subject_vector_size
 }
 
@@ -69,7 +70,7 @@ fn step0_run_over_vector(
     source_tree: vector.source_tree,
     compiler_program: step0_canary_compiler_program(),
     compiler_executable_sha256: compiler,
-    sources: vector.sources,
+    sources: step0_subject_fixture_sources(vector: vector),
     entry: entry
   ) {
     Step0StripProductionRefused { cause: cause } =>
@@ -88,6 +89,9 @@ fn step0_run_over_vector(
   }
 }
 
+// The shell tool reports an algorithm-tagged digest and the canary's receipt carries the
+// content-hash carrier; a digest that is not 64 lower-hex refuses rather than being reshaped into
+// one that looks like it.
 fn run_current_step0_canary(entry: NonEmptyStr) -> Step0CanaryRunOutcome {
   match collect_current_step0_subject_vector() {
     Step0SubjectCollectionRefused { cause: cause } => Step0CanaryRunSubjectUnavailable { cause: cause }
@@ -96,9 +100,6 @@ fn run_current_step0_canary(entry: NonEmptyStr) -> Step0CanaryRunOutcome {
         Sha256FileDigestUnavailable { path: path, reason: reason } =>
           Step0CanaryRunCompilerUnavailable { program: path, reason: reason }
         Sha256FileDigest { digest: compiler } =>
-          // The shell tool reports an algorithm-tagged digest; the canary's receipt carries the
-          // content-hash carrier. A digest that is not 64 lower-hex refuses rather than being
-          // reshaped into one that looks like it.
           match sha256_hex_digest(hex: compiler.hex as String) {
             Absent => Step0CanaryRunCompilerDigestUnreadable { hex: compiler.hex as String }
             Present { value: digest } => step0_run_over_vector(vector: vector, compiler: digest, entry: entry)
