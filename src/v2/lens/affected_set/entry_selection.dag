@@ -56,6 +56,14 @@ data entry_file_touched_grain_interim: Disposition = Scaffold {
 // — the closure query is edge-source-agnostic and survives, and the file-grain-vs-decl-grain choice
 // for entry_file_touched RE-DECIDES then, with the decl-level path viable only once edit loci are
 // decl-identity nodes, never output types.
+//
+// RECEIPT (1)'s MECHANISM IS GONE as of gunbc#10156 clause 2, and the receipt is kept as the
+// record of what it cost rather than rewritten: the substrate-not-whole-tree arm it describes was
+// reachable only because fn_arrow_decl_facts_live answered from the caller's resolved closure and
+// had to be ASKED at runtime whether that closure covered the corpus. The producer now takes
+// pool_roots, this module passes the roots it was already given, and the ready/refuse pair is
+// deleted in v2.lens.affected_set.corpus_dependency_view. The absorbing fallback that receipt
+// names cannot be written here any more; the unwind it justified stands on receipt (2) unchanged.
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b

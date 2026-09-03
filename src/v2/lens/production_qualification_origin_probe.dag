@@ -43,8 +43,10 @@ import v2.std.node {
 import v2.std.text { String }
 
 // Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a
-// repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide
-// frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL
+// repository-wide census. fn_arrow_decl_facts_live(pool_roots:) now answers over the roots its
+// caller names, so this carrier's scope is exactly the subject each entry point declares and no
+// longer whatever closure happened to be resolved; repository-wide frequency is still unknown
+// because naming the corpus roots is a per-caller choice, not this carrier's claim. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL
 // skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker
 // only — never target-model proxy, never declaration-name recognition). Origin vocabulary:
 // ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only —

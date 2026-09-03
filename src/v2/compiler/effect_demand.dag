@@ -1316,6 +1316,5 @@ data effect_demand_seam_roster: List<SeamStanding> = [
     projection: SeamUnrostered,
     emitted_rust_identity: "v2_std_fn_index.rs::fn_arrow_decl_facts_live",
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
-  },
   }
 ]
