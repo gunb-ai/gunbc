@@ -31,15 +31,10 @@ type ResolvedFuncSig {
   variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
 
-type FormalAuthorityUnavailableReason
-  = LocalDeclarationAwaitingModuleContext
-  | BorrowedCensusDeclarationAuthorityUnavailable
-  | GlobalBareDeclarationAuthorityUnavailable
-
 type ResolvedFormals
   = DeclarationBoundFormals { formals: List<ResolvedFormal> }
   | KernelGroundedFormals { formals: List<ResolvedFormal> }
-  | FormalAuthorityUnavailable { reason: FormalAuthorityUnavailableReason }
+  | LocalFormalsAwaitingModuleContext {}
 
 type ResolvedFuncEnv {
   name: String
@@ -396,7 +391,7 @@ fn build_name_set(names: List<String>) -> Map<String, Bool> {
 }
 
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
-  ResolvedFuncSig { name: dsig.name, params: dsig.params, resolved_formals: FormalAuthorityUnavailable { reason: LocalDeclarationAwaitingModuleContext }, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
+  ResolvedFuncSig { name: dsig.name, params: dsig.params, resolved_formals: LocalFormalsAwaitingModuleContext {}, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
 
 fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {

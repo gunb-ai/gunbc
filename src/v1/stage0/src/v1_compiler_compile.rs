@@ -2062,6 +2062,7 @@ pub fn serialize_inferred_node_ref(
             ),
             "}".to_string(),
         ),
+        InferredNode::Divergent => "{\"kind\": \"Divergent\"}".to_string(),
         InferredNode::TypeVariable { id: id, .. } => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"TypeVariable\", \"id\": ".to_string(),

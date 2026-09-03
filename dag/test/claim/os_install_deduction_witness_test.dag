@@ -216,4 +216,3 @@ test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
     _ => false
   }
 }
-

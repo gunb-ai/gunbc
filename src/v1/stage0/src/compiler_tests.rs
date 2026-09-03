@@ -1108,30 +1108,107 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
             .spawn(|| {
-                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "probe.dag".to_string(),
-                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n".to_string(),
-                });
-                let r = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![source]),
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                // The SAME module, differing only in WHICH output field carries the
+                // unmodeled key. Any span that does not belong to the offending field
+                // is identical across the pair, so assertion four cannot be satisfied
+                // by a location that merely lands somewhere inside the service.
+                let first_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let second_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"stdout\"\n      out: String from \"not_a_channel\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let probe = |content: &str| {
+                    let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: "probe.dag".to_string(),
+                        content: content.to_string(),
+                    });
+                    let r = crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![source]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    );
+                    let located = r
+                        .diagnostics
+                        .iter()
+                        .filter_map(|d| match &*d.diagnostic {
+                            crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                                missing_realization_fact,
+                                span,
+                                ..
+                            } if missing_realization_fact.contains("not_a_channel") => {
+                                Some((span.start, span.end, missing_realization_fact.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    let emitted = r
+                        .files
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect::<Vec<_>>();
+                    (located, emitted, format!("{:?}", r.diagnostics))
+                };
+                let (a_hits, a_files, a_all) = probe(first_field_offends);
+                let (b_hits, b_files, _) = probe(second_field_offends);
+
+                // ONE: the refusal class, and exactly one row of it.
+                assert_eq!(
+                    a_hits.len(),
+                    1,
+                    "an unmodeled output key must refuse with exactly one TransportEmissionNotModeled naming the key, got: {}",
+                    a_all
                 );
-                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {
-                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
-                        missing_realization_fact,
-                        ..
-                    } => missing_realization_fact.contains("not_a_channel"),
-                    _ => false,
-                });
+                assert_eq!(b_hits.len(), 1, "the mutated module must refuse the same way");
+                let (a_start, a_end, a_fact) = a_hits[0].clone();
+                let (b_start, b_end, _) = b_hits[0].clone();
+
+                // TWO: the EXACT refused output key, not merely that something was unmodeled.
                 assert!(
-                    named,
-                    "an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}",
-                    r.diagnostics
+                    a_fact.contains("not_a_channel"),
+                    "the refusal must name the offending key. Got: {}",
+                    a_fact
                 );
+
+                // THREE: the span belongs to THAT key -- checked by slicing the span
+                // back out of the source it points into, not by trusting the offsets.
+                // The span covers the offending FIELD'S NAME rather than the key
+                // literal, so the slice is the field name and the assertion says so
+                // exactly; asserting it merely "contains" something would pass on a
+                // span that had swallowed the whole output block.
+                let a_text = &first_field_offends[a_start as usize..a_end as usize];
+                let b_text = &second_field_offends[b_start as usize..b_end as usize];
+                assert_eq!(
+                    a_text, "first",
+                    "the span must cover the field carrying the unmodeled key. It covers: {:?}",
+                    a_text
+                );
+
+                // FOUR, the discriminator: moving the unmodeled key to a DIFFERENT field
+                // must MOVE the location. Without this a span pointing anywhere fixed
+                // inside the service satisfies one through three and proves nothing.
+                // Asserted on the RESOLVED TEXT and not only on the offsets, because
+                // equal-length fields could move the numbers without the location ever
+                // having been derived from the offending field at all.
+                assert_eq!(
+                    b_text, "out",
+                    "when the unmodeled key moves to the other field, the span must follow it. It covers: {:?}",
+                    b_text
+                );
+                assert_ne!(
+                    (a_start, a_end),
+                    (b_start, b_end),
+                    "the refusal is not located: the span did not move when the offending key moved to another field. Both refusals point at {}..{}",
+                    a_start,
+                    a_end
+                );
+
+                // The line stops: a refused operation emits no module carrying the
+                // refusal into its own runtime.
                 assert!(
-                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    !a_files.iter().any(|p| p == "src/probe.rs"),
                     "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
-                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
+                    a_files
+                );
+                assert!(
+                    !b_files.iter().any(|p| p == "src/probe.rs"),
+                    "likewise when the offending field moves. Emitted: {:?}",
+                    b_files
                 );
             })
             .expect("failed to spawn thread")
@@ -1799,6 +1876,67 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("declared_type_conformance_witness panicked");
+    }
+
+    #[test]
+    fn direct_call_formal_authority_is_declaration_bound() {
+        let sources = im::vector![
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "authority_decl.dag".to_string(), content: "module authority.decl\ntype Left = String\ntype Right = String\nfn accept(left: Left, right: Right) { }\n".to_string() }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_a.dag".to_string(), content: "module authority.caller_a\nimport authority.decl { accept }\ntype Left = Int\ntype Right = Bool\nfn use() { accept(right: \"r\", left: \"l\") }\n".to_string() }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_b.dag".to_string(), content: "module perturbed.namespace.caller_b\nimport authority.decl { accept }\ntype Left = Bool\ntype Right = Int\nfn use() { accept(right: \"rr\", left: \"ll\") }\n".to_string() }),
+        ];
+        let result = crate::v1_compiler_compile::compile_sources(
+            sources,
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "authority carrier fixture must compile: {:?}",
+            result.diagnostics
+        );
+        let artifact = result
+            .files
+            .iter()
+            .find(|f| f.path == "dag-artifact.json")
+            .expect("DAG artifact");
+        let json: serde_json::Value =
+            serde_json::from_str(&artifact.content).expect("valid DAG artifact JSON");
+        let mut observed = 0usize;
+        for node in json["nodes"].as_object().expect("nodes table").values() {
+            let semantics = &node["expr_data"]["call_semantics"];
+            if semantics["kind"] != "ResolvedDirectCallSemantics" {
+                continue;
+            }
+            let plan = semantics["application_plan"]
+                .as_array()
+                .expect("resolved application plan");
+            for formal in plan {
+                if formal["parameter_identity"] != "left" && formal["parameter_identity"] != "right"
+                {
+                    continue;
+                }
+                observed += 1;
+                let declared_ref = formal["declared_type"]["$ref"]
+                    .as_str()
+                    .expect("declared formal ref");
+                let declaration_conformance = &json["nodes"][declared_ref]["inferred"]["node"];
+                assert_eq!(&formal["declaration_bound_conformance"], declaration_conformance, "formal conformance must equal the callee declaration's resolved conformance instead of being peeled through the caller TypeEnv");
+                assert!(
+                    formal["substitution_basis"]["$ref"].is_string(),
+                    "emission substitution basis must survive in the same plan"
+                );
+                let expected_argument = if formal["parameter_identity"] == "left" {
+                    1
+                } else {
+                    0
+                };
+                assert_eq!(formal["matched_argument_index"], expected_argument, "named arguments written in reverse order must stay paired by parameter identity; positional carriage is silently wrong and still typechecks because Left and Right share a representation");
+            }
+        }
+        assert_eq!(
+            observed, 4,
+            "both caller perturbation controls must expose both declaration-bound formals"
+        );
     }
 
     #[test]

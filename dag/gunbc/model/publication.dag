@@ -1,0 +1,224 @@
+module gunbc.model.publication
+
+import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
+import std.content_hash { ContentHash, serialize_content_hash }
+import std.nat { Nat }
+import std.measure { TokenCount, ParameterCount }
+
+// WHAT A MODEL RELEASE IS, modeled independently of anyone who serves, packages or hosts it.
+//
+// WHY THIS FILE EXISTS, stated as the defect it repairs rather than as a design preference. The
+// predecessor authority spelled stock provenance as PulledFromUpstream { publisher, reference:
+// OllamaModelRef }. That single field made one distributor's vocabulary the ONLY way to say where a
+// model came from, and the consequence was not stylistic: a probe finding no Ollama manifest had no
+// vocabulary in which to report "absent from this channel", so it reported absence of the model. The
+// measured cost was that three releases whose weights are openly published -- one of them the
+// highest-scoring open model available -- were recorded as nonexistent, and therefore never entered
+// the population the whole program exists to choose from. Excluding the answer from the search is a
+// worse failure than ranking it badly, because nothing downstream can recover it.
+//
+// So the repair is not a row asserting that a particular model exists. It is the removal of the edge
+// that let a distributor's silence mean anything about a publisher's release.
+
+// A PUBLISHER'S RELEASE IDENTITY. Family and revision are separate because a family is what a
+// human means and a revision is what the bytes are: DeepSeek-V4-Flash names a family across
+// revisions, and DeepSeek-V4-Flash-0731 names one of them. Collapsing them would reintroduce a
+// moving pointer as an identity, which is the defect the artifact layer already refuses.
+type ModelFamilyName = NonEmptyStr where brand("ModelFamilyName")
+type ModelRevisionName = NonEmptyStr where brand("ModelRevisionName")
+type ModelPublisherName = NonEmptyStr where brand("ModelPublisherName")
+
+type ReleaseIdentity {
+  publisher: ModelPublisherName
+  family: ModelFamilyName
+  revision: ModelRevisionName
+}
+
+// THE LICENSE UNDER WHICH WEIGHTS ARE PUBLISHED. Enumerated rather than a String because the
+// question consumers ask -- may we run this on our own hardware -- is decidable from the license and
+// must not be re-derived per consumer from prose. An unrecognized license is named, not defaulted:
+// defaulting either way is a fabricated answer to a legal question.
+type WeightLicense
+  = MitLicense
+  | Apache2License
+  | ModifiedMitLicense { steward: NonEmptyStr }
+  | NamedLicense { spdx_or_title: NonEmptyStr }
+
+// THE PARAMETER COUNTS, kept as THREE SOURCED FACTS rather than one reconciled number.
+//
+// This is not pedantry about a disagreement in the literature. A release that ships a speculative
+// decoding draft as a SEPARATE artifact has two honest totals: the base network, and the base plus
+// the attached draft. Both are true, they differ by the size of a real file, and which one is meant
+// decides whether a given quantization fits a given host. Reconciling them into one number destroys
+// the only signal that tells a reader which artifact set was measured.
+//
+// activated is the per-token count for a mixture-of-experts release and equals total for a dense
+// one. It governs decode bandwidth; total governs whether the release is resident at all.
+// THE SCALE IS IN THE TYPE, NOT IN THE READER'S HEAD. These were bare `Nat`s, and the fixture that
+// established this module wrote `base_total: 284` to mean 284 BILLION -- a factor of a billion
+// carried entirely by prose, in a module whose whole subject is which quantization fits which host.
+// A ParameterCount is Measure<Count, Mega, Nat> from std.measure, so 284.3B is written as 284300 and
+// means one thing.
+type ParameterCounts {
+  base_total: ParameterCount
+  activated_per_token: ParameterCount
+  attached_speculative: ParameterCount
+}
+
+// WEIGHTS AS A PUBLISHED FACT: a repository, a revision, a license. This is what makes a release
+// runnable by anyone, and it is a property of the PUBLISHER, not of any packager.
+type WeightPublication {
+  repository: NonEmptyStr
+  revision: NonEmptyStr
+  license: WeightLicense
+  parameters: ParameterCounts
+}
+
+// AN UPSTREAM CONTEXT CLAIM, deliberately typed as a CLAIM and never as a capability.
+//
+// A publisher declaring 1,048,576 positions via a scaling factor applied to a shorter trained window
+// is stating what the architecture admits, not what the model retrieves. The gap between those is
+// exactly where silent degradation lives: prefill accepts the tokens and the answer quietly stops
+// depending on them. Nothing in this module promotes a declared number into a qualification, and the
+// population that requires context is derived from OBSERVED retrieval elsewhere.
+type ContextScaling
+  = NoScaling
+  | YarnScaling { original_positions: TokenCount, factor: Int }
+
+type DeclaredContext {
+  max_positions: TokenCount
+  scaling: ContextScaling
+}
+
+// THE RELEASE ITSELF, and the load-bearing decision in this file: OPEN-WEIGHT-NESS IS A
+// CONSTRUCTOR, not a field and not a predicate over distribution.
+//
+// Because the weight publication is carried by the OpenWeightRelease arm and by nothing else, the
+// question "are the weights open" is answered by pattern-matching the release. No observation of any
+// channel participates. There is therefore no expressible path from a distributor's 404 to a change
+// in this answer -- not a check that would catch it, but no constructor that could write it.
+type ModelRelease
+  = OpenWeightRelease {
+      identity: ReleaseIdentity
+      publication: WeightPublication
+      declared_context: DeclaredContext
+    }
+  | ClosedWeightRelease {
+      identity: ReleaseIdentity
+      declared_context: DeclaredContext
+    }
+
+// IDENTITY EQUALITY, here rather than at each consumer. A release is identified by publisher,
+// family and revision together, so a comparison that omits one silently merges distinct releases --
+// two revisions of one family, or one family published by two organizations. Hoisted from
+// population.identity_in, which had inlined the three-field comparison, so a fourth component added
+// to ReleaseIdentity cannot leave a consumer comparing the old three.
+fn release_identity_equal(a: ReleaseIdentity, b: ReleaseIdentity) -> Bool {
+  (a.publisher as String) == (b.publisher as String)
+    && (a.family as String) == (b.family as String)
+    && (a.revision as String) == (b.revision as String)
+}
+
+fn release_identity(subject: ModelRelease) -> ReleaseIdentity {
+  match subject {
+    OpenWeightRelease { identity: i, publication: _, declared_context: _ } => i
+    ClosedWeightRelease { identity: i, declared_context: _ } => i
+  }
+}
+
+// The single eliminator for ModelRelease's weight-availability axis. `release_identity` above stays
+// a match because it PROJECTS a field whose value differs per arm; this one CLASSIFIES, and a
+// classification re-matched at each predicate is one fact written twice.
+fn model_release_fold<T>(subject: ModelRelease, open_weight: T, closed_weight: T) -> T {
+  match subject {
+    OpenWeightRelease { identity: _, publication: _, declared_context: _ } => open_weight
+    ClosedWeightRelease { identity: _, declared_context: _ } => closed_weight
+  }
+}
+
+fn release_is_open_weight(subject: ModelRelease) -> Bool {
+  model_release_fold(subject: subject, open_weight: true, closed_weight: false)
+}
+
+// ===========================================================================================
+// DISTRIBUTION: how some packager makes a release obtainable. One release, many channels, and a
+// channel's answer is scoped to that channel by construction.
+// ===========================================================================================
+
+// Each independently governed distributor is its own arm. Adding a distributor adds an arm; it never
+// widens the meaning of the others, and it never touches ModelRelease.
+type DistributionChannel
+  = PublisherRepository { host: NonEmptyStr }
+  | OllamaLibrary
+  | OllamaCloudEndpoint
+  | CommunityQuantRepository { host: NonEmptyStr, owner: NonEmptyStr }
+
+fn distribution_channel_wire(channel: DistributionChannel) -> String {
+  match channel {
+    PublisherRepository { host: h } => join(["publisher-repository:", h as String], "")
+    OllamaLibrary => "ollama-library"
+    OllamaCloudEndpoint => "ollama-cloud-endpoint"
+    CommunityQuantRepository { host: h, owner: o } =>
+      join(["community-quant:", h as String, "/", o as String], "")
+  }
+}
+
+// HOW A PACKAGED ARTIFACT IS SHAPED. Sharded packaging is called out because it is a REALIZATION
+// constraint that has already refused a real install: a registry that cannot pull split files says
+// nothing about the release and everything about that registry's loader.
+type ArtifactPackaging
+  = SingleFileWeights { quantization: NonEmptyStr }
+  | ShardedWeights { quantization: NonEmptyStr, shard_count: Nat }
+  | PublisherNativeCheckpoint
+
+// AN OBSERVATION ABOUT ONE CHANNEL, AND ONLY ONE CHANNEL.
+//
+// The absent arm names the channel it is absent FROM. There is no arm spelling unqualified absence,
+// so "this model is unavailable" is not a sentence this type can produce.
+type ChannelPresence
+  = PresentInChannel { reference: NonEmptyStr, packaging: ArtifactPackaging }
+  | AbsentFromChannel { probed_reference: NonEmptyStr }
+
+type DistributionObservation {
+  subject: ReleaseIdentity
+  channel: DistributionChannel
+  presence: ChannelPresence
+  observed_at: Timestamp
+}
+
+// THE SINGLE ELIMINATOR FOR ChannelPresence, for the reason runner_attempt_fold exists one module
+// over: a predicate that re-matches a coproduct is a second representation of that coproduct's
+// shape, so a third arm would have to be remembered here as well as at the type, and the predicate
+// that forgot it would silently answer false rather than fail to compile. One catamorphism, every
+// predicate a projection through it. It is not a parallel Kind enum -- minting PresenceYes /
+// PresenceNo beside the constructors would be a second NAME for one variant set, which is the
+// nicknaming section 3 forbids; a fold introduces no vocabulary at all.
+fn channel_presence_fold<T>(
+  presence: ChannelPresence,
+  present: T,
+  absent: T,
+) -> T {
+  match presence {
+    PresentInChannel { reference: _, packaging: _ } => present
+    AbsentFromChannel { probed_reference: _ } => absent
+  }
+}
+
+fn observation_reports_presence(observation: DistributionObservation) -> Bool {
+  channel_presence_fold(presence: observation.presence, present: true, absent: false)
+}
+
+// The diagnostic a channel-absent observation is allowed to render. It states the channel, because a
+// sentence that omits it is the exact sentence that caused the defect this module repairs.
+fn channel_absence_diagnostic(observation: DistributionObservation) -> String {
+  match observation.presence {
+    PresentInChannel { reference: r, packaging: _ } =>
+      join(["present in ", distribution_channel_wire(channel: observation.channel), " as ", r as String], "")
+    AbsentFromChannel { probed_reference: p } =>
+      join([
+        "not distributed by ", distribution_channel_wire(channel: observation.channel),
+        " under ", p as String,
+        " -- this states nothing about whether the release exists or its weights are open",
+      ], "")
+  }
+}

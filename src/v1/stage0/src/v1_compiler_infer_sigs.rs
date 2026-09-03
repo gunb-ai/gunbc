@@ -3,7 +3,6 @@
 
 use self::CallableIdentity::*;
 use self::DerivedCalleeSig::*;
-use self::FormalAuthorityUnavailableReason::*;
 use self::FuncSigLookup::*;
 use self::NoDerivableSigReason::*;
 use self::ResolvedFormals::*;
@@ -39,16 +38,6 @@ pub struct ResolvedFuncSig {
         Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum FormalAuthorityUnavailableReason {
-    LocalDeclarationAwaitingModuleContext,
-    BorrowedCensusDeclarationAuthorityUnavailable,
-    GlobalBareDeclarationAuthorityUnavailable,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ResolvedFormals {
@@ -58,9 +47,18 @@ pub enum ResolvedFormals {
     KernelGroundedFormals {
         formals: Rc<Vec<Rc<ResolvedFormal>>>,
     },
-    FormalAuthorityUnavailable {
-        reason: FormalAuthorityUnavailableReason,
-    },
+    LocalFormalsAwaitingModuleContext,
+}
+impl ResolvedFormals {
+    pub fn formals(&self) -> Rc<Vec<Rc<ResolvedFormal>>> {
+        match self {
+            ResolvedFormals::DeclarationBoundFormals { formals: __val, .. } => __val.clone(),
+            ResolvedFormals::KernelGroundedFormals { formals: __val, .. } => __val.clone(),
+            ResolvedFormals::LocalFormalsAwaitingModuleContext => {
+                panic!("no formals on unit variant")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -565,9 +563,7 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     Rc::new(ResolvedFuncSig {
         name: dsig.name.clone(),
         params: dsig.params.clone(),
-        resolved_formals: Rc::new(ResolvedFormals::FormalAuthorityUnavailable {
-            reason: FormalAuthorityUnavailableReason::LocalDeclarationAwaitingModuleContext,
-        }),
+        resolved_formals: Rc::new(ResolvedFormals::LocalFormalsAwaitingModuleContext {}),
         inferred: dsig.inferred.clone().clone().unwrap(),
         is_async: dsig.is_async.clone(),
         output_provenance: dsig.output_provenance.clone(),
@@ -874,10 +870,3 @@ pub fn resolve_func_sigs(
         )
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LocalDeclarationAwaitingModuleContext;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BorrowedCensusDeclarationAuthorityUnavailable;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GlobalBareDeclarationAuthorityUnavailable;
