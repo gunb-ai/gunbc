@@ -553,7 +553,7 @@ data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeS
   next_rung_trigger: "a modeled Git-native bootstrap sufficient to initialize an empty deployed repository from the admitted runner checkout at the exact candidate, with HEAD, index and tracked worktree read back as that one revision before any later deployment member runs; copying any .git path as files, relaxing ConvergencePreStateUnobservable, or merely creating an empty git directory does not satisfy the capability"
 }
 
-// THE PROSE HALF OF THE DROP ROSTER, DECLARED AS A STALL BECAUSE THAT IS WHAT IT IS. 21 of
+// THE PROSE HALF OF THE DROP ROSTER, DECLARED AS A STALL BECAUSE THAT IS WHAT IT IS. 26 of
 // gunbc.rung_drop's rows state their DESIGN section 4b(3) fields -- previous rung, temporary rung,
 // reason, population, restoration trigger -- only inside an `authored` paragraph, so for those rows
 // the obligation 4b(3) states is met by a human reading and by nothing a program can fold. The four
@@ -605,13 +605,53 @@ data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
       "gunbc.rung_drop floor_cut_falsifier_cadence",
       "gunbc.rung_drop builtin_signature_arity_pairing_fabricates",
       "gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding",
-      "gunbc.rung_drop namespace_admission_consumed_row_deletion"
+      "gunbc.rung_drop namespace_admission_consumed_row_deletion",
+      "gunbc.rung_drop dashboard_merge_ready_semantic_admissibility",
+      "gunbc.rung_drop floor_cut_behavioural_regression_differential",
+      "gunbc.rung_drop floor_cut_receipt_discriminating_arms",
+      "gunbc.rung_drop floor_cut_regen_second_generation_agreement"
     ]
   },
   next_rung_trigger: "EVERY row in gunbc.rung_drop rung_drop_roster carries TypedDeclaration -- its previous rung, temporary rung, reason, bounded population and restoration trigger readable as data and not as a paragraph -- with each split reviewed as its own readable diff against the paragraph it replaces, at which point LegacyProseIdentity and the AuthoredProse arm are both deleted and the class is structurally impossible rather than empty"
 }
 
+// ONE EXPRESSION, TWO EVALUATORS -- AND WHY THIS IS A STALL RATHER THAN A DROP, which is the whole
+// reason it is in this carrier. Nothing ever required this comparison, so no rung was lowered and
+// there is no previous rung to restore; a `RungDrop` row would make the declared-drop ledger report
+// a newly discovered gap as a regression, which is the rung inflation section 4b(1) forbids applied
+// to the compiler's own self-description. It was drafted as a drop on gunbc#10154 and moved here
+// (codex review 59064) rather than kept with a disclaimer, because a row denying the meaning of the
+// carrier it sits in is a meaning fork, not a caveat.
+//
+// WHY IT IS NOT `gunbc.recurring_failure_mode` `realization_arms_diverge_on_whether_the_program_refuses`,
+// stated with a specimen on each side because the question a reader actually has is which row owns a
+// given specimen. The two subjects CROSS. IN THIS ROW AND NOT IN THAT ONE: .dag evaluates both
+// operands of a conjunction and emitted Rust short-circuits, so where the right operand is total the
+// two arms agree on every answer and differ only in WHAT RAN -- no refusal fires, so there is no
+// refusal divergence for that row to see and every result-comparison oracle is green through it. IN
+// THAT ROW AND NOT IN THIS ONE: a divergence between two realization arms NEITHER of which is the
+// authority, which is not an authority-versus-target relation at all. Neither contains the other.
+//
+// THE CEILING IS 2 AND NOT HIGHER BECAUSE THIS ROW OWNS DETECTION, NOT CONSTRUCTION. Making the
+// divergence unwritable -- evaluation order modeled as a property of a connective and consulted by
+// both realizations -- is that failure-mode row's trigger. This row is the executed check over
+// whatever construction does not yet cover, which is the order section 5 states, so the two coexist.
+//
+// THE POPULATION IS HONESTLY UNCOUNTABLE AND A GREP UNDERSTATES IT BY CONSTRUCTION: the interpreter
+// is the STRICTER arm, so any author who wrote the guard idiom over a refusing right operand hit the
+// refusal while authoring and rewrote it. The surviving matches are the cases that do NOT carry the
+// consequence, so a low count is not evidence the class is small.
+data authority_target_same_expression_equivalence_stall: GuaranteeStall = GuaranteeStall {
+  subject: "one expression evaluated by the .dag authority and by the emitted target is never compared by execution, so the two may agree on the returned value and differ on which subexpressions ran",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable { reason: "the affected population is every expression whose two realizations could diverge, and it is survivorship-filtered: the interpreter is the stricter arm, so sites where the divergence carried a consequence were rewritten while authoring and only the harmless matches survive to be grepped" },
+  next_rung_trigger: "a lane that runs ONE expression through BOTH realizations and refuses a divergence, sufficient for an emission differing from its authority in value OR in what it evaluates being caught, demonstrated by a red on a fixture where the two agree on the returned value and differ on which subexpressions ran; the fixture is already executed and dated on gunbc#10139, so what is owed is enrolment and not a harness, and enrolling behavioral_differential discharges the seed-Rust versus emitted-Rust axis ONLY and does not touch this row"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  authority_target_same_expression_equivalence_stall,
   runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
