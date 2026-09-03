@@ -32,6 +32,11 @@ import v2.std.text { String }
 // BLOCKED; the blocker is named below. It is not retired by this file and no rung drop is retired
 // by it either.
 //
+// THE OBLIGATION HAS A CARRIER SO IT IS NOT AN UNTRACKED STALL (DESIGN section 4b(2)): work item
+// node://adhoc-ac804155-cdd, "Give v2.std.fn_index fn_arrow_decl_facts_live a caller-named subject".
+// A withdrawn clause described only in a merged PR body is a sentence in a squashed commit that
+// nobody greps, which is how a conjunctive brief silently becomes a completed one.
+//
 // WHY IT CANNOT STAND TODAY. Measured on required run 33709585360 (required_floor_claim_cost.tsv,
 // 3523 rows): the live row cost 473/481/561ms across three samples of a byte-identical head and was
 // the single most expensive subject on the floor, #1 of 3523. The operator has since regrounded the
