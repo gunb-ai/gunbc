@@ -15,6 +15,12 @@ import gunbc.spark.serving_observation_transaction {
 }
 import gunbc.spark.serving_observe { SparkServingHostObservation }
 import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.spark.serving_convergence_withholding {
+  SparkServingConvergenceWithholding,
+  spark_serving_withheld_hosts,
+  spark_serving_host_is_withheld_in,
+  spark_serving_withholding_cause_in,
+}
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -644,6 +650,7 @@ fn spark_serving_role_scoped_desired_members(
 ) -> SparkServingRoleScopedDesired {
   spark_serving_role_scoped_desired_members_in(
     assignments: spark_cell_role_assignments,
+    withheld: spark_serving_withheld_hosts,
     occurrence: occurrence,
     serving_release: serving_release)
 }
@@ -652,9 +659,15 @@ fn spark_serving_role_scoped_desired_members(
 // which hosts currently hold which role -- see gunbc.spark.cell_role spark_cell_role_in.
 fn spark_serving_role_scoped_desired_members_in(
   assignments: List<SparkCellRoleAssignment>,
+  withheld: List<SparkServingConvergenceWithholding>,
   occurrence: SparkServingOccurrence,
   serving_release: SparkServingRelease,
 ) -> SparkServingRoleScopedDesired {
+  if spark_serving_host_is_withheld_in(withheld: withheld, host: occurrence.host) {
+    SparkServingRoleScopedDesiredRefused {
+      cause: spark_serving_withholding_cause_in(withheld: withheld, host: occurrence.host),
+    }
+  } else {
   match spark_cell_role_in(assignments: assignments, host: occurrence.host) {
     SparkCellRoleAbsent =>
       SparkServingRoleScopedDesiredRefused {
@@ -686,6 +699,7 @@ fn spark_serving_role_scoped_desired_members_in(
             ),
           }
       }
+  }
   }
 }
 

@@ -1,0 +1,160 @@
+module extdeps.ssh.openssh_port_forwarding
+
+import std.types { String, NonEmptyStr, Bool }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.network.endpoint { SocketAddress, NetworkHost, render_network_host }
+import extdeps.access.posix { PosixLoginName }
+
+data openssh_forwarding_client_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/ssh.1"
+  }
+}
+
+data openssh_forwarding_server_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/sshd_config.5#AllowTcpForwarding"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ssh.openssh_port_forwarding",
+      decl_name: "ssh_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: openssh_forwarding_client_authority,
+  further_citations: [openssh_forwarding_server_authority]
+}
+
+// OPENSSH'S PORT-FORWARDING SURFACE, WHICH IS A DIFFERENT CONTRACT FROM ITS CLIENT UTILITIES and
+// therefore its own module beside extdeps.ssh.openssh_client_commands. Those are stateless argv
+// builders whose whole effect is their output; a forward is a LIVE PROCESS holding a listener,
+// with a lifetime, and ssh(1) and sshd_config(5) make two separate promises about it -- the client
+// asks, the SERVER decides. Modeling them as one row would lose exactly the fact that makes this
+// interesting.
+//
+// PATH-resolved program name for the reason extdeps.exec.command records once at
+// program_spelling_is_an_observation_claim: this repository has made no filesystem observation of
+// the host the command runs on, and an absolute path would be a claim about one.
+data ssh_program: NonEmptyStr = "ssh"
+
+// THE TWO CLIENT-SIDE FORWARD SHAPES THIS REPOSITORY USES. -L binds a listener on the CLIENT and
+// carries each connection to one fixed target reached from the server; -R binds a listener on the
+// SERVER and carries connections back to a target reached from the client. They are not
+// interchangeable and the direction is the whole content: the Spark route needs BOTH, because the
+// renderer cannot reach the relay directly and the session that can reach both is neither.
+type ForwardDirection
+  = LocalForward
+  | RemoteForward
+
+// THE SERVER DECIDES, AND WHAT IT DECIDES IS NARROWER THAN "THIS HOST SUPPORTS FORWARDING".
+//
+// sshd_config's AllowTcpForwarding governs whether a -L or -R request is honoured; when it is
+// "no" the daemon answers "administratively prohibited" and the client's flags are irrelevant. But
+// the answer is not a property of the HOST. It is the outcome of one request, and sshd can differ
+// by authenticated principal (Match blocks), by direction (AllowTcpForwarding accepts "local" and
+// "remote" separately), and by target (PermitOpen restricts which host:port a forward may reach).
+//
+// So this repository does not model "pi1 permits forwarding". It models "this principal, asking
+// for this direction, toward this target, on this relay, was admitted" -- which is the same
+// correction that srv2 and srv3 forced on renderer capability, where the wrong login made a
+// capable host look incapable. A host-grain permission would let one measurement under one
+// principal license a different principal's request, and the failure would appear at the far end
+// as an unreachable endpoint.
+//
+// AdmissionUnobserved is the honest third state and not a synonym for prohibited: a request nobody
+// has made is not a request that was refused, and collapsing them would report an unmeasured relay
+// as a refusing one -- a wrong answer wearing conservative clothes.
+//
+// THE REPOSITORY ALREADY HOLDS A MEASURED PROHIBITION. gunbc.fleet_reach records srv2 refusing TCP
+// forwarding, which is why the srv3 ProxyJump reach realizes by NESTED EXEC rather than -J. That is
+// the counter-example that makes asking mandatory.
+// WHO ASKED, DECOMPOSED RATHER THAN LEFT AS A STRING. The subject's principal was a bare
+// NonEmptyStr, which is the anemic leaf §2 names: it hid a distinction sshd itself makes. An
+// ordinary `ssh user@host` authenticates as a POSIX login on the server, and that login is
+// already modeled -- extdeps.access.posix PosixLoginName -- so writing it as a fresh string was a
+// second representation of an existing concept.
+//
+// BUT IT CANNOT SIMPLY BE PosixLoginName EITHER, and that is why this is a coproduct rather than a
+// tightened field. OpenSSH certificate authentication carries a PRINCIPALS list whose members are
+// not POSIX logins and need not name any account on the server; sshd matches them and then maps to
+// a login separately. Collapsing the two would make a certificate principal indistinguishable from
+// a username, which is exactly the fork that lets one measurement license the wrong request.
+//
+// Everything this repository has measured is the login arm. The certificate arm exists so that the
+// day a forward is admitted under a certificate, the model can say so instead of inventing a
+// username that was never presented.
+type SshAuthenticatedPrincipal
+  = SshLoginPrincipal { login: PosixLoginName }
+  | SshCertificatePrincipal { principal: NonEmptyStr }
+
+type ForwardingAdmissionSubject {
+  relay: NetworkHost
+  principal: SshAuthenticatedPrincipal
+  direction: ForwardDirection
+  target: SocketAddress
+}
+
+type ForwardingAdmission
+  = ForwardingAdmitted { subject: ForwardingAdmissionSubject }
+  | ForwardingAdministrativelyProhibited { subject: ForwardingAdmissionSubject }
+  | ForwardingAdmissionUnobserved { subject: ForwardingAdmissionSubject }
+
+// listener is where the socket appears; target is what each accepted connection is joined to, and
+// the two are resolved on OPPOSITE SIDES of the connection. Keeping them as one type with a
+// direction rather than two types is deliberate: every consumer needs both endpoints, and the
+// direction is what decides which side resolves which.
+type PortForwardSpec {
+  direction: ForwardDirection
+  listener: SocketAddress
+  target: SocketAddress
+}
+
+// -o ExitOnForwardFailure=yes IS NOT AN OPTIONAL FLOURISH and this builder does not offer it as a
+// choice. Without it, ssh(1) reports a failure to bind the listener as a WARNING and stays
+// connected, so the client exits zero, the tunnel does not exist, and the next request through it
+// fails somewhere else entirely -- a silent widen at the transport layer. With it, the failure to
+// establish is the command's own failure, which is the fail-closed arm.
+//
+// This was not reasoned from the manual: an attempt that re-used an occupied port was observed to
+// print "bind: Address already in use" and "Could not request local forwarding", and the caller
+// that had NOT set this option would have carried on believing it held a tunnel.
+data exit_on_forward_failure_option: NonEmptyStr = "ExitOnForwardFailure=yes"
+
+data batch_mode_option: NonEmptyStr = "BatchMode=yes"
+
+fn forward_flag(direction: ForwardDirection) -> NonEmptyStr {
+  match direction {
+    LocalForward => "-L"
+    RemoteForward => "-R"
+  }
+}
+
+// The spelling ssh(1) accepts for a forward is listener:target-host:target-port. It is built here,
+// once, rather than at each call site, because a forward spelled by hand is a security tool's
+// argument list living beside the code that reads its output -- the objection the sibling module
+// already records against hand-spelled ssh flags.
+fn render_forward_argument(spec: PortForwardSpec) -> NonEmptyStr? {
+  match render_network_host(host: spec.listener.host) {
+    Absent => none
+    Present { value: l } =>
+      match render_network_host(host: spec.target.host) {
+        Absent => none
+        Present { value: t } =>
+          Present {
+            value: concat(
+              concat(concat(l as String, ":"), concat(spec.listener.port as String, ":")),
+              concat(concat(t as String, ":"), spec.target.port as String)
+            ) as NonEmptyStr
+          }
+      }
+  }
+}

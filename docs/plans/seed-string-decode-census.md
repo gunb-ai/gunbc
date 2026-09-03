@@ -7,6 +7,15 @@ NO COMPILE-TIME LINK to the decoder that depends on it. gunbc#9975 discovered th
 migration renamed what `local_repo_wet_schedule` reads. This document reports the population, the
 mechanism, and the §4b ceiling. It repairs nothing and enrols nothing.
 
+> **SCOPE, BEFORE ANY NUMBER BELOW.** Every count in this document was discovered by MATCHING A
+> SPELLING, and the population it ranges over is defined by an ABSENCE — decode sites with no
+> compile-time link. A search cannot enumerate an absence: a site written in a spelling the search did
+> not anticipate is indistinguishable from a site that does not exist. **Every number here is an
+> ESTIMATE WITH NO KNOWN SIGN.** Re-derivation with a parser moved P4 by +68 (42 → 110) and moved P7
+> in BOTH directions at once (`--function` 35 → 30, `--entry` 6 → 8): a line-keyed instrument misses
+> what formatting separates and over-claims what proximity suggests. Per-primitive status — measured,
+> or unmeasured — is in the table's own column.
+
 **What this document turned out to be.** It began as a census of a seed defect. The P6 incident below
 — the class reproducing in a different language, against a different file, within the hour, on the
 author repairing it — shows that it is not seam-specific: the class needs only a substitution whose
@@ -40,15 +49,15 @@ were missed: every earlier sweep was keyed on the interpreter surface, so a name
 by any other route was outside the search by construction. The primitives are grouped by the ROUTE a
 name takes, not by a shared implementation.
 
-| # | primitive | shape | sites (hand `.rs`) | distinct names |
+| # | primitive | shape | sites (hand `.rs`) | how counted |
 |---|---|---|---|---|
-| P1 | `ctx.sym_eq(sym, "Name")` | type/variant name test | 87 | 79 |
-| P2 | `ctx.field(fields, "name")` | field lookup by literal | 103 | 62 |
-| P3 | `ctx.resolve(sym).as_str()` matched against string-literal arms | rendered-name dispatch | 61 | — |
-| P4 | `run_in_context(ctx, "entry_fn", …)` | call-by-name into the authority | 42 literal (of 142 total; the other 100 take the name from a `.dag`-supplied roster and are NOT exposed) | 17 |
-| P5 | file-local wrappers (`field_str`, `field_value`, `field_list`, `variant_field`, …) over P1–P3 | indirection layer | 36 | — |
-| P6 | `str::replace` rewriting a live-HEAD `.dag` file's own text | spelling-keyed EDIT, not lookup | 5 (3 + 2, in 2 producer fns reached from 6 call sites) | — |
-| P7 | subprocess ARGV: `--entry <path>` / `--function <name>` | call-by-name through a second door | 35 `--function`, 6 literal `--entry` | 11 |
+| P1 | `ctx.sym_eq(sym, "Name")` | type/variant name test | 87 (79 distinct names) | **argument parser — gap measured, 0** |
+| P2 | `ctx.field(fields, "name")` | field lookup by literal | 110 (62 distinct names) | **argument parser — gap measured, +7 over the line regex** |
+| P3 | `ctx.resolve(sym).as_str()` matched against string-literal arms | rendered-name dispatch | 61 | line regex — LOWER BOUND, gap unmeasured (match arms rarely wrap, so the gap is likely small; that is a guess, not a measurement) |
+| P4 | `run_in_context(ctx, "entry_fn", …)` | call-by-name into the authority | **110 literal, of 135 call sites**; the other 27 are enumerated one-by-one below | **argument parser — gap measured, +68** |
+| P5 | file-local wrappers (`field_str`, `field_value`, `field_list`, `variant_field`) over P1–P3 | indirection layer | 29 over those four names | argument parser for those four names; the WRAPPER SET itself is a lower bound — wrappers were found by naming convention, so a wrapper named otherwise is invisible |
+| P6 | `str::replace` rewriting a live-HEAD `.dag` file's own text | spelling-keyed EDIT, not lookup | 5 (3 + 2, in 2 producer fns reached from 6 call sites) | read exhaustively in 1 file — complete FOR THAT FILE; `str::replace` over `.dag` text elsewhere is unswept |
+| P7 | subprocess ARGV: `--entry <path>` / `--function <name>` | call-by-name through a second door | **30 spelling-keyed `--function` (12 distinct), 8 spelling-keyed `--entry` (7 distinct)** — see the re-derivation below | **token scanner — gap measured, and it ran in BOTH directions**; the assembled-argv blind spot is closed by mechanism, not by a zero |
 
 **The set is SEVEN KNOWN, NOT PROVABLY CLOSED**, and the method matters more than the number.
 
@@ -110,6 +119,97 @@ substring-matched). I looked for all three:
 
 So the name-keyed primitives are the whole live population, and P3/P5 are exactly what a grep written
 from the #9975 specimen (`sym_eq`) would have missed: 97 further sites in 9 files.
+
+## The finding: a safety claim asserted BY SUBTRACTION over a population nobody enumerated
+
+The count correction below is the receipt. **This is the finding.**
+
+The first version of this census's P4 row read:
+
+> 42 literal (of 142 total; **the other 100 take the name from a `.dag`-supplied roster and are NOT
+> exposed**)
+
+That bolded clause is the sentence that says most of the surface is fine, and it was reached by
+arithmetic: 142 minus 42. **The 100 was never a set.** Nobody enumerated it, nobody inspected a
+member, and no property of any member was ever checked — yet it was handed an exculpatory property
+and it carried the weight of the whole primitive's safety.
+
+Both of its operands were also wrong. 142 was a raw textual grep that counted the `pub fn
+run_in_context` definitions and doc-comment mentions; the call-site count is 135. And 42 came from a
+regex requiring the literal on the same LINE as the callee, which missed 68 wrapped calls. So the
+subtraction produced a phantom population of 100 where the real complement is 27.
+
+**Why it passed.** A subtraction over an unenumerated complement *reads as arithmetic rather than as a
+claim.* It has no verb like "I checked" to interrogate, it inherits the authority of the two counts
+beside it, and both of those counts looked like measurements. It passed the author, it passed review,
+and it passed the manager who commissioned the census. Nothing in the sentence's shape invites the
+question "which 100?".
+
+**The rule.** A complement is not evidence. If a population is small enough to matter to a safety
+claim, it is small enough to enumerate — and if it cannot be enumerated, the honest disposition is
+*undetermined*, never *not exposed*.
+
+## The 27 non-literal P4 sites, enumerated
+
+Enumerated rather than subtracted, one row each, because replacing a subtraction over 100 with a
+subtraction over 27 would rebuild the same defect at a fifth of the scale.
+
+| site | second argument | disposition |
+|---|---|---|
+| `cli_run.rs:31408` | `CI_FLOOR_COMMIT_WITNESS_SCHEDULE_FN` | **RustLiteral** — a Rust `const` |
+| `cli_run.rs:21376` | `basis_constructor` | **RustLiteral one hop** — `let basis_constructor = match kind { … }` selecting between Rust literals |
+| `cli_run/witness_gates.rs:494` | `basis_constructor` | **RustLiteral one hop** — same value, passed in |
+| `cli_run.rs:21405` | `constructor` | **RustLiteral one hop** — `match` arms including `"witness_cost_seed_timed_out_event"` |
+| `cli_run.rs:4249` | `fn_name` | HelperParameter |
+| `cli_run.rs:17354` | `function` | HelperParameter (`run_witness_verdict_diagnostic`) |
+| `cli_run.rs:17460` | `fn_name` | HelperParameter (`eval_census_string_fn`) |
+| `cli_run.rs:18514` | `function` | HelperParameter (`run_value`) |
+| `cli_run.rs:23786` | `fn_name` | HelperParameter (`call_test_claim_fn_bool`) |
+| `cli_run/required_floor_runner.rs:345` | `function` | HelperParameter (`run_claim_failure_receipt`) |
+| `cli_run/required_floor_runner.rs:376` | `function` | HelperParameter |
+| `cli_run/required_floor_runner.rs:3331` | `qualified_name` | HelperParameter |
+| `pre_push.rs:110` | `function` | **HelperParameter, traced** — `eval_fn(plan, "pre_push_zero_sha_authority")`, `eval_fn(plan, "pre_push_source_roots")`: Rust literals |
+| `pre_push.rs:282` | `function` | HelperParameter (`eval_fmt_recipe`) |
+| `required_regen_host.rs:4027` | `function` | HelperParameter — a local closure `let call = \|function: &str\|` |
+| `required_regen_host.rs:7217` | `function` | HelperParameter — same shape |
+| `v1_interpreter.rs:2549`, `:2577`, `:2610` | `name` | HelperParameter, inside `#[cfg(test)]` |
+| `cli_run/required_floor_runner.rs:3013`, `:3043` | `&qualified` | **Computed** — `format!("v2.workflow.required_floor.{func}")`; the PREFIX is a Rust literal and is itself exposed |
+| `cli_run.rs:19378` | `&qualified_declaration` | **Computed** — `format!("{declaration_module}.{declaration_name}")` from `.dag`-supplied parts |
+| `cli_run.rs:19082` | `&function` | Undetermined |
+| `cli_run.rs:18659` | `projection` | Undetermined |
+| `cli_run/shared_fill.rs:542` | `&format!("fixture.tmshare.{entry}")` | **Computed over a synthetic fixture** — no live authority |
+| `v1_interpreter.rs:21175` | `&format!("fixture.{module}.total")` | **Computed over a synthetic fixture** — no live authority |
+| `v1_interpreter.rs:4864` | `entry_fn` | Not a call site — the internal delegation inside `run_in_context_with_args` |
+
+**Reading this table honestly.** *HelperParameter is not a safe disposition — it moves the question one
+stack frame up, it does not answer it.* Two were traced to Rust literals at their callers, and nothing
+suggests the others differ; but they were not traced, and a reader must not convert them to "safe".
+**Not one row in this table says "reads its name from a `.dag` roster and is therefore not exposed"** —
+the property the deleted sentence claimed for a hundred sites is claimed here for none, because it was
+never established for any.
+
+## What the spelling-to-parsing gap cost, measured
+
+Re-derived with a brace-aware parser that reads each call's actual argument list instead of matching a
+line:
+
+| primitive | line-keyed regex | argument parser | miss |
+|---|---|---|---|
+| P1 `sym_eq` | 87 | 87 | 0 |
+| P2 `ctx.field` | 103 | 110 | 7 |
+| **P4 `run_in_context`** | **42 (reported "of 142")** | **110, of 135 call sites** | **68** |
+
+**The blind spot is a function of FORMATTING, not of meaning**, which is why the miss rate is not
+uniform: a line-keyed pattern sees a call only when the literal lands on the same line as the callee,
+so the gap rises with argument count. `sym_eq(sym, "Name")` never wraps; `run_in_context_with_args(ctx,
+"name", &args, false)` is long enough that `rustfmt` breaks it at 68 sites. Those 68 are ordinary
+literal entries — `"generated_artifact_body_for_path"`, `"committed_generated_artifact_paths"`,
+`"live_read_selection_manifest_live"`, `"resolve_channel_policy"`, `"ci_batch_summary_text"` — 21 in
+`required_regen_host.rs`, 18 in `cli_run.rs`, 9 in `cli_run/required_floor_runner.rs`, the rest across
+six more files.
+
+P3, P5, P6 and P7 have NOT been re-derived this way; their status is in the primitive table's own
+column, and where the gap is unmeasured it says so rather than implying zero.
 
 ## The class reproduced on the author, inside the repair, within the hour
 
@@ -231,9 +331,14 @@ authority, which is the §3 half of the same coupling: nothing on either side ca
 
 ## P4 subject-revision attribution (second pass)
 
-The retraction above established that the join key is (name, subject revision). All 42 literal-entry
-`run_in_context` sites — the first pass said 30; a stricter re-extraction finds 42 — attributed by
-reading each caller's context construction:
+The retraction above established that the join key is (name, subject revision).
+
+> **THE 68 ARE NOW ATTRIBUTED — see "Closing the 68" below.** The table in this section covers only
+> the 42 sites the line-keyed regex found, and its conclusion stays struck, because a conclusion is
+> not rescaled onto a population it was not derived over. The 68 were answered separately and by a
+> different question.
+
+The 42 sites the first pass found, attributed by reading each caller's context construction:
 
 | subject | sites | how established | files |
 |---|---|---|---|
@@ -241,11 +346,12 @@ reading each caller's context construction:
 | **In-file synthetic source** (subject is the `r#"…"#` literal beside the call; no tree at all) | 24 | the module text and the entry name are authored together in the same expression | `bin/auth_declared_but_unwired_witness.rs` 10, `bin/interp_recorded_fixture_witness.rs` 4, `cli_run/shared_fill.rs` 4, `v1_interpreter.rs` 4, `compiler_tests.rs` 2 |
 | **Revision-addressed** (`git.Core.Show` of a merge-base ref) | 1 | `cli_run.rs:680`, the carrier-introduction bootstrap — the retracted candidate | `cli_run.rs` |
 
-**The residue is closed.** Exactly one P4 site is revision-addressed, and it is the one already
-adjudicated. The 24 synthetic sites cannot drift against any tree: their authority and their consumer
-are the same expression, so a rename edits both at once — they are not exposure, they are noise in the
-count and are removed from it. The 17 HEAD-subject sites are correctly joined against HEAD, and all 17
-resolve today.
+**~~The residue is closed.~~ STRUCK.** Of the 42 attributed sites, exactly one is revision-addressed
+and it is the one already adjudicated; the 24 synthetic sites cannot drift against any tree, since
+their authority and their consumer are the same expression; and the 17 HEAD-subject names all resolve
+today. **All three statements are about 42 of 110 sites.** The remaining 68 have not been attributed,
+so the residue is OPEN: it is not known whether any of them is revision-addressed, and no claim is
+made that they are not.
 
 P7's 35 `--function` names are all HEAD-subject and all 11 distinct names resolve today
 (`filesystem_write_keystone_holds`, `witness_write_then_read_roundtrip`,
@@ -253,8 +359,144 @@ P7's 35 `--function` names are all HEAD-subject and all 11 distinct names resolv
 `http_pilot_rest_keystone_holds`, `w_site_label_is_the_module_path_as_package`, and four others), each
 in a `dag/test/claim/*.dag` entry named as a literal `--entry` path beside it.
 
-So the P4/P7 call-by-name axis carries **52 live HEAD-subject sites, 0 stale**, and the census's
-open question moves entirely to the shape axis below.
+So of the P4/P7 call-by-name axis, this section attributes 52 sites (HEAD-subject, 0 stale); the
+remaining 68 are answered in the next section by a different question, and none is revision-addressed.
+
+## Closing the 68: the question was re-shaped twice, and the first re-shaping was still a spelling
+
+The 68 unattributed P4 sites are closed. The method took two attempts, and the failed first attempt is
+kept because it is the same defect this document is about, committed for the third time, in the
+paragraph that claimed to be immune to it.
+
+**First re-shaping — right idea, wrong population.** A call site has no subject revision; the
+`InterpContext` it runs in does, and many sites share one context. So the question became *which
+context constructions are built from revision-addressed source text?* — and the population was given
+as "**86** `InterpContext::new` / `make_eval_context` constructions". **That population was itself
+discovered by grepping two constructor NAMES.** It is a spelling wearing a mechanism's clothes, and
+review 59276 refuted it with a positive hit: contexts are also constructed through
+`InterpContext::with_runtime_options` and `InterpContext::over_scope_indexes`. The 86 was a lower
+bound presented as a complete population — the exact move retracted twice above.
+
+**The remedy the review proposed is the weaker of the two available**, and this is the one place this
+correction does not simply take the reviewer's instruction. "Expand the census to all constructors"
+re-keys on a longer list of names, so a constructor added tomorrow escapes it again. The stable fix is
+to anchor on the CONSTRUCTION ITSELF.
+
+**Second re-shaping — anchor on the struct literals, of which there are three.**
+
+| carrier | struct-literal construction sites | consequence |
+|---|---|---|
+| `InterpContext` | **1** — inside `over_scope_indexes`, *derived by reading the constructor chain, not by grepping the brace: `InterpContext *{` returns 20 hits of which 19 are `fn … -> InterpContext {`, since a return type followed by its opening brace is textually identical to a construction* | `new`, `with_fixture_store` and `with_runtime_options` all funnel into it; so does every future constructor, because there is nowhere else to build one |
+| `PreparedScopeIndexes` (its only content-bearing input) | **1** — inside `build_scope_indexes_with_module_order`, which takes `graph: &ResolvedGraph` | every context's content therefore comes from a `ResolvedGraph` |
+| `ResolvedGraph` | 21, of which 13 are empty test graphs, 4 are the compile path, and **4 are the resolved-graph cache** | the cache is the only one whose bytes are read from disk rather than freshly compiled |
+
+**The cache is not a third route, and it is refused into that shape rather than assumed into it.** Its
+key is `subject_digest_for_closure(sources: &[Rc<SourceFile>])` — derived from the sources themselves —
+and a header whose stored subject differs from `expected_subject` is REJECTED
+(`CacheRejectReason::BackendKeyMalformed`), not served. So a cache hit is content-identical to the
+sources the caller already holds; it is a memo keyed on the subject, not an independent origin.
+
+**The closure, now anchored on constructions rather than on names.** Every context's decodable content
+reaches it through one struct literal, from one `PreparedScopeIndexes` literal, from a `ResolvedGraph`
+that is either freshly compiled from `SourceFile`s or restored from a cache keyed on those same
+`SourceFile`s. And `SourceFile`s arrive by exactly two routes:
+
+| route | how source text reaches a context | revision-addressed instances |
+|---|---|---|
+| a disk path under a `--source-root` | including `fs::write` of externally-obtained text into such a directory | **1** — the roadmap carrier-introduction overlay, already adjudicated |
+| in-memory `SourceFile { content: … }` / `single_source(…)` | | **0** |
+
+That one context's call is `cli_run.rs:680`, a single-line site counted in the original 42. **It is not
+among the 68, so none of the 68 is revision-addressed.**
+
+**ORIGIN IS IRRELEVANT, and that is the strength of the argument.** Git, a network fetch, an archive,
+synthesis — to be decoded, text must become a context's source, and every origin enters by one of the
+two routes above. A fetch composed with a write is not a third route; it is the first route with a
+different upstream.
+
+*An earlier revision bounded this with an observation instead: "no network fetch or archive extraction
+exists in this tree". That was FALSE — `v1_interpreter` carries a live `ureq` REST transport,
+dispatched by method — and it is the kind of false a reader trusts precisely because it was labelled an
+observation, and observations read as checked. It was deleted rather than repaired: it was a sentence
+that can rot, guarding a claim that cannot. Recorded rather than silently removed, because the weaker
+sentence was written to bound the stronger one and ended up being the only part that could be wrong.*
+
+**What remains genuinely unknown**, stated as unknown: whether any `.dag` program composes a fetch with
+a write into a directory later passed as a `--source-root`. Not found, not exhaustively searched. It
+does not affect the closure — that composition is the first route — but it matters to anyone reasoning
+about where a context's bytes originate.
+
+**Why the HEAD-vs-synthetic split within the 68 was NOT enumerated.** It changes no answer: both are
+HEAD-time, both are typed by the trigger identically, neither can drift against a revision. It would be
+the same completeness-priced-as-completeness declined for the 14 `HelperParameter` rows.
+
+## P7 re-derived: the line-keyed instrument's error was not one-signed
+
+P4's re-derivation found 68 sites a line-keyed regex had missed, and the obvious generalisation is
+"line regexes undercount." **That generalisation is wrong, and P7 is the counterexample.** Re-derived
+with a token scanner that reads the next token after each flag literal — skipping whitespace, commas
+and line comments, so wrapping is irrelevant:
+
+| flag | occurrences | literal next token | literal inside the adjacent expression | computed | spelling-keyed total | census had said |
+|---|---|---|---|---|---|---|
+| `--function` | 35 | 29 | 1 | 5 | **30** (12 distinct) | 35 (11 distinct) — **over** by 5 |
+| `--entry` | 41 | 3 | 5 | 33 | **8** (7 distinct) | 6 — **under** by 2 |
+
+**Over-counted on one flag, under-counted on the other, from the same instrument in the same pass.**
+`--function` was reported as 35 because 35 is the count of the FLAG, and every flag occurrence was
+assumed to carry a name; 5 of them take their name from a variable. `--entry` was reported as 6
+because the old query asked whether a `.dag` literal appeared on the following line, which conflates
+*adjacency* with *containment*: `ws.join("dag/test/claim/x.dag")` is not a literal next token but it
+does carry a spelling, and 5 such sites were missed while 3 truly-adjacent ones were counted.
+
+So the correct lesson from P4 is narrower than it looked: **a line-keyed instrument's error has no
+sign.** It misses what formatting separates and over-claims what proximity suggests, and which one
+dominates depends on the syntax at hand, not on the instrument.
+
+**The assembled-argv blind spot is closed by MECHANISM, not by a zero — and the closure is stated as
+ENTRY, not as origin.** The previous entry said argv built as a `Vec<String>` elsewhere would be
+invisible "in principle". That is true of the scanner, so the question was re-shaped the way the 68
+were.
+
+*A first attempt at that re-shaping was incomplete and is recorded rather than quietly replaced.* It
+argued that the flag string must be either a LITERAL (all 35 occurrences scanned above) or
+SYNTHESIZED (and there is no synthesis — the only `format!("--…` in the hand `.rs` set builds an error
+message). **That disjunction has a third arm: a string can be READ rather than written or built** —
+from an environment variable, a config file, a JSON or TOML payload, a recorded fixture, or argv
+forwarded into the process. Reading is neither a literal nor a synthesis and it leaves no `format!` to
+find, so the two-armed version was a closure with a hole in it.
+
+**The correct form is the one this document already uses one section earlier: ENTRY, NOT ORIGIN.**
+Every argv that reaches a subprocess is CONSTRUCTED at one of exactly two sites, and both are wholly
+inside the scanned population:
+
+| spawn site | argv construction | forwarded input |
+|---|---|---|
+| `pre_push.rs` `run_claim_batch` | `.arg()` chain: `--entry <entry> --function <function>`, then `for arg in suffix_args` | ONE caller, passing the literal array `&["--claim-run"]`; `entry` and `function` come from `ActiveGate::DocWitness` read out of the `.dag` plan |
+| `bin/interp_recorded_fixture_witness.rs` `run_claim_batch(args: &[&str])` | the caller's array, verbatim | 30 call sites, every one a literal `&[…]` array |
+
+So a value's ORIGIN — literal, synthesized, or read — does not matter. To become an argument it must be
+interpolated at one of those two constructions, where it appears as a non-literal and is classified as
+*computed* above. A zero from a grep would have established nothing; this establishes it, and it
+establishes it without needing to enumerate the ways a string can come into existence.
+
+**Two facts of different kinds hold this up, and they must not be read as one.** The ENTRY argument is
+STRUCTURAL: a value becomes an argument only by being interpolated at a construction, so it is visible
+there as a non-literal whatever anyone does tomorrow. The POPULATION reading is CONTINGENT: that
+`suffix_args` has one caller passing `&["--claim-run"]`, and that all 30 call sites of the other
+`run_claim_batch` pass literal arrays, is true of this tree TODAY. **A second caller forwarding a read
+string breaks the second half silently** — no test fails, no gate fires, and the sentence above stays
+green while it is false. Nothing enforces it. Stating the two in one breath would make a rung-1 fact
+wear a rung-4 argument's clothes, which is this document's own recurring defect in another costume;
+the typed-decoder trigger is what eventually makes the contingent half unnecessary.
+
+**The computed sites are not hidden spellings, and their origins are named rather than assumed.** The
+33 computed `--entry` values and 3 of the 5 computed `--function` values are the P6 scratch-copy paths
+built by `unique_fs_witness_entry` / `closure_scale_witness_entry`, whose `.dag` spellings are already
+counted under P6. `pre_push.rs`'s `entry` and `function` come from the `.dag` plan itself
+(`ActiveGate::DocWitness { entry, function }`, read out of `pre_push_active_kinds`) — **authority-supplied,
+so not a Rust spelling and not exposure.** That is the disposition the retracted P4 sentence claimed
+for a hundred sites without checking; here it is claimed for four, by reading them.
 
 ## The identifier-preserving shape axis — a real, unmeasured sibling
 
@@ -313,6 +555,21 @@ type, variant or field name survives in `src/v1/stage0/src`.* Partial emission d
 class: any site left on a spelling keeps its own exposure, so the trigger is stated over the
 population, not over one module.
 
+**The trigger needs an explicit version-boundary arm, and without it it is UNSATISFIABLE.** A
+generated decoder binds the type as it exists at HEAD. A site that decodes REVISION-ADDRESSED source
+text must read the shape that revision had, so typing it against HEAD is not safer — it is wrong, and
+it is wrong in the direction that produces a confident answer about the wrong schema. One such site
+exists (the roadmap carrier-introduction bootstrap) and the closure above establishes it is the only
+one, but one is enough: as originally worded, "no hand-written spelling survives" cannot be satisfied
+there, because there is no HEAD type to bind to.
+
+So the trigger carries a second arm: *for every revision-addressed decode, either a decoder bound to
+the revision's own schema, or a TYPED REFUSAL at the version boundary — never a HEAD-typed decoder
+applied to older text.* This matters more than its one-site population suggests, because §4b(3) makes
+the trigger the whole check: **an unsatisfiable trigger is worse than a weak one.** It can never be
+retired, so the class parks below its ceiling permanently behind a row that still reads live — which
+is rung inflation arriving by a different door than the usual one.
+
 **What is explicitly NOT the answer.** A lens or test that greps the seed for spellings and joins
 them to `.dag` declarations — i.e. an executable version of this document — is validation standing
 where construction is available, and it would additionally inherit the bare-name ambiguity noted
@@ -326,6 +583,18 @@ deferred, and then as a declared §4b(3) row, not as the climb.
   what separates a spelling that is stale from a spelling that is merely unexercised.
 - **The identifier-preserving shape axis, in full.** Named above, deliberately not measured in this
   pass. It is the largest single gap between this document and a closed answer.
+- **The transitive origin of the 16 `HelperParameter` rows** in the P4 enumeration. Two were traced;
+  the rest move the question one frame up and are not answered. DELIBERATELY not closed: the typed
+  decoder types literal-origin and `.dag`-origin names identically, so the distinction dissolves when
+  the trigger lands, and completing the inventory of a population scheduled to stop existing is
+  completeness priced as completeness.
+- **The HEAD-vs-synthetic split within the 68**, for the same reason — it changes no answer.
+- Whether any `.dag` program composes a fetch (the live `ureq` REST transport in `v1_interpreter`)
+  with a write into a directory later passed as a `--source-root`. Not found, not exhaustively
+  searched, and stated as unknown. It does not affect the closure — that composition is route A with a
+  different upstream — but it matters to anyone reasoning about where a context's bytes originate.
+- **P3 and P5 re-derivation.** P1, P2, P4 and P7 are done; P3 and P5 carry line-keyed counts and are
+  floors with an unmeasured gap — and after P7, "floor" is the wrong word: the gap has no known sign.
 - P6's fail-open arm is described but not sized beyond its 5 substitutions in 2 producers;
   `str::replace` against `.dag` text elsewhere in the tree was not swept. Given the reframing above, the wider sweep is the
   substitution-whose-failure-arm-widens class, not the `.dag`-text subset.

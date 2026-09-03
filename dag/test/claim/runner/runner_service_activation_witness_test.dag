@@ -61,19 +61,8 @@ import gunbc.fleet_converge_plan {
   FullyApplied,
   PartiallyApplied,
 }
-import gunbc.guarantee_rung_drop {
-  GuaranteeStall,
-  AwaitsOneGrounding,
-  ClimbableButUnbuilt,
-  CannotClimbFurther,
-  Mitigatable,
-  OutsideTheLadder,
-  StructurallyGuaranteed,
-  BoundedPopulation,
-  UncountedNotEnumerable,
-  stall_is_below_ceiling,
-  stall_is_permanent,
-}
+import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 
 // THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried
@@ -386,7 +375,11 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
     ClimbableButUnbuilt => false
   }
     && stall_is_below_ceiling(s: runner_activation_reachability_stall)
-    && !stall_is_permanent(s: runner_activation_reachability_stall)
+    && match runner_activation_reachability_stall.blocker {
+      CannotClimbFurther { why: _ } => false
+      AwaitsOneGrounding { grounding: _ } => true
+      ClimbableButUnbuilt => true
+    }
 }
 
 // THE SAFETY ROW STATES A MITIGATABLE RUNG, AND THIS IS THE ROW THAT REDS IF SOMEBODY INFLATES IT.
@@ -403,7 +396,11 @@ test fn the_safety_row_does_not_claim_the_host_boundary_is_structural() -> Bool 
     _ => false
   }
     && stall_is_below_ceiling(s: runner_activation_safety_stall)
-    && !stall_is_permanent(s: runner_activation_safety_stall)
+    && match runner_activation_safety_stall.blocker {
+      CannotClimbFurther { why: _ } => false
+      AwaitsOneGrounding { grounding: _ } => true
+      ClimbableButUnbuilt => true
+    }
     && string_contains(s: runner_activation_safety_stall.next_rung_trigger, pattern: "root-owned")
 }
 

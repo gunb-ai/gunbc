@@ -3,6 +3,7 @@ module extdeps.publication
 import std.integer { Int }
 import std.logic { Bool }
 import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
 
 // PURE PUBLICATION VOCABULARY — no upstream document subject of its own (same class as
 // extdeps.external_authority and extdeps.uri). SpecificationDocumentDate and
@@ -59,6 +60,51 @@ type DocumentPublicationStatus
 // marking. Neither answers whether gunbc may carry the document's facts — that
 // is upstream_fact_carriage in gunbc.upstream_document_carriage, and keeping
 // these two total over the coproduct is what lets that rule stay one match.
+// WHICH REVISION OF A HELD SPECIFICATION WE ACTUALLY HOLD, relative to what the publisher serves
+// now. Re-homed here from extdeps.cpu.ampere_altra_platform_hw_design.subject, where it was
+// authored first: the type names no product, so a SECOND document needing it would otherwise have
+// to import the platform specification's own subject module to describe its datasheet, which is a
+// layer inversion. Its home is the shared publication vocabulary that already owns
+// SpecificationDocumentDate and DocumentPublicationStatus.
+//
+// THE THIRD ARM IS NOT A REFINEMENT OF THE SECOND, it is a different fact. "A newer revision is
+// listed in an index but the cited locator still serves ours" and "a newer revision is publicly
+// served right now at a locator we fetched" carry different obligations: the first is a standing
+// we may hold indefinitely because there is nothing to read, the second is a live citation debt.
+// Collapsing them would let a retrievable supersession hide behind the unretrieved arm's excuse.
+//
+// THE SERVED ARM POINTS AT THE SUCCESSOR, it does not describe where the successor lives. An
+// earlier revision carried the locator as a bare NonEmptyStr, which admits any prose at all and
+// stands up a second, untyped citation scheme beside the ExternalAuthority system this file
+// already owns. A retrieved document has an authority; that is the whole point of having retrieved
+// it.
+// NO is_current PREDICATE LIVES HERE, and its absence is the point. An earlier revision carried
+// supersession_standing_is_current, which matched this coproduct into true for exactly ONE arm.
+// That is a variant test wearing a predicate's name, and it is the shape the 2026-07-12 predicate
+// dissolution deleted -- std.execution_mode records the criterion: execution_mode_is_wet_dispatch
+// SURVIVED that cut because it is a two-variant semantic partition whose host branches on exactly
+// that partition at two dispatch sites, not because predicates over coproducts are permitted.
+// This one grouped no partition and had no production consumer at all; only witnesses read it.
+// Consumers match the coproduct directly, which is what the exhaustive match already guarantees:
+// adding a fourth arm must red every reader, and a predicate collapsing three arms to a Bool is
+// precisely what would let a new arm slip past them.
+type HeldSpecificationSupersessionStanding
+  = HeldRevisionIsCurrentPublicCopy
+  | NewerRevisionExistsUnretrieved {
+      newer_version_label: NonEmptyStr,
+      newer_publication_date: SpecificationDocumentDate,
+      index_authority: ExternalAuthority,
+      held_version_label: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+  | NewerRevisionPubliclyServed {
+      newer_version_label: NonEmptyStr,
+      newer_authority: ExternalAuthority,
+      index_authority: ExternalAuthority,
+      held_version_label: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+
 fn publication_status_is_publicly_published(status: DocumentPublicationStatus) -> Bool {
   match status {
     PubliclyPublishedUnderOpenLicense { license: _ } => true
