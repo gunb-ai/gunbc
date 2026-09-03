@@ -9146,6 +9146,7 @@ fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdge
 /// `BuiltByPreparation` is the intended state — trigger and owner coincide, which is what the warm
 /// buys. `AlreadyWarmOnEntry` names the site that got there first, as PROVENANCE and never as an
 /// assignment of cost: a run reporting it is reporting a defect in ordering.
+#[derive(Debug)]
 pub enum SharedBuildProvenance {
     BuiltByPreparation,
     AlreadyWarmOnEntry { triggered_by: &'static str },
@@ -9164,6 +9165,7 @@ impl SharedBuildProvenance {
     }
 }
 
+#[derive(Debug)]
 pub struct SharedBuildObservation {
     pub cpu_ms: u64,
     pub wall_ms: u64,

@@ -1293,11 +1293,33 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // The shared builds a floor run pays before any per-claim timer starts. A CLOSED population --
 // each is an artifact this repository has measured being charged to a first toucher, and the
 // list grows only when another such artifact is FOUND, never by declaration.
+//
+// THE FIFTH WAS FOUND, NOT DECLARED, AND IT WAS ALREADY RUNNING WHEN IT WAS FOUND (2026-09-03).
+// `CrossClaimPureProducerWarm` is the warm fill of the preparation-forceable rows of
+// `floor_pure_producer_share`. It satisfies this population's own membership rule exactly: the
+// work is a one-time build that WAS charged to a first toucher, which is the entire reason the
+// warm exists -- gunbc#10108 measured one such fill at 501ms against a 500ms per-claim ceiling,
+// so leaving it unforced put a shared build inside a claim's timer and over the line.
+//
+// WHAT WAS WRONG BEFORE THIS ROW, and it is the defect the row repairs rather than a note about
+// it: the runner already ran that warm and already printed `phase=pure-producer-share-warm`, but
+// this closed type had no variant for it, so the phase existed in execution and not in the model.
+// The consequence was not cosmetic. Preparation's three-axis refusal iterates the observations
+// collected for the FOUR variants above; the share warm produced no observation at all, so its
+// cost was bounded by NOTHING -- not by the per-claim ceiling, which it is deliberately outside,
+// and not by the preparation limits, which never saw it. An unbounded arm of a mechanism whose
+// stated purpose is that THE SAFETY WALL MOVES WITH THE COST.
+//
+// This is the same shape as review 55338, which found this type naming three phases while one was
+// measured, and it is the mirror image: there the model named more than execution measured, here
+// execution ran more than the model named. Both directions produce an informational wall, which is
+// why the repair is the same -- one observation per phase, one refusal over all of them.
 type FloorPreparationPhase =
     ModulePathIndexBuild
   | SharedModuleIndexBuild
   | BareReferenceEdgeIndexBuild
   | LanguagesConsumerCensusBuild
+  | CrossClaimPureProducerWarm
 
 // The terminal disposition of ONE shared preparation build. `PreparationWithinLimits` carries
 // its observations too: a phase that reports nothing is indistinguishable from a phase that did

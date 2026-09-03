@@ -3092,7 +3092,17 @@ pub(crate) fn floor_authority_frame(
 /// that fails to evaluate, and a warm whose value the store refuses each stop the line — a
 /// skip at any of these arms would leave admission empty while CI reads green, memoizing
 /// nothing (a green over a flag that never ran).
-pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Result<(), String> {
+// RETURNS ITS OBSERVATIONS RATHER THAN JUST ITS ERRORS, because the warm fills are a shared
+// preparation build and the preparation refusal is denominated over the observations its caller
+// collects. Before this, the warm ran, printed a wall figure and produced nothing the adjudicator
+// could see: it sits OUTSIDE the per-claim ceiling by construction (the deadlines are armed inside
+// `run_claim_measured`), and it was outside the preparation limits too, because those iterate a
+// vector this function never contributed to. Bounded by neither is not the same as billed to
+// preparation. One observation per warm row, measured on the same clock and RSS reads as every
+// other shared build, so all five phases go through ONE refusal.
+pub(crate) fn install_pure_producer_share(
+    prepared: &PreparedRepository,
+) -> Result<Vec<(String, SharedBuildObservation)>, String> {
     const FLOOR_PURE_PRODUCER_SHARE_MODULE: &str = "v2.workflow.floor_pure_producer_share";
     const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
     let roster_frame =
@@ -3166,6 +3176,7 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             }),
         },
     ));
+    let mut warm_observations: Vec<(String, SharedBuildObservation)> = Vec::new();
     for qualified in &warm_rows {
         let module = match qualified.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
@@ -3174,8 +3185,15 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
         // Resolution above already refused any row whose module the subject no longer
         // carries, so the frame is present; reuse it rather than re-preparing the module.
         let producer_frame = &resolution_frames[&module];
-        let warm_started = std::time::Instant::now();
-        match v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified) {
+        // `already_built` is FALSE and not a probe of the store: a rostered producer whose value
+        // is already retained reports `AlreadyPresent` through the outcome below, which is the
+        // authority for that fact. Asking the store separately here would be a second, weaker
+        // spelling of the same question, and the two could disagree.
+        let (warm_result, warm_observation) =
+            observe_shared_build(false, "floor-preparation", || {
+                v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
+            });
+        match warm_result {
             Ok(outcome) => {
                 // A NON-SERVABLE outcome means nothing is retained for later claims, so a
                 // silent decline would relocate the fill onto the first toucher: stop the
@@ -3209,10 +3227,18 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 }
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} disposition={} wall_ms={}",
+                     producer={qualified} disposition={} cpu_ms={} wall_ms={} \
+                     rss_growth_bytes={} provenance={}",
                     outcome.cause(),
-                    warm_started.elapsed().as_millis()
+                    warm_observation.cpu_ms,
+                    warm_observation.wall_ms,
+                    warm_observation.rss_growth_bytes,
+                    warm_observation.provenance.render(),
                 );
+                warm_observations.push((
+                    format!("CrossClaimPureProducerWarm/{qualified}"),
+                    warm_observation,
+                ));
             }
             Err(why) => {
                 return Err(format!(
@@ -3222,7 +3248,7 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             }
         }
     }
-    Ok(())
+    Ok(warm_observations)
 }
 
 pub(crate) fn floor_decode_module_prefix_roster(
@@ -3731,25 +3757,31 @@ pub fn run_required_floor(
     // prepared subject is drift, and the install REFUSES rather than skipping — a silent
     // skip would relocate every warm fill onto the first toucher, the exact
     // nondeterministic charge this mechanism deletes.
-    install_pure_producer_share(&prepared)?;
-    let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
-        ("ModulePathIndexBuild", module_path_index_warm),
-        ("SharedModuleIndexBuild", shared_index_warm),
+    // THE WARM OBSERVATIONS JOIN THE SAME VECTOR THE PREPARATION REFUSAL ITERATES, which is the
+    // whole of this change: the fills were already outside the per-claim ceiling and were until
+    // now outside the preparation bound as well, so a rostered producer could warm for any cost at
+    // all and stop nothing. The label carries the producer because the refusal names a phase and
+    // "which shared build" must resolve to one roster row, not to the roster.
+    let pure_producer_warms = install_pure_producer_share(&prepared)?;
+    let mut shared_build_warms: Vec<(String, SharedBuildObservation)> = vec![
+        ("ModulePathIndexBuild".to_string(), module_path_index_warm),
+        ("SharedModuleIndexBuild".to_string(), shared_index_warm),
     ];
     if let Some(warm) = lens_pool_root_warm {
-        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots", warm));
+        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots".to_string(), warm));
     }
     if let Some(warm) = languages_census_warm {
-        shared_build_warms.push(("LanguagesConsumerCensusBuild", warm));
+        shared_build_warms.push(("LanguagesConsumerCensusBuild".to_string(), warm));
     }
     shared_build_warms.push((
-        "BareReferenceEdgeIndexBuild/source-roots",
+        "BareReferenceEdgeIndexBuild/source-roots".to_string(),
         warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
     ));
     shared_build_warms.push((
-        "BareReferenceEdgeIndexBuild/witness-layer-roots",
+        "BareReferenceEdgeIndexBuild/witness-layer-roots".to_string(),
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
+    shared_build_warms.extend(pure_producer_warms);
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
@@ -7141,10 +7173,35 @@ mod pure_producer_share_tests {
              data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
              data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n",
         )]);
-        install_pure_producer_share(&prepared).expect("carried roster installs and warms");
+        let observations =
+            install_pure_producer_share(&prepared).expect("carried roster installs and warms");
         let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
         assert_eq!(overflow, 0);
         assert!(stores >= 1, "the warm must land in the store, got {stores}");
+        // THE DISCRIMINATING ASSERTION, and it is why this control is no longer only positive:
+        // the warm is a shared preparation build, and a shared build that produces no
+        // observation is bounded by nothing -- the preparation refusal is denominated over the
+        // observations collected here. Before the observation existed this function returned
+        // `()`, so this assertion could not be written at all, which is precisely the shape of
+        // the gap: the cost was real, printed, and invisible to the only wall that could stop it.
+        assert_eq!(
+            observations.len(),
+            1,
+            "one observation per warm row, got {observations:?}"
+        );
+        let (label, observed) = &observations[0];
+        assert_eq!(
+            label, "CrossClaimPureProducerWarm/v2.workflow.floor_pure_producer_share.tm_local",
+            "the label must name the ROW, since the refusal names one phase and a reader must \
+             reach one roster row from it"
+        );
+        // The three axes the preparation refusal reads. Asserting they are PRESENT rather than
+        // asserting a magnitude: a fixture's absolute cost is a property of the fixture and the
+        // runner it ran on, and a threshold copied from this tree would be the measurement-as-
+        // oracle DESIGN section 5 refuses.
+        let _: u64 = observed.cpu_ms;
+        let _: u64 = observed.wall_ms;
+        let _: u64 = observed.rss_growth_bytes;
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
