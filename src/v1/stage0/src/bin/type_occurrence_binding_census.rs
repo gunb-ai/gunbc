@@ -127,24 +127,29 @@ fn collect_dag_files(
 /// Y inputs for one module's own transport, under one declared grounding. Module paths and
 /// authored order come from the parser's index entries; exposure is delegated, unchanged, to
 /// the single exposure authority.
+/// The three input row lists one module contributes, named because the triple is the shape
+/// `OccurrenceBindingCandidateInputs` is assembled from and a bare tuple of three vectors says
+/// nothing about which is which.
+type ModuleInputRows = (
+    Vec<Rc<OccurrenceModulePathRow>>,
+    Vec<Rc<DeclarationExposureRow>>,
+    Vec<Rc<AuthoredOrderRow>>,
+);
+
 fn inputs_for_module(
     module_path: &str,
     transport: &OccurrenceTransport,
     grounding: DeclarationExposureGrounding,
-) -> (
-    Vec<Rc<OccurrenceModulePathRow>>,
-    Vec<Rc<DeclarationExposureRow>>,
-    Vec<Rc<AuthoredOrderRow>>,
-) {
+) -> ModuleInputRows {
     let mut module_paths = Vec::new();
     let mut order = Vec::new();
     for entry in transport.index.entries.iter() {
         module_paths.push(Rc::new(OccurrenceModulePathRow {
-            occurrence: entry.projection.occurrence.clone(),
+            occurrence: entry.projection.occurrence,
             module_path: module_path.to_string(),
         }));
         order.push(Rc::new(AuthoredOrderRow {
-            occurrence: entry.projection.occurrence.clone(),
+            occurrence: entry.projection.occurrence,
             ordinal: v1_compiler::std_occurrence_identity::AuthoredTokenOrdinal {
                 value: entry.projection.diagnostic_span.start,
             },
@@ -153,11 +158,11 @@ fn inputs_for_module(
     let mut exposures = Vec::new();
     for declaration in transport.declarations.iter() {
         exposures.push(Rc::new(DeclarationExposureRow {
-            occurrence: declaration.occurrence.clone(),
+            occurrence: declaration.occurrence,
             exposure: declaration_exposure_from_containment(
                 module_path.to_string(),
                 declaration.containment.clone(),
-                grounding.clone(),
+                grounding,
             ),
         }));
     }
@@ -522,7 +527,7 @@ fn main() -> ExitCode {
             all_references.push(reference.clone());
         }
         for (grounding, acc) in grounding_inputs.iter_mut() {
-            let (m, e, o) = inputs_for_module(&module_path, &transport, grounding.clone());
+            let (m, e, o) = inputs_for_module(&module_path, &transport, *grounding);
             acc.0.extend(m);
             acc.1.extend(e);
             acc.2.extend(o);
