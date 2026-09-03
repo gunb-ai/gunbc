@@ -510,6 +510,66 @@ observed difference is the printer alone.
 **Deferred as definition-only residue until each has a consumer:** `CONTRACT` (needs the generator),
 `DeploymentEnvelope` (needs the layout-comparison consumer). The design of both is pinned above.
 
+## Supply identity — RULED, and it unblocks the filament slice
+
+The open question was whether a spool is an inventory **lot** or a **PhysicalAsset instance**. Ruled:
+**one supply instance per physical spool, allocated at durable physical individuation, each retaining
+its source procurement lot.** The dependency runs one way only —
+
+```
+identity makes a later divergence attributable
+NOT: a later divergence earns the object an identity
+```
+
+so the two day-one spools are separate instances *before* either print begins, even though they came
+from one order, name one catalog product, and have no known difference. Waiting for measured
+divergence would leave the first divergence with nowhere truthful to live.
+
+Grains stay distinct rather than collapsing onto the lot: catalog product (what was sold),
+manufacturer batch (what the maker says), procurement lot (what was bought), supply instance (which
+spool fed this print), condition observation (instance x time). **One order is not one material
+batch** — `ProcurementLotIdentity` and manufacturer batch standing stay independent, since one order
+may span two production batches and two orders may share one. Moisture at print time is an
+instance-and-time observation; a drying cycle mints a new condition observation, never a new spool
+identity.
+
+RFID and operator label are both **evidence routes, not identity kinds**. They may coexist; an RFID
+read failure does not create a different spool, replacing a label does not create a different spool,
+and disagreement must refuse the attribution rather than letting either route silently win. The RFID
+UID is a machine-read manufacturer identifier, not a guaranteed globally unique spool serial, until
+something establishes that.
+
+The lot-to-spool relation must not be authored twice. The existing inventory event already relates
+installed assets to the lot whose stock moved, so day one is one install event per spool with
+`quantity: 1`. The generic rule refuses only when assets *exceed* quantity, which would admit
+`quantity 2, assets [spool_a]`; an attribution-critical supply needs the stronger local law
+`asset count == installed quantity AND the requested asset occurs exactly once`. The admitted supply
+may carry the derived source lot, and must never accept an independently authored `source_lot`
+without comparing it against the event.
+
+Catalog boundary: `PhysicalAsset` requires a catalog `DeclarationRef` while `ProcurementLot` may
+carry an unread catalog standing. Instance-per-spool must not force a fabricated exact filament
+product — where only a package description is known, keep the unresolved standing and limit the
+receipt to an end-to-end observation. Do not point a spool at the `Pla` polymer class as though a
+class were a particular commercial product.
+
+### Correction landed to the printer slice
+
+The manifest annotation said the roster is filled by **reading the serial off each machine**. That
+conflated two states the carrier already distinguishes: `PhysicalAsset.physical_serial` is optional,
+so a printer present on the bench with an unread serial and a printer that has not arrived are
+different facts, and collapsing them would report a machine the operator is standing in front of as
+absent. A row is allocated at receipt and durable individuation — an operator-applied label suffices
+— and the serial **corroborates** that binding rather than establishing it. If a serial is ever
+required before attribution, that is an admission refusal arm, visible and countable, never silence.
+
+### Two coupons per machine is two attempts, not two objects on one plate
+
+`A1/B1` then `A2/B2`, each pair consuming the same machine artifact, supplies and nozzle unchanged
+and no intervening calibration unless recorded. Two copies printed together answer **within-job /
+bed-position** variation; two executions answer **print-to-print** variation. Both are useful and
+they must not share one receipt name.
+
 ## On arrival (2026-09-03)
 
 ```

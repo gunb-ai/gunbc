@@ -11,6 +11,7 @@ import product.printed_chassis.manufacturing_manifest {
   PrinterAssetDuplicate,
   PrinterCatalogMismatch,
   admit_printer_asset,
+  asset_catalog_qualifies,
   admitted_printer_identity,
   a1_mini_catalog_module,
   owned_printer_inventory,
@@ -26,10 +27,18 @@ fn a1_mini_catalog() -> DeclarationRef {
   }
 }
 
+// A REAL FOREIGN MODULE, NOT AN INVENTED ONE. This cited extdeps.printing.some_other_printer, which
+// no module declares, and the required floor's declarations phase refused it: CITED-MODULE-ABSENT.
+// That refusal is the useful discovery -- a corpus-wide checker DOES resolve every cited module path,
+// so a DeclarationRef in this repository is a checked citation rather than a decorative string, and
+// an invented fixture path is a broken citation regardless of the fixture being deliberately wrong.
+// bambu_studio is a better subject anyway: it is a real module in the same family that is genuinely
+// not the printer -- it is the SLICER -- so this fixture is a mis-registration someone could
+// plausibly make, rather than one nobody could.
 fn foreign_catalog() -> DeclarationRef {
   DeclarationRef {
-    module_path: "extdeps.printing.some_other_printer",
-    decl_name: "other_build_envelope",
+    module_path: "extdeps.printing.bambu_studio",
+    decl_name: "bambu_studio_platform_support",
     field: WholeDeclaration
   }
 }
@@ -43,13 +52,15 @@ fn printer_row(id: NonEmptyStr, catalog: DeclarationRef) -> PhysicalAsset {
   }
 }
 
-// AN EMPTY INVENTORY REFUSES, AND THIS IS THE LIVE STATE OF THE REPOSITORY TODAY, not a fixture
-// convenience. owned_printer_inventory is empty because the machines have not been read yet, so
-// nothing can be attributed to a printer -- which is the behaviour that makes the manifest worth
-// having. A version that admitted an unregistered identity so a print could proceed would fail open
-// exactly when the operator most needs the binding to be real.
-test fn w_the_live_inventory_admits_nothing_today() -> Bool {
-  match admit_printer_asset(inventory: owned_printer_inventory, requested: "printer-a" as PhysicalAssetIdentity) {
+// AN EMPTY ROSTER REFUSES. Fixture-based rather than reading the live roster, and the distinction
+// is the difference between a check and a change detector. An earlier cut of this witness asserted
+// that the LIVE owned_printer_inventory admits nothing -- true today, and false the moment a printer
+// is registered, at which point someone edits the witness to match. That is a test whose entire
+// content is the manual update, which DESIGN section 5 names directly. What is permanent is the
+// BEHAVIOUR: an identity that no roster row carries is refused rather than admitted, and that holds
+// for an empty roster forever.
+test fn w_an_unregistered_identity_is_refused_rather_than_admitted() -> Bool {
+  match admit_printer_asset(inventory: [], requested: "printer-a" as PhysicalAssetIdentity) {
     PrinterAssetAbsent { requested: r } => r as String == "printer-a"
     PrinterAssetAdmitted { binding: _ } => false
     PrinterAssetDuplicate { requested: _, matches: _ } => false
@@ -57,8 +68,38 @@ test fn w_the_live_inventory_admits_nothing_today() -> Bool {
   }
 }
 
+// AN IDENTITY ABSENT FROM A NON-EMPTY ROSTER IS ALSO REFUSED, which the empty case alone does not
+// establish: a fold that answered Absent only because it never iterated would satisfy the witness
+// above and fail here.
+test fn w_an_identity_missing_from_a_populated_roster_is_refused() -> Bool {
+  let inv = [printer_row(id: "printer-a", catalog: a1_mini_catalog())]
+  match admit_printer_asset(inventory: inv, requested: "printer-zzz" as PhysicalAssetIdentity) {
+    PrinterAssetAbsent { requested: r } => r as String == "printer-zzz"
+    PrinterAssetAdmitted { binding: _ } => false
+    PrinterAssetDuplicate { requested: _, matches: _ } => false
+    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+  }
+}
+
+// THE LIVE ROSTER IS READ FOR A PROPERTY THAT SURVIVES ITS GROWTH, not for its current emptiness.
+// Every row it carries must name the A1 mini catalog, so registering a real machine keeps this green
+// while registering something this program cannot qualify reds it. Today the roster is empty and
+// this holds vacuously -- stated rather than hidden, since a predicate true on an empty domain
+// establishes nothing until the domain is populated.
+test fn w_every_live_inventory_row_names_the_qualifiable_product() -> Bool {
+  fold(owned_printer_inventory, init: true, f: fn(acc, a) {
+    acc && asset_catalog_qualifies(a: a)
+  })
+}
+
 // THE POSITIVE CONTROL. Without it the refusals above prove only that this function refuses
 // everything, which a `false` in every arm would also satisfy.
+//
+// IT ALSO CARRIES NO SERIAL, AND THAT IS THE POINT RATHER THAN AN OMISSION. printer_row builds every
+// row with physical_serial: Absent, so this witness executes the rule that a received machine whose
+// manufacturer serial has not been read is admitted on its allocated identity alone. An
+// implementation that made a serial a precondition for admission would red here, which is what keeps
+// the manifest annotation on that subject from being prose nobody runs.
 test fn w_a_registered_a1_mini_is_admitted_under_its_own_identity() -> Bool {
   let inv = [printer_row(id: "printer-a", catalog: a1_mini_catalog())]
   match admit_printer_asset(inventory: inv, requested: "printer-a" as PhysicalAssetIdentity) {
@@ -111,17 +152,20 @@ test fn w_a_registered_asset_with_a_foreign_catalog_refuses() -> Bool {
     PrinterCatalogMismatch { requested: r, expected_module: e, found_module: f } =>
       r as String == "printer-a"
         && e as String == "extdeps.printing.bambu_lab_a1_mini"
-        && f as String == "extdeps.printing.some_other_printer"
+        && f as String == "extdeps.printing.bambu_studio"
     PrinterAssetAdmitted { binding: _ } => false
     PrinterAssetAbsent { requested: _ } => false
     PrinterAssetDuplicate { requested: _, matches: _ } => false
   }
 }
 
-// THE EXPECTED MODULE IS READ FROM THE MANIFEST, NOT RESTATED HERE. If this witness spelled the
-// module path as its own literal it would be testing a string it wrote itself -- the same defect
-// PRINT-1 was reopened for, where the coupon fit witness authored the build envelope it checked
-// against. Changing a1_mini_catalog_module must move this.
+// THE PROJECTION OFF THE CATALOG REF, WHICH IS WHAT THIS NOW CHECKS. Review 59176 was right about
+// the earlier form: a1_mini_catalog_module was a bare literal and this witness compared it to a copy
+// of that same literal, so the two authored strings corroborated each other and nothing external.
+// The manifest now derives it from a1_mini_catalog_ref, a DeclarationRef naming a module and a
+// declaration, so this asserts the PROJECTION reaches the intended module -- repointing the ref at
+// another product moves it. That is a real referent and still not a resolved one; the sibling
+// livetree witness file records why nothing here resolves the ref against the tree yet.
 test fn w_the_expected_catalog_module_comes_from_the_manifest() -> Bool {
   a1_mini_catalog_module as String == "extdeps.printing.bambu_lab_a1_mini"
 }
