@@ -44,6 +44,16 @@ test fn witness_goarch_parses_arm64_wire() -> Bool {
   match parse_image_config_goarch("arm64") {
     ImageConfigGoarchKnown { value: Aarch64 } => true
     ImageConfigGoarchUnknown { wire: _ } => false
+    ImageConfigGoarchKnown { value: X86_64 } => false
+    ImageConfigGoarchKnown { value: X86 } => false
+    ImageConfigGoarchKnown { value: Arm } => false
+    ImageConfigGoarchKnown { value: Armv7 } => false
+    ImageConfigGoarchKnown { value: Mips } => false
+    ImageConfigGoarchKnown { value: Mipsel } => false
+    ImageConfigGoarchKnown { value: Mips64 } => false
+    ImageConfigGoarchKnown { value: Mips64el } => false
+    ImageConfigGoarchKnown { value: Riscv64 } => false
+    ImageConfigGoarchKnown { value: Wasm32 } => false
   }
 }
 
