@@ -20,6 +20,8 @@ import gunbc.floor_cost_distribution {
   recurring_crossers,
   FloorCostRow,
   RunCost,
+  SameHeadAttemptPair,
+  EvalStepDeterminismViolation,
   CostBand,
   LadderStep,
   parse_claim_cost_line,
@@ -55,7 +57,9 @@ import gunbc.floor_cost_distribution {
   RowCrossingUndecidable,
   row_crossing,
   run_crossing_census,
-  runs_crossing_undecidable
+  runs_crossing_undecidable,
+  same_head_eval_step_violations,
+  same_head_eval_steps_are_deterministic
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -68,22 +72,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Shape: two runs over the same three identities in two modules, one of which ("hot") crosses the
 // 500ms ceiling on run B only. That is the exact shape the real analysis turns on -- a row whose
 // membership in the crossing set depends on the run rather than on the row.
-data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cost: ObservedCost { cpu_ms: millisecond(count: 400) }, eval_steps: 9000 }
-data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 200) }, eval_steps: 4000 }
-data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 50) }, eval_steps: 900 }
+data row_a1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 400) }, eval_steps: 9000 }
+data row_a2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 200) }, eval_steps: 4000 }
+data row_a3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 50) }, eval_steps: 900 }
 
-data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", cost: ObservedCost { cpu_ms: millisecond(count: 600) }, eval_steps: 9000 }
-data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 300) }, eval_steps: 4400 }
-data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", cost: ObservedCost { cpu_ms: millisecond(count: 100) }, eval_steps: 900 }
+data row_b1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 600) }, eval_steps: 9000 }
+data row_b2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 300) }, eval_steps: 4400 }
+data row_b3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cost: ObservedCost { cpu_ms: millisecond(count: 100) }, eval_steps: 900 }
 
 // THE CENSORED FIXTURE ROW, and it is deliberately given a bound of 502ms against a 500ms
 // ceiling -- the shape every interrupted row in the real artifact has, because a row is stopped
 // approximately AT whatever ceiling stopped it. Its true cost is unknown and unbounded above; the
 // receipt that this cannot be corrected for is gunbc#9629, where one such rendered figure denoted
 // a completed cost of 2,902ms in one case and 355ms in another.
+//
+// `verdict_reached: false` BECAUSE A DEADLINE PREEMPTED IT, which is the ordinary pairing -- but
+// the two fields are still independent, and gunbc#10209's determinism detector reads the boolean
+// while every cost derivation reads the coproduct.
 data row_c_censored: FloorCostRow = FloorCostRow {
   identity: "m.hot.k",
   module: "m.hot",
+  verdict_reached: false,
   cost: RightCensoredCost { cpu_lower_bound_ms: millisecond(count: 502), censoring_ceiling_ms: millisecond(count: 500) },
   eval_steps: 163840
 }
@@ -110,6 +119,7 @@ data censored_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmo
 data sample_columns: ClaimCostColumns = ClaimCostColumns {
   identity: 0,
   module: 1,
+  verdict_reached: 3,
   cost_reading: 4,
   observed_cpu_ms: 6,
   cpu_at_least_ms: 8,
@@ -190,7 +200,7 @@ test fn the_same_shape_with_a_steps_column_parses() -> Bool {
 // whose cpu and steps are swapped, and swapped values are two plausible numbers rather than an
 // error.
 test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
-  let reordered = "identity\tmodule\teval_steps\tcost_reading\tcpu_at_least_ms\tcensoring_cpu_limit_ms\tobserved_cpu_ms\nm.hot.x\tm.hot\t1000\tobserved\t\t\t400"
+  let reordered = "identity\tmodule\teval_steps\tverdict_reached\tcost_reading\tcpu_at_least_ms\tcensoring_cpu_limit_ms\tobserved_cpu_ms\nm.hot.x\tm.hot\t1000\ttrue\tobserved\t\t\t400"
   match parse_claim_cost_tsv(text: reordered) |> first {
     Absent => false
     Present { value: r } =>
@@ -531,5 +541,83 @@ test fn an_observed_row_is_decided_in_both_directions_and_never_undecidable() ->
     }
     RowBelowLine => false
     RowCrossingUndecidable => false
+  }
+}
+
+// SAME HEAD, TWO ATTEMPTS, AND CPU IS DELIBERATELY DIFFERENT. The equal pair stays green because
+// this wall judges work identity, not runner speed. The changed row is the discriminating red:
+// filtering unequal-step rows out (the distribution instrument's correct behavior) would make
+// the wall green over exactly the evidence it exists to refuse.
+test fn same_head_completed_claims_require_exact_step_equality() -> Bool {
+  let equal = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [row_b1]
+  }
+  let drifted = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a2],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [row_b2]
+  }
+  let different_trees = SameHeadAttemptPair {
+    left_head: "head-a" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "head-b" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [row_b1]
+  }
+  same_head_eval_steps_are_deterministic(pair: equal)
+    && !same_head_eval_steps_are_deterministic(pair: drifted)
+    && match same_head_eval_step_violations(pair: drifted) |> first {
+         Present { value: CompletedIdentityStepsDiffer { identity: id, module: m, left_attempt: _, left_steps: a, right_attempt: _, right_steps: b } } =>
+           id == "m.mid.y" && m == "m.mid" && a == 4000 && b == 4400
+         _ => false
+       }
+    && match same_head_eval_step_violations(pair: different_trees) |> first {
+         Present { value: AttemptHeadsDiffer { left_head: a, left_attempt: _, right_head: b, right_attempt: _ } } => a == "head-a" && b == "head-b"
+         _ => false
+       }
+}
+
+// Population equality is part of the wall. Comparing only the intersection would certify a run
+// after the differing row vanished or failed to reach verdict, the two easiest ways for an exact
+// equality check to become vacuous.
+test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_comparison() -> Bool {
+  let interrupted = FloorCostRow {
+    identity: "m.hot.x",
+    module: "m.hot",
+    verdict_reached: false,
+    cost: RightCensoredCost { cpu_lower_bound_ms: millisecond(count: 500), censoring_ceiling_ms: millisecond(count: 500) },
+    eval_steps: 8000
+  }
+  let missing = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: []
+  }
+  let unavailable = SameHeadAttemptPair {
+    left_head: "same-head" as NonEmptyStr,
+    left_attempt: "attempt-2" as NonEmptyStr,
+    left_rows: [row_a1],
+    right_head: "same-head" as NonEmptyStr,
+    right_attempt: "attempt-3" as NonEmptyStr,
+    right_rows: [interrupted]
+  }
+  match same_head_eval_step_violations(pair: missing) |> first {
+    Present { value: CompletedIdentityAbsent { identity: id, module: m, completed_attempt: _, absent_attempt: _ } } => id == "m.hot.x" && m == "m.hot"
+    _ => false
+  } && match same_head_eval_step_violations(pair: unavailable) |> first {
+    Present { value: CompletedIdentityUnavailable { identity: id, module: m, completed_attempt: _, unavailable_attempt: _ } } => id == "m.hot.x" && m == "m.hot"
+    _ => false
   }
 }
