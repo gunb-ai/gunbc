@@ -1,0 +1,110 @@
+module gunbc.recurring_failure_mode.external_mechanism_asserted_under_a_correct_conclusion
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data external_mechanism_asserted_under_a_correct_conclusion: RecurringFailureMode = RecurringFailureMode {
+  identity: "external_mechanism_asserted_under_a_correct_conclusion" as NonEmptyStr,
+
+  receipts: [
+    "**a MECHANISM about external reality is asserted as the reason for a conclusion that is independently CORRECT, so nothing the repository can execute ever refutes it** (INVALID STATE: a carrier states WHY an external system behaves as it does -- this platform suppresses that trigger, that endpoint rate-limits, this token cannot start a run -- and derives a design decision from it. ",
+
+    "The DECISION is right; the mechanism was never measured. ",
+
+    "HARM: DESIGN section 5 silent wrongness, and it is the immunised variety. ",
+
+    "A wrong premise attached to a wrong conclusion dies the first time the conclusion is tested. ",
+
+    "Here every test of the conclusion PASSES, so the premise is confirmed by association and hardens into the sentence later readers plan against -- and it is consumed for facts the conclusion never covered, which is where it is false. ",
+
+    "THE DISCRIMINATING QUESTION IS ALWAYS THE SAME: the conclusion says the good outcome does not HAPPEN; the mechanism says the machinery does not EXIST. ",
+
+    "Those differ exactly on cost and on remedy. ",
+
+    "If the thing exists and is merely withheld, something can release it, something already paid for it, and a second copy is a duplicate. ",
+
+    "RECOGNITION RULE, mechanical: for any prose of the form THE PLATFORM DOES NOT DO X, name the observation that would show X happening and say whether anyone ran it. ",
+
+    "If the only evidence offered is that the conclusion held, the mechanism is unmeasured. ",
+
+    "The sharpest tell is a mechanism stated in an ABSENCE form -- starts no run, sends no event, creates nothing -- beside a conclusion stated in an OUTCOME form; absence and non-execution are two states and the carrier collapsed them. ",
+
+    "DISTINCT FROM ITS NEIGHBOURS. ",
+
+    "`unbacked_execution_claim` is about an in-repository relation an authority could have backed and did not; here the subject is OUTSIDE the modeled guarantee, so no authority in the tree could have backed it and the only route is observation at the boundary. ",
+
+    "`state_space_conflation` names too few constructors for a modelled domain; here the domain is unmodelled and the prose supplies a two-state story for a three-state world. ",
+
+    "SPECIMEN (cool-koi-623, 2026-09-03). ",
+
+    "`gunbc.rung_drop` `floor_cut_heal` and the annotation above `gunbc.ci_spec` `gunbc_ci_heal_commit_push_script` both said an Actions-credential push starts no workflow run, GitHub suppressing that edge to stop a job triggering itself, and concluded that heal must exit nonzero rather than speak for a head nothing judged. ",
+
+    "The rung_drop row carries the correction; the ci_spec annotation still carries the refuted sentence AT THE TIME THIS ROW IS FILED, because that carrier is held by a concurrent lane and a second lane editing one premise from its own verdict is how one fact acquires two authorities -- recorded here as an observation rather than repaired here. ",
+
+    "The conclusion is correct and remains in force. ",
+
+    "The mechanism is false: over the whole heal-push population a pull_request run was CREATED 4 times out of 4, and it is EXECUTION that is withheld -- 0 of the 4 started a single job on the triggering attempt. ",
+
+    "The receipts and the re-derivation recipe are carried in that rung_drop row rather than restated here. ",
+
+    "WHAT THE FALSE MECHANISM CONCEALED, which is the harm made concrete: under starts-no-run a dispatched revalidation is free, and measured it is a SECOND run on that head whose check runs a name-keyed reader cannot separate from the held run s; and the human action that releases a healed head is an approve on that specific held run, not the re-run the annotation offered. ",
+
+    "A METHOD NOTE THAT IS PART OF THE CLASS RATHER THAN OF THE SPECIMEN: the first two readers of this population both read a run s TOP-LEVEL conclusion and its start timestamp and concluded the runs had executed. ",
+
+    "A run can conclude failure having started zero jobs, and a later attempt can execute after a human acts. ",
+
+    "When the subject is EXECUTION, count jobs on the attempt the event created, never read the latest attempt. ",
+
+    "RUNG FOUND AT: 1 ON AXIS (i) BELOW, mitigatable. ",
+
+    "The harm is contained because the conclusion the premise was offered for is independently sound; nothing was admitted that should not have been. ",
+
+    "A SECOND HARM THE SPECIMEN MADE VISIBLE AND THE CLASS SHOULD CARRY: the unmeasured mechanism was stated UNSCOPED, so the sentence is true at the moment it is written and can stop being true with nobody touching it -- here a held run may be released hours later and judge the head, at which point 'a head nothing judged' is simply false. ",
+
+    "Measure the mechanism, and then say WHEN the claim holds. ",
+
+    "THE SUBJECT OF THIS ROW IS A CARRIER IN THIS REPOSITORY, NOT THE EXTERNAL SYSTEM, and an earlier revision of this row got that backwards -- corrected here rather than annotated, because the error is exactly the one section 4b's carve-out exists to prevent. ",
+
+    "That revision assigned a LADDER RUNG to external reality, which section 4b deliberately keeps OFF the ladder, and then declined to name a trigger; between them those two moves let 'we do not model GitHub' stand where a rankable in-repository defect actually sits. ",
+
+    "The invalid state is an AUTHORING ACT that is wholly in the tree: a carrier states an unobserved mechanism as the reason for a decision. ",
+
+    "That is decidable from the carrier alone, so it ranks, and it is obligated to climb. ",
+
+    "TWO AXES, WITH DIFFERENT CEILINGS BECAUSE THEY HAVE DIFFERENT DECIDABILITY, and only the first is a ladder subject at all. ",
+
+    "(i) THE SEPARATION -- is this mechanism claim backed by an observation? Decidable by reading the carrier. ",
+
+    "CEILING: 4, structurally impossible, and DERIVED rather than aspirational: if the only construction able to express an external-system mechanism requires the observation that produced it, an unbacked mechanism claim has no constructor, and validation becomes unnecessary because the bad state cannot be written. ",
+
+    "Anything below 4 on this axis is a correctness gap, not a ceiling. ",
+
+    "(ii) THE TRUTH of the external fact -- whether the observed behaviour still holds. ",
+
+    "OUTSIDE THE MODELED GUARANTEE, not a rung and never one: observed, refused or mitigated at a declared boundary, never fabricated. ",
+
+    "It is named here precisely so it cannot be mistaken for a weak implementation that should climb. ",
+
+    "NEXT TRIGGER FOR AXIS (i), NAMED AS THE CAPABILITY AND NOT AS AN ARTIFACT: an external-system mechanism claim is expressible ONLY through a typed construction carrying the observation that produced it -- the query, the population, the date -- together with a consumer that ENUMERATES carriers stating such a claim without one. ",
+
+    "The pairing is the whole trigger: the construction alone makes the honest form available, and only the enumerating consumer makes the dishonest form unwritable rather than merely noticed once. ",
+
+    "Authoring one such row by hand discharges nothing and is the artifact-for-capability substitution section 4b(3) forbids. ",
+
+    "It is CAN-CLIMB-NOW-BUT-UNBUILT rather than blocked on grounding: `extdeps` already owns the shape for cited upstream facts. ",
+
+    "SECTION 4c DECIDES WHERE THIS CANNOT LIVE, recorded so the cheap version is not proposed later as an economy: semantic passes receive only the annotation-erased projection, so an annotation can never carry the observation and the construction must be a real declaration. ",
+
+    "WHAT THE DISCHARGED TRIGGER DOES NOT BUY, stated so it is not read as covering axis (ii): every mechanism claim would then carry a receipt, and a receipt is not currency -- a system that changes without notice makes any observation a statement about a past world. ",
+
+    "That residual is axis (ii) and stays outside the guarantee by construction. ",
+
+    "WHAT IS ASYMMETRIC ABOUT THIS CLASS, and it is why it survives review rather than why it cannot be ranked: the DEFECT is visible from inside the tree -- a claim with no observation beside it -- while the REFUTATION lives in the external system and no lens, gate or witness reading this tree can reach it. ",
+
+    "So the class is detectable here and falsifiable only there, which is what lets a wrong mechanism sit unchallenged beside a correct conclusion for as long as nobody goes outside to look. ",
+
+    "Until axis (i)'s trigger is built this row is a reading discipline and citing it as coverage is the rung inflation section 4b(1) names.",
+  ],
+
+  evidence: [],
+}

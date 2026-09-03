@@ -1,0 +1,291 @@
+module test.claim.spark.spark_vllm_rank_population_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.vllm_rank_population {
+  VllmEngineIncarnation, vllm_engine_incarnation,
+  VllmResolvedParallelConfiguration, vllm_resolved_parallel_configuration,
+  VllmRankParticipant, vllm_rank_participant,
+  VllmJoinedObservation, vllm_declared_joined_observation,
+  VllmSelectedServingUnit, vllm_selected_serving_unit,
+  VllmRankPopulationDecision, RankPopulationCoherent, RankPopulationRefused,
+  VllmRankPopulationFinding,
+  ObservationDidNotReturnCompletely, DecompositionDoesNotAccountForWorldSize,
+  NotATensorParallelDecomposition, ParticipantCountDoesNotMatchWorldSize,
+  RankObservedMoreThanOnce, RankOutsideExpectedSet, TensorParallelRankDoesNotMatchGlobalRank,
+  ParticipantOnUnselectedHost, SelectedHostCarriedNoRank,
+  SelectedHostNamedMoreThanOnce, RanksShareHostLocalWorkerProcessKey, ParticipantFromAnotherIncarnation,
+  decide_vllm_rank_population,
+}
+
+// ── HERMETIC FIXTURES ───────────────────────────────────────────────────────────────────────────
+//
+// The accepted case mirrors what was read off the live pair -- world_size 2, TP 2, PP 1, DP 1, one
+// rank per host, distinct worker births, one engine incarnation -- with fixture host names, so a
+// coherent decision built here is visibly about w-rank0-host and not about a production machine.
+data w_host_a: HostIdentity = "w-rank0-host" as HostIdentity
+data w_host_b: HostIdentity = "w-rank1-host" as HostIdentity
+data w_host_elsewhere: HostIdentity = "w-unselected-host" as HostIdentity
+
+fn w_inc() -> VllmEngineIncarnation { vllm_engine_incarnation(engine_core_identity: "w-engine-1" as NonEmptyStr) }
+fn w_other_inc() -> VllmEngineIncarnation { vllm_engine_incarnation(engine_core_identity: "w-engine-2" as NonEmptyStr) }
+
+fn w_tp2() -> VllmResolvedParallelConfiguration {
+  vllm_resolved_parallel_configuration(
+    tensor_parallel_degree: 2, pipeline_parallel_degree: 1, data_parallel_degree: 1, world_size: 2)
+}
+
+fn w_unit() -> VllmSelectedServingUnit { vllm_selected_serving_unit(participant_hosts: [w_host_a, w_host_b]) }
+
+fn w_obs(complete: Bool, participants: List<VllmRankParticipant>) -> VllmJoinedObservation {
+  vllm_declared_joined_observation(
+    incarnation: w_inc(), returned_completely: complete, participants: participants)
+}
+
+fn w_p(rank: Nat, host: HostIdentity, birth: NonEmptyStr) -> VllmRankParticipant {
+  vllm_rank_participant(
+    global_rank: rank, tensor_parallel_rank: rank, host: host,
+    host_local_worker_process_key: birth, incarnation: w_inc())
+}
+
+fn w_good_participants() -> List<VllmRankParticipant> {
+  [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+   w_p(rank: 1, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)]
+}
+
+fn w_decide(participants: List<VllmRankParticipant>) -> VllmRankPopulationDecision {
+  decide_vllm_rank_population(
+    resolved: w_tp2(), selected_unit: w_unit(),
+    observation: w_obs(complete: true, participants: participants))
+}
+
+fn w_refused_with(participants: List<VllmRankParticipant>, f: VllmRankPopulationFinding) -> Bool {
+  match w_decide(participants: participants) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == finding_tag(f: f))
+    RankPopulationCoherent => false
+  }
+}
+
+fn finding_tag(f: VllmRankPopulationFinding) -> String {
+  match f {
+    ObservationDidNotReturnCompletely => "incomplete"
+    DecompositionDoesNotAccountForWorldSize => "decomposition"
+    NotATensorParallelDecomposition => "not-tp"
+    ParticipantCountDoesNotMatchWorldSize => "count"
+    RankObservedMoreThanOnce { rank: _ } => "duplicate"
+    RankOutsideExpectedSet { rank: _ } => "extra"
+    TensorParallelRankDoesNotMatchGlobalRank { global_rank: _, tensor_parallel_rank: _ } => "tp-mismatch"
+    ParticipantOnUnselectedHost { host: _ } => "unselected-host"
+    SelectedHostCarriedNoRank { host: _ } => "host-no-rank"
+    SelectedHostNamedMoreThanOnce { host: _ } => "selected-host-twice"
+    RanksShareHostLocalWorkerProcessKey { host: _, process_key: _ } => "shared-process-key"
+    ParticipantFromAnotherIncarnation { engine_core_identity: _ } => "other-incarnation"
+  }
+}
+
+// ── THE POSITIVE CONTROL ────────────────────────────────────────────────────────────────────────
+//
+// Without this every refusal below is satisfiable by a law that refuses everything.
+test fn w_the_observed_shape_is_coherent() -> Bool {
+  match w_decide(participants: w_good_participants()) {
+    RankPopulationCoherent => true
+    RankPopulationRefused { findings: _ } => false
+  }
+}
+
+// ── THE REFUSAL MATRIX ──────────────────────────────────────────────────────────────────────────
+// A MISSING RANK REFUSES VIA THE COUNT, which is the pigeonhole argument doing its work: one
+// participant cannot be a world size of two, so no enumerated expected list is needed to notice.
+test fn w_a_missing_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr)],
+    f: ParticipantCountDoesNotMatchWorldSize)
+}
+
+test fn w_a_duplicated_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 0, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
+    f: RankObservedMoreThanOnce { rank: 0 })
+}
+
+test fn w_a_rank_outside_the_expected_set_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 2, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
+    f: RankOutsideExpectedSet { rank: 2 })
+}
+
+test fn w_a_participant_on_an_unselected_host_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 1, host: w_host_elsewhere, birth: "w-pid-2" as NonEmptyStr)],
+    f: ParticipantOnUnselectedHost { host: w_host_elsewhere })
+}
+
+// BOTH RANKS ON ONE SELECTED HOST IS THE CASE A ONE-DIRECTION CHECK MISSES: no participant sits on an
+// unselected host, yet half the unit carries nothing.
+test fn w_a_selected_host_carrying_no_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)],
+    f: SelectedHostCarriedNoRank { host: w_host_b })
+}
+
+// TWO RANKS CLAIMING ONE PROCESS SLOT ON ONE HOST is the duplicate that matters -- a single-host
+// deployment presenting as a pair.
+test fn w_two_ranks_sharing_one_process_key_on_one_host_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-same-pid" as NonEmptyStr),
+                   w_p(rank: 1, host: w_host_a, birth: "w-same-pid" as NonEmptyStr)],
+    f: RanksShareHostLocalWorkerProcessKey { host: w_host_a, process_key: "w-same-pid" as NonEmptyStr })
+}
+
+// AND THE SAME PID ON TWO DIFFERENT HOSTS IS A LEGITIMATE PAIR, not a duplicate. A pid is host-local,
+// so comparing birth identities as bare strings across the population refused a real cross-host unit
+// whenever both machines happened to birth their worker at the same number -- something this exact
+// two-host launch can produce any time. This is the discriminating RED for that scoping: it was
+// refused before the host was part of the comparison.
+test fn w_one_pid_on_each_of_two_hosts_is_not_a_shared_process_key() -> Bool {
+  match w_decide(participants: [
+      w_p(rank: 0, host: w_host_a, birth: "w-pid-4126" as NonEmptyStr),
+      w_p(rank: 1, host: w_host_b, birth: "w-pid-4126" as NonEmptyStr)]) {
+    RankPopulationCoherent => true
+    RankPopulationRefused { findings: _ } => false
+  }
+}
+
+test fn w_a_participant_from_another_incarnation_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   vllm_rank_participant(
+                     global_rank: 1, tensor_parallel_rank: 1, host: w_host_b,
+                     host_local_worker_process_key: "w-pid-2" as NonEmptyStr, incarnation: w_other_inc())],
+    f: ParticipantFromAnotherIncarnation { engine_core_identity: "w-engine-2" as NonEmptyStr })
+}
+
+// A PARTIAL COLLECTION REFUSES RATHER THAN READING AS A SMALL POPULATION. Same participants as the
+// coherent case; only the completeness flag differs.
+test fn w_an_incomplete_observation_refuses_even_with_every_rank_present() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: w_tp2(), selected_unit: w_unit(),
+    observation: w_obs(complete: false, participants: w_good_participants())) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "incomplete")
+    RankPopulationCoherent => false
+  }
+}
+
+// A WORLD SIZE OF 2 THAT IS PIPELINE-PARALLEL IS NOT THIS UNIT, which is the confusion a bare world
+// size cannot resolve.
+test fn w_a_pipeline_parallel_decomposition_of_the_same_world_size_refuses() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: vllm_resolved_parallel_configuration(
+      tensor_parallel_degree: 1, pipeline_parallel_degree: 2, data_parallel_degree: 1, world_size: 2),
+    selected_unit: w_unit(), observation: w_obs(complete: true, participants: w_good_participants())) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "not-tp")
+    RankPopulationCoherent => false
+  }
+}
+
+// AND A DECOMPOSITION THAT DOES NOT MULTIPLY TO ITS OWN WORLD SIZE REFUSES.
+test fn w_a_decomposition_inconsistent_with_its_world_size_refuses() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: vllm_resolved_parallel_configuration(
+      tensor_parallel_degree: 2, pipeline_parallel_degree: 1, data_parallel_degree: 1, world_size: 4),
+    selected_unit: w_unit(), observation: w_obs(complete: true, participants: w_good_participants())) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "decomposition")
+    RankPopulationCoherent => false
+  }
+}
+
+// THE PIGEONHOLE ACTUALLY BINDS: a population of the right SIZE whose ranks are duplicated and
+// out-of-range is still refused, so "count matches" alone is not what makes a population coherent.
+test fn w_a_right_sized_population_with_wrong_ranks_still_refuses() -> Bool {
+  w_refused_with(
+    participants: [w_p(rank: 5, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+                   w_p(rank: 5, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
+    f: RankOutsideExpectedSet { rank: 5 })
+}
+
+// EVERY FINDING IS COLLECTED, NOT THE FIRST. An operator re-collecting once per finding pays a full
+// observation cycle against a service whose incarnation changes between attempts.
+test fn w_a_population_wrong_in_several_ways_reports_all_of_them() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: w_tp2(), selected_unit: w_unit(),
+    observation: w_obs(complete: false, participants: [
+      w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr),
+      w_p(rank: 3, host: w_host_elsewhere, birth: "w-dup" as NonEmptyStr)])) {
+    RankPopulationRefused { findings: fs } => length(fs) > 4
+    RankPopulationCoherent => false
+  }
+}
+
+// ── THE TENSOR-PARALLEL RANK IS EXAMINED, NOT MERELY CARRIED ────────────────────────────────────
+//
+// The field was recorded and never read, so this population -- global ranks 0 and 1, exactly the
+// right count, one per selected host, distinct births, one incarnation -- read as COHERENT while
+// claiming both workers were tensor-parallel rank 0. A law named after tensor parallelism accepting
+// that is the inert-field failure, and this is its discriminating RED.
+test fn w_a_tensor_parallel_rank_that_contradicts_its_global_rank_refuses() -> Bool {
+  w_refused_with(
+    participants: [
+      vllm_rank_participant(
+        global_rank: 0, tensor_parallel_rank: 0, host: w_host_a,
+        host_local_worker_process_key: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
+      vllm_rank_participant(
+        global_rank: 1, tensor_parallel_rank: 0, host: w_host_b,
+        host_local_worker_process_key: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
+    ],
+    f: TensorParallelRankDoesNotMatchGlobalRank { global_rank: 1, tensor_parallel_rank: 0 })
+}
+
+// AND AN OUT-OF-RANGE TENSOR-PARALLEL RANK REFUSES THROUGH THE SAME ARM, which is the point of
+// checking correspondence rather than adding a separate range check that could never fire beside it.
+test fn w_an_out_of_range_tensor_parallel_rank_refuses_through_correspondence() -> Bool {
+  w_refused_with(
+    participants: [
+      vllm_rank_participant(
+        global_rank: 0, tensor_parallel_rank: 7, host: w_host_a,
+        host_local_worker_process_key: "w-pid-1" as NonEmptyStr, incarnation: w_inc()),
+      vllm_rank_participant(
+        global_rank: 1, tensor_parallel_rank: 1, host: w_host_b,
+        host_local_worker_process_key: "w-pid-2" as NonEmptyStr, incarnation: w_inc()),
+    ],
+    f: TensorParallelRankDoesNotMatchGlobalRank { global_rank: 0, tensor_parallel_rank: 7 })
+}
+
+
+// ── A TWO-ENTRY LIST IS NOT A TWO-HOST UNIT ─────────────────────────────────────────────────────
+//
+// Both directions of the host join are existence checks, so this population satisfied every one of
+// them while sitting entirely on one machine: right count, ranks 0 and 1, corresponding TP ranks,
+// every participant on a selected host, every selected entry naming a host that carries a rank,
+// distinct process keys. It decided COHERENT, and the two-host claim rested entirely on the selected
+// list having two entries that name the same host. This is the discriminating RED for distinctness.
+test fn w_a_selected_unit_naming_one_host_twice_refuses() -> Bool {
+  match decide_vllm_rank_population(
+    resolved: w_tp2(),
+    selected_unit: vllm_selected_serving_unit(participant_hosts: [w_host_a, w_host_a]),
+    observation: w_obs(complete: true, participants: [
+      w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+      w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)])) {
+    RankPopulationRefused { findings: fs } => any(fs, x => finding_tag(f: x) == "selected-host-twice")
+    RankPopulationCoherent => false
+  }
+}
+
+// AND DISTINCTNESS IS NOT ONE-RANK-PER-HOST. A legitimate tensor-parallel deployment may place both
+// ranks on one selected machine; what that population fails is the OTHER selected host carrying no
+// rank, never the distinctness rule. Without this, the fix above would have quietly become a law
+// forbidding co-located ranks.
+test fn w_two_ranks_on_one_host_of_a_distinct_pair_refuses_only_for_the_idle_host() -> Bool {
+  match w_decide(participants: [
+      w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
+      w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)]) {
+    RankPopulationRefused { findings: fs } =>
+      any(fs, x => finding_tag(f: x) == "host-no-rank")
+        && !any(fs, x => finding_tag(f: x) == "selected-host-twice")
+    RankPopulationCoherent => false
+  }
+}
