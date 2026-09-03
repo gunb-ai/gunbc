@@ -25224,7 +25224,10 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         return;
     }
     let deferred = merged.deferred_rows.len() as u64;
-    let failed = merged.failures.len() as u64;
+    // This is not the required floor's narrower unexpected-claim-failure population:
+    // DiscoverySummary::failures also includes non-Bool, runtime-error, unresolved-tool,
+    // timeout, panic, and not-attempted rows. Its denominator is the discovery-row population.
+    let discovery_rows_failed = merged.failures.len() as u64;
     // DECLARED GAP: this is one line per DISCOVERY INVOCATION, not per floor-plan batch. A run with
     // six plan batches emits four of these, all carrying the same label, because merge time is
     // where a merged summary exists and the plan's RunSegment/BatchSegment identity is not in
@@ -25239,7 +25242,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         merged.passed as u64,
         merged.skipped as u64,
         deferred,
-        failed,
+        discovery_rows_failed,
         merged.total_measured_nanos as u64,
     ) {
         Some(line) => eprintln!("{line}"),
@@ -25249,7 +25252,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
             "::error::observation render unavailable: could not render the batch summary through \
              gunbc.observation_ci_render `ci_batch_summary_text`; the routine witness lines were \
              folded and their summary is therefore MISSING, not empty (passed={} unaffected={} \
-             deferred={deferred} failed={failed})",
+             deferred={deferred} discovery_rows_failed={discovery_rows_failed})",
             merged.passed, merged.skipped
         ),
     }
