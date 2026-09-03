@@ -207,6 +207,8 @@ test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool
           s: required_ci_measurement_publish_condition(),
           pattern: "steps.build_witness_fold"
         )
+        && string_contains(s: yml, pattern: "REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}")
+        && !string_contains(s: yml, pattern: "if '[' '-x' 'target/release/claim_executor'")
         && string_contains(s: yml, pattern: "instrument could not be built")
         && string_contains(
           s: yml,
