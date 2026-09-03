@@ -1,0 +1,887 @@
+module gunbc.namespace_step0_candidate_run
+
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.import {
+  ImportStatementsParsed,
+  ImportStatementParseRefused,
+  ImportStatementParseCause,
+  SourceHasNoModuleDeclaration,
+  ModuleDeclarationPathMalformed,
+  ImportStatementMalformed,
+  ImportParseInstrumentAnomaly,
+  import_statement_parse_cause_label
+}
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import tools.multi_module_compile_fixture {
+  FixtureSource,
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  compile_fixture
+}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import gunbc.parsed_import_statement_production { parsed_import_statements_live }
+import gunbc.namespace_step0_strip_producer {
+  Step0SourceStrip,
+  Step0SourceStripped,
+  Step0SourceStripRefused,
+  namespace_step0_strip_source
+}
+import gunbc.namespace_step0_subject_collector {
+  Step0PopulationIdentity,
+  Step0SubjectCollected,
+  Step0SubjectCollection,
+  Step0SubjectCollectionRefused,
+  Step0SubjectMember,
+  Step0SubjectPinRefusal,
+  Step0SubjectVector,
+  collect_current_step0_subject_vector,
+  step0_collected_population_identity,
+  step0_population_identity_of_rows,
+  step0_source_population_identity,
+  step0_subject_vector_size
+}
+import gunbc.namespace_step0_canary_v2 {
+  NamespaceStep0V2Receipt,
+  NamespaceStep0V2Admission,
+  NamespaceStep0V2ReceiptAdmitted,
+  NamespaceStep0V2ReceiptRefused,
+  Step0V2ExcludedSource,
+  Step0V2Frontier,
+  Step0V2SubjectEntered,
+  Step0V2SubjectNotEntered,
+  Step0V2BlockingTransition,
+  Step0V2CompletedTransition,
+  ApplyTypedImportStrip,
+  CollectSubjectPopulation,
+  Step0BlockingMeasure,
+  Step0CompileObservation,
+  Step0V2CompileStanding,
+  CompileInstrumentUnavailable,
+  CompileAttemptedAndRefused,
+  CompileAttemptedAndCompleted,
+  Step0HistogramDifferential,
+  Step0DifferentialStanding,
+  HistogramsIdentical,
+  HistogramBucketsChanged,
+  OccurrenceJoinUnavailable,
+  Step0PairStanding,
+  PairObservationIncomplete,
+  BothCompileAttemptsRefused,
+  BothCompileAttemptsCompleted,
+  CompileOutcomesDiffer,
+  Step0OrderInvariance,
+  OrderInvarianceHeld,
+  OrderInvarianceViolated,
+  OrderInvarianceNotMeasured,
+  step0_v2_entered_prefix_for,
+  admit_namespace_step0_v2_receipt,
+  namespace_step0_canary_v2_contract,
+  namespace_step0_v2_candidate_receipt,
+  step0_v2_entered_prefix,
+  step0_v2_pre_strip_prefix
+}
+
+// THE ONE-DISPATCH CANDIDATE COMMAND. Everything the receipt names is observed by THIS run: the
+// revision and its tree and the compiler's bytes, the population collected out of that revision, the
+// partition of that population by the parse's own answer, the strip, the containment compile, and
+// the classifier's verdict on what came back. Nothing is read from a prior run and nothing is an
+// authored literal -- which is the whole correction, because the superseded contract's command
+// validated three banked literals and never asked production anything, so no capability could ever
+// move it.
+//
+// A REFUSAL HERE IS A RESULT, NOT AN ABSENCE. Each arm names what could not be observed and stops;
+// none of them produces a smaller receipt, because a receipt describing a shorter run is a different
+// claim rather than a weaker one.
+
+type Step0CandidateRun
+  = Step0CandidateSubjectUnavailable { cause: Step0SubjectPinRefusal }
+  | Step0CandidateCompilerUnavailable { program: NonEmptyStr, reason: String }
+  | Step0CandidateCompilerDigestUnreadable { hex: String }
+  | Step0CandidatePartitionRefused { path: NonEmptyStr, cause: ImportStatementParseCause }
+  | Step0CandidateObserved {
+      receipt: NamespaceStep0V2Receipt
+      admission: NamespaceStep0V2Admission
+      collected_members: Int
+      excluded_members: Int
+    }
+
+// THE SUBJECT PARTITION, AND ONLY ONE ANSWER MAY EXCLUDE. A member the parse gives a module is
+// admitted. A member it declines because the file IS NOT A MODULE -- SourceHasNoModuleDeclaration,
+// and no other arm -- is excluded and named. EVERY OTHER ANSWER REFUSES THE RUN, and that is the
+// repair: a malformed module path is a defect in the declaration the subject is DEFINED by, a
+// malformed import statement is a defect in the thing being STRIPPED, and the two instrument
+// anomalies are the parser reporting on ITSELF. Before std.import typed its cause, all three landed
+// in the excluded bucket, so a broken production module left the subject silently and the receipt's
+// partition law still balanced -- the absorbing filter rebuilt one layer down, and in the anomaly
+// case the measuring device deleting evidence when the device malfunctioned.
+//
+// THE FOLD IS TOTAL AND ITS BUCKETS ARE DISJOINT BY CONSTRUCTION: it visits each collected member
+// exactly once and pushes into exactly one bucket, so an unclassified member and a member with two
+// dispositions have no representation rather than being counted and refused afterwards.
+type Step0SubjectPartition {
+  admitted: List<FixtureSource>
+  excluded: List<Step0V2ExcludedSource>
+}
+
+type Step0SubjectPartitionOutcome
+  = Step0SubjectPartitionRefused { path: NonEmptyStr, cause: ImportStatementParseCause }
+  | Step0SubjectPartitioned { partition: Step0SubjectPartition }
+
+fn step0_partition_step(outcome: Step0SubjectPartitionOutcome, member: Step0SubjectMember) -> Step0SubjectPartitionOutcome {
+  match outcome {
+    Step0SubjectPartitionRefused { path: path, cause: cause } => Step0SubjectPartitionRefused { path: path, cause: cause }
+    Step0SubjectPartitioned { partition: partition } =>
+      match parsed_import_statements_live(file: member.path as String, source: member.content) {
+        ImportStatementsParsed { statements: _ } => Step0SubjectPartitioned { partition: Step0SubjectPartition {
+          admitted: partition.admitted |> list_push(FixtureSource { path: member.path, content: member.content }),
+          excluded: partition.excluded
+        } }
+        ImportStatementParseRefused { cause: cause } => match cause {
+          SourceHasNoModuleDeclaration => Step0SubjectPartitioned { partition: Step0SubjectPartition {
+            admitted: partition.admitted,
+            excluded: partition.excluded |> list_push(Step0V2ExcludedSource { path: member.path })
+          } }
+          ModuleDeclarationPathMalformed => Step0SubjectPartitionRefused { path: member.path, cause: cause }
+          ImportStatementMalformed => Step0SubjectPartitionRefused { path: member.path, cause: cause }
+          ImportParseInstrumentAnomaly { detail: _ } => Step0SubjectPartitionRefused { path: member.path, cause: cause }
+        }
+      }
+  }
+}
+
+fn step0_partition_subject(vector: Step0SubjectVector) -> Step0SubjectPartitionOutcome {
+  fold(vector.members, init: Step0SubjectPartitioned { partition: Step0SubjectPartition { admitted: [], excluded: [] } }, f: fn(acc, member) {
+    step0_partition_step(outcome: acc, member: member)
+  })
+}
+
+// THE EXCLUDED POPULATION IS PROJECTED BY THE SAME IDENTITY FOLD AS EVERY OTHER POPULATION HERE, so
+// a receipt names WHICH files left the subject rather than how many.
+fn step0_excluded_population_identity(excluded: List<Step0V2ExcludedSource>) -> Step0PopulationIdentity {
+  step0_population_identity_of_rows(
+    rows: excluded |> map(entry => concat(entry.path as String, " not-a-module") as NonEmptyStr)
+  )
+}
+
+// THE STRIP FOLD REUSES THE OWNED PER-SOURCE REWRITE rather than restating it: one authority for
+// "strip one source", and its refusal arms stay where their owner declared them. Halted is
+// absorbing -- a later source cannot repair an earlier one, and continuing would compile a subject
+// already known to be unstripped.
+type Step0CandidateStrip
+  = Step0CandidateStripping { sources: List<FixtureSource>, removed: Int }
+  | Step0CandidateStripHalted { file: NonEmptyStr }
+
+fn step0_candidate_strip_step(fold_state: Step0CandidateStrip, source: FixtureSource) -> Step0CandidateStrip {
+  match fold_state {
+    Step0CandidateStripHalted { file: file } => Step0CandidateStripHalted { file: file }
+    Step0CandidateStripping { sources: sources, removed: removed } =>
+      match namespace_step0_strip_source(source: source) {
+        Step0SourceStripRefused { cause: _ } => Step0CandidateStripHalted { file: source.path }
+        Step0SourceStripped { source: stripped, removed_statements: removed_statements } =>
+          Step0CandidateStripping {
+            sources: sources |> list_push(stripped),
+            removed: removed + count(removed_statements)
+          }
+      }
+  }
+}
+
+fn step0_candidate_strip(sources: List<FixtureSource>) -> Step0CandidateStrip {
+  fold(sources, init: Step0CandidateStripping { sources: [], removed: 0 }, f: fn(acc, source) {
+    step0_candidate_strip_step(fold_state: acc, source: source)
+  })
+}
+
+// THE COMPILE ENTRY IS THE FIRST MEMBER IN THE REVISION'S OWN ORDER, stated rather than chosen per
+// run: an entry picked differently between two dispatches would make two receipts incomparable for a
+// reason nobody could see in either of them.
+fn step0_candidate_entry(sources: List<FixtureSource>) -> NonEmptyStr? {
+  match first(sources) {
+    Absent => none
+    Present { value: source } => Present { value: source.path }
+  }
+}
+
+// BOTH UNITS, ALWAYS. A census row is an aggregated (class, subject, blocking) bucket carrying its
+// own count, so the number of blocking ROWS and the number of blocking OCCURRENCES are different
+// measurements and a receipt reporting one as the other is simply wrong. This produces both and the
+// receipt carries both.
+fn step0_blocking_measure(diagnostics: List<CompileDiagnosticCensusRow>) -> Step0BlockingMeasure {
+  let blocking = diagnostics |> filter(row => row.blocking)
+  Step0BlockingMeasure {
+    histogram_rows: count(blocking),
+    occurrences: fold(blocking, init: 0, f: fn(acc, row) { acc + row.count })
+  }
+}
+
+// THE FULL OBSERVATION IS KEPT, not reduced to a count at the seam. The instrument returns the
+// digest of the population it compiled and of the compiler it used; discarding those left the
+// receipt unable to say what it had compiled, which is the provenance this contract exists to pin.
+fn step0_compile_standing(
+  outcome: MultiModuleCompileFixtureOutcome,
+  population: Step0PopulationIdentity
+) -> Step0V2CompileStanding {
+  match outcome {
+    FixtureInstrumentRefused { cause: cause } => CompileInstrumentUnavailable { cause: cause }
+    FixtureCompileRefused { module_count: _, diagnostics: diagnostics, source_digest: sd, compiler_digest: cd } =>
+      CompileAttemptedAndRefused {
+        observation: Step0CompileObservation {
+          source_population: population,
+          source_digest: sd,
+          compiler_digest: cd,
+          histogram: diagnostics,
+          blocking: step0_blocking_measure(diagnostics: diagnostics)
+        }
+      }
+    FixtureCompileCompleted { module_count: modules, emitted_files: _, diagnostics: diagnostics, source_digest: sd, compiler_digest: cd } =>
+      CompileAttemptedAndCompleted {
+        observation: Step0CompileObservation {
+          source_population: population,
+          source_digest: sd,
+          compiler_digest: cd,
+          histogram: diagnostics,
+          blocking: step0_blocking_measure(diagnostics: diagnostics)
+        },
+        module_count: modules
+      }
+  }
+}
+
+fn step0_compile_population(sources: List<FixtureSource>, entry: NonEmptyStr) -> Step0V2CompileStanding {
+  step0_compile_standing(
+    outcome: compile_fixture(fixture: MultiModuleCompileFixture { sources: sources, entry: entry }),
+    population: step0_source_population_identity(sources: sources)
+  )
+}
+
+// ------------------------------------------------------------------ the bucket-grain differential
+//
+// THE JOIN IS INDEXED, NOT NESTED. The first cut scanned the opposite histogram for every row, and
+// the corpus proved the cost shape rather than leaving it hypothetical: 2,446 pre-strip rows against
+// 10,084 post-strip rows is ~24.7M row comparisons per differential and three differentials per
+// dispatch. DESIGN section 6 says a proven cost-shape defect is always fixed regardless of the
+// realized n, so each side is indexed once and probed once -- linear in the two histograms.
+//
+// THE INDEX KEY IS AN INTERNAL ADDRESS, NOT A SECOND NAME FOR THE BUCKET. Section 3's objection to
+// rendered keys is about CITATION -- naming a thing a second way so the two names can drift. Nothing
+// here is cited by this string: it is built and consumed inside one fold, from the row's own three
+// key fields, and the newline separator cannot appear in a diagnostic class.
+fn step0_row_key(row: CompileDiagnosticCensusRow) -> String {
+  concat(
+    if row.blocking { "blocking\n" } else { "advisory\n" },
+    concat(row.diagnostic_class as String, concat("\n", row.subject_name))
+  )
+}
+
+// THE INDEX REFUSES A CENSUS THAT IS NOT UNIQUELY KEYED, and this arm is not hypothetical: it is
+// how the defect was found. Replacing the nested scan with an index changed gross_increases by 5 and
+// nothing else, at the same revision on the same corpus -- a first-match scan and a last-write index
+// disagree exactly when two rows share a key. So the census carries more than one row for some
+// (diagnostic_class, subject_name, blocking) triple, the bucket join is NOT WELL DEFINED over it,
+// and picking either row would be an answer chosen by an implementation detail. It refuses instead,
+// with the duplicate count, and the pair standing carries that refusal rather than a number.
+type Step0HistogramIndex
+  = HistogramIndexed { index: Map<String, Int> }
+  | HistogramNotUniquelyKeyed { duplicate_keys: Int }
+
+type Step0IndexFold {
+  index: Map<String, Int>
+  duplicates: Int
+}
+
+fn step0_histogram_index(rows: List<CompileDiagnosticCensusRow>) -> Step0HistogramIndex {
+  let built = fold(rows, init: Step0IndexFold { index: empty_map(), duplicates: 0 }, f: fn(acc, row) {
+    let key = step0_row_key(row: row)
+    match map_get(acc.index, key) {
+      Present { value: _ } => Step0IndexFold { index: acc.index, duplicates: acc.duplicates + 1 }
+      Absent => Step0IndexFold { index: map_insert(acc.index, key, row.count), duplicates: acc.duplicates }
+    }
+  })
+  if built.duplicates > 0 {
+    HistogramNotUniquelyKeyed { duplicate_keys: built.duplicates }
+  } else {
+    HistogramIndexed { index: built.index }
+  }
+}
+
+fn step0_differential_left_step(
+  acc: Step0HistogramDifferential,
+  post_index: Map<String, Int>,
+  row: CompileDiagnosticCensusRow
+) -> Step0HistogramDifferential {
+  match map_get(post_index, step0_row_key(row: row)) {
+    Absent => Step0HistogramDifferential {
+      gross_increases: acc.gross_increases,
+      gross_decreases: acc.gross_decreases + row.count,
+      unchanged_buckets: acc.unchanged_buckets,
+      pre_only_buckets: acc.pre_only_buckets + 1,
+      post_only_buckets: acc.post_only_buckets
+    }
+    Present { value: other } =>
+      if other > row.count {
+        Step0HistogramDifferential {
+          gross_increases: acc.gross_increases + (other - row.count),
+          gross_decreases: acc.gross_decreases,
+          unchanged_buckets: acc.unchanged_buckets,
+          pre_only_buckets: acc.pre_only_buckets,
+          post_only_buckets: acc.post_only_buckets
+        }
+      } else if row.count > other {
+        Step0HistogramDifferential {
+          gross_increases: acc.gross_increases,
+          gross_decreases: acc.gross_decreases + (row.count - other),
+          unchanged_buckets: acc.unchanged_buckets,
+          pre_only_buckets: acc.pre_only_buckets,
+          post_only_buckets: acc.post_only_buckets
+        }
+      } else {
+        Step0HistogramDifferential {
+          gross_increases: acc.gross_increases,
+          gross_decreases: acc.gross_decreases,
+          unchanged_buckets: acc.unchanged_buckets + 1,
+          pre_only_buckets: acc.pre_only_buckets,
+          post_only_buckets: acc.post_only_buckets
+        }
+      }
+  }
+}
+
+fn step0_differential_right_step(
+  acc: Step0HistogramDifferential,
+  pre_index: Map<String, Int>,
+  row: CompileDiagnosticCensusRow
+) -> Step0HistogramDifferential {
+  match map_get(pre_index, step0_row_key(row: row)) {
+    Present { value: _ } => acc
+    Absent => Step0HistogramDifferential {
+      gross_increases: acc.gross_increases + row.count,
+      gross_decreases: acc.gross_decreases,
+      unchanged_buckets: acc.unchanged_buckets,
+      pre_only_buckets: acc.pre_only_buckets,
+      post_only_buckets: acc.post_only_buckets + 1
+    }
+  }
+}
+
+type Step0DifferentialOutcome
+  = Step0DifferentialUndefined { cause: NonEmptyStr }
+  | Step0DifferentialComputed { differential: Step0HistogramDifferential }
+
+fn step0_histogram_differential(
+  pre: List<CompileDiagnosticCensusRow>,
+  post: List<CompileDiagnosticCensusRow>
+) -> Step0DifferentialOutcome {
+  match step0_histogram_index(rows: pre) {
+    HistogramNotUniquelyKeyed { duplicate_keys: duplicates } => Step0DifferentialUndefined {
+      cause: concat("the pre-strip census carries more than one row for one (class, subject, blocking) key -- duplicate rows: ", to_string(duplicates)) as NonEmptyStr
+    }
+    HistogramIndexed { index: pre_index } => match step0_histogram_index(rows: post) {
+      HistogramNotUniquelyKeyed { duplicate_keys: duplicates } => Step0DifferentialUndefined {
+        cause: concat("the post-strip census carries more than one row for one (class, subject, blocking) key -- duplicate rows: ", to_string(duplicates)) as NonEmptyStr
+      }
+      HistogramIndexed { index: post_index } => {
+        let left = fold(pre, init: Step0HistogramDifferential {
+          gross_increases: 0, gross_decreases: 0, unchanged_buckets: 0, pre_only_buckets: 0, post_only_buckets: 0
+        }, f: fn(acc, row) { step0_differential_left_step(acc: acc, post_index: post_index, row: row) })
+        Step0DifferentialComputed {
+          differential: fold(post, init: left, f: fn(acc, row) { step0_differential_right_step(acc: acc, pre_index: pre_index, row: row) })
+        }
+      }
+    }
+  }
+}
+
+fn step0_differential_is_identity(differential: Step0HistogramDifferential) -> Bool {
+  differential.gross_increases == 0
+    && differential.gross_decreases == 0
+    && differential.pre_only_buckets == 0
+    && differential.post_only_buckets == 0
+}
+
+fn step0_differential_standing(
+  pre: Step0V2CompileStanding,
+  post: Step0V2CompileStanding
+) -> Step0DifferentialStanding {
+  match step0_standing_histogram(standing: pre) {
+    Absent => OccurrenceJoinUnavailable { cause: "the pre-strip compile produced no census, so there is nothing to compare" as NonEmptyStr }
+    Present { value: pre_rows } => match step0_standing_histogram(standing: post) {
+      Absent => OccurrenceJoinUnavailable { cause: "the post-strip compile produced no census, so there is nothing to compare" as NonEmptyStr }
+      Present { value: post_rows } => match step0_histogram_differential(pre: pre_rows, post: post_rows) {
+        Step0DifferentialUndefined { cause: cause } => OccurrenceJoinUnavailable { cause: cause }
+        Step0DifferentialComputed { differential: differential } =>
+          if step0_differential_is_identity(differential: differential) {
+            HistogramsIdentical
+          } else {
+            HistogramBucketsChanged { differential: differential }
+          }
+      }
+    }
+  }
+}
+
+fn step0_standing_histogram(standing: Step0V2CompileStanding) -> List<CompileDiagnosticCensusRow>? {
+  match standing {
+    CompileInstrumentUnavailable { cause: _ } => Absent
+    CompileAttemptedAndRefused { observation: observation } => Present { value: observation.histogram }
+    CompileAttemptedAndCompleted { observation: observation, module_count: _ } => Present { value: observation.histogram }
+  }
+}
+
+fn step0_pair_standing(pre: Step0V2CompileStanding, post: Step0V2CompileStanding) -> Step0PairStanding {
+  let differential = step0_differential_standing(pre: pre, post: post)
+  match pre {
+    CompileInstrumentUnavailable { cause: cause } => PairObservationIncomplete { cause: cause }
+    CompileAttemptedAndRefused { observation: _ } => match post {
+      CompileInstrumentUnavailable { cause: cause } => PairObservationIncomplete { cause: cause }
+      CompileAttemptedAndRefused { observation: _ } => BothCompileAttemptsRefused { differential_standing: differential }
+      CompileAttemptedAndCompleted { observation: _, module_count: _ } =>
+        CompileOutcomesDiffer { pre_strip_completed: false, differential_standing: differential }
+    }
+    CompileAttemptedAndCompleted { observation: _, module_count: _ } => match post {
+      CompileInstrumentUnavailable { cause: cause } => PairObservationIncomplete { cause: cause }
+      CompileAttemptedAndRefused { observation: _ } =>
+        CompileOutcomesDiffer { pre_strip_completed: true, differential_standing: differential }
+      CompileAttemptedAndCompleted { observation: _, module_count: _ } =>
+        BothCompileAttemptsCompleted { differential_standing: differential }
+    }
+  }
+}
+
+// ORDER INVARIANCE IS MEASURED, NOT ASSUMED. One dispatch closes tree drift between the two arms; it
+// says nothing about a compiler context carrying semantic state from the first compile into the
+// second. So the pair is run in BOTH orders and each arm's own histogram must be bucket-identical
+// under both. The comparison is the differential rather than a digest, because a census returned in
+// a different row order for the same input is the same observation and must not read as a violation.
+fn step0_order_invariance(
+  first_pass: Step0V2CompileStanding,
+  second_pass: Step0V2CompileStanding,
+  arm: String
+) -> Step0OrderInvariance {
+  match step0_standing_histogram(standing: first_pass) {
+    Absent => OrderInvarianceNotMeasured { cause: concat("the ", concat(arm, " arm produced no census in the first order")) as NonEmptyStr }
+    Present { value: first_rows } => match step0_standing_histogram(standing: second_pass) {
+      Absent => OrderInvarianceNotMeasured { cause: concat("the ", concat(arm, " arm produced no census in the second order")) as NonEmptyStr }
+      Present { value: second_rows } => match step0_histogram_differential(pre: first_rows, post: second_rows) {
+        Step0DifferentialUndefined { cause: cause } => OrderInvarianceNotMeasured { cause: cause }
+        Step0DifferentialComputed { differential: differential } =>
+          if step0_differential_is_identity(differential: differential) {
+            OrderInvarianceHeld
+          } else {
+            OrderInvarianceViolated { detail: concat("the ", concat(arm, " arm's census depends on the order the pair was compiled in")) as NonEmptyStr }
+          }
+      }
+    }
+  }
+}
+
+fn step0_order_invariance_of_pair(
+  pre_first: Step0V2CompileStanding,
+  pre_second: Step0V2CompileStanding,
+  post_first: Step0V2CompileStanding,
+  post_second: Step0V2CompileStanding
+) -> Step0OrderInvariance {
+  match step0_order_invariance(first_pass: pre_first, second_pass: pre_second, arm: "pre-strip") {
+    OrderInvarianceViolated { detail: detail } => OrderInvarianceViolated { detail: detail }
+    OrderInvarianceNotMeasured { cause: cause } => OrderInvarianceNotMeasured { cause: cause }
+    OrderInvarianceHeld => step0_order_invariance(first_pass: post_first, second_pass: post_second, arm: "post-strip")
+  }
+}
+
+// ------------------------------------------------------------ the one sealed pair fold
+//
+// EVERY VALUE THE RECEIPT NAMES COMES FROM THIS ONE PASS. The tree is collected ONCE, the compiler
+// identity observed ONCE, the population partitioned ONCE, the entry chosen ONCE, and the strip
+// derived ONCE from the admitted roster this fold is holding. Two independent routes that each
+// re-read HEAD and then agree is not the same claim: it is two observations we believe agree, which
+// is exactly what the member-count coincidence between two earlier runs could not establish.
+//
+// SAME-POPULATION MEANS ONE ROSTER WITH ONE DERIVED OUTPUT PER ADMITTED PATH -- never that the
+// before and after contents are equal, which the strip is specifically supposed to change.
+//
+// A REFUSAL HERE IS A RESULT, NOT AN ABSENCE. Each arm names what could not be observed and stops;
+// none produces a smaller receipt, because a receipt describing a shorter run is a different claim
+// rather than a weaker one.
+
+type Step0PairArms {
+  entry: NonEmptyStr
+  pre_strip: Step0V2CompileStanding
+  post_strip: Step0V2CompileStanding
+  order_invariance: Step0OrderInvariance
+  stripped: List<FixtureSource>
+  removed: Int
+}
+
+type Step0PairDerivation
+  = Step0PairNotDerived { blocked_at: Step0V2BlockingTransition, cause: NonEmptyStr }
+  | Step0PairDerived { arms: Step0PairArms }
+
+fn step0_derive_pair(admitted: List<FixtureSource>) -> Step0PairDerivation {
+  if count(admitted) == 0 {
+    Step0PairNotDerived {
+      blocked_at: ApplyTypedImportStrip,
+      cause: "no collected member parses as a module, so the strip has no subject" as NonEmptyStr
+    }
+  } else {
+    match step0_candidate_entry(sources: admitted) {
+      Absent => Step0PairNotDerived {
+        blocked_at: ApplyTypedImportStrip,
+        cause: "the admitted population is empty, so no entry names it" as NonEmptyStr
+      }
+      Present { value: entry } => match step0_candidate_strip(sources: admitted) {
+        Step0CandidateStripHalted { file: file } => Step0PairNotDerived {
+          blocked_at: ApplyTypedImportStrip,
+          cause: concat("the typed rewrite refused at ", file as String) as NonEmptyStr
+        }
+        Step0CandidateStripping { sources: stripped, removed: removed } =>
+          if removed == 0 {
+            Step0PairNotDerived {
+              blocked_at: ApplyTypedImportStrip,
+              cause: "the subject carried no import statement to remove" as NonEmptyStr
+            }
+          } else if count(stripped) != count(admitted) {
+            Step0PairNotDerived {
+              blocked_at: ApplyTypedImportStrip,
+              cause: "the strip did not produce exactly one derived source per admitted path" as NonEmptyStr
+            }
+          } else {
+            let pre_first = step0_compile_population(sources: admitted, entry: entry)
+            let post_first = step0_compile_population(sources: stripped, entry: entry)
+            let post_second = step0_compile_population(sources: stripped, entry: entry)
+            let pre_second = step0_compile_population(sources: admitted, entry: entry)
+            Step0PairDerived {
+              arms: Step0PairArms {
+                entry: entry,
+                pre_strip: pre_first,
+                post_strip: post_first,
+                order_invariance: step0_order_invariance_of_pair(
+                  pre_first: pre_first,
+                  pre_second: pre_second,
+                  post_first: post_first,
+                  post_second: post_second
+                ),
+                stripped: stripped,
+                removed: removed
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+// THE FRONTIER THIS RUN REACHED. Reaching the strip IS entry, and the compile standing lives inside
+// the entered arm: a compile instrument that could not run reports CompileInstrumentUnavailable
+// there, and does not withdraw an entry that already happened.
+fn step0_pair_frontier(derivation: Step0PairDerivation) -> Step0V2Frontier {
+  match derivation {
+    Step0PairNotDerived { blocked_at: blocked_at, cause: cause } =>
+      Step0V2SubjectNotEntered { blocked_at: blocked_at, cause: cause }
+    Step0PairDerived { arms: arms } => Step0V2SubjectEntered {
+      stripped_population: step0_source_population_identity(sources: arms.stripped),
+      compile_input_population: step0_source_population_identity(sources: arms.stripped),
+      removed_statement_count: arms.removed,
+      compile_standing: arms.post_strip
+    }
+  }
+}
+
+// THE PRE-STRIP ARM IS NOT OPTIONAL COLOUR. A post-strip diagnostic count on its own licenses no
+// inference at all: the same number is produced by missing bindings, by defects the rewrite
+// introduced, by corpus errors this instrument already reported before anything was stripped, and
+// by type errors the strip merely exposed. So the SAME admitted population is compiled UNSTRIPPED
+// through the SAME instrument with the SAME entry, inside the SAME dispatch, and the pair is what
+// may be read.
+//
+// WHAT THE PAIR STILL DOES NOT ESTABLISH: neither arm is an import-dependence judgment. A compile
+// refusal is an observation OF THAT COMPILE ATTEMPT. The receipt says so in its own
+// ImportDependenceNotJudged field, and a reader who takes the differential as a dependence
+// measurement has substituted the proxy this contract exists to keep out of the record.
+
+// THE ONE ADMITTED CALLER OF THE RECEIPT MINT, holding every value from this dispatch.
+fn step0_candidate_receipt_of_run(
+  vector: Step0SubjectVector,
+  compiler: Sha256Digest,
+  partition: Step0SubjectPartition,
+  derivation: Step0PairDerivation,
+  frontier: Step0V2Frontier
+) -> NamespaceStep0V2Receipt {
+  namespace_step0_v2_candidate_receipt(
+    source_commit: vector.source_commit,
+    source_tree: vector.source_tree,
+    compiler_program: "target/release/gunbc" as NonEmptyStr,
+    compiler_executable_sha256: compiler,
+    collected_population: step0_collected_population_identity(vector: vector),
+    excluded_sources: partition.excluded,
+    excluded_population: step0_excluded_population_identity(excluded: partition.excluded),
+    admitted_population: step0_source_population_identity(sources: partition.admitted),
+    compile_entry: step0_pair_entry(derivation: derivation, partition: partition),
+    pre_strip_standing: step0_pair_pre_strip(derivation: derivation),
+    pair_standing: step0_pair_standing_of(derivation: derivation),
+    order_invariance: step0_pair_order_invariance(derivation: derivation),
+    completed_production_prefix: step0_frontier_prefix(frontier: frontier),
+    frontier: frontier
+  )
+}
+
+// A DERIVATION THAT NEVER REACHED THE COMPILES STILL NAMES WHAT IT WOULD HAVE COMPILED where it can.
+// Where it cannot -- an empty admitted population -- the entry is the contract's own manifest-shaped
+// placeholder rather than a fabricated path, and the pair standing is Incomplete beside it.
+fn step0_pair_entry(derivation: Step0PairDerivation, partition: Step0SubjectPartition) -> NonEmptyStr {
+  match derivation {
+    Step0PairDerived { arms: arms } => arms.entry
+    Step0PairNotDerived { blocked_at: _, cause: _ } => match step0_candidate_entry(sources: partition.admitted) {
+      Present { value: entry } => entry
+      Absent => "(no admitted source names an entry)" as NonEmptyStr
+    }
+  }
+}
+
+fn step0_pair_pre_strip(derivation: Step0PairDerivation) -> Step0V2CompileStanding {
+  match derivation {
+    Step0PairDerived { arms: arms } => arms.pre_strip
+    Step0PairNotDerived { blocked_at: _, cause: cause } => CompileInstrumentUnavailable { cause: cause }
+  }
+}
+
+fn step0_pair_standing_of(derivation: Step0PairDerivation) -> Step0PairStanding {
+  match derivation {
+    Step0PairDerived { arms: arms } => step0_pair_standing(pre: arms.pre_strip, post: arms.post_strip)
+    Step0PairNotDerived { blocked_at: _, cause: cause } => PairObservationIncomplete { cause: cause }
+  }
+}
+
+fn step0_pair_order_invariance(derivation: Step0PairDerivation) -> Step0OrderInvariance {
+  match derivation {
+    Step0PairDerived { arms: arms } => arms.order_invariance
+    Step0PairNotDerived { blocked_at: _, cause: _ } =>
+      OrderInvarianceNotMeasured { cause: "no compile ran, so there was no order to vary" as NonEmptyStr }
+  }
+}
+
+fn step0_frontier_prefix(frontier: Step0V2Frontier) -> List<Step0V2CompletedTransition> {
+  match frontier {
+    Step0V2SubjectNotEntered { blocked_at: _, cause: _ } => step0_v2_pre_strip_prefix
+    Step0V2SubjectEntered {
+      stripped_population: _,
+      compile_input_population: _,
+      removed_statement_count: _,
+      compile_standing: standing
+    } => step0_v2_entered_prefix_for(standing: standing)
+  }
+}
+
+fn run_current_step0_candidate() -> Step0CandidateRun {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: cause } => Step0CandidateSubjectUnavailable { cause: cause }
+    Step0SubjectCollected { vector: vector } =>
+      match sha256sum_file_digest_via_shell(path: "target/release/gunbc" as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: path, reason: reason } =>
+          Step0CandidateCompilerUnavailable { program: path, reason: reason }
+        Sha256FileDigest { digest: observed } =>
+          match sha256_hex_digest(hex: observed.hex as String) {
+            Absent => Step0CandidateCompilerDigestUnreadable { hex: observed.hex as String }
+            Present { value: compiler } => match step0_partition_subject(vector: vector) {
+              Step0SubjectPartitionRefused { path: path, cause: cause } =>
+                Step0CandidatePartitionRefused { path: path, cause: cause }
+              Step0SubjectPartitioned { partition: partition } => {
+              let derivation = step0_derive_pair(admitted: partition.admitted)
+              let frontier = step0_pair_frontier(derivation: derivation)
+              let receipt = step0_candidate_receipt_of_run(
+                vector: vector,
+                compiler: compiler,
+                partition: partition,
+                derivation: derivation,
+                frontier: frontier
+              )
+              Step0CandidateObserved {
+                receipt: receipt,
+                admission: admit_namespace_step0_v2_receipt(
+                  receipt: receipt,
+                  expected_commit: vector.source_commit,
+                  expected_tree: vector.source_tree,
+                  expected_compiler_sha256: compiler
+                ),
+                collected_members: step0_subject_vector_size(vector: vector),
+                excluded_members: count(partition.excluded)
+              }
+            } }
+          }
+      }
+  }
+}
+
+// THE RECEIPT LINE THE CONTRACT'S COMMAND PRINTS. It reports the frontier and the standing, never a
+// pass or a fail: a completed containment compile is an observation of that attempt, and rendering
+// it as success is the proxy this contract exists to keep out of the record. BOTH ARMS ARE ALWAYS
+// PRINTED AND BOTH UNITS WITH THEM -- a post-strip figure alone is the reading this line exists to
+// make impossible, and "blocking rows" and "blocking occurrences" are different measurements.
+fn step0_blocking_line(measure: Step0BlockingMeasure) -> String {
+  concat(
+    concat("blocking_rows=", to_string(measure.histogram_rows)),
+    concat(" blocking_occurrences=", to_string(measure.occurrences))
+  )
+}
+
+fn step0_standing_line(standing: Step0V2CompileStanding) -> String {
+  match standing {
+    CompileInstrumentUnavailable { cause: cause } =>
+      concat("compile-instrument-unavailable cause=", cause as String)
+    CompileAttemptedAndRefused { observation: observation } =>
+      concat("compile-refused ", concat(step0_blocking_line(measure: observation.blocking), concat(" census_rows=", to_string(count(observation.histogram)))))
+    CompileAttemptedAndCompleted { observation: observation, module_count: modules } =>
+      concat(
+        concat("compile-completed modules=", to_string(modules)),
+        concat(" ", concat(step0_blocking_line(measure: observation.blocking), " (an observation of this attempt, NOT proof the removed imports were unnecessary)"))
+      )
+  }
+}
+
+fn step0_differential_line(standing: Step0DifferentialStanding) -> String {
+  match standing {
+    HistogramsIdentical => "differential=identical"
+    OccurrenceJoinUnavailable { cause: cause } => concat("differential=unavailable cause=", cause as String)
+    HistogramBucketsChanged { differential: d } =>
+      concat(
+        concat("differential=buckets-changed gross_increases=", to_string(d.gross_increases)),
+        concat(
+          concat(" gross_decreases=", to_string(d.gross_decreases)),
+          concat(
+            concat(" unchanged_buckets=", to_string(d.unchanged_buckets)),
+            concat(
+              concat(" pre_only_buckets=", to_string(d.pre_only_buckets)),
+              concat(" post_only_buckets=", to_string(d.post_only_buckets))
+            )
+          )
+        )
+      )
+  }
+}
+
+fn step0_pair_standing_line(standing: Step0PairStanding) -> String {
+  match standing {
+    PairObservationIncomplete { cause: cause } => concat("pair=incomplete cause=", cause as String)
+    BothCompileAttemptsRefused { differential_standing: d } =>
+      concat("pair=both-refused ", step0_differential_line(standing: d))
+    BothCompileAttemptsCompleted { differential_standing: d } =>
+      concat("pair=both-completed ", step0_differential_line(standing: d))
+    CompileOutcomesDiffer { pre_strip_completed: pre_completed, differential_standing: d } =>
+      concat(
+        if pre_completed { "pair=pre-completed-post-refused " } else { "pair=pre-refused-post-completed " },
+        step0_differential_line(standing: d)
+      )
+  }
+}
+
+fn step0_order_invariance_line(standing: Step0OrderInvariance) -> String {
+  match standing {
+    OrderInvarianceHeld => "order_invariance=held"
+    OrderInvarianceViolated { detail: detail } => concat("order_invariance=VIOLATED detail=", detail as String)
+    OrderInvarianceNotMeasured { cause: cause } => concat("order_invariance=not-measured cause=", cause as String)
+  }
+}
+
+fn step0_frontier_line(frontier: Step0V2Frontier) -> String {
+  match frontier {
+    Step0V2SubjectNotEntered { blocked_at: blocked_at, cause: cause } =>
+      concat("subject-not-entered blocked_at=", concat(step0_blocking_transition_label(blocked_at: blocked_at), concat(" cause=", cause as String)))
+    Step0V2SubjectEntered {
+      stripped_population: _,
+      compile_input_population: _,
+      removed_statement_count: removed,
+      compile_standing: standing
+    } =>
+      concat("subject-entered removed_statements=", concat(to_string(removed), concat(" post-strip[", concat(step0_standing_line(standing: standing), "]"))))
+  }
+}
+
+fn step0_blocking_transition_label(blocked_at: Step0V2BlockingTransition) -> String {
+  match blocked_at {
+    CollectSubjectPopulation => "collect-subject-population"
+    ApplyTypedImportStrip => "apply-typed-import-strip"
+  }
+}
+
+fn step0_admission_line(admission: NamespaceStep0V2Admission) -> String {
+  match admission {
+    NamespaceStep0V2ReceiptAdmitted => "admitted"
+    NamespaceStep0V2ReceiptRefused { field: _, cause: cause } => concat("refused: ", cause as String)
+  }
+}
+
+fn current_step0_candidate_receipt_line() -> String {
+  match run_current_step0_candidate() {
+    Step0CandidateSubjectUnavailable { cause: _ } => "step0-candidate: subject unavailable"
+    Step0CandidateCompilerUnavailable { program: _, reason: reason } =>
+      concat("step0-candidate: compiler unavailable: ", reason)
+    Step0CandidateCompilerDigestUnreadable { hex: hex } =>
+      concat("step0-candidate: compiler digest unreadable: ", hex)
+    Step0CandidatePartitionRefused { path: path, cause: cause } =>
+      concat(
+        concat("step0-candidate: partition refused at ", path as String),
+        concat(": ", import_statement_parse_cause_label(cause: cause) as String)
+      )
+    Step0CandidateObserved { receipt: receipt, admission: admission, collected_members: collected, excluded_members: excluded } =>
+      concat(
+        concat(
+          concat(
+            concat("step0-candidate: revision=", git_object_id_wire_hex(oid: receipt.source_commit) as String),
+            concat(" collected=", to_string(collected))
+          ),
+          concat(
+            concat(" excluded=", to_string(excluded)),
+            concat(" entry=", receipt.compile_entry as String)
+          )
+        ),
+        concat(
+          concat(
+            concat(" pre-strip[", concat(step0_standing_line(standing: receipt.pre_strip_standing), "]")),
+            concat(" ", step0_frontier_line(frontier: receipt.frontier))
+          ),
+          concat(
+            concat(" ", step0_pair_standing_line(standing: receipt.pair_standing)),
+            concat(
+              concat(" ", step0_order_invariance_line(standing: receipt.order_invariance)),
+              concat(" classifier=", step0_admission_line(admission: admission))
+            )
+          )
+        )
+      )
+  }
+}
+
+// THE PARTITION ALONE, so the disposition of every collected member can be read without paying for
+// four corpus compiles. It reports the same fold the one-dispatch command runs, and it names the
+// excluded entries rather than counting them.
+fn current_step0_partition_line() -> String {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: _ } => "step0-partition: subject unavailable"
+    Step0SubjectCollected { vector: vector } => match step0_partition_subject(vector: vector) {
+      Step0SubjectPartitionRefused { path: path, cause: cause } =>
+        concat(
+          concat("step0-partition: REFUSED at ", path as String),
+          concat(": ", import_statement_parse_cause_label(cause: cause) as String)
+        )
+      Step0SubjectPartitioned { partition: partition } =>
+        concat(
+          concat(
+            concat("step0-partition: revision=", git_object_id_wire_hex(oid: vector.source_commit) as String),
+            concat(" collected=", to_string(step0_subject_vector_size(vector: vector)))
+          ),
+          concat(
+            concat(" admitted=", to_string(count(partition.admitted))),
+            concat(
+              concat(" excluded=", to_string(count(partition.excluded))),
+              concat(" excluded_entries=", fold(partition.excluded, init: "", f: fn(acc, entry) {
+                concat(acc, concat(" ", entry.path as String))
+              }))
+            )
+          )
+        )
+    }
+  }
+}
