@@ -68,7 +68,10 @@ fn observe_admitted_revision(repo: FilePath, remote: String, ref_name: GitRef) -
     }
   } else {
     FleetDesiredUnobserved {
-      cause: concat("fleet_desired_observe: ls-remote refused: ", read.stderr),
+      cause: join([
+        "fleet_desired_observe: ls-remote of ", ref_name as String, " on remote ", remote,
+        " refused: ", read.stderr,
+      ], ""),
     }
   }
 }
@@ -214,7 +217,9 @@ fn admitted_revision_standing(repo: FilePath, remote: String, ref_name: GitRef) 
         FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
         FleetDesiredAbsent =>
           RevisionUnobserved {
-            cause: concat("fleet_desired_observe: origin advertises no ", fleet_desired_ref_name),
+            cause: join([
+              "fleet_desired_observe: remote ", remote, " advertises no ", ref_name as String,
+            ], ""),
           }
         FleetDesiredUndecodable { advertised: line } =>
           RevisionUnobserved {
