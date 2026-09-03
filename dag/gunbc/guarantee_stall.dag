@@ -751,7 +751,24 @@ data wet_receipt_wall_ms_fabricated_on_refusal_arms_stall: GuaranteeStall = Guar
   next_rung_trigger: "wall_ms carried as Optional<Milliseconds>, so an unmeasured duration has NO CONSTRUCTOR that produces a number and every consumer must eliminate the absence before arithmetic -- and a wet receipt actually DISPATCHED under that schema, because the schema change alone leaves the committed envelope carrying the old shape. NOT satisfied by a consumer that branches on the outcome wire, which is the mitigation this row is counting; and not by editing the type alone, because v2.workflow.floor_wet_route is a term of its own semantic subject and the change rides a re-dispatch"
 }
 
+// THE DELIBERATELY DROPPED HALF OF gunbc#10258'S DISPLAY CONTRACT. That lane printed module
+// identity beside source path from ResolvedGraph, but only after typed resolution. The
+// loader-boundary preflight that replaced it answers the actual landing decision at its native
+// grain -- repository-path intersection -- and cannot project resolved module identity because
+// SourceFile carries only path and content. Reparsing the content or reconstructing a plausible
+// path-to-name mapping would mint a second identity authority, so the replacement refuses that
+// tempting widening and records the absent capability here instead.
+data pre_resolve_entry_closure_module_identity_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a routed entry's exact loader-boundary closure can be enumerated by repository path before typed resolution, but cannot be enumerated by resolved module identity at that same pre-resolution boundary",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["claim_batch --print-entry-closure"] },
+  next_rung_trigger: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  pre_resolve_entry_closure_module_identity_stall,
   wet_receipt_wall_ms_fabricated_on_refusal_arms_stall,
   wet_route_model_lags_seed_stall,
   wet_lane_seed_admission_pairing_stall,

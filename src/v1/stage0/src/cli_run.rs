@@ -4904,26 +4904,6 @@ pub fn workspace_relative_repo_path(path: &str) -> String {
     }
 }
 
-/// The exact module population returned by one entry resolution, in a stable display order.
-///
-/// This is a projection of the resolver result, never a second import or reference walk. Module
-/// identity joins the resolver's population; source path lets a prospective writer compare the
-/// file it is about to change with the routed entry's semantic subject.
-pub fn resolved_closure_members(graph: &ResolvedGraph) -> Vec<(String, String)> {
-    let mut members: Vec<(String, String)> = graph
-        .modules
-        .iter()
-        .map(|module| {
-            (
-                module.func_env.name.clone(),
-                workspace_relative_repo_path(&module.module.span.file),
-            )
-        })
-        .collect();
-    members.sort();
-    members
-}
-
 /// Entry-path variant of `workspace_relative_repo_path` that NEVER panics.
 ///
 /// A user-supplied entry can legitimately sit outside every source root (an absolute path under
@@ -17368,6 +17348,25 @@ pub fn wet_closure_subject_for_entry(
 /// `wet_subject_is_independent_of_the_running_binary`.
 pub fn wet_closure_subject(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> String {
     crate::resolved_graph_cache::closure_content_digest(sources)
+}
+
+/// The exact source-path population the entry loader will hand to resolution.
+///
+/// This stops at the loader boundary: it runs the same import, qualified-reference, and bare-name
+/// fixpoint as `resolve_entry_with_index`, but does not parse, typecheck, reconcile, or evaluate the
+/// resulting modules. A caller deciding whether a changed path intersects an entry can therefore
+/// ask the real loader before paying for the downstream work it is trying to avoid.
+pub fn entry_closure_source_paths(
+    index: &MultiEntryIndex,
+    entry: &str,
+) -> Result<Vec<String>, String> {
+    let mut paths: Vec<String> = load_sources_for_entry_with_pool(index, entry)?
+        .iter()
+        .map(|source| workspace_relative_repo_path(&source.path))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
 }
 
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
@@ -36987,6 +36986,33 @@ mod import_closure_equivalence_tests {
         assert_bfs_matches_import_closure_live(
             "dag/gunbc/instruments/floor_effect_gate_witness.dag",
             &roots,
+        );
+    }
+
+    /// Executing parity control for the preflight projection: compare the loader-boundary answer
+    /// with the population that survives the complete typed resolve of one real routed entry.
+    /// This is deliberately live-corpus/ignored because the full-resolve side is the ~minute-scale
+    /// work the production preflight exists to avoid.
+    #[test]
+    #[ignore = "live-corpus: full typed resolve parity control for the cheap entry-closure route"]
+    fn entry_closure_source_paths_match_full_resolve_on_routed_entry() {
+        let roots = default_source_roots();
+        let index = build_multi_entry_index(&roots);
+        let entry = workspace_root().join("dag/test/claim/discovery_census_witness_test.dag");
+        let entry = entry.to_string_lossy().into_owned();
+        let cheap: BTreeSet<String> = super::entry_closure_source_paths(&index, &entry)
+            .expect("loader-boundary closure")
+            .into_iter()
+            .collect();
+        let (resolved, _) = resolve_entry_with_index(&index, &entry).expect("full typed resolve");
+        let full: BTreeSet<String> = resolved
+            .modules
+            .iter()
+            .map(|module| workspace_relative_repo_path(&module.module.span.file))
+            .collect();
+        assert_eq!(
+            cheap, full,
+            "cheap closure must equal full resolved population"
         );
     }
 

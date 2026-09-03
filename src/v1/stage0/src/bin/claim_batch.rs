@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    closure_subject_for_entry, discover_floor_witness_roster,
+    closure_subject_for_entry, discover_floor_witness_roster, entry_closure_source_paths,
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, process_shared_index, resolve_entry_with_index,
     run_claim_measured, witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
@@ -194,6 +194,7 @@ struct ParsedArgs {
     wet_route: bool,
     receipt_out: Option<PathBuf>,
     receipt_tsv_out: Option<PathBuf>,
+    print_entry_closure: bool,
 }
 
 struct DiscoveryConfig {
@@ -260,6 +261,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut wet_route = false;
     let mut receipt_out: Option<PathBuf> = None;
     let mut receipt_tsv_out: Option<PathBuf> = None;
+    let mut print_entry_closure = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -341,6 +343,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
             }
             "--pre-push" => pre_push = true,
+            "--print-entry-closure" => print_entry_closure = true,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -375,6 +378,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         wet_route,
         receipt_out,
         receipt_tsv_out,
+        print_entry_closure,
     })
 }
 
@@ -480,18 +484,6 @@ fn resolve_timed(
                 graph.modules.len(),
                 graph.item_registry.len(),
             );
-            // THE MEMBERSHIP BEHIND THE COUNT, printed from the resolver's returned graph.
-            // A semantic digest can say after a long dispatch that its subject changed, and the
-            // scalar above can say only how large that subject was. Neither lets a lane about to
-            // edit a file determine whether it is inside the held subject. This projection does
-            // not walk imports or resolve a second time: the graph already retained the exact
-            // module population to execute the routed entry, and this prints that authority.
-            for (module, file) in v1_compiler::cli_run::resolved_closure_members(&graph) {
-                eprintln!(
-                    "[resolve] {}: closure member module={:?} file={:?}",
-                    entry, module, file
-                );
-            }
             timings.resolves += 1;
             timings.resolve_ms += ms;
             if timings.resolves == 1 {
@@ -652,6 +644,7 @@ fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
+    let invocation_started = Instant::now();
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
     if parsed.pre_push {
@@ -667,6 +660,60 @@ fn run() -> Result<ExitCode, ExitCode> {
     if source_roots.is_empty() {
         eprintln!("claim_batch: provide at least one --source-root");
         return Err(ExitCode::from(2));
+    }
+
+    // A closure question must stop at the loader boundary. In particular, keep it ahead of the
+    // whole-pool bare-reference warm, output-policy resolution, mock precompute, and typed entry
+    // resolve below: those are precisely the costs a prospective skip decision must avoid.
+    if parsed.print_entry_closure {
+        if parsed.discovery.is_some() {
+            eprintln!("claim_batch: --print-entry-closure does not accept --roster-from-discovery");
+            return Err(ExitCode::from(2));
+        }
+        if parsed.entry_groups.is_empty() {
+            eprintln!("claim_batch: --print-entry-closure requires at least one --entry");
+            return Err(ExitCode::from(2));
+        }
+        if parsed
+            .entry_groups
+            .iter()
+            .any(|group| !group.functions.is_empty())
+        {
+            eprintln!(
+                "claim_batch: --print-entry-closure is a non-evaluating mode and does not accept --function/--functions"
+            );
+            return Err(ExitCode::from(2));
+        }
+        let query_started = Instant::now();
+        let index = process_shared_index(&source_roots);
+        let mut emitted_paths = 0usize;
+        for group in &parsed.entry_groups {
+            let paths = entry_closure_source_paths(&index, &group.entry).map_err(|why| {
+                eprintln!(
+                    "claim_batch: entry closure failed for {}: {why}",
+                    group.entry
+                );
+                ExitCode::from(1)
+            })?;
+            for path in paths {
+                println!("[entry-closure] {}: file={:?}", group.entry, path);
+                emitted_paths += 1;
+            }
+        }
+        // A terminal positive receipt is load-bearing for a membership query: without it, shell
+        // plumbing that masks a missing/non-running binary can turn zero output into a false
+        // "path is absent" verdict. This line is printed only after every entry answered.
+        println!(
+            "[entry-closure-summary] state=complete entries={} path_rows={}",
+            parsed.entry_groups.len(),
+            emitted_paths
+        );
+        eprintln!(
+            "[entry-closure-timing] total_ms={} own_query_ms={}",
+            invocation_started.elapsed().as_millis(),
+            query_started.elapsed().as_millis()
+        );
+        return Ok(ExitCode::SUCCESS);
     }
 
     // Explicit names are entry-local facts. Refuse stale/typoed argv before the whole-tree
@@ -1336,6 +1383,26 @@ mod cli_path_resolution_wiring_tests {
     }
 
     #[test]
+    fn closure_only_mode_is_parsed_without_a_function() {
+        let ws = workspace_root();
+        let root = ws.join("dag").to_string_lossy().into_owned();
+        let entry = ws
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let parsed = parse_args(&args(&[
+            "--source-root",
+            &root,
+            "--entry",
+            &entry,
+            "--print-entry-closure",
+        ]))
+        .expect("closure-only argv must parse");
+        assert!(parsed.print_entry_closure);
+        assert!(parsed.entry_groups[0].functions.is_empty());
+    }
+
+    #[test]
     fn declared_explicit_function_passes_preflight() {
         let entry = workspace_root()
             .join("dag/test/claim/discovery_census_witness_test.dag")
@@ -1391,46 +1458,6 @@ mod witness_report_line_tests {
         let line = witness_report_line("some_witness", &receipt(500, 500));
         assert!(line.contains("cpu=500ms"), "{line}");
         assert!(line.contains("wall=500ms"), "{line}");
-    }
-}
-
-#[cfg(test)]
-mod resolved_closure_membership_tests {
-    use std::rc::Rc;
-    use v1_compiler::cli_run::resolved_closure_members;
-    use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-
-    /// The producer reads the resolver result itself and carries identities, not only the count.
-    /// Reversing source order is the discriminating input for the stable display order, and the
-    /// two distinct paths prevent a module-only or file-only projection from satisfying the row.
-    #[test]
-    fn prints_the_resolvers_module_population_with_source_paths_in_stable_order() {
-        let sources = Rc::new(
-            vec![
-                Rc::new(SourceFile {
-                    path: "fixture/zeta.dag".to_string(),
-                    content: "module fixture.zeta\n".to_string(),
-                }),
-                Rc::new(SourceFile {
-                    path: "fixture/alpha.dag".to_string(),
-                    content: "module fixture.alpha\n".to_string(),
-                }),
-            ]
-            .into(),
-        );
-        let resolved = compile_to_resolved(sources);
-        let graph = resolved
-            .graph
-            .clone()
-            .expect("the two-module fixture resolves");
-
-        assert_eq!(
-            resolved_closure_members(&graph),
-            vec![
-                ("fixture.alpha".to_string(), "fixture/alpha.dag".to_string()),
-                ("fixture.zeta".to_string(), "fixture/zeta.dag".to_string()),
-            ]
-        );
     }
 }
 
