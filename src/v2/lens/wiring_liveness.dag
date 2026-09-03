@@ -144,8 +144,8 @@ fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
   })
 }
 
-fn wiring_liveness_corpus_verdict() -> LensVerdict {
-  fold(fn_arrow_decl_facts_live(), init: Holds, f: fn(acc, decl) {
+fn wiring_liveness_corpus_verdict(pool_roots: List<String>) -> LensVerdict {
+  fold(fn_arrow_decl_facts_live(pool_roots: pool_roots), init: Holds, f: fn(acc, decl) {
     match acc {
       Violation { diagnostic: _ } => acc
       _ => wiring_decl_verdict(decl: decl)
@@ -153,16 +153,16 @@ fn wiring_liveness_corpus_verdict() -> LensVerdict {
   })
 }
 
-fn wiring_liveness_corpus_dead_wires() -> List<WiringDeadWire> {
-  wiring_dead_wires_over(decls: fn_arrow_decl_facts_live())
+fn wiring_liveness_corpus_dead_wires(pool_roots: List<String>) -> List<WiringDeadWire> {
+  wiring_dead_wires_over(decls: fn_arrow_decl_facts_live(pool_roots: pool_roots))
 }
 
-fn wiring_liveness_corpus_dead_wire_count() -> Int {
-  length(xs: wiring_liveness_corpus_dead_wires())
+fn wiring_liveness_corpus_dead_wire_count(pool_roots: List<String>) -> Int {
+  length(xs: wiring_liveness_corpus_dead_wires(pool_roots: pool_roots))
 }
 
-fn wiring_liveness_corpus_is_clean() -> Bool {
-  match wiring_liveness_corpus_verdict() {
+fn wiring_liveness_corpus_is_clean(pool_roots: List<String>) -> Bool {
+  match wiring_liveness_corpus_verdict(pool_roots: pool_roots) {
     Holds => true
     _ => false
   }

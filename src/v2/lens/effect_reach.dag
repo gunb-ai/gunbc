@@ -606,12 +606,13 @@ fn effect_reach_classification_from_facts(
 
 fn effect_reach_classification_from_facts_v0(
   entry_module: String,
+  pool_roots: List<String>,
   facts: List<ModuleImportFact>
 ) -> EffectReachClassification {
   effect_reach_classification_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots),
     data_inits: data_init_decl_facts_live()
   )
 }

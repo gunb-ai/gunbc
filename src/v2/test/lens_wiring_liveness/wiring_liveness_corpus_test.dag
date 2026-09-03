@@ -144,7 +144,7 @@ test fn wiring_corpus_fixture_surface_holds() -> Bool {
 }
 
 test fn wiring_liveness_corpus_witnesses() -> Bool {
-  let decls = fn_arrow_decl_facts_live()
+  let decls = fn_arrow_decl_facts_live(pool_roots: witness_layer_roots)
   return witness_dead_wire_detected()
     && (length(xs: decls) > 0)
     && probe_present_with_params(decls: decls)

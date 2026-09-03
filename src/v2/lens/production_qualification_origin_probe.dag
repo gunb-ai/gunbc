@@ -388,9 +388,11 @@ fn derived_production_qualification_mint_sites_from_facts(
   )
 }
 
-fn derived_production_qualification_mint_sites_live() -> List<DerivedProductionQualificationMintSiteRow> {
+fn derived_production_qualification_mint_sites_live(
+  pool_roots: List<String>
+) -> List<DerivedProductionQualificationMintSiteRow> {
   derived_production_qualification_mint_sites_from_facts(
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots)
   )
 }
 
@@ -438,15 +440,15 @@ fn planted_fixture_origin_mint_site_count() -> Int {
   )
 }
 
-fn known_fixture_origin_mint_surface_count_in_scope() -> Int {
+fn known_fixture_origin_mint_surface_count_in_scope(pool_roots: List<String>) -> Int {
   count_derived_fixture_origin_mint_sites(
-    sites: derived_production_qualification_mint_sites_live()
+    sites: derived_production_qualification_mint_sites_live(pool_roots: pool_roots)
   )
 }
 
-fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
+fn ingest_mint_surface_discovered_in_live_scope(pool_roots: List<String>) -> Bool {
   any(
-    xs: derived_production_qualification_mint_sites_live(),
+    xs: derived_production_qualification_mint_sites_live(pool_roots: pool_roots),
     predicate: fn(row) {
       string_contains(s: row.qualified_name, pattern: ingest_mint_entry_name_suffix)
         && emission_qualification_eq(
@@ -582,10 +584,11 @@ fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
 }
 
 fn structural_red_control_live_fixture_mint_site_discovered(
+  pool_roots: List<String>,
   live_qualified_name: String
 ) -> Bool {
   any(
-    xs: derived_production_qualification_mint_sites_live(),
+    xs: derived_production_qualification_mint_sites_live(pool_roots: pool_roots),
     predicate: fn(row) {
       string_eq(a: row.qualified_name, b: live_qualified_name)
         && production_qualification_origin_eq(
@@ -600,8 +603,8 @@ fn structural_red_control_live_fixture_mint_site_discovered(
   )
 }
 
-fn production_qualification_origin_probe_admission_holds() -> Bool {
+fn production_qualification_origin_probe_admission_holds(pool_roots: List<String>) -> Bool {
   production_qualification_origin_probe_admission_holds_for_decls(
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots)
   )
 }

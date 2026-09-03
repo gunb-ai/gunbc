@@ -7,7 +7,7 @@ import std.nat { Nat }
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView, append_dependency_views, dependency_lens }
-import v2.std.fn_index { fn_arrow_decl_facts_live, fn_arrow_decl_substrate_is_whole_tree }
+import v2.std.fn_index { fn_arrow_decl_facts_live }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -55,25 +55,22 @@ data corpus_dependency_view_per_pr_execution_gate: Disposition = Scaffold {
   }
 }
 
-fn corpus_dependency_view_per_pr_substrate_ready() -> Bool {
-  fn_arrow_decl_substrate_is_whole_tree()
-}
-
-fn corpus_dependency_view_per_pr_substrate_refuse() -> Bool {
-  corpus_dependency_view_per_pr_substrate_refuse()
-}
-
-fn ensure_corpus_dependency_view_per_pr_substrate() -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
-    true
-  } else {
-    corpus_dependency_view_per_pr_substrate_refuse()
-  }
-}
-
-fn corpus_dependency_views_live() -> List<DependencyView> {
-  let _ready = ensure_corpus_dependency_view_per_pr_substrate()
-  fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
+// THE RUNTIME SUBSTRATE GATE IS DELETED, NOT WEAKENED (gunbc#10156 clause 2). This module
+// carried corpus_dependency_view_per_pr_substrate_ready / _refuse / ensure_ — a three-function
+// guard that asked fn_arrow_decl_substrate_is_whole_tree at evaluation time whether the
+// declaration population it was about to fold happened to cover the corpus, and refused when it
+// did not. The guard existed because the producer's subject was its caller's resolved module
+// closure, which the caller could neither name nor check. It now names pool_roots, and the
+// population under those roots is the answer by construction, so the question the guard asked
+// has no remaining referent. Keeping it would leave a predicate over ctx.modules standing beside
+// a producer that no longer reads ctx.modules — a second authority on the subject, and a wrong
+// one. Its host arms (eval_fn_arrow_decl_substrate_is_whole_tree,
+// eval_corpus_dependency_view_per_pr_substrate_refuse and the census they called) are deleted
+// with it. What the caller now owes is a truthful root list; naming roots that contribute no
+// module refuses in the producer, typed and located, on the same PoolRootContributesNothing arm
+// every other pool-root producer already refuses on.
+fn corpus_dependency_views_live(pool_roots: List<String>) -> List<DependencyView> {
+  fold(fn_arrow_decl_facts_live(pool_roots: pool_roots), init: [], f: fn(acc, decl) {
     append_dependency_views(
       left: acc,
       right: dependency_lens(root: decl.output)
@@ -81,10 +78,10 @@ fn corpus_dependency_views_live() -> List<DependencyView> {
   })
 }
 
-fn corpus_dependency_view_edge_count() -> Int {
-  length(xs: corpus_dependency_views_live())
+fn corpus_dependency_view_edge_count(pool_roots: List<String>) -> Int {
+  length(xs: corpus_dependency_views_live(pool_roots: pool_roots))
 }
 
-fn corpus_dependency_view_decl_count() -> Int {
-  length(xs: fn_arrow_decl_facts_live())
+fn corpus_dependency_view_decl_count(pool_roots: List<String>) -> Int {
+  length(xs: fn_arrow_decl_facts_live(pool_roots: pool_roots))
 }

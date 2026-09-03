@@ -599,7 +599,7 @@ fn live_read_selection_manifest_live(
       exclude_substrings: exclude_substrings
     ),
     nodes: module_declaration_facts_live(pool_roots: pool_roots),
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots)
   )
 }
 
@@ -782,24 +782,26 @@ fn live_read_selection_projection_from_facts(
 
 fn live_read_selection_projection_from_facts_v0(
   entry_module: String,
+  pool_roots: List<String>,
   facts: List<ModuleImportFact>
 ) -> LiveReadSelectionProjection {
   live_read_selection_projection_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots),
     carrier_homes: live_read_carrier_homes_v0
   )
 }
 
 fn live_read_classification_g2_from_facts_v0(
   entry_module: String,
+  pool_roots: List<String>,
   facts: List<ModuleImportFact>
 ) -> LiveReadClassification {
   live_read_classification_g2_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots),
     carrier_homes: live_read_carrier_homes_v0
   )
 }

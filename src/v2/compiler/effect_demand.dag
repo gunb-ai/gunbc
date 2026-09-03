@@ -1317,18 +1317,5 @@ data effect_demand_seam_roster: List<SeamStanding> = [
     emitted_rust_identity: "v2_std_fn_index.rs::fn_arrow_decl_facts_live",
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   },
-  SeamStanding {
-    declaration: "fn_arrow_decl_substrate_is_whole_tree",
-    seam_module: "v2.std.fn_index",
-    projection: SeamUnrostered,
-    emitted_rust_identity: "v2_std_fn_index.rs::fn_arrow_decl_substrate_is_whole_tree",
-    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
-  },
-  SeamStanding {
-    declaration: "corpus_dependency_view_per_pr_substrate_refuse",
-    seam_module: "v2.lens.affected_set.corpus_dependency_view",
-    projection: SeamUnrostered,
-    emitted_rust_identity: "v2_lens_affected_set_corpus_dependency_view.rs::corpus_dependency_view_per_pr_substrate_refuse",
-    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   }
 ]

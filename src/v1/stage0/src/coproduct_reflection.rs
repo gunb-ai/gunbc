@@ -76,6 +76,50 @@ fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<Strin
     }
 }
 
+/// A caller-named `List<String>` subject argument, by NAME first and position second: the
+/// bridge receives `.dag` arguments with their authored labels, and a subject that could be
+/// silently taken from the wrong position is not caller-named.
+fn expect_pool_roots(
+    args: &[(Option<String>, Value)],
+    param: &str,
+    what: &str,
+) -> InterpResult<Vec<String>> {
+    let val = args
+        .iter()
+        .find(|(name, _)| name.as_deref() == Some(param))
+        .map(|(_, v)| v)
+        .or_else(|| args.first().map(|(_, v)| v))
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("{what} requires a `{param}: List<String>` argument"),
+        })?;
+    let items = match val {
+        Value::List(items) => items.iter().cloned().collect::<Vec<_>>(),
+        other => crate::v1_interpreter::free_monoid_to_vec(other).ok_or_else(|| {
+            InterpError::TypeError {
+                msg: format!(
+                    "{what} expects `{param}: List<String>`, got {}",
+                    other.type_label()
+                ),
+            }
+        })?,
+    };
+    let mut out = Vec::new();
+    for item in items {
+        match item {
+            Value::Str(s) => out.push(s.to_string()),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{what} expects `{param}: List<String>`, got element {}",
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
 pub fn eval_symbol_intern_lexeme(
     _ctx: &InterpContext,
     args: &[(Option<String>, Value)],
@@ -327,7 +371,7 @@ use std::collections::BTreeMap as StdDeclParseMemoMap;
 
 thread_local! {
     static FLOOR_DECL_PARSE_MEMO: RefCell<
-        Option<StdDeclParseMemoMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>>,
+        Option<StdDeclParseMemoMap<(Vec<String>, Vec<ItemKind>), (Vec<ParsedTypeDecl>, usize)>>,
     > = RefCell::new(None);
 }
 
@@ -417,26 +461,26 @@ pub fn decl_facts_for_roots_shared(pool_roots: &[String]) -> Rc<Vec<DeclFactRaw>
 
 fn floor_decl_parse_memo_lookup(
     roots: &[String],
-    want_kind: ItemKind,
+    want_kinds: &[ItemKind],
 ) -> Option<(Vec<ParsedTypeDecl>, usize)> {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         let slot = cell.borrow();
         let Some(map) = slot.as_ref() else {
             return None;
         };
-        map.get(&(roots.to_vec(), want_kind)).cloned()
+        map.get(&(roots.to_vec(), want_kinds.to_vec())).cloned()
     })
 }
 
 fn floor_decl_parse_memo_store(
     roots: &[String],
-    want_kind: ItemKind,
+    want_kinds: &[ItemKind],
     result: &(Vec<ParsedTypeDecl>, usize),
 ) {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         let mut slot = cell.borrow_mut();
         if let Some(map) = slot.as_mut() {
-            map.insert((roots.to_vec(), want_kind), result.clone());
+            map.insert((roots.to_vec(), want_kinds.to_vec()), result.clone());
         }
     });
 }
@@ -456,7 +500,7 @@ fn inventory_entry_under_abs_roots(
 fn decls_parse_only_from_inventory(
     inventory: &[crate::cli_run::PreparedSourceView],
     roots: &[String],
-    want_kind: ItemKind,
+    want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
@@ -482,7 +526,7 @@ fn decls_parse_only_from_inventory(
         })?;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            if item_kind(item.clone()) != want_kind {
+            if !want_kinds.contains(&item_kind(item.clone())) {
                 continue;
             }
             let name = authored_name_at(si.clone(), item.clone());
@@ -505,21 +549,21 @@ fn decls_parse_only_from_inventory(
 /// decl extraction. `inventory` selects the floor prepared path; `None` is the legacy disk walk.
 pub fn pool_decl_parse_wall_ms(
     pool_roots: &[String],
-    want_kind: ItemKind,
+    want_kinds: &[ItemKind],
     inventory: Option<&[crate::cli_run::PreparedSourceView]>,
 ) -> Result<(u128, usize), String> {
     let started = std::time::Instant::now();
     let (_, module_count) = if let Some(inv) = inventory {
-        decls_parse_only_from_inventory(inv, pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+        decls_parse_only_from_inventory(inv, pool_roots, want_kinds, "pool_decl_parse_wall_ms")?
     } else {
-        decls_parse_only_from_disk(pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+        decls_parse_only_from_disk(pool_roots, want_kinds, "pool_decl_parse_wall_ms")?
     };
     Ok((started.elapsed().as_millis(), module_count))
 }
 
 fn decls_parse_only_from_disk(
     roots: &[String],
-    want_kind: ItemKind,
+    want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
@@ -535,7 +579,7 @@ fn decls_parse_only_from_disk(
         })?;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            if item_kind(item.clone()) != want_kind {
+            if !want_kinds.contains(&item_kind(item.clone())) {
                 continue;
             }
             let name = authored_name_at(si.clone(), item.clone());
@@ -561,18 +605,18 @@ fn decls_parse_only_from_disk(
 /// on a walk that silently skips a file, so both callers share this one.
 fn decls_parse_only_fail_closed(
     roots: &[String],
-    want_kind: ItemKind,
+    want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
-    if let Some(cached) = floor_decl_parse_memo_lookup(roots, want_kind) {
+    if let Some(cached) = floor_decl_parse_memo_lookup(roots, want_kinds) {
         return Ok(cached);
     }
     let result = if let Some(inventory) = crate::cli_run::floor_prepared_inventory_snapshot() {
-        decls_parse_only_from_inventory(&inventory, roots, want_kind, caller)?
+        decls_parse_only_from_inventory(&inventory, roots, want_kinds, caller)?
     } else {
-        decls_parse_only_from_disk(roots, want_kind, caller)?
+        decls_parse_only_from_disk(roots, want_kinds, caller)?
     };
-    floor_decl_parse_memo_store(roots, want_kind, &result);
+    floor_decl_parse_memo_store(roots, want_kinds, &result);
     Ok(result)
 }
 
@@ -637,7 +681,7 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
     let (type_decls, module_count) =
-        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::TypeItem, "concept_decl_facts")
+        decls_parse_only_fail_closed(&abs_pool_roots, &[ItemKind::TypeItem], "concept_decl_facts")
             .map_err(|msg| InterpError::TypeError { msg })?;
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
@@ -715,9 +759,12 @@ pub fn eval_data_decl_type_facts(
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
-    let (data_decls, module_count) =
-        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::DataItem, "data_decl_type_facts")
-            .map_err(|msg| InterpError::TypeError { msg })?;
+    let (data_decls, module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[ItemKind::DataItem],
+        "data_decl_type_facts",
+    )
+    .map_err(|msg| InterpError::TypeError { msg })?;
     let mut rows: Vec<Value> = Vec::with_capacity(data_decls.len());
     for decl in data_decls.iter() {
         rows.push(Value::Record {
@@ -1163,50 +1210,61 @@ fn fn_arrow_decl_record(
     })
 }
 
-// Corpus-wide fn/arrow reflection: the gunbc#5364 widen trigger named in
-// `v2.lens.wiring_liveness`'s construction_justification. Sibling of
-// `eval_concept_decl_facts_live` (which filters to `ItemKind::TypeItem`); this yields
-// one `FnArrowDecl` per declared function across every loaded module -- the body
-// projected to a reachability skeleton (`output`) plus its declared parameter atoms
-// (`params`) -- so the wiring lens folds over REAL fn params corpus-wide, not synthetic
-// arrows. Host SOURCE half; dissolves with `concept_decl_facts_live` on the same #5364
-// corpus-as-node accessor.
+// Corpus-wide fn/arrow reflection over a CALLER-NAMED SUBJECT. Sibling of
+// `eval_concept_decl_facts` (`ItemKind::TypeItem`) and `eval_data_decl_type_facts`
+// (`ItemKind::DataItem`): one `FnArrowDecl` per declared function under the named
+// `pool_roots` -- the body projected to a reachability skeleton (`output`) plus its declared
+// parameter atoms (`params`).
+//
+// THE SUBJECT IS THE DECLARED ROOTS AND NOTHING ELSE. This producer walked `ctx.modules` --
+// the caller's entry closure, an input it did not declare -- until gunbc#10156 clause 2. Two
+// things followed and both are closed here: its population was whatever closure happened to be
+// resolved (so `fn_arrow_decl_substrate_is_whole_tree` had to ASK AT RUNTIME whether the answer
+// was corpus-wide, and `corpus_dependency_view` carried a refusal arm for when it was not), and
+// its cost could not be netted across claims because any key would have named less than the
+// answer depended on. Reading through `decls_parse_only_fail_closed` makes the population a
+// function of the roots alone, which is what makes the floor's `FLOOR_DECL_PARSE_MEMO` a
+// correct shared artifact for it rather than a key that would serve one claim another claim's
+// declarations.
 pub fn eval_fn_arrow_decl_facts_live(
     ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
+    args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let si = ctx.source_indices();
+    let pool_roots = expect_pool_roots(args, "pool_roots", "fn_arrow_decl_facts_live")?;
+    let pool_root_defects_found = pool_root_defects(&pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "fn_arrow_decl_facts_live",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (fn_decls, _module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[ItemKind::FnItem, ItemKind::FuncItem],
+        "fn_arrow_decl_facts_live",
+    )
+    .map_err(|msg| InterpError::TypeError { msg })?;
     let mut rows: Vec<Value> = Vec::new();
-    for_each_live_registry_item(
-        ctx,
-        |k| k == ItemKind::FnItem || k == ItemKind::FuncItem,
-        |module_name, name, item| {
-            if let Some(row) = fn_arrow_decl_record(ctx, &si, module_name, name, item) {
-                rows.push(row);
-            }
-            Ok(())
-        },
-    )?;
+    for decl in fn_decls {
+        if let Some(row) = fn_arrow_decl_record(
+            ctx,
+            &decl.source_indices,
+            &decl.module_path,
+            &decl.name,
+            &decl.item,
+        ) {
+            rows.push(row);
+        }
+    }
     Ok(crate::v1_interpreter::list_value(rows))
-}
-
-/// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
-pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
-    ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    Ok(Value::Bool(
-        crate::cli_run::fn_arrow_decl_substrate_is_whole_tree_for_census(ctx.modules.len()),
-    ))
-}
-
-pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(
-    _ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    Err(InterpError::TypeError {
-        msg: "corpus_dependency_view per-PR execution refused: fn_arrow_decl_substrate_is_whole_tree is false (blocked-on-#6239)".to_string(),
-    })
 }
 
 fn literal_source_lexeme(

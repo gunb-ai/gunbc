@@ -1,0 +1,11 @@
+module test.fixture.fn_index_subject.alpha
+
+import v2.std.logic { Bool }
+
+// One declared function under the ALPHA root and nowhere else. Its whole purpose is to be
+// findable by naming this root and unfindable by naming the sibling root — see
+// dag/test/claim/fn_arrow_decl_facts_live_subject_witness_test.dag. It imports nothing from
+// beta, so no closure walk can reach one from the other.
+fn fn_index_subject_alpha_marker(seed: Bool) -> Bool {
+  seed
+}

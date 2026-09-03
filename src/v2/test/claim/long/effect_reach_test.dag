@@ -1,5 +1,6 @@
 module v2.test.claim.long.effect_reach_test
 
+import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.lens.effect_reach {
   effect_reach_classification_from_facts,
   derived_host_reading,
@@ -213,7 +214,7 @@ test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> B
     classification: effect_reach_classification_from_facts(
       entry_module: "test.claim.self_host_03_normalize_behavioral_witness",
       facts: live_03_normalize_facts,
-      decls: fn_arrow_decl_facts_live(),
+      decls: fn_arrow_decl_facts_live(pool_roots: witness_layer_roots),
       data_inits: live_03_normalize_data_inits
     )
   )
