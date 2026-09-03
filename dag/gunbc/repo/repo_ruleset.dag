@@ -570,6 +570,7 @@ type RepositoryRulesetConvergenceSubject {
 
 type RepositoryRulesetConvergenceRefusal
   = RepositoryRulesetObservationRefused { cause: RulesetReadRefusal }
+  | RepositoryRulesetActuationUnbound { ruleset_id: Int }
   | RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: Int }
   | RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: Int }
   | RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: Int }
@@ -581,13 +582,15 @@ type RepositoryRulesetActuationAdmission
 // This is the permanent gate in front of the bare whole-ruleset PUT, not a handler binding that a
 // later change swaps out. The current observation cannot carry the live bypass-actor roster, so no
 // observed value can authorize an update. #10204 extends this admission when that roster and the
-// signed desire are modeled; it does not replace the guarded handler.
+// signed desire are modeled; it does not replace the guarded handler. The current blanket cause is
+// deliberately ActuationUnbound: this tree cannot observe the roster and therefore cannot honestly
+// assert that a bypass actor exists, only that no admitted realization exists here.
 fn repo_ruleset_actuation_admission(
   subject: RepositoryRulesetConvergenceSubject,
   _: RulesetObservation,
 ) -> RepositoryRulesetActuationAdmission {
   RepositoryRulesetActuationRefused {
-    cause: RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: subject.ruleset_id },
+    cause: RepositoryRulesetActuationUnbound { ruleset_id: subject.ruleset_id },
   }
 }
 
@@ -680,6 +683,8 @@ func verify() -> ProcessExit {
     WorldConverged { subject: _, observed: _, receipt: _ } => ExitSuccess
     WorldNotConverged { subject: _, refusal: RepositoryRulesetObservationRefused { cause: cause } } =>
       exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetActuationUnbound { ruleset_id: id } } =>
+      exit_failure(reason: concat("repo ruleset verify refused: no admitted actuation realization for ruleset ", to_string(id)))
     WorldNotConverged { subject: _, refusal: RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: id } } =>
       exit_failure(reason: concat("repo ruleset verify refused: live rule cannot be projected for ruleset ", to_string(id)))
     WorldNotConverged { subject: _, refusal: RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: id } } =>
