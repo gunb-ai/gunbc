@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.fixture_shape_diverges_from_the_producer_shape
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fixture_shape_diverges_from_the_producer_shape: RecurringFailureMode = RecurringFailureMode {
+  identity: "fixture_shape_diverges_from_the_producer_shape" as NonEmptyStr,
+
+  receipts: [
+    "**a check's fixture constructs a subject shape its production producer cannot emit** (a lens matches on a CARRIER -- a node kind, a tag, an envelope -- and its fixtures build that carrier by hand, so every row discriminates exactly as designed. ",
+
+    "The PRODUCER that supplies the lens's real input spells the same concept differently, so over the live population the match is never taken and the check is GREEN BY CONSTRUCTION while its fixtures stay honest. ",
+
+    "INVALID STATE: an executing, gated, fixture-discriminating check whose live subject population contains ZERO instances of the shape it matches. ",
+
+    "WHY IT SURVIVES REVIEW: every health signal is satisfied at once -- the check runs, the gate really blocks, the RED is authorable and IS authored, and the delete arm reddens exactly one witness. ",
+
+    "`executed_conjunct_discriminates_nothing` is bounded against this from one side and names the difference it does not cover: there the RED was never authored and one fixture repairs it; HERE THE FIXTURE EXISTS AND IS THE THING THAT HIDES THE DEFECT, because it agrees with the check and both disagree with the producer. ",
+
+    "Section 4b's decoration case is the other neighbour -- a check whose RED cannot be authored anywhere -- and it is not this either: the RED is authorable in a fixture and unauthorable in the live substrate, which is precisely the split section 4b tells authors to decide with, read here in the direction that flatters the check. ",
+
+    "SPECIMEN (2026-09-03, cool-fox-470, gunbc#10282): `v2.std.node_query` `node_is_call` accepts `ComputationNode { behavior: Transform }` whose first positional child is a callee reference -- the carrier `v2.compiler.body_lowering_fold` produces -- while the fn-arrow body skeleton marshal in `v1.stage0.coproduct_reflection` `marshal_generic` spelled EVERY node `TypeNode { connective: Conj }`, calls included. ",
+
+    "So `v2.lens.determinism` transitive findings, `v2.lens.machine_shape` and the origin probe's call walk could not take their call arm on any skeleton the corpus is able to produce, and the determinism fixture handed them hand-built `Transform` nodes no marshal emits -- twice corrected in the same file, once for being too deep and once for being a shape nothing produced. ",
+
+    "THE SECTION 3 RECEIPT WAS ALREADY STANDING AND IS THE FIELD TELL: `v2.lens.no_dual_representation_test.scan` carried `skeleton_is_call`, a private copy of `node_is_call` respelled against `Conj`, because the shared authority could not read its own substrate. ",
+
+    "A SECOND PREDICATE FOR ONE QUESTION IS EVIDENCE THAT THE FIRST DOES NOT APPLY TO SOMEBODY'S INPUT, and that fork is visible by reading, before anything runs. ",
+
+    "RECOGNITION RULE: for every check that matches on a carrier, name the PRODUCER of its live input and find the line where that producer emits that carrier. ",
+
+    "If the only constructors are in fixtures, the check's live population is empty and its greens carry no information. ",
+
+    "REPAIR DIRECTION, and it is not symmetric: reshape the PRODUCER to emit the substrate's carrier, never widen the check to accept the producer's spelling -- the second ratifies the fork and makes the substrate's own definition of a call advisory. ",
+
+    "BOUNDED AGAINST ITS NEAREST SIBLING, WHICH PRESENTS IDENTICALLY AND HAS AN UNRELATED REPAIR, and it is named here because a reader scanning a list of permanently-green checks will otherwise merge them: the `v2.lens.effect_reach` finding carried at work item adhoc-f0508f41-ae9 is a DISJUNCTION defect -- a live arm exists, the subject can express it, and the arm cannot reach the verdict. ",
+
+    "THIS one is a SHAPE defect -- no live arm exists at all, because the representation handed to the check cannot encode the state. ",
+
+    "The first is repaired in the CHECK, the second in the PRODUCER, and reading either repair as the other leaves the real defect standing under a green. ",
+
+    "RUNG: OUTSIDE the ladder, because the check reports satisfaction over a population it cannot see. ",
+
+    "NEXT-RUNG TRIGGER, named as a capability and not an artifact: a producer-to-consumer carrier join deciding, from declarations alone, whether any production producer can emit each shape a lens matches on -- so a lens matching an unproducible carrier fails to compile rather than waiting for a reader who happens to hold both ends.",
+  ],
+
+  evidence: [],
+}

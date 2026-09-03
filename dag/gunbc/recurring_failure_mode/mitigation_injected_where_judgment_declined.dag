@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.mitigation_injected_where_judgment_declined
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data mitigation_injected_where_judgment_declined: RecurringFailureMode = RecurringFailureMode {
+  identity: "mitigation_injected_where_judgment_declined" as NonEmptyStr,
+
+  receipts: [
+    "**mitigation injected where the judgment declined** (a downstream stage injects a RUNTIME mitigation at exactly the seam where an upstream judgment returned Undecidable, so a 4b rung-1 fallback comes to occupy the place the wall belongs and the declined seam stops looking empty. ",
+
+    "**THE LOAD-BEARING HALF IS WHAT THE COINCIDENCE PROVES ABOUT THE DECLINE**: an Undecidable verdict is normally read as benign conservatism — the facts did not settle it, nothing is claimed, no harm asserted — and a mitigation landing on the SAME LINE is the first evidence that a real defect was sitting under that silence. ",
+
+    "The decline is therefore load-bearing AT THIS SITE, which refutes reading an Undecidable verdict as evidence of ABSENCE. ",
+
+    "**IT DOES NOT MAKE THE DECLINE CENSUS PREDICTIVE, and this row carries that limit because the author first wrote the stronger claim and then measured it FALSE** on the same board that produced the specimen: 259 of 272 declines sit in modules with ZERO blocking errors, only 6 of 28 decline-bearing modules carry any error at all, and the module holding 42 of the 63 errors carries ZERO declines and 105 ACCEPTS. ",
+
+    "Declines and defects are ANTI-CORRELATED at module grain, so this specimen is ONE co-location out of 272 and a walk of the decline census would be walking sites that are ~95% empty. ",
+
+    "The class is about a mitigation landing on a declined seam; it is NOT a claim that declines predict defects. ",
+
+    "Distinct from `absorbing_fallback`, whose arm WIDENS to a superset and destroys the precise mechanism s signal; here the arm NARROWS to a panic and destroys nothing except the evidence that a judgment was owed. ",
+
+    "Distinct from `reflection_evidence_structural_proof`, which mistakes an observation for a proof; here nothing is proven or observed — a decision was declined and then papered. ",
+
+    "Specimen with a receipt, measured 2026-09-01 on gunbc 0e8c49d and unrepaired at authoring: `v2.std.diagnostic outcome_accepted` is `fn outcome_accepted<T>(value: T) -> Outcome<T>` with T FREE; `v2.compiler.07_target_carriers target_fidelity_quotient_optional` declares `-> Outcome<Optional<Node>>` and calls `outcome_accepted(Present \{ value: child \})`, so T instantiates to `Optional<Node>` and THE SOURCE IS CORRECT. ",
+
+    "The Rust emitter nonetheless rendered `Some(child).expect(\"fail-closed: an optional value flowed into non-optional parameter 0 of outcome_accepted (empty Optional at runtime)\")`. ",
+
+    "FOUR DEFECTS IN ONE LINE: it fires on a GENERIC formal where `Optional<Node>` is a legitimate instantiation rather than a cardinality escape, so the check does not know T is free; it substitutes a runtime panic for a compile-time judgment; the emitted code does NOT typecheck anyway (rustc E0308 expected `Option<Rc<Node>>` found `Rc<Node>`), so the mitigation buys nothing while standing where the wall belongs; and its own panic string calls itself `fail-closed`, which is 4b rung inflation inside a string literal — a diagnostic naming the discipline it violates is worse than a silent one because it will be cited as evidence the discipline holds. ",
+
+    "The coincidence that makes this a class and not a bug: `v1.compiler.infer declared_type_inhabitance` returned InhabitanceUndecidable\{UndecidableOptionalCarrier\} at that module s ONLY optional-carrier decline, 07_target_carriers.dag:128:24 parameter `value` — the same line the emitter mitigated. ",
+
+    "RUNG FOUND AT: 1 (mitigatable) on a seam whose CEILING is 3 (structurally guaranteed), since generic-formal instantiation is decidable from modeled structure. ",
+
+    "CONSEQUENCE WITH ITS OWN TRIGGER, deliberately NOT folded into this row: wiring the optional-carrier judgment is argued by this specimen but is a separate change, and its trigger is a producer at that seam that can distinguish a FREE type variable from a declared non-optional formal — until that exists the judgment would decline for the same reason it declines today.)",
+  ],
+
+  evidence: [],
+}
