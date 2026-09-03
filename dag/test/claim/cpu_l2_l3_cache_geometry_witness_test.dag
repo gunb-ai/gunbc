@@ -8,7 +8,7 @@ import extdeps.cpu.ampere {
   ampere_altra_l2_cache_citations,
   ampere_altra_l2_cache_geometry,
   ampere_altra_max_l3_cache_geometry,
-  ampere_altra_rev_a1_datasheet_authority,
+  ampere_altra_max_rev_a1_datasheet_authority,
 }
 import std.logic { Bool }
 import std.nat { Nat }
@@ -38,7 +38,7 @@ test fn w_ampere_catalog_rows_share_cited_l2_geometry() -> Bool {
 test fn w_ampere_l2_citations_cover_all_fields() -> Bool {
   let citations = ampere_altra_l2_cache_citations
   list_length(items: citations) == 2
-    && citations.first().authority == ampere_altra_rev_a1_datasheet_authority
+    && citations.first().authority == ampere_altra_max_rev_a1_datasheet_authority
 }
 
 test fn w_ampere_l3_geometry_diverges_by_sku() -> Bool {
@@ -53,7 +53,7 @@ test fn w_ampere_l3_geometry_diverges_by_sku() -> Bool {
 test fn w_ampere_l3_citations_diverge_by_family_datasheet() -> Bool {
   list_length(items: altra_max_m12830_catalog.l3_cache_citations) == 2
     && list_length(items: altra_q6430_catalog.l3_cache_citations) == 2
-    && altra_max_m12830_catalog.l3_cache_citations.first().authority == ampere_altra_rev_a1_datasheet_authority
+    && altra_max_m12830_catalog.l3_cache_citations.first().authority == ampere_altra_max_rev_a1_datasheet_authority
     && altra_q6430_catalog.l3_cache_citations.first().authority == ampere_altra_classic_rev_a1_datasheet_authority
 }
 
