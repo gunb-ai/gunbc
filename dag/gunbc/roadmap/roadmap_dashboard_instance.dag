@@ -437,6 +437,7 @@ fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
 // answer for, which is the direction the failure should point.
 type DashboardToolchain {
   directory_create: FilePath
+  path_test: FilePath
   git: FilePath
   tmux: FilePath
   pipe_shell: FilePath
@@ -460,6 +461,7 @@ type DashboardToolchain {
 // mid-attempt on an illegal option.
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
+  path_test: "/usr/bin/test" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/usr/bin/tmux" as FilePath,
   pipe_shell: "/usr/bin/sh" as FilePath,
@@ -482,6 +484,7 @@ data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
 // because the system BSD ones answer no --version and, for ln, implement no -T.
 data macbook_local_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/bin/mkdir" as FilePath,
+  path_test: "/bin/test" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/opt/homebrew/bin/tmux" as FilePath,
   pipe_shell: "/bin/sh" as FilePath,
@@ -643,9 +646,22 @@ data macbook_local_repo_root: FilePath = "/Users/briansrls/gunbc" as FilePath
 
 data macbook_local_instance_root: FilePath = "/Users/briansrls/.local/share/gunbc-macbook-local" as FilePath
 
+// THE DEFAULT ACCOUNT, NOT THE ROADMAP-LABELLED ONE, and the difference is observable.
+//
+// srv1 runs Codex under a labelled account root, ~/.codex@gunbc-roadmap, so that the dashboard's
+// provider state is disjoint from any human's. This machine has no such root: the operator's Codex
+// is authenticated under the plain ~/.codex that codex_account_state_root produces for
+// CodexDefaultAccount. Deriving this row from codex_roadmap_account_selection produced a path that
+// does not exist, and readiness refused against it -- correctly, and for a reason that reads as a
+// missing login rather than as the wrong account.
+//
+// The selection is therefore a per-instance fact here, not a constant, and both roots come from the
+// same codex_account_state_root constructor rather than one being a literal beside the other.
+data macbook_local_codex_account: CodexAccountSelection = CodexDefaultAccount
+
 data macbook_local_codex_home: FilePath = codex_account_state_root(
   home: macbook_operator_home_root,
-  selection: codex_roadmap_account_selection(),
+  selection: macbook_local_codex_account,
 ) as String as FilePath
 
 // THE OPERATOR MACBOOK AS A DECLARED INSTANCE, so that serving the workspace from the development
@@ -702,9 +718,9 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     ),
     provider_state: DashboardExistingProviderState {
       root: macbook_local_codex_home,
-      executable: none,
+      executable: Present { value: macbook_local_codex_executable },
       binding: admitted_single_session_binding(
-        selection: codex_roadmap_account_selection(),
+        selection: macbook_local_codex_account,
         evidence: codex_roadmap_account_evidence,
       ),
     },
@@ -722,6 +738,29 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
 }
 
 data macbook_local_serve_binary: FilePath = "/Users/briansrls/gunbc/target/release/gunbc" as FilePath
+
+// THE PROVIDER EXECUTABLE THIS INSTANCE OFFERS, and it is the field whose absence made the whole
+// inventory empty.
+//
+// codex_inventory_offers_for_instance answers [] when the instance's provider executable is Absent,
+// so a local dispatch that had passed every launch gate refused at selection with "no provider
+// offer is selection-eligible" -- a refusal that reads like a missing harness and was a missing
+// path. Worth stating because the diagnostic points at the SELECTION and the cause is in the
+// INSTANCE, which is a long way to walk without a note.
+//
+// srv1 derives its path through codex_bundled_executable_for_host, which resolves a committed-lock
+// placement for a fleet host. This machine has no such placement and needs none: Codex is installed
+// here by Homebrew and already authenticated, which /provider.json reports independently. So the
+// path is stated rather than derived, and the two are not a fork -- they answer the same question
+// for hosts whose provisioning stories genuinely differ.
+//
+// This binding is expected to be SHORT-LIVED and that is not a reason to skip it. DCH-3 makes the
+// dedicated harness the default selection and DCH-4 retires the vendor runtimes, at which point
+// this row goes with them. It earns its place in the meantime by exercising the belt path on this
+// machine -- worktree, attempt record, named-server tmux session, verification, publication -- none
+// of which has ever run on macOS. Proving that against a provider known to work is what makes a
+// later harness failure attributable to the harness.
+data macbook_local_codex_executable: FilePath = "/opt/homebrew/bin/codex" as FilePath
 
 // THE DEVELOPMENT CHECKOUT'S ADMITTING REF, and the deliberate act that advances it.
 //
