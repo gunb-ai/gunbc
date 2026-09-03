@@ -598,6 +598,12 @@ fn native_cause_from_json_rpc_error(err: JsonValue) -> AccountTripFrameDispositi
   }
 }
 
+// EVERY NON-STRING VALUE SHAPE IS NAMED RATHER THAN CAUGHT. All five answer AccountTripMissing
+// for the one reason the string arm already states -- the initialize result did not identify a
+// user agent -- so a residual `value: _` would have been shorter and would have read the same
+// today. It would not read the same tomorrow: a seventh JsonValue variant would silently become
+// "missing" here, a plausible answer nobody chose. Named arms make that a refusal at the point
+// the variant is added. `json_number_as_int` in this module already enumerates the same roster.
 fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(
     v: result,
@@ -609,7 +615,11 @@ fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisp
       } else {
         AccountTripResultOk
       }
-    JsonMemberFound { value: _ } => AccountTripMissing
+    JsonMemberFound { value: JsonNull } => AccountTripMissing
+    JsonMemberFound { value: JsonBool { value: _ } } => AccountTripMissing
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => AccountTripMissing
+    JsonMemberFound { value: JsonArray { elements: _ } } => AccountTripMissing
+    JsonMemberFound { value: JsonObject { members: _ } } => AccountTripMissing
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing
