@@ -217,25 +217,50 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
 // columns it actually filled is REFUSED rather than repaired. A `right_censored` row with an empty
 // bound column, or an `observed` row with an empty cost column, is an artifact defect: recovering
 // a figure from the other arm's column would be exactly the promotion this module exists to stop.
-fn parse_claim_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
-  if fields[columns.cost_reading] == "observed" {
-    match parse_int(s: fields[columns.observed_cpu_ms]) {
+// ONE FUNCTION PER READING KIND, EACH DECLARING `ClaimCostReading?` AS ITS OWN CONTRACT. The kind
+// named in the row selects which columns are read, so the reading of those columns is the thing
+// that differs and it is what earns a name -- `parse_claim_cost_reading` below is then a pure
+// selection over the kind, with no column knowledge of its own.
+//
+// THIS ALSO REMOVES A DEPENDENCE ON BRANCH-JOIN INFERENCE, and that is worth stating rather than
+// leaving as a silent consequence. When both arms were spelled inline, the whole-corpus strict
+// path refused the join -- `if branches resolve to incompatible types: Coproduct(ClaimCostReading)
+// vs Product(RightCensoredCost)` -- while the entry-scoped path accepted the same bytes and ran
+// them green. Each arm now widens against a DECLARED return type at a function boundary instead of
+// against its sibling, which is a contract the checker is given rather than one it must infer.
+// The acceptance-path disagreement itself is NOT diagnosed by this edit and is reported separately;
+// re-spelling until the checker stops complaining would have been the authoring-time workaround
+// DESIGN section 5 names, so this is a decomposition that stands on its own terms.
+fn observed_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
+  match parse_int(s: fields[columns.observed_cpu_ms]) {
+    Absent => none
+    Present { value: cpu } => Present { value: ObservedCost { cpu_ms: millisecond(count: cpu) } }
+  }
+}
+
+// BOTH COLUMNS OR NEITHER. A censored row without its ceiling cannot say what stopped it, and a
+// bound whose ceiling is unknown is not a reading this module can carry -- so a missing ceiling
+// refuses the row rather than yielding a bound with a fabricated limit.
+fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
+  match parse_int(s: fields[columns.cpu_at_least_ms]) {
+    Absent => none
+    Present { value: bound } => match parse_int(s: fields[columns.censoring_cpu_limit_ms]) {
       Absent => none
-      Present { value: cpu } => Present { value: ObservedCost { cpu_ms: millisecond(count: cpu) } }
-    }
-  } else if fields[columns.cost_reading] == "right_censored" {
-    match parse_int(s: fields[columns.cpu_at_least_ms]) {
-      Absent => none
-      Present { value: bound } => match parse_int(s: fields[columns.censoring_cpu_limit_ms]) {
-        Absent => none
-        Present { value: ceiling } => Present {
-          value: RightCensoredCost {
-            cpu_lower_bound_ms: millisecond(count: bound),
-            censoring_ceiling_ms: millisecond(count: ceiling)
-          }
+      Present { value: ceiling } => Present {
+        value: RightCensoredCost {
+          cpu_lower_bound_ms: millisecond(count: bound),
+          censoring_ceiling_ms: millisecond(count: ceiling)
         }
       }
     }
+  }
+}
+
+fn parse_claim_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
+  if fields[columns.cost_reading] == "observed" {
+    observed_cost_reading(fields: fields, columns: columns)
+  } else if fields[columns.cost_reading] == "right_censored" {
+    right_censored_cost_reading(fields: fields, columns: columns)
   } else {
     none
   }
