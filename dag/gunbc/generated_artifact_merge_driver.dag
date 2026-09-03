@@ -125,10 +125,20 @@ fn emit_driver_stderr_echo(line: String) -> String {
   concat(concat("echo \"", line), "\" >&2\n")
 }
 
-fn emit_driver_diagnostic(regen_command: String) -> String {
-  fold(generated_artifact_merge_driver_diagnostic_lines(regen_command: regen_command), init: "", f: fn(acc, line) {
-    concat(acc, emit_driver_stderr_echo(line: line))
+fn emit_driver_lines(lines: List<String>, indent: String) -> String {
+  fold(lines, init: "", f: fn(acc, line) {
+    concat(acc, concat(indent, emit_driver_stderr_echo(line: line)))
   })
+}
+
+fn emit_author_regeneration_repair(regen_command: String, indent: String) -> String {
+  concat(
+    emit_driver_lines(
+      lines: generated_artifact_merge_driver_diagnostic_lines(regen_command: regen_command),
+      indent: indent
+    ),
+    concat(indent, emit_driver_stderr_echo(line: "4. git add -- $merged_path"))
+  )
 }
 
 fn expected_generated_artifact_merge_driver_sh(regen_command: String, heal_regenerated_paths: List<String>) -> String {
@@ -141,29 +151,27 @@ fn expected_generated_artifact_merge_driver_sh(regen_command: String, heal_regen
       )
     ),
     concat(
-      concat(
+      emit_driver_lines(lines: generated_artifact_merge_driver_common_diagnostic_lines(), indent: ""),
+      if count(heal_regenerated_paths) == 0 {
         concat(
-          fold(generated_artifact_merge_driver_common_diagnostic_lines(), init: "", f: fn(acc, line) {
-            concat(acc, emit_driver_stderr_echo(line: line))
-          }),
-          concat("case \"$merged_path\" in\n  ", concat(emit_heal_path_case_pattern(paths: heal_regenerated_paths), ")\n"))
-        ),
-        concat(
-          fold(generated_artifact_merge_driver_heal_repair_steps(), init: "", f: fn(acc, line) {
-            concat(acc, concat("    ", emit_driver_stderr_echo(line: line)))
-          }),
-          "    ;;\n  *)\n"
+          emit_author_regeneration_repair(regen_command: regen_command, indent: ""),
+          "exit 1\n"
         )
-      ),
-      concat(
+      } else {
         concat(
-          fold(generated_artifact_merge_driver_diagnostic_lines(regen_command: regen_command), init: "", f: fn(acc, line) {
-            concat(acc, concat("    ", emit_driver_stderr_echo(line: line)))
-          }),
-          concat("    ", emit_driver_stderr_echo(line: "4. git add -- $merged_path"))
-        ),
-        "    ;;\nesac\nexit 1\n"
-      )
+          concat(
+            concat("case \"$merged_path\" in\n  ", concat(emit_heal_path_case_pattern(paths: heal_regenerated_paths), ")\n")),
+            concat(
+              emit_driver_lines(lines: generated_artifact_merge_driver_heal_repair_steps(), indent: "    "),
+              "    ;;\n  *)\n"
+            )
+          ),
+          concat(
+            emit_author_regeneration_repair(regen_command: regen_command, indent: "    "),
+            "    ;;\nesac\nexit 1\n"
+          )
+        )
+      }
     )
   )
 }
