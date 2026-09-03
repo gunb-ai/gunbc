@@ -1,6 +1,7 @@
 module gunbc.harness.harness_tool
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.measure { CharacterCount, character_count, character_count_value }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonObject, JsonArray,
   json_kv, json_string, json_array, json_object,
@@ -169,6 +170,43 @@ type HarnessToolEnvironment {
 // and executed against /opt/homebrew/bin/gtimeout 9.11 on 2026-09-02, which returned exactly 124.
 data harness_timeout_kill_exit_code: Int = 124
 
+// THE TOOL RESULT CARRIES A DECLARED CAP, AND STDOUT IS THE CHANNEL THAT NEEDED ONE. extdeps.gunbc
+// WitnessBin.Run declares stderr_capture: BoundedTail{16384} and reports stderr_truncated with its
+// byte counts -- and declares NOTHING for stdout, which is the channel that actually returns bulk
+// output. So harness_run_command announced truncation for the small channel while pasting the large
+// one into the turn verbatim, and HarnessOutputStanding's own annotation ("a cap that ANNOUNCES
+// itself, so a large result is distinguishable from a complete one") was true of stderr only.
+//
+// MEASURED, NOT ANTICIPATED. A worker ran `cat` on the plan document its brief names. That single
+// tool_result was 162KB of a 170KB request -- five messages, roughly 42k tokens -- and the backend
+// closed the connection without a reply after four minutes (curl 52). Nothing refused: the turn
+// simply stopped, and the operator saw a hang.
+//
+// THE BUDGET IS THE HARNESS'S OWN, NOT THE TRANSPORT'S. Bounding here rather than waiting for a
+// stdout capture policy keeps the cap where the contract that announces it lives, and it is the
+// tool result -- what enters the context -- that must be bounded, which is a different question
+// from how much the transport chose to read. When a stdout policy does land, this stays the
+// narrower of the two rather than being replaced by it.
+data harness_tool_output_budget: CharacterCount = character_count(count: 16384)
+
+type HarnessBoundedToolText {
+  text: String
+  standing: HarnessOutputStanding
+}
+
+fn harness_bounded_tool_text(text: String) -> HarnessBoundedToolText {
+  let total = text.length()
+  let budget = character_count_value(c: harness_tool_output_budget)
+  if total <= budget {
+    HarnessBoundedToolText { text: text, standing: OutputComplete }
+  } else {
+    HarnessBoundedToolText {
+      text: text.substring(start: 0, end: budget),
+      standing: OutputTruncated { retained_bytes: budget, total_bytes: total },
+    }
+  }
+}
+
 fn harness_run_command(
   environment: HarnessToolEnvironment,
   command: String,
@@ -186,17 +224,13 @@ fn harness_run_command(
       disposition: DurationExceeded { limit_seconds: environment.duration_limit_seconds },
     }
   } else {
-    ToolCompleted {
+    let bounded = harness_bounded_tool_text(
       text: join([result.stdout, result.stderr], ""),
+    )
+    ToolCompleted {
+      text: bounded.text,
       exit_code: result.exit_code,
-      standing: if result.stderr_truncated {
-        OutputTruncated {
-          retained_bytes: result.stderr_retained_bytes,
-          total_bytes: result.stderr_total_bytes,
-        }
-      } else {
-        OutputComplete
-      },
+      standing: bounded.standing,
     }
   }
 }
