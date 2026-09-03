@@ -11,6 +11,7 @@ import gunbc.generated_artifact {
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
   EvaluationBudgetConsequenceGeneratedRsArtifact,
+  FileTransportRealizationGeneratedRsArtifact,
   artifact_path,
   artifact_commit_policy,
   CommitRequired, NotCommitted,
@@ -40,6 +41,7 @@ import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.runner_host_grants { runner_host_sudoers_content }
 import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
 import gunbc.plan { expected_plan_md }
+import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
 import gunbc.stage0_crate_layout_emit {
   expected_stage0_crate_layout_generated_dag,
   expected_stage0_crate_layout_generated_rs
@@ -107,6 +109,7 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       V1InterpreterDispatchGenerationRefused { reason } =>
         ArtifactGenerationRefused { reason: reason }
     }
+    FileTransportRealizationGeneratedRsArtifact => artifact_generated(content: expected_gunbc_file_transport_generated_rs())
     AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
     RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
       RunnerHostDeployFound { deploy } =>
@@ -186,6 +189,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
+    FileTransportRealizationGeneratedRsArtifact => true
     AutoinstallUserDataArtifact { spec: _ } => true
     RunnerHostSudoersArtifact { host: _ } => match generated {
       ArtifactGenerated { content: _ } => true

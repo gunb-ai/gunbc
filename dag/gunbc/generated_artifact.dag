@@ -28,6 +28,7 @@ type GeneratedArtifact
   | Stage0ExecutableAssemblyGeneratedDagArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
   | EvaluationBudgetConsequenceGeneratedRsArtifact
+  | FileTransportRealizationGeneratedRsArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | RunnerHostSudoersArtifact { host: HostIdentity }
   | PlanArtifact { plan: Plan }
@@ -36,7 +37,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, FileTransportRealizationGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -119,6 +120,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     Stage0ExecutableAssemblyGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_executable_assembly_generated.dag" }
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
     EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
+    FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
     AutoinstallUserDataArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
     RunnerHostSudoersArtifact { host } =>
@@ -188,6 +190,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0ExecutableAssemblyGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
   }
@@ -238,6 +241,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0ExecutableAssemblyGeneratedDagArtifact => match b { Stage0ExecutableAssemblyGeneratedDagArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
     EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
+    FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }

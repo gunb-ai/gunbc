@@ -4,16 +4,23 @@
 use self::AdvanceResult::*;
 use self::EatResult::*;
 use self::ExpectedToken::*;
+use self::ParsedModuleItemKind::*;
 use self::ParsedOccurrenceRole::*;
 use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
+use crate::std_import::ImportStatementParseCause::{
+    ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
+    SourceHasNoModuleDeclaration,
+};
 use crate::std_import::ParsedImportStatements::{
     ImportStatementParseRefused, ImportStatementsParsed,
 };
-pub use crate::std_import::{ParsedImportStatement, ParsedImportStatements};
+pub use crate::std_import::{
+    ImportStatementParseCause, ParsedImportStatement, ParsedImportStatements,
+};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
@@ -3115,6 +3122,114 @@ pub fn stamp_parsed_node_list_with_head_role(
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ParsedModuleItemKind {
+    ModuleItemTypeDeclaration,
+    ModuleItemFunction,
+    ModuleItemDataValue,
+    ModuleItemService,
+    ModuleItemResource,
+    ModuleItemUnrecognized,
+}
+
+pub fn parsed_item_carries_resource_entries(node: Rc<Node>) -> bool {
+    node.properties
+        .clone()
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, property: Rc<Node>| {
+            if found {
+                true
+            } else {
+                (property.name.clone() != "sole_constructor".to_string())
+            }
+        })
+}
+
+pub fn parsed_module_item_kind(node: Rc<Node>) -> ParsedModuleItemKind {
+    if (node.transport.clone() != std::option::Option::None) {
+        ParsedModuleItemKind::ModuleItemService
+    } else {
+        if ((node.body.clone() != std::option::Option::None)
+            && (node.type_annotation.clone() != std::option::Option::None))
+        {
+            ParsedModuleItemKind::ModuleItemDataValue
+        } else {
+            if (node.body.clone() != std::option::Option::None) {
+                ParsedModuleItemKind::ModuleItemFunction
+            } else {
+                if parsed_item_carries_resource_entries(node.clone()) {
+                    ParsedModuleItemKind::ModuleItemResource
+                } else {
+                    if (node.type_annotation.clone() == std::option::Option::None) {
+                        ParsedModuleItemKind::ModuleItemTypeDeclaration
+                    } else {
+                        ParsedModuleItemKind::ModuleItemUnrecognized
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn parsed_module_item_role(node: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
+    match parsed_module_item_kind(node.clone()) {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::TypeOccurrence,
+            })
+        }
+        ParsedModuleItemKind::ModuleItemFunction => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemDataValue => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemService => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemResource => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemUnrecognized => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+    }
+}
+
+pub fn stamp_parsed_module_items(
+    nodes: Rc<Vec<Rc<Node>>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedNodeListStampResult> {
+    nodes.iter().cloned().fold(Rc::new(ParsedNodeListStampResult {
+    nodes: Rc::new(vec![]),
+    ctx: ctx.clone(),
+    err: std::option::Option::None,
+}), |acc: _, node: Rc<Node>| if has_err(acc.err.clone()) {
+        acc.clone()
+    } else {
+        match parsed_module_item_kind(node.clone()) {
+    ParsedModuleItemKind::ModuleItemUnrecognized => Rc::new(ParsedNodeListStampResult {
+    nodes: acc.nodes.clone(),
+    ctx: acc.ctx.clone(),
+    err: Some(parse_error("module item shape is not a recognised declaration kind, so its occurrence category cannot be decided; the type bucket is not a default".to_string(), node.span.clone())),
+}),
+    _ => {
+            let stamped = stamp_parsed_node(node.clone(), ancestors.clone(), acc.ctx.clone(), parsed_module_item_role(node.clone()));
+Rc::new(ParsedNodeListStampResult {
+    nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
+    ctx: stamped.ctx.clone(),
+    err: stamped.err.clone(),
+})
+},
+}
+    })
+}
+
 pub fn stamp_parsed_node_children(
     node: Rc<Node>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -3159,6 +3274,10 @@ pub fn stamp_parsed_node_children(
                 }),
                 Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
             ),
+            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::NamespaceSegmentOccurrence,
+                ..
+            } => stamp_parsed_module_items(node.children.clone(), ancestors.clone(), ctx.clone()),
             _ => stamp_parsed_node_list(
                 node.children.clone(),
                 ancestors.clone(),
@@ -3712,13 +3831,15 @@ pub fn parse_import_statement_extents_acc(
             let r = parse_import(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                    cause: "an import statement did not parse".to_string(),
+                    cause: Rc::new(ImportStatementParseCause::ImportStatementMalformed),
                 });
             }
             match token_stream_first(tokens.clone()) {
                 std::option::Option::None => {
                     break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                        cause: "an import statement parsed from no token".to_string(),
+                        cause: Rc::new(ImportStatementParseCause::ImportParseInstrumentAnomaly {
+                            detail: "an import statement parsed from no token".to_string(),
+                        }),
                     });
                 }
                 Some(first) => {
@@ -3730,8 +3851,13 @@ pub fn parse_import_statement_extents_acc(
                     ) {
                         std::option::Option::None => {
                             break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                                cause: "an import statement parsed without consuming a token"
-                                    .to_string(),
+                                cause: Rc::new(
+                                    ImportStatementParseCause::ImportParseInstrumentAnomaly {
+                                        detail:
+                                            "an import statement parsed without consuming a token"
+                                                .to_string(),
+                                    },
+                                ),
                             });
                         }
                         Some(end) => {
@@ -3786,13 +3912,13 @@ pub fn parse_import_statement_extents(
         );
         if has_err(r.err.clone()) {
             return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                cause: "source does not open with a module declaration".to_string(),
+                cause: Rc::new(ImportStatementParseCause::SourceHasNoModuleDeclaration),
             });
         }
         let r = parse_dotted_ident(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                cause: "module declaration does not name a dotted module path".to_string(),
+                cause: Rc::new(ImportStatementParseCause::ModuleDeclarationPathMalformed),
             });
         }
         parse_import_statement_extents_acc(
@@ -16858,3 +16984,15 @@ pub struct ParserHelperSkipNewlines;
 pub struct ParserHelperSkipContinuationNewlines;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParserHelperWith;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemTypeDeclaration;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemFunction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemDataValue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemService;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemResource;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemUnrecognized;

@@ -157,11 +157,16 @@ fn probe_owner_is_retained_host(owner: Stage0ExecutableModuleOwner, module_basen
   }
 }
 
-fn probe_route_is(a: WetActuatorDeclarationRoute, b: WetActuatorDeclarationRoute) -> Bool {
-  match a {
-    PlainPubMod => match b { PlainPubMod => true, MacroUsePubModSpliced => false, PathIncluded => false }
-    MacroUsePubModSpliced => match b { MacroUsePubModSpliced => true, PlainPubMod => false, PathIncluded => false }
-    PathIncluded => match b { PathIncluded => true, PlainPubMod => false, MacroUsePubModSpliced => false }
+// ONE EXHAUSTIVE PROJECTION, NOT A NINE-CELL COMPARATOR. This stood as a 3x3 nested match deciding
+// route equality, which is nine hand-maintained cells answering a question the coproduct already
+// settles by construction: two route values are equal exactly when they name the same constructor.
+// Projecting each constructor to its own name once and comparing the names carries that fact in three
+// cells, and a fourth route still breaks this match rather than silently landing in a false arm.
+fn probe_route_name(route: WetActuatorDeclarationRoute) -> String {
+  match route {
+    PlainPubMod => "PlainPubMod"
+    MacroUsePubModSpliced => "MacroUsePubModSpliced"
+    PathIncluded => "PathIncluded"
   }
 }
 
@@ -172,11 +177,10 @@ fn probe_owner_is_wet_lib_module(
 ) -> Bool {
   match owner {
     WetActuatorLibModuleOwner { module_basename: m, host_package: _, declaration_route: r } =>
-      (m == module_basename) && probe_route_is(a: r, b: declaration_route)
+      (m == module_basename) && (probe_route_name(route: r) == probe_route_name(route: declaration_route))
     EmittedPartitionOwner { module_basename: _, package_name: _ } => false
     HostShellEmittedOwner { module_basename: _, host_package: _ } => false
     RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
-    WetActuatorLibModuleOwner { module_basename: _, host_package: _, declaration_route: _ } => false
     BinaryEntrypointOwner { target: _, package_name: _ } => false
   }
 }

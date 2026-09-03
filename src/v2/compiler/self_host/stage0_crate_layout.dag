@@ -219,13 +219,25 @@ fn dispatch_generated_macro_use_pub_mod_decl() -> String {
   "#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
 }
 
+// THE FILE-TRANSPORT REALIZATION IS DECLARED BESIDE THE INTERPRETER THAT CALLS IT, for the same
+// reason the dispatch module is: it reaches disk through the wet actuator rather than through
+// compile_stage0()'s per-module emit, so it never appears in the emitted population that would
+// otherwise carry its declaration. Its content is the single authority
+// extdeps.filesystem.rust_realization, copied verbatim, and v1_interpreter is its only consumer.
+fn file_transport_generated_pub_mod_decl() -> String {
+  "pub mod gunbc_file_transport_generated;"
+}
+
 fn pub_mod_decl_lines_for_basename(basename: String) -> List<String> {
   if basename == "v1_interpreter" {
   [
     dispatch_generated_macro_use_pub_mod_decl(),
+    file_transport_generated_pub_mod_decl(),
     basename_to_pub_mod_decl(basename: basename),
   ]
   } else if basename == "v1_interpreter_dispatch_generated" {
+    []
+  } else if basename == "gunbc_file_transport_generated" {
     []
   } else {
     [basename_to_pub_mod_decl(basename: basename)]
@@ -380,7 +392,8 @@ type WetActuatorGeneratedRegistration {
 data wet_actuator_generated_registrations: List<WetActuatorGeneratedRegistration> = [
   WetActuatorGeneratedRegistration { basename: "bootstrap_stage0_crate_layout_generated", declaration_route: PathIncluded },
   WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated", declaration_route: MacroUsePubModSpliced },
-  WetActuatorGeneratedRegistration { basename: "evaluation_budget_consequence_generated", declaration_route: PlainPubMod }
+  WetActuatorGeneratedRegistration { basename: "evaluation_budget_consequence_generated", declaration_route: PlainPubMod },
+  WetActuatorGeneratedRegistration { basename: "gunbc_file_transport_generated", declaration_route: PlainPubMod }
 ]
 
 // THE CRATE EXPOSURE IS ITS OWN ENROLLMENT, and that is why this projection exists rather than the
