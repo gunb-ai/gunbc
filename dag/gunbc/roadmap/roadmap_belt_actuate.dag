@@ -3501,7 +3501,7 @@ fn provider_event_projection_error(
 // and disagreeing observations all project to ReceiptSourceUnreadable.
 // A REFUSED SUBJECT IS UNREADABLE, NEVER ABSENT. A subject that was never admitted established no
 // absence, so answering `ReceiptSourceAbsent` for it would be exactly the fail-open the filesystem
-// fold exists to prevent -- a receipt reported as not-there when nothing ever looked.
+// fold exists to prevent -- a receipt reported as not-there on outcomes that establish nothing.
 fn belt_publication_receipt_source(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -3532,7 +3532,7 @@ fn belt_publication_receipt_source(
           ReceiptSourceUnreadable {
             detail: join([
               "the attempt directory ", d, " is not a directory subject, so ", n,
-              " was never looked for -- ", c,
+              " is established by nothing the fold received -- ", c,
             ], ""),
           }
         FilesystemEntryAbsent(_) => ReceiptSourceAbsent
@@ -3574,7 +3574,7 @@ fn belt_publication_receipt_source(
               ReceiptSourceUnreadable {
                 detail: join([
                   "the publication directory ", d, " is not a directory subject, so ", n,
-                  " was never looked for -- ", c,
+                  " is established by nothing the fold received -- ", c,
                 ], ""),
               }
             FilesystemFileAbsent(_) => ReceiptSourceAbsent

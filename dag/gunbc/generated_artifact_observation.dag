@@ -117,7 +117,7 @@ fn observe_generated_artifact_with(a: GeneratedArtifact, rows: List<DirectoryLis
             path: path,
             cause: join([
               "the artifact path names ", n, " under ", d,
-              ", which is not a directory subject, so nothing was observed -- ", cause,
+              ", which is not a directory subject, so the supplied outcomes establish no observation of it -- ", cause,
             ], ""),
           }
         FilesystemFileRead { path: _, content: committed_content } =>

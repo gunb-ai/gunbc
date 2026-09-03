@@ -412,7 +412,7 @@ fn transition_file_observation_of(
       TransitionFileIndeterminate {
         cause: join([
           "gunbc.deploy_transition: the marker ", n, " was requested under ", d,
-          ", which is not a directory subject, so no observation was attempted -- ", why,
+          ", which is not a directory subject, so the supplied outcomes establish no observation of it -- ", why,
         ], ""),
       }
     FilesystemFileRead { path: _, content: c } =>

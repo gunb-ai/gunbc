@@ -88,10 +88,29 @@ fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
 // `filesystem_entry_presence` still takes `name: String`, `FilesystemEstablishedAbsence.name` is
 // still a `String`, and `filesystem_established_absence_path` therefore still composes an admitted
 // prefix with an UNADMITTED component. So `name: "a/b.json"` still introduces a level the listing
-// was never asked about. RESIDUE AT IDENTITY GRAIN: those three signatures, named rather than
-// counted. It is not blocked on anything external -- `admit_filesystem_entry_name` above already
-// refuses exactly that spelling; it is a replacement migration over `filesystem_entry_presence`'s
-// whole caller population, which is why it is its own change rather than smuggled into this one.
+// was never asked about.
+//
+// AND THE RESIDUE IS FOUR SIGNATURES, NOT THREE. An earlier draft of this row listed only the three
+// above and was INCOMPLETE, which matters because a residue stated at identity grain is a claim
+// about the whole open population and an undercount reads as a promise. The fourth is
+// `filesystem_file_observation`'s own `path: String` parameter. It is supplied INDEPENDENTLY of the
+// listing, and on the read-succeeded arm it is returned unexamined:
+// `FilesystemReadSucceeded { content: c } => FilesystemFileRead { path: path, content: c }`.
+// Nothing relates that `path` to the listing's `directory` and `name`, so a caller may hand in a
+// listing for `work/repo.json` together with a successful read of `/some/other/file` and receive
+// one `FilesystemFileRead` carrying the unrelated path and its bytes. That is the same
+// subject-substitution class the absence half closed by DERIVING its path from the carrier, and it
+// predates this change. Migrating `name` alone while `path` stays independently selected would NOT
+// close the class -- which is exactly why it belongs on this list rather than being discovered later
+// as a surprise.
+//
+// RESIDUE AT IDENTITY GRAIN, named rather than counted: `filesystem_entry_presence`'s `name`
+// parameter, `FilesystemEstablishedAbsence.name`, `filesystem_established_absence_path`'s
+// composition of an unadmitted component, and `filesystem_file_observation`'s `path` parameter. None
+// is blocked on anything external -- `admit_filesystem_entry_name` above already refuses the
+// spelling, and the path half is derivable from the listing exactly as the absence path is. It is a
+// replacement migration over `filesystem_entry_presence`'s and `filesystem_file_observation`'s whole
+// caller population, which is why it is its own change rather than smuggled into this one.
 type FilesystemEntryName sole_constructor {
   name: String
 }
@@ -388,9 +407,21 @@ fn filesystem_entry_presence(
 // repository keeps finding.
 //
 // AND THE SUBJECT REFUSAL TRAVELS THIS FAR FOR THE SAME REASON IT LEFT THE LISTING CARRIER. It is
-// not folded into the indeterminate arm here either: the observation was never ATTEMPTED, because
-// the caller named no directory to attempt it against. Its remedy is the caller's argument, and the
-// arm carries the directory and the name so a consumer can say which argument.
+// not folded into the indeterminate arm here either. Its remedy is the caller's argument, and the
+// arm carries the directory and the name so a consumer can say WHICH argument.
+//
+// WHAT THIS ARM DOES NOT CLAIM, and an earlier draft of this very annotation claimed it falsely.
+// It does NOT say the host operations did not run. This fold and `filesystem_listing_observation`
+// are PURE over outcomes the caller already obtained: `gunbc.scm.init.initialize_repository_at`
+// executes `Filesystem.List` and `Filesystem.Read` unconditionally and then hands their channels
+// here, so on that path the host was already asked. Refusing an inadmissible subject at a pure fold
+// cannot un-run a call that has already happened. The guarantee that IS true, and is the whole one
+// this arm carries: the supplied outcomes establish no admitted listing, no established absence and
+// no file observation for that subject, so nothing downstream is authorized by them -- in
+// particular no create, because the create arm is reachable only from an established absence.
+// Preventing the host calls themselves would require admission ahead of `Filesystem.List` and
+// `Filesystem.Read`, at every caller or at their operation boundary; that is a separate migration
+// and this module does not claim it.
 //
 // THE ARMS ARE THE ACTIONS: proceed as if nothing is there, consume the bytes, stop because the
 // observation could not be made, stop because the subject moved while it was being made, or stop

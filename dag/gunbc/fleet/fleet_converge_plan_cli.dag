@@ -468,7 +468,7 @@ func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObserva
           path: spec.namespace_path,
           cause: join([
             "the spec asked about ", n, " under ", d,
-            ", which is not a directory subject, so no listing was attempted -- ", why,
+            ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
           ], ""),
         }
       FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
@@ -533,7 +533,7 @@ func observe_allocation_store_under_namespace_wet(
         path: spec.path,
         cause: join([
           "the spec asked about ", n, " under ", d,
-          ", which is not a directory subject, so no listing was attempted -- ", why,
+          ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
         ], ""),
       }
     FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {

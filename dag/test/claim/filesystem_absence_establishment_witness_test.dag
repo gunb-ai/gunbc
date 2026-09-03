@@ -312,6 +312,37 @@ test fn the_subject_refusal_survives_through_the_file_observation() -> Bool {
   )) == "subject-refused"
 }
 
+// AND THE ARM ABOVE PROVES ONLY THE VARIANT, WHICH IS NOT THE THING CONSUMERS USE. `observation_arm`
+// reduces the value to a tag, so a second edge that swapped the two fields and replaced the cause
+// would leave it GREEN -- and every production consumer then tells the operator to repair the wrong
+// argument, which is precisely the subject substitution this module exists to prevent. The payload
+// relation is therefore checked ACROSS the edge: one refusal derived once, its fields read at the
+// entry fold and at the file fold, and required to be equal. The cause is compared to the entry
+// fold's own cause rather than to copied prose, so this cell does not restate the diagnostic text
+// and does not go red when that text is reworded.
+test fn the_payload_survives_the_second_edge_and_is_not_permuted() -> Bool {
+  let listing = observe_directory(directory: "", success: true)
+  match filesystem_entry_presence(listing: listing, name: "repo.json") {
+    FilesystemEntrySubjectRefused { directory: ed, name: en, cause: ec } =>
+      match filesystem_file_observation(
+        listing: listing,
+        name: "repo.json",
+        path: "/repo.json",
+        read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+      ) {
+        FilesystemFileSubjectRefused { directory: fd, name: fn_, cause: fc } =>
+          fd == ed && fn_ == en && fc == ec && fd == "" && fn_ == "repo.json"
+        FilesystemFileAbsent(_) => false
+        FilesystemFileRead { path: _, content: _ } => false
+        FilesystemFileIndeterminate { cause: _ } => false
+        FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+      }
+    FilesystemEntryAbsent(_) => false
+    FilesystemEntryListed { directory: _, name: _ } => false
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+  }
+}
+
 // THE SEPARATING CONTROL. An ADMITTED directory whose listing failed is still ordinary
 // indeterminate, at BOTH folds. Without this cell the three above are satisfied by a fold that
 // answers "subject-refused" for every stop, which would erase the host-fault state instead of the

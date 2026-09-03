@@ -223,7 +223,7 @@ fn read_text_file(dir: String, name: String) -> TextFileReadOutcome {
       TextFileReadFailed {
         error: join([
           "gunbc.devboot.build was asked to read ", n, " under a directory that is not a directory ",
-          "subject (", d, "), so no read was attempted -- ", c,
+          "subject (", d, "), so the supplied outcomes establish no read of it -- ", c,
         ], ""),
       }
   }

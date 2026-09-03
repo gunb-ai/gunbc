@@ -256,7 +256,7 @@ fn scm_init_decision(observation: FilesystemFileObservation, path: String) -> Sc
           path: path,
           cause: join([
             "the repository ", n, " was requested under ", d,
-            ", which is not a directory subject, so no observation was attempted -- ", c,
+            ", which is not a directory subject, so the supplied outcomes establish no observation of it, and no create is authorized -- ", c,
           ], ""),
         },
       }
