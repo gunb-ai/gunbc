@@ -65,6 +65,9 @@ import gunbc.namespace_step0_canary_v2 {
   CompileAttemptedAndRefused,
   CompileAttemptedAndCompleted,
   Step0HistogramDifferential,
+  Step0DifferentialDomain,
+  EveryCensusRow,
+  BlockingCensusRowsOnly,
   Step0DifferentialStanding,
   HistogramsIdentical,
   HistogramBucketsChanged,
@@ -78,6 +81,10 @@ import gunbc.namespace_step0_canary_v2 {
   OrderInvarianceHeld,
   OrderInvarianceViolated,
   OrderInvarianceNotMeasured,
+  step0_differential_conserves,
+  step0_differential_domain_label,
+  step0_differential_gross_decreases,
+  step0_differential_gross_increases,
   step0_v2_entered_prefix_for,
   admit_namespace_step0_v2_receipt,
   namespace_step0_canary_v2_contract,
@@ -316,8 +323,13 @@ fn step0_differential_left_step(
 ) -> Step0HistogramDifferential {
   match map_get(post_index, step0_row_key(row: row)) {
     Absent => Step0HistogramDifferential {
-      gross_increases: acc.gross_increases,
-      gross_decreases: acc.gross_decreases + row.count,
+      domain: acc.domain,
+      pre_occurrences: acc.pre_occurrences,
+      post_occurrences: acc.post_occurrences,
+      shared_increases: acc.shared_increases,
+      shared_decreases: acc.shared_decreases,
+      pre_only_occurrences: acc.pre_only_occurrences + row.count,
+      post_only_occurrences: acc.post_only_occurrences,
       unchanged_buckets: acc.unchanged_buckets,
       pre_only_buckets: acc.pre_only_buckets + 1,
       post_only_buckets: acc.post_only_buckets
@@ -325,24 +337,39 @@ fn step0_differential_left_step(
     Present { value: other } =>
       if other > row.count {
         Step0HistogramDifferential {
-          gross_increases: acc.gross_increases + (other - row.count),
-          gross_decreases: acc.gross_decreases,
+          domain: acc.domain,
+          pre_occurrences: acc.pre_occurrences,
+          post_occurrences: acc.post_occurrences,
+          shared_increases: acc.shared_increases + (other - row.count),
+          shared_decreases: acc.shared_decreases,
+          pre_only_occurrences: acc.pre_only_occurrences,
+          post_only_occurrences: acc.post_only_occurrences,
           unchanged_buckets: acc.unchanged_buckets,
           pre_only_buckets: acc.pre_only_buckets,
           post_only_buckets: acc.post_only_buckets
         }
       } else if row.count > other {
         Step0HistogramDifferential {
-          gross_increases: acc.gross_increases,
-          gross_decreases: acc.gross_decreases + (row.count - other),
+          domain: acc.domain,
+          pre_occurrences: acc.pre_occurrences,
+          post_occurrences: acc.post_occurrences,
+          shared_increases: acc.shared_increases,
+          shared_decreases: acc.shared_decreases + (row.count - other),
+          pre_only_occurrences: acc.pre_only_occurrences,
+          post_only_occurrences: acc.post_only_occurrences,
           unchanged_buckets: acc.unchanged_buckets,
           pre_only_buckets: acc.pre_only_buckets,
           post_only_buckets: acc.post_only_buckets
         }
       } else {
         Step0HistogramDifferential {
-          gross_increases: acc.gross_increases,
-          gross_decreases: acc.gross_decreases,
+          domain: acc.domain,
+          pre_occurrences: acc.pre_occurrences,
+          post_occurrences: acc.post_occurrences,
+          shared_increases: acc.shared_increases,
+          shared_decreases: acc.shared_decreases,
+          pre_only_occurrences: acc.pre_only_occurrences,
+          post_only_occurrences: acc.post_only_occurrences,
           unchanged_buckets: acc.unchanged_buckets + 1,
           pre_only_buckets: acc.pre_only_buckets,
           post_only_buckets: acc.post_only_buckets
@@ -359,13 +386,26 @@ fn step0_differential_right_step(
   match map_get(pre_index, step0_row_key(row: row)) {
     Present { value: _ } => acc
     Absent => Step0HistogramDifferential {
-      gross_increases: acc.gross_increases + row.count,
-      gross_decreases: acc.gross_decreases,
+      domain: acc.domain,
+      pre_occurrences: acc.pre_occurrences,
+      post_occurrences: acc.post_occurrences,
+      shared_increases: acc.shared_increases,
+      shared_decreases: acc.shared_decreases,
+      pre_only_occurrences: acc.pre_only_occurrences,
+      post_only_occurrences: acc.post_only_occurrences + row.count,
       unchanged_buckets: acc.unchanged_buckets,
       pre_only_buckets: acc.pre_only_buckets,
       post_only_buckets: acc.post_only_buckets + 1
     }
   }
+}
+
+// THE OCCURRENCE TOTAL OF A ROW LIST, walked directly rather than accumulated by the bucket fold.
+// That independence is the whole value of it: the conservation identity below joins this walk's
+// answer to the fold's four movements, so the two cannot be the same measurement compared with
+// itself.
+fn step0_census_occurrences(rows: List<CompileDiagnosticCensusRow>) -> Int {
+  fold(rows, init: 0, f: fn(acc, row) { acc + row.count })
 }
 
 type Step0DifferentialOutcome
@@ -386,10 +426,26 @@ fn step0_histogram_differential(
       }
       HistogramIndexed { index: post_index } => {
         let left = fold(pre, init: Step0HistogramDifferential {
-          gross_increases: 0, gross_decreases: 0, unchanged_buckets: 0, pre_only_buckets: 0, post_only_buckets: 0
+          domain: EveryCensusRow,
+          pre_occurrences: step0_census_occurrences(rows: pre),
+          post_occurrences: step0_census_occurrences(rows: post),
+          shared_increases: 0, shared_decreases: 0,
+          pre_only_occurrences: 0, post_only_occurrences: 0,
+          unchanged_buckets: 0, pre_only_buckets: 0, post_only_buckets: 0
         }, f: fn(acc, row) { step0_differential_left_step(acc: acc, post_index: post_index, row: row) })
-        Step0DifferentialComputed {
-          differential: fold(post, init: left, f: fn(acc, row) { step0_differential_right_step(acc: acc, pre_index: pre_index, row: row) })
+        let differential = fold(post, init: left, f: fn(acc, row) { step0_differential_right_step(acc: acc, pre_index: pre_index, row: row) })
+        if step0_differential_conserves(differential: differential) {
+          Step0DifferentialComputed { differential: differential }
+        } else {
+          Step0DifferentialUndefined {
+            cause: concat(
+              concat("the bucket movements do not conserve the differenced population (", step0_differential_domain_label(domain: differential.domain) as String),
+              concat(
+                concat("): pre_occurrences=", to_string(differential.pre_occurrences)),
+                concat(" post_occurrences=", to_string(differential.post_occurrences))
+              )
+            ) as NonEmptyStr
+          }
         }
       }
     }
@@ -397,8 +453,8 @@ fn step0_histogram_differential(
 }
 
 fn step0_differential_is_identity(differential: Step0HistogramDifferential) -> Bool {
-  differential.gross_increases == 0
-    && differential.gross_decreases == 0
+  step0_differential_gross_increases(differential: differential) == 0
+    && step0_differential_gross_decreases(differential: differential) == 0
     && differential.pre_only_buckets == 0
     && differential.post_only_buckets == 0
 }
@@ -722,8 +778,11 @@ fn run_current_step0_candidate() -> Step0CandidateRun {
 // make impossible, and "blocking rows" and "blocking occurrences" are different measurements.
 fn step0_blocking_line(measure: Step0BlockingMeasure) -> String {
   concat(
-    concat("blocking_rows=", to_string(measure.histogram_rows)),
-    concat(" blocking_occurrences=", to_string(measure.occurrences))
+    concat("blocking_domain=", step0_differential_domain_label(domain: BlockingCensusRowsOnly) as String),
+    concat(
+      concat(" blocking_rows=", to_string(measure.histogram_rows)),
+      concat(" blocking_occurrences=", to_string(measure.occurrences))
+    )
   )
 }
 
@@ -747,14 +806,35 @@ fn step0_differential_line(standing: Step0DifferentialStanding) -> String {
     OccurrenceJoinUnavailable { cause: cause } => concat("differential=unavailable cause=", cause as String)
     HistogramBucketsChanged { differential: d } =>
       concat(
-        concat("differential=buckets-changed gross_increases=", to_string(d.gross_increases)),
+        concat("differential=buckets-changed domain=", step0_differential_domain_label(domain: d.domain) as String),
         concat(
-          concat(" gross_decreases=", to_string(d.gross_decreases)),
           concat(
-            concat(" unchanged_buckets=", to_string(d.unchanged_buckets)),
+            concat(" pre_occurrences=", to_string(d.pre_occurrences)),
+            concat(" post_occurrences=", to_string(d.post_occurrences))
+          ),
+          concat(
             concat(
-              concat(" pre_only_buckets=", to_string(d.pre_only_buckets)),
-              concat(" post_only_buckets=", to_string(d.post_only_buckets))
+              concat(" shared_increases=", to_string(d.shared_increases)),
+              concat(" shared_decreases=", to_string(d.shared_decreases))
+            ),
+            concat(
+              concat(
+                concat(" pre_only_occurrences=", to_string(d.pre_only_occurrences)),
+                concat(" post_only_occurrences=", to_string(d.post_only_occurrences))
+              ),
+              concat(
+                concat(
+                  concat(" gross_increases=", to_string(step0_differential_gross_increases(differential: d))),
+                  concat(" gross_decreases=", to_string(step0_differential_gross_decreases(differential: d)))
+                ),
+                concat(
+                  concat(" unchanged_buckets=", to_string(d.unchanged_buckets)),
+                  concat(
+                    concat(" pre_only_buckets=", to_string(d.pre_only_buckets)),
+                    concat(" post_only_buckets=", to_string(d.post_only_buckets))
+                  )
+                )
+              )
             )
           )
         )
