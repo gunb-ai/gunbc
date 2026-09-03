@@ -163,15 +163,21 @@ test fn the_weights_peer_host_is_identifiable_as_one() -> Bool {
 
 // THE THROUGHPUT OBSERVATION IS A BAND AND A THRESHOLD READS ITS LOW END.
 //
-// 58.8 and 50.9 were the same configuration on two runs. A threshold compared against the high end
-// passes or fails depending on which run is quoted, which makes the check a statement about the
-// quoting rather than about the unit.
+// The two ends are 2 and 7 tok/s decode, and they are not two attempts at one number -- they are the
+// SAME launch argv at two occupancies, a unit holding six long-context sessions against one nearly
+// empty. A threshold compared against the high end would therefore pass on the strength of the
+// unit's idlest moment and say nothing about the state a caller will actually meet under load.
+//
+// This is also what makes the check safe to keep while the carrier still has no workload identity.
+// The low end IS the worst occupancy anyone has measured, so reading it is the fail-closed
+// direction: the threshold refuses where a loaded unit would disappoint, and cannot pass on a
+// regime that was only ever observed empty.
 test fn a_threshold_is_met_only_when_the_low_end_meets_it() -> Bool {
   match serving_unit_observed_throughput() {
     Absent => false
     Present { value: b } =>
-      serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 45))
-        && !serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 55))
+      serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 2))
+        && !serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 5))
   }
 }
 

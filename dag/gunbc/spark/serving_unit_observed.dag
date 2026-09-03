@@ -324,10 +324,17 @@ fn serving_unit_observed_units() -> List<ServingUnit> {
 // observation carries both ends and nothing here is a floor.
 //
 // WHY THE UNIT IS NOT CONFIGURED AT ITS MEMORY CEILING, which is the fact that stops "more slots"
-// from reading as "more throughput". Twelve slots FIT -- and were SLOWER, 57.3 against 58.8, while
-// leaving the peer at 9 GiB free instead of 16. Ten is a tuned value chosen on measured throughput,
-// not a capacity limit waiting to be filled, and raising it without re-measuring is how a
-// configuration gets worse while looking more generous.
+// from reading as "more throughput". Twelve slots FIT, and left the peer at 9 GiB free instead of
+// 16, so the slot count is not a capacity limit waiting to be filled.
+//
+// WHAT THE MEASUREMENTS DO NOT ESTABLISH IS THAT TEN IS FASTER THAN TWELVE, and this row previously
+// said they did. The twelve-slot run reported 57.3, which lies INSIDE the ten-slot spread of
+// 50.9-58.8 recorded in the paragraph above. Reading "twelve is slower" out of 57.3 against 58.8
+// compares one arm of a two-sample spread against the better arm of another -- the censored
+// estimator this section opens by refusing, committed two paragraphs later against the same numbers.
+// Ten is therefore OPERATOR-SELECTED and preserves more memory headroom; a throughput ordering
+// between ten and twelve needs repeated interleaved trials at both, which do not exist. Raising the
+// count without that instrument is still unjustified -- but so is the claim that lowering it helped.
 //
 // AND SLOTS BUY CONCURRENCY, NOT SPEED. A reader who takes an aggregate figure as a per-session
 // speed will size sessions wrongly, which is why the two are separate quantities below.
