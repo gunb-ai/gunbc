@@ -185,6 +185,22 @@ data entry_gap_declared_and_complete: ParetoEntry = ParetoEntry {
   missing_inputs: [AxisGap { axis: axis_power_id, cause: "power is unmeasured pending a metered pilot" }],
 }
 
+data id_gap_names_an_unfunded_axis: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_gap_names_an_unfunded_axis", field: WholeDeclaration }
+data axis_bandwidth_id: DeclarationRef = DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "axis_bandwidth", field: WholeDeclaration }
+
+// COMPLETE on every axis this selection funds, and carrying a gap that names an axis it does not.
+// Nothing here is incomplete: both folds over both_axes find their reading. The only defect is the
+// gap itself, which is why this fixture isolates the unfunded-axis clause from the other two.
+data entry_gap_names_an_unfunded_axis: ParetoEntry = ParetoEntry {
+  identity: id_gap_names_an_unfunded_axis,
+  display_label: "gap-names-an-unfunded-axis",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 120) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 480) },
+  ],
+  missing_inputs: [AxisGap { axis: axis_bandwidth_id, cause: "uplink is unmeasured pending a carrier turn-up" }],
+}
+
 data gap_best_field: List<ParetoEntry> = [
   entry_gap_but_best,
   entry_dear_weak,
@@ -673,6 +689,25 @@ test fn a_gap_on_one_axis_does_not_excuse_a_hole_on_another() -> Bool {
   defect_is_named && honest_row_is_not_named
 }
 
+// CONTROL - A GAP MUST NAME A FUNDED AXIS. This is the THIRD semantic clause the scoped-gap repair
+// introduces, and the two mutations above cross neither of it: deleting the unfunded_gaps fold left
+// both of them green, so the arm had no falsifier and the rung it claims was not established by
+// executed evidence (DESIGN.md 4b(1)).
+//
+// The clause is a fail-closed arm, not a preservation. A gap whose axis ref is a typo names no
+// funded axis, so it excuses nothing and blocks nothing: under the entry-wide reading the row was
+// merely INCOMPLETE and stayed comparable-with-refusal. It now REFUSES. That verdict change is the
+// point of the arm and is stated on the PR rather than claimed away as "every verdict preserved".
+//
+// KILLING MUTATION EXECUTED: drop the unfunded_gaps fold -> the typo row is named by nobody and the
+// first half goes red. The second half pairs it against a row whose gap names a FUNDED axis on an
+// otherwise-complete entry, so an over-scoping that refused every gap-bearing row cannot pass either.
+test fn a_gap_must_name_an_axis_this_selection_funds() -> Bool {
+  let typo_gap_refuses = count(entry_contradicts_its_declaration(e: entry_gap_names_an_unfunded_axis, axes: both_axes)) > 0
+  let funded_gap_is_not_named = count(entry_contradicts_its_declaration(e: entry_quote_pending, axes: both_axes)) == 0
+  typo_gap_refuses && funded_gap_is_not_named
+}
+
 fn pareto_witness_report() -> NonEmptyStr {
   join([
     "dominated_names_dominator=", flag(b: witness_dominated_entry_names_its_dominator()),
@@ -693,6 +728,7 @@ fn pareto_witness_report() -> NonEmptyStr {
     " causes_sized_by_defects=", flag(b: a_cause_population_is_sized_by_distinct_defects()),
     " no_self_dominance=", flag(b: a_subject_does_not_dominate_itself()),
     " gap_scoped_to_its_axis=", flag(b: a_gap_on_one_axis_does_not_excuse_a_hole_on_another()),
+    " gap_names_a_funded_axis=", flag(b: a_gap_must_name_an_axis_this_selection_funds()),
   ], "")
 }
 
