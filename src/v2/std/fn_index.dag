@@ -246,7 +246,7 @@ fn call_reachable_decls_go(
 
 // ENTRY-MODULE GRAIN. Seeds every declaration in the entry module, so the answer is a
 // property of the FILE, not of one enrolled declaration. Callers that need declaration
-// grain must use call_reachable_decls_from_root — see fn_index_root_grain_law.
+// grain must use call_reachable_decls_from_root, whose annotation carries the reason.
 fn call_reachable_decls(
   entry_module: String,
   terminal_callee_symbols: List<String>,
@@ -263,6 +263,25 @@ fn call_reachable_decls(
 }
 
 // DECLARATION GRAIN. Roots the walk at the exact named declaration.
+//
+// THE ROOT IS THE ENROLLED DECLARATION, NOT ITS FILE. call_reachable_decls seeds every declaration
+// in the entry module, so reachability is computed for the FILE: one sibling function calling a
+// live-read carrier makes every witness in that file inherit the carrier, and their classifications
+// become indistinguishable. That is entry-module grain wearing declaration-grain clothing, and it
+// would have silently coarsened a per-declaration manifest -- a manifest keyed per declaration
+// whose VALUES were per file is worse than an honestly coarse one, because the key implies a
+// precision the value does not have.
+//
+// This seeded variant takes the exact enrolled function and roots the walk there. Entry-grain skip
+// is then DERIVED by conjunction over the entry rows rather than assumed: an entry may fast-skip
+// only when every enrolled row in it is completely classified and untouched. That derivation is
+// what keeps a single live-read witness from making its siblings unskippable.
+//
+// CARRIED AS AN ANNOTATION, NOT AS DATA, and it was the other way round until review 59343. It
+// stood as `data fn_index_root_grain_law: String`, a module-scope String whose only purpose was
+// commentary and which nothing read -- exactly what DESIGN §4c forbids, and the reviewer was right
+// to name it. It arrived here by migration from v2.lens.live_read_classification g2_root_grain_law
+// during this cut, so moving it made it mine to classify.
 fn call_reachable_decls_from_root(
   entry_module: String,
   fn_name: String,
@@ -279,6 +298,4 @@ fn call_reachable_decls_from_root(
   )
 }
 
-data fn_index_root_grain_law: String = "THE ROOT IS THE ENROLLED DECLARATION, NOT ITS FILE. call_reachable_decls seeds every declaration in the entry module, so reachability is computed for the FILE: one sibling function calling a live-read carrier makes every witness in that file inherit the carrier, and their classifications become indistinguishable. That is entry-module grain wearing declaration-grain clothing, and it would have silently coarsened a per-declaration manifest — a manifest keyed per declaration whose VALUES were per file is worse than an honestly coarse one, because the key implies a precision the value does not have.
 
-The seeded variant call_reachable_decls_from_root takes the exact enrolled function and roots the walk there. Entry-grain skip is then DERIVED by conjunction over the entry rows rather than assumed: an entry may fast-skip only when every enrolled row in it is completely classified and untouched. That derivation is what keeps a single live-read witness from making its siblings unskippable."
