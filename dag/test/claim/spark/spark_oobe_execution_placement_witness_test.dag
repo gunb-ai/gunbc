@@ -1,6 +1,16 @@
 module test.claim.spark.spark_oobe_execution_placement_witness
 
 import std.types { Bool, List, Int, NonEmptyStr }
+import std.types { String }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.access.posix { PosixLoginName }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -8,6 +18,12 @@ import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv7 }
 import extdeps.ssh.openssh_port_forwarding {
+  ForwardingAdmission,
+  ForwardingAdmitted,
+  ForwardingAdministrativelyProhibited,
+  ForwardingAdmissionUnobserved,
+  SshLoginPrincipal,
+  SshCertificatePrincipal,
   ForwardDirection,
   LocalForward,
   RemoteForward,
@@ -89,9 +105,19 @@ import gunbc.spark.oobe_execution_placement {
   oobe_session_admission,
   use_decision_for,
   AdmittedForwardingUse,
+  ForwardingUseSelection,
+  ForwardingUseDecisionMissing,
+  ForwardingUseDecisionUnique,
+  ForwardingUseDecisionAmbiguous,
+  RendererObservationAxis,
+  RuntimeAxis,
+  PackageAxis,
+  BrowserAxis,
   observed_renderers,
   observed_relays,
   machine_pi1,
+  pi1_local_forward_to_unit_admission,
+  pi1_local_forward_to_unit_subject,
   machine_srv4,
   relay_pi1,
   renderer_srv1_briansrls,
@@ -124,12 +150,12 @@ test fn w_session_admission_refuses_at_the_unratified_relay_identity() -> Bool {
           n == 5 && fold(cs, init: false, f: (acc, rcause) => acc || match rcause {
             RelayIdentityUnallocated { observed_label: l } => l == "pi1"
             RelayCarriesNoRadio { machine: _ } => false
-            RelayRadioUnassociated { machine: _ } => false
+            RelayRadioUnassociated { machine: _, radio_interface: _ } => false
             NoRelayQualifiedInPopulation { considered: _, causes: _ } => false
           })
         RelayIdentityUnallocated { observed_label: _ } => false
         RelayCarriesNoRadio { machine: _ } => false
-        RelayRadioUnassociated { machine: _ } => false
+        RelayRadioUnassociated { machine: _, radio_interface: _ } => false
       }
       NoQualifiedRenderer { cause: _ } => false
       RouteNotComposable { renderer: _, relay: _ } => false
@@ -165,7 +191,7 @@ test fn w_the_measured_pi1_relay_is_declined_for_identity_not_for_radio() -> Boo
     RelayDeclined { cause: c } => match c {
       RelayIdentityUnallocated { observed_label: l } => l == "pi1"
       RelayCarriesNoRadio { machine: _ } => false
-      RelayRadioUnassociated { machine: _ } => false
+      RelayRadioUnassociated { machine: _, radio_interface: _ } => false
       NoRelayQualifiedInPopulation { considered: _, causes: _ } => false
     }
   }
@@ -178,7 +204,7 @@ test fn w_an_unmeasured_axis_declines_as_unobserved_not_as_a_measured_absence() 
   match renderer_admission(obs: renderer_srv1_briansrls) {
     RendererQualified { renderer: _ } => false
     RendererDeclined { cause: c } => match c {
-      RendererAxisUnobserved { machine: _, account: a } => a == "briansrls"
+      RendererAxisUnobserved { machine: _, account: a, axis: _ } => a == "briansrls"
       RendererIdentityUnallocated { observed_label: _ } => false
       RendererHasNoNodeRuntime { machine: _, account: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
@@ -215,7 +241,7 @@ test fn w_a_measured_absent_runtime_declines_for_the_runtime() -> Bool {
     RendererQualified { renderer: _ } => false
     RendererDeclined { cause: c } => match c {
       RendererHasNoNodeRuntime { machine: _, account: _ } => true
-      RendererAxisUnobserved { machine: _, account: _ } => false
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
       RendererIdentityUnallocated { observed_label: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
@@ -240,7 +266,7 @@ test fn w_a_present_package_with_an_absent_browser_is_expressible_and_declines()
     RendererDeclined { cause: c } => match c {
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => true
       RendererHasNoNodeRuntime { machine: _, account: _ } => false
-      RendererAxisUnobserved { machine: _, account: _ } => false
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
       RendererIdentityUnallocated { observed_label: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
       NoRendererQualifiedInPopulation { considered: _, causes: _ } => false
@@ -263,7 +289,7 @@ test fn w_a_fully_provisioned_but_unallocated_machine_cannot_qualify() -> Bool {
     RendererQualified { renderer: _ } => false
     RendererDeclined { cause: c } => match c {
       RendererIdentityUnallocated { observed_label: l } => l == "some-unnamed-box"
-      RendererAxisUnobserved { machine: _, account: _ } => false
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
       RendererHasNoNodeRuntime { machine: _, account: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
@@ -278,12 +304,20 @@ test fn w_a_fully_provisioned_but_unallocated_machine_cannot_qualify() -> Bool {
 // and this witness fails if either half is dropped.
 test fn w_observation_is_admitted_and_secrets_are_refused_on_the_same_route() -> Bool {
   match use_decision_for(want: ObservationPayload) {
-    ForwardingUseRefused { payload: _, cause: _ } => false
-    ForwardingUseAdmitted { admitted: _ } => match use_decision_for(want: SecretBearingPayload) {
-      ForwardingUseAdmitted { admitted: _ } => false
-      ForwardingUseRefused { payload: _, cause: c } => match c {
-        ProxyLocusNotAdmittedForCredentials { proxy_locus: _ } => true
-        TransportNotConfidential { unit_endpoint: _ } => false
+    ForwardingUseDecisionMissing { payload: _ } => false
+    ForwardingUseDecisionAmbiguous { payload: _, decisions: _ } => false
+    ForwardingUseDecisionUnique { decision: obs } => match obs {
+      ForwardingUseRefused { payload: _, cause: _ } => false
+      ForwardingUseAdmitted { admitted: _ } => match use_decision_for(want: SecretBearingPayload) {
+        ForwardingUseDecisionMissing { payload: _ } => false
+        ForwardingUseDecisionAmbiguous { payload: _, decisions: _ } => false
+        ForwardingUseDecisionUnique { decision: sec } => match sec {
+          ForwardingUseAdmitted { admitted: _ } => false
+          ForwardingUseRefused { payload: _, cause: c } => match c {
+            ProxyLocusNotAdmittedForCredentials { proxy_locus: _ } => true
+            TransportNotConfidential { unit_endpoint: _ } => false
+          }
+        }
       }
     }
   }
@@ -327,10 +361,35 @@ test fn w_no_single_machine_is_both_a_qualified_renderer_and_a_ready_relay() -> 
 // decision that happened to be in the list.
 test fn w_the_use_lookup_returns_a_decision_about_the_class_that_was_asked() -> Bool {
   match use_decision_for(want: SecretBearingPayload) {
-    ForwardingUseAdmitted { admitted: _ } => false
-    ForwardingUseRefused { payload: p, cause: _ } => match p {
-      SecretBearingPayload => true
-      ObservationPayload => false
+    ForwardingUseDecisionMissing { payload: _ } => false
+    ForwardingUseDecisionAmbiguous { payload: _, decisions: _ } => false
+    ForwardingUseDecisionUnique { decision: d } => match d {
+      ForwardingUseAdmitted { admitted: _ } => false
+      ForwardingUseRefused { payload: p, cause: _ } => match p {
+        SecretBearingPayload => true
+        ObservationPayload => false
+      }
+    }
+  }
+}
+
+// THE UNOBSERVED AXIS IS NAMED, NOT MERELY REPORTED AS MISSING. srv1's node runtime was never
+// measured while its Playwright package WAS measured absent, so a cause that said only "an axis was
+// unobserved" would leave the reader unable to tell which measurement to go take.
+test fn w_an_unobserved_axis_decline_names_which_axis() -> Bool {
+  match renderer_admission(obs: renderer_srv1_briansrls) {
+    RendererQualified { renderer: _ } => false
+    RendererDeclined { cause: c } => match c {
+      RendererAxisUnobserved { machine: _, account: _, axis: ax } => match ax {
+        RuntimeAxis => true
+        PackageAxis => false
+        BrowserAxis => false
+      }
+      RendererIdentityUnallocated { observed_label: _ } => false
+      RendererHasNoNodeRuntime { machine: _, account: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      NoRendererQualifiedInPopulation { considered: _, causes: _ } => false
     }
   }
 }
@@ -349,4 +408,92 @@ test fn w_forward_direction_maps_to_the_openssh_flag_that_means_it() -> Bool {
 test fn w_the_typed_forwarding_options_serialize_to_their_wire_spelling() -> Bool {
   serialize_ssh_client_option(option: exit_on_forward_failure_option) == ["-o", "ExitOnForwardFailure=yes"]
   && serialize_ssh_client_option(option: batch_mode_option) == ["-o", "BatchMode=yes"]
+}
+
+// RESTORED, AND IT SHOULD NOT HAVE NEEDED RESTORING. The rewrite that repaired this module dropped
+// every witness over the measured forwarding admission, which left the one row carrying real
+// evidence -- an sshd decision observed on a live host -- with no consumer at all. I found it by
+// auditing my own declarations for readers after review caught three of the same class; it would
+// otherwise have been the next round's finding.
+//
+// THE ASSERTION IS THE SCOPE, not the verdict. An admission is not "pi1 permits forwarding": sshd
+// answers per authenticated principal, per direction and per target, so a row that admitted a
+// forward without pinning all three would let one measurement license a request nobody measured.
+// This lane already paid once for the neighbouring confound, reporting hosts as refusing keys when
+// the wrong login was in play.
+test fn w_the_measured_admission_pins_the_principal_direction_and_target() -> Bool {
+  match pi1_local_forward_to_unit_admission {
+    ForwardingAdministrativelyProhibited { subject: _ } => false
+    ForwardingAdmissionUnobserved { subject: _ } => false
+    ForwardingAdmitted { subject: sub } =>
+      match sub.principal {
+        SshLoginPrincipal { login: l } => l == "briansrls"
+        SshCertificatePrincipal { principal: _ } => false
+      }
+      && match sub.direction {
+        LocalForward => true
+        RemoteForward => false
+      }
+      && sub.target.port == 80
+  }
+}
+
+// ==========================================================================================
+// THE SEAL, PROVED BY REFUSAL RATHER THAN ASSERTED.
+//
+// The success carriers in this module are `sole_constructor`, and that modifier is the whole
+// difference between §4b rung 3 and rung 4 here. Splitting the payloads into their own records
+// stopped a refusal from INHABITING a ready session, but left those records constructible by any
+// module -- so the guarantee was that THIS module's admission path would not build a bad one, which
+// is a proof about a path and not the absence of a constructor. An earlier version of this PR body,
+// and a review that approved it, both called that rung 4. It was rung 3.
+//
+// A GREEN WITNESS OVER THE SEALED TYPES CANNOT ESTABLISH THE SEAL. Every witness above would read
+// identically if `sole_constructor` were a no-op, because they all construct from inside the
+// defining module where it permits construction. The only discriminating evidence is a
+// CROSS-MODULE construction that must be REFUSED, which is authorable here because a compiler's
+// regression probes are invalid programs and the fixture harness supplies exactly that.
+//
+// WHAT THIS COVERS AND WHAT IT DOES NOT, stated so an executed probe is not mistaken for wider
+// coverage: it establishes that the MECHANISM refuses cross-module construction. It does not
+// re-derive that this module's five carriers still carry the modifier -- that is readable at the
+// declarations, and its next-rung trigger is a fixture able to import the live corpus rather than
+// only authored sources.
+// NO IMPORTS IN THE FIXTURE SOURCES, and this is the harness's contract rather than a style choice:
+// it compiles EXACTLY the supplied bytes, so a corpus module named by an import is not available and
+// the compile refuses. The first version of this probe imported std.types and was refused for that
+// reason -- which the refusal witness happily reported as the seal working. `Int` needs no import;
+// it is a kernel name.
+data seal_probe_owner: String = "module sealprobe.owner\n\ntype Sealed sole_constructor {\n  x: Int\n}\n\nfn make() -> Sealed {\n  Sealed { x: 1 }\n}\n"
+
+data seal_probe_intruder: String = "module sealprobe.intruder\n\nimport sealprobe.owner { Sealed }\n\nfn breach() -> Bool {\n  Sealed { x: 2 }.x == 2\n}\n"
+
+test fn w_a_sole_constructor_carrier_refuses_construction_from_another_module() -> Bool {
+  match compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [
+      fixture_source(path: "sealprobe/owner.dag", content: seal_probe_owner),
+      fixture_source(path: "sealprobe/intruder.dag", content: seal_probe_intruder),
+    ],
+    entry: "sealprobe/intruder.dag" as NonEmptyStr,
+  }) {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+  }
+}
+
+// THE POSITIVE CONTROL, and without it the refusal above proves nothing about the SEAL. A fixture
+// that refuses every program -- a broken harness, a syntax error I introduced in the probe source,
+// a wrong entry path -- would satisfy the witness above while establishing nothing. This compiles
+// the owner module ALONE, where construction is permitted, and requires it to SUCCEED. The two
+// differ in exactly one respect: whether the construction crosses a module boundary.
+test fn w_the_same_carrier_constructs_inside_its_own_module() -> Bool {
+  match compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [fixture_source(path: "sealprobe/owner.dag", content: seal_probe_owner)],
+    entry: "sealprobe/owner.dag" as NonEmptyStr,
+  }) {
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+  }
 }

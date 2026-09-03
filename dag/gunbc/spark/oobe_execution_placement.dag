@@ -135,7 +135,7 @@ type RendererObservation {
 // naming an incapable renderer, a relay with no radio, a released lease and refused secret traffic
 // composed into PlacementReady with nothing to stop it. A ready session must be constructible only
 // from the successful payloads, which is what these narrowed carriers are for.
-type QualifiedRenderer {
+type QualifiedRenderer sole_constructor {
   host: HostIdentity
   account: PosixLoginName
   architecture: Architecture
@@ -144,9 +144,23 @@ type QualifiedRenderer {
   browser_cache_entry: PlaywrightBrowserCacheEntry
 }
 
+// WHICH AXIS WAS UNOBSERVED IS THE ACTIONABLE PART, and the previous head threw it away one layer
+// below where it repaired the same defect. The selector was fixed to preserve every cause it
+// considered -- but the per-row admission had already collapsed three different missing
+// observations into one cause carrying only the machine and account. "Something was not measured"
+// and "the node runtime was not measured" are different next actions.
+type RendererObservationAxis
+  = RuntimeAxis
+  | PackageAxis
+  | BrowserAxis
+
 type RendererRefusalCause
   = RendererIdentityUnallocated { observed_label: NonEmptyStr }
-  | RendererAxisUnobserved { machine: ObservedMachineIdentity, account: PosixLoginName }
+  | RendererAxisUnobserved {
+      machine: ObservedMachineIdentity,
+      account: PosixLoginName,
+      axis: RendererObservationAxis,
+    }
   | RendererHasNoNodeRuntime { machine: ObservedMachineIdentity, account: PosixLoginName }
   | RendererHasNoPlaywrightPackage { machine: ObservedMachineIdentity, account: PosixLoginName }
   | RendererHasNoProvisionedBrowser { machine: ObservedMachineIdentity, account: PosixLoginName }
@@ -176,7 +190,7 @@ type RadioRelayObservation
 
 // The relay success carrier requires an ALLOCATED host, so an unallocated observation cannot reach
 // it. That is the constraint the first revision dissolved by writing "pi1" as HostIdentity.
-type ReadyRadioRelay {
+type ReadyRadioRelay sole_constructor {
   host: HostIdentity
   radio_interface: RadioInterfaceName
   associated_ssid: ObservedUnitAccessPointSsid
@@ -185,7 +199,7 @@ type ReadyRadioRelay {
 type RelayRefusalCause
   = RelayIdentityUnallocated { observed_label: NonEmptyStr }
   | RelayCarriesNoRadio { machine: ObservedMachineIdentity }
-  | RelayRadioUnassociated { machine: ObservedMachineIdentity }
+  | RelayRadioUnassociated { machine: ObservedMachineIdentity, radio_interface: RadioInterfaceName }
   | NoRelayQualifiedInPopulation { considered: Int, causes: List<RelayRefusalCause> }
 
 type RelayAdmission
@@ -214,12 +228,24 @@ type SecretTrafficRefusalCause
   = ProxyLocusNotAdmittedForCredentials { proxy_locus: ForwarderLocus }
   | TransportNotConfidential { unit_endpoint: SocketAddress }
 
+// SEALED WITH sole_constructor, WHICH IS THE DIFFERENCE BETWEEN RUNG 3 AND RUNG 4. Splitting the
+// success payloads into their own records stopped a refusal from INHABITING a ready session, but it
+// left every one of them freely constructible by any module -- so the guarantee was only that THIS
+// module's admission path would not build a bad one, which is a proof about a path and not the
+// absence of a constructor. §4b's top rung is the latter.
+//
+// sole_constructor is the cross-module construction refusal (std.durable_compare_and_set names it
+// as the wall that lets only the store mint its bound). With it, the admission functions in this
+// module are the only things in the corpus that can produce a QualifiedRenderer, a ReadyRadioRelay,
+// an AdmittedForwardingUse, an EstablishedForwardingLease or a ready session. A caller wanting one
+// must go through the decision that earns it.
+//
 // THE ADMITTED PAYLOAD IS ITS OWN CARRIER, and it exists because the first draft of this repair
 // declared every session field success-only and then typed the use field as the WHOLE decision --
 // so ForwardingUseRefused still inhabited the ready state, and the comment asserting otherwise was
 // the only thing standing where a constructor should have been. §4b's top rung is that the invalid
 // state has NO CONSTRUCTOR; a sentence claiming it does not occur is not one.
-type AdmittedForwardingUse {
+type AdmittedForwardingUse sole_constructor {
   payload: ForwardingPayloadClass
   admitted_loci: List<ForwarderLocus>
 }
@@ -322,7 +348,7 @@ type ForwardingLeaseState
 
 // The lease success carrier, again narrowed: only an ESTABLISHED lease with a readiness receipt
 // can enter a ready session.
-type EstablishedForwardingLease {
+type EstablishedForwardingLease sole_constructor {
   lease: ForwardingLeaseIdentity
   teardown: List<TeardownObligation>
   readiness: EndpointReadinessReceipt
@@ -331,7 +357,7 @@ type EstablishedForwardingLease {
 // ------------------------------------------------------------------------------------------
 // THE SESSION. Every field is a success-only carrier, so there is no combination of refusals that
 // composes into a ready session. A browser kernel consumes THIS and never learns SSH exists.
-type OobeBrowserSessionReady {
+type OobeBrowserSessionReady sole_constructor {
   renderer: QualifiedRenderer
   relay: ReadyRadioRelay
   route: OobeEndpointRoute
@@ -545,13 +571,6 @@ data measured_route_use_decisions: List<ForwardingUseDecision> = [
 // consume nothing. §5 names that shape specification-without-execution, and the witnesses below
 // call these functions so the decision path is green by execution rather than by typecheck.
 
-fn machine_host_or_refuse_label(m: ObservedMachineIdentity) -> NonEmptyStr {
-  match m {
-    FleetAllocatedMachine { host: h } => h
-    UnallocatedMachineObservation { observed_label: l } => l
-  }
-}
-
 // THE ORDER OF THE ARMS IS THE POLICY, and it is deliberate. Identity first, because an
 // unallocated machine cannot be qualified no matter what software it holds. Then UNOBSERVED before
 // ABSENT on every axis, so an axis nobody measured is never reported as a measured deficit -- the
@@ -562,21 +581,21 @@ fn renderer_admission(obs: RendererObservation) -> RendererAdmission {
       RendererDeclined { cause: RendererIdentityUnallocated { observed_label: l } }
     FleetAllocatedMachine { host: h } => match obs.runtime {
       NodeRuntimeUnobserved => RendererDeclined {
-        cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account },
+        cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account, axis: RuntimeAxis },
       }
       NodeRuntimeAbsent => RendererDeclined {
         cause: RendererHasNoNodeRuntime { machine: obs.machine, account: obs.account },
       }
       NodeRuntimePresent { version: v } => match obs.package {
         PlaywrightPackageUnobserved => RendererDeclined {
-          cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account },
+          cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account, axis: PackageAxis },
         }
         PlaywrightPackageAbsent => RendererDeclined {
           cause: RendererHasNoPlaywrightPackage { machine: obs.machine, account: obs.account },
         }
         PlaywrightPackagePresent { build: b } => match obs.browser {
           PlaywrightBrowserUnobserved => RendererDeclined {
-            cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account },
+            cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account, axis: BrowserAxis },
           }
           PlaywrightBrowserAbsent => RendererDeclined {
             cause: RendererHasNoProvisionedBrowser { machine: obs.machine, account: obs.account },
@@ -600,8 +619,8 @@ fn renderer_admission(obs: RendererObservation) -> RendererAdmission {
 fn relay_admission(obs: RadioRelayObservation) -> RelayAdmission {
   match obs {
     RelayHasNoRadioInterface { machine: m } => RelayDeclined { cause: RelayCarriesNoRadio { machine: m } }
-    RelayRadioNotAssociated { machine: m, radio_interface: _ } =>
-      RelayDeclined { cause: RelayRadioUnassociated { machine: m } }
+    RelayRadioNotAssociated { machine: m, radio_interface: iface } =>
+      RelayDeclined { cause: RelayRadioUnassociated { machine: m, radio_interface: iface } }
     RadioAssociated { machine: m, radio_interface: iface, associated_ssid: ssid } => match m {
       UnallocatedMachineObservation { observed_label: l } =>
         RelayDeclined { cause: RelayIdentityUnallocated { observed_label: l } }
@@ -686,14 +705,22 @@ fn select_relay() -> RelayAdmission {
     })
 }
 
-// THE USE LOOKUP IS FAIL-CLOSED AND RETURNS THE DECISION, NOT A BOOLEAN. A payload class with no
-// recorded decision is REFUSED, never defaulted to the observation admission -- widening on absence
-// is the absorbing fallback §5 forbids, and it is the exact arm through which a credential would
-// ride an observation route.
+// THE USE LOOKUP RETURNS A SELECTION, AND THE PREVIOUS VERSION FABRICATED ITS MISSING CAUSE.
 //
-// It returns ForwardingUseDecision because a caller denied a route needs the CAUSE. The previous
-// head answered this question with a Bool built from two more Bools, which discarded the refusal
-// reason at the one call site that most needs it.
+// It folded to a default of ForwardingUseRefused { cause: TransportNotConfidential { ... } } when no
+// row matched. That is a true refusal carrying a FALSE REASON: the absence of a decision does not
+// establish that transport was measured and found non-confidential, only that nothing was ruled. I
+// wrote "fail-closed" in the comment above it and shipped a fabricated cause inside the arm -- §5's
+// no-fabricated-plausible-output, in the repair for a §5 defect.
+//
+// AMBIGUITY WAS ALSO RESOLVED BY LIST ORDER. Two contradictory rows for one payload class -- one
+// admitting, one refusing -- were settled by whichever came last, silently. Contradiction is a
+// finding, not a tie to break, so it gets its own arm and no admitted use can come from it.
+type ForwardingUseSelection
+  = ForwardingUseDecisionMissing { payload: ForwardingPayloadClass }
+  | ForwardingUseDecisionUnique { decision: ForwardingUseDecision }
+  | ForwardingUseDecisionAmbiguous { payload: ForwardingPayloadClass, decisions: List<ForwardingUseDecision> }
+
 fn payload_classes_match(a: ForwardingPayloadClass, b: ForwardingPayloadClass) -> Bool {
   match a {
     ObservationPayload => match b {
@@ -714,18 +741,21 @@ fn decision_payload(d: ForwardingUseDecision) -> ForwardingPayloadClass {
   }
 }
 
-fn use_decision_for(want: ForwardingPayloadClass) -> ForwardingUseDecision {
-  fold(measured_route_use_decisions,
-    init: ForwardingUseRefused {
-      payload: want,
-      cause: TransportNotConfidential {
-        unit_endpoint: SocketAddress {
-          host: host_by_ipv4(addr: ipv4_address(octet1: 10, octet2: 92, octet3: 7, octet4: 127)),
-          port: 80,
-        },
-      },
-    },
-    f: (acc, d) => if (payload_classes_match(a: decision_payload(d: d), b: want)) { d } else { acc })
+fn decisions_for_payload(want: ForwardingPayloadClass) -> List<ForwardingUseDecision> {
+  fold(measured_route_use_decisions, init: [],
+    f: (acc, d) => if (payload_classes_match(a: decision_payload(d: d), b: want)) { append(acc, d) } else { acc })
+}
+
+fn use_decision_for(want: ForwardingPayloadClass) -> ForwardingUseSelection {
+  fold(decisions_for_payload(want: want),
+    init: ForwardingUseDecisionMissing { payload: want },
+    f: (acc, d) => match acc {
+      ForwardingUseDecisionMissing { payload: _ } => ForwardingUseDecisionUnique { decision: d }
+      ForwardingUseDecisionUnique { decision: first } =>
+        ForwardingUseDecisionAmbiguous { payload: want, decisions: [first, d] }
+      ForwardingUseDecisionAmbiguous { payload: p, decisions: ds } =>
+        ForwardingUseDecisionAmbiguous { payload: p, decisions: append(ds, d) }
+    })
 }
 
 // ------------------------------------------------------------------------------------------
