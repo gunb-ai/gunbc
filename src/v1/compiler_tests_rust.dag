@@ -3366,7 +3366,7 @@ fn ct_direct_call_formal_authority_carrier_test() -> String {
     "              if seen_calls.insert(call_key) { for application in semantics[\"application_plan\"].as_array().expect(\"resolved application plan\") {\n",
     "                let formal = &application[\"formal\"];\n",
     "                if formal[\"parameter_identity\"] != \"left\" && formal[\"parameter_identity\"] != \"right\" { continue; }\n",
-    "                observed += 1;\n",
+    "                *observed += 1;\n",
     "                assert_eq!(formal[\"declaration_bound_conformance\"][\"name\"], \"String\", \"formal conformance must retain the callee declaration's String identity instead of being peeled through the caller TypeEnv\");\n",
     "                assert_eq!(formal[\"declaration_bound_conformance\"][\"span\"][\"file\"], \"<kernel:String>\", \"formal conformance must retain the declaration-bound kernel authority\");\n",
     "                assert!(formal[\"substitution_basis\"].is_object(), \"emission substitution basis must survive in the same plan\");\n",
