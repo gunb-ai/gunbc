@@ -1,0 +1,322 @@
+module gunbc.spark.oobe_execution_placement
+
+import std.types { NonEmptyStr, Bool, List, Int }
+import extdeps.network.endpoint { SocketAddress }
+import extdeps.access.posix { PosixLoginName }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.oobe_screen_observation { ObservedUnitAccessPointSsid }
+import extdeps.ssh.openssh_port_forwarding {
+  TcpForwardingPermission,
+  TcpForwardingPermitted,
+  TcpForwardingAdministrativelyProhibited,
+  ForwardingPermissionUnobserved,
+  PortForwardSpec,
+}
+
+// WHERE THE OOBE ACTUATOR RUNS, AND WHY IT CANNOT BE ONE HOST.
+//
+// The wizard is a client-rendered SPA served by the unit's own access point. Driving it needs a
+// browser, and reaching it needs a radio associated with that access point. This repository has
+// measured that NO HOST HAS BOTH, so the placement is a composition of three facts -- a renderer,
+// a relay, and a route joining them -- and each is admitted separately.
+//
+// THE COMPOSITION IS NOT A DEPLOYMENT KIND. An earlier framing of this had two arms, "forwarded"
+// and "colocated", and that was wrong in a way worth recording: colocation does not remove the
+// route, it only makes the renderer's host equal the relay's. The socket path from the browser
+// process to the unit still has to exist and still has to be proven. So the participants are
+// independent and the route is selected, and the day a single host carries both roles this model
+// needs no new arm -- two of its fields simply hold the same host.
+
+// FOUR TYPES THIS MODULE DELIBERATELY DOES NOT DECLARE, because they already exist and a second
+// name for one concept is the §3 fork this repository keeps paying for. A host is a
+// product.placement_supply HostIdentity -- there is even a witness recording that one module
+// stopped being a second authoring surface for it. An account is an extdeps.access.posix
+// PosixLoginName. An architecture is an extdeps.toolchain.types Architecture, which is better than
+// a brand would have been: it is a CLOSED coproduct, so "aarch64" cannot be misspelled here. And
+// the unit's access point is the ObservedUnitAccessPointSsid the screen-observation module already
+// records, so the relay's association and the observation receipt name the same SSID by
+// construction rather than by two strings that happen to match.
+//
+// The three that ARE declared here are genuinely new: no module models a Node runtime version, a
+// Playwright package version, or a Playwright browser artifact name, and each is a distinct fact
+// about what a renderer carries.
+type NodeRuntimeVersion = NonEmptyStr where brand("NodeRuntimeVersion")
+type PlaywrightPackageVersion = NonEmptyStr where brand("PlaywrightPackageVersion")
+type BrowserArtifactName = NonEmptyStr where brand("BrowserArtifactName")
+type RadioInterfaceName = NonEmptyStr where brand("RadioInterfaceName")
+
+// ------------------------------------------------------------------------------------------
+// RENDERER CAPABILITY IS PER HOST AND PER ACCOUNT, which is not a refinement -- it is the only
+// way the measurement makes sense. Both the Playwright package and the browser cache live under
+// a HOME directory, so "srv2 can render" is not a well-formed claim; "ubuntu@srv2 can render" is.
+// The subject carries the account for that reason.
+//
+// THE PACKAGE AND THE BROWSER ARTIFACT ARE TWO FACTS AND EITHER CAN BE MISSING ALONE. This is
+// measured, not hypothetical: briansrls@srv1 holds chromium-1217 and NO Playwright package, so a
+// model that carried a single "playwright installed" flag would call srv1 a renderer and fail at
+// run time with a module-resolution error that says nothing about the real deficit.
+//
+// A MISSING RUNTIME IS A REFUSAL OF THIS REALIZATION, NOT A LAW ABOUT THE HARDWARE. pi1 has no
+// node at all, which is enough to decline it as a renderer today; it says nothing about whether a
+// Pi could ever render, and the earlier timed-out Chromium attempt on that host is NOT promoted
+// into a capability rule here.
+type RendererCapabilityStanding
+  = RendererCapable {
+      host: HostIdentity,
+      account: PosixLoginName,
+      architecture: Architecture,
+      node_runtime: NodeRuntimeVersion,
+      playwright_package: PlaywrightPackageVersion,
+      browser_artifact: BrowserArtifactName,
+    }
+  | RendererRuntimeUnavailable { host: HostIdentity, account: PosixLoginName }
+  | RendererPlaywrightPackageUnavailable {
+      host: HostIdentity,
+      account: PosixLoginName,
+      browser_artifact_present: Bool,
+    }
+
+// ------------------------------------------------------------------------------------------
+// RELAY CAPABILITY, AND THE MEMBER THAT WOULD OTHERWISE BE ASSUMED.
+//
+// forwarding_permission is measured from the host rather than inferred from the mechanism, and
+// this repository already holds the counter-example that makes the distinction load-bearing:
+// gunbc.fleet_reach records that srv2 sets AllowTcpForwarding no, which is why the srv3 ProxyJump
+// reach realizes by nested exec rather than -J. A relay that carries a radio and refuses
+// forwarding is useless to a browser and perfectly fine for a shell, so the two questions cannot
+// share an answer.
+//
+// A radio that is PRESENT is not a radio that is ASSOCIATED. Both are carried because they fail
+// differently: no interface is a hardware fact and needs a different relay, while an unassociated
+// interface is a state that can be fixed on the relay we have.
+type RadioRelayStanding
+  = RadioRelayReady {
+      host: HostIdentity,
+      radio_interface: RadioInterfaceName,
+      associated_ssid: ObservedUnitAccessPointSsid,
+      forwarding_permission: TcpForwardingPermission,
+    }
+  | RelayHasNoRadioInterface { host: HostIdentity }
+  | RelayRadioNotAssociated { host: HostIdentity, radio_interface: RadioInterfaceName }
+
+// ------------------------------------------------------------------------------------------
+// THE ROUTE, AND WHY IT HAS A PROXY LOCUS.
+//
+// The renderer cannot open the channel to the relay itself. That is measured: briansrls@srv4 --
+// the only qualified renderer -- holds no private key for pi1, and its attempt fails at host-key
+// verification before authentication is even reached. The session that CAN reach both is neither
+// the renderer nor the relay, so it appears in the model as a third participant rather than as an
+// unstated assumption inside "the renderer reaches the unit".
+//
+// A DIRECT ROUTE IS STILL A ROUTE. RendererReachesUnitDirectly exists so that a future renderer
+// which does hold the relay's key -- or which IS the relay -- is expressible without a new kind of
+// placement, and so that a consumer must still ask whether the endpoint was reachable.
+type OobeEndpointRoute
+  = RendererReachesUnitDirectly { renderer: HostIdentity, unit_endpoint: SocketAddress }
+  | RendererReachesUnitThroughProxy {
+      renderer: HostIdentity,
+      proxy_locus: HostIdentity,
+      relay: HostIdentity,
+      unit_endpoint: SocketAddress,
+      renderer_listener: SocketAddress,
+    }
+
+// ------------------------------------------------------------------------------------------
+// A PLAN IS NOT A LEASE, AND THE DIFFERENCE IS THE WHOLE REASON THIS TYPE IS NOT A BOOLEAN.
+//
+// "A route can be established" and "a listener is up right now" are different claims with
+// different remedies, and an actuator that conflated them would drive a browser at a socket that
+// nobody is holding open. ForwardingEstablished therefore carries the teardown obligation with it:
+// the value that says the tunnel exists is the same value that says who must close it.
+//
+// ForwardingReleased is a terminal receipt rather than an absence, because "we never opened one"
+// and "we opened one and closed it" are different states of the relay, and only the second
+// discharges an obligation. The teardown was verified in both directions on the measured run --
+// after release, the renderer's listener and the session's listener both refuse.
+type ForwardingRefusalCause
+  = RelayRefusesTcpForwarding { relay: HostIdentity }
+  | RelayForwardingPermissionUnknown { relay: HostIdentity }
+  | ProxyCannotReachRelay { proxy_locus: HostIdentity, relay: HostIdentity }
+  | RendererCannotReachProxy { renderer: HostIdentity, proxy_locus: HostIdentity }
+  | ListenerAddressUnavailable { listener: SocketAddress }
+  | UnitEndpointUnreachable { unit_endpoint: SocketAddress }
+
+type OobeForwardingStanding
+  = ForwardingPlanAdmitted { route: OobeEndpointRoute, forwards: List<PortForwardSpec> }
+  | ForwardingEstablished {
+      route: OobeEndpointRoute,
+      forwards: List<PortForwardSpec>,
+      teardown_owed_by: HostIdentity,
+    }
+  | ForwardingRefused { cause: ForwardingRefusalCause }
+  | ForwardingReleased { route: OobeEndpointRoute }
+
+// ------------------------------------------------------------------------------------------
+// THE SELECTION.
+//
+// NoComposableRoute is a distinct arm from the two "no candidate" arms because a cartesian pair
+// whose halves each pass on their own, and between which no route exists, is a real and different
+// failure -- and it is the one this fleet was closest to: srv4 renders and pi1 relays, and the
+// route between them exists only because a third host can reach both.
+type OobePlacementSelection
+  = PlacementReady { placement: OobeExecutionPlacement }
+  | NoRendererCandidate { considered: List<RendererCapabilityStanding> }
+  | NoRelayCandidate { considered: List<RadioRelayStanding> }
+  | NoComposableRoute { renderer: HostIdentity, relay: HostIdentity, cause: ForwardingRefusalCause }
+
+type OobeExecutionPlacement {
+  renderer: RendererCapabilityStanding
+  relay: RadioRelayStanding
+  route: OobeEndpointRoute
+}
+
+// ------------------------------------------------------------------------------------------
+// THE MEASURED POPULATION, 2026-09-03.
+//
+// THE RADIO PROBE CARRIES ITS OWN POSITIVE CONTROL. Each host was asked for the count of
+// /sys/class/net/*/wireless directories: four fleet hosts answered 0 and pi1 answered 1. The
+// non-zero answer is what makes the zeros evidence rather than a broken probe -- an instrument
+// that returns 0 everywhere cannot distinguish "no radio" from "cannot see radios".
+//
+// EVERY ROW NAMES ITS ACCOUNT because the capability is per-HOME. srv2 and srv3 refuse the
+// operator account entirely and answer as ubuntu, so those rows could not have been measured under
+// the same login as srv1's, and pretending otherwise would attach one host's account to another's
+// observation.
+// ------------------------------------------------------------------------------------------
+
+data renderer_srv4_briansrls: RendererCapabilityStanding = RendererCapable {
+  host: "srv4" as HostIdentity,
+  account: "briansrls" as PosixLoginName,
+  architecture: Aarch64,
+  node_runtime: "v22.23.2" as NodeRuntimeVersion,
+  playwright_package: "1.62.1" as PlaywrightPackageVersion,
+  browser_artifact: "chromium-1234" as BrowserArtifactName,
+}
+
+// THE ROW THAT CORRECTS A CLAIM THIS SESSION MADE. srv1 was reported as a renderer candidate on
+// the strength of its browser cache alone. It holds chromium-1217 and no Playwright package, so
+// it cannot drive a browser at all, and the arm records that the artifact IS present -- the
+// deficit is one package, not a bare host.
+data renderer_srv1_briansrls: RendererCapabilityStanding = RendererPlaywrightPackageUnavailable {
+  host: "srv1" as HostIdentity,
+  account: "briansrls" as PosixLoginName,
+  browser_artifact_present: true,
+}
+
+data renderer_srv2_ubuntu: RendererCapabilityStanding = RendererPlaywrightPackageUnavailable {
+  host: "srv2" as HostIdentity,
+  account: "ubuntu" as PosixLoginName,
+  browser_artifact_present: false,
+}
+
+data renderer_srv3_ubuntu: RendererCapabilityStanding = RendererPlaywrightPackageUnavailable {
+  host: "srv3" as HostIdentity,
+  account: "ubuntu" as PosixLoginName,
+  browser_artifact_present: false,
+}
+
+data renderer_pi1_briansrls: RendererCapabilityStanding = RendererRuntimeUnavailable {
+  host: "pi1" as HostIdentity,
+  account: "briansrls" as PosixLoginName,
+}
+
+data observed_renderer_standings: List<RendererCapabilityStanding> = [
+  gunbc.spark.oobe_execution_placement.renderer_srv4_briansrls,
+  gunbc.spark.oobe_execution_placement.renderer_srv1_briansrls,
+  gunbc.spark.oobe_execution_placement.renderer_srv2_ubuntu,
+  gunbc.spark.oobe_execution_placement.renderer_srv3_ubuntu,
+  gunbc.spark.oobe_execution_placement.renderer_pi1_briansrls,
+]
+
+// pi1's forwarding permission is TcpForwardingPermitted by MEASUREMENT, not by default: a local
+// forward was established through it with ExitOnForwardFailure set, an HTTP request through the
+// listener returned 200, and after teardown the same listener refused. The refusal after teardown
+// is what makes the 200 attributable to the tunnel.
+data relay_pi1: RadioRelayStanding = RadioRelayReady {
+  host: "pi1" as HostIdentity,
+  radio_interface: "wlan0" as RadioInterfaceName,
+  associated_ssid: "spark-0c75" as ObservedUnitAccessPointSsid,
+  forwarding_permission: TcpForwardingPermitted,
+}
+
+data relay_srv1: RadioRelayStanding = RelayHasNoRadioInterface { host: "srv1" as HostIdentity }
+data relay_srv2: RadioRelayStanding = RelayHasNoRadioInterface { host: "srv2" as HostIdentity }
+data relay_srv3: RadioRelayStanding = RelayHasNoRadioInterface { host: "srv3" as HostIdentity }
+data relay_srv4: RadioRelayStanding = RelayHasNoRadioInterface { host: "srv4" as HostIdentity }
+
+data observed_relay_standings: List<RadioRelayStanding> = [
+  gunbc.spark.oobe_execution_placement.relay_pi1,
+  gunbc.spark.oobe_execution_placement.relay_srv1,
+  gunbc.spark.oobe_execution_placement.relay_srv2,
+  gunbc.spark.oobe_execution_placement.relay_srv3,
+  gunbc.spark.oobe_execution_placement.relay_srv4,
+]
+
+// ------------------------------------------------------------------------------------------
+// THE DERIVATIONS. Each folds the observed population rather than restating a conclusion, so a
+// host whose standing changes moves the answer with no second edit.
+
+fn renderer_is_capable(r: RendererCapabilityStanding) -> Bool {
+  match r {
+    RendererCapable { host: _, account: _, architecture: _, node_runtime: _, playwright_package: _, browser_artifact: _ } => true
+    RendererRuntimeUnavailable { host: _, account: _ } => false
+    RendererPlaywrightPackageUnavailable { host: _, account: _, browser_artifact_present: _ } => false
+  }
+}
+
+fn renderer_host_of(r: RendererCapabilityStanding) -> HostIdentity {
+  match r {
+    RendererCapable { host: h, account: _, architecture: _, node_runtime: _, playwright_package: _, browser_artifact: _ } => h
+    RendererRuntimeUnavailable { host: h, account: _ } => h
+    RendererPlaywrightPackageUnavailable { host: h, account: _, browser_artifact_present: _ } => h
+  }
+}
+
+fn relay_is_ready(r: RadioRelayStanding) -> Bool {
+  match r {
+    RadioRelayReady { host: _, radio_interface: _, associated_ssid: _, forwarding_permission: p } =>
+      match p {
+        TcpForwardingPermitted => true
+        TcpForwardingAdministrativelyProhibited => false
+        ForwardingPermissionUnobserved => false
+      }
+    RelayHasNoRadioInterface { host: _ } => false
+    RelayRadioNotAssociated { host: _, radio_interface: _ } => false
+  }
+}
+
+fn relay_host_of(r: RadioRelayStanding) -> HostIdentity {
+  match r {
+    RadioRelayReady { host: h, radio_interface: _, associated_ssid: _, forwarding_permission: _ } => h
+    RelayHasNoRadioInterface { host: h } => h
+    RelayRadioNotAssociated { host: h, radio_interface: _ } => h
+  }
+}
+
+fn capable_renderer_count() -> Int {
+  fold(observed_renderer_standings, init: 0, f: (n, r) => if (renderer_is_capable(r: r)) { n + 1 } else { n })
+}
+
+fn ready_relay_count() -> Int {
+  fold(observed_relay_standings, init: 0, f: (n, r) => if (relay_is_ready(r: r)) { n + 1 } else { n })
+}
+
+// THE CLAIM THIS MODULE EXISTS TO MAKE, DERIVED RATHER THAN ASSERTED: no host is both. It folds
+// the two populations and asks whether any host appears as a capable renderer AND a ready relay.
+// Written as a fold so that installing Playwright on pi1, or a radio in srv4, retires it by
+// construction instead of leaving a comment that has quietly become false.
+fn host_is_capable_renderer(h: HostIdentity) -> Bool {
+  fold(observed_renderer_standings, init: false,
+    f: (acc, r) => acc || (renderer_is_capable(r: r) && renderer_host_of(r: r) == h))
+}
+
+fn host_is_ready_relay(h: HostIdentity) -> Bool {
+  fold(observed_relay_standings, init: false,
+    f: (acc, r) => acc || (relay_is_ready(r: r) && relay_host_of(r: r) == h))
+}
+
+fn some_host_holds_both_roles() -> Bool {
+  fold(observed_renderer_standings, init: false,
+    f: (acc, r) => acc || (renderer_is_capable(r: r) && host_is_ready_relay(h: renderer_host_of(r: r))))
+}
