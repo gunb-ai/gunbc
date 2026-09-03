@@ -114,7 +114,7 @@ fn run_current_step0_canary(entry: NonEmptyStr) -> Step0CanaryRunOutcome {
 fn step0_production_refusal_label(cause: Step0StripProductionRefusalCause) -> String {
   match cause {
     Step0SourceImportsNotParsed { file: file, cause: parse_cause } =>
-      concat("source imports not parsed at ", concat(file as String, concat(": ", parse_cause as String)))
+      concat("source imports not parsed at ", concat(file as String, concat(": ", import_statement_parse_cause_label(cause: parse_cause) as String)))
     Step0SourceRewriteRefused { file: file, refusal: _ } =>
       concat("source rewrite refused at ", file as String)
     Step0SubjectHadNoImportStatements => "subject had no import statements"
