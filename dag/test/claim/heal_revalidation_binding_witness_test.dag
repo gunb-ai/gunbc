@@ -106,49 +106,77 @@ test fn the_heal_job_carries_no_revalidation_preflight() -> Bool {
   }
 }
 
-fn dispatch_input_is_declared_string(v: YamlValue) -> Bool {
+// ONE ACCESSOR, USED THREE TIMES, INSTEAD OF THREE NESTED HAND-ROLLED WALKS. The first cut of this
+// predicate folded a mapping's entries, matched every YamlValue variant, and did it again one level
+// down and again below that -- forty lines whose subject was "descend three keys". `yaml_key` is
+// that descent named once: it is the mapping-lookup extdeps.languages.yaml.types does not export,
+// which today offers constructors and `yaml_value_kind` and no query at all.
+//
+// IT IS LOCAL, AND THAT IS A DELIBERATE SCOPE CHOICE RATHER THAN THE RIGHT FINAL HOME. Its proper
+// home under DESIGN section 3 is beside the type it reads, in extdeps.languages.yaml.types, so
+// every reader of a YamlValue shares one descent. Landing it there is a shared-module change that
+// reaches lanes with no stake in this PR, so it is authored here and DISSOLVES INTO that accessor
+// the moment one exists -- at which point this row and its twin in
+// test.claim.workflow_dispatch_input_witness, which still carries the older triple-nested form for
+// the same question, both collapse onto it.
+//
+// THE LEAF STILL MATCHES EXHAUSTIVELY AND MUST. `Optional<YamlValue>` at each step is the honest
+// shape of a lookup that can miss; the terminal type check is an exhaustive match over a CLOSED
+// coproduct, which is DESIGN section 4's own idiom. A wildcard arm there would be cheaper to read
+// and strictly worse: adding a YamlValue variant would silently answer `false` instead of failing
+// to compile, which is the absorbing fallback section 5 forbids.
+fn yaml_key(v: YamlValue, key: String) -> YamlValue? {
   match v {
     YamlMapping { entries } =>
-      fold(entries, init: false, f: fn(acc, entry) {
-        acc || (entry.key == "inputs" && match entry.value {
-          YamlMapping { entries: inputs } =>
-            fold(inputs, init: false, f: fn(found, row) {
-              found || (row.key == ci_heal_expected_healed_sha_input_name && match row.value {
-                YamlMapping { entries: fields } =>
-                  fold(fields, init: false, f: fn(has_type, field) {
-                    has_type || (field.key == "type" && match field.value {
-                      YamlString { value } => value == "string"
-                      YamlNull => false
-                      YamlBool { value: _ } => false
-                      YamlInt { lexeme: _ } => false
-                      YamlFloat { lexeme: _ } => false
-                      YamlSequence { elements: _ } => false
-                      YamlMapping { entries: _ } => false
-                    })
-                  })
-                YamlNull => false
-                YamlBool { value: _ } => false
-                YamlInt { lexeme: _ } => false
-                YamlFloat { lexeme: _ } => false
-                YamlString { value: _ } => false
-                YamlSequence { elements: _ } => false
-              })
-            })
-          YamlNull => false
-          YamlBool { value: _ } => false
-          YamlInt { lexeme: _ } => false
-          YamlFloat { lexeme: _ } => false
-          YamlString { value: _ } => false
-          YamlSequence { elements: _ } => false
-        })
+      fold(entries, init: none, f: fn(acc, entry) {
+        match acc {
+          Present { value: found } => Present { value: found }
+          Absent => if entry.key == key { Present { value: entry.value } } else { none }
+        }
       })
-    YamlNull => false
-    YamlBool { value: _ } => false
-    YamlInt { lexeme: _ } => false
-    YamlFloat { lexeme: _ } => false
-    YamlString { value: _ } => false
-    YamlSequence { elements: _ } => false
+    YamlNull => none
+    YamlBool { value: _ } => none
+    YamlInt { lexeme: _ } => none
+    YamlFloat { lexeme: _ } => none
+    YamlString { value: _ } => none
+    YamlSequence { elements: _ } => none
   }
+}
+
+fn yaml_is_string(v: YamlValue?, expected: String) -> Bool {
+  match v {
+    Absent => false
+    Present { value: inner } =>
+      match inner {
+        YamlString { value } => value == expected
+        YamlNull => false
+        YamlBool { value: _ } => false
+        YamlInt { lexeme: _ } => false
+        YamlFloat { lexeme: _ } => false
+        YamlSequence { elements: _ } => false
+        YamlMapping { entries: _ } => false
+      }
+  }
+}
+
+fn yaml_key_of(v: YamlValue?, key: String) -> YamlValue? {
+  match v {
+    Absent => none
+    Present { value: inner } => yaml_key(v: inner, key: key)
+  }
+}
+
+fn dispatch_input_is_declared_string(v: YamlValue) -> Bool {
+  yaml_is_string(
+    v: yaml_key_of(
+      v: yaml_key_of(
+        v: yaml_key(v: v, key: "inputs"),
+        key: ci_heal_expected_healed_sha_input_name
+      ),
+      key: "type"
+    ),
+    expected: "string"
+  )
 }
 
 fn dispatch_trigger_value() -> YamlValue {
