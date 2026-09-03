@@ -84,10 +84,31 @@ pub(super) fn serve_budget_refusal_machine_body(refusal: &ServeBudgetRefusal) ->
     )
 }
 
+/// THE ONE AUTHORITY FOR THE DIAGNOSTIC TEXT, over scalars rather than over the refusal, because
+/// two callers need the TEMPLATE and exactly one of them may hold a `ServeBudgetRefusal`.
+///
+/// The falsifier reconstructs the line it expects from the response body's own fields and compares
+/// it to what the subject actually printed. Before this existed it re-authored the template to do
+/// so, which is one fact in two places: an edit here silently stopped being checked there.
+///
+/// It renders TEXT and does not produce a refusal, which is the distinction that keeps it safe.
+/// `ServeBudgetRefusal` still has no constructor over loose values -- a caller holding four scalars
+/// can describe what a refusal WOULD say, and still cannot make the boundary emit one.
+pub(super) fn budget_refusal_diagnostic_text(
+    entry: &str,
+    clock_key: &str,
+    elapsed_nanos: u128,
+    limit_ms: u128,
+) -> String {
+    format!("serve: refused {entry} on {clock_key} clock: elapsed_ns={elapsed_nanos} limit_ms={limit_ms}")
+}
+
 pub(super) fn serve_budget_refusal_diagnostic_line(refusal: &ServeBudgetRefusal) -> String {
-    format!(
-        "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
-        refusal.entry, refusal.clock_key, refusal.elapsed_nanos, refusal.limit_ms
+    budget_refusal_diagnostic_text(
+        &refusal.entry,
+        refusal.clock_key,
+        refusal.elapsed_nanos,
+        u128::from(refusal.limit_ms),
     )
 }
 

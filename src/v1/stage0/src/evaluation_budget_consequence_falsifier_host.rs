@@ -1446,8 +1446,12 @@ fn serve_and_judge(
 
             // The diagnostic the subject printed for THIS breach, reconstructed from the body's own
             // fields. If the two disagree, the body is not an account of what the server did.
-            let expected_diagnostic =
-                format!("serve: refused {entry} on {clock} clock: elapsed_ns={elapsed_nanos} limit_ms={limit_ms}");
+            let expected_diagnostic = super::serve_budget_refusal::budget_refusal_diagnostic_text(
+                &entry,
+                &clock,
+                elapsed_nanos,
+                limit_ms,
+            );
 
             let disagreement = if status != 500 {
                 Some(format!("status {status}"))
