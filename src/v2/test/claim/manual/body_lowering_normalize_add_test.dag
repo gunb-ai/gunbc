@@ -13,14 +13,14 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
+import v2.extdeps.languages.dag_add_fixture {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
+  dag_add_arrow_with_body_fixture,
   dag_language_model,
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
 }
-import v2.extdeps.languages.dag_add_fixture { dag_add_arrow_with_body_fixture }
 import std.algebra { Cons, Empty }
 import v2.std.collection {
   List,
