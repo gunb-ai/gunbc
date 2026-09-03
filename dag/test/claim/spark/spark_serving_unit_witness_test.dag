@@ -38,7 +38,6 @@ import gunbc.spark.serving_unit_observed {
   serving_unit_artifact,
   serving_unit_throughput_band,
   serving_unit_observed_throughput,
-  serving_unit_throughput_meets,
 }
 
 // THE POSITIVE CONTROL THAT EVERYTHING ELSE IN THIS FILE DEPENDS ON.
@@ -161,25 +160,24 @@ test fn the_weights_peer_host_is_identifiable_as_one() -> Bool {
 }
 
 
-// THE THROUGHPUT OBSERVATION IS A BAND AND A THRESHOLD READS ITS LOW END.
+// THERE IS DELIBERATELY NO WITNESS THAT A THRESHOLD IS MET, because the predicate it would have
+// exercised has been deleted rather than fixed.
 //
-// The two ends are 2 and 7 tok/s decode, and they are not two attempts at one number -- they are the
-// SAME launch argv at two occupancies, a unit holding six long-context sessions against one nearly
-// empty. A threshold compared against the high end would therefore pass on the strength of the
-// unit's idlest moment and say nothing about the state a caller will actually meet under load.
+// It read the LOW end of the band, which is the fail-closed direction and is why it survived a first
+// review. That defence does not hold. The low end is the MINIMUM OF THE SAMPLES TAKEN SO FAR, not a
+// proven lower bound over the workloads this unit may meet: a deeper retained context or a different
+// context distribution could produce a rate below it, and the predicate would answer "meets" while
+// the service disappointed. Rounding down is fail-closed WITHIN the measured samples and says
+// nothing about the unmeasured population -- and the name promoted the former into the latter.
 //
-// This is also what makes the check safe to keep while the carrier still has no workload identity.
-// The low end IS the worst occupancy anyone has measured, so reading it is the fail-closed
-// direction: the threshold refuses where a loaded unit would disappoint, and cannot pass on a
-// regime that was only ever observed empty.
-test fn a_threshold_is_met_only_when_the_low_end_meets_it() -> Bool {
-  match serving_unit_observed_throughput() {
-    Absent => false
-    Present { value: b } =>
-      serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 2))
-        && !serving_unit_throughput_meets(band: b, threshold: tokens_per_second(count: 5))
-  }
-}
+// The witness that used to stand here is the second half of the reason. Its only consumer was the
+// helper it tested, so it established that the helper reads its own low field and nothing else. No
+// actuator or selector was ever forced to consult it. A predicate with no production route, proved
+// only against itself, is specification-without-execution wearing a green check.
+//
+// An admissive floor belongs on a workload-qualified service profile -- one carrying occupancy,
+// incarnation and request shape -- and this carrier has none of those. Until it does, the honest
+// state is that the observation is published and NOTHING is authorised to admit against it.
 
 // A DISCRIMINATING RED: an inverted band has no constructor, so "low 59, high 50" -- the transcription
 // error that would silently invert every threshold comparison above -- cannot be authored.

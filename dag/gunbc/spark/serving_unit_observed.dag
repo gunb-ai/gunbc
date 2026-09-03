@@ -442,25 +442,41 @@ fn serving_unit_throughput_band(
 // restarted. Reported in whole tok/s because a decimal would carry precision the spread does not
 // have.
 //
-// DECODE RATE DEPENDS ON WHAT ELSE THE UNIT IS HOLDING, WHICH IS WHY THE BAND IS WIDE AND WHY IT IS
-// A BAND. The 2.3x between those two readings is not noise and not a configuration change -- the
-// launch argv is identical across the restart. What differed is resident KV: the slow reading came
-// from a unit whose ten slots held sessions at 65k and 157k, the fast one from a unit whose slots
-// were nearly empty. A REPORT THAT SAMPLES ONLY A FRESH UNIT WILL THEREFORE OVERSTATE WHAT A LOADED
-// ONE DELIVERS BY ROUGHLY DOUBLE, and a report that samples only a loaded one understates a fresh
-// one by as much.
+// THE 2.3x IS REAL AND ITS CAUSE IS NOT ESTABLISHED, and those are two separate statements this
+// annotation previously ran together. It said "the only variable is resident KV". That does not
+// follow. Equal launch argv establishes equal DECLARED LAUNCH CONFIGURATION, and the two readings
+// straddle a RESTART, which changes process incarnation by construction -- and with it worker state,
+// memory placement, caches, clock and scheduler state, RPC connections, concurrent traffic, and the
+// exact bytes mapped. This module's own on-disk-versus-executed-artifact section says neither
+// incarnation is bound to the measured shard bytes, so it cannot then claim the two incarnations
+// differed in one axis only.
+//
+// What the pair supports is narrower and still useful: OCCUPANCY AND PROCESS STATE ARE A LOAD-BEARING
+// AXIS that any future throughput instrument must carry, because a 2.3x sits across it. The slow
+// reading came from a unit whose ten slots held sessions at 65k and 157k and the fast one from a unit
+// whose slots were nearly empty; that association is recorded, not promoted to cause. Separating the
+// two needs matched fresh-then-occupied readings WITHIN one identified incarnation, or repeated such
+// pairs across several -- an experiment nobody has run, and one that does NOT require resurrecting
+// the old process to run later.
+//
+// The operational consequence survives the weaker claim intact: a report that samples only a fresh
+// unit overstates what a loaded one delivers by roughly double, and one that samples only a loaded
+// unit understates a fresh one by as much.
 //
 // This is also why a concurrency sweep run entirely on top of an already-loaded unit cannot see the
 // effect: every sample sits at one occupancy, per-stream rate looks flat across added probes, and
 // the honest conclusion from that shape is that ADDING STREAMS AT FIXED OCCUPANCY is cheap -- not
 // that occupancy is free. The two questions have different answers here.
 //
-// THE ROUNDING IS DIRECTIONAL AND THAT IS THE PART THAT MATTERS, because a band is not a number and
-// rounding it the wrong way changes what admission means. The low end rounds DOWN and the high end
-// UP, so the recorded band is a SUPERSET of the measured one. serving_unit_throughput_meets compares
-// a threshold against the LOW end, so understating that end can only make the check stricter: it
-// refuses where the true figure would have passed, never the reverse. Rounding the low end up is the
-// fail-open direction and is what this note exists to prevent someone doing later for tidiness.
+// THE ROUNDING IS DIRECTIONAL, and what it does and does not buy is now the whole point. The low end
+// rounds DOWN and the high end UP, so the recorded pair is a SUPERSET of the measured one and no
+// reader can recover a tighter figure than was observed.
+//
+// THAT IS NOT A LOWER BOUND ON SERVICE, and the predicate that used to read this end has been deleted
+// for assuming it was. Rounding down is conservative WITHIN THE TWO SAMPLES TAKEN; the population of
+// workloads this unit may meet is unsampled, and a deeper retained context could sit below the low
+// end without contradicting anything here. So the ends bound the OBSERVATIONS, not the service, and
+// nothing in this module is authorised to admit a target against them.
 //
 // WHAT IS DELIBERATELY NOT RECORDED IS AN AGGREGATE. The retracted row carried one, and no aggregate
 // was ever measured as an aggregate -- the figure was a prefill rate. A peer session's concurrency
@@ -475,16 +491,6 @@ fn serving_unit_observed_throughput() -> ServingUnitThroughputBand? {
     decode_high: tokens_per_second(count: 7),
     prefill: tokens_per_second(count: 12),
   )
-}
-
-// THE CLAIM A THRESHOLD MAY BE COMPARED AGAINST, and it reads the LOW end deliberately. An operator
-// threshold set against the high end would be met by one of the two observed runs and missed by the
-// other, so the unit would pass or fail on which run was quoted.
-fn serving_unit_throughput_meets(
-  band: ServingUnitThroughputBand,
-  threshold: TokensPerSecond,
-) -> Bool {
-  tokens_per_second_count(r: band.decode_low) >= tokens_per_second_count(r: threshold)
 }
 
 // ================= THE ARTIFACT ON DISK AT THE PATHS THE UNIT NAMES =================
