@@ -650,6 +650,30 @@ rows while `required_floor_claim_cost.tsv` carries 295 over the 100ms line. A
 census taken from the log is the log's ranking read as the population —
 `instrument_output_read_as_subject_content`, observed twice on this lane.
 
+**And a third truncation lives in the ARTIFACT, not the log, which is why it is
+the dangerous one.** `required_floor_cross_claim_demand.tsv`'s `module_sample`
+column caps at **8 modules**; on run 33668368846, **1044 of 26317 rows** carry a
+`modules` count above that cap, so their consumer list is cut. Unlike the two
+print caps this one has no trailer — the row simply lists eight modules beside a
+`modules=71`, and a reader joining producers to consumer modules gets a silently
+partial answer.
+
+It bites exactly where the join matters: the producers whose sample is truncated
+are the WIDELY SHARED ones, which are precisely the producers most likely to
+explain why a whole module's rows cluster. So **a corpus-scale join from module
+to shared producer is not performable from this artifact today** — the per-module
+reading below is sound only where the join was performed by hand, one producer at
+a time, and a 73%-of-over-line-CPU classification reported off the step ratio
+alone is a step-cluster inference at that strength rather than an ownership
+result. Widening or inverting that column is named here as an obligation and
+deliberately not undertaken in this lane.
+
+Three truncated renderings on one lane is a pattern rather than three accidents,
+and the shape they share is the reusable part: **an instrument that caps a
+collection reports the cap honestly at the top level (`modules=71`) while the
+column a consumer actually reads silently answers for eight.** Check the cap
+against the count before joining on any list-valued column.
+
 ### Eval steps, not milliseconds, is the within-module discriminator
 
 `required_floor_claim_cost.tsv` carries `eval_steps` beside the two clocks. Steps
