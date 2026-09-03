@@ -11541,6 +11541,62 @@ fn subject_module_value(
     }
 }
 
+/// Encode one source's parsed import statements: the parser's delimited spans, or the typed
+/// refusal. A source that did not parse and a source with no imports are different values here
+/// because they are different facts, and a caller that stripped nothing from the first would
+/// report a clean rewrite of a file it never read.
+fn parsed_import_statements_value(
+    outcome: &crate::std_import::ParsedImportStatements,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_import::ParsedImportStatements as P;
+    match outcome {
+        P::ImportStatementsParsed { statements } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementsParsed"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("statements"),
+                list_value(
+                    statements
+                        .iter()
+                        .map(|statement| Value::Record {
+                            type_name: ctx.sym("ParsedImportStatement"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (
+                                    ctx.sym("span"),
+                                    Value::Record {
+                                        type_name: ctx.sym("SourceSpan"),
+                                        fields: Rc::new(sorted_fields(vec![
+                                            (
+                                                ctx.sym("file"),
+                                                str_value(statement.span.file.clone()),
+                                            ),
+                                            (ctx.sym("start"), Value::Int(statement.span.start)),
+                                            (ctx.sym("end"), Value::Int(statement.span.end)),
+                                        ])),
+                                    },
+                                ),
+                                (
+                                    ctx.sym("imported_module"),
+                                    str_value(statement.imported_module.clone()),
+                                ),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+        P::ImportStatementParseRefused { cause } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementParseRefused"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("cause"),
+                str_value(cause.clone()),
+            )])),
+        },
+    }
+}
+
 fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
@@ -17206,6 +17262,16 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::doc_graph_dangling_link_count(),
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
+
+            arm "free_call.parsed_import_statements" { "parsed_import_statements" } => {
+                let file = expect_str($positional.first().copied(), $name)?;
+                let source = expect_str($positional.get(1).copied(), $name)?;
+                let observed =
+                    crate::v1_gunbc_parsed_import_statements::parsed_import_statements(
+                        file, source,
+                    );
+                Ok(Some(parsed_import_statements_value(&observed, $ctx)))
+            },
 
             arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
                 let file = expect_str($positional.first().copied(), $name)?;

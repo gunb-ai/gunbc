@@ -765,6 +765,14 @@ fn floor_expected_red_chunk_23() -> List<String> {
   Cons { head: "test.claim.record_literal_call_arg_handoff_witness.record_literal_container_element_mismatch_at_call_arg_still_refuses", tail: Empty {} }
 }
 
+// The interpreter realizes terminal `first` as a raw element or Null while emitted Rust realizes
+// the same modeled operation as Optional<T>. This exact specimen executes and returns false. It
+// stays enrolled after repair: when it becomes true this roster row is deleted and the claim
+// remains as the regression control.
+fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<String> {
+  Cons { head: "test.claim.cli_dispatch_surface.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
+}
+
 // THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding. The
 // local-binding-shadow repair -- a call site spelling a name held by both a local binding and a
 // module-level free function now reaches the LOCAL -- was enrolled with ONE row of its own. On the
@@ -1107,7 +1115,7 @@ fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in

@@ -19,4 +19,3 @@ test fn w_nonempty_str_html_url_holds() -> Bool {
   let url = "https://github.com/gunb-ai/gunbc/pull/1"
   url.contains("github.com")
 }
-

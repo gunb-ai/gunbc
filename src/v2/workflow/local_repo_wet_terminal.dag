@@ -89,8 +89,8 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // anything at all -- a gate permanently green by construction, which DESIGN section 4b calls a
 // decoration rather than a wall.
 //
-// ELEVEN MEMBERS IN TWO GROUPS, and the groups are named apart because they were admitted for
-// different reasons and a single sentence covering both would be false about one of them.
+// THIRTEEN MEMBERS IN THREE GROUPS, and the groups are named apart because they were admitted for
+// different reasons and a single sentence covering all of them would be false about two.
 //
 //   SEVEN INHERITED DEBT MEMBERS. They were already on main, their effects are local-repo only, and
 //   they had executed NOWHERE since falsifier.yml was deleted at 611fd02770 on 2026-08-15.
@@ -101,6 +101,30 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //   the same terms rather than on the same history. Each builds a real temporary repository and
 //   commits into it, reaching shell.Mktemp.Dir, git plumbing over that worktree, and
 //   shell.Remove.RecursiveForce -- no network, no cargo, no remote host.
+//
+//   TWO HOST-PROBE MEMBERS (added 2026-09-02, PR #10055, operator ruling relayed by tidy-lynx-804).
+//   They are admitted on the NEGATIVE half of the property above -- no network, no cargo, no remote
+//   host, no install media -- and NOT on its positive half: they build no temporary repository and
+//   write nothing. Their only effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check,
+//   command -v). That is stated as a distinct admitted effect rather than folded into the sentence
+//   above, because a membership property widened to accommodate its newest member stops bounding
+//   anything.
+//
+//   THE ADMISSION CONDITION WAS HOST-INDEPENDENCE OF THE VERDICT, AND IT WAS MEASURED. The risk the
+//   ruling named is real: npm is provisioned by `apt install npm on falsifier cadence runner image`
+//   (gunbc.host_cli_dependency codex_wet_materialization_host_cli_requirements), the cadence whose
+//   workflow was deleted at 611fd02770, so npm cannot be assumed present on the hosts this lane
+//   runs on. Both fns return the literal true from EVERY arm, and the npm fn was executed on one
+//   host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- yielding
+//   the same verdict in each. A host-conditional red is therefore not what these import. The echo
+//   fn's absent branch was NOT reached by execution (echo resolves in every PATH tested); its
+//   host-independence rests on the same all-arms-true structure, which is total over hosts rather
+//   than sampled.
+//
+//   WHAT THEY CAN STILL RED ON is route-unreachability, not tool presence: with no shell at all the
+//   probe raises TypeError failed to execute 'sh' and reaches no verdict. That is the reachability
+//   risk every member of this lane already carries, and it is recorded here so a future red is read
+//   against the right axis.
 //
 // EACH WAS MEASURED WET BEFORE BEING SCHEDULED, not assumed runnable from its exclusion note. A
 // member the executor cannot actually run would make this lane's route claim false, which is the
@@ -180,6 +204,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution" },
       entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag",
       function: "a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "observe_echo_wet_posix_command_v_check_does_not_crash" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "observe_echo_wet_posix_command_v_check_does_not_crash",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_cli_dependency_wet_witness_test", function: "observe_npm_wet_posix_command_v_check_does_not_crash" },
+      entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
+      function: "observe_npm_wet_posix_command_v_check_does_not_crash",
       expectation: ExpectedToHold {}
     }
   ]
