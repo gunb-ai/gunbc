@@ -7,7 +7,7 @@ import extdeps.network.ipv4 {
   Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr,
   PrefixLength, ipv4_same_network, ipv4_address_eq,
 }
-import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 
 // THE DESIRED STATE OF THE SPARK FABRIC, AND WHY IT IS DESIRED STATE RATHER THAN A RUNBOOK.
 //
@@ -141,8 +141,26 @@ data fabric_prefix: PrefixLength = 24
 // same defect PrefixLength above exists to close for the network half of this record.
 data fabric_mtu_bytes: ByteSize = byte_size(count: 9000)
 
+// THE LINK NAME IS FLEET-UNIQUE; THE NM PROFILE ID IS NOT, AND THEY ARE NOT THE SAME FACT.
+//
+// Both Spark pairs carry NetworkManager profiles literally named `cx7-rail0` and `cx7-rail1` -- the
+// connect-two-sparks convention is followed on all four machines, so the spelling recurs. Within one
+// host that is legitimate reuse in a distinct scope; across the fleet it is one name for two
+// materially different links, which is the meaning-fork §3 forbids.
+//
+// This was not caught by reading: the witness asserting link names are pairwise distinct went RED
+// when the first-pair rows were authored with the on-host spelling. The names below are therefore
+// qualified by the pair, and the srv7/srv8 rows were renamed for the same reason rather than left
+// as the unqualified spelling that happened to be unique while it was the only pair modeled. No
+// consumer reads a link name -- the distinctness witness is its only reader -- so the rename costs
+// nothing today and stops the collision being resolved later by whoever hits it second.
+//
+// The on-host profile id is a per-host actuation detail. When an actuator needs it, it belongs on the
+// ENDPOINT beside the interface, not on the link: it is a fact about how one machine spells its own
+// configuration, and the two ends are free to disagree about it in a way they may never disagree
+// about interface, network or MTU.
 data fabric_rail0: FabricLink? = fabric_link(
-  name: "cx7-rail0" as NonEmptyStr,
+  name: "srv7-srv8-rail0" as NonEmptyStr,
   endpoint_a: fabric_endpoint(
     host: operator_host_srv7,
     interface: "enp1s0f0np0" as NonEmptyStr,
@@ -155,7 +173,7 @@ data fabric_rail0: FabricLink? = fabric_link(
     prefix: fabric_prefix, mtu: fabric_mtu_bytes))
 
 data fabric_rail1: FabricLink? = fabric_link(
-  name: "cx7-rail1" as NonEmptyStr,
+  name: "srv7-srv8-rail1" as NonEmptyStr,
   endpoint_a: fabric_endpoint(
     host: operator_host_srv7,
     interface: "enP2p1s0f0np0" as NonEmptyStr,
@@ -167,10 +185,65 @@ data fabric_rail1: FabricLink? = fabric_link(
     address: ipv4_address(octet1: 192, octet2: 168, octet3: 101, octet4: 11),
     prefix: fabric_prefix, mtu: fabric_mtu_bytes))
 
+// ================= THE FIRST PAIR (srv5/srv6) =================
+//
+// Read back on 2026-09-03 from BOTH hosts, the same way and for the same reason as the block above:
+// `nmcli -f NAME,DEVICE,FILENAME connection show --active` for the profile and its backing file,
+// `nmcli connection show <profile>` for method, addresses, MTU and IPv6, `ip -br -4 addr` for what is
+// actually up, and `ibdev2netdev` for the RoCE mapping. Not authored from the launch script that used
+// these addresses, and not from any transcript.
+//
+// DURABILITY WAS THE WHOLE QUESTION HERE, because this is the pair whose hand-applied fabric was
+// destroyed by one power cycle. The active profiles are backed by files under
+// /run/NetworkManager/system-connections/, which is TMPFS and is exactly the signature of that
+// incident -- but it is NOT the same state, and reading it as such would have been the wrong
+// conclusion drawn from the right alarm. Each runtime keyfile's UUID corresponds to an
+// /etc/netplan/90-NM-<uuid>.yaml that exists on the host: f5304147 and 6598390e on srv6, 03d8c676 and
+// f5801522 on srv5, each 486-488 bytes and dated 2026-09-02, distinct from the 716-byte install-time
+// wifi profile from 2026-08-08. That is the normal netplan-to-NetworkManager direction -- the durable
+// yaml is the source and the /run keyfile is generated from it. In the incident there was no /etc
+// counterpart at all, which is what made it runtime-only.
+//
+// WHAT IS NOT ESTABLISHED: the yaml files are root-only and `sudo` needs a password on a tty, so
+// their CONTENT was not read. Durability rests on the uuid correspondence and the timestamps, not on
+// having seen the addresses in the durable file. The remaining doubt is settled by one reboot, which
+// nobody has authorized and this module does not require -- the honest ceiling is that the durable
+// artifact EXISTS for each rail, not that its content was verified to match the running address.
+//
+// The subnets differ from the second pair -- 102/103 rather than 100/101 -- and the interface names
+// are the same on both hosts, which is the rail rule the constructor enforces. Jumbo reachability was
+// measured in BOTH directions on BOTH rails at 8972 bytes with DF set, which is what makes MTU 9000
+// an observation here rather than a declaration.
+data first_pair_fabric_rail0: FabricLink? = fabric_link(
+  name: "srv5-srv6-rail0" as NonEmptyStr,
+  endpoint_a: fabric_endpoint(
+    host: operator_host_srv6,
+    interface: "enp1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 102, octet4: 10),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes),
+  endpoint_b: fabric_endpoint(
+    host: operator_host_srv5,
+    interface: "enp1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 102, octet4: 11),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes))
+
+data first_pair_fabric_rail1: FabricLink? = fabric_link(
+  name: "srv5-srv6-rail1" as NonEmptyStr,
+  endpoint_a: fabric_endpoint(
+    host: operator_host_srv6,
+    interface: "enP2p1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 103, octet4: 10),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes),
+  endpoint_b: fabric_endpoint(
+    host: operator_host_srv5,
+    interface: "enP2p1s0f0np0" as NonEmptyStr,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 103, octet4: 11),
+    prefix: fabric_prefix, mtu: fabric_mtu_bytes))
+
 // The roster is the PRESENT links only. A link whose constructor refused is not a link with a
 // problem to be reported later -- it never existed, so nothing downstream can plan from it.
 fn spark_fabric_links() -> List<FabricLink> {
-  flat_map([fabric_rail0, fabric_rail1], l =>
+  flat_map([fabric_rail0, fabric_rail1, first_pair_fabric_rail0, first_pair_fabric_rail1], l =>
     match l {
       Present { value: v } => [v]
       Absent => []

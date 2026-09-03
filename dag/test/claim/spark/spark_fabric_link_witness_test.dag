@@ -2,12 +2,12 @@ module test.claim.spark.spark_fabric_link_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { ByteSize, byte_size }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 {
   Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr,
   PrefixLength, ipv4_same_network, ipv4_address_eq,
 }
-import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_link_desired {
   FabricEndpoint, FabricLink, fabric_endpoint, fabric_link, fabric_endpoint_on,
   spark_fabric_links, spark_fabric_endpoints_on, fabric_prefix, fabric_mtu_bytes,
@@ -100,15 +100,40 @@ test fn w_a_prefix_the_comparison_cannot_answer_refuses() -> Bool {
 // that the interface names were CROSSED between the hosts, and reading the durable /etc/netplan on
 // both machines showed they are not -- the crossed state existed, had been applied by hand, and was
 // a defect rather than the convention. The witness that encoded it would have locked the defect in.
-// Two rails, each naming one interface at both ends, and the two rails naming different ones.
+//
+// THE DISTINCT-INTERFACE HALF IS SCOPED TO A HOST, NOT TO THE FLEET, and that correction was forced
+// by evidence rather than noticed by reading. The clause used to say no two rails anywhere name the
+// same interface, which held only while ONE pair was modeled. Both Spark pairs run the identical NIC
+// naming -- enp1s0f0np0 and enP2p1s0f0np0 on all four machines -- so authoring the first pair turned
+// it red against rows that are correct. What must never happen is one HOST carrying two rails on one
+// NIC; two different machines using the same NIC name is not a collision, it is the convention.
+//
+// Written as: for any two distinct rails that touch a common host, their interfaces differ. That is
+// the property the original clause was reaching for, expressed at the grain that owns it, so it stays
+// discriminating for every pair added later instead of needing another edit per pair.
+fn w_links_share_a_host(x: FabricLink, y: FabricLink) -> Bool {
+  host_identity_eq(a: x.endpoint_a.host, b: y.endpoint_a.host)
+    || host_identity_eq(a: x.endpoint_a.host, b: y.endpoint_b.host)
+    || host_identity_eq(a: x.endpoint_b.host, b: y.endpoint_a.host)
+    || host_identity_eq(a: x.endpoint_b.host, b: y.endpoint_b.host)
+}
+
 test fn w_each_rail_names_one_interface_at_both_ends() -> Bool {
-  length(spark_fabric_links()) == 2
+  length(spark_fabric_links()) == 4
     && all(spark_fabric_links(), l =>
       (l.endpoint_a.interface as String) == (l.endpoint_b.interface as String))
     && !any(spark_fabric_links(), x =>
       any(spark_fabric_links(), y =>
         (x.name as String) != (y.name as String)
+          && w_links_share_a_host(x: x, y: y)
           && (x.endpoint_a.interface as String) == (y.endpoint_a.interface as String)))
+}
+
+// AND THE SAME NIC NAME ON THE OTHER PAIR IS NOT A COLLISION -- the positive control for the scoping
+// above. Without it, re-tightening the clause to fleet-wide would pass every other claim here.
+test fn w_two_pairs_may_share_a_nic_name_on_different_machines() -> Bool {
+  length(filter(spark_fabric_links(), l =>
+    (l.endpoint_a.interface as String) == "enp1s0f0np0")) == 2
 }
 
 // AND EACH HOST OWNS ONE ENDPOINT ON EACH LINK -- two apiece, on different interfaces. A host that
@@ -116,6 +141,8 @@ test fn w_each_rail_names_one_interface_at_both_ends() -> Bool {
 test fn w_each_fabric_host_owns_one_endpoint_per_link() -> Bool {
   length(spark_fabric_endpoints_on(host: operator_host_srv7)) == 2
     && length(spark_fabric_endpoints_on(host: operator_host_srv8)) == 2
+    && length(spark_fabric_endpoints_on(host: operator_host_srv5)) == 2
+    && length(spark_fabric_endpoints_on(host: operator_host_srv6)) == 2
     && length(spark_fabric_endpoints_on(host: "srv1" as HostIdentity)) == 0
     && all(spark_fabric_links(), l =>
       match fabric_endpoint_on(link: l, host: "srv1" as HostIdentity) {
@@ -141,6 +168,7 @@ test fn w_all_spark_fabric_claims_hold() -> Bool {
     && w_the_two_rails_are_not_one_network()
     && w_a_prefix_the_comparison_cannot_answer_refuses()
     && w_each_rail_names_one_interface_at_both_ends()
+    && w_two_pairs_may_share_a_nic_name_on_different_machines()
     && w_each_fabric_host_owns_one_endpoint_per_link()
     && w_the_cidr_rendering_matches_the_durable_netplan_spelling()
 }
