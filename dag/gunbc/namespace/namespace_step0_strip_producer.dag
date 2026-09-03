@@ -6,7 +6,6 @@ import std.import {
   ImportStatementsStripped,
   ImportStripRefused,
   ImportStripRefusal,
-  ImportStripCoordinateSegment,
   ParsedImportStatement,
   ParsedImportStatements,
   ImportStatementsParsed,
@@ -40,7 +39,6 @@ type Step0SourceStrip
   = Step0SourceStripped {
       source: FixtureSource
       removed_statements: List<String>
-      coordinate_map: List<ImportStripCoordinateSegment>
     }
   | Step0SourceStripRefused {
       cause: Step0StripProductionRefusalCause
@@ -58,11 +56,10 @@ fn namespace_step0_strip_source(source: FixtureSource) -> Step0SourceStrip {
       ) {
         ImportStripRefused { refusal: refusal } =>
           Step0SourceStripRefused { cause: Step0SourceRewriteRefused { file: source.path, refusal: refusal } }
-        ImportStatementsStripped { rewritten_source: rewritten, removed_statements: removed, coordinate_map: coordinate_map } =>
+        ImportStatementsStripped { rewritten_source: rewritten, removed_statements: removed } =>
           Step0SourceStripped {
             source: FixtureSource { path: source.path, content: rewritten },
-            removed_statements: removed,
-            coordinate_map: coordinate_map
+            removed_statements: removed
           }
       }
   }
