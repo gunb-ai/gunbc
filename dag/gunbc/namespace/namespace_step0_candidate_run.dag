@@ -1,0 +1,332 @@
+module gunbc.namespace_step0_candidate_run
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.import { ImportStatementsParsed, ImportStatementParseRefused }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.git.object_store { GitObjectId }
+import tools.multi_module_compile_fixture {
+  FixtureSource,
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  compile_fixture
+}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import gunbc.parsed_import_statement_production { parsed_import_statements_live }
+import gunbc.namespace_step0_strip_producer {
+  Step0SourceStrip,
+  Step0SourceStripped,
+  Step0SourceStripRefused,
+  namespace_step0_strip_source
+}
+import gunbc.namespace_step0_subject_collector {
+  Step0PopulationIdentity,
+  Step0SubjectCollected,
+  Step0SubjectCollection,
+  Step0SubjectCollectionRefused,
+  Step0SubjectMember,
+  Step0SubjectPinRefusal,
+  Step0SubjectVector,
+  collect_current_step0_subject_vector,
+  step0_collected_population_identity,
+  step0_source_population_identity,
+  step0_subject_vector_size
+}
+import gunbc.namespace_step0_canary_v2 {
+  NamespaceStep0V2Receipt,
+  NamespaceStep0V2Admission,
+  NamespaceStep0V2ReceiptAdmitted,
+  NamespaceStep0V2ReceiptRefused,
+  Step0V2ExcludedSource,
+  Step0V2Frontier,
+  Step0V2SubjectEntered,
+  Step0V2SubjectNotEntered,
+  Step0V2BlockingTransition,
+  Step0V2CompletedTransition,
+  ApplyTypedImportStrip,
+  CollectSubjectPopulation,
+  Step0ContainmentAttempt,
+  ContainmentCompileRefused,
+  ContainmentCompileCompleted,
+  admit_namespace_step0_v2_receipt,
+  namespace_step0_canary_v2_contract,
+  namespace_step0_v2_candidate_receipt,
+  step0_v2_entered_prefix,
+  step0_v2_pre_strip_prefix
+}
+
+// THE ONE-DISPATCH CANDIDATE COMMAND. Everything the receipt names is observed by THIS run: the
+// revision and its tree and the compiler's bytes, the population collected out of that revision, the
+// partition of that population by the parse's own answer, the strip, the containment compile, and
+// the classifier's verdict on what came back. Nothing is read from a prior run and nothing is an
+// authored literal -- which is the whole correction, because the superseded contract's command
+// validated three banked literals and never asked production anything, so no capability could ever
+// move it.
+//
+// A REFUSAL HERE IS A RESULT, NOT AN ABSENCE. Each arm names what could not be observed and stops;
+// none of them produces a smaller receipt, because a receipt describing a shorter run is a different
+// claim rather than a weaker one.
+
+type Step0CandidateRun
+  = Step0CandidateSubjectUnavailable { cause: Step0SubjectPinRefusal }
+  | Step0CandidateCompilerUnavailable { program: NonEmptyStr, reason: String }
+  | Step0CandidateCompilerDigestUnreadable { hex: String }
+  | Step0CandidateObserved {
+      receipt: NamespaceStep0V2Receipt
+      admission: NamespaceStep0V2Admission
+      collected_members: Int
+      excluded_members: Int
+    }
+
+// THE SUBJECT PARTITION, DECIDED BY THE PARSE ITSELF. A member the ordinary parse gives a module is
+// admitted; a member it declines is EXCLUDED AND NAMED, carrying the parse's own cause rather than a
+// category invented here. There is deliberately no third outcome: a member is in the subject or it is
+// in the receipt's excluded population, and the classifier's partition law refuses a receipt where
+// the two do not exhaust what was collected.
+type Step0SubjectPartition {
+  admitted: List<FixtureSource>
+  excluded: List<Step0V2ExcludedSource>
+}
+
+fn step0_partition_step(partition: Step0SubjectPartition, member: Step0SubjectMember) -> Step0SubjectPartition {
+  match parsed_import_statements_live(file: member.path as String, source: member.content) {
+    ImportStatementParseRefused { cause: cause } => Step0SubjectPartition {
+      admitted: partition.admitted,
+      excluded: partition.excluded |> list_push(Step0V2ExcludedSource { path: member.path, parse_cause: cause })
+    }
+    ImportStatementsParsed { statements: _ } => Step0SubjectPartition {
+      admitted: partition.admitted |> list_push(FixtureSource { path: member.path, content: member.content }),
+      excluded: partition.excluded
+    }
+  }
+}
+
+fn step0_partition_subject(vector: Step0SubjectVector) -> Step0SubjectPartition {
+  fold(vector.members, init: Step0SubjectPartition { admitted: [], excluded: [] }, f: fn(acc, member) {
+    step0_partition_step(partition: acc, member: member)
+  })
+}
+
+// THE STRIP FOLD REUSES THE OWNED PER-SOURCE REWRITE rather than restating it: one authority for
+// "strip one source", and its refusal arms stay where their owner declared them. Halted is
+// absorbing -- a later source cannot repair an earlier one, and continuing would compile a subject
+// already known to be unstripped.
+type Step0CandidateStrip
+  = Step0CandidateStripping { sources: List<FixtureSource>, removed: Int }
+  | Step0CandidateStripHalted { file: NonEmptyStr }
+
+fn step0_candidate_strip_step(fold_state: Step0CandidateStrip, source: FixtureSource) -> Step0CandidateStrip {
+  match fold_state {
+    Step0CandidateStripHalted { file: file } => Step0CandidateStripHalted { file: file }
+    Step0CandidateStripping { sources: sources, removed: removed } =>
+      match namespace_step0_strip_source(source: source) {
+        Step0SourceStripRefused { cause: _ } => Step0CandidateStripHalted { file: source.path }
+        Step0SourceStripped { source: stripped, removed_statements: removed_statements } =>
+          Step0CandidateStripping {
+            sources: sources |> list_push(stripped),
+            removed: removed + count(removed_statements)
+          }
+      }
+  }
+}
+
+fn step0_candidate_strip(sources: List<FixtureSource>) -> Step0CandidateStrip {
+  fold(sources, init: Step0CandidateStripping { sources: [], removed: 0 }, f: fn(acc, source) {
+    step0_candidate_strip_step(fold_state: acc, source: source)
+  })
+}
+
+// THE COMPILE ENTRY IS THE FIRST MEMBER IN THE REVISION'S OWN ORDER, stated rather than chosen per
+// run: an entry picked differently between two dispatches would make two receipts incomparable for a
+// reason nobody could see in either of them.
+fn step0_candidate_entry(sources: List<FixtureSource>) -> NonEmptyStr? {
+  match first(sources) {
+    Absent => none
+    Present { value: source } => Present { value: source.path }
+  }
+}
+
+fn step0_blocking_diagnostic_count(diagnostics: List<CompileDiagnosticCensusRow>) -> Int {
+  count(diagnostics |> filter(row => row.blocking))
+}
+
+fn step0_containment_attempt(outcome: MultiModuleCompileFixtureOutcome) -> Step0ContainmentAttempt? {
+  match outcome {
+    FixtureInstrumentRefused { cause: _ } => none
+    FixtureCompileRefused { module_count: _, diagnostics: diagnostics, source_digest: _, compiler_digest: _ } =>
+      Present { value: ContainmentCompileRefused {
+        blocking_diagnostics: step0_blocking_diagnostic_count(diagnostics: diagnostics),
+        cause: "containment resolution of the import-stripped subject refused" as NonEmptyStr
+      } }
+    FixtureCompileCompleted { module_count: module_count, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      Present { value: ContainmentCompileCompleted { module_count: module_count } }
+  }
+}
+
+// THE FRONTIER THIS RUN REACHED. Every arm that fails to reach the strip reports SubjectNotEntered
+// with the transition that stopped and its cause; reaching the compile reports SubjectEntered with
+// the populations the strip produced, whatever the compile then said. A COMPLETED compile is
+// reported as completed and is not converted into a blocker.
+fn step0_candidate_frontier(admitted: List<FixtureSource>) -> Step0V2Frontier {
+  if count(admitted) == 0 {
+    Step0V2SubjectNotEntered {
+      blocked_at: ApplyTypedImportStrip,
+      cause: "no collected member parses as a module, so the strip has no subject" as NonEmptyStr
+    }
+  } else {
+    match step0_candidate_strip(sources: admitted) {
+      Step0CandidateStripHalted { file: file } => Step0V2SubjectNotEntered {
+        blocked_at: ApplyTypedImportStrip,
+        cause: concat("the typed rewrite refused at ", file as String) as NonEmptyStr
+      }
+      Step0CandidateStripping { sources: stripped, removed: removed } =>
+        if removed == 0 {
+          Step0V2SubjectNotEntered {
+            blocked_at: ApplyTypedImportStrip,
+            cause: "the subject carried no import statement to remove" as NonEmptyStr
+          }
+        } else {
+          match step0_candidate_entry(sources: stripped) {
+            Absent => Step0V2SubjectNotEntered {
+              blocked_at: ApplyTypedImportStrip,
+              cause: "the stripped subject is empty, so no entry names it" as NonEmptyStr
+            }
+            Present { value: entry } => match step0_containment_attempt(
+              outcome: compile_fixture(fixture: MultiModuleCompileFixture { sources: stripped, entry: entry })
+            ) {
+              Absent => Step0V2SubjectNotEntered {
+                blocked_at: ApplyTypedImportStrip,
+                cause: "the containment compile instrument refused, so no compile was attempted on the stripped subject" as NonEmptyStr
+              }
+              Present { value: attempt } => Step0V2SubjectEntered {
+                stripped_population: step0_source_population_identity(sources: stripped),
+                compile_input_population: step0_source_population_identity(sources: stripped),
+                removed_statement_count: removed,
+                attempt: attempt
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn step0_frontier_prefix(frontier: Step0V2Frontier) -> List<Step0V2CompletedTransition> {
+  match frontier {
+    Step0V2SubjectNotEntered { blocked_at: _, cause: _ } => step0_v2_pre_strip_prefix
+    Step0V2SubjectEntered { stripped_population: _, compile_input_population: _, removed_statement_count: _, attempt: _ } =>
+      step0_v2_entered_prefix
+  }
+}
+
+// THE ONE ADMITTED CALLER OF THE RECEIPT MINT, holding every value from this dispatch.
+fn step0_candidate_receipt_of_run(
+  vector: Step0SubjectVector,
+  compiler: Sha256Digest,
+  partition: Step0SubjectPartition,
+  frontier: Step0V2Frontier
+) -> NamespaceStep0V2Receipt {
+  namespace_step0_v2_candidate_receipt(
+    source_commit: vector.source_commit,
+    source_tree: vector.source_tree,
+    compiler_program: "target/release/gunbc" as NonEmptyStr,
+    compiler_executable_sha256: compiler,
+    collected_population: step0_collected_population_identity(vector: vector),
+    excluded_sources: partition.excluded,
+    admitted_population: step0_source_population_identity(sources: partition.admitted),
+    completed_production_prefix: step0_frontier_prefix(frontier: frontier),
+    frontier: frontier
+  )
+}
+
+fn run_current_step0_candidate() -> Step0CandidateRun {
+  match collect_current_step0_subject_vector() {
+    Step0SubjectCollectionRefused { cause: cause } => Step0CandidateSubjectUnavailable { cause: cause }
+    Step0SubjectCollected { vector: vector } =>
+      match sha256sum_file_digest_via_shell(path: "target/release/gunbc" as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: path, reason: reason } =>
+          Step0CandidateCompilerUnavailable { program: path, reason: reason }
+        Sha256FileDigest { digest: observed } =>
+          match sha256_hex_digest(hex: observed.hex as String) {
+            Absent => Step0CandidateCompilerDigestUnreadable { hex: observed.hex as String }
+            Present { value: compiler } => {
+              let partition = step0_partition_subject(vector: vector)
+              let frontier = step0_candidate_frontier(admitted: partition.admitted)
+              let receipt = step0_candidate_receipt_of_run(
+                vector: vector,
+                compiler: compiler,
+                partition: partition,
+                frontier: frontier
+              )
+              Step0CandidateObserved {
+                receipt: receipt,
+                admission: admit_namespace_step0_v2_receipt(
+                  receipt: receipt,
+                  expected_commit: vector.source_commit,
+                  expected_tree: vector.source_tree,
+                  expected_compiler_sha256: compiler
+                ),
+                collected_members: step0_subject_vector_size(vector: vector),
+                excluded_members: count(partition.excluded)
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE RECEIPT LINE THE CONTRACT'S COMMAND PRINTS. It reports the frontier and the standing, never a
+// pass or a fail: a completed containment compile is an observation of that attempt, and rendering it
+// as success is the proxy this contract exists to keep out of the record.
+fn step0_attempt_line(attempt: Step0ContainmentAttempt) -> String {
+  match attempt {
+    ContainmentCompileRefused { blocking_diagnostics: blocking, cause: _ } =>
+      concat("containment-compile-refused blocking=", to_string(blocking))
+    ContainmentCompileCompleted { module_count: modules } =>
+      concat("containment-compile-completed modules=", concat(to_string(modules), " (an observation of this attempt, NOT proof the removed imports were unnecessary)"))
+  }
+}
+
+fn step0_frontier_line(frontier: Step0V2Frontier) -> String {
+  match frontier {
+    Step0V2SubjectNotEntered { blocked_at: blocked_at, cause: cause } =>
+      concat("subject-not-entered blocked_at=", concat(step0_blocking_transition_label(blocked_at: blocked_at), concat(" cause=", cause as String)))
+    Step0V2SubjectEntered { stripped_population: _, compile_input_population: _, removed_statement_count: removed, attempt: attempt } =>
+      concat("subject-entered removed_statements=", concat(to_string(removed), concat(" ", step0_attempt_line(attempt: attempt))))
+  }
+}
+
+fn step0_blocking_transition_label(blocked_at: Step0V2BlockingTransition) -> String {
+  match blocked_at {
+    CollectSubjectPopulation => "collect-subject-population"
+    ApplyTypedImportStrip => "apply-typed-import-strip"
+  }
+}
+
+fn step0_admission_line(admission: NamespaceStep0V2Admission) -> String {
+  match admission {
+    NamespaceStep0V2ReceiptAdmitted => "admitted"
+    NamespaceStep0V2ReceiptRefused { field: _, cause: cause } => concat("refused: ", cause as String)
+  }
+}
+
+fn current_step0_candidate_receipt_line() -> String {
+  match run_current_step0_candidate() {
+    Step0CandidateSubjectUnavailable { cause: _ } => "step0-candidate: subject unavailable"
+    Step0CandidateCompilerUnavailable { program: _, reason: reason } =>
+      concat("step0-candidate: compiler unavailable: ", reason)
+    Step0CandidateCompilerDigestUnreadable { hex: hex } =>
+      concat("step0-candidate: compiler digest unreadable: ", hex)
+    Step0CandidateObserved { receipt: receipt, admission: admission, collected_members: collected, excluded_members: excluded } =>
+      concat(
+        concat("step0-candidate: collected=", to_string(collected)),
+        concat(
+          concat(" excluded=", to_string(excluded)),
+          concat(" ", concat(step0_frontier_line(frontier: receipt.frontier), concat(" classifier=", step0_admission_line(admission: admission))))
+        )
+      )
+  }
+}

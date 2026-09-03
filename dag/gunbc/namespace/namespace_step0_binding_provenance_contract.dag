@@ -1,6 +1,7 @@
 module gunbc.namespace_step0_binding_provenance_contract
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef }
 
 // THIS ROW IS DECLARED AND NO PRODUCER INHABITS IT. Read that first and read it as the whole
 // standing: nothing in this repository has observed a Step 0 binding-provenance census, this module
@@ -180,8 +181,55 @@ data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may
 // roster above, and treating it as complete would inherit an unmeasured blind spot as a baseline.
 data step0_census_candidate_producer_standing: NonEmptyStr = "compile_clean_unlisted_import_census is a CANDIDATE producer whose coverage of the reference-family roster is unestablished; it selects UnlistedImportUse diagnostic rows from a masked type-name emission path and has not been shown to discriminate bare call targets, constructors, bare variants or dispatch" as NonEmptyStr
 
-// THE STANDING, LAST, SO IT IS THE SENTENCE A READER LEAVES WITH: this contract is DECLARED and NO
-// PRODUCER INHABITS IT. gunbc.namespace_step0_canary_v2 says the same thing from the other side, in
-// its receipt's ImportDependenceNotJudged arm. Two rows, one fact, and neither is evidence that the
-// observation happened.
-data step0_binding_provenance_receipt_contract: NonEmptyStr = "DECLARED, NO PRODUCER INHABITS IT -- the typed shape of the Step 0 binding-provenance census: occurrence-denominated rows over the frozen reference-family roster, observed as before/after pairs, carrying the identity fields above and satisfying the conservation laws above. No producer in this repository fills it, and this declaration is not evidence that any observation was made." as NonEmptyStr
+// THE PRODUCER STANDING IS A TYPED FIELD OF THIS CONTRACT AND IS WRITABLE NOWHERE ELSE. An earlier
+// draft had this contract and the canary's ImportDependenceNotJudged arm each state the same
+// current-state fact in their own words -- two writable authorities for one fact, which is the
+// meaning fork DESIGN section 3 forbids, arriving inside the change that exists to close one. So the
+// standing lives HERE, once; the canary CITES this contract and DERIVES its consequence from this
+// field rather than restating it.
+type Step0BindingProvenanceProducerStanding
+  = NoProducerInhabits
+  | ProducerInhabits { producer: DeclarationRef }
+
+type Step0BindingProvenanceReceiptContract {
+  identity: NonEmptyStr
+  denominator_law: NonEmptyStr
+  family_discriminator_law: NonEmptyStr
+  reference_families: List<Step0ReferenceFamily>
+  conservation_laws: List<Step0CensusConservationLaw>
+  receipt_fields: List<Step0CensusReceiptField>
+  no_policy_promotion_rule: NonEmptyStr
+  candidate_producer_standing: NonEmptyStr
+  producer_standing: Step0BindingProvenanceProducerStanding
+}
+
+// THE CONTRACT ITSELF, LAST, SO ITS STANDING IS THE SENTENCE A READER LEAVES WITH: DECLARED, AND NO
+// PRODUCER INHABITS IT. Everything above is the SHAPE an observation would have to take; nothing
+// above is evidence that one was taken.
+data step0_binding_provenance_receipt_contract: Step0BindingProvenanceReceiptContract = Step0BindingProvenanceReceiptContract {
+  identity: "step0-binding-provenance-receipt-contract-v1" as NonEmptyStr,
+  denominator_law: step0_census_denominator_law,
+  family_discriminator_law: step0_family_discriminator_law,
+  reference_families: step0_reference_family_roster,
+  conservation_laws: step0_census_conservation_laws,
+  receipt_fields: step0_census_receipt_fields,
+  no_policy_promotion_rule: step0_census_no_policy_promotion_rule,
+  candidate_producer_standing: step0_census_candidate_producer_standing,
+  producer_standing: NoProducerInhabits
+}
+
+// THE ONE READER EVERY CONSUMER MUST GO THROUGH. A consumer asking "has this been observed" reads
+// this fold rather than authoring its own sentence about the standing, so there is exactly one place
+// the answer can change and exactly one place it can be wrong.
+type Step0BindingProvenanceConsequence
+  = BindingProvenanceUnobservable { detail: NonEmptyStr }
+  | BindingProvenanceObservable { producer: DeclarationRef }
+
+fn step0_binding_provenance_consequence() -> Step0BindingProvenanceConsequence {
+  match step0_binding_provenance_receipt_contract.producer_standing {
+    NoProducerInhabits => BindingProvenanceUnobservable {
+      detail: "the Step 0 binding-provenance receipt contract is DECLARED and no producer inhabits it, so import dependence cannot be judged by any route in this repository" as NonEmptyStr
+    }
+    ProducerInhabits { producer: producer } => BindingProvenanceObservable { producer: producer }
+  }
+}
