@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure {
   Bandwidth, bandwidth,
   ByteSize, byte_size, byte_size_count,
+  PacketRate, packet_rate, packet_rate_count,
   Percent, percent, percent_count,
   Watt, watt,
   Milliwatt, milliwatt,
@@ -79,18 +80,16 @@ data arista_7050s_52_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogRow 
 
 // The datasheet's model-comparison table states the -52's throughput as 1.04 Terabits/second and
 // 780 million packets per second, and the latency section states 800 to 1150 ns through the SFP+
-// ports in cut-through mode. No PacketRate measure exists in std.measure, so the packet rate is
-// carried as a plain Int with its unit named in the field name.
 type Arista7050s52ThroughputFacts {
   switching_capacity: Bandwidth
-  packets_per_second: Int
+  packet_rate: PacketRate
   latency_min_ns: Nanosecond
   latency_max_ns: Nanosecond
 }
 
 data arista_7050s_52_throughput: Arista7050s52ThroughputFacts = Arista7050s52ThroughputFacts {
   switching_capacity: bandwidth(1040000000000),
-  packets_per_second: 780000000,
+  packet_rate: packet_rate(780000000),
   latency_min_ns: nanosecond(800),
   latency_max_ns: nanosecond(1150),
 }

@@ -3,7 +3,9 @@ module test.claim.network_switch_catalog_witness
 import std.types { Bool, Int, List }
 import std.measure {
   bandwidth, bandwidth_count,
-  byte_size_count, hardware_thread_count_value,
+  byte_size_count, cpu_core_count_value,
+  hardware_thread_count_value, hour_count,
+  packet_rate_count, usd_whole_dollars_count,
   milliwatt_count, watt_count, hertz_count,
   gigabyte_count, mebibyte_count, volt_count,
   millimeter_count, celsius_count, nanosecond_count, percent_count,
@@ -116,7 +118,7 @@ test fn crs812_max_power_draw_is_134_watts() -> Bool {
 
 test fn crs812_platform_facts_match_the_datasheet() -> Bool {
   crs812_platform.cpu_model == "AL52400"
-    && hardware_thread_count_value(crs812_platform.cpu_core_count) == 4
+    && cpu_core_count_value(crs812_platform.cpu_core_count) == 4
     && hardware_thread_count_value(crs812_platform.cpu_thread_count) == 4
     && hertz_count(crs812_platform.cpu_nominal_frequency) == 2000000000
     && crs812_platform.switch_chip_model == "98DX7335"
@@ -159,7 +161,7 @@ test fn crs812_console_and_breakout_facts_are_carried() -> Bool {
 }
 
 test fn crs812_suggested_price_and_included_parts_are_carried() -> Bool {
-  crs812_suggested_price == 1295
+  usd_whole_dollars_count(crs812_suggested_price) == 1295
     && crs812_included_parts.power_cords == 2
     && crs812_included_parts.rackmount_ears
     && crs812_included_parts.rackmount_rear_support_ears
@@ -192,7 +194,7 @@ test fn arista_max_power_draw_is_185_watts() -> Bool {
 
 test fn arista_throughput_facts_match_the_datasheet() -> Bool {
   bandwidth_count(arista_7050s_52_throughput.switching_capacity) == 1040000000000
-    && arista_7050s_52_throughput.packets_per_second == 780000000
+    && packet_rate_count(arista_7050s_52_throughput.packet_rate) == 780000000
     && nanosecond_count(arista_7050s_52_throughput.latency_min_ns) == 800
     && nanosecond_count(arista_7050s_52_throughput.latency_max_ns) == 1150
 }

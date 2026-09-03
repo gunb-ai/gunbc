@@ -320,6 +320,8 @@ type CharacterCount = Measure<Count, One, Nat>
 
 type TokenCount = Measure<Count, One, Nat>
 
+type CpuCoreCount = Measure<Count, One, Nat>
+
 type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
@@ -736,6 +738,21 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
   measure_count(m)
 }
 
+// A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
+// at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
+// and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
+// in std prevents the fork DESIGN §3 names and the SEC module can import from here rather than
+// defining its own copy. Added 2026-09-03.
+type UsdWholeDollars = MoneyAmount<One>
+
+fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
+  UsdWholeDollars { count: count }
+}
+
+fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
+  measure_count(m)
+}
+
 // Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers —
 // never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a
 // derived projection at read time, never a stored catalog field.
@@ -917,6 +934,18 @@ fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
 }
 
+// A discrete CPU core count, on the Count axis alongside HardwareThreadCount and CharacterCount.
+// Distinguished from HardwareThreadCount because a core is not a thread; on SMT parts they differ
+// and the type would assert something false if conflated. Added 2026-09-03 for the MikroTik
+// CRS812 and future network-switch platform models.
+fn cpu_core_count(count: Nat) -> CpuCoreCount {
+  Measure { count: count }
+}
+
+fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
+  measure_count(c)
+}
+
 fn millicore(count: Nat) -> Millicore {
   Measure { count: count }
 }
@@ -933,6 +962,21 @@ fn bandwidth(count: Nat) -> Bandwidth {
 
 fn bandwidth_count(b: Bandwidth) -> Nat {
   measure_count(b)
+}
+
+// A rate of discrete packets or events per second, on the same Frequency axis as
+// MegatransfersPerSecond and EventsPerMinute but at One (per-second) scale so no conversion is
+// required. Sibling of TokensPerSecond (which would be the same Measure<Frequency, One, Nat> on
+// its own line, syntactically distinct only by name). Added 2026-09-03 for the Arista 7050S-52
+// throughput fact (780 Mpps).
+type PacketRate = Measure<Frequency, One, Nat>
+
+fn packet_rate(count: Nat) -> PacketRate {
+  Measure { count: count }
+}
+
+fn packet_rate_count(r: PacketRate) -> Nat {
+  measure_count(r)
 }
 
 type Nanosecond = Measure<Time, Nano, Nat>
@@ -1037,6 +1081,22 @@ fn minute_count(m: Minute) -> Nat {
 
 fn minute_to_millisecond(m: Minute) -> Millisecond {
   millisecond(count: minute_count(m) * seconds_per_minute() * milliseconds_per_second())
+}
+
+// HOUR = MEASURE<Time, One, Nat>, a sibling of Second and Minute on the Time axis. The structural
+// identity with Second means an Hour and a Second have the same representation and can be compared
+// only through their accessors; this is the same family as CharacterCount and TokenCount sharing
+// Measure<Count, One, Nat>. There is no scale conversion because the scale is One; callers convert
+// by accessing the count and multiplying by 3600. Added 2026-09-03 for MTBF hours in
+// extdeps.network.mikrotik_crs812.
+type Hour = Measure<Time, One, Nat>
+
+fn hour(count: Nat) -> Hour {
+  Measure { count: count }
+}
+
+fn hour_count(h: Hour) -> Nat {
+  measure_count(h)
 }
 
 type Percent = Measure<Dimensionless, One, Nat>
