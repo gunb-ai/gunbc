@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.cache_impurity
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data cache_impurity: RecurringFailureMode = RecurringFailureMode {
+  identity: "cache_impurity" as NonEmptyStr,
+
+  receipts: [
+    "cache impurity (key on declared-input content; byte-identical cached-vs-cold is the purity oracle)",
+  ],
+
+  evidence: [],
+}
