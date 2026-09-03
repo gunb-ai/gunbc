@@ -53,6 +53,11 @@ import extdeps.github.rulesets {
   MergeQueueMergeMethod,
   QueueSquash,
   merge_queue_standing,
+  RulesetRuleParametersWire,
+  rule_is_merge_queue,
+  merge_queue_missing_fields,
+  merge_queue_str,
+  merge_queue_int,
   merge_queue_grouping_strategy_wire_label,
   merge_queue_merge_method_wire_label,
   ruleset_rule_types,
@@ -575,37 +580,77 @@ type SignedProjectionRefusal
   | ProjectedQueueAmbiguous { count: Int }
   | ProjectedQueueSettingDrift { field: String, declared: String, projected: String }
 
-fn projected_queue_drift(policy: MergeQueuePolicy, standing: MergeQueueStanding) -> List<SignedProjectionRefusal> {
-  match standing {
-    NoMergeQueueRule => [NoQueueRuleProjected]
-    MultipleMergeQueueRules { count: c } => [ProjectedQueueAmbiguous { count: c }]
-    MergeQueueParametersIncomplete { missing: m } => [ProjectedQueueParametersIncomplete { missing: m }]
-    MergeQueueConfigured {
-      grouping_strategy: g,
-      merge_method: mm,
-      check_response_timeout: t,
-      max_entries_to_build: b,
-      max_entries_to_merge: x,
-      min_entries_to_merge: n,
-      min_entries_to_merge_wait: w,
-    } => concat_lists([
-      drift_str(
-        field: "grouping_strategy",
-        declared: merge_queue_grouping_strategy_wire_label(g: policy.grouping_strategy),
-        projected: merge_queue_grouping_strategy_wire_label(g: g),
-      ),
-      drift_str(
-        field: "merge_method",
-        declared: merge_queue_merge_method_wire_label(m: policy.merge_method),
-        projected: merge_queue_merge_method_wire_label(m: mm),
-      ),
-      drift_minute(field: "check_response_timeout_minutes", declared: policy.check_response_timeout, projected: t),
-      drift_entries(field: "max_entries_to_build", declared: policy.max_entries_to_build, projected: b),
-      drift_entries(field: "max_entries_to_merge", declared: policy.max_entries_to_merge, projected: x),
-      drift_entries(field: "min_entries_to_merge", declared: policy.min_entries_to_merge, projected: n),
-      drift_minute(field: "min_entries_to_merge_wait_minutes", declared: policy.min_entries_to_merge_wait, projected: w),
-    ])
+// THE COMPARISON IS AGAINST THE RAW WIRE FIELDS OF THE PROJECTED RULE, NOT AGAINST A VALUE LIFTED
+// OUT OF IT. `merge_queue_standing` exists to interpret a ruleset READ, and reusing its output here
+// would compare the policy to the result of a parse rather than to what the PUT carries -- a second
+// representation between the guard and its subject, which is the same defect as the roster one
+// layer down. So this walks the projected `RulesetRuleWire` list itself and compares each declared
+// setting, rendered to the spelling GitHub is sent, against the exact optional the serializer will
+// receive. The policy side goes THROUGH the wire labels for the same reason: a declared
+// `AllGreenGrouping` and a projected "ALLGREEN" are only comparable in one vocabulary, and the
+// upstream's own spelling is the one that lands in the body.
+//
+// ITS STRUCTURE MIRRORS `merge_queue_standing` DELIBERATELY -- absent, ambiguous, incomplete, then
+// the field walk -- because the two must agree about what a well-formed projection is even though
+// they answer different questions. Where they would disagree, the disagreement is the finding.
+fn projected_queue_drift(policy: MergeQueuePolicy, rules: List<RulesetRuleWire>) -> List<SignedProjectionRefusal> {
+  let matched = filter(rules, r => rule_is_merge_queue(rule: r))
+  if length(matched) == 0 {
+    [NoQueueRuleProjected]
+  } else {
+    if length(matched) > 1 {
+      [ProjectedQueueAmbiguous { count: length(matched) }]
+    } else {
+      fold(matched, init: [], f: fn(_, rule) {
+        let missing = merge_queue_missing_fields(p: rule.parameters)
+        if length(missing) > 0 {
+          [ProjectedQueueParametersIncomplete { missing: missing }]
+        } else {
+          projected_queue_field_drift(policy: policy, p: rule.parameters)
+        }
+      })
+    }
   }
+}
+
+fn projected_queue_field_drift(policy: MergeQueuePolicy, p: RulesetRuleParametersWire) -> List<SignedProjectionRefusal> {
+  concat_lists([
+    drift_str(
+      field: "grouping_strategy",
+      declared: merge_queue_grouping_strategy_wire_label(g: policy.grouping_strategy),
+      projected: merge_queue_str(v: p.grouping_strategy),
+    ),
+    drift_str(
+      field: "merge_method",
+      declared: merge_queue_merge_method_wire_label(m: policy.merge_method),
+      projected: merge_queue_str(v: p.merge_method),
+    ),
+    drift_int(
+      field: "check_response_timeout_minutes",
+      declared: minute_count(policy.check_response_timeout),
+      projected: merge_queue_int(v: p.check_response_timeout_minutes),
+    ),
+    drift_int(
+      field: "max_entries_to_build",
+      declared: merge_queue_entry_count_value(policy.max_entries_to_build),
+      projected: merge_queue_int(v: p.max_entries_to_build),
+    ),
+    drift_int(
+      field: "max_entries_to_merge",
+      declared: merge_queue_entry_count_value(policy.max_entries_to_merge),
+      projected: merge_queue_int(v: p.max_entries_to_merge),
+    ),
+    drift_int(
+      field: "min_entries_to_merge",
+      declared: merge_queue_entry_count_value(policy.min_entries_to_merge),
+      projected: merge_queue_int(v: p.min_entries_to_merge),
+    ),
+    drift_int(
+      field: "min_entries_to_merge_wait_minutes",
+      declared: minute_count(policy.min_entries_to_merge_wait),
+      projected: merge_queue_int(v: p.min_entries_to_merge_wait_minutes),
+    ),
+  ])
 }
 
 fn concat_lists(xs: List<List<SignedProjectionRefusal>>) -> List<SignedProjectionRefusal> {
@@ -620,20 +665,8 @@ fn drift_str(field: String, declared: String, projected: String) -> List<SignedP
   }
 }
 
-fn drift_minute(field: String, declared: Minute, projected: Minute) -> List<SignedProjectionRefusal> {
-  drift_str(
-    field: field,
-    declared: to_string(minute_count(declared)),
-    projected: to_string(minute_count(projected)),
-  )
-}
-
-fn drift_entries(field: String, declared: MergeQueueEntryCount, projected: MergeQueueEntryCount) -> List<SignedProjectionRefusal> {
-  drift_str(
-    field: field,
-    declared: to_string(merge_queue_entry_count_value(declared)),
-    projected: to_string(merge_queue_entry_count_value(projected)),
-  )
+fn drift_int(field: String, declared: Int, projected: Int) -> List<SignedProjectionRefusal> {
+  drift_str(field: field, declared: to_string(declared), projected: to_string(projected))
 }
 
 fn render_signed_projection_refusal(r: SignedProjectionRefusal) -> String {
@@ -653,7 +686,7 @@ fn signed_desire_projection_refusal_for(
   match policy {
     Absent => none
     Present { value: p } => {
-      let drift = projected_queue_drift(policy: p, standing: merge_queue_standing(rules: rules))
+      let drift = projected_queue_drift(policy: p, rules: rules)
       if length(drift) == 0 {
         none
       } else {
