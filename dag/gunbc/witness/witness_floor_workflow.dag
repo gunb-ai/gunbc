@@ -67,7 +67,7 @@ import gunbc.ci_spec {
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
@@ -740,7 +740,7 @@ fn required_lane_run_script(command: ArgvCommand) -> String {
 }
 
 fn witness_floor_run_script() -> String {
-  required_lane_run_script(command: witnesses_lane_run_command())
+  required_lane_run_script(command: witnesses_lane_measurement_command(measurement_receipt: required_ci_measurement_receipt_path))
 }
 
 fn build_lane_run_script() -> String {
@@ -961,15 +961,48 @@ fn fabric_ci_evidence_calibration_step() -> Step {
 
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: witnesses lane (parse, witness floor)" },
-    id: none,
+    name: Present { value: "D0-MEASURE: witnesses lane" },
+    id: Present { value: "required_ci_measure" },
     run: witness_floor_run_script(),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: Present { value: witness_floor_precondition() },
-    continue_on_error: none,
+    continue_on_error: Present { value: true },
     timeout_minutes: none
+  }
+}
+
+data required_ci_measurement_receipt_path: String = "required_ci_measurement_receipt.json"
+data required_ci_measurement_receipt_artifact_name: String = "required-ci-measurement-receipt"
+
+fn required_ci_measurement_finalize_script() -> String {
+  concat(
+    "if [ ! -f \"", concat(required_ci_measurement_receipt_path, concat(
+      "\" ]; then\n  target/release/claim_executor --measurement-unreached-receipt \"", concat(
+        required_ci_measurement_receipt_path,
+        "\" --measurement-unreached-cause \"measurement process exited before producing a receipt\"\nfi\n"
+      )
+    ))
+  )
+}
+
+fn required_ci_measurement_finalize_step() -> Step {
+  RunStep {
+    name: Present { value: "D0-MEASURE: seal an unreached receipt when the instrument did not return" },
+    id: none,
+    run: required_ci_measurement_finalize_script(), shell: none, env: none, working_directory: none,
+    if_condition: Present { value: "always() && !cancelled()" }, continue_on_error: none, timeout_minutes: none
+  }
+}
+
+fn required_ci_measurement_adjudicate_step() -> Step {
+  RunStep {
+    name: Present { value: "D0-ADJUDICATE: consume the published measurement receipt" },
+    id: none,
+    run: concat("target/release/claim_executor --adjudicate-measurement-receipt ", concat(required_ci_measurement_receipt_path, "\n")),
+    shell: none, env: none, working_directory: none,
+    if_condition: Present { value: "always() && !cancelled()" }, continue_on_error: none, timeout_minutes: none
   }
 }
 
@@ -1339,6 +1372,23 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_floor_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
+      },
+      WitnessFloorBoundStep {
+        step: required_ci_measurement_finalize_step(), role: capability_neutral,
+        step_name: "D0-MEASURE: seal an unreached receipt when the instrument did not return",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "D0-PUBLISH: upload the required CI measurement receipt",
+          artifact_name: required_ci_measurement_receipt_artifact_name,
+          path: required_ci_measurement_receipt_path
+        ),
+        role: capability_neutral,
+        step_name: "D0-PUBLISH: upload the required CI measurement receipt",
+      },
+      WitnessFloorBoundStep {
+        step: required_ci_measurement_adjudicate_step(), role: capability_neutral,
+        step_name: "D0-ADJUDICATE: consume the published measurement receipt",
       },
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(

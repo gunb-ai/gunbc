@@ -186,6 +186,31 @@ test fn w_the_required_workflow_carries_both_lanes() -> Bool {
   }
 }
 
+// D0's authorable RED: the producer is explicitly measurement-only, its receipt is uploaded
+// before a separate adjudicator runs, and the receipt-producing command carries the typed path.
+// Removing publication, restoring the old fused step, or moving adjudication ahead of upload
+// makes a distinct conjunct fail.
+test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      let measure = "name: \"D0-MEASURE: witnesses lane\""
+      let publish = "name: \"D0-PUBLISH: upload the required CI measurement receipt\""
+      let adjudicate = "name: \"D0-ADJUDICATE: consume the published measurement receipt\""
+      string_contains(s: yml, pattern: measure)
+        && string_contains(s: yml, pattern: "--measurement-receipt")
+        && string_contains(s: yml, pattern: "required-ci-measurement-receipt")
+        && string_contains(s: yml, pattern: "--adjudicate-measurement-receipt")
+        && yml.split(delimiter: measure).length() == 2
+        && yml.split(delimiter: publish).length() == 2
+        && yml.split(delimiter: adjudicate).length() == 2
+        && string_contains(
+          s: yml,
+          pattern: "retention-days: 14\n        if: \"!cancelled() && steps.build_witness_fold.outcome == 'success'\"\n      - name: \"D0-ADJUDICATE: consume the published measurement receipt\""
+        )
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
 // A REQUIRED CONTEXT IS A JOB NAME AND NOTHING ELSE, SO THE LANE NAMES MUST BE UNIQUE ACROSS
 // EVERY WORKFLOW THIS REPOSITORY EMITS.
 //

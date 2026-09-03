@@ -1,0 +1,26 @@
+module v2.test.required_ci_measurement
+
+import v2.workflow.required_ci_measurement {
+  RequiredCiBlocker, MeasurementCompleted, MeasurementUnreached,
+  required_ci_measurement_publishable, required_ci_measurement_admitted,
+}
+
+test fn a_blocking_subject_is_publishable_and_refused_with_its_identity() -> Bool {
+  let identity = "v2.test.required_ci_measurement.planted_blocking_diagnostic"
+  let receipt = MeasurementCompleted { blockers: [RequiredCiBlocker {
+    phase: "floor", identity: identity, cause: "planted_blocking_diagnostic"
+  }] }
+  required_ci_measurement_publishable(measurement: receipt)
+    && !required_ci_measurement_admitted(measurement: receipt)
+    && match receipt {
+      MeasurementCompleted { blockers: Cons { head: blocker, tail: Empty {} } } => blocker.identity == identity
+      MeasurementCompleted { blockers: _ } => false
+      MeasurementUnreached { cause: _ } => false
+    }
+}
+
+test fn instrument_failure_is_published_but_never_admitted() -> Bool {
+  let receipt = MeasurementUnreached { cause: "instrument did not return" }
+  required_ci_measurement_publishable(measurement: receipt)
+    && !required_ci_measurement_admitted(measurement: receipt)
+}
