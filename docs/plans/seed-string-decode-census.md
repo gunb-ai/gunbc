@@ -331,12 +331,10 @@ authority, which is the §3 half of the same coupling: nothing on either side ca
 
 The retraction above established that the join key is (name, subject revision).
 
-> **THIS ATTRIBUTION IS INCOMPLETE AND WAS NOT REDONE.** It covers the 42 sites the line-keyed regex
-> found. The argument parser later showed P4 has **110** literal-entry sites, so **68 are
-> unattributed** — their subject revision is unknown, not HEAD-by-default. The conclusion below that
-> "the residue is closed" was true of the 42 and is FALSE of the 110; it is struck rather than
-> rewritten, because rescaling a conclusion to a population it was not derived over is the same move
-> as the subtraction this correction exists to retract.
+> **THE 68 ARE NOW ATTRIBUTED — see "Closing the 68" below.** The table in this section covers only
+> the 42 sites the line-keyed regex found, and its conclusion stays struck, because a conclusion is
+> not rescaled onto a population it was not derived over. The 68 were answered separately and by a
+> different question.
 
 The 42 sites the first pass found, attributed by reading each caller's context construction:
 
@@ -359,9 +357,76 @@ P7's 35 `--function` names are all HEAD-subject and all 11 distinct names resolv
 `http_pilot_rest_keystone_holds`, `w_site_label_is_the_module_path_as_package`, and four others), each
 in a `dag/test/claim/*.dag` entry named as a literal `--entry` path beside it.
 
-So of the P4/P7 call-by-name axis, **52 sites are attributed (HEAD-subject, 0 stale) and 68 P4 sites
-are not attributed at all.** The census's open questions are therefore the shape axis below AND this
-attribution gap — the earlier claim that the axis was settled was an artifact of the undercount.
+So of the P4/P7 call-by-name axis, this section attributes 52 sites (HEAD-subject, 0 stale); the
+remaining 68 are answered in the next section by a different question, and none is revision-addressed.
+
+## Closing the 68: the question was re-shaped twice, and the first re-shaping was still a spelling
+
+The 68 unattributed P4 sites are closed. The method took two attempts, and the failed first attempt is
+kept because it is the same defect this document is about, committed for the third time, in the
+paragraph that claimed to be immune to it.
+
+**First re-shaping — right idea, wrong population.** A call site has no subject revision; the
+`InterpContext` it runs in does, and many sites share one context. So the question became *which
+context constructions are built from revision-addressed source text?* — and the population was given
+as "**86** `InterpContext::new` / `make_eval_context` constructions". **That population was itself
+discovered by grepping two constructor NAMES.** It is a spelling wearing a mechanism's clothes, and
+review 59276 refuted it with a positive hit: contexts are also constructed through
+`InterpContext::with_runtime_options` and `InterpContext::over_scope_indexes`. The 86 was a lower
+bound presented as a complete population — the exact move retracted twice above.
+
+**The remedy the review proposed is the weaker of the two available**, and this is the one place this
+correction does not simply take the reviewer's instruction. "Expand the census to all constructors"
+re-keys on a longer list of names, so a constructor added tomorrow escapes it again. The stable fix is
+to anchor on the CONSTRUCTION ITSELF.
+
+**Second re-shaping — anchor on the struct literals, of which there are three.**
+
+| carrier | struct-literal construction sites | consequence |
+|---|---|---|
+| `InterpContext` | **1** — inside `over_scope_indexes` | `new`, `with_fixture_store` and `with_runtime_options` all funnel into it; so does every future constructor, because there is nowhere else to build one |
+| `PreparedScopeIndexes` (its only content-bearing input) | **1** — inside `build_scope_indexes_with_module_order`, which takes `graph: &ResolvedGraph` | every context's content therefore comes from a `ResolvedGraph` |
+| `ResolvedGraph` | 21, of which 13 are empty test graphs, 4 are the compile path, and **4 are the resolved-graph cache** | the cache is the only one whose bytes are read from disk rather than freshly compiled |
+
+**The cache is not a third route, and it is refused into that shape rather than assumed into it.** Its
+key is `subject_digest_for_closure(sources: &[Rc<SourceFile>])` — derived from the sources themselves —
+and a header whose stored subject differs from `expected_subject` is REJECTED
+(`CacheRejectReason::BackendKeyMalformed`), not served. So a cache hit is content-identical to the
+sources the caller already holds; it is a memo keyed on the subject, not an independent origin.
+
+**The closure, now anchored on constructions rather than on names.** Every context's decodable content
+reaches it through one struct literal, from one `PreparedScopeIndexes` literal, from a `ResolvedGraph`
+that is either freshly compiled from `SourceFile`s or restored from a cache keyed on those same
+`SourceFile`s. And `SourceFile`s arrive by exactly two routes:
+
+| route | how source text reaches a context | revision-addressed instances |
+|---|---|---|
+| a disk path under a `--source-root` | including `fs::write` of externally-obtained text into such a directory | **1** — the roadmap carrier-introduction overlay, already adjudicated |
+| in-memory `SourceFile { content: … }` / `single_source(…)` | | **0** |
+
+That one context's call is `cli_run.rs:680`, a single-line site counted in the original 42. **It is not
+among the 68, so none of the 68 is revision-addressed.**
+
+**ORIGIN IS IRRELEVANT, and that is the strength of the argument.** Git, a network fetch, an archive,
+synthesis — to be decoded, text must become a context's source, and every origin enters by one of the
+two routes above. A fetch composed with a write is not a third route; it is the first route with a
+different upstream.
+
+*An earlier revision bounded this with an observation instead: "no network fetch or archive extraction
+exists in this tree". That was FALSE — `v1_interpreter` carries a live `ureq` REST transport,
+dispatched by method — and it is the kind of false a reader trusts precisely because it was labelled an
+observation, and observations read as checked. It was deleted rather than repaired: it was a sentence
+that can rot, guarding a claim that cannot. Recorded rather than silently removed, because the weaker
+sentence was written to bound the stronger one and ended up being the only part that could be wrong.*
+
+**What remains genuinely unknown**, stated as unknown: whether any `.dag` program composes a fetch with
+a write into a directory later passed as a `--source-root`. Not found, not exhaustively searched. It
+does not affect the closure — that composition is the first route — but it matters to anyone reasoning
+about where a context's bytes originate.
+
+**Why the HEAD-vs-synthetic split within the 68 was NOT enumerated.** It changes no answer: both are
+HEAD-time, both are typed by the trigger identically, neither can drift against a revision. It would be
+the same completeness-priced-as-completeness declined for the 14 `HelperParameter` rows.
 
 ## The identifier-preserving shape axis — a real, unmeasured sibling
 
@@ -420,6 +485,21 @@ type, variant or field name survives in `src/v1/stage0/src`.* Partial emission d
 class: any site left on a spelling keeps its own exposure, so the trigger is stated over the
 population, not over one module.
 
+**The trigger needs an explicit version-boundary arm, and without it it is UNSATISFIABLE.** A
+generated decoder binds the type as it exists at HEAD. A site that decodes REVISION-ADDRESSED source
+text must read the shape that revision had, so typing it against HEAD is not safer — it is wrong, and
+it is wrong in the direction that produces a confident answer about the wrong schema. One such site
+exists (the roadmap carrier-introduction bootstrap) and the closure above establishes it is the only
+one, but one is enough: as originally worded, "no hand-written spelling survives" cannot be satisfied
+there, because there is no HEAD type to bind to.
+
+So the trigger carries a second arm: *for every revision-addressed decode, either a decoder bound to
+the revision's own schema, or a TYPED REFUSAL at the version boundary — never a HEAD-typed decoder
+applied to older text.* This matters more than its one-site population suggests, because §4b(3) makes
+the trigger the whole check: **an unsatisfiable trigger is worse than a weak one.** It can never be
+retired, so the class parks below its ceiling permanently behind a row that still reads live — which
+is rung inflation arriving by a different door than the usual one.
+
 **What is explicitly NOT the answer.** A lens or test that greps the seed for spellings and joins
 them to `.dag` declarations — i.e. an executable version of this document — is validation standing
 where construction is available, and it would additionally inherit the bare-name ambiguity noted
@@ -434,7 +514,15 @@ deferred, and then as a declared §4b(3) row, not as the climb.
 - **The identifier-preserving shape axis, in full.** Named above, deliberately not measured in this
   pass. It is the largest single gap between this document and a closed answer.
 - **The transitive origin of the 16 `HelperParameter` rows** in the P4 enumeration. Two were traced;
-  the rest move the question one frame up and are not answered.
+  the rest move the question one frame up and are not answered. DELIBERATELY not closed: the typed
+  decoder types literal-origin and `.dag`-origin names identically, so the distinction dissolves when
+  the trigger lands, and completing the inventory of a population scheduled to stop existing is
+  completeness priced as completeness.
+- **The HEAD-vs-synthetic split within the 68**, for the same reason — it changes no answer.
+- Whether any `.dag` program composes a fetch (the live `ureq` REST transport in `v1_interpreter`)
+  with a write into a directory later passed as a `--source-root`. Not found, not exhaustively
+  searched, and stated as unknown. It does not affect the closure — that composition is route A with a
+  different upstream — but it matters to anyone reasoning about where a context's bytes originate.
 - **P3, P5, P6, P7 re-derivation with the argument parser.** P1, P2 and P4 were done; the others carry
   line-keyed counts and are floors with an unmeasured gap.
 - P6's fail-open arm is described but not sized beyond its 5 substitutions in 2 producers;
