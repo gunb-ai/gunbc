@@ -79,6 +79,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchSpawnReady,
   DispatchSpawnRefused,
   dispatch_spawn_commands_for_instance,
+  dispatch_spawn_commands_for_resolved_instance,
   dispatch_capability_program,
   dispatch_attempt_key,
   dispatch_attempt_key_path_for_instance,
@@ -1586,12 +1587,11 @@ fn belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
   )
   let session_name = dispatch_tmux_session_name(node_id: node.node)
-  match dispatch_spawn_commands_for_instance(
+  match belt_resolved_spawn_plan(
     instance: instance,
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
-    request: default_provider_selection_request(),
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1891,6 +1891,44 @@ fn belt_uuid_dash(v: String) -> String {
   concat(substring(s: v, start: 16, end: 20),
   concat("-",
   substring(s: v, start: 20, end: 32)))))))))
+}
+
+// THE SPAWN CONSUMES THE SELECTION THE ADMISSION ALREADY MADE, rather than re-deriving it through
+// the vendor selector.
+//
+// This call used to hand default_provider_selection_request() to the vendor path, which then chose
+// a provider for itself. That was already a second decision beside dispatch_actuator_selection --
+// two answers to "who executes this attempt", reconciled by both happening to say Codex -- and it
+// became visible the moment they could disagree: the dispatch receipt reported provider
+// "gunbc-harness" from the first decision while the spawn refused with the vendor selector's
+// "no provider offer is selection-eligible" from the second. One route reporting another route's
+// refusal is the forked-authority shape DESIGN section 3 names.
+//
+// dispatch_spawn_commands_for_resolved_instance already existed for exactly this: it takes the
+// resolved executor and skips the inventory entirely. So the selection is made once, and the spawn
+// consumes it.
+fn belt_resolved_spawn_plan(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
+) -> DispatchSpawnPlan {
+  match dispatch_actuator_selection(node_sizing: node.sizing) {
+    DispatchActuatorSelectionRefused { reason } =>
+      DispatchSpawnRefused {
+        step: "dispatch-selection" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchActuatorSelectionOk { provider, effort, process_fingerprint: _ } =>
+      dispatch_spawn_commands_for_resolved_instance(
+        instance: instance,
+        node: node,
+        session_uuid: session_uuid,
+        attempt_key: attempt_key,
+        provider: provider,
+        effort: effort,
+      )
+  }
 }
 
 fn belt_spawn_session_uuid(node_id: String, probed_at: String) -> String {
