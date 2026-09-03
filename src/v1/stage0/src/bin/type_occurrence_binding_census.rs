@@ -469,20 +469,51 @@ fn category_label(c: &OccurrenceCategory) -> &'static str {
 /// and reporting that state as a `New*Unresolved` arm turns PRODUCER ABSENT into a SEMANTIC
 /// RESOLUTION ANSWER -- a beautifully reconciled partition over an absent input, which is the
 /// `disagreement_census_blind_to_agreed_wrong` failure with the blindness moved one level out.
-/// So the thirteen classes are constructible ONLY inside `CensusReady`, and `CensusReady` is
-/// constructible only after the exact-set join below holds.
+/// So the thirteen classes are constructible ONLY inside an available outcome, and availability
+/// requires the exact-set join below.
+///
+/// THREE STATES, BECAUSE TWO CONFLATE TWO DIFFERENT FACTS. "The join agrees on today's tree" and
+/// "the classifier is a durable authority" are not the same claim.
+/// `CensusObservedOnCurrentTree` is enough to scope work and to discover disagreements; only
+/// `CensusAdmissibleForCut` may authorize deleting anything, and it is constructible only once the
+/// parser CARRIES a positive module-item kind rather than inferring one from absence.
+// The shared `Census` prefix is the RULED VOCABULARY for these three states, not incidental
+// naming: CensusUnavailable / CensusObservedOnCurrentTree / CensusAdmissibleForCut are quoted by
+// that spelling in the standing disposition, and renaming them to satisfy a style lint would fork
+// the name of a decision (DESIGN section 3).
+#[allow(clippy::enum_variant_names)]
 enum TypeOccurrenceBindingCensusOutcome {
-    CensusUnavailable { cause: CensusUnavailableCause },
-    CensusReady { joined_declarations: usize },
+    CensusUnavailable {
+        cause: CensusUnavailableCause,
+    },
+    /// The join agrees on TODAY'S TREE. Enough to scope work and to discover disagreements;
+    /// NOT enough to authorize deleting anything.
+    CensusObservedOnCurrentTree {
+        joined_declarations: usize,
+    },
+    /// Constructible only once the parser CARRIES a positive module-item kind. Not reachable
+    /// today, and deliberately so: the classifier's accepted bucket is still defined by absence,
+    /// so no measurement over it can authorize a cut. This arm exists unconstructed because the
+    /// alternative -- leaving the distinction unmodeled -- is what let "the join agrees" be read
+    /// as "the classifier is a durable authority". They are different facts.
+    #[allow(dead_code)]
+    CensusAdmissibleForCut {
+        parser_carried_item_kind: bool,
+        joined_declarations: usize,
+    },
 }
 
 enum CensusUnavailableCause {
-    /// The production type-declaration population is not established: the two independent readers
-    /// of "which module items are type declarations" do not agree as SETS.
-    ProductionTypeDeclarationPopulationUnestablished {
+    /// Y was supplied no type-declaration population at all.
+    #[allow(dead_code)]
+    DeclarationDomainAbsent,
+    /// The two independent readers disagree as SETS. The cause CARRIES the divergence rather than
+    /// collapsing to a generic unavailability, so a resource silently stamped as a type reads as
+    /// a typed, located cause and never as "something went wrong".
+    DeclarationDomainDisagrees {
         modules_diverging: usize,
-        missing_from_transport: Vec<String>,
-        extra_in_transport: Vec<String>,
+        missing: Vec<String>,
+        extra: Vec<String>,
         duplicate_occurrences: Vec<String>,
         not_in_index: Vec<String>,
     },
@@ -585,6 +616,13 @@ fn establish_declaration_population(
                 continue;
             };
 
+            let mut name_of_parsed: HashMap<i64, String> = HashMap::new();
+            for e in parsed.occurrence_transport.index.entries.iter() {
+                name_of_parsed.insert(
+                    e.projection.occurrence.value,
+                    e.projection.authored_name.clone(),
+                );
+            }
             let mut grammar_side: std::collections::HashSet<i64> = std::collections::HashSet::new();
             for item in module_node.children.iter() {
                 if !emit_side_reads_item_as_type_declaration(item, &source_indices) {
@@ -643,7 +681,11 @@ fn establish_declaration_population(
             }
             joined_declarations += grammar_side.intersection(&transport_side).count();
             for id in missing {
-                missing_from_transport.push(format!("{rel}::occurrence {id}"));
+                let nm = name_of_parsed
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| "<unnamed>".to_string());
+                missing_from_transport.push(format!("{rel}::{nm} (occurrence {id})"));
             }
             for id in extra {
                 let nm = name_of_parsed
@@ -661,15 +703,15 @@ fn establish_declaration_population(
         && duplicate_occurrences.is_empty()
         && not_in_index.is_empty()
     {
-        TypeOccurrenceBindingCensusOutcome::CensusReady {
+        TypeOccurrenceBindingCensusOutcome::CensusObservedOnCurrentTree {
             joined_declarations,
         }
     } else {
         TypeOccurrenceBindingCensusOutcome::CensusUnavailable {
-            cause: CensusUnavailableCause::ProductionTypeDeclarationPopulationUnestablished {
+            cause: CensusUnavailableCause::DeclarationDomainDisagrees {
                 modules_diverging,
-                missing_from_transport,
-                extra_in_transport,
+                missing: missing_from_transport,
+                extra: extra_in_transport,
                 duplicate_occurrences,
                 not_in_index,
             },
@@ -678,36 +720,39 @@ fn establish_declaration_population(
 }
 
 fn report_unavailable(cause: &CensusUnavailableCause) {
-    let CensusUnavailableCause::ProductionTypeDeclarationPopulationUnestablished {
-        modules_diverging,
-        missing_from_transport,
-        extra_in_transport,
-        duplicate_occurrences,
-        not_in_index,
-    } = cause;
-    println!(
-        "\nCENSUS OUTCOME: CensusUnavailable {{ cause: ProductionTypeDeclarationPopulationUnestablished }}"
-    );
-    println!("  THE THIRTEEN CLASSES ARE NOT REPORTED. Y was not supplied an established type");
-    println!("  declaration population, so every arm it would produce would report PRODUCER");
-    println!("  ABSENT as a semantic resolution answer. That is not a partition, and a partition");
-    println!("  that closes over an absent input closes over nothing.");
-    println!("  modules_diverging={modules_diverging}");
-    for (label, rows) in [
-        (
-            "grammar-owned but ABSENT from the transport",
-            missing_from_transport,
-        ),
-        ("in the transport but NOT grammar-owned", extra_in_transport),
-        ("occurrence claimed twice", duplicate_occurrences),
-        (
-            "declaration occurrence not present in the index",
+    match cause {
+        CensusUnavailableCause::DeclarationDomainAbsent => {
+            println!("\nCENSUS OUTCOME: CensusUnavailable {{ cause: DeclarationDomainAbsent }}");
+            println!("  Y was supplied no type-declaration population at all, so it produced no");
+            println!("  resolution answers -- only the absence of a producer.");
+        }
+        CensusUnavailableCause::DeclarationDomainDisagrees {
+            modules_diverging,
+            missing,
+            extra,
+            duplicate_occurrences,
             not_in_index,
-        ),
-    ] {
-        println!("  {label}: {}", rows.len());
-        for row in rows.iter().take(10) {
-            println!("    e.g. {row}");
+        } => {
+            println!("\nCENSUS OUTCOME: CensusUnavailable {{ cause: DeclarationDomainDisagrees }}");
+            println!("  THE THIRTEEN CLASSES ARE NOT REPORTED. Y was not supplied an established");
+            println!("  type declaration population, so every arm it would produce would report");
+            println!("  PRODUCER ABSENT as a semantic resolution answer. That is not a partition,");
+            println!("  and a partition that closes over an absent input closes over nothing.");
+            println!("  modules_diverging={modules_diverging}");
+            for (label, rows) in [
+                ("grammar-owned but ABSENT from the transport", missing),
+                ("in the transport but NOT grammar-owned", extra),
+                ("occurrence claimed twice", duplicate_occurrences),
+                (
+                    "declaration occurrence not present in the index",
+                    not_in_index,
+                ),
+            ] {
+                println!("  {label}: {}", rows.len());
+                for row in rows.iter().take(10) {
+                    println!("    e.g. {row}");
+                }
+            }
         }
     }
 }
@@ -748,10 +793,27 @@ fn main() -> ExitCode {
                 report_unavailable(&cause);
                 ExitCode::from(1)
             }
-            TypeOccurrenceBindingCensusOutcome::CensusReady {
+            TypeOccurrenceBindingCensusOutcome::CensusAdmissibleForCut { .. } => {
+                // Unreachable while the classifier's accepted bucket is defined by absence; it is
+                // a refusal rather than a silent fallthrough so that the day it becomes
+                // constructible, nothing here quietly starts answering for it.
+                println!(
+                    "CENSUS OUTCOME: CensusAdmissibleForCut is not constructible on this tree"
+                );
+                ExitCode::from(1)
+            }
+            TypeOccurrenceBindingCensusOutcome::CensusObservedOnCurrentTree {
                 joined_declarations,
             } => {
-                println!("CENSUS OUTCOME: CensusReady joined_declarations={joined_declarations}");
+                println!(
+                    "CENSUS OUTCOME: CensusObservedOnCurrentTree joined_declarations={joined_declarations}"
+                );
+                println!(
+                    "  NOT CensusAdmissibleForCut: that arm requires a parser-CARRIED positive"
+                );
+                println!(
+                    "  module-item kind, and today's accepted bucket is still defined by absence."
+                );
                 ExitCode::SUCCESS
             }
         };
@@ -898,16 +960,20 @@ fn main() -> ExitCode {
         })
         .collect();
 
-    // THE GATE. The thirteen classes are inside CensusReady and nowhere else.
+    // THE GATE. The thirteen classes are inside an available outcome and nowhere else.
     match establish_declaration_population(&workspace, &roots) {
         TypeOccurrenceBindingCensusOutcome::CensusUnavailable { cause } => {
             report_unavailable(&cause);
             return ExitCode::from(1);
         }
-        TypeOccurrenceBindingCensusOutcome::CensusReady {
+        TypeOccurrenceBindingCensusOutcome::CensusAdmissibleForCut { .. } => {
+            println!("\nCENSUS OUTCOME: CensusAdmissibleForCut is not constructible on this tree");
+            return ExitCode::from(1);
+        }
+        TypeOccurrenceBindingCensusOutcome::CensusObservedOnCurrentTree {
             joined_declarations,
         } => {
-            println!("\nCENSUS OUTCOME: CensusReady");
+            println!("\nCENSUS OUTCOME: CensusObservedOnCurrentTree");
             println!("  Exact-set join holds at occurrence-id grain: grammar-owned parsed type");
             println!(
                 "  declarations (read by the v1.compiler.emit_core_support item predicates, which"

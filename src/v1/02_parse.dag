@@ -1661,7 +1661,12 @@ fn stamp_parsed_node_list_with_head_role(
 // the refusal arm: the residual can only catch kinds whose absence PATTERN differs from the
 // accepted one, which is a strictly smaller population than the kinds that exist. A resource is
 // not merely unrecognised, it is INDISTINGUISHABLE from a type under this rule, so no arm of the
-// match could have fired on it. The refusal reads as coverage and is not. What closed the gap was
+// match could have fired on it. The rule, in the words it was ruled in and standing beyond this
+// module: A RESIDUAL REFUSAL DOES NOT PROTECT A CLASSIFIER WHOSE ACCEPTED BUCKET IS DEFINED BY
+// ABSENCE; A NEW KIND CAN SILENTLY RESEMBLE THE DEFAULT. So ModuleItemResource repairs the KNOWN
+// collision and does not turn absence into a positive authority -- which is why the terminal
+// construction below is REQUIRED before anything may be cut over on this classifier, and not an
+// improvement to be scheduled later. The refusal reads as coverage and is not. What closed the gap was
 // not a better predicate but an independent reader joined at identity grain -- and the denominator
 // that would have falsified the four-kind premise, the parser's own ten-keyword item error, was
 // sitting in this file the whole time.

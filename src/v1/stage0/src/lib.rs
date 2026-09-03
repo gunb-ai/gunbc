@@ -92,6 +92,17 @@ pub mod extdeps_version_semver;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod gunbc_cli_dispatch_generated;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod gunbc_cli_dispatch_surface;
 #[allow(
     unused_imports,
@@ -181,6 +192,17 @@ pub mod gunbc_stage0_partition_package_graph;
     clippy::all
 )]
 pub mod std_constructors;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod std_import;
 #[allow(
     unused_imports,
     unused_variables,
@@ -698,6 +720,17 @@ pub mod v1_gunbc_namespace_reference_derived_closure_production_observations;
     clippy::all
 )]
 pub mod v1_gunbc_occurrence_binding_parser_walk;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_gunbc_parsed_import_statements;
 #[allow(
     unused_imports,
     unused_variables,
