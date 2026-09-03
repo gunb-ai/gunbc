@@ -10,6 +10,11 @@ import gunbc.namespace_step0_canary {
 }
 import gunbc.namespace_step0_strip_producer {
   Step0StripProduction,
+  Step0SourceImportsNotParsed,
+  Step0SourceRewriteRefused,
+  Step0SubjectHadNoImportStatements,
+  Step0ContainmentCompileInstrumentRefused,
+  Step0ContainmentCompileCompleted,
   Step0ReceiptProduced,
   Step0StripProductionRefused,
   Step0StripProductionRefusalCause,
@@ -102,13 +107,30 @@ fn run_current_step0_canary(entry: NonEmptyStr) -> Step0CanaryRunOutcome {
   }
 }
 
+// THE LABEL NAMES THE CAUSE, because a run that reports only "refused" sends its reader nowhere --
+// a parse that never ran, a rewrite the source contradicted, a subject with no imports, a broken
+// harness and a subject that COMPILED are five different findings with five different owners.
+fn step0_production_refusal_label(cause: Step0StripProductionRefusalCause) -> String {
+  match cause {
+    Step0SourceImportsNotParsed { file: file, cause: parse_cause } =>
+      concat("source imports not parsed at ", concat(file as String, concat(": ", parse_cause as String)))
+    Step0SourceRewriteRefused { file: file, refusal: _ } =>
+      concat("source rewrite refused at ", file as String)
+    Step0SubjectHadNoImportStatements => "subject had no import statements"
+    Step0ContainmentCompileInstrumentRefused { cause: instrument_cause } =>
+      concat("containment compile instrument refused: ", instrument_cause as String)
+    Step0ContainmentCompileCompleted { module_count: modules } =>
+      concat("the stripped subject COMPILED over ", concat(to_string(modules), " module(s)"))
+  }
+}
+
 fn step0_canary_run_label(outcome: Step0CanaryRunOutcome) -> String {
   match outcome {
     Step0CanaryRunSubjectUnavailable { cause: _ } => "subject-unavailable"
     Step0CanaryRunCompilerUnavailable { program: _, reason: reason } => concat("compiler-unavailable: ", reason)
     Step0CanaryRunCompilerDigestUnreadable { hex: hex } => concat("compiler-digest-unreadable: ", hex)
-    Step0CanaryRunProductionRefused { cause: _, subject_size: size } =>
-      concat("production-refused over ", concat(to_string(size), " source(s)"))
+    Step0CanaryRunProductionRefused { cause: cause, subject_size: size } =>
+      concat("production-refused over ", concat(to_string(size), concat(" source(s): ", step0_production_refusal_label(cause: cause))))
     Step0CanaryRunReceipt { receipt: _, admission: _, subject_size: size } =>
       concat("receipt produced over ", concat(to_string(size), " source(s)"))
   }
