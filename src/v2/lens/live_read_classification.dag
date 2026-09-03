@@ -14,6 +14,7 @@ import v2.std.fn_index {
   FnArrowDecl,
   atom_identities_in_node,
   call_reachable_decls,
+  param_names_of,
   call_reachable_decls_from_root,
   decls_in_module,
   fn_arrow_decl_facts_live,
@@ -114,12 +115,6 @@ fn live_read_classification_from_facts_v0(
 
 fn callee_text_is_known_carrier(text: String) -> Bool {
   contains(xs: live_read_carrier_callee_symbols_v0, item: text, eq: string_eq)
-}
-
-fn param_names_of(decl: FnArrowDecl) -> List<String> {
-  fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
-    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
-  })
 }
 
 fn path_pattern_from_lexeme(text: String, param_names: List<String>) -> PathPattern {

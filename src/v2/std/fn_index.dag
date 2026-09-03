@@ -232,13 +232,49 @@ fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
   }
 }
 
-fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
+fn param_names_of(decl: FnArrowDecl) -> List<String> {
+  fold_list(xs: decl.params, empty: empty_fn_arrow_string_list, cons: fn(acc, p) {
+    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
+  })
+}
+
+// THIS READER IS AN OVER-APPROXIMATION AND SAYS SO, because the skeleton it reads has ONE atom
+// channel and several senders. `marshal_generic` emits `edge_positional(atom_identity_node(..))`
+// for a call's callee, for a record-constructor spelling, for a parameter reference, for a
+// nullary variant value and for a string literal, and nothing in the emitted Node distinguishes
+// them -- `node_atom_identity_optional` sees one Atom connective in every case. So a non-callee
+// atom whose lexeme happens to name a declaration produces a call edge that no call produced.
+//
+// TWO SENDERS ARE EXCLUDABLE TODAY AND BOTH ARE EXCLUDED HERE, from DECLARED structure rather
+// than from a shape guess: a string literal that looks like a source path (is_path_like_lexeme,
+// which pre-dates this reader) and a reference to one of the DECLARATION'S OWN PARAMETERS, whose
+// lexemes `FnArrowDecl.params` carries. `v2.lens.effect_reach` already subtracts param names
+// from its literal channel for the same reason; this is the same subtraction on the call channel.
+//
+// THE RESIDUE IS REAL, IS NOT SILENT, AND IS HELD BY A ROW. Record-constructor spellings, nullary
+// variant values, and non-path string literals remain indistinguishable from callees, so a
+// collision with a declaration name still widens reachability. It is a structural
+// over-approximation computed AS the answer rather than a failure arm that widens (DESIGN
+// section 5), the widening is toward FINDING more, and it is enrolled: `v2.lens.fn_index_depth_agreement`
+// counts it on the live corpus and the determinism witness carries a row that goes green only
+// because the exclusion runs. NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY: a fn-arrow body
+// projection in which the CALLEE POSITION is structurally identified -- a distinguishable edge,
+// connective or behavior that `node_atom_identity_optional`'s caller can select on -- sufficient
+// for `callees_from_node` to read the call channel alone and for a fixture to author a
+// non-callee atom that the reader must NOT follow. Until that lands, no fixture can express the
+// distinction at all, which is why this is a trigger and not a missing test.
+fn callees_from_node(
+  node: Node,
+  terminal_callee_symbols: List<String>,
+  param_names: List<String>
+) -> List<String> {
   fold_list(
     xs: atom_identities_in_subtree(node: node),
     empty: empty_fn_arrow_string_list,
     cons: fn(acc, sym) {
       let text = symbol_lexeme(sym: sym)
       if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq)
+        || contains(xs: param_names, item: text, eq: fn_index_string_eq)
         || is_path_like_lexeme(text: text) {
         acc
       } else if contains(xs: acc, item: text, eq: fn_index_string_eq) {
@@ -273,7 +309,8 @@ fn call_reachable_decls_go(
         let next_reached = list_snoc_item(xs: reached, item: seed)
         let callees = callees_from_node(
           node: seed.output,
-          terminal_callee_symbols: terminal_callee_symbols
+          terminal_callee_symbols: terminal_callee_symbols,
+          param_names: param_names_of(decl: seed)
         )
         let callee_decls = fold_list(
           xs: callees,

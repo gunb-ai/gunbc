@@ -7,7 +7,7 @@ import v2.lens.determinism {
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -101,8 +101,8 @@ fn call_node(callee: String) -> Node {
 // THAT BELIEF WAS FALSE, and flattening the fixture is what hid it. The marshal (marshal_generic)
 // emits every node as a Conj record carrying its callee atom as a positional child, so a callee is
 // at depth one only when the body IS that one call; a `let`-block body carries its callees two or
-// more levels down. Measured over the live corpus, callees_from_node returned nothing for 899 of
-// 1773 declarations. call_reachable_decls now reads `decl.output` TRANSITIVELY
+// more levels down; the live-corpus population that hid below the root is counted by
+// v2.lens.fn_index_depth_agreement. call_reachable_decls now reads `decl.output` TRANSITIVELY
 // (atom_identities_in_subtree), and the nested rows below hold that grain: they are red against a
 // depth-one reader and are the reason a flat-only fixture may not stand alone.
 //
@@ -267,4 +267,65 @@ test fn nested_entry_does_not_reach_a_leak_outside_the_call_graph() -> Bool {
       ]
     )
   ) == 0
+}
+
+// ── the atom channel has several senders, and the one exclusion that is DECLARED ──────────────
+
+// `marshal_generic` emits one indistinguishable positional atom edge for a call's callee, a
+// record-constructor spelling, a parameter reference, a nullary variant value and a string
+// literal, so a deeper read of the atom channel follows more than calls. Of those senders only
+// two are excludable from declared structure: a path-shaped literal, and a reference to one of
+// the declaration's OWN parameters, whose lexemes `FnArrowDecl.params` carries.
+//
+// THIS ROW IS THE PARAMETER EXCLUSION'S DISCRIMINATOR AND NOTHING ELSE. The entry's body
+// references `orphan_fn`, which is also the entry's own parameter name and also the name of a
+// leaking declaration in the fixture's module closure. Without the exclusion the walk follows
+// the parameter reference into `orphan_fn` and reports a leak no call reaches; with it, the row
+// is green. The remaining senders -- constructors, variant values, non-path literals -- are NOT
+// excludable and are NOT claimed to be: no fixture here can express them, because the skeleton
+// gives them no distinguishing shape, which is the capability named in
+// v2.std.fn_index `callees_from_node`.
+
+fn decl_with_param(qualified_name: String, name: String, param: String, callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: nested_body_referencing(callee: callee),
+    params: [ FnArrowParam { name: symbol_intern_lexeme(lexeme: param), node: atom_node(lexeme: param) } ]
+  }
+}
+
+test fn a_parameter_reference_naming_a_declaration_is_not_a_call_edge() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        decl_with_param(
+          qualified_name: "fix.det.entry.seed",
+          name: "seed",
+          param: "orphan_fn",
+          callee: "orphan_fn"
+        ),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) == 0
+}
+
+// POSITIVE CONTROL ON THAT EXCLUSION, so the row above is not green merely because the fixture
+// reaches nothing: the SAME body and the SAME callee, with the parameter renamed, does reach the
+// leak. Only the parameter name differs between the two rows.
+test fn the_same_reference_without_the_parameter_collision_is_a_call_edge() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        decl_with_param(
+          qualified_name: "fix.det.entry.seed",
+          name: "seed",
+          param: "unrelated_param",
+          callee: "orphan_fn"
+        ),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) > 0
 }

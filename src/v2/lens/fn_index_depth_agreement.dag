@@ -2,7 +2,7 @@ module v2.lens.fn_index_depth_agreement
 
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { Absent, List, Present }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
@@ -13,7 +13,8 @@ import v2.std.fn_index {
   atom_identities_in_node,
   atom_identities_in_subtree,
   callees_from_node,
-  fn_arrow_decl_facts_live
+  fn_arrow_decl_facts_live,
+  param_names_of
 }
 
 // THE INSTRUMENT BEHIND TWO CLAIMS IN v2.std.fn_index, so that neither is a transcribed number.
@@ -28,6 +29,14 @@ import v2.std.fn_index {
 // counts live declarations whose callees are invisible to a depth-one read of `decl.output` but
 // visible to a transitive one. It is the population `call_reachable_decls` could not leave before
 // `callees_from_node` was moved onto `atom_identities_in_subtree`.
+//
+// CLAIM THREE -- the size of the over-approximation the deeper read inherits.
+// `param_collisions` counts live declarations that reference one of their OWN parameters by a
+// lexeme that also names a declaration, which is the one sender in the shared atom channel that
+// `callees_from_node` can now exclude from declared structure. It is the population that would
+// become false call edges without that exclusion; the residue (record constructors, variant
+// values, non-path literals) is not measurable here for the same reason it is not excludable --
+// the skeleton gives it no distinguishing shape.
 //
 // NOT A FLOOR WITNESS AND DELIBERATELY NOT ONE. It reads `fn_arrow_decl_facts_live`, the zero-arity
 // whole-tree acquisition whose cost is the standing blocker recorded in
@@ -82,12 +91,31 @@ fn legacy_atoms(node: Node) -> List<Symbol> {
   }
 }
 
+fn agreement_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn decl_named(decls: List<FnArrowDecl>, name: String) -> Bool {
+  any(xs: decls, predicate: fn(d) { agreement_string_eq(a: d.name, b: name) })
+}
+
+fn param_collides_with_a_declaration(
+  decl: FnArrowDecl,
+  decls: List<FnArrowDecl>
+) -> Bool {
+  any(
+    xs: param_names_of(decl: decl),
+    predicate: fn(pname) { decl_named(decls: decls, name: pname) }
+  )
+}
+
 type DepthAgreementTally {
   decls: Int
   disagreeing_with_legacy: Int
   depth_one_atom_total: Int
   subtree_atom_total: Int
   root_callees_lost_to_depth_one: Int
+  param_collisions: Int
   subtree_node_total: Int
 }
 
@@ -97,6 +125,7 @@ data empty_tally: DepthAgreementTally = DepthAgreementTally {
   depth_one_atom_total: 0,
   subtree_atom_total: 0,
   root_callees_lost_to_depth_one: 0,
+  param_collisions: 0,
   subtree_node_total: 0
 }
 
@@ -107,12 +136,20 @@ fn bump_when(count: Int, flag: Bool) -> Int {
   }
 }
 
-fn tally_decl(acc: DepthAgreementTally, decl: FnArrowDecl) -> DepthAgreementTally {
+fn tally_decl(
+  acc: DepthAgreementTally,
+  decl: FnArrowDecl,
+  decls: List<FnArrowDecl>
+) -> DepthAgreementTally {
   let depth_one = length(xs: atom_identities_in_node(node: decl.output))
   let legacy = length(xs: legacy_atoms(node: decl.output))
   let subtree = length(xs: atom_identities_in_subtree(node: decl.output))
   let deep_callees = length(
-    xs: callees_from_node(node: decl.output, terminal_callee_symbols: no_terminal_callees)
+    xs: callees_from_node(
+      node: decl.output,
+      terminal_callee_symbols: no_terminal_callees,
+      param_names: param_names_of(decl: decl)
+    )
   )
   DepthAgreementTally {
     decls: acc.decls + 1,
@@ -126,15 +163,20 @@ fn tally_decl(acc: DepthAgreementTally, decl: FnArrowDecl) -> DepthAgreementTall
       count: acc.root_callees_lost_to_depth_one,
       flag: depth_one == 0 && deep_callees > 0
     ),
+    param_collisions: bump_when(
+      count: acc.param_collisions,
+      flag: param_collides_with_a_declaration(decl: decl, decls: decls)
+    ),
     subtree_node_total: acc.subtree_node_total + node_subtree_count(n: decl.output)
   }
 }
 
 fn fn_index_depth_agreement_tally() -> DepthAgreementTally {
+  let decls = fn_arrow_decl_facts_live()
   fold_list(
-    xs: fn_arrow_decl_facts_live(),
+    xs: decls,
     empty: empty_tally,
-    cons: fn(acc, decl) { tally_decl(acc: acc, decl: decl) }
+    cons: fn(acc, decl) { tally_decl(acc: acc, decl: decl, decls: decls) }
   )
 }
 
