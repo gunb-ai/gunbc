@@ -25,10 +25,6 @@ fn id_gid_argv() -> List<String> {
   ["id", "-g"]
 }
 
-fn id_lookup_argv(user: NonEmptyStr) -> List<String> {
-  ["id", user as String]
-}
-
 service os.Id {
   operation Uid {
     input {}
