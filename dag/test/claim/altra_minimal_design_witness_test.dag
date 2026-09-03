@@ -4,6 +4,7 @@ import std.types { Bool, String, List }
 import std.integer { Int }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
+  complete_design_eq,
   ChannelCountExceedsControllerPopulation,
   DebugOnlyChannelCountUnderProductionIntent,
   DesignRefusal,
@@ -285,4 +286,26 @@ test fn w_a_fixture_still_owes_the_routed_subset_law() -> Bool {
   }
   refuses_naming(d: fixture_off_copper, wanted: "ChannelNotRouted")
     && admits(d: design(intent_is_production: false, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4))
+}
+
+// DESIGN IDENTITY IS SET EQUALITY OVER SLOT IDENTITIES, AND THAT IS NOT THE SUBSTRATE'S STRUCTURAL
+// EQUALITY. Review 59145 read lifecycles_eq as a hand-rolled restatement of a canonical equality
+// and asked for it to consume that surface instead. It cannot, and this pair is why: the leaf
+// comparison is topologies_eq, which is list_length plus slot_list_covers over the slot identities
+// DERIVED from channels x positions -- a COVERS relation, order-insensitive by construction.
+// Structural equality over the carrier is order-SENSITIVE, because routed_channels is a List and
+// list equality compares positionally.
+//
+// So the two disagree on exactly this input, and the disagreement is the point rather than an
+// accident: the same board described with its channels listed in a different order is the SAME
+// BOARD, and a design identity that said otherwise would refuse a canonical design for the order
+// someone happened to write its channels in. The first arm is the discriminator -- substituting
+// structural equality for the predicate turns it false -- and the second is the paired positive
+// control, so a predicate that simply returned true could not pass this witness either.
+test fn w_RED_design_identity_survives_channel_permutation_but_not_a_different_channel_set() -> Bool {
+  let forward = design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4)
+  let reversed = design(intent_is_production: true, chans: [DdrChannel1, DdrChannel0], positions: one_dimm(), lanes: 4)
+  let widened = design(intent_is_production: true, chans: [DdrChannel0, DdrChannel2], positions: one_dimm(), lanes: 4)
+  complete_design_eq(a: forward, b: reversed)
+    && !complete_design_eq(a: forward, b: widened)
 }

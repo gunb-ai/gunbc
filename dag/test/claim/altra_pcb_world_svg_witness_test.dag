@@ -100,6 +100,9 @@ import product.altra_motherboard.pcb_world {
   altra_pcb_world,
   altra_pcb_world_for,
   admit_pcb_world,
+  AltraPcbWorldDesignNotAdmitted,
+  AltraPcbWorldPlacementNotAdmitted,
+  AltraPcbWorldSettledInHub,
   outline_copies_mt_jade_reference,
 }
 import product.altra_motherboard.placement {
@@ -362,17 +365,22 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
     Absent => false
     Present { value: w } =>
       match admit_pcb_world(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), w: w) {
-        PartialPcbWorldReady { value: _ } => false
-        AdmittedPcbWorld { value: _ } => false
-        PcbWorldRefused { cause: c } =>
-          match c {
-            PcbCapabilityStillPending { capability: cap } => (cap as String) == "stackup"
-            PcbCapabilityRefused { capability: _, cause: _ } => false
-            PcbDesignPlanUnavailable { only_available: _ } => false
-            PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
-            PcbPlacementNotAdmitted => false
-            PcbBoardOutlineRefused { cause: _ } => false
-            PcbOutlineCopiedFromCitedForeignBoard => false
+        AltraPcbWorldDesignNotAdmitted { causes: _ } => false
+        AltraPcbWorldPlacementNotAdmitted { causes: _ } => false
+        AltraPcbWorldSettledInHub { inner: h } =>
+          match h {
+            PartialPcbWorldReady { value: _ } => false
+            AdmittedPcbWorld { value: _ } => false
+            PcbWorldRefused { cause: c } =>
+              match c {
+                PcbCapabilityStillPending { capability: cap } => (cap as String) == "stackup"
+                PcbCapabilityRefused { capability: _, cause: _ } => false
+                PcbDesignPlanUnavailable { only_available: _ } => false
+                PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+                PcbPlacementNotAdmitted => false
+                PcbBoardOutlineRefused { cause: _ } => false
+                PcbOutlineCopiedFromCitedForeignBoard => false
+              }
           }
       }
   }
@@ -780,18 +788,23 @@ test fn w_a_world_whose_capabilities_are_all_refused_is_not_admitted() -> Bool {
     Absent => false
     Present { value: w } =>
       match admit_pcb_world(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), w: all_capabilities_refused(w: w)) {
-        PartialPcbWorldReady { value: _ } => false
-        AdmittedPcbWorld { value: _ } => false
-        PcbWorldRefused { cause: c } =>
-          match c {
-            PcbCapabilityRefused { capability: cap, cause: why } =>
-              (cap as String) == "stackup" && (why as String) == "planted refusal: stackup"
-            PcbCapabilityStillPending { capability: _ } => false
-            PcbDesignPlanUnavailable { only_available: _ } => false
-            PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
-            PcbPlacementNotAdmitted => false
-            PcbBoardOutlineRefused { cause: _ } => false
-            PcbOutlineCopiedFromCitedForeignBoard => false
+        AltraPcbWorldDesignNotAdmitted { causes: _ } => false
+        AltraPcbWorldPlacementNotAdmitted { causes: _ } => false
+        AltraPcbWorldSettledInHub { inner: h } =>
+          match h {
+            PartialPcbWorldReady { value: _ } => false
+            AdmittedPcbWorld { value: _ } => false
+            PcbWorldRefused { cause: c } =>
+              match c {
+                PcbCapabilityRefused { capability: cap, cause: why } =>
+                  (cap as String) == "stackup" && (why as String) == "planted refusal: stackup"
+                PcbCapabilityStillPending { capability: _ } => false
+                PcbDesignPlanUnavailable { only_available: _ } => false
+                PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+                PcbPlacementNotAdmitted => false
+                PcbBoardOutlineRefused { cause: _ } => false
+                PcbOutlineCopiedFromCitedForeignBoard => false
+              }
           }
       }
   }
