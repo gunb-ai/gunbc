@@ -142,6 +142,25 @@ type RequiredStatusCheckWire {
 // carries a discriminator from the enclosing object into a tagged value, so `parameters` can be a
 // coproduct selected by `type` and the guard becomes unnecessary rather than load-bearing. Until
 // that exists, this is mitigatable-by-guard and is stated as such.
+//
+// THE PRODUCER THAT MUST CHANGE IS NAMED, AND WHAT IT MUST BE SUFFICIENT FOR IS STATED, because a
+// trigger that names only a capability is satisfiable by anything and a trigger that names only an
+// artifact is satisfied while the capability stays dead. The producer is `v1_interpreter`
+// `json_to_value`: its object arm collects every key into a `map_value` with no type context and
+// no discriminator, so a nested object reaches the substrate as an untagged map and a coproduct arm
+// has nothing to select on. It is SUFFICIENT when a decode of `{"type": "merge_queue",
+// "parameters": {...}}` can yield a value whose `parameters` is the merge_queue ARM -- not a map
+// that a later guard classifies -- so that reading a required_status_checks field off it is a
+// resolve refusal rather than a read this module has to prevent by filtering first. Anything less
+// leaves the guard load-bearing, and this row stays at mitigatable no matter what lands.
+//
+// WHY THE COPRODUCT IS NOT SIMPLY DECLARED HERE NOW, which is the obvious objection and deserves
+// the mechanical answer rather than a preference: declaring it changes nothing about what can be
+// READ, because the decode above produces the same untagged map either way, so every arm would
+// refuse and the module would report NoMergeQueueRule for a ruleset that has one. That is a
+// silently wrong answer where there is currently a correct one, which is the direction DESIGN
+// section 5 forbids outright. The declaration is not being deferred for convenience; it is
+// unreadable until its producer changes.
 type RulesetRuleParametersWire {
   strict_required_status_checks_policy: Bool
   do_not_enforce_on_create: Bool
