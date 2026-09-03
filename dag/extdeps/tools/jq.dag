@@ -291,6 +291,10 @@ type JqBindingsResult
 // (POSIX guideline 9: options precede operands). A repeated name is refused, never handed to jq's
 // last-wins behaviour. JqTextBinding has no live consumer this wave and refuses rather than
 // emitting a plausible guess. DESIGN section 5: a failure arm must refuse, never widen.
+//
+// The `seen` map records every binding name already folded, keyed by the interned name; the VALUE
+// is the name itself (a fabricated sentinel would be a second representation of presence -- the
+// map is used as a presence set, but the value carries the real name, never a fake string).
 fn jq_bindings_lower(
   bindings: List<JqBinding>,
   seen: Map<Symbol, String>,
@@ -324,7 +328,7 @@ fn jq_bindings_lower(
                 key: value_key,
                 value: value as String
               )
-              let new_seen = map_insert(m: seen, key: symbol_intern_lexeme(lexeme: binding_name as String), value: "")
+              let new_seen = map_insert(m: seen, key: symbol_intern_lexeme(lexeme: binding_name as String), value: binding_name as String)
               jq_bindings_lower(
                 bindings: rest,
                 seen: new_seen,
