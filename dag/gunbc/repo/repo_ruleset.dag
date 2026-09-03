@@ -47,6 +47,7 @@ import extdeps.github.rulesets {
   NoMergeQueueRule,
   MergeQueueConfigured,
   MultipleMergeQueueRules,
+  MergeQueueParametersIncomplete,
   MergeQueueGroupingStrategy,
   AllGreenGrouping,
   MergeQueueMergeMethod,
@@ -424,6 +425,7 @@ type RulesetDivergence
   | MergeQueueUndeclared { grouping_strategy: String, merge_method: String }
   | MergeQueueRuleAbsent
   | MergeQueueRuleAmbiguous { count: Int }
+  | MergeQueueParametersUnreadable { missing: List<String> }
   | MergeQueueSettingDrift { setting: String, observed: String, desired: String }
 
 fn enforcement_divergences(observed: RulesetEnforcement) -> List<RulesetDivergence> {
@@ -643,6 +645,7 @@ fn merge_queue_setting_drifts(
 fn merge_queue_divergences(observed: MergeQueueStanding) -> List<RulesetDivergence> {
   match observed {
     MultipleMergeQueueRules { count: n } => [MergeQueueRuleAmbiguous { count: n }]
+    MergeQueueParametersIncomplete { missing: ms } => [MergeQueueParametersUnreadable { missing: ms }]
     NoMergeQueueRule =>
       match desired_merge_queue_policy() {
         Absent => []
@@ -739,6 +742,8 @@ fn render_divergence(d: RulesetDivergence) -> String {
     MergeQueueRuleAbsent => "merge_queue rule absent while the merge queue is signed off"
     MergeQueueRuleAmbiguous { count: n } =>
       concat("more than one merge_queue rule: ", to_string(n))
+    MergeQueueParametersUnreadable { missing: ms } =>
+      concat("merge_queue rule present but its parameters did not carry: ", join(ms, ", "))
     MergeQueueSettingDrift { setting: st, observed: o, desired: d } =>
       join(["merge queue ", st, " is ", o, ", desired ", d], "")
   }

@@ -9,6 +9,7 @@ import extdeps.github.rulesets {
   NoMergeQueueRule,
   MergeQueueConfigured,
   MultipleMergeQueueRules,
+  MergeQueueParametersIncomplete,
   MergeQueueGroupingStrategy,
   AllGreenGrouping,
   HeadGreenGrouping,
@@ -407,6 +408,8 @@ fn merge_queue_terminal(
       MergeQueueUnconfigured { reason: "no merge_queue rule in the live ruleset" }
     MultipleMergeQueueRules { count: _ } =>
       MergeQueueUnconfigured { reason: "more than one merge_queue rule: the live queue configuration is not established" }
+    MergeQueueParametersIncomplete { missing: _ } =>
+      MergeQueueUnconfigured { reason: "a merge_queue rule is present but its parameters did not arrive complete, so what the queue does is not established" }
     MergeQueueConfigured {
       grouping_strategy: g,
       merge_method: _,

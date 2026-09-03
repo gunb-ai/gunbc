@@ -115,6 +115,23 @@ type RequiredStatusCheckWire {
 // ever read off a rule whose `parameters` object does not carry it. The guard is the invariant this
 // shape depends on: a reader that folded over unfiltered rules would read a key GitHub never sent.
 //
+// THE merge_queue FIELDS ARE OPTIONAL AND THE required_status_checks FIELDS ARE NOT, which is the
+// union carrying what it can say about presence. A record literal must supply every non-optional
+// field, so a rule this module CONSTRUCTS could not otherwise be built without inventing seven
+// scheduling values GitHub does not accept on it. Optional lets the constructor say `none` --
+// "this rule carries no merge-queue parameters" -- which is the true statement. The required
+// fields stay mandatory because a required_status_checks rule always carries them.
+//
+// merge_queue_standing therefore REFUSES on a merge_queue rule whose parameters arrived incomplete
+// rather than defaulting the missing ones, which is the second half of the guard: the type tag says
+// which fields to expect, and the optionals say whether they came.
+//
+// NOT ESTABLISHED BY THIS CHANGE, and stated rather than assumed: how the REST body serializer
+// renders an absent optional in the PUT. If it emits explicit nulls, a converge run would send
+// seven null keys on a required_status_checks rule and GitHub may refuse the body. No CI step
+// exercises converge, so this has not been observed either way, and the merge-queue rule this
+// module would send is gated on operator sign-off in gunbc.repo_ruleset regardless.
+//
 // NEXT-RUNG TRIGGER, named as the capability rather than as an artifact: a transport decode that
 // carries a discriminator from the enclosing object into a tagged value, so `parameters` can be a
 // coproduct selected by `type` and the guard becomes unnecessary rather than load-bearing. Until
@@ -123,13 +140,13 @@ type RulesetRuleParametersWire {
   strict_required_status_checks_policy: Bool
   do_not_enforce_on_create: Bool
   required_status_checks: List<RequiredStatusCheckWire>
-  check_response_timeout_minutes: Int
-  grouping_strategy: String
-  max_entries_to_build: Int
-  max_entries_to_merge: Int
-  merge_method: String
-  min_entries_to_merge: Int
-  min_entries_to_merge_wait_minutes: Int
+  check_response_timeout_minutes: Int?
+  grouping_strategy: String?
+  max_entries_to_build: Int?
+  max_entries_to_merge: Int?
+  merge_method: String?
+  min_entries_to_merge: Int?
+  min_entries_to_merge_wait_minutes: Int?
 }
 
 type RulesetRuleWire {
@@ -398,7 +415,55 @@ type MergeQueueStanding
       min_entries_to_merge: MergeQueueEntryCount
       min_entries_to_merge_wait: Minute
     }
+  | MergeQueueParametersIncomplete { missing: List<String> }
   | MultipleMergeQueueRules { count: Int }
+
+fn missing_str_field(name: String, v: String?) -> List<String> {
+  match v {
+    Absent => [name]
+    Present { value: _ } => []
+  }
+}
+
+fn missing_int_field(name: String, v: Int?) -> List<String> {
+  match v {
+    Absent => [name]
+    Present { value: _ } => []
+  }
+}
+
+fn merge_queue_missing_fields(p: RulesetRuleParametersWire) -> List<String> {
+  fold(
+    [
+      missing_str_field(name: "merge_method", v: p.merge_method),
+      missing_int_field(name: "check_response_timeout_minutes", v: p.check_response_timeout_minutes),
+      missing_int_field(name: "max_entries_to_build", v: p.max_entries_to_build),
+      missing_int_field(name: "max_entries_to_merge", v: p.max_entries_to_merge),
+      missing_int_field(name: "min_entries_to_merge", v: p.min_entries_to_merge),
+      missing_int_field(name: "min_entries_to_merge_wait_minutes", v: p.min_entries_to_merge_wait_minutes),
+    ],
+    init: missing_str_field(name: "grouping_strategy", v: p.grouping_strategy),
+    f: fn(acc, more) { append(acc, items: more) },
+  )
+}
+
+// THE TWO READERS BELOW ARE REACHABLE ONLY WHERE merge_queue_missing_fields IS EMPTY. Their
+// fallbacks exist because the language requires a total read of an optional, not because a default
+// is a meaningful value here -- a merge_queue rule missing a parameter takes the
+// MergeQueueParametersIncomplete arm and never reaches them.
+fn merge_queue_str(v: String?) -> String {
+  match v {
+    Absent => ""
+    Present { value: x } => x
+  }
+}
+
+fn merge_queue_int(v: Int?) -> Int {
+  match v {
+    Absent => 0
+    Present { value: x } => x
+  }
+}
 
 fn merge_queue_standing(rules: List<RulesetRuleWire>) -> MergeQueueStanding {
   let matched = filter(rules, r => rule_is_merge_queue(rule: r))
@@ -409,14 +474,26 @@ fn merge_queue_standing(rules: List<RulesetRuleWire>) -> MergeQueueStanding {
       MultipleMergeQueueRules { count: length(matched) }
     } else {
       fold(matched, init: NoMergeQueueRule, f: fn(_, rule) {
-        MergeQueueConfigured {
-          grouping_strategy: parse_merge_queue_grouping_strategy(raw: rule.parameters.grouping_strategy),
-          merge_method: parse_merge_queue_merge_method(raw: rule.parameters.merge_method),
-          check_response_timeout: minute(count: rule.parameters.check_response_timeout_minutes),
-          max_entries_to_build: merge_queue_entry_count(count: rule.parameters.max_entries_to_build),
-          max_entries_to_merge: merge_queue_entry_count(count: rule.parameters.max_entries_to_merge),
-          min_entries_to_merge: merge_queue_entry_count(count: rule.parameters.min_entries_to_merge),
-          min_entries_to_merge_wait: minute(count: rule.parameters.min_entries_to_merge_wait_minutes),
+        let missing = merge_queue_missing_fields(p: rule.parameters)
+        if length(missing) > 0 {
+          MergeQueueParametersIncomplete { missing: missing }
+        } else {
+          MergeQueueConfigured {
+            grouping_strategy: parse_merge_queue_grouping_strategy(
+              raw: merge_queue_str(v: rule.parameters.grouping_strategy)),
+            merge_method: parse_merge_queue_merge_method(
+              raw: merge_queue_str(v: rule.parameters.merge_method)),
+            check_response_timeout: minute(
+              count: merge_queue_int(v: rule.parameters.check_response_timeout_minutes)),
+            max_entries_to_build: merge_queue_entry_count(
+              count: merge_queue_int(v: rule.parameters.max_entries_to_build)),
+            max_entries_to_merge: merge_queue_entry_count(
+              count: merge_queue_int(v: rule.parameters.max_entries_to_merge)),
+            min_entries_to_merge: merge_queue_entry_count(
+              count: merge_queue_int(v: rule.parameters.min_entries_to_merge)),
+            min_entries_to_merge_wait: minute(
+              count: merge_queue_int(v: rule.parameters.min_entries_to_merge_wait_minutes)),
+          }
         }
       })
     }
@@ -443,6 +520,13 @@ fn required_status_checks_rule(
       strict_required_status_checks_policy: strict,
       do_not_enforce_on_create: do_not_enforce_on_create,
       required_status_checks: checks,
+      check_response_timeout_minutes: none,
+      grouping_strategy: none,
+      max_entries_to_build: none,
+      max_entries_to_merge: none,
+      merge_method: none,
+      min_entries_to_merge: none,
+      min_entries_to_merge_wait_minutes: none,
     },
   }
 }

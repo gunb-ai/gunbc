@@ -55,6 +55,9 @@ import extdeps.github.rulesets {
   MergeQueueRule,
   MergeQueueGroupingStrategy,
   merge_queue_grouping_strategy_wire_label,
+  merge_queue_standing,
+  RulesetRuleWire,
+  RulesetRuleParametersWire,
   merge_queue_merge_method_wire_label,
   ruleset_rule_type_wire_label,
 }
@@ -395,6 +398,45 @@ test fn w_the_declared_rule_list_does_not_trip_the_actuation_refusal() -> Bool {
   match merge_queue_projection_refusal(rule_types: desired_ruleset_rule_types()) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// A merge_queue RULE WHOSE PARAMETERS DID NOT ARRIVE COMPLETE REFUSES AND NAMES WHAT IS MISSING,
+// rather than reading a default. This is the second half of the type-tag guard: the tag says which
+// fields to expect and the optionals say whether they came, so a truncated response cannot present
+// as a configured queue with zeroes in it.
+test fn w_RED_an_incomplete_merge_queue_rule_refuses_and_names_the_missing_fields() -> Bool {
+  let standing = merge_queue_standing(rules: [
+    RulesetRuleWire {
+      type: ruleset_rule_type_wire_label(t: MergeQueueRule),
+      parameters: RulesetRuleParametersWire {
+        strict_required_status_checks_policy: false,
+        do_not_enforce_on_create: false,
+        required_status_checks: [],
+        check_response_timeout_minutes: Present { value: 210 },
+        grouping_strategy: none,
+        max_entries_to_build: Present { value: 1 },
+        max_entries_to_merge: Present { value: 1 },
+        merge_method: Present { value: "SQUASH" },
+        min_entries_to_merge: Present { value: 1 },
+        min_entries_to_merge_wait_minutes: none,
+      },
+    },
+  ])
+  let rendered = render_divergences(ds: divergences_with_live_queue(standing: standing))
+  string_contains(s: rendered, pattern: "did not carry")
+    && string_contains(s: rendered, pattern: "grouping_strategy")
+    && string_contains(s: rendered, pattern: "min_entries_to_merge_wait_minutes")
+    && !string_contains(s: rendered, pattern: "merge_method")
+}
+
+// THE CONSTRUCTOR THIS REPOSITORY ACTUALLY SENDS CARRIES NO merge_queue PARAMETERS, and reading it
+// back as a queue standing must therefore find no queue at all -- not an incomplete one. If this
+// goes red, the required_status_checks rule has started claiming to be a merge_queue rule.
+test fn w_the_required_status_checks_rule_reads_back_as_no_queue() -> Bool {
+  match merge_queue_standing(rules: desired_ruleset_rules()) {
+    NoMergeQueueRule => true
+    _ => false
   }
 }
 
