@@ -9,7 +9,8 @@ import v2.workflow.floor_pure_producer_share {
   floor_cross_claim_refused_candidates,
   floor_cross_claim_admitted_producers,
   refused_share_producers,
-  share_roster_refusal_collisions
+  share_roster_refusal_collisions,
+  refused_row_carriers_transfer
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -115,4 +116,25 @@ test fn the_live_rosters_admit_nothing_this_roster_has_refused() -> Bool {
 // re-reds every time a fifth candidate is measured and turned down.
 test fn the_refused_roster_carries_identities() -> Bool {
   length(xs: refused_share_producers(refused: floor_cross_claim_refused_candidates)) > 0
+}
+
+// WHICH VERDICTS TRANSFER THROUGH CARRIERS. The overlap wall in the required floor mirrors this
+// predicate, so it is worth an executing consumer here rather than only at the mirror: a verdict
+// arm that changes meaning must red something in the substrate too, not only in the seed.
+//
+// THE DISCRIMINATING PAIR is the two arms answering differently on the same question. A measured
+// serving cost is a fact about a NEIGHBOURHOOD and a later identity reaching it inherits the cost;
+// a measured absence of effect is a fact about one producer and there is nothing to inherit.
+test fn only_a_measured_cost_verdict_transfers_through_its_carriers() -> Bool {
+  refused_row_carriers_transfer(verdict: MeasuredServeAboveRecompute)
+    && (refused_row_carriers_transfer(verdict: NoMeasuredEffectOverItsConsumers) == false)
+}
+
+// A SECTION 3 SUPERSESSION IS ABOUT ONE SPELLING. The repair takes the receipt series as an
+// argument and keeps taking it; another producer serving the same witnesses inherits nothing from
+// the ruling, and the identity fold above still refuses re-proposing this spelling itself.
+test fn a_superseded_row_does_not_transfer_to_other_producers() -> Bool {
+  refused_row_carriers_transfer(
+    verdict: SupersededBySingleAuthorityRepair { repaired_by: "an authored fixture" }
+  ) == false
 }

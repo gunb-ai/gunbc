@@ -3397,6 +3397,25 @@ fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
             ));
         }
     };
+    // THE DOMAIN IS ASSERTED BEFORE THE VERDICT IS READ. An empty intersection is evidence only
+    // when both operands are known non-empty, and this wall was itself built on a green that was
+    // the identity element on an empty domain: the pre-merge join I ran by hand captured
+    // `consumer_modules=53` instead of `modules=a,b,c` — the count, not the set — so every
+    // intersection was empty and every key read clean while a real overlap stood in the same
+    // ledger. The refused side is asserted at decode (a carrierless row refuses there); this is
+    // the observed side. A SINGLE fill legitimately carries no modules — one filled outside the
+    // fold and read by nobody has neither filler nor consumer — so the assertion is over the
+    // whole ledger: fills recorded and not one module observed anywhere is an observation defect,
+    // never a clean run. This is the rostered `predicate_vacuously_true_on_an_empty_domain`.
+    if !observed.is_empty() && observed.iter().all(|(_, modules)| modules.is_empty()) {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareObservedCarriersVacuous keys={} — the \
+             cross-claim share ledger recorded fills but not one of them carries a consuming \
+             module, so the refused-carrier join would intersect against an empty domain and \
+             report clean without comparing anything",
+            observed.len()
+        ));
+    }
     // Bare ledger key -> the admitted spellings that end in it. The interpreter bills the share
     // ledger under the BARE function name, and the roster's whole admission discipline is that
     // identity is the resolved declaration, never the bare name — so an overlapping key whose
@@ -3412,6 +3431,29 @@ fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
     }
     for (key, modules) in &observed {
         for row in &roster.refused {
+            // MIRROR of `v2.workflow.floor_pure_producer_share` `refused_row_carriers_transfer`,
+            // which is the authority for WHICH verdicts transfer through carriers and carries the
+            // reasoning. A verdict that measured NO effect has nothing for a later identity to
+            // inherit, and a §3 supersession is a ruling about one spelling; refusing another
+            // producer for reaching their modules would charge it with a harm the measurement
+            // never found. Both rows the inheritance actually happened through are
+            // MeasuredServeAboveRecompute and stay in this population. The match is exhaustive
+            // over the decoded arms, so a fourth verdict cannot join by default — and the decode
+            // refuses an arm it does not know before this point is reached.
+            let carriers_transfer = match row.verdict.as_str() {
+                "MeasuredServeAboveRecompute" => true,
+                "NoMeasuredEffectOverItsConsumers" => false,
+                "SupersededBySingleAuthorityRepair" => false,
+                other => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown                          producer={} verdict={other} — the overlap wall cannot decide whether                          this verdict's carriers transfer",
+                        row.producer
+                    ));
+                }
+            };
+            if !carriers_transfer {
+                continue;
+            }
             let shared: Vec<&str> = modules
                 .intersection(&row.carrier_modules)
                 .map(|m| m.as_str())
@@ -7377,7 +7419,26 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn tm_local() -> Bool { true }\n\
              data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n",
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [\n\
+               RefusedShareCandidate {\n\
+                 producer: \"v2.workflow.floor_pure_producer_share.tm_refused\",\n\
+                 verdict: MeasuredServeAboveRecompute,\n\
+                 carrier_modules: [\"v2.test.fixture.a_consumer\"],\n\
+                 measurement: \"fixture\",\n\
+                 next_trigger: \"fixture\"\n\
+               }\n\
+             ]\n",
         )]);
         install_pure_producer_share(&prepared).expect("carried roster installs and warms");
         let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
@@ -8418,6 +8479,80 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             "rust_target_model_staging",
         );
         assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
+    }
+
+    /// THE VACUITY REFUSAL. Fills recorded with no consuming module anywhere is the shape that
+    /// produced this wall's own false green: a join whose domain is empty answers clean without
+    /// comparing anything. Recorded outside any claim, so the ledger has fills and no modules.
+    #[test]
+    fn a_ledger_whose_fills_carry_no_modules_refuses_instead_of_reading_clean() {
+        install(
+            &["v2.extdeps.languages.rust.rust_target_model_staging"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.rust_target_model",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        shared_fill::set_current_claim(None);
+        shared_fill::begin_fill();
+        shared_fill::record_fill(CACHE, "rust_target_model_staging", 0);
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("an empty observed domain must refuse rather than read clean");
+        assert!(
+            why.contains("cause=PureProducerShareObservedCarriersVacuous"),
+            "{why}"
+        );
+    }
+
+    /// THE NARROWING, EXECUTED. A refused row that measured NO effect over its consumers has
+    /// nothing for a later identity to inherit, so an admitted key reaching those same modules is
+    /// ordinary. This is the arm that run 33696651737 proved was needed: it refused
+    /// grammar_relation_row_for_emitted over rust_add_emit_translate, an overlap with a row whose
+    /// own measurement found zero.
+    #[test]
+    fn a_refused_row_that_measured_no_effect_transfers_nothing_through_its_carriers() {
+        install(
+            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            vec![RefusedShareRow {
+                producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
+                verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
+                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                    .into_iter()
+                    .collect(),
+            }],
+        );
+        fill_from(
+            "v2.test.manual.rust_add_emit_translate",
+            "grammar_relation_row_for_emitted",
+        );
+        assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
+    }
+
+    /// AND THE SAME OVERLAP UNDER A MEASURED-COST VERDICT STILL REFUSES, so the narrowing is to
+    /// the verdict and not to the join. Identical roster, identical key, identical module — only
+    /// the refused row's verdict differs.
+    #[test]
+    fn the_same_overlap_under_a_measured_cost_verdict_still_stops_the_line() {
+        install(
+            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            vec![RefusedShareRow {
+                producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
+                verdict: "MeasuredServeAboveRecompute".to_string(),
+                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                    .into_iter()
+                    .collect(),
+            }],
+        );
+        fill_from(
+            "v2.test.manual.rust_add_emit_translate",
+            "grammar_relation_row_for_emitted",
+        );
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("a measured-cost row's carriers still transfer");
+        assert!(
+            why.contains("cause=PureProducerShareRefusedCarrierOverlap"),
+            "{why}"
+        );
     }
 
     /// AN OVERLAP THE WALL CANNOT ATTRIBUTE REFUSES RATHER THAN PICKING ONE. The ledger key is

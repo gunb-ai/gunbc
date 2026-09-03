@@ -372,6 +372,40 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
   reverse(fold(refused, init: [], f: fn(acc, row) { concat([row.producer], acc) }))
 }
 
+// WHICH REFUSALS TRANSFER THROUGH CARRIERS, AND WHICH ARE ABOUT ONE SPELLING ONLY. This is the
+// authority for the overlap wall's population, and the executor mirrors it; it is declared here
+// because it is a fact about what each VERDICT MEANS, and the verdicts are this roster's.
+//
+// The overlap wall's premise is that a later identity reaching a refused row's measured
+// neighbourhood INHERITS the measured effect. That premise has content only where an effect was
+// measured. `MeasuredServeAboveRecompute` is exactly that case -- serving cost real, over those
+// consumers -- and it is the case this file's own history produced twice, through two identities.
+//
+// `NoMeasuredEffectOverItsConsumers` has NOTHING TO INHERIT: the row was refused because serving
+// it neither cost nor saved anything over those modules. Refusing a different admitted producer
+// for touching one of them would charge it with a harm measured to be zero, which is a fabricated
+// subject, and this is not hypothetical -- run 33696651737 refused
+// v2.compiler.translate.grammar_relation_row_for_emitted on exactly that overlap, and the same
+// overlap is present in the main-vintage run 33671317370, so it is a standing property of the
+// corpus rather than one run's accident.
+//
+// `SupersededBySingleAuthorityRepair` is a DESIGN section 3 ruling about one spelling, not a cost
+// that travels with consumers; the repair takes the series as an argument and other producers
+// serving the same witnesses inherit nothing from it.
+//
+// SO THE NARROWING IS TO A VERDICT, NOT TO AN IDENTITY. Both rows the inheritance actually
+// happened through are `MeasuredServeAboveRecompute` and both stay in the wall's population. The
+// two arms that leave it are still refused by the identity fold above on their own spelling, so
+// no row loses coverage of its own re-proposal -- what they lose is a claim over OTHER producers
+// that the measurement never supported.
+fn refused_row_carriers_transfer(verdict: ShareRefusalVerdict) -> Bool {
+  match verdict {
+    MeasuredServeAboveRecompute => true
+    NoMeasuredEffectOverItsConsumers => false
+    SupersededBySingleAuthorityRepair { repaired_by: _ } => false
+  }
+}
+
 // THIS WALL IS AT IDENTITY GRAIN AND IDENTITY GRAIN IS NOT SUFFICIENT. Stated here rather than
 // discovered later, because this file already contains the case it misses.
 //
