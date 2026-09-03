@@ -2,6 +2,7 @@ module gunbc.namespace_step0_subject_collector
 
 import std.types { Bool, GitRef, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
@@ -361,6 +362,58 @@ fn collect_step0_subject_vector_at(ref: String) -> Step0SubjectCollection {
 
 fn collect_current_step0_subject_vector() -> Step0SubjectCollection {
   collect_step0_subject_vector_at(ref: "HEAD")
+}
+
+// THE POPULATION'S OWN IDENTITY, so a downstream stage can say WHICH population it consumed without
+// walking the tree a second time. A second walk would be a second collector -- an authority fork --
+// and a walk that called this one back would be correlated evidence: a collector that systematically
+// drops the last entry agrees with itself. So the identity travels with the population, derived by
+// one fold over the members' own identities through std.content_hash rather than re-derived by a
+// consumer.
+//
+// COUNT AND DIGEST TOGETHER, because they fail differently: a digest mismatch says the members
+// differ, a count mismatch says how, and a reader given only the digest cannot tell a reordered
+// population from a truncated one.
+type Step0PopulationIdentity {
+  member_count: Int
+  digest: Fnv1a64Structural
+}
+
+// ORDER IS PART OF THE IDENTITY and that is deliberate: the members arrive in the revision's own
+// ls-tree order, so two populations that differ only by order came from different enumerations and
+// are not the same observation of the same tree.
+fn step0_population_identity_of_rows(rows: List<NonEmptyStr>) -> Step0PopulationIdentity {
+  Step0PopulationIdentity {
+    member_count: count(rows),
+    digest: fold(rows, init: content_hash_atom(value: "step0-population" as NonEmptyStr), f: fn(acc, row) {
+      content_hash_combine_structural(left: acc, right: content_hash_atom(value: row))
+    })
+  }
+}
+
+// THE COLLECTED POPULATION IS IDENTIFIED BY CONTENT ADDRESS, path and blob object id, because that
+// is how the revision itself names what it holds.
+fn step0_collected_population_identity(vector: Step0SubjectVector) -> Step0PopulationIdentity {
+  step0_population_identity_of_rows(
+    rows: vector.members |> map(member =>
+      concat(member.path as String, concat(" ", member.blob.hex as String)) as NonEmptyStr
+    )
+  )
+}
+
+// A REWRITTEN POPULATION HAS NO OBJECT IDS -- nothing has stored it -- so it is identified by path
+// and content. The two identities are NOT interchangeable and are never compared to one another:
+// each stage asserts that ITS input identity equals the identity the previous stage published.
+fn step0_source_population_identity(sources: List<FixtureSource>) -> Step0PopulationIdentity {
+  step0_population_identity_of_rows(
+    rows: sources |> map(source =>
+      concat(source.path as String, concat(" ", source.content)) as NonEmptyStr
+    )
+  )
+}
+
+fn step0_population_identity_eq(left: Step0PopulationIdentity, right: Step0PopulationIdentity) -> Bool {
+  left.member_count == right.member_count && (left.digest.digest as String) == (right.digest.digest as String)
 }
 
 fn step0_subject_vector_size(vector: Step0SubjectVector) -> Int {

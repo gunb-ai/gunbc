@@ -1,0 +1,187 @@
+module gunbc.namespace_step0_binding_provenance_contract
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THIS ROW IS DECLARED AND NO PRODUCER INHABITS IT. Read that first and read it as the whole
+// standing: nothing in this repository has observed a Step 0 binding-provenance census, this module
+// contains no producer that could, and its existence is not evidence that the observation happened
+// or is scheduled. It is the SPECIFICATION of an observation Step 0 owes -- the typed shape a
+// producer would have to fill -- and a specification with no producer is exactly the
+// specification-without-execution DESIGN section 5 names, which is why the standing is stated here
+// rather than left to be inferred from the absence of a caller.
+//
+// WHY IT IS WRITTEN NOW, BEFORE ITS PRODUCER. gunbc.namespace_step0_canary_v2's receipt must say,
+// in a typed field rather than in prose, that import dependence was NOT judged and WHAT would judge
+// it; naming a successor honestly means citing a declaration, and a citation resolves only against
+// something that exists. So the citation target is this contract -- a specification of the
+// observation -- and never a producer nobody has written. The cheap half is the roster and the
+// conservation laws below: they are what decides whether a later census can be believed, and they
+// are expensive to reconstruct after the census exists and is already reporting numbers.
+//
+// WHAT IT IS NOT. It is not a plan, not a schedule, and not a claim on anyone's time. The program
+// that fills it is Step 0 PROPER -- the complete reference-occurrence census with binding-source
+// attribution -- and that program is not a prerequisite of anything: it is what Step 0 turns out
+// to be once the subject has been collected and stripped.
+
+// THE DENOMINATOR IS REFERENCE OCCURRENCES, NOT REMOVED EDGES, and the ordering matters more than
+// it looks. An edge view counts import statements that disappeared; an occurrence view counts the
+// places a name is USED, which is where a binding can silently change. Every removed-edge figure a
+// census reports must therefore be a DERIVED PROJECTION over per-occurrence rows, so the edge view
+// can never define the denominator -- once it does, an occurrence whose binding moved without any
+// edge changing is outside the population and unfindable.
+data step0_census_denominator_law: NonEmptyStr = "the census denominator is the set of discovered REFERENCE OCCURRENCES; any removed-edge or per-import figure is a derived projection over those rows and never the population itself" as NonEmptyStr
+
+// THE REFERENCE-FAMILY ROSTER, FROZEN BEFORE ANY CORPUS RUN. A census is believable only if the
+// families it must distinguish were named before the numbers existed; naming them afterwards lets
+// the roster be shaped by what the run happened to produce.
+//
+// SameSpellingInTwoModules IS THE LOAD-BEARING ROW. A census that records only "the spelling still
+// resolves" greens while binding the WRONG DECLARATION, which is the most harmful form of this
+// class: nothing errors, the program compiles, and the meaning moved. Every other family can fail
+// loudly; this one fails silently by construction, so a census that cannot discriminate it has not
+// measured Step 0 at all.
+type Step0ReferenceFamily
+  = TypeReference
+  | OrdinaryFunctionCall
+  | ConstructorOrRecordConstruction
+  | BareCoproductVariant
+  | QualifiedContainmentReference
+  | SameSpellingInTwoModules
+
+fn step0_reference_family_label(family: Step0ReferenceFamily) -> NonEmptyStr {
+  match family {
+    TypeReference => "a type named in a declaration or signature" as NonEmptyStr
+    OrdinaryFunctionCall => "an ordinary call to a function declared in another module" as NonEmptyStr
+    ConstructorOrRecordConstruction => "a record construction or constructor application" as NonEmptyStr
+    BareCoproductVariant => "a coproduct variant named bare, with no qualifier" as NonEmptyStr
+    QualifiedContainmentReference => "a container.member reference resolved through containment" as NonEmptyStr
+    SameSpellingInTwoModules => "one spelling declared in two modules, where resolution may bind the wrong declaration without any diagnostic" as NonEmptyStr
+  }
+}
+
+data step0_reference_family_roster: List<Step0ReferenceFamily> = [
+  TypeReference,
+  OrdinaryFunctionCall,
+  ConstructorOrRecordConstruction,
+  BareCoproductVariant,
+  QualifiedContainmentReference,
+  SameSpellingInTwoModules
+]
+
+// THE DISCRIMINATOR IS PAIRED, BEFORE AND AFTER THE STRIP, per family. An after-only reading cannot
+// tell a binding that never existed from one that moved.
+data step0_family_discriminator_law: NonEmptyStr = "each family in the roster is observed as a PAIR -- the same occurrence before the strip and after it -- so a target that changed is distinguishable from one that was never bound; an after-only observation is not an observation of this class" as NonEmptyStr
+
+// THE OUTCOME AXIS IS WIDER THAN THE ATTRIBUTION AXIS, and conflating them is how a census reports
+// full coverage while measuring only its successes. v1_compiler's UnlistedImportBindingSource is the
+// right SOURCE-ATTRIBUTION axis and must be REUSED rather than re-coined -- but it answers how a
+// SUCCESSFUL binding was sourced and has no arms for unresolved, ambiguous, target-changed or
+// unobserved. Those are outcomes, they belong in an outer result, and an occurrence that reached no
+// outcome is Unobserved rather than absent.
+type Step0OccurrenceOutcome
+  = OccurrenceBound
+  | OccurrenceUnresolved
+  | OccurrenceAmbiguous
+  | OccurrenceTargetChanged
+  | OccurrenceUnobserved
+
+// THE CONSERVATION LAWS. They are stated as rows rather than as a checker because no producer
+// exists to check anything yet; when one lands, these are what it must satisfy, and the check is
+// theirs to execute rather than this module's to promise.
+//
+// THE FOURTH IS A FREE LIVENESS CONTROL AND THE CHEAPEST ONE HERE. In a FULLY STRIPPED subject
+// ListedImport must be uninhabited, because no import statement survives to list anything. A
+// post-strip row reporting ListedImport therefore falsifies at least one of: the strip removed
+// every applicable statement, the census observed the STRIPPED graph, the classifier read the
+// correct graph, and the rows are bound to the correct source population. It costs one predicate
+// and it discriminates four different ways of being wrong.
+type Step0CensusConservationLaw
+  = OccurrencesPartitionExactly
+  | NoDuplicateDispositions
+  | NoListedImportAfterAFullStrip
+  | NoRowBoundToAForeignSubject
+
+fn step0_conservation_law_statement(law: Step0CensusConservationLaw) -> NonEmptyStr {
+  match law {
+    OccurrencesPartitionExactly =>
+      "discovered occurrences == bound + unresolved + ambiguous + target_changed + unobserved" as NonEmptyStr
+    NoDuplicateDispositions =>
+      "no occurrence carries two dispositions; duplicate dispositions == 0" as NonEmptyStr
+    NoListedImportAfterAFullStrip =>
+      "in a fully stripped subject, rows attributed to ListedImport == 0" as NonEmptyStr
+    NoRowBoundToAForeignSubject =>
+      "rows whose subject identity differs from the receipt's subject population identity == 0" as NonEmptyStr
+  }
+}
+
+data step0_census_conservation_laws: List<Step0CensusConservationLaw> = [
+  OccurrencesPartitionExactly,
+  NoDuplicateDispositions,
+  NoListedImportAfterAFullStrip,
+  NoRowBoundToAForeignSubject
+]
+
+// THE IDENTITY FIELDS A CENSUS RECEIPT MUST CARRY. Each names a thing the census could otherwise be
+// silently wrong about: which tree, which compiler, which population before and after the strip,
+// which resolver policy answered the bindings, which roster the families came from, which row
+// schema the rows were written against, and whether the observation finished.
+type Step0CensusReceiptField
+  = CensusSourceCommit
+  | CensusSourceTree
+  | CensusCompilerExecutable
+  | CensusCollectorSubjectVectorIdentity
+  | CensusPreStripPopulationIdentity
+  | CensusStrippedPopulationIdentity
+  | CensusResolverPolicyIdentity
+  | CensusReferenceFamilyRosterIdentity
+  | CensusRowSchemaIdentity
+  | CensusCompletenessStanding
+
+fn step0_census_receipt_field_reason(field: Step0CensusReceiptField) -> NonEmptyStr {
+  match field {
+    CensusSourceCommit => "which revision the census was taken at" as NonEmptyStr
+    CensusSourceTree => "which content that revision held" as NonEmptyStr
+    CensusCompilerExecutable => "which compiler answered the bindings; a different binary is a different oracle" as NonEmptyStr
+    CensusCollectorSubjectVectorIdentity => "which collected population the census is about, named by the collector that produced it" as NonEmptyStr
+    CensusPreStripPopulationIdentity => "the before half of every paired family observation" as NonEmptyStr
+    CensusStrippedPopulationIdentity => "the after half, and the population the ListedImport control is asserted against" as NonEmptyStr
+    CensusResolverPolicyIdentity => "which resolution policy was in force; bare-name recovery is policy-dependent and it is the mechanism under investigation" as NonEmptyStr
+    CensusReferenceFamilyRosterIdentity => "which roster the families came from, so a census cannot silently drop a family it could not discriminate" as NonEmptyStr
+    CensusRowSchemaIdentity => "which row shape the rows were written against, so a reader joining old and new rows refuses instead of mixing them" as NonEmptyStr
+    CensusCompletenessStanding => "whether the observation finished; an incomplete census is not a smaller census" as NonEmptyStr
+  }
+}
+
+data step0_census_receipt_fields: List<Step0CensusReceiptField> = [
+  CensusSourceCommit,
+  CensusSourceTree,
+  CensusCompilerExecutable,
+  CensusCollectorSubjectVectorIdentity,
+  CensusPreStripPopulationIdentity,
+  CensusStrippedPopulationIdentity,
+  CensusResolverPolicyIdentity,
+  CensusReferenceFamilyRosterIdentity,
+  CensusRowSchemaIdentity,
+  CensusCompletenessStanding
+]
+
+// A PROHIBITION THAT TRAVELS WITH THE CONTRACT, because it is the shortcut a producer author will
+// reach for. UnlistedImportUse is advisory today (FloorNotYet). Flipping it to ENFORCED to make
+// Step 0's result visible would change the acceptance path while measuring it and fuse census work
+// with policy promotion -- two changes wearing one name, and the measurement is the one that
+// silently becomes uninterpretable. Advisory status is exactly why the compile VERDICT cannot
+// substitute for the attribution; it is not a reason to skip the attribution.
+data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may not promote UnlistedImportUse from advisory to enforced in order to observe its own subject; the acceptance path may not be changed by the change that measures it" as NonEmptyStr
+
+// AND THE EXISTING CENSUS IS A CANDIDATE PRODUCER, NOT AN ESTABLISHED ONE. compile_clean_unlisted_import_census
+// iterates DIAGNOSTICS and selects only UnlistedImportUse rows, and that emission is attached to a
+// masked type-name path -- so its coverage of bare call targets, constructors, bare variants and
+// dispatch is UNESTABLISHED. It returning the right arm for one planted call is not coverage of the
+// roster above, and treating it as complete would inherit an unmeasured blind spot as a baseline.
+data step0_census_candidate_producer_standing: NonEmptyStr = "compile_clean_unlisted_import_census is a CANDIDATE producer whose coverage of the reference-family roster is unestablished; it selects UnlistedImportUse diagnostic rows from a masked type-name emission path and has not been shown to discriminate bare call targets, constructors, bare variants or dispatch" as NonEmptyStr
+
+// THE STANDING, LAST, SO IT IS THE SENTENCE A READER LEAVES WITH: this contract is DECLARED and NO
+// PRODUCER INHABITS IT. gunbc.namespace_step0_canary_v2 says the same thing from the other side, in
+// its receipt's ImportDependenceNotJudged arm. Two rows, one fact, and neither is evidence that the
+// observation happened.
+data step0_binding_provenance_receipt_contract: NonEmptyStr = "DECLARED, NO PRODUCER INHABITS IT -- the typed shape of the Step 0 binding-provenance census: occurrence-denominated rows over the frozen reference-family roster, observed as before/after pairs, carrying the identity fields above and satisfying the conservation laws above. No producer in this repository fills it, and this declaration is not evidence that any observation was made." as NonEmptyStr
