@@ -53,6 +53,37 @@ import v2.std.collection { Absent, Present }
 // become permanent by default.
 data merge_queue_admission_rebind: DissolutionCondition = unbound_dissolution(description: "REBIND-OR-DELETE-ON: MAIN-6 lands the BusinessMain source-publication bridge and ordinary publication stops going through GitHub's merge queue. The exact-subject and ordering laws here are about a publication rendezvous, not about GitHub, so they rebind to the bridge's rendezvous; the GitHub-shaped observations (MergeQueueStanding, the merge_group trigger enrolment) delete with the publication path they read. Whichever happens, this module does not survive MAIN-6 unexamined.")
 
+// WHAT THIS DOES NOT SOLVE, STATED AS A NON-GOAL SO NOBODY LATER READS IT AS RETIRED.
+//
+// A queue serializes COMPOSITIONS. It cannot semantically compose two edits to the same
+// multi-kilobyte authority row: it composes trees, and two authors appending to one generated
+// projection produce a textual conflict that no ordering resolves. Measured on 2026-09-03, #10194
+// merged and knocked two sibling pull requests DIRTY on one generated projection; a queue would not
+// have prevented it. So the one-row/one-writer rule for shared authority rows STANDS, and the queue
+// is not an argument for relaxing it. What the queue removes is stale-green admission and the
+// publication race; what it leaves untouched is shared-row authorship.
+//
+// THE BOUNDED GAP THIS MODULE LANDS WITH, and its trigger.
+//
+// Nothing here proves that the required aggregate EXECUTES on a real merge_group composition,
+// because no queue exists to compose one. The half this repository owns is asserted by witness from
+// the workflow authority -- witness_floor_workflow lists the merge_group trigger, so the required
+// check can schedule for a composition. The world half -- that GitHub builds the composition, that
+// the aggregate runs on it, and that a green candidate advances -- is unobservable from inside the
+// repository and stays unobserved until the queue is enabled. That is a gap in the EVIDENCE, not a
+// weaker claim: MergeQueueOperational is not reported for gunb-ai/gunbc, because its standing reads
+// NoMergeQueueRule.
+data merge_queue_world_half_gap: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the merge queue is enabled on gunb-ai/gunbc after operator sign-off (gunbc.repo_ruleset desired_merge_queue moves to MergeQueueSignedOff), and one merge_group run of the required aggregate is observed on a queue-built composition -- the run's subject commit equal to the composition GitHub fast-forwards. Until that observation exists, the exact-subject and ordering laws below are established over authored inputs only, and the terminal for this repository is MergeQueueUnconfigured. This gap is why merge_queue_terminal reports a terminal rather than this module asserting one.")
+
+// THE BYPASS FACT IS UNDETERMINED FROM INSIDE THIS SESSION AND IS RECORDED AS SUCH.
+// Three reads of ruleset 16178731 on 2026-09-03 returned two answers: two identities saw no
+// bypass_actors key and current_user_can_bypass "never"; a third capture reported an `always`
+// repository-role bypass. Both can be true, because the field is READER-RELATIVE -- an identity that
+// CAN bypass sees the actor, one that cannot does not. So the honest state is neither "no bypass
+// exists" nor "an always-bypass exists": it is that the answer depends on who asks, and no reader
+// available here can settle it. That is exactly the shape MergeQueueExclusive exists to hold, and it
+// is why Exclusive is a separate constructor rather than a field on Operational.
+
 // THE QUEUE ENTRY. Four commit identities are involved and collapsing any two of them is how a
 // queue silently stops providing its guarantee, so each is its own field.
 //
@@ -338,11 +369,11 @@ fn merge_queue_terminal(
     MergeQueueConfigured {
       grouping_strategy: g,
       merge_method: _,
-      check_response_timeout_minutes: _,
+      check_response_timeout: _,
       max_entries_to_build: _,
       max_entries_to_merge: _,
       min_entries_to_merge: _,
-      min_entries_to_merge_wait_minutes: _,
+      min_entries_to_merge_wait: _,
     } =>
       if !floor_workflow_admits_merge_group() {
         MergeQueueUnconfigured { reason: "the required workflow does not list the merge_group trigger, so its check can never schedule for a queue composition" }

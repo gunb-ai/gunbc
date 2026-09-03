@@ -2,7 +2,8 @@ module test.claim.repo_ruleset_witness_test
 
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { witness_floor_workflow_job_id }
+import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout_minutes }
+import std.measure { minute, minute_count }
 import extdeps.github.actions { github_actions_app_integration_id }
 import gunbc.repo_ruleset {
   desired_required_contexts,
@@ -20,6 +21,7 @@ import gunbc.repo_ruleset {
   MergeQueueUnsigned,
   MergeQueueSignedOff,
   merge_queue_projection_refusal,
+  merge_queue_check_response_timeout,
 }
 import v2.std.collection { Absent, Present }
 import extdeps.github.rulesets {
@@ -54,6 +56,8 @@ import extdeps.github.rulesets {
   MergeQueueGroupingStrategy,
   merge_queue_grouping_strategy_wire_label,
   merge_queue_merge_method_wire_label,
+  merge_queue_entry_count,
+  merge_queue_entry_count_value,
   ruleset_rule_type_wire_label,
 }
 
@@ -314,7 +318,16 @@ test fn w_the_unsigned_proposal_contributes_no_rule_to_what_converge_sends() -> 
 test fn w_the_held_proposal_is_the_allgreen_squash_one() -> Bool {
   merge_queue_grouping_strategy_wire_label(g: gunbc_merge_queue_proposal.grouping_strategy) == "ALLGREEN"
     && merge_queue_merge_method_wire_label(m: gunbc_merge_queue_proposal.merge_method) == "SQUASH"
-    && gunbc_merge_queue_proposal.max_entries_to_merge == 1
+    && merge_queue_entry_count_value(gunbc_merge_queue_proposal.max_entries_to_merge) == 1
+}
+
+// THE TIMEOUT IS AN ORDERING, NOT A NUMBER, and this is the trap the assertion exists for. A queue
+// whose check response timeout sits BELOW the repository's own execution envelope dequeues runs
+// that were going to pass -- it manufactures queue failures out of slow greens. Asserting the
+// ordering rather than 210 means raising the floor lane's timeout cannot silently invert it; a
+// literal here would have gone stale on that edit with nothing going red.
+test fn w_the_queue_timeout_is_never_below_the_floors_execution_envelope() -> Bool {
+  minute_count(gunbc_merge_queue_proposal.check_response_timeout) > witness_floor_lane_timeout_minutes
 }
 
 // A LIVE QUEUE NOBODY SIGNED OFF IS REPORTED. This is the web-form change the module exists to stop
@@ -338,11 +351,11 @@ fn live_queue(grouping: MergeQueueGroupingStrategy) -> MergeQueueStanding {
   MergeQueueConfigured {
     grouping_strategy: grouping,
     merge_method: QueueSquash,
-    check_response_timeout_minutes: 180,
-    max_entries_to_build: 5,
-    max_entries_to_merge: 1,
-    min_entries_to_merge: 1,
-    min_entries_to_merge_wait_minutes: 5,
+    check_response_timeout: merge_queue_check_response_timeout(),
+    max_entries_to_build: merge_queue_entry_count(count: 5),
+    max_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge_wait: minute(count: 5),
   }
 }
 

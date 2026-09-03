@@ -6,6 +6,8 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
+import std.nat { Nat }
+import std.measure { Measure, Count, One, Minute, minute, measure_count }
 import v2.std.collection { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -300,6 +302,24 @@ fn rule_is_merge_queue(rule: RulesetRuleWire) -> Bool {
   }
 }
 
+// THE WIRE CARRIES BARE NUMBERS AND THE DOMAIN DOES NOT, which is this module's stated split
+// applied to the fields that bear units. GitHub's merge_queue `parameters` object sends plain JSON
+// integers and is read as such; the STANDING is the domain, and there those numbers are a duration
+// and a count of queue entries. std.measure already owns both, so carrying them as Int here would be a second
+// authority for minutes and for cardinality (DESIGN section 2: net concepts must not grow by
+// re-invention). The distinction is load-bearing rather than decorative: the two timeouts and the
+// four entry counts are all bare integers on the wire, and only the carrier stops a wait in
+// minutes being compared against a count of entries.
+type MergeQueueEntryCount = Measure<Count, One, Nat>
+
+fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
+  Measure { count: count }
+}
+
+fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+  measure_count(c)
+}
+
 // THREE STATES FOR THE SAME REASON RequiredStatusCheckStanding HAS THREE. "No queue is configured"
 // and "a queue is configured with these settings" are different facts with different remedies, and
 // both would render as a default-valued record under a projection returning bare settings. The
@@ -310,11 +330,11 @@ type MergeQueueStanding
   | MergeQueueConfigured {
       grouping_strategy: MergeQueueGroupingStrategy
       merge_method: MergeQueueMergeMethod
-      check_response_timeout_minutes: Int
-      max_entries_to_build: Int
-      max_entries_to_merge: Int
-      min_entries_to_merge: Int
-      min_entries_to_merge_wait_minutes: Int
+      check_response_timeout: Minute
+      max_entries_to_build: MergeQueueEntryCount
+      max_entries_to_merge: MergeQueueEntryCount
+      min_entries_to_merge: MergeQueueEntryCount
+      min_entries_to_merge_wait: Minute
     }
   | MultipleMergeQueueRules { count: Int }
 
@@ -328,15 +348,13 @@ fn merge_queue_standing(rules: List<RulesetRuleWire>) -> MergeQueueStanding {
     } else {
       fold(matched, init: NoMergeQueueRule, f: fn(_, rule) {
         MergeQueueConfigured {
-          grouping_strategy:
-            parse_merge_queue_grouping_strategy(raw: rule.parameters.grouping_strategy),
-          merge_method:
-            parse_merge_queue_merge_method(raw: rule.parameters.merge_method),
-          check_response_timeout_minutes: rule.parameters.check_response_timeout_minutes,
-          max_entries_to_build: rule.parameters.max_entries_to_build,
-          max_entries_to_merge: rule.parameters.max_entries_to_merge,
-          min_entries_to_merge: rule.parameters.min_entries_to_merge,
-          min_entries_to_merge_wait_minutes: rule.parameters.min_entries_to_merge_wait_minutes,
+          grouping_strategy: parse_merge_queue_grouping_strategy(raw: rule.parameters.grouping_strategy),
+          merge_method: parse_merge_queue_merge_method(raw: rule.parameters.merge_method),
+          check_response_timeout: minute(count: rule.parameters.check_response_timeout_minutes),
+          max_entries_to_build: merge_queue_entry_count(count: rule.parameters.max_entries_to_build),
+          max_entries_to_merge: merge_queue_entry_count(count: rule.parameters.max_entries_to_merge),
+          min_entries_to_merge: merge_queue_entry_count(count: rule.parameters.min_entries_to_merge),
+          min_entries_to_merge_wait: minute(count: rule.parameters.min_entries_to_merge_wait_minutes),
         }
       })
     }

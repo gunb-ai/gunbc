@@ -14,7 +14,8 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.repository { gunbc_repository }
-import gunbc.witness_floor_workflow { witness_floor_workflow_job_id }
+import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout_minutes }
+import std.measure { Minute, minute, minute_count }
 import extdeps.github.actions { github_actions_app_integration_id }
 import extdeps.github.rulesets
 import extdeps.github.rulesets {
@@ -51,6 +52,9 @@ import extdeps.github.rulesets {
   merge_queue_standing,
   merge_queue_grouping_strategy_wire_label,
   merge_queue_merge_method_wire_label,
+  MergeQueueEntryCount,
+  merge_queue_entry_count,
+  merge_queue_entry_count_value,
   ruleset_rule_types,
   ruleset_rule_type_wire_label,
   ruleset_enforcement_wire_label,
@@ -187,14 +191,19 @@ fn desired_ruleset_conditions() -> RulesetConditionsWire {
 // MergeQueueSignedOff the operator's ruling is a required field, so the arm cannot be entered
 // without recording who decided; that arm is what a later change flips, and flipping it is a
 // one-row edit in this file rather than a web form.
+// EVERY PARAMETER GITHUB REQUIRES, NOT A BOOLEAN. A `merge_queue_required: Bool` would say "queue
+// on" while seven unmodeled parameters decided what the queue DOES -- provider defaults standing as
+// a second authority beside our own declaration, which is the fork DESIGN section 3 forbids. So the
+// policy is the complete documented parameter set of the merge_queue rule; there is no field left
+// to a default.
 type MergeQueuePolicy {
   grouping_strategy: MergeQueueGroupingStrategy
   merge_method: MergeQueueMergeMethod
-  check_response_timeout_minutes: Int
-  max_entries_to_build: Int
-  max_entries_to_merge: Int
-  min_entries_to_merge: Int
-  min_entries_to_merge_wait_minutes: Int
+  check_response_timeout: Minute
+  max_entries_to_build: MergeQueueEntryCount
+  max_entries_to_merge: MergeQueueEntryCount
+  min_entries_to_merge: MergeQueueEntryCount
+  min_entries_to_merge_wait: Minute
 }
 
 type MergeQueueDesire
@@ -214,25 +223,47 @@ type MergeQueueDesire
 // them. SQUASH is what keeps the queue's publication the same shape as the one this repository
 // already documents.
 //
-// check_response_timeout_minutes 180: the floor lane's own declared timeout in
-// gunbc.witness_floor_workflow is 180 minutes, and a queue whose response timeout is shorter than
-// the check it waits on dequeues green work for being slow. It is the same number because it is
-// the same bound, not a coincidence.
+// check_response_timeout IS DERIVED FROM THE FLOOR'S OWN ENVELOPE AND IS NOT A CONSTANT HERE. It
+// reads gunbc.witness_floor_workflow witness_floor_lane_timeout_minutes and adds a declared margin.
+// A queue whose response timeout is BELOW the repository's execution envelope manufactures queue
+// failures out of runs that were going to pass: it dequeues green work for being slow, and the
+// author of the next timeout bump would have no way to know a second number tracked the first.
+// Transcribing 180 here would have been exactly that second authority, so the number is read from
+// the row that owns it -- and the witness asserts the ordering rather than the value, so raising
+// the floor's timeout cannot silently invert it.
 //
 // The entry counts are the conservative end of the documented ranges: build ahead of the head so a
 // candidate exists when the head merges, and merge one at a time so a failure names one pull
 // request rather than a batch. min_entries_to_merge_wait_minutes 5 bounds how long a lone entry
 // waits for a batch that is not coming, which is the starvation shape this proposal targets.
+// The margin covers queue-side scheduling either side of the check itself -- the composition being
+// built and the result being reported -- which is time the floor's own job timeout does not bound.
+data merge_queue_response_margin_minutes: Int = 30
+
+fn merge_queue_check_response_timeout() -> Minute {
+  minute(count: witness_floor_lane_timeout_minutes + merge_queue_response_margin_minutes)
+}
+
 data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
   grouping_strategy: AllGreenGrouping,
   merge_method: QueueSquash,
-  check_response_timeout_minutes: 180,
-  max_entries_to_build: 5,
-  max_entries_to_merge: 1,
-  min_entries_to_merge: 1,
-  min_entries_to_merge_wait_minutes: 5,
+  check_response_timeout: merge_queue_check_response_timeout(),
+  max_entries_to_build: merge_queue_entry_count(count: 5),
+  max_entries_to_merge: merge_queue_entry_count(count: 1),
+  min_entries_to_merge: merge_queue_entry_count(count: 1),
+  min_entries_to_merge_wait: minute(count: 5),
 }
 
+// DO NOT ENABLE THE QUEUE IN THE GITHUB WEB UI. THE FLIP WOULD REVERSE ITSELF.
+//
+// This is sharper than the ordinary objection to out-of-band actuation, and it is stated at the
+// sign-off row because that is where a future operator will be tempted to take the shortcut. This
+// module emits the ruleset as a WHOLE-RULESET PUT of exactly the rules it declares. A merge_queue
+// rule enabled through the web form is therefore unmodeled, and the next converge run would send a
+// ruleset without it -- deleting it. A UI flip is not a change that skips the model; it is a change
+// with a SCHEDULED, SILENT SELF-REVERSAL. (The actuation refusal below now stops that specific
+// deletion from happening quietly, which turns the reversal into a stopped line -- but a stopped
+// converge is not the queue being configured either. The route that works is signing this row.)
 data desired_merge_queue: MergeQueueDesire = MergeQueueUnsigned {
   proposal: gunbc_merge_queue_proposal,
   awaiting: unbound_dissolution(description: "DISSOLVE-ON: the operator rules on enabling the merge queue for gunb-ai/gunbc. The ruling replaces this arm with MergeQueueSignedOff carrying the ruling text, at which point gunbc_merge_queue_proposal becomes actuated desired state and a live ruleset without the rule is a divergence converge repairs. Until then the proposal is declared and diffed and never written, and converge REFUSES to actuate at all while the live ruleset carries a merge_queue rule this projection cannot express -- see merge_queue_projection_refusal."),
@@ -540,11 +571,11 @@ fn merge_queue_setting_drifts(
   policy: MergeQueuePolicy,
   grouping: MergeQueueGroupingStrategy,
   method: MergeQueueMergeMethod,
-  timeout: Int,
-  build: Int,
-  merge_max: Int,
-  merge_min: Int,
-  wait: Int,
+  timeout: Minute,
+  build: MergeQueueEntryCount,
+  merge_max: MergeQueueEntryCount,
+  merge_min: MergeQueueEntryCount,
+  wait: Minute,
 ) -> List<RulesetDivergence> {
   fold(
     [
@@ -555,28 +586,28 @@ fn merge_queue_setting_drifts(
       ),
       setting_drift(
         setting: "check_response_timeout_minutes",
-        observed: to_string(timeout),
-        desired: to_string(policy.check_response_timeout_minutes),
+        observed: to_string(minute_count(timeout)),
+        desired: to_string(minute_count(policy.check_response_timeout)),
       ),
       setting_drift(
         setting: "max_entries_to_build",
-        observed: to_string(build),
-        desired: to_string(policy.max_entries_to_build),
+        observed: to_string(merge_queue_entry_count_value(build)),
+        desired: to_string(merge_queue_entry_count_value(policy.max_entries_to_build)),
       ),
       setting_drift(
         setting: "max_entries_to_merge",
-        observed: to_string(merge_max),
-        desired: to_string(policy.max_entries_to_merge),
+        observed: to_string(merge_queue_entry_count_value(merge_max)),
+        desired: to_string(merge_queue_entry_count_value(policy.max_entries_to_merge)),
       ),
       setting_drift(
         setting: "min_entries_to_merge",
-        observed: to_string(merge_min),
-        desired: to_string(policy.min_entries_to_merge),
+        observed: to_string(merge_queue_entry_count_value(merge_min)),
+        desired: to_string(merge_queue_entry_count_value(policy.min_entries_to_merge)),
       ),
       setting_drift(
         setting: "min_entries_to_merge_wait_minutes",
-        observed: to_string(wait),
-        desired: to_string(policy.min_entries_to_merge_wait_minutes),
+        observed: to_string(minute_count(wait)),
+        desired: to_string(minute_count(policy.min_entries_to_merge_wait)),
       ),
     ],
     init: setting_drift(
@@ -605,11 +636,11 @@ fn merge_queue_divergences(observed: MergeQueueStanding) -> List<RulesetDivergen
     MergeQueueConfigured {
       grouping_strategy: g,
       merge_method: m,
-      check_response_timeout_minutes: t,
+      check_response_timeout: t,
       max_entries_to_build: b,
       max_entries_to_merge: xm,
       min_entries_to_merge: nm,
-      min_entries_to_merge_wait_minutes: w,
+      min_entries_to_merge_wait: w,
     } =>
       match desired_merge_queue_policy() {
         Absent => [MergeQueueUndeclared {

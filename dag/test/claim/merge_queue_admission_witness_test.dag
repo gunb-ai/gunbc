@@ -1,6 +1,7 @@
 module test.claim.merge_queue_admission_witness_test
 
 import std.types { Bool, CommitSha, Int }
+import std.measure { minute }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.checks { CheckConclusion, Success, Failure }
 import extdeps.github.rulesets {
@@ -12,6 +13,7 @@ import extdeps.github.rulesets {
   HeadGreenGrouping,
   UnrecognizedGroupingStrategy,
   QueueSquash,
+  merge_queue_entry_count,
   BypassNever,
   BypassAlways,
   BypassPullRequestsOnly,
@@ -249,11 +251,11 @@ fn configured_standing() -> MergeQueueStanding {
   MergeQueueConfigured {
     grouping_strategy: AllGreenGrouping,
     merge_method: QueueSquash,
-    check_response_timeout_minutes: 180,
-    max_entries_to_build: 5,
-    max_entries_to_merge: 1,
-    min_entries_to_merge: 1,
-    min_entries_to_merge_wait_minutes: 5,
+    check_response_timeout: minute(count: 210),
+    max_entries_to_build: merge_queue_entry_count(count: 5),
+    max_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge_wait: minute(count: 5),
   }
 }
 

@@ -1436,6 +1436,7 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // `--behavioral-receipt-plan` / `--behavioral-receipt-selftest` / `--behavioral-receipt-census`,
 // which have no automated consumer, so it is run deliberately or not at all. A declared scope
 // narrowing, not a climb; naming it here keeps its absence from reading as coverage.
+
 fn witness_floor_job() -> Job {
   Job {
     id: floor_lane_job_id,
@@ -1446,12 +1447,20 @@ fn witness_floor_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: 180,
+    timeout_minutes: witness_floor_lane_timeout_minutes,
     continue_on_error: none,
     concurrency: none,
     permissions: none
   }
 }
+
+// THE LANE'S EXECUTION ENVELOPE, NAMED BECAUSE A SECOND CONSUMER NOW READS IT. The value did not
+// change; it stopped being a literal. gunbc.repo_ruleset derives the merge queue's
+// check_response_timeout from this row, because a queue whose response timeout is BELOW the
+// repository's own execution envelope manufactures queue failures out of runs that were going to
+// pass -- it dequeues green work for being slow. Two numbers that must not drift apart are one
+// row, read twice (DESIGN section 3).
+data witness_floor_lane_timeout_minutes: Int = 180
 
 // MERGE_GROUP IS ENROLLED SO THE REQUIRED CHECK CAN RUN ON THE COMPOSED COMMIT, NOT ONLY ON EACH
 // BRANCH HEAD. Without this trigger a merge queue would create its merge-group commit and this
