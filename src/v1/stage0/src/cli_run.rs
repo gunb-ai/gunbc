@@ -4881,8 +4881,8 @@ fn truncate_histogram_label(s: &str, max: usize) -> String {
     }
 }
 
-/// One workspace-relative spelling for module-graph closure queries and their CLI projections.
-pub fn workspace_relative_repo_path(path: &str) -> String {
+/// Workspace-relative path for module-graph closure queries (`v2.lens.module_graph`).
+fn workspace_relative_repo_path(path: &str) -> String {
     let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
     let p = Path::new(&norm);
     if p.is_absolute() {
@@ -4890,6 +4890,26 @@ pub fn workspace_relative_repo_path(path: &str) -> String {
     } else {
         norm
     }
+}
+
+/// The exact module population returned by one entry resolution, in a stable display order.
+///
+/// This is a projection of the resolver result, never a second import or reference walk. Module
+/// identity joins the resolver's population; source path lets a prospective writer compare the
+/// file it is about to change with the routed entry's semantic subject.
+pub fn resolved_closure_members(graph: &ResolvedGraph) -> Vec<(String, String)> {
+    let mut members: Vec<(String, String)> = graph
+        .modules
+        .iter()
+        .map(|module| {
+            (
+                module.func_env.name.clone(),
+                workspace_relative_repo_path(&module.module.span.file),
+            )
+        })
+        .collect();
+    members.sort();
+    members
 }
 
 /// Entry-path variant of `workspace_relative_repo_path` that NEVER panics.

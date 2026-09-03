@@ -465,7 +465,7 @@ fn resolve_timed(
             // edit a file determine whether it is inside the held subject. This projection does
             // not walk imports or resolve a second time: the graph already retained the exact
             // module population to execute the routed entry, and this prints that authority.
-            for (module, file) in resolved_closure_members(&graph) {
+            for (module, file) in v1_compiler::cli_run::resolved_closure_members(&graph) {
                 eprintln!(
                     "[resolve] {}: closure member module={:?} file={:?}",
                     entry, module, file
@@ -483,24 +483,6 @@ fn resolve_timed(
             Err(ExitCode::from(1))
         }
     }
-}
-
-/// The exact module population returned by one entry resolution, in a stable display order.
-/// Module identity and source path are both carried: the former joins the resolver's population;
-/// the latter is what a prospective writer can compare with the path it is about to change.
-fn resolved_closure_members(graph: &ResolvedGraph) -> Vec<(String, String)> {
-    let mut members: Vec<(String, String)> = graph
-        .modules
-        .iter()
-        .map(|module| {
-            (
-                module.func_env.name.clone(),
-                v1_compiler::cli_run::workspace_relative_repo_path(&module.module.span.file),
-            )
-        })
-        .collect();
-    members.sort();
-    members
 }
 
 /// The per-witness cost line, with BOTH clocks labelled.
@@ -1176,8 +1158,8 @@ mod witness_report_line_tests {
 
 #[cfg(test)]
 mod resolved_closure_membership_tests {
-    use super::resolved_closure_members;
     use std::rc::Rc;
+    use v1_compiler::cli_run::resolved_closure_members;
     use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 
     /// The producer reads the resolver result itself and carries identities, not only the count.
