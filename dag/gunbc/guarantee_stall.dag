@@ -217,6 +217,26 @@ data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
 // repair is specifiable. Assignment is a dashboard routing fact and deliberately does not live in
 // this semantic carrier.
 
+// THE GENERATED-ARTIFACT REGISTRY IS GUARDED INDIRECTLY, AND THIS ROW EXISTS BECAUSE THE MUTATION
+// WAS RUN RATHER THAN REASONED ABOUT. Deleting a member from generated_artifact_registry and
+// running the gate produced EXACTLY ONE finding, and it was `.gitattributes` drift -- the
+// merge-driver enrollment projection enumerates registry members, so dropping one changes its
+// bytes. Nothing said what an author would actually want said: that a COMMITTED file at a
+// generated location is now adjudicated by nobody. The wall is real and it is one step removed
+// from its subject, so an artifact excluded from the .gitattributes projection for any reason
+// would leave the registry silently. Current rung is the honest one for a guard that holds by
+// side effect; the trigger names the direct capability, a census joining committed files at
+// generated-artifact locations back to registry membership, because a guard that answers about
+// enrollment bytes is not the guard that answers about orphaned artifacts.
+data generated_artifact_registry_membership_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a committed generated artifact leaves generated_artifact_registry and stops being adjudicated",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "gunbc.generated_artifact generated_artifact_registry", tail: Cons { head: "gunbc.generated_artifact_merge_driver", tail: Empty {} } } },
+  next_rung_trigger: "a census that enumerates committed files at every artifact_location and refuses one with no generated_artifact_registry member, so registry departure is refused by its own subject rather than by .gitattributes drift"
+}
+
 data doc_graph_orphan_population_stall: GuaranteeStall = GuaranteeStall {
   subject: "the derived documentation graph contains orphan documents",
   current: OutsideTheLadder,
@@ -651,6 +671,7 @@ data authority_target_same_expression_equivalence_stall: GuaranteeStall = Guaran
 }
 
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  generated_artifact_registry_membership_stall,
   authority_target_same_expression_equivalence_stall,
   runner_microvm_guest_size_derivation_stall,
   import_eligibility_resolution_stall,
@@ -672,6 +693,10 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   algebra_operation_associativity_undeclarable_stall,
   deployed_repository_empty_root_bootstrap_stall,
   prose_declared_rung_drop_stall,
+  two_nat_authorities_stall,
+  external_model_scope_live_cover_stall,
+  observation_heartbeat_lockstep_stall,
+  operation_argv_binding_wall_stall,
 ]
 
 // A STALL AT ITS CEILING IS NOT A STALL: the row would describe a class that already arrived, and
@@ -704,5 +729,50 @@ fn stall_roster_size(ss: List<GuaranteeStall>) -> Int {
     xs: ss,
     empty: 0,
     cons: fn(acc, s) { acc + 1 },
+  )
+}
+
+// THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
+//
+// These four stalls were DECLARED in this module and absent from all_guarantee_stalls, so the three
+// walls written over that roster ranged over 21 of the 25 rows this file declares. The walls were
+// green because their input was short, which is exactly the shape
+// gunbc.recurring_failure_mode check_subject_narrower_than_its_declared_claim names: a green check
+// whose declared subject is a strict superset of the population it actually ranges over.
+//
+// WHAT THIS CHECK COVERS AND WHAT IT DOES NOT, stated because a check that does not state its own
+// denominator cannot be distinguished from a complete one. It covers exactly these four subjects:
+// if any is dropped from the roster again, the fold refuses. It does NOT detect a NEW stall
+// declared and left unrostered -- that requires a corpus-wide census of GuaranteeStall
+// declarations joined against the roster, which is a separate obligation and is gated on whether
+// its RED is authorable at all (a stall declared in a module the roster cannot import may not be
+// expressible in any fixture, and a check whose RED has nowhere to live is a decoration).
+//
+// PRESENCE-EXACTLY-ONCE, NOT SET EQUALITY, and the asymmetry is deliberate: a new stall row must
+// be admitted without editing this list, while a lost one must refuse. Exactly-once also refuses
+// a DOUBLE entry, which set membership would accept and which reads as a merge that applied twice.
+// PINNED BY REFERENCE TO THE DECLARATIONS, NOT BY TRANSCRIBING THEIR SUBJECTS. An earlier draft
+// listed the four subjects as string literals and got all four WRONG -- the real subjects are full
+// sentences, so the fold would have found zero matches and refused, or worse, been "fixed" by
+// copying the prose in. A copied string is a second authority for text this file already declares,
+// and it rots the moment a subject is reworded. Naming the declaration is the section 3 move.
+data restored_stalls: List<GuaranteeStall> = [
+  two_nat_authorities_stall,
+  external_model_scope_live_cover_stall,
+  observation_heartbeat_lockstep_stall,
+  operation_argv_binding_wall_stall,
+]
+
+fn every_restored_stall_is_rostered_once(ss: List<GuaranteeStall>) -> Bool {
+  fold_list(
+    xs: restored_stalls,
+    empty: true,
+    cons: fn(acc, want) {
+      acc && fold_list(
+        xs: ss,
+        empty: 0,
+        cons: fn(n, s) { if s.subject == want.subject { n + 1 } else { n } },
+      ) == 1
+    },
   )
 }

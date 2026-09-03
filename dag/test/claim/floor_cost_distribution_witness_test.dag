@@ -40,7 +40,16 @@ import gunbc.floor_cost_distribution {
   permille_percentile,
   implied_clean_run_budget,
   same_head_eval_step_violations,
-  same_head_eval_steps_are_deterministic
+  same_head_eval_steps_are_deterministic,
+  IdentityEnvelope,
+  RunExtremeCount,
+  identity_envelopes,
+  complete_envelopes,
+  work_invariant_envelopes,
+  envelope_permille,
+  envelope_permilles,
+  worst_envelope_permille,
+  run_extreme_census
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -352,5 +361,180 @@ test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_co
   } && match same_head_eval_step_violations(pair: unavailable) |> first {
     Present { value: CompletedIdentityUnavailable { identity: id, module: m, completed_attempt: _, unavailable_attempt: _ } } => id == "m.hot.x" && m == "m.hot"
     _ => false
+  }
+}
+
+// THE BETWEEN-RUN ENVELOPE FIXTURE: THREE RUNS, BECAUSE TWO CANNOT EXHIBIT THE DEFECT THIS FAMILY
+// EXISTS TO REMOVE.
+//
+// The pairwise inflation above is computed across ROWS inside ONE pair of runs. Two runs are one
+// sample of the between-run quantity and one sample has no spread, so a pairwise figure is a point
+// estimate and any percentile taken over it indexes row-to-row heterogeneity instead. A fixture of
+// two runs cannot tell the two readings apart -- every derivation would agree by construction --
+// so the third run is what makes the discriminating red authorable at all: `m.hot.x` reaches its
+// maximum on run C, so a pair of A and B reports 1500 permille where the three-run envelope
+// reports 2250.
+data row_c1: FloorCostRow = FloorCostRow { identity: "m.hot.x", module: "m.hot", verdict_reached: true, cpu_ms: millisecond(count: 900), eval_steps: 9000 }
+data row_c2: FloorCostRow = FloorCostRow { identity: "m.mid.y", module: "m.mid", verdict_reached: true, cpu_ms: millisecond(count: 250), eval_steps: 4000 }
+data row_c3: FloorCostRow = FloorCostRow { identity: "m.mid.z", module: "m.mid", verdict_reached: true, cpu_ms: millisecond(count: 60), eval_steps: 900 }
+
+// PRESENT IN TWO RUNS OF THREE, and enormously spread across the two it is present in. An envelope
+// computed over "however many runs happened to carry the row" would report 5000 permille for it and
+// dominate every percentile and the worst-observed figure, which is precisely why completeness is
+// checked at identity grain rather than assumed.
+//
+// ITS BASELINE IS DELIBERATELY ABOVE THE `min_ms` FLOOR, and that is the whole point of the two
+// hundred. A first version measured 10ms, which the 50ms floor excluded on its own -- so the
+// completeness witness stayed GREEN under a mutation that broke the completeness predicate, because
+// the guarantee it was named for was being supplied by its NEIGHBOUR. Measured, not reasoned:
+// relaxing `runs_observed == runs_expected` to `>= 1` reddened two other witnesses and not that one.
+data row_a4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cpu_ms: millisecond(count: 200), eval_steps: 100 }
+data row_b4: FloorCostRow = FloorCostRow { identity: "m.part.p", module: "m.part", verdict_reached: true, cpu_ms: millisecond(count: 1000), eval_steps: 100 }
+
+// PRESENT IN ALL THREE RUNS AND CENSORED IN ONE. `verdict_reached: false` means the deadline fired
+// and the 1ms figure describes when, not what the row cost. Admitting it would report a 120x
+// envelope for a row nobody measured.
+data row_a5: FloorCostRow = FloorCostRow { identity: "m.cens.c", module: "m.cens", verdict_reached: true, cpu_ms: millisecond(count: 100), eval_steps: 2000 }
+data row_b5: FloorCostRow = FloorCostRow { identity: "m.cens.c", module: "m.cens", verdict_reached: true, cpu_ms: millisecond(count: 120), eval_steps: 2000 }
+data row_c5: FloorCostRow = FloorCostRow { identity: "m.cens.c", module: "m.cens", verdict_reached: false, cpu_ms: millisecond(count: 1), eval_steps: 5 }
+
+// A ROW THE ARTIFACT RECORDS AS COSTING NOTHING, present in every run. It is a real shape -- the
+// per-claim cost artifact records whole milliseconds and 1388 rows measured zero on one sampled run
+// -- and max-over-min is undefined for it, which is what makes the refusal arm authorable here.
+data row_a6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cpu_ms: millisecond(count: 0), eval_steps: 12 }
+data row_b6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cpu_ms: millisecond(count: 0), eval_steps: 12 }
+data row_c6: FloorCostRow = FloorCostRow { identity: "m.zero.q", module: "m.zero", verdict_reached: true, cpu_ms: millisecond(count: 0), eval_steps: 12 }
+
+data env_run_a: RunCost = RunCost { run: "runA" as NonEmptyStr, rows: [row_a1, row_a2, row_a3, row_a4, row_a5, row_a6] }
+data env_run_b: RunCost = RunCost { run: "runB" as NonEmptyStr, rows: [row_b1, row_b2, row_b3, row_b4, row_b5, row_b6] }
+data env_run_c: RunCost = RunCost { run: "runC" as NonEmptyStr, rows: [row_c1, row_c2, row_c3, row_c5, row_c6] }
+data env_runs: List<RunCost> = [env_run_a, env_run_b, env_run_c]
+
+fn envelope_named(identity: String) -> IdentityEnvelope? {
+  identity_envelopes(runs: env_runs) |> filter(e => e.identity == identity) |> first
+}
+
+fn complete_env(min_ms: Millisecond) -> List<IdentityEnvelope> {
+  complete_envelopes(envelopes: identity_envelopes(runs: env_runs), runs_expected: 3, min_ms: min_ms)
+}
+
+// THE DISCRIMINATING RED FOR INDEXING OVER RUNS RATHER THAN OVER ONE PAIR. The A/B pair the
+// two-run reading would have used reports 1500 permille for `m.hot.x` where the three-run envelope
+// reports 2250, so a derivation that stopped at a pair would satisfy every other assertion here and
+// be wrong by 750 permille -- 111ms of budget against the 500ms ceiling.
+test fn an_envelope_indexes_over_every_run_and_not_over_one_pair() -> Bool {
+  match envelope_named(identity: "m.hot.x") {
+    Absent => false
+    Present { value: e } =>
+      e.runs_observed == 3
+        && millisecond_count(m: e.min_ms) == 400
+        && millisecond_count(m: e.max_ms) == 900
+        && count(envelope_permilles(envelopes: [e]) |> filter(v => v == 2250)) == 1
+        && count(identity_inflation_permille(base: env_run_a, other: env_run_b, min_base_ms: millisecond(count: 50))
+             |> filter(v => v == 2250)) == 0
+  }
+}
+
+test fn the_extremes_name_the_runs_that_achieved_them() -> Bool {
+  match envelope_named(identity: "m.hot.x") {
+    Absent => false
+    Present { value: e } =>
+      (e.hottest_run as String) == "runC" && (e.coolest_run as String) == "runA" && e.work_invariant
+  }
+}
+
+// `m.part.p` is observed with a narrower envelope than the completeness predicate demands, so it
+// cannot silently contribute a spread computed over a different number of runs. THE DISCRIMINATING
+// RED IS ON THE FILTER ITSELF: dropping it moves the worst observed inflation from 2250 to 5000,
+// so the assertion over the complete population is not green by construction.
+test fn a_row_absent_from_one_run_is_excluded_at_identity_grain() -> Bool {
+  match envelope_named(identity: "m.part.p") {
+    Absent => false
+    Present { value: e } =>
+      e.runs_observed == 2
+        && count(envelope_permilles(envelopes: [e]) |> filter(v => v == 5000)) == 1
+        && count(complete_env(min_ms: millisecond(count: 50)) |> filter(c => c.identity == "m.part.p")) == 0
+        && worst_envelope_permille(envelopes: complete_env(min_ms: millisecond(count: 50))) == 2250
+        && worst_envelope_permille(envelopes: identity_envelopes(runs: env_runs)) == 5000
+  }
+}
+
+// Run C's `m.cens.c` row exists and reports 1ms. It is dropped because no verdict was reached,
+// which lowers `runs_observed` to 2 and removes the identity through the completeness predicate
+// rather than through a silent filter.
+test fn a_censored_figure_is_never_admitted_as_a_cost() -> Bool {
+  match envelope_named(identity: "m.cens.c") {
+    Absent => false
+    Present { value: e } =>
+      e.runs_observed == 2
+        && millisecond_count(m: e.min_ms) == 100
+        && count(complete_env(min_ms: millisecond(count: 50)) |> filter(c => c.identity == "m.cens.c")) == 0
+  }
+}
+
+// At a 50ms floor the complete population is `m.hot.x`, `m.mid.y` and `m.mid.z`; at 100ms the 50ms
+// baseline of `m.mid.z` leaves. That is the row whose 2000-permille "inflation" is one whole
+// millisecond of scheduling at a baseline the artifact records in whole milliseconds.
+test fn the_whole_millisecond_floor_drops_rows_it_cannot_measure() -> Bool {
+  count(complete_env(min_ms: millisecond(count: 50))) == 3
+    && count(complete_env(min_ms: millisecond(count: 100))) == 2
+    && count(complete_env(min_ms: millisecond(count: 100)) |> filter(c => c.identity == "m.mid.z")) == 0
+}
+
+// `m.mid.y` evaluated 4000 steps in runs A and C and 4400 in run B, so its cpu movement mixes a
+// tree change with inflation and it leaves the controlled population. The other two did not move.
+test fn equal_evaluator_work_is_carried_per_row_rather_than_recomputed() -> Bool {
+  let controlled = work_invariant_envelopes(envelopes: complete_env(min_ms: millisecond(count: 50)))
+  count(controlled) == 2
+    && count(controlled |> filter(c => c.identity == "m.mid.y")) == 0
+    && count(complete_env(min_ms: millisecond(count: 50)) |> filter(c => c.identity == "m.mid.y")) == 1
+}
+
+// Over the controlled population {`m.hot.x`, `m.mid.z`} run A is the coolest for BOTH and the
+// hottest for neither. That concentration is the shape a systematically cold machine produces;
+// under per-row jitter each of three runs would be coolest for about one row.
+test fn the_extreme_census_separates_a_property_of_the_run_from_a_property_of_the_row() -> Bool {
+  let census = run_extreme_census(
+    runs: env_runs,
+    envelopes: work_invariant_envelopes(envelopes: complete_env(min_ms: millisecond(count: 50)))
+  )
+  match census |> filter(c => (c.run as String) == "runA") |> first {
+    Absent => false
+    Present { value: a } => a.coolest_for == 2 && a.hottest_for == 0
+      && match census |> filter(c => (c.run as String) == "runB") |> first {
+           Absent => false
+           Present { value: b } => b.coolest_for == 0 && b.hottest_for == 1
+         }
+      && match census |> filter(c => (c.run as String) == "runC") |> first {
+           Absent => false
+           Present { value: c } => c.coolest_for == 0 && c.hottest_for == 1
+         }
+  }
+}
+
+// 500ms over 2250 permille floors to 222ms: the largest clean-run cost that still lands under the
+// ceiling after the worst inflation this sample observed. Integer division rounds the budget DOWN,
+// which is the safe direction for a limit.
+test fn the_worst_observed_envelope_feeds_the_budget_the_ceiling_implies() -> Bool {
+  millisecond_count(m: implied_clean_run_budget(
+    ceiling_ms: millisecond(count: 500),
+    inflation_permille: worst_envelope_permille(envelopes: work_invariant_envelopes(envelopes: complete_env(min_ms: millisecond(count: 50))))
+  )) == 222
+}
+
+// A ZERO BASELINE IS REFUSED AND NOT PLACED AT THE BOTTOM OF THE DISTRIBUTION. `m.zero.q` is
+// present in all three runs and measured 0ms in each, so its ratio does not exist. The
+// discriminating red is the second clause: a defaulted 0 or 1000 would appear in
+// `envelope_permilles`, and its absence there is what proves the refusal reaches the caller rather
+// than being smoothed. The `min_ms` floor excludes it independently, which is the belt this arm is
+// the braces for.
+test fn a_zero_baseline_has_no_ratio_and_says_so() -> Bool {
+  match envelope_named(identity: "m.zero.q") {
+    Absent => false
+    Present { value: e } =>
+      e.runs_observed == 3
+        && match envelope_permille(e: e) { Absent => true Present { value: _ } => false }
+        && count(envelope_permilles(envelopes: [e])) == 0
+        && count(complete_env(min_ms: millisecond(count: 50)) |> filter(c => c.identity == "m.zero.q")) == 0
   }
 }
