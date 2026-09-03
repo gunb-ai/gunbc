@@ -390,6 +390,58 @@ data gitattributes_committed_emit_drift_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "node://adhoc-16f7520a-85f lands: identify the authority edit that introduced the drift, regenerate .gitattributes from that authority, and restore a required generated-artifact drift gate so later authority/artifact disagreement refuses"
 }
 
+// NO MEASUREMENT CAMPAIGN CAN DISCHARGE THIS ARM, AND THAT IS WHY IT IS A STALL RATHER THAN UNBUILT
+// WORK. `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` states that its restoration
+// trigger's conjunct (ii) requires the cost basis to be INVARIANT OR BOUNDED BY CONSTRUCTION. The
+// invariance arm is measured and REFUTED. This row is about the other arm, at its own subject grain
+// -- not the whole disjunction, because collapsing the two is the exact defect gunbc#10260 repaired
+// in that row's own text, and repeating it here would reintroduce it one file away.
+//
+// THE REACHABILITY RESULT, which is what makes the blocker AwaitsOneGrounding rather than
+// ClimbableButUnbuilt. For observed pairwise ratios r1..rn with M = max(r1..rn), the evidence
+// establishes only that every bound K valid for those observations satisfies K >= M. Adding samples
+// may leave M unchanged or RAISE it; it cannot establish `for every admitted execution pair, ratio
+// <= K`. So an observed maximum is a FLOOR on any valid bound, never a bound -- and a percentile, a
+// confidence interval, or a long run of non-exceedances is not a substitute for a construction-
+// derived one. The rung_drop row already says this of one measurement; what is recorded here is the
+// general statement, so a future lane does not read that sentence as an invitation to sample more
+// hosts. A 12-run campaign reporting a worst-observed 2.280x is exactly the artifact that would be
+// offered, and it does not touch the arm.
+//
+// WHY THE PREREQUISITE IS A GROUNDING AND NOT AN IMPLEMENTATION: there is no closed admitted
+// envelope with every basis-varying component accounted for, so the work is not a decided
+// construction merely unstarted -- it is unspecifiable until that authority exists. The four
+// conjuncts below are ONE conjunctive grounding, not four alternative routes, and the trigger says
+// so, because a trigger satisfiable by any one of them would retire this row with the capability
+// still dead -- the section 4b(3) grain mismatch, arriving here as a section 4b(2) trigger.
+//
+// CEILING IS GUARANTEED AND NOT IMPOSSIBLE: a bound derived from admitted components and caps is a
+// proof from modeled structure, but an execution that exceeds it stays authorable. What the climb
+// removes is the silent acceptance, not the ability to write the program.
+//
+// CURRENT IS MITIGATABLE, DERIVED FROM THE DROP ROW RATHER THAN ASSERTED HERE. That row's TEMPORARY
+// RUNG sentence ends `acceptance still fail-closed`, so the failure this stall describes surfaces as
+// a typed refusal on a measurement that is not a stable property of the claim -- the failure occurs
+// and its harm is contained, which is rung one exactly. Had acceptance been permissive under an
+// unqualifiable cost, this row would sit BELOW the ladder and the honest field would say so.
+//
+// AND WHY THIS IS A STALL RATHER THAN A SECOND DROP, which the drop row settles in its own words:
+// `PREVIOUS RUNG: none for environment-independent claim-cost qualification -- that guarantee was
+// never held, and saying it was would be inventing a rung to drop from.` Nothing was lost, so a
+// drop's previous/temporary/reason fields have no answer here. The two rows are also different
+// facts: the drop states the standing unavailability, this states that one named restoration
+// conjunct is unreachable BY MEASUREMENT and what would reach it.
+data floor_cost_basis_boundedness_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the BOUNDEDNESS-BY-CONSTRUCTION arm of conjunct (ii) of gunbc.rung_drop floor_cost_claim_qualification_unavailable's restoration trigger: repeated execution measurement cannot establish it, because every observed maximum is a LOWER bound on the smallest valid bound rather than an upper bound over the admitted envelope",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "a typed construction-bound authority for the declared basis and subject grain, consumed by the required-floor verdict at that same grain, which (1) closes the admitted execution envelope; (2) accounts for every component capable of changing the basis, by removing it from the measured subject, charging it to that subject, assigning it an enforced finite cap, or refusing the envelope; (3) derives a finite bound from those admitted components and caps rather than from an observed sample maximum; and (4) carries discriminating execution evidence over the admitted corner cases plus an over-bound control refused on the real acceptance path"
+  },
+  population: BoundedPopulation { members: Cons { head: "gunbc.floor_cost_distribution.FloorCostRow.eval_steps", tail: Cons { head: "gunbc.floor_cost_distribution.RunCost.eval_steps", tail: Cons { head: "gunbc.rung_drop.floor_cost_claim_qualification_unavailable", tail: Empty {} } } } },
+  next_rung_trigger: "the construction-bound authority named in this row's grounding EXISTS and is CONSUMED by the required-floor verdict at the declared subject grain, with its over-bound control refused on the real acceptance path; no volume of execution sampling retires this row, and a widening of the measurement campaign does not move it"
+}
+
 // THE WALL DEADLINE STILL CHARGES A SHARED-ARTIFACT FILL TO WHICHEVER CLAIM PAID IT, and this row
 // exists because a comment beside the code would go stale on the day the population changes while
 // this row cannot. The 2026-08-27 attribution ruling has now been applied to three homes one at a
@@ -697,6 +749,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
+  floor_cost_basis_boundedness_stall,
 ]
 
 // A STALL AT ITS CEILING IS NOT A STALL: the row would describe a class that already arrived, and
