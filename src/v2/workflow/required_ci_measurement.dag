@@ -1,6 +1,7 @@
 module v2.workflow.required_ci_measurement
 
 import std.types { String, List, Bool }
+import v2.std.algebra { is_empty }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_int, json_string }
 
 // D0: measurement, publication and adjudication are three different facts. A subject may
@@ -18,8 +19,7 @@ type RequiredCiMeasurement
 
 fn required_ci_measurement_admitted(measurement: RequiredCiMeasurement) -> Bool {
   match measurement {
-    MeasurementCompleted { blockers: Empty {} } => true
-    MeasurementCompleted { blockers: Cons { head: _, tail: _ } } => false
+    MeasurementCompleted { blockers: blockers } => is_empty(xs: blockers)
     MeasurementUnreached { cause: _ } => false
   }
 }

@@ -5,6 +5,15 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use v1_compiler::cli_run::PhaseProfile;
 
+// HAND-RUST GATE explicit deferral. Lane: required-ci-measurement-host-realization. The authority
+// is `v2.workflow.required_ci_measurement`; this seed code realizes its filesystem write, JSON
+// transport, process exit and existing required-phase host diagnostics because required CI runs
+// the bootstrapped `claim_executor` before a generated replacement owns those effects. This adds
+// no competing domain model: the coproduct, blocker fields and build-unreached JSON originate in
+// `.dag`. It dissolves at the concrete ROADMAP row `v1-zero-hand-maintained-rust`, whose boundary
+// requires every tracked Rust file to be generated or deleted; at that row this realization is
+// generated from the measurement model or removed with the v1 seed. Until then this is counted
+// hand-maintained bootstrap surface, not a terminal Rust authority.
 const REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION: u8 = 1;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
