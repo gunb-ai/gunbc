@@ -45,6 +45,25 @@ import gunbc.namespace_step0_canary {
 // this collector does not model, a blob it could not read or that is not text, a declared root the
 // revision does not contain -- is a REFUSAL. So no cap, no unsupported git object and no read
 // failure can become a smaller SUCCESSFUL vector: the smaller-successful state has no constructor.
+// HOW THE LIVE HALF IS EXECUTED, stated here because it has no witness and the absence must not be
+// silent. Its route is the one gunbc.namespace_step0_canary is itself confined to: a local or CI
+// dispatch of gunbc.namespace_step0_canary_run run_current_step0_canary, which calls this fold and
+// hands what it collects to the strip producer. It has NO enrolled witness, and that is a route
+// deficit rather than a judgement about its worth -- a probe of it reaches four revision-addressed
+// git operations with no mock_response, so the hermetic floor refuses it before it reaches a
+// verdict, and the one lane that could reach those effects (v2.workflow.local_repo_wet_terminal)
+// refuses a member that completes over budget, which a read of every .dag object under three roots
+// does. Mocking is not the missing piece and would be worse than the gap: the subject IS the
+// repository's tree at HEAD, so a mocked revision would let a collector reading the WRONG tree pass,
+// which is the single defect this module exists to make unrepresentable.
+//
+// THE CAPABILITY THAT CLOSES IT: a lane that can execute a whole-tree object-store read within a
+// declared budget -- batched object reads rather than one dispatch per member is the mechanism, and
+// a scheduled CI dispatch of the canary run whose per-run receipt is the executing consumer is the
+// other shape. Until one exists, the PURE half carries the enrolled evidence
+// (test.claim.namespace_step0_subject_collector_witness: the entry decoder, the subject filter, the
+// declared-root and empty-population refusals, the blob-kind rule) and the live half is executed by
+// hand on the canary's own route.
 type Step0SubjectPinRefusal
   = Step0HeadCommitUnreadable { detail: String }
   | Step0HeadTreeUnreadable { detail: String }
