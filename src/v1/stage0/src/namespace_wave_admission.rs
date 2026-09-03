@@ -753,29 +753,21 @@ pub struct TransitionAdmission {
 /// rather than assumed, because assuming is what I got wrong the last two times: main still
 /// declares HeldSpecificationSupersessionStanding in
 /// extdeps.cpu.ampere_altra_platform_hw_design.subject and extdeps.publication does not carry it,
-/// so the deltas these five adjudicate are still producible and none of them is consumed.
+/// so the deltas these three adjudicate are still producible and none of them is consumed.
 ///
+/// TWO OF THE FIVE ARE GONE AND THAT IS THE SAME TRIGGER FIRING, NOT A SEPARATE DECISION. They
+/// adjudicated bindings inside `platform_facts_are_from_the_latest_revision`, and review 59072
+/// established that predicate as the dissolved variant-test shape, so this change DELETES the
+/// declaration rather than widening its match. A row naming a declaration that no longer exists
+/// matches no producible delta -- it is STALE, and a stale row refuses every unrelated PR in the
+/// repository, which is the failure mode this whole roster exists to avoid. Deleting the
+/// declaration and keeping its admission rows would have been the fabricated-debt shape: a
+/// permission over nothing that reads as coverage.
+///
+/// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
+/// deletion -- the specification record's field type, and the standing row's declared type and
+/// constructor. Their transition is still open for the reason stated above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform matcher, current arm",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.platform",
-            in_declaration: "platform_facts_are_from_the_latest_revision",
-            spelling: "HeldRevisionIsCurrentPublicCopy",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform matcher, unretrieved arm",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.platform",
-            in_declaration: "platform_facts_are_from_the_latest_revision",
-            spelling: "NewerRevisionExistsUnretrieved",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "gunbc#10011 supersession-standing re-home: specification record field type",
         subject: AdmissionSubject::Binding {
