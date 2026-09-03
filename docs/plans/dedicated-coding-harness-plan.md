@@ -386,6 +386,26 @@ guarded production reactivation, the two-identity readback and the validated reo
 reactivation arm into the production planned-effect sum belongs with DCH-0r-c's guarded producer, not
 with DCH-0r-a — no production consumer can use the arm before then.
 
+**DCH-0r-c's CONSTRUCTION HALF HAS LANDED, AND WHAT IT DOES NOT ESTABLISH IS THE LOAD-BEARING HALF OF
+THIS SENTENCE.** `gunbc.spark.serving_admission_fence` carries the locus, the three identities kept
+apart, the locus-keyed admission fence, the compare-and-swap onto `Draining`, the exact drain
+adjudicated as one reading with its revalidation, the occupancy grain, `BoundReactivationPlan`, the
+guarded producer and the two-identity readback with its validated reopening; the fence and the
+drained evidence are `sole_constructor`, so a plan cannot be assembled from a count taken outside a
+held fence. The production consumer is `gunbc.spark.serving_converge_slice_wet`
+`spark_serving_reactivation_standing_for`, which computes the remedy verdict from the host's own
+observation transaction and REFUSES on every host, because no admission-state authority and no
+active-turn population exist. The executable sum was NOT widened: the exclusion in
+`SparkServingExecutablePlannedEffect` and its witness still stand, and the plan carries its steps as
+a derivation rather than the `{ plan, steps }` field pair sketched above — storing them beside the
+plan would rebuild the authored-label-beside-unrelated-commands defect that exclusion holds shut.
+
+**What remains, and it is the receipt below rather than wiring:** a lease authority that admits every
+turn at a serving locus and can enumerate the population held there, a persisted admission state the
+fence can swap, and SSH to srv5/srv6 under an operator credential decision. Until those exist the
+Planned arm has never been reached from a production call site, and neither DCH-0r-a's nor DCH-0r-b's
+standing is retired.
+
 **Receipt:** a restart executed against a held fence, with the drain observed to zero under that
 same fence, and a post-restart incarnation readback. An exit status of zero from the invoking
 program establishes only that the program reported completion — service convergence still requires
