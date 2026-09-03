@@ -762,6 +762,18 @@ const RUNG_DROP_AUTHORITY_LABEL: &str = "rung drop authority consolidation gunbc
 /// whatever the roster contains, and it is stated on its own rather than as a subordinate clause of
 /// a snapshot that can go stale underneath it.
 ///
+/// NINETEENTH DISSOLUTION (2026-09-03). The three `gunbc#10011 supersession-standing re-home`
+/// rows are removed by their own trigger, which fired: #10011 merged as 4acf8ac234, so main
+/// carries the re-home and no run after it can produce those deltas. They arrived here through a
+/// merge rather than by being authored here -- this branch composed the roster from both sides
+/// when git cut its hunks through the middle of the records -- and the required run reported them
+/// as `3 consumed admission(s) due for deletion on this roster-touching change`.
+///
+/// THE OBLIGATION IS CHARGED TO THE TOUCHER AND THIS COMMIT IS ONE, which is the same rule the
+/// eighteenth dissolution above paid. A row whose subject has landed is not merely useless: it is
+/// stale on every subsequent run, so leaving it refuses unrelated changes. The roster shrinks with
+/// its subject or it becomes a tax on everyone downstream.
+///
 /// SEVENTEENTH TRANSITION (2026-09-03, gunbc#10106), AND IT LANDED ON A ROSTER THIS BRANCH AND
 /// MAIN EMPTIED INDEPENDENTLY, WHICH IS THE TRIGGER MECHANISM WORKING RATHER THAN A COLLISION.
 /// Main deleted the 57 consumed rows on one side while this branch deleted the same 57 on the
@@ -796,36 +808,6 @@ const RUNG_DROP_AUTHORITY_LABEL: &str = "rung drop authority consolidation gunbc
 /// deletion -- the specification record's field type, and the standing row's declared type and
 /// constructor. Their transition is still open for the reason stated above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: specification record field type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "AltraPlatformHwDesignSpecification",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, declared type",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "HeldSpecificationSupersessionStanding",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10011 supersession-standing re-home: platform standing row, constructor",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
-            in_declaration: "altra_platform_hw_design_supersession_standing",
-            spelling: "NewerRevisionExistsUnretrieved",
-            target: "extdeps.publication",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: RUNG_DROP_AUTHORITY_LABEL,
         subject: AdmissionSubject::Binding {
