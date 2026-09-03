@@ -90,12 +90,14 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
   filesystem_entry_presence,
   FilesystemFileObservation,
   FilesystemFileAbsent,
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_file_observation,
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
@@ -458,6 +460,15 @@ fn current_verification_selection_observe(
     ),
     name: verification_directory_segment,
   ) {
+    // The subject was never admitted, so nothing was looked for. Unreadable rather than absent:
+    // an unadmitted subject establishes no absence, and reading it as absent would be fail-open.
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      SelectionUnreadable {
+        cause: join([
+          "the verification root ", d, " is not a directory subject, so ", n,
+          " was never looked for: ", c,
+        ], ""),
+      }
     FilesystemEntryPresenceIndeterminate { cause: c } =>
       SelectionUnreadable {
         cause: join([
@@ -491,6 +502,10 @@ fn current_verification_selection_observe(
         FilesystemFileIndeterminate { cause: c } => SelectionUnreadable { cause: c }
         FilesystemFileObservationsDisagree { path: _, cause: c } =>
           SelectionUnreadable { cause: c }
+        FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+          SelectionUnreadable {
+            cause: join([d, " is not a directory subject, so ", n, " was never read: ", c], ""),
+          }
         FilesystemFileAbsent(_) => SelectionAbsent
         FilesystemFileRead { path: _, content: text } =>
           current_verification_selection_decode_document(
@@ -519,6 +534,13 @@ fn exact_verification_receipt_source_read(
     ),
     name: verification_directory_segment,
   ) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      ExactVerificationReceiptUnreadable {
+        detail: join([
+          "the verification root ", d, " is not a directory subject, so ", n,
+          " was never looked for: ", c,
+        ], ""),
+      }
     FilesystemEntryPresenceIndeterminate { cause: c } =>
       ExactVerificationReceiptUnreadable {
         detail: join([
@@ -549,6 +571,10 @@ fn exact_verification_receipt_source_read(
           ExactVerificationReceiptUnreadable { detail: c }
         FilesystemFileObservationsDisagree { path: _, cause: c } =>
           ExactVerificationReceiptUnreadable { detail: c }
+        FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+          ExactVerificationReceiptUnreadable {
+            detail: join([d, " is not a directory subject, so ", n, " was never read: ", c], ""),
+          }
         FilesystemFileAbsent(_) => ExactVerificationReceiptAbsent
         FilesystemFileRead { path: _, content: text } =>
           ExactVerificationReceiptPresent { text: text }

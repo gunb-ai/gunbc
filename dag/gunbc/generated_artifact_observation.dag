@@ -9,6 +9,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_listing_observation,
   filesystem_read_outcome,
   filesystem_file_observation,
@@ -107,6 +108,17 @@ fn observe_generated_artifact_with(a: GeneratedArtifact, rows: List<DirectoryLis
           GeneratedArtifactObservationRefused { artifact: a, path: path, cause: cause }
         FilesystemFileObservationsDisagree { path: _, cause } =>
           GeneratedArtifactObservationRefused { artifact: a, path: path, cause: cause }
+        // The refusal state this module already owns is the right destination, and the cause says
+        // the artifact's own path was inadmissible rather than that the host misbehaved.
+        FilesystemFileSubjectRefused { directory: d, name: n, cause } =>
+          GeneratedArtifactObservationRefused {
+            artifact: a,
+            path: path,
+            cause: join([
+              "the artifact path names ", n, " under ", d,
+              ", which is not a directory subject, so nothing was observed -- ", cause,
+            ], ""),
+          }
         FilesystemFileRead { path: _, content: committed_content } =>
           match artifact_generate(a: a) {
             ArtifactGenerationRefused { reason } =>

@@ -13,6 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
 }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
@@ -458,6 +459,16 @@ func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObserva
     ) {
       FilesystemEntryPresenceIndeterminate { cause: why } =>
         AllocationStoreSubstrateObservationRefused { path: spec.namespace_path, cause: why }
+      // The spec's own ancestor path was inadmissible, so the remedy is the spec rather than the
+      // host. Same stop, decided here, with the cause saying which.
+      FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
+        AllocationStoreSubstrateObservationRefused {
+          path: spec.namespace_path,
+          cause: join([
+            "the spec asked about ", n, " under ", d,
+            ", which is not a directory subject, so no listing was attempted -- ", why,
+          ], ""),
+        }
       FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
         prestate: AllocationStoreNamespaceAbsent {
           namespace: allocation_store_directory_absent(path: spec.namespace_path, evidence: established),
@@ -515,6 +526,14 @@ func observe_allocation_store_under_namespace_wet(
   ) {
     FilesystemEntryPresenceIndeterminate { cause: why } =>
       AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
+      AllocationStoreSubstrateObservationRefused {
+        path: spec.path,
+        cause: join([
+          "the spec asked about ", n, " under ", d,
+          ", which is not a directory subject, so no listing was attempted -- ", why,
+        ], ""),
+      }
     FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
       prestate: AllocationStoreNamespacePresent {
         namespace: namespace,

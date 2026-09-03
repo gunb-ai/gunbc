@@ -14,12 +14,14 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
   filesystem_entry_presence,
   FilesystemFileObservation,
   FilesystemFileAbsent,
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_file_observation,
   filesystem_established_absence_detail,
   filesystem_established_absence_path,
@@ -66,6 +68,7 @@ fn presence_arm(p: FilesystemEntryPresence) -> String {
     FilesystemEntryAbsent(_) => "absent"
     FilesystemEntryListed { directory: _, name: _ } => "listed"
     FilesystemEntryPresenceIndeterminate { cause: _ } => "indeterminate"
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => "subject-refused"
   }
 }
 
@@ -75,6 +78,7 @@ fn observation_arm(o: FilesystemFileObservation) -> String {
     FilesystemFileRead { path: _, content: _ } => "read"
     FilesystemFileIndeterminate { cause: _ } => "indeterminate"
     FilesystemFileObservationsDisagree { path: _, cause: _ } => "disagree"
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => "subject-refused"
   }
 }
 
@@ -175,6 +179,7 @@ test fn an_established_absence_names_its_directory_and_its_entry() -> Bool {
         == "no marker.json is listed in /opt/gunbc/state"
     FilesystemEntryListed { directory: _, name: _ } => false
     FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => false
   }
 }
 
@@ -263,14 +268,63 @@ test fn an_admissible_directory_still_reaches_both_transport_arms() -> Bool {
     && listing_arm(o: observe_directory(directory: ".", success: true)) == "listed"
 }
 
-// AND NO ABSENCE IS ESTABLISHED FOR A SUBJECT THAT WAS NEVER ADMITTED. This is the cell that
-// carries the defect all the way to the consumer: before the repair this answered "absent", so a
-// caller received a token authorizing a write derived from no directory.
-test fn an_inadmissible_subject_establishes_no_absence() -> Bool {
+// AND NO ABSENCE IS ESTABLISHED FOR A SUBJECT THAT WAS NEVER ADMITTED. Before the repair this
+// answered "absent", so a caller received a token authorizing a write derived from no directory.
+//
+// THE FIRST CUT OF THIS CELL ASSERTED "indeterminate" AND WAS WRONG, which is worth writing down
+// because the cell was GREEN and the fold it pinned was defective. Folding the subject refusal into
+// the indeterminate arm keeps the explanation for a human and discards the state for every program:
+// a consumer could tell "the caller named no directory" from "the host refused to list one" only by
+// parsing prose. A witness that pins that collapse as correct is not evidence -- it is the defect
+// with a green light on it.
+test fn an_inadmissible_subject_reaches_its_own_arm_rather_than_indeterminate() -> Bool {
   presence_arm(p: filesystem_entry_presence(
     listing: observe_directory(directory: "", success: true),
     name: "repo.json",
-  )) == "indeterminate"
+  )) == "subject-refused"
+}
+
+// AND THE ARM CARRIES THE TWO ARGUMENTS THAT NAME THE REMEDY. A refused subject is repaired by
+// fixing the CALLER'S ARGUMENT, so the arm has to say which argument; a cell that checked only the
+// tag would be satisfied by an arm that dropped both fields.
+test fn the_subject_refusal_names_the_directory_and_the_entry_it_was_asked_about() -> Bool {
+  match filesystem_entry_presence(
+    listing: observe_directory(directory: "", success: true),
+    name: "repo.json",
+  ) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: _ } =>
+      d == "" && n == "repo.json"
+    FilesystemEntryAbsent(_) => false
+    FilesystemEntryListed { directory: _, name: _ } => false
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+  }
+}
+
+// THE STATE SURVIVES THE SECOND FOLD, which is the half that makes it a carrier fact rather than a
+// local one. filesystem_file_observation is where consumers actually read, so a distinction that
+// died here would be invisible to every one of them.
+test fn the_subject_refusal_survives_through_the_file_observation() -> Bool {
+  observation_arm(o: filesystem_file_observation(
+    listing: observe_directory(directory: "", success: true),
+    name: "repo.json",
+    path: "/repo.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  )) == "subject-refused"
+}
+
+// THE SEPARATING CONTROL. An ADMITTED directory whose listing failed is still ordinary
+// indeterminate, at BOTH folds. Without this cell the three above are satisfied by a fold that
+// answers "subject-refused" for every stop, which would erase the host-fault state instead of the
+// caller-argument one -- the same defect pointed the other way.
+test fn an_admitted_directory_that_fails_to_list_stays_indeterminate() -> Bool {
+  presence_arm(p: filesystem_entry_presence(listing: unlistable(), name: "marker.json"))
+      == "indeterminate"
+    && observation_arm(o: filesystem_file_observation(
+      listing: unlistable(),
+      name: "marker.json",
+      path: "/opt/gunbc/state/marker.json",
+      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    )) == "indeterminate"
 }
 
 fn absence_path_for(directory: String, name: String) -> String {
@@ -283,6 +337,7 @@ fn absence_path_for(directory: String, name: String) -> String {
     FilesystemEntryAbsent(a) => filesystem_established_absence_path(absence: a) as String
     FilesystemEntryListed { directory: _, name: _ } => "listed"
     FilesystemEntryPresenceIndeterminate { cause: _ } => "indeterminate"
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => "subject-refused"
   }
 }
 

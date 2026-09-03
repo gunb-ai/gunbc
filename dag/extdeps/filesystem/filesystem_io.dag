@@ -314,10 +314,26 @@ fn filesystem_listing_observation(
 // A REFUSED LISTING IS NOT AN EMPTY ONE, WHICH IS THE HALF A `Bool` CANNOT HOLD. The refusal arm
 // carries the directory and the host error rather than a name-not-found, so a consumer that widens
 // on it has to write the widening down -- it cannot inherit it from a false.
+//
+// AND A REFUSED SUBJECT IS NOT AN UNMAKEABLE OBSERVATION EITHER, WHICH IS THE ARM THE FIRST CUT OF
+// THIS CHANGE GOT WRONG. That cut carried the subject refusal only as far as the listing carrier and
+// then folded it into the indeterminate arm with an explanatory `cause`. That preserves the
+// explanation for a HUMAN and discards the state for every PROGRAM: a consumer could separate "the
+// caller supplied no valid directory subject" from "the host refused to list an admitted directory"
+// only by parsing prose. Ruled on review of this module: the same argument that justifies that
+// collapse would equally have justified folding the subject refusal into
+// `FilesystemDirectoryListingRefused` one layer up, which this module refuses -- a distinction
+// cannot be mandatory at one layer and expendable at the next when no intervening consumer has made
+// a policy decision. The remedies differ and that is what makes them different arms: a refused
+// subject is repaired by fixing the CALLER'S ARGUMENT, an indeterminate one by investigating the
+// host, its permissions or its transport. Some consumers will end up taking the same stop action for
+// both, and that is fine -- but the collapse then happens VISIBLY at the policy-owning consumer
+// rather than invisibly inside a generic filesystem fold.
 type FilesystemEntryPresence
   = FilesystemEntryAbsent(FilesystemEstablishedAbsence)
   | FilesystemEntryListed { directory: FilePath, name: String }
   | FilesystemEntryPresenceIndeterminate { cause: String }
+  | FilesystemEntrySubjectRefused { directory: String, name: String, cause: String }
 
 fn filesystem_entry_presence(
   listing: FilesystemListingObservation,
@@ -325,12 +341,7 @@ fn filesystem_entry_presence(
 ) -> FilesystemEntryPresence {
   match listing {
     FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
-      FilesystemEntryPresenceIndeterminate {
-        cause: join([
-          "the supplied directory ", d, " was not admitted as a directory subject, so nothing is ",
-          "established about ", name, " -- ", c,
-        ], ""),
-      }
+      FilesystemEntrySubjectRefused { directory: d, name: name, cause: c }
     FilesystemDirectoryListingRefused { directory: d, error: e } =>
       FilesystemEntryPresenceIndeterminate {
         cause: join([
@@ -376,13 +387,20 @@ fn filesystem_entry_presence(
 // answers" have different remedies, and collapsing them is the state-space conflation this
 // repository keeps finding.
 //
+// AND THE SUBJECT REFUSAL TRAVELS THIS FAR FOR THE SAME REASON IT LEFT THE LISTING CARRIER. It is
+// not folded into the indeterminate arm here either: the observation was never ATTEMPTED, because
+// the caller named no directory to attempt it against. Its remedy is the caller's argument, and the
+// arm carries the directory and the name so a consumer can say which argument.
+//
 // THE ARMS ARE THE ACTIONS: proceed as if nothing is there, consume the bytes, stop because the
-// observation could not be made, or stop because the subject moved while it was being made.
+// observation could not be made, stop because the subject moved while it was being made, or stop
+// because there was no subject to observe.
 type FilesystemFileObservation
   = FilesystemFileAbsent(FilesystemEstablishedAbsence)
   | FilesystemFileRead { path: String, content: String }
   | FilesystemFileIndeterminate { cause: String }
   | FilesystemFileObservationsDisagree { path: String, cause: String }
+  | FilesystemFileSubjectRefused { directory: String, name: String, cause: String }
 
 fn filesystem_file_observation(
   listing: FilesystemListingObservation,
@@ -391,6 +409,8 @@ fn filesystem_file_observation(
   read: FilesystemReadOutcome,
 ) -> FilesystemFileObservation {
   match filesystem_entry_presence(listing: listing, name: name) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      FilesystemFileSubjectRefused { directory: d, name: n, cause: c }
     FilesystemEntryPresenceIndeterminate { cause: c } =>
       FilesystemFileIndeterminate { cause: join([c, " (at ", path, ")"], "") }
     FilesystemEntryAbsent(established) =>

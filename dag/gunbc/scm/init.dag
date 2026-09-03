@@ -54,6 +54,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_listing_observation,
   filesystem_read_outcome,
   filesystem_file_observation
@@ -244,5 +245,20 @@ fn scm_init_decision(observation: FilesystemFileObservation, path: String) -> Sc
       ScmInitDecided { cause: ScmInitPathUnobserved { path: path, cause: c } }
     FilesystemFileObservationsDisagree { path: p, cause: c } =>
       ScmInitDecided { cause: ScmInitPathUnobserved { path: p, cause: c } }
+    // INIT REFUSES RATHER THAN CREATING, WHICH IS THE ONLY SAFE ARM. `ScmInitMayCreate` is reached
+    // only from an ESTABLISHED absence, and a subject that was never admitted established nothing --
+    // so this cannot fall through to the create. It collapses into this module's unobserved cause
+    // VISIBLY, and the text says the repository path was not a directory subject so the operator
+    // fixes the argument rather than hunting a host fault.
+    FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+      ScmInitDecided {
+        cause: ScmInitPathUnobserved {
+          path: path,
+          cause: join([
+            "the repository ", n, " was requested under ", d,
+            ", which is not a directory subject, so no observation was attempted -- ", c,
+          ], ""),
+        },
+      }
   }
 }

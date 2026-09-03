@@ -13,6 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_read_outcome,
   filesystem_listing_observation,
   filesystem_file_observation,
@@ -402,6 +403,16 @@ fn transition_file_observation_of(
     FilesystemFileObservationsDisagree { path: _, cause: why } =>
       TransitionFileObservationsDisagree {
         cause: join(["gunbc.deploy_transition: ", why], ""),
+      }
+    // A REFUSED SUBJECT IS THIS MODULE'S CALLER'S DEFECT, NOT THE HOST'S. It lands in the
+    // indeterminate arm because a transition that cannot be observed must not proceed either way,
+    // and the cause names the argument rather than the host so the two remedies stay separable.
+    FilesystemFileSubjectRefused { directory: d, name: n, cause: why } =>
+      TransitionFileIndeterminate {
+        cause: join([
+          "gunbc.deploy_transition: the marker ", n, " was requested under ", d,
+          ", which is not a directory subject, so no observation was attempted -- ", why,
+        ], ""),
       }
     FilesystemFileRead { path: _, content: c } =>
       match transition_record_decode(text: c) {
