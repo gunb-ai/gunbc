@@ -334,18 +334,86 @@ fn max_int(a: Int, b: Int) -> Int {
 // REFUSING RATHER THAN A SILENTLY THINNER ONE. A caller that wants to distinguish "old vintage"
 // from "empty run" reads `claim_cost_columns` itself; this function answers only the question it
 // is asked, and answers it with nothing rather than with rows built on a guessed layout.
-fn parse_claim_cost_tsv(text: String) -> List<FloorCostRow> {
+// A DATA LINE IS DECIDED BEFORE IT IS PARSED, SO THAT FAILING TO PARSE ONE IS A REFUSAL RATHER
+// THAN AN ABSENCE. The artifact carries a `#`-prefixed summary line, a header, and possibly blank
+// lines; none of those is a row and none of them is malformed. Everything else IS a declared row,
+// and a declared row that does not parse is an artifact defect.
+fn is_claim_cost_data_line(line: String) -> Bool {
+  line != ""
+    && !starts_with(s: line, prefix: "#")
+    && !starts_with(s: line, prefix: "identity\t")
+}
+
+fn claim_cost_line_refuses(line: String, columns: ClaimCostColumns) -> Bool {
+  match parse_claim_cost_line(line: line, columns: columns) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// WHY THE CAUSE IS CARRIED AND LOCATED RATHER THAN COUNTED. A reader who is told only that N rows
+// were dropped cannot act; a reader handed the offending line can. Each arm names a DIFFERENT
+// artifact defect, and none of them is "the artifact was empty".
+type ArtifactRefusalCause
+  = NoHeaderLine
+  | HeaderNotReadable { header_line: String }
+  | MalformedDataRow { line: String }
+
+// THE PARSE IS TOTAL: ROWS, OR A LOCATED REFUSAL. NEVER A SHORTER LIST.
+//
+// THIS TYPE EXISTS BECAUSE THE EARLIER VERSION OF THIS FUNCTION COMMITTED THIS PR'S OWN CLASS IN
+// THE OPPOSITE DIRECTION. It returned `List<FloorCostRow>` and answered `[]` for a missing header,
+// `[]` for an unreadable header, and silently DROPPED any line that failed to parse. Every derived
+// figure downstream then stayed internally consistent over the rows that happened to survive, and
+// nothing anywhere was countable as having gone wrong.
+//
+// That is DESIGN section 5's absorbing fallback wearing the opposite costume. The named form
+// WIDENS when it cannot compute precisely -- rerun everything, scan all keys. This one NARROWS:
+// the population silently shrinks and the analysis proceeds confidently over the survivors. Both
+// substitute an answer for an admission of ignorance, and this direction is the harder one to see
+// because a shrunken population produces no error, no warning, and no anomalous number.
+//
+// IT IS ALSO THE EXACT DEFECT THIS MODULE EXISTS TO PREVENT, ONE STAGE EARLIER. The coproduct
+// above makes it unwritable to read a right-censored bound as an exact cost -- but a row that
+// vanishes before it is judged never reaches the coproduct at all. A guarantee about how rows are
+// classified is worth nothing without a guarantee that every declared row WAS classified.
+//
+// THE OBLIGATION, STATED SO A LATER EDIT CANNOT QUIETLY DROP IT: every line the artifact declares
+// as a row receives a disposition -- parsed, or refused with its cause. A figure whose denominator
+// is "the rows that parsed" is the bug.
+type ClaimCostArtifact
+  = ArtifactRows { rows: List<FloorCostRow> }
+  | ArtifactRefused { cause: ArtifactRefusalCause }
+
+fn parse_claim_cost_tsv(text: String) -> ClaimCostArtifact {
   let lines = split(s: text, delimiter: "\n")
   match lines |> filter(l => starts_with(s: l, prefix: "identity\t")) |> first {
-    Absent => []
+    Absent => ArtifactRefused { cause: NoHeaderLine }
     Present { value: header } => match claim_cost_columns(header_line: header) {
-      Absent => []
-      Present { value: columns } =>
-        lines |> flat_map(line => match parse_claim_cost_line(line: line, columns: columns) {
-          Absent => []
-          Present { value: row } => [row]
-        })
+      Absent => ArtifactRefused { cause: HeaderNotReadable { header_line: header } }
+      Present { value: columns } => {
+        let data_lines = lines |> filter(l => is_claim_cost_data_line(line: l))
+        match data_lines |> filter(l => claim_cost_line_refuses(line: l, columns: columns)) |> first {
+          Present { value: bad } => ArtifactRefused { cause: MalformedDataRow { line: bad } }
+          Absent => ArtifactRows {
+            rows: data_lines |> flat_map(line => match parse_claim_cost_line(line: line, columns: columns) {
+              Absent => []
+              Present { value: row } => [row]
+            })
+          }
+        }
+      }
     }
+  }
+}
+
+// THE ROWS OF AN ARTIFACT THAT WAS ACCEPTED, AND AN EMPTY LIST ONLY FOR A REFUSED ONE. Callers
+// that genuinely need the rows and have already handled the refusal use this; callers deciding
+// WHETHER to proceed must match the coproduct, because this projection cannot tell them apart.
+fn accepted_rows(artifact: ClaimCostArtifact) -> List<FloorCostRow> {
+  match artifact {
+    ArtifactRows { rows: r } => r
+    ArtifactRefused { cause: _ } => []
   }
 }
 

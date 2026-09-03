@@ -23,7 +23,14 @@ import gunbc.floor_cost_distribution {
   WorstObserved,
   WorstIsLowerBound,
   censored_rows,
-  runs_crossing_undecidable
+  runs_crossing_undecidable,
+  ClaimCostArtifact,
+  ArtifactRows,
+  ArtifactRefused,
+  ArtifactRefusalCause,
+  NoHeaderLine,
+  HeaderNotReadable,
+  MalformedDataRow
 }
 
 // THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
@@ -58,10 +65,16 @@ data floor_cost_ceiling: Millisecond = millisecond(count: 500)
 data floor_cost_artifact_root: String = "/tmp/floor-cost"
 data floor_cost_artifact_file: String = "required_floor_claim_cost.tsv"
 
+// `RunRefused` IS NOT `RunEmpty`, AND CONFLATING THEM WAS THE DEFECT. An artifact whose header is
+// an old vintage, or which carries a malformed row, is not a run that measured nothing -- it is a
+// run whose measurements could not be read. Reporting it as empty makes an unreadable artifact
+// indistinguishable from a clean one with no rows, which is the silent narrow the parse now
+// refuses to perform.
 type RunLoad
   = RunLoaded { run: RunCost }
   | RunUnreadable { run: NonEmptyStr, path: String }
   | RunEmpty { run: NonEmptyStr, path: String }
+  | RunRefused { run: NonEmptyStr, path: String, cause: ArtifactRefusalCause }
 
 fn run_cost_path(root: String, run: NonEmptyStr) -> String {
   concat(concat(root, concat("/", run as String)), concat("/", floor_cost_artifact_file))
@@ -73,11 +86,14 @@ fn load_run_cost(root: String, run: NonEmptyStr) -> RunLoad {
   if !read.success {
     RunUnreadable { run: run, path: path }
   } else {
-    let rows = parse_claim_cost_tsv(text: read.content)
-    if count(rows) == 0 {
-      RunEmpty { run: run, path: path }
-    } else {
-      RunLoaded { run: RunCost { run: run, rows: rows } }
+    match parse_claim_cost_tsv(text: read.content) {
+      ArtifactRefused { cause: c } => RunRefused { run: run, path: path, cause: c }
+      ArtifactRows { rows: rows } =>
+        if count(rows) == 0 {
+          RunEmpty { run: run, path: path }
+        } else {
+          RunLoaded { run: RunCost { run: run, rows: rows } }
+        }
     }
   }
 }
@@ -87,6 +103,7 @@ fn loaded_runs(loads: List<RunLoad>) -> List<RunCost> {
     RunLoaded { run: r } => [r]
     RunUnreadable { run: _, path: _ } => []
     RunEmpty { run: _, path: _ } => []
+    RunRefused { run: _, path: _, cause: _ } => []
   })
 }
 
@@ -95,7 +112,20 @@ fn refused_load_lines(loads: List<RunLoad>) -> List<String> {
     RunLoaded { run: _ } => []
     RunUnreadable { run: r, path: p } => [concat(concat("REFUSED unreadable run=", r as String), concat(" path=", p))]
     RunEmpty { run: r, path: p } => [concat(concat("REFUSED empty run=", r as String), concat(" path=", p))]
+    RunRefused { run: r, path: p, cause: c } =>
+      [concat(concat(concat("REFUSED unreadable-artifact run=", r as String), concat(" path=", p)),
+              concat(" cause=", artifact_refusal_phrase(cause: c)))]
   })
+}
+
+// THE CAUSE IS RENDERED, NOT COUNTED. A reader told only that an artifact was refused cannot act;
+// one handed the offending header or line can go and look at it.
+fn artifact_refusal_phrase(cause: ArtifactRefusalCause) -> String {
+  match cause {
+    NoHeaderLine => "no header line"
+    HeaderNotReadable { header_line: h } => concat("header not readable: ", h)
+    MalformedDataRow { line: l } => concat("malformed data row: ", l)
+  }
 }
 
 fn band_line(b: CostBand) -> String {

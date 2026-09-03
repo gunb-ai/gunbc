@@ -26,6 +26,14 @@ import gunbc.floor_cost_distribution {
   LadderStep,
   parse_claim_cost_line,
   parse_claim_cost_tsv,
+  accepted_rows,
+  ClaimCostArtifact,
+  ArtifactRows,
+  ArtifactRefused,
+  ArtifactRefusalCause,
+  NoHeaderLine,
+  HeaderNotReadable,
+  MalformedDataRow,
   rows_in_band,
   rows_at_or_above,
   cost_bands,
@@ -134,7 +142,14 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
 data old_vintage_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t100"
 
 test fn an_artifact_without_the_steps_column_yields_no_rows_rather_than_reading_the_next_one() -> Bool {
-  count(parse_claim_cost_tsv(text: old_vintage_tsv)) == 0
+  match parse_claim_cost_tsv(text: old_vintage_tsv) {
+         ArtifactRows { rows: _ } => false
+         ArtifactRefused { cause: c } => match c {
+           HeaderNotReadable { header_line: _ } => true
+           NoHeaderLine => false
+           MalformedDataRow { line: _ } => false
+         }
+       }
     && match claim_cost_columns(header_line: "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms") {
          Present { value: _ } => false
          Absent => true
@@ -154,7 +169,14 @@ test fn an_artifact_without_the_steps_column_yields_no_rows_rather_than_reading_
 test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cost() -> Bool {
   let shared_header = "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
   let shared_tsv = concat(concat("# summary\texecuted=1\n", shared_header), "\nm.hot.k\tm.hot\tbudget_interrupted\tfalse\t513\t509\t163840\t100")
-  count(parse_claim_cost_tsv(text: shared_tsv)) == 0
+  match parse_claim_cost_tsv(text: shared_tsv) {
+         ArtifactRows { rows: _ } => false
+         ArtifactRefused { cause: c } => match c {
+           HeaderNotReadable { header_line: _ } => true
+           NoHeaderLine => false
+           MalformedDataRow { line: _ } => false
+         }
+       }
     && match claim_cost_columns(header_line: shared_header) {
          Present { value: _ } => false
          Absent => true
@@ -165,8 +187,8 @@ test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cos
 // everything: the same interrupted row under the DISJOINT header parses, and it parses as a
 // BOUND -- `observed_cpu_ms` answers Absent for it while `cpu_at_least_ms` answers 509.
 test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool {
-  count(parse_claim_cost_tsv(text: censored_tsv)) == 2
-    && match parse_claim_cost_tsv(text: censored_tsv) |> filter(r => r.identity == "m.hot.k") |> first {
+  count(accepted_rows(artifact: parse_claim_cost_tsv(text: censored_tsv))) == 2
+    && match accepted_rows(artifact: parse_claim_cost_tsv(text: censored_tsv)) |> filter(r => r.identity == "m.hot.k") |> first {
          Absent => false
          Present { value: r } =>
            match observed_cpu_ms(reading: r.cost) {
@@ -192,7 +214,7 @@ test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row() -> Bool {
 // AND THE POSITIVE CONTROL FOR THAT REFUSAL, so an empty population cannot be read as "the parser
 // is broken": the same rows under a header that DOES carry the column parse normally.
 test fn the_same_shape_with_a_steps_column_parses() -> Bool {
-  count(parse_claim_cost_tsv(text: sample_tsv)) == 2
+  count(accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv))) == 2
 }
 
 // COLUMNS ARE FOUND BY NAME, WHICH MEANS A REORDERED HEADER STILL READS CORRECTLY. This is the
@@ -201,7 +223,7 @@ test fn the_same_shape_with_a_steps_column_parses() -> Bool {
 // error.
 test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
   let reordered = "identity\tmodule\teval_steps\tverdict_reached\tcost_reading\tcpu_at_least_ms\tcensoring_cpu_limit_ms\tobserved_cpu_ms\nm.hot.x\tm.hot\t1000\ttrue\tobserved\t\t\t400"
-  match parse_claim_cost_tsv(text: reordered) |> first {
+  match accepted_rows(artifact: parse_claim_cost_tsv(text: reordered)) |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -212,11 +234,11 @@ test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
 }
 
 test fn the_summary_and_header_lines_are_not_rows() -> Bool {
-  count(parse_claim_cost_tsv(text: sample_tsv)) == 2
+  count(accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv))) == 2
 }
 
 test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool {
-  match parse_claim_cost_tsv(text: sample_tsv) |> first {
+  match accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv)) |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -340,7 +362,7 @@ test fn a_complete_sample_produces_no_refusal_lines() -> Bool {
 // rather than an error. 1000 is the steps field of the fixture's first row; 400 is its cpu and 402
 // its wall.
 test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
-  match parse_claim_cost_tsv(text: sample_tsv) |> first {
+  match accepted_rows(artifact: parse_claim_cost_tsv(text: sample_tsv)) |> first {
     Absent => false
     Present { value: r } =>
       match observed_cpu_ms(reading: r.cost) {
@@ -619,5 +641,67 @@ test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_co
   } && match same_head_eval_step_violations(pair: unavailable) |> first {
     Present { value: CompletedIdentityUnavailable { identity: id, module: m, completed_attempt: _, unavailable_attempt: _ } } => id == "m.hot.x" && m == "m.hot"
     _ => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE PARSER BLOCKER, AND ITS TWO CONTROLS.
+//
+// The defect it fails on: a malformed data row DISAPPEARING while the analysis proceeds over the
+// rows that survived it. That is DESIGN section 5's absorbing fallback inverted -- a silent NARROW
+// rather than a widen -- and it is invisible from every downstream figure, because a shrunken
+// population stays internally consistent. This module's coproduct makes it unwritable to read a
+// bound as an exact cost, but a row that vanishes before it is judged never reaches the coproduct,
+// so a guarantee about how rows are CLASSIFIED is worth nothing without one that every declared
+// row WAS classified.
+//
+// IF THIS GOES GREEN BY THE PARSER SILENTLY DROPPING THE BAD ROW AND RETURNING THE OTHER ONE, THE
+// WALL IS GONE -- so the arm asserts the REFUSAL and names the offending line, not a count.
+test fn a_malformed_data_row_refuses_the_whole_artifact_rather_than_vanishing() -> Bool {
+  let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
+  let good = "m.ok.a\tm.ok\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t900\t100"
+  let torn = "m.torn.b\tm.torn\tpass"
+  match parse_claim_cost_tsv(text: concat(concat(concat(header, "\n"), concat(good, "\n")), torn)) {
+    ArtifactRows { rows: _ } => false
+    ArtifactRefused { cause: c } => match c {
+      MalformedDataRow { line: l } => l == torn
+      NoHeaderLine => false
+      HeaderNotReadable { header_line: _ } => false
+    }
+  }
+}
+
+// CONTROL ONE, so the refusal above cannot come from a parser that refuses everything: the SAME
+// artifact without the torn line is ACCEPTED and yields its row.
+test fn the_same_artifact_without_the_torn_row_is_accepted() -> Bool {
+  let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
+  let good = "m.ok.a\tm.ok\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t900\t100"
+  match parse_claim_cost_tsv(text: concat(concat(header, "\n"), good)) {
+    ArtifactRefused { cause: _ } => false
+    ArtifactRows { rows: r } => count(r) == 1
+  }
+}
+
+// CONTROL TWO, so the refusal is not merely "any line that fails to parse": the `#` summary line
+// and a blank line are NOT declared rows, and an artifact carrying both is still accepted. Without
+// this, the fix could be satisfied by refusing every artifact the instrument has ever read.
+test fn the_summary_and_blank_lines_are_not_malformed_rows() -> Bool {
+  let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
+  let good = "m.ok.a\tm.ok\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t900\t100"
+  match parse_claim_cost_tsv(text: concat(concat(concat("# summary\texecuted=1\n", concat(header, "\n")), concat(good, "\n")), "")) {
+    ArtifactRefused { cause: _ } => false
+    ArtifactRows { rows: r } => count(r) == 1
+  }
+}
+
+// AN ARTIFACT WITH NO HEADER IS REFUSED AND NAMED, NOT REPORTED AS EMPTY. `RunEmpty` and
+// `RunRefused` are different facts about a run and the instrument now carries both.
+test fn an_artifact_with_no_header_is_refused_rather_than_empty() -> Bool {
+  match parse_claim_cost_tsv(text: "# summary\texecuted=0\nnothing here") {
+    ArtifactRows { rows: _ } => false
+    ArtifactRefused { cause: c } => match c {
+      NoHeaderLine => true
+      HeaderNotReadable { header_line: _ } => false
+      MalformedDataRow { line: _ } => false
+    }
   }
 }
