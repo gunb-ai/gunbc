@@ -1,7 +1,5 @@
 # gunbc — recurring failure modes
 
-<!-- PROVISIONAL-HEAD DRIFT CONTROL: heal-generated-artifacts must remove this line. -->
-
 Generated from `gunbc.recurring_failure_mode`. Do not hand-edit — the generated-artifact phase adjudicates this file against that authority. `DESIGN.md` carries the reasoning; this document carries the rows in full.
 
 The exact `RecurringFailureMode.identity` population, which no other projection renders: the row bodies below carry `authored` prose, and an identity appearing inside one is a coincidence of wording rather than a projection of the field. This index lives in the PREAMBLE, above the horizontal rule, so it reintroduces no path shared with the rung-drop document and leaves the authored body below byte-identical to its pre-split form.
