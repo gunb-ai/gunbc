@@ -597,6 +597,55 @@ fn decls_parse_only_from_disk(
 /// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
 /// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
 /// on a walk that silently skips a file, so both callers share this one.
+/// Every `.dag` file the named roots contain on disk, by absolute path. The roots are already
+/// absolute here; this is the same walk `build_module_path_index` performs, without the parse.
+fn dag_files_under_abs_roots(abs_roots: &[String]) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for root in abs_roots {
+        let root_path = PathBuf::from(root);
+        if root_path.is_dir() {
+            collect_dag_files_tolerant(&root_path, &mut files);
+        }
+    }
+    files.sort();
+    files
+}
+
+/// WHETHER THE PREPARED INVENTORY CAN ANSWER FOR THIS SUBJECT AT ALL, and it frequently cannot.
+///
+/// The floor registers the REQUIRED-GATE CLOSURE as its prepared inventory, not the full index --
+/// `run_required_floor` takes `full_inventory` out for the discovery phase and hands
+/// `prepared_sources` to the guard. So the inventory is a SUBSET of the tree whose membership is
+/// decided by what preparation admitted, which is an input no caller declares and none can state.
+/// Filtering it by a caller's roots therefore answers with whatever part of the subject happened to
+/// be prepared, and a subject prepared not at all answers EMPTY.
+///
+/// THAT IS THE SILENT-NARROWING FAILURE THIS MODULE EXISTS TO REFUSE, one layer below the one
+/// gunbc#10245 closed in `fn_arrow_decl_facts_live`: the producer takes a declared subject, and the
+/// answer was still a function of an undeclared one. It was found by execution rather than by
+/// reading -- the vacuity controls on that producer's witnesses went red on the required floor while
+/// every discrimination row beside them stayed green, because an empty population satisfies an
+/// exclusion trivially. Nothing asserted non-emptiness before, so the same hole was already open for
+/// `concept_decl_facts` and `data_decl_type_facts` and reported nothing.
+///
+/// COVERAGE IS DECIDABLE, so this is a cache-miss test and not a confidence threshold: the roots
+/// name a set of files on disk, and the inventory either contains all of them or does not. A miss
+/// falls through to the disk walk, which is the SAME ANSWER computed the slower way -- not a wider
+/// one, not a default, and not a degraded one. Answering from a subset would be the fail-open arm.
+fn inventory_covers_abs_roots(
+    inventory: &[crate::cli_run::PreparedSourceView],
+    abs_roots: &[String],
+) -> bool {
+    let ws = workspace_root();
+    let present: std::collections::BTreeSet<PathBuf> = inventory
+        .iter()
+        .map(|e| ws.join(e.source.path.replace('\\', "/")))
+        .collect();
+    dag_files_under_abs_roots(abs_roots)
+        .iter()
+        .all(|f| present.contains(f))
+}
+
 fn decls_parse_only_fail_closed(
     roots: &[String],
     want_kinds: &[ItemKind],
@@ -605,7 +654,9 @@ fn decls_parse_only_fail_closed(
     if let Some(cached) = floor_decl_parse_memo_lookup(roots, want_kinds) {
         return Ok(cached);
     }
-    let result = if let Some(inventory) = crate::cli_run::floor_prepared_inventory_snapshot() {
+    let inventory = crate::cli_run::floor_prepared_inventory_snapshot()
+        .filter(|inv| inventory_covers_abs_roots(inv, roots));
+    let result = if let Some(inventory) = inventory {
         decls_parse_only_from_inventory(&inventory, roots, want_kinds, caller)?
     } else {
         decls_parse_only_from_disk(roots, want_kinds, caller)?
