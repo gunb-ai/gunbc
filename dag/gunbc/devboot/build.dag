@@ -191,6 +191,11 @@ type TextFileReadOutcome
 // say" and carries on. Presence is now decided by a successful listing of the directory the caller
 // already names, so TextFileAbsent is reachable only from an established absence and every failure
 // to look lands in TextFileReadFailed.
+// THE COLLAPSE IS DECIDED HERE RATHER THAN INHERITED. This reader has three states and no fourth to
+// offer, so a refused subject stops it the same way an unmakeable observation does -- but the cause
+// says WHICH, so the reader of the failure is not left guessing whether to fix the host or the
+// argument. That is the difference between collapsing a distinction visibly at the policy-owning
+// consumer and losing it inside a generic fold.
 fn read_text_file(dir: String, name: String) -> TextFileReadOutcome {
   let path = join([dir, "/", name], "")
   let listing = Filesystem.List(path: dir)
@@ -214,10 +219,6 @@ fn read_text_file(dir: String, name: String) -> TextFileReadOutcome {
     FilesystemFileRead { path: _, content: text } => TextFilePresent { text: trim(s: text) }
     FilesystemFileIndeterminate { cause: c } => TextFileReadFailed { error: c }
     FilesystemFileObservationsDisagree { path: _, cause: c } => TextFileReadFailed { error: c }
-    // THE COLLAPSE IS DECIDED HERE RATHER THAN INHERITED. This reader has three states and no
-    // fourth to offer, so a refused subject stops it the same way an unmakeable observation does --
-    // but the cause says which, so the reader of the failure is not left to guess whether to fix
-    // the host or the argument.
     FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
       TextFileReadFailed {
         error: join([

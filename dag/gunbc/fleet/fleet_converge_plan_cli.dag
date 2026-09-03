@@ -210,6 +210,10 @@ fn fleet_converge_apply_spark_admission(host: HostIdentity) -> FleetConvergeAppl
 // fleet_converge_apply_spark_admission stays a separate pure declaration because a wet func carries
 // no executable evidence. It is not a helper standing beside the production path: it is the only
 // thing between the FullHost arm and a constructed request.
+// A REFUSED SUBJECT IS THE SPEC'S DEFECT, NOT THE HOST'S. Both observation paths below take the same
+// stop they already took for an unmakeable observation, and that collapse is written down here rather
+// than inherited: the cause names the spec's own path so the remedy is the spec rather than a hunt
+// through host permissions.
 fn spark_axis_for_unobserved_cli(
   host: HostIdentity,
 ) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
@@ -459,8 +463,6 @@ func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObserva
     ) {
       FilesystemEntryPresenceIndeterminate { cause: why } =>
         AllocationStoreSubstrateObservationRefused { path: spec.namespace_path, cause: why }
-      // The spec's own ancestor path was inadmissible, so the remedy is the spec rather than the
-      // host. Same stop, decided here, with the cause saying which.
       FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
         AllocationStoreSubstrateObservationRefused {
           path: spec.namespace_path,

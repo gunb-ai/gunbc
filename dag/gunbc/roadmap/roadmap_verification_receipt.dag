@@ -445,6 +445,9 @@ fn current_verification_selection_decode_document(
 // arms below are a translation into this module's vocabulary rather than a second statement of the
 // rule -- and a future edit here cannot reintroduce the conflation, because there is no way to
 // construct the absent arm from a read.
+// A REFUSED SUBJECT IS UNREADABLE, NEVER ABSENT. Nothing was looked for, because the verification
+// root was not a directory subject; an unadmitted subject establishes no absence, and reading it as
+// one would be fail-open.
 fn current_verification_selection_observe(
   attempt_dir: String,
   verification_dir: String,
@@ -460,8 +463,6 @@ fn current_verification_selection_observe(
     ),
     name: verification_directory_segment,
   ) {
-    // The subject was never admitted, so nothing was looked for. Unreadable rather than absent:
-    // an unadmitted subject establishes no absence, and reading it as absent would be fail-open.
     FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
       SelectionUnreadable {
         cause: join([

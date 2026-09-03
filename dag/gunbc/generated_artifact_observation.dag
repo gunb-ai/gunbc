@@ -80,6 +80,9 @@ fn observe_directory_listings(directories: List<String>) -> List<DirectoryListin
 // precise error this whole change removes. The empty case therefore refuses and names itself, so a
 // bookkeeping defect surfaces as a defect rather than as a verdict about the repository tree.
 
+// A REFUSED SUBJECT REACHES THE REFUSAL STATE THIS MODULE ALREADY OWNS, and the cause says the
+// artifact's own path was inadmissible rather than that the host misbehaved. The stop is the same;
+// the remedy it points at is not.
 fn observe_generated_artifact_with(a: GeneratedArtifact, rows: List<DirectoryListingRow>) -> GeneratedArtifactObservation {
   let loc = artifact_location(a: a)
   let path = artifact_path(a: a)
@@ -108,8 +111,6 @@ fn observe_generated_artifact_with(a: GeneratedArtifact, rows: List<DirectoryLis
           GeneratedArtifactObservationRefused { artifact: a, path: path, cause: cause }
         FilesystemFileObservationsDisagree { path: _, cause } =>
           GeneratedArtifactObservationRefused { artifact: a, path: path, cause: cause }
-        // The refusal state this module already owns is the right destination, and the cause says
-        // the artifact's own path was inadmissible rather than that the host misbehaved.
         FilesystemFileSubjectRefused { directory: d, name: n, cause } =>
           GeneratedArtifactObservationRefused {
             artifact: a,

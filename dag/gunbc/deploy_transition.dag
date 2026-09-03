@@ -390,6 +390,10 @@ type TransitionFileObservation
 // disagreement are all decided by `filesystem_file_observation`; what is genuinely this module's is
 // that a file which read cleanly may still not be a transition record, which is a fourth way to be
 // indeterminate and is not a filesystem fact.
+// A REFUSED SUBJECT IS THIS FUNCTION'S CALLER'S DEFECT, NOT THE HOST'S. `FilesystemFileSubjectRefused`
+// lands in the indeterminate arm here because a transition that cannot be observed must not proceed
+// either way -- but the cause names the ARGUMENT rather than the host, so the two remedies stay
+// separable to whoever reads the refusal.
 fn transition_file_observation_of(
   observed: FilesystemFileObservation,
   path: String,
@@ -404,9 +408,6 @@ fn transition_file_observation_of(
       TransitionFileObservationsDisagree {
         cause: join(["gunbc.deploy_transition: ", why], ""),
       }
-    // A REFUSED SUBJECT IS THIS MODULE'S CALLER'S DEFECT, NOT THE HOST'S. It lands in the
-    // indeterminate arm because a transition that cannot be observed must not proceed either way,
-    // and the cause names the argument rather than the host so the two remedies stay separable.
     FilesystemFileSubjectRefused { directory: d, name: n, cause: why } =>
       TransitionFileIndeterminate {
         cause: join([
