@@ -10,6 +10,7 @@ import gunbc.harness.harness_turn {
   TurnResponseUnreadable, TurnRequestUnwritable,
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
+import gunbc.harness.harness_guidance { harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
 import gunbc.harness.harness_wire {
   harness_router_backend_url, harness_router_model, harness_router_context_window,
 }
@@ -70,7 +71,7 @@ data harness_default_step_budget: Int = 8
 // which point this is derived from that distribution instead of chosen against a ceiling.
 data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 65536))
 
-data harness_default_system_prompt: String = "You are a coding harness worker running inside the gunbc repository. You have one tool, run_command, which runs a shell command in the repository root and returns its combined output and exit code. Use it when you need to observe the repository. Be brief."
+data harness_default_system_prompt: String = harness_guidance_prose(rows: harness_probe_guidance())
 
 fn harness_macbook_environment() -> HarnessToolEnvironment {
   HarnessToolEnvironment {
@@ -190,7 +191,7 @@ fn harness_worker_config(
   }
 }
 
-data harness_worker_system_prompt: String = "You are a coding worker running inside a git worktree for one task. You have one tool, run_command, which runs a shell command in the worktree and returns its combined output and exit code. It is how you OBSERVE the tree AND how you CHANGE it: write files with a heredoc (cat > path <<''EOF'' ... EOF) or edit them in place, then re-read to confirm. Reading alone completes nothing -- a task is done when the files differ and the acceptance check passes. Make the exact change the brief asks for and nothing else. Verify with run_command before you finish, and if the brief names an acceptance command, run it. Do not commit; the harness handles publication."
+data harness_worker_system_prompt: String = harness_guidance_prose(rows: harness_worker_guidance())
 
 data harness_worker_step_budget: Int = 24
 

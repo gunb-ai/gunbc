@@ -1,0 +1,267 @@
+module gunbc.harness.harness_guidance
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+
+// THE PROMPT IS A SYLLOGISM: GROUNDED PREMISES IN, DERIVED CONCLUSIONS OUT.
+//
+// Two rules make it one, and both are enforced by the carrier rather than by care. FIRST, a premise
+// cannot be authored without naming the declaration it comes from: HarnessGroundedPremise requires a
+// DeclarationRef, so a sentence with no downstream referent is unwritable. That is what stops the
+// prompt drifting into assertions about a system that has changed underneath it -- the failure this
+// corpus calls a stale citation, in the one medium where nothing would ever grep it.
+//
+// SECOND, the imperatives are NOT authored at all. "Use the tool to change files" is a CONCLUSION
+// that follows from two premises -- a write form exists, and completion requires the files to
+// differ -- so harness_conclusions derives it from the premise set instead of a human writing it
+// beside them. Delete the write-form premise and the imperative disappears on its own, which is the
+// property a paragraph can never have: prose keeps telling the model to do things the system no
+// longer supports.
+//
+// THE TOOL'S NAME IS NEVER SPELLED HERE. ToolIs carries a HarnessTool and the projection reads
+// harness_tool_wire_name, so the prompt cannot disagree with the wire about what the tool is called.
+
+type HarnessAgentRole = CodingWorkerInWorktree | RepositoryObserver
+
+type HarnessToolLocus = TheAttemptWorktree | TheRepositoryRoot
+
+type HarnessToolChannel = CombinedOutput | ExitStatus
+
+type HarnessWriteForm = HeredocWrite | InPlaceEdit
+
+type HarnessCapability = ReadTheTree | ChangeTheTree | CommitTheChange | PublishTheBranch
+
+type HarnessCompletionTerm = FilesOnDiskDiffer | AcceptanceCheckPasses
+
+// One premise is one clause. The test for whether it is atomic: its projection needs no conjunction.
+type HarnessPremise
+  = ActingAs { role: HarnessAgentRole }
+  | ToolIs { tool: HarnessTool }
+  | ToolRunsIn { locus: HarnessToolLocus }
+  | ToolReturns { channel: HarnessToolChannel }
+  | ToolCanWriteBy { form: HarnessWriteForm }
+  | CapabilityHeld { capability: HarnessCapability }
+  | CapabilityWithheld { capability: HarnessCapability }
+  | CompletionRequires { term: HarnessCompletionTerm }
+  | RoundsRemaining { rounds: Int }
+  | EarlierRoundsDropped { rounds: Int }
+
+// A premise the harness cannot point at is not a premise. The ref names the declaration the fact is
+// read from, so the roster below is auditable the same way any other citation in this corpus is.
+type HarnessGroundedPremise {
+  premise: HarnessPremise
+  grounds: DeclarationRef
+}
+
+// Derived. Never authored beside the premises that entail them.
+type HarnessConclusion
+  = ChangeTheTreeWithTheTool
+  | VerifyWithTheTool
+  | ReadingAloneCompletesNothing
+  | ActBeforeTheRoundsRun { rounds: Int }
+  | ReRunForDroppedOutput { rounds: Int }
+
+fn harness_role_text(role: HarnessAgentRole) -> String {
+  match role {
+    CodingWorkerInWorktree => "a coding worker in a git worktree for one task"
+    RepositoryObserver => "a harness worker observing the gunbc repository"
+  }
+}
+
+fn harness_locus_text(locus: HarnessToolLocus) -> String {
+  match locus {
+    TheAttemptWorktree => "the attempt worktree"
+    TheRepositoryRoot => "the repository root"
+  }
+}
+
+fn harness_channel_text(channel: HarnessToolChannel) -> String {
+  match channel {
+    CombinedOutput => "its combined stdout and stderr"
+    ExitStatus => "its exit code"
+  }
+}
+
+fn harness_write_form_text(form: HarnessWriteForm) -> String {
+  match form {
+    HeredocWrite => "write a whole file with a heredoc: cat > path <<'EOF' ... EOF"
+    InPlaceEdit => "edit a file in place with sed"
+  }
+}
+
+fn harness_capability_text(capability: HarnessCapability) -> String {
+  match capability {
+    ReadTheTree => "read the tree"
+    ChangeTheTree => "change the tree"
+    CommitTheChange => "commit"
+    PublishTheBranch => "publish the branch"
+  }
+}
+
+fn harness_completion_term_text(term: HarnessCompletionTerm) -> String {
+  match term {
+    FilesOnDiskDiffer => "the files on disk differ"
+    AcceptanceCheckPasses => "the acceptance check passes"
+  }
+}
+
+fn harness_premise_text(p: HarnessPremise) -> String {
+  match p {
+    ActingAs { role: r } => join(["You are ", harness_role_text(role: r), "."], "")
+    ToolIs { tool: t } =>
+      join(["Your one tool is ", harness_tool_wire_name(tool: t) as String, "."], "")
+    ToolRunsIn { locus: l } => join(["It runs in ", harness_locus_text(locus: l), "."], "")
+    ToolReturns { channel: c } => join(["It returns ", harness_channel_text(channel: c), "."], "")
+    ToolCanWriteBy { form: f } =>
+      join(["It can ", harness_write_form_text(form: f), "."], "")
+    CapabilityHeld { capability: c } =>
+      join(["You may ", harness_capability_text(capability: c), "."], "")
+    CapabilityWithheld { capability: c } =>
+      join(["You may not ", harness_capability_text(capability: c), "."], "")
+    CompletionRequires { term: t } =>
+      join(["This task is complete only once ", harness_completion_term_text(term: t), "."], "")
+    RoundsRemaining { rounds: n } =>
+      join(["[harness] ", to_string(value: n), " tool rounds remain."], "")
+    EarlierRoundsDropped { rounds: n } =>
+      join(["[harness] ", to_string(value: n), " earlier tool rounds were dropped."], "")
+  }
+}
+
+fn harness_conclusion_text(c: HarnessConclusion) -> String {
+  match c {
+    ChangeTheTreeWithTheTool =>
+      "So to complete this task you must change files with that tool, not only read them."
+    VerifyWithTheTool =>
+      "So run the acceptance command with that tool before you finish."
+    ReadingAloneCompletesNothing => "Reading alone completes nothing."
+    ActBeforeTheRoundsRun { rounds: n } =>
+      join([
+        "So if ", to_string(value: n),
+        " rounds will not cover both more investigation and the change, make the change now.",
+      ], "")
+    ReRunForDroppedOutput { rounds: n } =>
+      join([
+        "So re-run a command if you need output from one of those ",
+        to_string(value: n), " rounds.",
+      ], "")
+  }
+}
+
+fn premise_asserts_write_form(p: HarnessPremise) -> Bool {
+  match p { ToolCanWriteBy { form: _ } => true  _ => false }
+}
+
+fn premise_requires_difference(p: HarnessPremise) -> Bool {
+  match p { CompletionRequires { term: FilesOnDiskDiffer } => true  _ => false }
+}
+
+fn premise_requires_acceptance(p: HarnessPremise) -> Bool {
+  match p { CompletionRequires { term: AcceptanceCheckPasses } => true  _ => false }
+}
+
+fn premise_rounds_remaining(p: HarnessPremise) -> Int? {
+  match p { RoundsRemaining { rounds: n } => Present { value: n }  _ => none }
+}
+
+fn premise_rounds_dropped(p: HarnessPremise) -> Int? {
+  match p { EarlierRoundsDropped { rounds: n } => Present { value: n }  _ => none }
+}
+
+fn any_premise(rows: List<HarnessGroundedPremise>, f: fn(HarnessPremise) -> Bool) -> Bool {
+  list_length(items: rows |> filter(r => f(r.premise))) > 0
+}
+
+fn first_rounds(rows: List<HarnessGroundedPremise>, f: fn(HarnessPremise) -> Int?) -> Int? {
+  (rows |> flat_map(r => match f(r.premise) {
+    Present { value: n } => [n]
+    Absent => []
+  })).first()
+}
+
+// THE INFERENCE. Each conclusion names the premises that entail it, so removing a premise removes
+// the imperative rather than leaving a sentence telling the model to do something unsupported.
+fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclusion> {
+  let writes = any_premise(rows: rows, f: premise_asserts_write_form)
+  let differs = any_premise(rows: rows, f: premise_requires_difference)
+  let accepts = any_premise(rows: rows, f: premise_requires_acceptance)
+  concat(
+    concat(
+      if writes && differs { [ChangeTheTreeWithTheTool, ReadingAloneCompletesNothing] } else { [] },
+      if accepts { [VerifyWithTheTool] } else { [] },
+    ),
+    concat(
+      match first_rounds(rows: rows, f: premise_rounds_remaining) {
+        Present { value: n } => [ActBeforeTheRoundsRun { rounds: n }]
+        Absent => []
+      },
+      match first_rounds(rows: rows, f: premise_rounds_dropped) {
+        Present { value: n } => [ReRunForDroppedOutput { rounds: n }]
+        Absent => []
+      },
+    ),
+  )
+}
+
+fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
+  join(
+    concat(
+      map(rows, r => harness_premise_text(p: r.premise)),
+      map(harness_conclusions(rows: rows), c => harness_conclusion_text(c: c)),
+    ),
+    " ",
+  )
+}
+
+fn grounded(premise: HarnessPremise, module_path: String, decl_name: String) -> HarnessGroundedPremise {
+  HarnessGroundedPremise {
+    premise: premise,
+    grounds: decl_ref(module_path: module_path, decl_name: decl_name),
+  }
+}
+
+fn harness_worker_guidance() -> List<HarnessGroundedPremise> {
+  [
+    grounded(premise: ActingAs { role: CodingWorkerInWorktree },
+             module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "gunbc_harness_spawn_argv"),
+    grounded(premise: ToolIs { tool: RunCommandTool },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
+    grounded(premise: ToolRunsIn { locus: TheAttemptWorktree },
+             module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),
+    grounded(premise: ToolReturns { channel: CombinedOutput },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    grounded(premise: ToolReturns { channel: ExitStatus },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_outcome_is_error"),
+    grounded(premise: CapabilityHeld { capability: ReadTheTree },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    grounded(premise: CapabilityHeld { capability: ChangeTheTree },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    grounded(premise: ToolCanWriteBy { form: HeredocWrite },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    grounded(premise: ToolCanWriteBy { form: InPlaceEdit },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    grounded(premise: CompletionRequires { term: FilesOnDiskDiffer },
+             module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_workflow_progress_for_attempt_ref"),
+    grounded(premise: CompletionRequires { term: AcceptanceCheckPasses },
+             module_path: "gunbc.roadmap_execution_contract", decl_name: "ValidationOperation"),
+    grounded(premise: CapabilityWithheld { capability: CommitTheChange },
+             module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
+    grounded(premise: CapabilityWithheld { capability: PublishTheBranch },
+             module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
+  ]
+}
+
+fn harness_probe_guidance() -> List<HarnessGroundedPremise> {
+  [
+    grounded(premise: ActingAs { role: RepositoryObserver },
+             module_path: "gunbc.harness.harness_cli", decl_name: "harness_probe_cli"),
+    grounded(premise: ToolIs { tool: RunCommandTool },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
+    grounded(premise: ToolRunsIn { locus: TheRepositoryRoot },
+             module_path: "gunbc.harness.harness_cli", decl_name: "harness_macbook_environment"),
+    grounded(premise: ToolReturns { channel: CombinedOutput },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    grounded(premise: CapabilityHeld { capability: ReadTheTree },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+  ]
+}

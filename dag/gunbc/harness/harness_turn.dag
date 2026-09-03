@@ -8,6 +8,10 @@ import extdeps.languages.json.emit {
 }
 import extdeps.http.client
 import extdeps.filesystem.filesystem_io
+import gunbc.harness.harness_guidance {
+  HarnessPremise, RoundsRemaining, EarlierRoundsDropped, harness_premise_text,
+  HarnessConclusion, ActBeforeTheRoundsRun, ReRunForDroppedOutput, harness_conclusion_text,
+}
 import gunbc.harness.harness_wire {
   HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
@@ -295,12 +299,12 @@ fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
 fn harness_budget_notice_block(steps_remaining: Int) -> JsonValue {
   json_object([
     json_kv(key: "type", value: json_string(s: "text")),
-    json_kv(key: "text", value: json_string(s: join([
-      "[harness] ", to_string(value: steps_remaining),
-      " tool round(s) remain in this turn. When the remaining rounds will not cover more ",
-      "investigation AND the change, make the change now with run_command and verify it; ",
-      "an unfinished turn delivers nothing.",
-    ], ""))),
+    json_kv(key: "text", value: json_string(
+      s: join([
+        harness_premise_text(p: RoundsRemaining { rounds: steps_remaining }), " ",
+        harness_conclusion_text(c: ActBeforeTheRoundsRun { rounds: steps_remaining }),
+      ], ""),
+    )),
   ])
 }
 
@@ -445,12 +449,12 @@ fn harness_compaction_due(input_tokens: Int, budget: TokenCount) -> Bool {
 }
 
 fn harness_compaction_notice(dropped_rounds: Int) -> JsonValue {
-  harness_user_text_message_json(text: join([
-    "[harness] ", to_string(value: dropped_rounds),
-    " earlier tool round(s) were dropped from this conversation to bound its length. ",
-    "The task statement above is unchanged. Earlier command output is no longer available; ",
-    "re-run a command if you need its result again.",
-  ], ""))
+  harness_user_text_message_json(
+    text: join([
+      harness_premise_text(p: EarlierRoundsDropped { rounds: dropped_rounds }), " ",
+      harness_conclusion_text(c: ReRunForDroppedOutput { rounds: dropped_rounds }),
+    ], ""),
+  )
 }
 
 fn harness_compact_messages(
