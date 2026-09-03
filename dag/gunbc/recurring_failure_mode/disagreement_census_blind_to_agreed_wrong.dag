@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.disagreement_census_blind_to_agreed_wrong
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data disagreement_census_blind_to_agreed_wrong: RecurringFailureMode = RecurringFailureMode {
+  identity: "disagreement_census_blind_to_agreed_wrong" as NonEmptyStr,
+
+  receipts: [
+    "**a two-reader disagreement census is blind to the case where BOTH readers are wrong together** (an instrument whose subject is DISAGREEMENT between two producers of one answer reports AGREEMENT as healthy, so the population where both answer the same WRONG thing is scored green and is invisible to it by construction. ",
+
+    "The trap is that such an instrument is commissioned precisely to adjudicate a known-defective population, and it can be structurally incapable of seeing that population while looking perfectly well-formed and producing rows. ",
+
+    "**SPECIMEN, measured 2026-09-01.** `v1.tests.claim.carrier_realization_census` records, per type-reference occurrence, the legacy short-circuit key and the strict authority answer, and reports where they diverge. ",
+
+    "Its calibration control -- stated in docs/plans/carrier-realization-arbiter-repair-design.md -- requires the diagnostic-producing `DivergesWithExactIdentity` subset to reproduce arm A 25 sites, joined by source declaration and enclosing declaration, never by line. ",
+
+    "Run over the transitive import closure of `src/v2/compiler/01_tokenize.dag`, the module that emits the file where every arm-A site lives contributed 76 rows: 74 Agrees, 2 IdentityUnavailable, ZERO divergences, and all 26 of its `String`-named rows Agree. ",
+
+    "Every divergence row in the closure sat in `v2.std.text`, the DECLARING module, in the opposite direction. ",
+
+    "Empty intersection with the population the control exists to find. ",
+
+    "**THE SHAPE OF THE ABSENCE IS THE DIAGNOSIS, and it is what distinguishes this class from an over-broad walk.** `gunbc#9900` predicted the walk might visit occurrences the emitter never renders; that defect shows the target population PLUS extras. ",
+
+    "This showed the target population NOT AT ALL. ",
+
+    "Same instrument, same rows, opposite conclusions -- and only the shape separates them. ",
+
+    "**WHY BOTH READERS AGREE THERE**, read off `v1.compiler.emit_rust` `checkpoint_table_bypasses_identity_note` REACHABILITY CORRECTION rather than executed here: the short-circuit returns the host spelling before consulting any authority, and the authority answers from `type_reference_decl_file`, whose fallback returns the file containing the REFERENCE. ",
+
+    "Two readers, one wrong answer, perfect agreement. ",
+
+    "**RECOGNITION RULE: any two-reader comparison cited as CORRECTNESS coverage.** A differential oracle, a twin fixture, a cross-check, a self-hosted-versus-seed comparison, an A/B over two emitters -- each answers `do these two concur`, and none answers `is the answer right`. ",
+
+    "Ask what a SHARED error would look like in its output; if the answer is `indistinguishable from health`, the instrument cannot be the correctness evidence, whatever else it is good for. ",
+
+    "**THE REMEDY IS A DIFFERENT ORACLE, NOT A REPAIR OF THIS ONE.** The adjudicating instrument has to reach OUTSIDE the pair of readers for its ground truth -- for this specimen, a census of agreement-at-a-wrong-answer joined against emitted-crate diagnostics. ",
+
+    "Widening the occurrence set, fixing the walk, or adding a third reader that shares the same defective input do not help, and the first two are what a reader who diagnosed this as an over-broad walk would have spent. ",
+
+    "**Bounded against `executed_conjunct_discriminates_nothing`**: there a live gated conjunct never meets a population that would falsify it, and one authored fixture retires it; here the instrument meets its population on every run and reports it as healthy, so no fixture over this instrument can retire it. ",
+
+    "**Bounded against `instrument_output_read_as_subject_content`**: there the instrument answers its own question faithfully and a consumer substitutes the subject; here the instrument answers ITS OWN question faithfully too, and the defect is that its question -- do the readers concur -- was never the question that was asked.)",
+  ],
+
+  evidence: [],
+}
