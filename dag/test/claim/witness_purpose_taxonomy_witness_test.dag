@@ -12,6 +12,9 @@ import std.witness_purpose {
   WitnessPurpose,
   WitnessResourceBound,
   BehavioralDiscriminator,
+  DiscriminatedOutcome,
+  RefusalRequired,
+  AcceptanceRequired,
   BoundaryCrossing,
   PopulationTotality,
   ExternalFidelity,
@@ -24,7 +27,7 @@ import std.witness_purpose {
   TerminatingOneShotUnavailableCompletionSubstrateAbsent,
 }
 
-data witness_purpose_taxonomy_witness_note: String = "Slice C-a: stable WitnessPurpose vocabulary only — BehavioralDiscriminator, BoundaryCrossing, PopulationTotality, ExternalFidelity, ResourceContract. TerminatingOneShot is NOT a WitnessPurpose arm; TerminatingOneShotFrontier records honest deferral (deadline and completion substrates absent) until typed carriers land. No placement, envelope, or cadence logic — those are C-b/C-c slices."
+data witness_purpose_taxonomy_witness_note: String = "Slice C-a vocabulary, with BehavioralDiscriminator REFINED (operator ruling 2026-09-02) to carry a DiscriminatedOutcome — RefusalRequired or AcceptanceRequired — naming the watched decision, so a row that carries a wall is distinguishable from a positive control. Still five arms: BehavioralDiscriminator, BoundaryCrossing, PopulationTotality, ExternalFidelity, ResourceContract. TerminatingOneShot is NOT a WitnessPurpose arm; TerminatingOneShotFrontier records honest deferral (deadline and completion substrates absent) until typed carriers land. No placement, envelope, or cadence logic — those are C-b/C-c slices."
 
 fn fixture_subject_hash() -> ContentHash {
   Fnv1a64(
@@ -39,15 +42,83 @@ fn fixture_population_ref() -> DeclarationRef {
   )
 }
 
+fn fixture_refuser_ref() -> DeclarationRef {
+  decl_ref(
+    module_path: "dag.test.claim.witness_purpose_taxonomy_witness",
+    decl_name: "fixture_population_ref",
+  )
+}
+
 test fn behavioral_discriminator_is_stable_purpose_arm() -> Bool {
-  let purpose = BehavioralDiscriminator
+  let purpose = BehavioralDiscriminator {
+    discriminates: RefusalRequired { refuser: fixture_refuser_ref() },
+  }
   match purpose {
-    BehavioralDiscriminator => true
+    BehavioralDiscriminator { discriminates: _ } => true
     BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
     PopulationTotality { population: _ } => false
     ExternalFidelity { effect: _ } => false
     ResourceContract { bound: _ } => false
   }
+}
+
+// THE DISCRIMINATING CASE FOR THE REFINEMENT, and the one the bare arm could not express. Both
+// values are BehavioralDiscriminator over the SAME watched decision -- identical on every fact the
+// arm carried before this change -- and they differ only on what that decision is required to do.
+// A row requiring a refusal is green only if the decision REFUSES; a positive control is green
+// only if it ADMITS. If the payload is ever dropped, or both arms collapse to one, these two
+// become the same value again and this test goes red.
+//
+// WHY THIS IS NOT A TAUTOLOGY OVER A FRESH COPRODUCT: the assertion is that the two reach
+// DIFFERENT arms of a total match while agreeing on the watched decision, which is exactly the
+// join a consumer performs when it ranks a non-executed row. A test that only constructed one arm
+// would pass against a coproduct whose second arm was unreachable.
+// THE PREDICATE A CONSUMER PERFORMS, written once so the two assertions below cannot drift into
+// two different readings of the same coproduct. Total over both arms: a third outcome added to
+// DiscriminatedOutcome fails to compile here rather than falling to whichever answer is cheaper.
+fn purpose_requires_a_refusal(purpose: WitnessPurpose) -> Bool {
+  match purpose {
+    BehavioralDiscriminator { discriminates: d } =>
+      match d {
+        RefusalRequired { refuser: _ } => true
+        AcceptanceRequired { acceptor: _ } => false
+      }
+    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    PopulationTotality { population: _ } => false
+    ExternalFidelity { effect: _ } => false
+    ResourceContract { bound: _ } => false
+  }
+}
+
+// THE DISCRIMINATING CASE FOR THE REFINEMENT, and the one the bare arm could not express. Both
+// values are BehavioralDiscriminator over the SAME watched decision -- identical on every fact the
+// arm carried before this change -- and they differ only on what that decision is required to do.
+// If the payload is ever dropped, or the two outcome arms collapse to one, these two become the
+// same value and this test goes red.
+//
+// WHY IT IS NOT A TAUTOLOGY OVER A FRESH COPRODUCT: the assertion is that two values AGREEING on
+// the watched decision reach OPPOSITE answers from the predicate a ranking consumer runs, which is
+// the whole content of the refinement. A test constructing only one arm would pass against a
+// coproduct whose second arm was unreachable, and a test comparing two different decisions would
+// pass on the decision rather than on the requirement.
+test fn refusal_and_acceptance_requirements_do_not_report_alike() -> Bool {
+  let wall = BehavioralDiscriminator {
+    discriminates: RefusalRequired { refuser: fixture_refuser_ref() },
+  }
+  let control = BehavioralDiscriminator {
+    discriminates: AcceptanceRequired { acceptor: fixture_refuser_ref() },
+  }
+  purpose_requires_a_refusal(purpose: wall)
+    && !purpose_requires_a_refusal(purpose: control)
+}
+
+// A NON-DISCRIMINATOR PURPOSE CARRIES NO WALL BY THIS PREDICATE, so the ranking key cannot be read
+// as "every purpose that mentions a DeclarationRef". Without this arm the predicate could be
+// satisfied by any purpose at all and still look green above.
+test fn a_non_discriminator_purpose_requires_no_refusal() -> Bool {
+  !purpose_requires_a_refusal(
+    purpose: PopulationTotality { population: fixture_population_ref() },
+  )
 }
 
 test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool {
@@ -135,7 +206,9 @@ test fn terminating_one_shot_unavailable_records_deadline_substrate_absent() -> 
 
 test fn witness_purpose_has_five_stable_arms_only() -> Bool {
   let purposes = [
-    BehavioralDiscriminator,
+    BehavioralDiscriminator {
+      discriminates: RefusalRequired { refuser: fixture_refuser_ref() },
+    },
     BoundaryCrossing {
       modeled_boundary: fixture_population_ref(),
       chosen_input: fixture_subject_hash(),

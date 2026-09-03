@@ -51,6 +51,7 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "SystemdUnitStatus", reason: "modeled systemd extdeps carrier with no live consumer yet"),
   inert_row(unit: "TerminatingOneShotFrontier", reason: "modeled std.witness_purpose frontier coproduct from #7965 (Slice C-a): its variants name the two substrate absences that block a terminating one-shot classification, and only its own test file references it, so it is inert by the seed rule until the classifier consumes it"),
   inert_row(unit: "WitnessPurpose", reason: "modeled std.witness_purpose taxonomy from #7965 (Slice C-a): the stable purpose coproduct a witness declares, landed ahead of the consumer that derives witness size from it, with no non-test reference yet")
+  inert_row(unit: "DiscriminatedOutcome", reason: "modeled std.witness_purpose refinement (operator ruling 2026-09-02): what a BehavioralDiscriminator requires of the decision it watches -- RefusalRequired names a decision that must refuse, AcceptanceRequired a positive control. It exists so a row carrying a wall is distinguishable from one that does not, which is the ranking key gunbc.recurring_failure_mode non_execution_undifferentiated_by_what_it_silenced names as missing. Referenced only by test.claim.witness_purpose_taxonomy_witness until the floor consumer that joins purpose against verdict_reached lands, so it is inert by the same seed rule as WitnessPurpose beside it and dissolves with it"),
 ]
 
 fn inert_carrier_rostered_names() -> List<String> {

@@ -30,8 +30,38 @@ type WitnessResourceBound
 // instant/deadline and completion-receipt carriers; then TerminatingOneShot joins WitnessPurpose
 // and this frontier type deletes.
 
+// WHAT A BEHAVIORAL DISCRIMINATOR REQUIRES OF THE DECISION IT WATCHES, and the reason this is a
+// REFINEMENT of BehavioralDiscriminator rather than a sixth peer arm (operator ruling, 2026-09-02).
+// The bare arm said only "this witness discriminates behaviour", which is true of a discriminating
+// RED and of an accepted positive control equally -- so it could not order a population by which
+// rows carry a wall. DESIGN 4b(1) already names these as the two halves of executed evidence: a
+// discriminating RED refused on the real acceptance path, PLUS an accepted positive control. This
+// type is that pair, authored.
+//
+// WHY THE DISTINCTION IS A SAFETY FACT AND NOT A LABEL. A row requiring a refusal is GREEN in the
+// ordinary case, so when it does not execute -- preempted, skipped, undecided -- the wall it
+// carries is switched off with nothing red anywhere, and a later green over that absence is a
+// green over a refusal that did not run. A row requiring an acceptance, not executing, leaves a
+// question open and removes no wall. Same terminal state, different consequence, and until this
+// payload existed nothing in the tree could tell them apart. The class is
+// `gunbc.recurring_failure_mode` `non_execution_undifferentiated_by_what_it_silenced`.
+//
+// THE SUBJECT IS THE DECISION, NEVER THE WITNESS. Both arms name the decision the row watches --
+// the function or declaration that must refuse or must admit -- so the fact is joinable against
+// that decision rather than being an adjective on the test. A payload naming the test itself would
+// restate the identity the row already has and could not be checked against anything.
+//
+// AUTHORED, NOT INFERRED, which the module header already requires of purpose and which binds here
+// specifically: a lens could observe that a test body matches a refusal-shaped variant, and that
+// observation is NOT this fact. It would make the compiler's own reading of the body the authority
+// on what the body is for, so a body that stopped requiring the refusal would silently restate its
+// own purpose instead of going red.
+type DiscriminatedOutcome
+  = RefusalRequired { refuser: DeclarationRef }
+  | AcceptanceRequired { acceptor: DeclarationRef }
+
 type WitnessPurpose
-  = BehavioralDiscriminator
+  = BehavioralDiscriminator { discriminates: DiscriminatedOutcome }
   | BoundaryCrossing { modeled_boundary: DeclarationRef, chosen_input: ContentHash }
   | PopulationTotality { population: DeclarationRef }
   | ExternalFidelity { effect: DeclarationRef }
