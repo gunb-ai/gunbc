@@ -3185,14 +3185,41 @@ pub(crate) fn install_pure_producer_share(
         // Resolution above already refused any row whose module the subject no longer
         // carries, so the frame is present; reuse it rather than re-preparing the module.
         let producer_frame = &resolution_frames[&module];
-        // `already_built` is FALSE and not a probe of the store: a rostered producer whose value
-        // is already retained reports `AlreadyPresent` through the outcome below, which is the
-        // authority for that fact. Asking the store separately here would be a second, weaker
-        // spelling of the same question, and the two could disagree.
-        let (warm_result, warm_observation) =
+        // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
+        // first revision of this line got that wrong in the direction DESIGN section 4b names.
+        // It passed `already_built: false` unconditionally, on the reasoning that the outcome
+        // below is the authority for whether the value was already retained. THAT REASONING
+        // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
+        // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
+        // Two representations of one fact with one of them lying is worse than either alone, and
+        // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
+        // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
+        //
+        // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
+        // does not exist until the call returns. So the observation is corrected AFTER the fact,
+        // from the outcome that owns it.
+        //
+        // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
+        // and not who caused it, so the label names the boundary that is knowable rather than
+        // fabricating a call site -- inside this loop the only writer that can already have
+        // stored a rostered producer's value is an earlier rostered producer whose traversal
+        // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
+        // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
+        // deliberately weaker than a call-site name because a call site is not recorded.
+        let (warm_result, mut warm_observation) =
             observe_shared_build(false, "floor-preparation", || {
                 v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
             });
+        if let Ok(outcome) = &warm_result {
+            if matches!(
+                outcome,
+                v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
+            ) {
+                warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
+                    triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
+                };
+            }
+        }
         match warm_result {
             Ok(outcome) => {
                 // A NON-SERVABLE outcome means nothing is retained for later claims, so a
@@ -7202,6 +7229,51 @@ mod pure_producer_share_tests {
         let _: u64 = observed.cpu_ms;
         let _: u64 = observed.wall_ms;
         let _: u64 = observed.rss_growth_bytes;
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// THE `AlreadyPresent` PATH REPORTS THAT IT FOUND THE VALUE, NOT THAT IT BUILT IT.
+    /// The discriminating red for review 59035: before the fix this asserted
+    /// `BuiltByPreparation` on a warm that built nothing, so the receipt claimed preparation
+    /// produced an artifact it merely found. Running the install TWICE without clearing the
+    /// memos in between is what puts the second warm on that path, and nothing else in this
+    /// module reaches it — which is why the defect survived the first round of tests.
+    #[test]
+    fn a_second_warm_of_the_same_producer_reports_that_it_was_found_not_built() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             fn tm_local() -> Bool { true }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n",
+        )]);
+
+        let first = install_pure_producer_share(&prepared).expect("first install warms");
+        assert!(
+            matches!(
+                first[0].1.provenance,
+                SharedBuildProvenance::BuiltByPreparation
+            ),
+            "the first warm BUILDS it: {:?}",
+            first[0].1.provenance
+        );
+
+        // No `clear_cross_claim_pure_memos()` here, deliberately: the retained value is the
+        // whole subject of this test.
+        let second = install_pure_producer_share(&prepared).expect("second install re-warms");
+        match &second[0].1.provenance {
+            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
+                // The label names a BOUNDARY and not a call site, because `AlreadyPresent`
+                // establishes presence and not cause. Asserting the exact string keeps a
+                // future edit from quietly upgrading it into a fabricated attribution.
+                assert_eq!(
+                    *triggered_by,
+                    "an-earlier-rostered-producer-in-this-warm-loop"
+                );
+            }
+            other => panic!("a warm that found the value must not claim it built it: {other:?}"),
+        }
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
