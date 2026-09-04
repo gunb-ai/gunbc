@@ -1536,28 +1536,30 @@ pub fn declared_type_conformance_diags(
                     span.clone(),
                     scope.module_name.clone(),
                 )])
-            } else if !both_ground.clone() {
-                Rc::new(vec![])
             } else {
-                if crate::v1_compiler_infer_types::node_type_compatible(
-                    declared.clone(),
-                    produced.clone(),
-                    si.clone(),
-                ) {
+                if !both_ground.clone() {
                     Rc::new(vec![])
                 } else {
-                    Rc::new(vec![type_mismatch_error(
-                        crate::v1_compiler_infer_types::node_type_shape(
-                            declared.clone(),
-                            si.clone(),
-                        ),
-                        crate::v1_compiler_infer_types::node_type_shape(
-                            produced.clone(),
-                            si.clone(),
-                        ),
-                        span.clone(),
-                        scope.module_name.clone(),
-                    )])
+                    if crate::v1_compiler_infer_types::node_type_compatible(
+                        declared.clone(),
+                        produced.clone(),
+                        si.clone(),
+                    ) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![type_mismatch_error(
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                declared.clone(),
+                                si.clone(),
+                            ),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                produced.clone(),
+                                si.clone(),
+                            ),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )])
+                    }
                 }
             }
         }
@@ -4766,9 +4768,9 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
                     };
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
-                TypeHeadExposure::OpaqueTypeHead { .. } => {
-                    nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
-                }
+                TypeHeadExposure::OpaqueTypeHead {
+                    type_identity: _, ..
+                } => nominal_product_head_name_if_declared_product(name.clone(), scope.clone()),
                 _ => "".to_string(),
             }
         }
