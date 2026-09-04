@@ -12,7 +12,12 @@ import tools.floor_cost_distribution_instrument {
   loaded_runs,
   refused_load_lines,
   floor_cost_distribution_lines,
-  floor_cost_crossing_lines
+  floor_cost_crossing_lines,
+  FloorAttemptRef,
+  FloorAttemptPair,
+  attempt_label,
+  attempt_cost_path,
+  attempt_pair_lines
 }
 import gunbc.floor_cost_distribution {
   ClaimCostColumns,
@@ -1435,4 +1440,143 @@ data panicked_exact: FloorCostRow = FloorCostRow {
 test fn a_panic_with_exact_clocks_is_not_counted_as_a_deadline_preemption() -> Bool {
   let all = identity_dispositions(runs: [RunCost { run: "runR" as NonEmptyStr, rows: [panicked_exact] }])
   count(all |> filter(d => d.identity == "m.cross.panicked" && d.completed_runs == 1 && d.preempted_runs == 0)) == 1
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE SAME-HEAD ATTEMPT PAIR PRODUCER.
+//
+// `SameHeadAttemptPair` and `same_head_eval_step_violations` were declared with no caller. These
+// assertions are that producer's evidence, and they are about the three things a producer can get
+// wrong that the comparison itself cannot catch: addressing the wrong bytes, reporting half a pair,
+// and letting two trees through as one.
+
+data attempt_left_ref: FloorAttemptRef = FloorAttemptRef {
+  run: "33846875188" as NonEmptyStr,
+  attempt: "1" as NonEmptyStr,
+  head: "ceb7aea" as NonEmptyStr,
+  artifact_id: "9928032537" as NonEmptyStr
+}
+data attempt_right_ref: FloorAttemptRef = FloorAttemptRef {
+  run: "33846875188" as NonEmptyStr,
+  attempt: "2" as NonEmptyStr,
+  head: "ceb7aea" as NonEmptyStr,
+  artifact_id: "9931292338" as NonEmptyStr
+}
+
+// TWO ATTEMPTS OF ONE RUN MUST NOT RESOLVE TO ONE PATH, which is the addressing defect that made
+// this sample unrepresentable in `floor_cost_crossing_sampled_runs` at all: that roster holds run
+// identities, and both of these carry the same run id.
+test fn two_attempts_of_one_run_address_different_artifacts() -> Bool {
+  attempt_cost_path(root: "/r", ref: attempt_left_ref)
+    != attempt_cost_path(root: "/r", ref: attempt_right_ref)
+    && (attempt_label(ref: attempt_left_ref) as String) != (attempt_label(ref: attempt_right_ref) as String)
+}
+
+data attempt_pair_same_head: FloorAttemptPair = FloorAttemptPair { left: attempt_left_ref, right: attempt_right_ref }
+
+data attempt_other_head_ref: FloorAttemptRef = FloorAttemptRef {
+  run: "33846875188" as NonEmptyStr,
+  attempt: "2" as NonEmptyStr,
+  head: "deadbeef" as NonEmptyStr,
+  artifact_id: "9931292338" as NonEmptyStr
+}
+data attempt_pair_cross_tree: FloorAttemptPair = FloorAttemptPair { left: attempt_left_ref, right: attempt_other_head_ref }
+
+// THE PAIR FIXTURE: one identity whose steps AGREE while its cpu moves, one whose steps DIFFER, and
+// one that completed on the right and was preempted on the left. So the violation report has an
+// arm to exercise in three directions and the envelope has exactly one admissible member.
+data pair_l_stable: FloorCostRow = FloorCostRow { identity: "m.p.stable", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 503) }, eval_steps: 90000, reachability: none }
+data pair_r_stable: FloorCostRow = FloorCostRow { identity: "m.p.stable", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 349) }, eval_steps: 90000, reachability: none }
+data pair_l_drift: FloorCostRow = FloorCostRow { identity: "m.p.drift", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 155648, reachability: none }
+data pair_r_drift: FloorCostRow = FloorCostRow { identity: "m.p.drift", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 200) }, eval_steps: 171124, reachability: none }
+data pair_l_preempted: FloorCostRow = FloorCostRow {
+  identity: "m.p.preempted",
+  module: "m.p",
+  verdict_reached: false,
+  cost: RightCensoredCpuReading { cpu_lower_bound_ms: millisecond(count: 504), censoring_ceiling_ms: millisecond(count: 500) },
+  eval_steps: 9,
+  reachability: none
+}
+data pair_r_preempted: FloorCostRow = FloorCostRow { identity: "m.p.preempted", module: "m.p", verdict_reached: true, cost: ObservedCpuReading { cpu_ms: millisecond(count: 380) }, eval_steps: 175664, reachability: none }
+
+data pair_left_run: RunCost = RunCost { run: "33846875188/attempt-1" as NonEmptyStr, rows: [pair_l_stable, pair_l_drift, pair_l_preempted] }
+data pair_right_run: RunCost = RunCost { run: "33846875188/attempt-2" as NonEmptyStr, rows: [pair_r_stable, pair_r_drift, pair_r_preempted] }
+
+data pair_report: List<String> = attempt_pair_lines(
+  pair: attempt_pair_same_head,
+  left: RunLoaded { run: pair_left_run },
+  right: RunLoaded { run: pair_right_run },
+  min_ms: millisecond(count: 50)
+)
+
+// THE THREE VIOLATION ARMS ARE REPORTED APART, because their remedies differ: a step drift is the
+// finding, a preempted counterpart is the other terminal arm, and neither is a total.
+test fn a_step_drift_and_a_preempted_counterpart_are_reported_as_different_arms() -> Bool {
+  count(pair_report |> filter(l => starts_with(s: l, prefix: "\tSTEPS-DIFFER m.p.drift"))) == 1
+    && count(pair_report |> filter(l => starts_with(s: l, prefix: "\tUNAVAILABLE m.p.preempted"))) == 1
+    && count(pair_report |> filter(l => starts_with(s: l, prefix: "\tSTEPS-DIFFER m.p.stable"))) == 0
+    && count(pair_report |> filter(l => starts_with(s: l, prefix: "evaluator-step determinism violations\t2"))) == 1
+}
+
+// THE ENVELOPE POPULATION IS THE IDENTICAL-WORK ROWS AND NOTHING ELSE. `m.p.drift` completed on both
+// attempts and is EXCLUDED because its step count moved; `m.p.preempted` is excluded because it
+// never completed on the left. One row survives, and its 503/349 is cpu movement with the work held
+// fixed at row grain on one commit.
+test fn the_envelope_admits_only_rows_whose_step_count_was_identical() -> Bool {
+  count(pair_report |> filter(l => starts_with(s: l, prefix: "identities completing on BOTH attempts at or above the floor\t2"))) == 1
+    && count(pair_report |> filter(l => starts_with(s: l, prefix: "of those, step-count IDENTICAL on both attempts\t1"))) == 1
+    && count(pair_report |> filter(l => starts_with(s: l, prefix: "worst cpu envelope over the identical-work population\t1441 permille"))) == 1
+}
+
+// THE MEDIAN IS CARRIED BESIDE THE MAXIMUM, ALWAYS. A max over hundreds of rows is an extreme-value
+// statistic one row can drive; a median alone cannot see the tail. Either quoted by itself misleads
+// in a different direction, so the report must contain both.
+test fn the_report_carries_a_percentile_beside_its_maximum() -> Bool {
+  count(pair_report |> filter(l => starts_with(s: l, prefix: "worst cpu envelope"))) == 1
+    && count(pair_report |> filter(l => starts_with(s: l, prefix: "p50"))) == 1
+}
+
+// THE DISCRIMINATING RED FOR THE WHOLE FAMILY: two attempts on DIFFERENT heads is not one tree, and
+// the comparison must refuse before reading a single row rather than reporting a determinism result
+// over two different programs. Same rows as the green case above -- only the declared head differs.
+test fn two_different_heads_refuse_before_any_row_is_compared() -> Bool {
+  let lines = attempt_pair_lines(
+    pair: attempt_pair_cross_tree,
+    left: RunLoaded { run: pair_left_run },
+    right: RunLoaded { run: pair_right_run },
+    min_ms: millisecond(count: 50)
+  )
+  count(lines |> filter(l => starts_with(s: l, prefix: "\tHEADS-DIFFER"))) == 1
+    && count(lines |> filter(l => starts_with(s: l, prefix: "\tSTEPS-DIFFER"))) == 0
+    && count(lines |> filter(l => starts_with(s: l, prefix: "evaluator-step determinism violations\t1"))) == 1
+}
+
+// HALF A PAIR IS NOT A COMPARISON. The crossing census beside this one reports over what loaded and
+// names what did not, because each run's census is complete on its own; a pair has no such partial
+// reading, so an unreadable side refuses totally and says which side failed.
+test fn an_unreadable_side_refuses_the_whole_pair_rather_than_reporting_half() -> Bool {
+  let lines = attempt_pair_lines(
+    pair: attempt_pair_same_head,
+    left: RunLoaded { run: pair_left_run },
+    right: RunRefused { run: "33846875188/attempt-2" as NonEmptyStr, path: "p", cause: UnsupportedSharedCpuMsVintage { header_line: "identity\tcpu_ms" } },
+    min_ms: millisecond(count: 50)
+  )
+  count(lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING -- the right attempt"))) == 1
+    && count(lines |> filter(l => starts_with(s: l, prefix: "identities observed"))) == 0
+    && count(lines |> filter(l => starts_with(s: l, prefix: "worst cpu envelope"))) == 0
+    && count(lines |> filter(l => starts_with(s: l, prefix: "REFUSED unsupported-artifact"))) == 1
+}
+
+// AND THE SAME ON THE OTHER SIDE, so the refusal is not green by only ever being tested in one
+// direction -- the arm that names WHICH side failed is the whole value of the refusal.
+test fn an_unreadable_left_side_names_the_left_rather_than_the_right() -> Bool {
+  let lines = attempt_pair_lines(
+    pair: attempt_pair_same_head,
+    left: RunUnreadable { run: "33846875188/attempt-1" as NonEmptyStr, path: "q" },
+    right: RunLoaded { run: pair_right_run },
+    min_ms: millisecond(count: 50)
+  )
+  count(lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING -- the left attempt"))) == 1
+    && count(lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING -- the right attempt"))) == 0
 }
