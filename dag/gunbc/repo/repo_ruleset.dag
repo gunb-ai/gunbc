@@ -782,6 +782,17 @@ fn bypass_roster_projection_refusal(roster: BypassActorRosterObservation) -> Non
   }
 }
 
+// STANDING, RECORDED SO THE NEXT READER DOES NOT MISTAKE THIS FOR THE ACTUATION GATE: no production
+// path calls this any more. Its consumer was the whole-ruleset actuate root, which world
+// convergence replaced, and repo_ruleset_actuation_admission now reads the two halves separately
+// because it must name WHICH fact holds actuation rather than only THAT one does. What is retained
+// here is the located refusal PROSE for the combined question -- may converge actuate at all --
+// and the enrolled claims that exercise it. It is kept rather than deleted because deleting it
+// would destroy that authored refusal text and its two executing claims to buy tidiness, which is
+// the wrong trade; it is recorded rather than left silent because an uncalled production function
+// that reads as a gate is how a reader concludes a gate exists where none runs.
+// dissolve-on: the admission constructing its own located causes, at which point this prose has a
+// consumer again or has nothing left to say and goes with the claims that read it.
 fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmptyStr? {
   let unexpected = rule_unexpected_divergences(observed: rule_types)
   if length(unexpected) == 0 {
@@ -1139,6 +1150,17 @@ type RepositoryRulesetActuationAdmission
 // live rule are each destructive-write refusals #10204 already decides, and they are consumed here
 // rather than re-derived. The terminal arm is ActuationUnbound because even with nothing held, this
 // tree carries no admitted write realization -- admission cannot silently become a write.
+//
+// THE UNEXPECTED-RULE AND UNSIGNED-DESIRE HALVES ARE READ SEPARATELY RATHER THAN THROUGH
+// merge_queue_projection_refusal, WHICH FOLDS BOTH INTO ONE Present. That helper answers a
+// different question -- may converge actuate at all -- and for that question one refusal is
+// enough. Here the ANSWER IS THE CAUSE, and the two halves are different facts with different
+// remedies: a live rule this projection cannot express is repaired by modeling the rule, while an
+// unsigned desire is repaired by signing it. Folded together, a projection deficit would be
+// reported as a live-rule cause, and RepositoryRulesetUnsignedDesireActuationHeld would be a
+// declared variant nothing constructs. Today desire is unsigned so only one path is reachable;
+// the collapse would become a wrong diagnostic on the first sign-off, which is precisely when
+// nobody is re-reading this arm. (Found in review by witty-otter-195 on gunbc#10324.)
 fn repo_ruleset_actuation_admission(
   subject: RepositoryRulesetConvergenceSubject,
   observed: RulesetObservation,
@@ -1164,12 +1186,18 @@ fn repo_ruleset_actuation_admission(
           cause: RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: subject.ruleset_id },
         }
         Absent =>
-          match merge_queue_projection_refusal(rule_types: rt) {
-            Present { value: _ } => RepositoryRulesetActuationRefused {
+          if length(rule_unexpected_divergences(observed: rt)) > 0 {
+            RepositoryRulesetActuationRefused {
               cause: RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: subject.ruleset_id },
             }
-            Absent => RepositoryRulesetActuationRefused {
-              cause: RepositoryRulesetActuationUnbound { ruleset_id: subject.ruleset_id },
+          } else {
+            match signed_desire_projection_refusal() {
+              Present { value: _ } => RepositoryRulesetActuationRefused {
+                cause: RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: subject.ruleset_id },
+              }
+              Absent => RepositoryRulesetActuationRefused {
+                cause: RepositoryRulesetActuationUnbound { ruleset_id: subject.ruleset_id },
+              }
             }
           }
       }
