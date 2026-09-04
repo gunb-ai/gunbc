@@ -29,12 +29,14 @@ pub use crate::std_primitive_projection::{
 pub use crate::std_primitive_projection::{
     PrimitiveIdentity, PrimitiveProjection, ProjectionFidelity,
 };
+pub use crate::std_types::is_kernel_type;
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, borrowed_generic_param_names, global_bare_policy_candidate, is_recursive_type,
+    authored_name, borrowed_generic_param_names, census_declaration_type_env,
+    declaration_substitution_basis, global_bare_policy_candidate, is_recursive_type,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
     lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
     symbol_index_lookup,
@@ -43,17 +45,22 @@ pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
+pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
     FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
 };
+use crate::v1_compiler_infer_sigs::ResolvedFormals::{
+    DeclarationBoundFormals, KernelGroundedFormals,
+};
 pub use crate::v1_compiler_infer_sigs::{
     decide_callable_candidates, lookup_resolved_sig, parent_closure_callable_candidates,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    CallableCandidate, CallableIdentity, FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig,
+    CallableCandidate, CallableIdentity, FuncSigLookup, ResolvedFormals, ResolvedFuncEnv,
+    ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_type,
@@ -74,10 +81,11 @@ use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+pub use crate::v1_std_core::ResolvedFormal;
 pub use crate::v1_std_core::{
-    authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
-    with_required_cardinality,
+    authored_name_at, error_type, find_child_named, has_child_named, param_node_name_at,
+    param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -122,6 +130,9 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
             sig: Rc::new(ResolvedFuncSig {
                 name: name.clone(),
                 params: Rc::new(vec![]),
+                resolved_formals: Rc::new(ResolvedFormals::KernelGroundedFormals {
+                    formals: Rc::new(vec![]),
+                }),
                 inferred: builtin_return.clone(),
                 is_async: false,
                 output_provenance: Rc::new(vec![]),
@@ -624,6 +635,13 @@ pub fn borrowed_census_callable_candidate(
             sig: Rc::new(ResolvedFuncSig {
                 name: name.clone(),
                 params: node.params.clone(),
+                resolved_formals: Rc::new(ResolvedFormals::DeclarationBoundFormals {
+                    formals: census_declaration_bound_formals(
+                        type_env.clone(),
+                        candidate.module_path.clone(),
+                        node.clone(),
+                    ),
+                }),
                 inferred: return_type.clone(),
                 is_async: false,
                 output_provenance: Rc::new(vec![]),
@@ -632,6 +650,145 @@ pub fn borrowed_census_callable_candidate(
                     Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
                 >(),
             }),
+        })
+    }
+}
+
+pub fn declaration_unbound_leaf_names(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        let here = if ((((((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && (name.clone() != "".to_string()))
+            && !v1_rt::contains(name.clone(), ".".to_string()))
+            && !crate::std_types::is_kernel_type(name.clone()))
+            && (crate::v1_compiler_infer_env::lookup_binding_by_name_local(
+                env.clone(),
+                name.clone(),
+            ) == std::option::Option::None))
+        {
+            Rc::new(vec![name.clone()])
+        } else {
+            Rc::new(vec![])
+        };
+        v1_rt::concat(
+            here.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for ch in n.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*declaration_unbound_leaf_names(ch.clone(), env.clone()))
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn census_declaration_bound_formals(
+    type_env: Rc<TypeEnv>,
+    owner_module_path: String,
+    node: Rc<Node>,
+) -> Rc<Vec<Rc<ResolvedFormal>>> {
+    {
+        let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
+            node.clone(),
+            type_env.source_indices.clone(),
+        );
+        let declaration_env = crate::v1_compiler_infer_env::census_declaration_type_env(
+            type_env.symbol_index.clone(),
+            owner_module_path.clone(),
+            tp_names.clone(),
+            type_env.source_indices.clone(),
+        );
+        let return_type = match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved {
+                node: resolved_return,
+                ..
+            }) => resolved_return.clone(),
+            _ => match node.type_annotation.clone() {
+                Some(annotated_return) => annotated_return.clone(),
+                std::option::Option::None => error_type(),
+            },
+        };
+        let declaration_generic_names = v1_rt::concat(
+            tp_names.clone(),
+            v1_rt::concat(
+                declaration_unbound_leaf_names(return_type.clone(), declaration_env.clone()),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in node.params.clone().iter().cloned() {
+                        __result.extend(
+                            (*declaration_unbound_leaf_names(
+                                crate::v1_std_core::param_node_type_expr(p.clone()),
+                                declaration_env.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in node.params.clone().iter().cloned() {
+                    if !{
+                        let mut __found = false;
+                        for tp in tp_names.iter().cloned() {
+                            if (tp.clone()
+                                == crate::v1_std_core::param_node_name_at(
+                                    p.clone(),
+                                    type_env.source_indices.clone(),
+                                ))
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push({
+                    let declared_type = crate::v1_std_core::param_node_type_expr(p.clone());
+                    Rc::new(ResolvedFormal {
+                        parameter_identity: crate::v1_std_core::param_node_name_at(
+                            p.clone(),
+                            type_env.source_indices.clone(),
+                        ),
+                        declared_type: declared_type.clone(),
+                        declaration_bound_conformance:
+                            crate::v1_std_core::preserve_outer_optional_cardinality(
+                                declared_type.clone(),
+                                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                                    declared_type.clone(),
+                                    declaration_env.clone(),
+                                    owner_module_path.clone(),
+                                ),
+                            ),
+                        substitution_basis:
+                            crate::v1_compiler_infer_env::declaration_substitution_basis(
+                                declared_type.clone(),
+                                declaration_env.clone(),
+                                declaration_generic_names.clone(),
+                            ),
+                    })
+                });
+            }
+            __result
         })
     }
 }
@@ -687,6 +844,15 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                         sig: Rc::new(ResolvedFuncSig {
                                             name: name.clone(),
                                             params: node.params.clone(),
+                                            resolved_formals: Rc::new(
+                                                ResolvedFormals::DeclarationBoundFormals {
+                                                    formals: census_declaration_bound_formals(
+                                                        type_env.clone(),
+                                                        bd.owner_module_path.clone(),
+                                                        node.clone(),
+                                                    ),
+                                                },
+                                            ),
                                             inferred: raw_return.clone(),
                                             is_async: false,
                                             output_provenance: Rc::new(vec![]),
@@ -715,6 +881,15 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             sig: Rc::new(ResolvedFuncSig {
                                                 name: name.clone(),
                                                 params: node.params.clone(),
+                                                resolved_formals: Rc::new(
+                                                    ResolvedFormals::DeclarationBoundFormals {
+                                                        formals: census_declaration_bound_formals(
+                                                            type_env.clone(),
+                                                            bd.owner_module_path.clone(),
+                                                            node.clone(),
+                                                        ),
+                                                    },
+                                                ),
                                                 inferred: qualified_return.clone(),
                                                 is_async: false,
                                                 output_provenance: Rc::new(vec![]),
