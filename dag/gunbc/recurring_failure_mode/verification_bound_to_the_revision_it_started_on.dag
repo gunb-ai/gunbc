@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.verification_bound_to_the_revision_it_started_on
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data verification_bound_to_the_revision_it_started_on: RecurringFailureMode = RecurringFailureMode {
+  identity: "verification_bound_to_the_revision_it_started_on" as NonEmptyStr,
+
+  receipts: [
+    "**a verification attributed to the revision it STARTED on rather than the one it FINISHED against** (a checkout is a fact about an INSTANT; a build, a regeneration or a test run consumes an INTERVAL. If the working tree changes anywhere inside that interval -- a branch switch, a merge, a colleague's push into a shared worktree, an editor save -- the artifact that gets exercised is the tree as of the READ, and the revision the author names is the tree as of the LAUNCH. The result is real and the subject is wrong. ",
+
+    "WHAT MAKES IT INVISIBLE IS THAT EVERY INTERMEDIATE SIGNAL IS CORRECT. The compile really compiled, the evaluation really returned, the exit code is really zero; nothing in the transcript is false, and nothing in it names a revision either. The only false proposition is the one the author supplies afterwards from memory, which is why it survives careful reading of the log -- the log does not contain the claim being checked. ",
+
+    "IT IS WORST WHERE THE TWO TREES ARE NEARLY IDENTICAL, because then the result reproduces and the misattribution is never caught, so the HABIT is ratified rather than the reasoning. The occasion it does not reproduce is the occasion where the tree difference mattered, i.e. exactly the case the verification was supposed to decide. ",
+
+    "RECOGNITION RULE: ASK WHICH REVISION WAS CHECKED OUT WHEN THE RUN FINISHED, NOT WHEN IT STARTED, and demand the answer as an immutable identifier rather than a branch name -- a branch name is itself a mutable binding, so 'I ran it on the control branch' is the same failure one level up. A local verification is bankable only as RESULT + EXACT IMMUTABLE SUBJECT REVISION + ACQUISITION TIME; a result missing any of the three names an unidentified subject. ",
+
+    "SPECIMEN, gunbc#10327. The positive-control witness for the preemption-reachability column was compiled and evaluated locally and reported as verified before push. The build had been launched from the control branch but FINISHED after a switch to `session/vivid-ibex-751-cost-receipts`, whose source-root is a strict SUPERSET of the shipped one -- three additional `recurring_failure_mode` rows and their roster imports. The witness file was untracked and byte-identical across both trees so the result is very probably reproducible, but 'very probably reproducible' is a PREDICTION about the shipped tree and had been written down as a RECEIPT for it. Corrected in the PR body by naming the head that actually ran and naming CI's floor run as the first execution against the shipped tree. ",
+
+    "IT IS NOT `window_rendered_subject_misattribution` AND MERGING THEM LOSES THE REMEDY. There, a correctly measured figure is attributed to the wrong subject because a rendering window cropped the subject; the defect is in the READ and a wider read fixes it. Here the measurement is attributed to the wrong revision of the RIGHT subject, the defect is in the WRITE, and no amount of re-reading the output recovers the revision -- the information was never captured. It is also distinct from `absent_artifact_may_be_measuring_instrument_vintage`: there the INSTRUMENT is stale against a current subject; here the instrument is current and the SUBJECT is not the one claimed. ",
+
+    "RUNG FOUND AT: MITIGATABLE. The harm is contained only by the author noticing and restating the revision, which is a discipline and not a mechanism, and the containing act happens after the false sentence has already been circulated. ",
+
+    "ATTAINABLE CEILING: STRUCTURALLY GUARANTEED, and not higher, because the invalid state remains describable -- a human can always type a revision into prose. Membership is nonetheless decidable by the runner itself: the tree identity is readable at the moment of the READ, so a verification receipt that CARRIES the revision it observed, rather than accepting one asserted alongside it, cannot name a tree it did not exercise. What no in-repository construction can prevent is an author transcribing a receipt into a sentence, which is the same residue DESIGN's name-the-instrument rule already addresses. ",
+
+    "NEXT-RUNG TRIGGER: A VERIFICATION RECEIPT CARRIER WHOSE SUBJECT REVISION IS READ BY THE RUNNER AT COMPLETION AND WHICH REFUSES WHEN THE TREE MOVED MID-RUN -- sufficient for a local run that spans a branch switch to be a REFUSAL rather than a result with an author-supplied revision. A trigger naming only 'record the sha' is the artifact-grained version of this and is satisfied by recording the sha at launch, which is precisely the value that is wrong.)",
+  ],
+
+  evidence: [],
+}

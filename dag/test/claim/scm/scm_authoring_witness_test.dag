@@ -3,7 +3,7 @@ module test.claim.scm_authoring_witness
 import std.types { Bool, String, List }
 import v2.std.node { Node, Symbol, TypeNode, ComputationNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.scm.merge {
+import gunbc.scm.proposal {
   Requirement,
   RequireBinding,
   RequireBindingAbsent,
@@ -19,15 +19,21 @@ import gunbc.scm.authoring {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // NAMES ARE QUALIFIED BECAUSE A TOP-LEVEL DEFINITION IS CORPUS-WIDE, the same reason
-// scm_merge_witness_test qualifies its helpers: the resolver admits duplicate top-level definitions
+// scm_role_requirement_integration_witness_test qualifies its helpers: the resolver admits duplicate top-level definitions
 // and silently selects one (#8707), so `role_a` or `node_named` here would not be a local
 // convenience -- it would make the binding for that name arbitrary across every module sharing the
 // scope. This file's subject is precisely a layer whose other witness file already collided once.
 fn authoring_witness_role_a() -> Symbol { ^a }
 fn authoring_witness_role_b() -> Symbol { ^b }
 
-// Built exactly as gunbc.scm.merge's own witnesses build theirs (scm_merge_witness_test
-// `atom_node`), so the two test corpora cannot disagree about what a distinguishable node is.
+// Built exactly as gunbc.scm.role_requirement_integration's own witnesses build theirs
+// (test.claim.scm_role_requirement_integration_witness `integration_witness_leaf`), so the two test
+// corpora cannot disagree about what a distinguishable node is. The symbol here was `atom_node`
+// until this rename, and that citation was ALREADY WRONG on main -- no `atom_node` has ever existed
+// in that module; it lives in test.claim.scm_object_store_witness. Rewriting the module half of a
+// citation while carrying its stale symbol half forward would have made an unverified name look
+// freshly checked, so both halves are re-derived here: the two bodies are byte-identical
+// `node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])`.
 fn authoring_witness_atom(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }
@@ -67,10 +73,11 @@ test fn authoring_one_requirement_states_its_role() -> Bool {
 }
 
 // THE DERIVED RULE, ASSERTED. Re-authoring a role REPLACES rather than accumulating, and this is the
-// claim the module's annotation argues for from merge.dag's own reasoning: merge refuses to pick
+// claim the module's annotation argues for from the integration's own reasoning: the integration
+// refuses to pick
 // between two AUTHORS because "last" there is a fold artifact, while here "last" is one author's own
 // sequence of intent. If this accumulated instead, the ordinary loop -- edit, add, notice a mistake,
-// edit, add -- would leave two requirements for one role and hand merge a self-contest that it would
+// edit, add -- would leave two requirements for one role and hand the integration a self-contest that it would
 // correctly refuse, making a staged mistake uncorrectable except by discarding the proposal.
 test fn re_authoring_a_role_replaces_rather_than_accumulating() -> Bool {
   let p1 = author_requirement(
@@ -105,7 +112,7 @@ test fn re_authoring_a_role_leaves_other_roles_untouched() -> Bool {
 }
 
 // DELETE IS A STATED REQUIREMENT AND IT SUPERSEDES A PRESENT BINDING ON THE SAME ROLE. This is the
-// half merge.dag's own reasoning makes load-bearing: silence means PRESERVE, so an author who adds a
+// half the integration's own reasoning makes load-bearing: silence means PRESERVE, so an author who adds a
 // module and then removes it must end with a STATED ABSENCE, not with an empty proposal. An empty
 // proposal would be read downstream as "leave the target alone" -- the exact inversion of the
 // request, and the reason delete-by-omission is not modelled anywhere in this layer.
