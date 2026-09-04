@@ -305,6 +305,10 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // FABRIC_EVIDENCE roster binding, because a lane that gates without running is the fail-open a
 // skipped required check produces. The row goes green again only together with the drop's
 // retirement, which is a measured wall and not a pull request.
+//
+// PERMANENT AFTER OBSERVED RED (DESIGN 4b(4)). Run 33924210916 supplied `fabric-evidence` and
+// observed this exact identity return Bool(false). This probe is therefore a regression control,
+// not scaffolding: keep it enrolled for as long as any of the three citing rung drops stands.
 // POSITIVE-CONTROL SEAM: the countable must author RED when a deleted lane is supplied. Without
 // this input boundary, a planned/pass receipt would not distinguish a live absence wall from a
 // vacuous projection that always returned an empty list.
