@@ -1,5 +1,8 @@
 module gunbc.generated_artifact_merge_driver
 
+import gunbc.shell_bash_runner { bash_escape_double_quote_specials_except_expansion }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 // THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING
 // `true`. The binding was `merge.generated-artifact.driver=true` — the shell builtin, which leaves
 // the ours side in place and exits 0. Git then records the merge as CLEAN and the other side's
@@ -61,6 +64,24 @@ data generated_artifact_merge_driver_shell_program: String = "bash"
 // integration scripts (the pre-commit hook there converges these same bindings); git invokes hooks
 // by exact name, so a non-hook file beside them is inert. Placeholders are git's own: %O base, %A
 // ours AND the result path git reads back, %B theirs, %P the pathname in the worktree.
+
+// THE MEDIUM IS DECLARED ON THIS CARRIER, NOT INHERITED FROM THE HOOK-EMIT FAMILY. This script is
+// concat-built shell text, and a git merge driver is one of the foreign executors DESIGN's
+// shell-to-intent routing names: git runs it with no gunbc runtime present, so the emitted medium
+// is bash and the interim spelling is a string. That is a declared disposition and not an unmarked
+// hand-shell expansion -- the registered Disposition is gunbc.local_tidy_spec
+// generated_artifact_merge_driver_emit_scaffold, a Scaffold binding
+// expected_generated_artifact_merge_driver_sh with dissolves_to RealizationDispatch, and the trigger
+// below is its condition. It is stated HERE rather than left to the githooks_pre_commit_emit family
+// row for the reason review 45175 gave the pre-push sibling: a family trigger tracked once lets each
+// member inherit it implicitly, which is the shape the medium gate asks not to rely on.
+//
+// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT, per DESIGN section 4b(3). Emitting THIS
+// script through the grammar path retires nothing on its own; what retires the row is the bash
+// medium being modeled well enough that a diagnostic line's variable references and quoting are
+// DECLARED rather than spelled -- which is also the ceiling this module's own defect class names,
+// since every defect repaired here is a rendering the author could not see in the authored string.
+data generated_artifact_merge_driver_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: expected_generated_artifact_merge_driver_sh — concat-built foreign-executor (git merge driver) diagnostic script whose recipe lines are shell text with an escaping pass applied at emit time; DISSOLVES WHEN the bash medium is read forward from GrammarRelationRow rows (DESIGN section 4, one grammar in both directions) such that a diagnostic line's variable references and shell-active characters are declared rather than spelled, and this module emits through that path with no concat-built shell literal and no emit-time escaping arm")
 
 fn generated_artifact_merge_driver_config_value_at(script_path: String) -> String {
   concat(
@@ -160,18 +181,14 @@ fn emit_heal_path_case_pattern(paths: List<String>) -> String {
 // it would only print a backslash, since the escaper doubles backslashes first. So a recipe line
 // names $merged_path, which is the one variable the driver DEFINES, and pipes into a parameterless
 // function instead of passing arguments to one.
-// IT IS NOT gunbc.shell_bash_runner bash_escape_for_double_quotes AND THE DIFFERENCE IS ONE
-// CHARACTER, NAMED SO IT IS NOT READ AS A FORK: that escaper also escapes $, which is exactly right
-// for a literal line and exactly wrong for a template whose whole job is to name the path git handed
-// the driver. Everything else -- backslash first, then quote, then backtick -- is the same rule.
-fn emit_driver_stderr_quoted(line: String) -> String {
-  let s1 = join(split(s: line, delimiter: "\\"), "\\\\")
-  let s2 = join(split(s: s1, delimiter: "\""), "\\\"")
-  join(split(s: s2, delimiter: "`"), "\\`")
-}
-
+// IT IS THE SHARED ESCAPER, NOT A SECOND ONE, AND THE ONE CHARACTER OF DIFFERENCE IS WHY THE SHARED
+// ONE IS SPLIT RATHER THAN COPIED. gunbc.shell_bash_runner owns bash double-quote escaping;
+// bash_escape_for_double_quotes is the literal-line form and escapes $ as well, which is exactly
+// wrong for a template whose whole job is to name the path git handed the driver. So that function
+// is now composed from bash_escape_double_quote_specials_except_expansion, and this module calls the
+// same shared arm rather than authoring a second implementation of one concept (DESIGN section 3).
 fn emit_driver_stderr_echo(line: String) -> String {
-  concat(concat("echo \"", emit_driver_stderr_quoted(line: line)), "\" >&2\n")
+  concat(concat("echo \"", bash_escape_double_quote_specials_except_expansion(s: line)), "\" >&2\n")
 }
 
 fn emit_driver_lines(lines: List<String>, indent: String) -> String {

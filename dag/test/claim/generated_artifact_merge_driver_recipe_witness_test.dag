@@ -5,6 +5,10 @@ import std.types { String }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
+import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_emit_dissolution_trigger }
+import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
+import std.dissolution { dissolution_description }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -74,4 +78,22 @@ test fn heal_recipe_names_only_the_variable_the_driver_defines() -> Bool {
   let script = emitted_driver_script()
   string_contains(s: script, pattern: "git show <base-ref>:$merged_path | rows")
     && string_contains(s: script, pattern: "rows <base-ref>") == false
+}
+
+// THE MEDIUM DISPOSITION IS A TYPED, BOUND ROW -- not a comment and not a String of prose. The
+// binding is the whole of it: a Scaffold that names no declaration marks nothing, and a trigger
+// that names the artifact rather than the capability retires while the capability stays dead
+// (DESIGN section 4b(3)).
+test fn emitted_driver_carries_a_bound_medium_disposition_with_a_capability_trigger() -> Bool {
+  match generated_artifact_merge_driver_emit_scaffold {
+    Scaffold { dissolves_to: to, bind: b } =>
+      match to { RealizationDispatch => true _ => false }
+        && b.module_path == "gunbc.generated_artifact_merge_driver"
+        && b.decl_name == "expected_generated_artifact_merge_driver_sh"
+    _ => false
+  }
+    && string_contains(
+         s: dissolution_description(condition: generated_artifact_merge_driver_emit_dissolution_trigger),
+         pattern: "no concat-built shell literal and no emit-time escaping arm"
+       )
 }
