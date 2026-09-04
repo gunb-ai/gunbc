@@ -914,6 +914,23 @@ pub struct TransitionAdmission {
 /// `param_names_of` inside `v2.lens.effect_reach`, so the base still binds that spelling to the
 /// lens and the delta this branch makes is still producible. The rows stay because the base says
 /// they are open, not because this branch authored them.
+///
+/// TWENTY-EIGHTH DISSOLUTION (2026-09-04), SAME RULE, FOURTH COHORT. The
+/// `fleet_asset_identity` rows arriving with this merge are deleted, joined per subject against the
+/// new base: merged main DECLARES `chassis_srv1`, `cooler_srv3` and their siblings in
+/// `gunbc.fleet_asset_identity` (dag/gunbc/fleet/fleet_asset_identity.dag), which is the target every
+/// one of those rows names, so none of their deltas is producible.
+///
+/// ONE OF THEM WAS WORTH READING TWICE, because it looks like a counterexample and is not.
+/// `test.claim.cooling_qualification_witness` imports `cooler_srv3` from
+/// `gunbc.fleet_physical_inventory`, NOT from the target the row names -- but the row's target is
+/// the DECLARING module, and `fleet_physical_inventory` itself imports the spelling from
+/// `fleet_asset_identity`. The binding resolves to the declaring module either way, so the row is
+/// consumed on the same test as the rest. An import path is not the binding; the declaration is.
+///
+/// AND THE JOIN RAN ON THIS BRANCH'S OWN ROWS AGAIN: merged main still declares `param_names_of`
+/// inside BOTH `v2.lens.effect_reach` and `v2.lens.live_read_classification`, so both deltas are
+/// still producible and both rows stay open.
 /// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
 /// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
 /// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at
