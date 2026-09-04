@@ -36,20 +36,23 @@ DESIGN §3's interface/realization split applied to naming.
 valid?*, *have we agreed to use it?*, and *is it what is running?* Merging them back into one word
 would re-create the fusion this model exists to remove.
 
-**Terms deliberately refused** — every one names a *mechanism* rather than something a person wants,
-and each exists to repair a model that loses information:
+**Git terms and their disposition.** Almost every row is *refused*: it names a *mechanism* rather
+than something a person wants, and exists to repair a model that loses information. One row is a
+*withdrawal* — a term this note refused on reasoning that turned out to be wrong — carried here and
+marked rather than deleted, so the correction stays attached to the claim it corrects. Each term's
+standing is stated by its `disposition` cell; membership in this table no longer asserts refusal.
 
-| refused | why |
-|---|---|
-| `rebase` | "rewrite my work as though it started elsewhere" is a procedure, not a goal; the goal — make my work apply to the current state — happens without it |
-| merge base / common ancestor | **not refused — this objection is withdrawn (2026-09-04).** It read "requires a total order that need not exist", which is false: a commit DAG supplies a PARTIAL ancestry order, common ancestors are the intersection of two ancestor closures, and best common ancestors are the maximal elements of that intersection. No total order is involved. The concept is a prerequisite of two-commit merge, which this note does not yet model |
-| `HEAD~3`, `HEAD^` | parent arithmetic assumes a single line |
-| force push | acceptances only append; there is nothing to force |
-| index / staging area | an artifact of the working-copy model |
-| `reset --hard` | mutating a pointer |
-| `cherry-pick` | patch transport, which this model does not do |
-| conflict markers | a textual representation of an unresolved choice |
-| `squash` | role-requirement integration already produces one exact commit; squash is a git-export description |
+| term | disposition | why |
+|---|---|---|
+| `rebase` | refused | "rewrite my work as though it started elsewhere" is a procedure, not a goal; the goal — make my work apply to the current state — happens without it |
+| merge base / common ancestor | **withdrawn 2026-09-04** | It read "requires a total order that need not exist", which is false: a commit DAG supplies a PARTIAL ancestry order, common ancestors are the intersection of two ancestor closures, and best common ancestors are the maximal elements of that intersection. No total order is involved. The concept is a prerequisite of two-commit merge, which this note does not yet model |
+| `HEAD~3`, `HEAD^` | refused | parent arithmetic assumes a single line |
+| force push | refused | acceptances only append; there is nothing to force |
+| index / staging area | refused | an artifact of the working-copy model |
+| `reset --hard` | refused | mutating a pointer |
+| `cherry-pick` | refused | patch transport, which this model does not do |
+| conflict markers | refused | a textual representation of an unresolved choice |
+| `squash` | refused | role-requirement integration already produces one exact commit; squash is a git-export description |
 
 ## 2. Comments, formatting, and everything that is not the program
 
@@ -388,7 +391,9 @@ otherwise.
 **Structural integration — with measured coverage as of 2026-08-21 (#8719 merged).** The corpus
 opens "no integration kernel should be built without these", and a kernel was built, so this states
 which rows it
-actually answers. **4 of 13 are covered.** The `witness` column names the claim in
+actually answers. **4 of 13 were covered when that join was run on 2026-08-21**; see the
+measurement note below the table for why that figure has not been re-derived since. The `witness`
+column names the claim, which now resolves in
 `test.claim.scm_role_requirement_integration_witness`; the `blocked on` column says what would close each gap, because
 "uncovered" collapses three situations — a gap the current grain could close today, a gap needing
 the sub-node recursion, and a gap needing vocabulary the model does not yet have.
@@ -415,10 +420,19 @@ the positional-sequence-integration non-goal. **One — duplicate named siblings
 structural scenario waiting on neither depth nor new vocabulary, hence the cheapest real coverage
 available.
 
-**Coverage claims about this table must be measured, not recalled.** The number above came from
-joining every claim declared in `test.claim.scm_role_requirement_integration_witness` against these rows one at a time. An earlier
-estimate from reading was "roughly five" — close enough to feel safe, wrong enough to mis-scope the
-next slice.
+**Coverage claims about this table must be measured, not recalled.** The `4 of 13` above was
+measured on 2026-08-21 by joining, one row at a time, the claims that the witness module declared
+ON THAT DATE — when it was `test.claim.scm_merge_witness` and held a different population. An
+earlier estimate from reading was "roughly five" — close enough to feel safe, wrong enough to
+mis-scope the next slice.
+
+**That number is a historical result and is NOT a current-completeness claim.** Naming today's
+module does not re-run an August join, so this paragraph deliberately does not cite the renamed
+module as the measurement's source: a citation that silently re-points at a changed population
+would make a dated receipt look re-derived when nothing re-derived it. The 13-row table below is
+the current authority on WHICH scenarios exist; what is missing is an executable instrument that
+re-joins today's claims against those rows, and until one exists no row here may be described as
+covered on the strength of the August figure.
 
 **Admission and capture**
 
