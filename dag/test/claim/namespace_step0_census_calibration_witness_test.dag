@@ -32,13 +32,20 @@ import gunbc.compile_clean_diagnostic_policy {
   PoolCoincidence,
   DefinerResolvable
 }
+import gunbc.namespace_step0_binding_provenance_contract {
+  Step0ReferenceFamily,
+  TypeAnnotationReference,
+  QualifiedContainmentReference
+}
 import gunbc.namespace_step0_census_calibration {
   Step0CalibrationStanding,
   CalibrationRosterIncomplete,
   CalibrationBlindToFamilies,
   CalibrationCappedByConvergence,
+  CalibrationCappedBySplit,
   CalibrationDiscriminatesEveryFamily,
   step0_calibration_standing,
+  step0_standing_over_partition,
   step0_occurrence_category_label,
   step0_unclaimed_producer_branches,
   step0_uncalibrated_families,
@@ -171,26 +178,42 @@ data cal_entry_without_local_declarations: String = "module cal.entry\n\nimport 
 //     one spelling in one category are indistinguishable to it. Calling this an "identity set" would
 //     claim a grain it does not have; it is a tag-and-category multiset, and the capability that
 //     would raise it is the same one `Step0DiscriminationCapability` already names.
-fn cal_row_key(row: ReferenceOccurrenceBindingRow) -> String {
-  concat(row.authored_name, concat(":", step0_occurrence_category_label(category: row.category) as String))
+// THE TAG IS A TYPED CARRIER, NOT A CONCATENATED STRING. Keying on
+// concat(authored_name, ":", category_label) put the category's identity through a RENDERER, so one
+// renderer defect collapsing two category labels would silently LOSE the category distinction from
+// the multiset -- and it would do so on both sides at once, which is precisely the shared-corruption
+// shape a comparison cannot detect. A separator collision between a spelling and a label could do
+// the same with no defect at all. The category rides as its own constructor-valued field.
+type CalRowTag {
+  authored_name: String
+  category: OccurrenceCategory
+}
+
+fn cal_row_key(row: ReferenceOccurrenceBindingRow) -> CalRowTag {
+  CalRowTag { authored_name: row.authored_name, category: row.category }
 }
 
 // EACH CLAIM COMPILES EACH SUBJECT ONCE. These take the rows a claim already has rather than an
 // entry source, so a control that compares two subjects performs two compiles and not six -- the
 // repeated demand had one shared-state ancestor and was authored duplication (DESIGN section 2).
-fn cal_keys_from(rows: List<ReferenceOccurrenceBindingRow>) -> List<String> {
+fn cal_keys_from(rows: List<ReferenceOccurrenceBindingRow>) -> List<CalRowTag> {
   rows |> map(row => cal_row_key(row: row))
 }
 
-fn cal_key_mentions(key: String, a: String, b: String) -> Bool {
-  string_contains(key, a) || string_contains(key, b)
+// THE SPELLING TEST IS EQUALITY ON THE TAG'S OWN FIELD, NOT A SUBSTRING SEARCH. This read
+// string_contains over the concatenated key, which matched any spelling CONTAINING the perturbed one
+// -- so a fixture spelling that happened to be a prefix or infix of another would have been counted
+// as the renamed identity and the invariant would have reported agreement it had not established.
+// The typed tag makes the field directly available, so the check is exact rather than lexical.
+fn cal_key_mentions(key: CalRowTag, a: String, b: String) -> Bool {
+  key.authored_name == a || key.authored_name == b
 }
 
-fn cal_key_multiplicity(keys: List<String>, key: String) -> Int {
+fn cal_key_multiplicity(keys: List<CalRowTag>, key: CalRowTag) -> Int {
   count(keys |> filter(candidate => candidate == key))
 }
 
-fn cal_key_sets_agree(left: List<String>, right: List<String>) -> Bool {
+fn cal_key_sets_agree(left: List<CalRowTag>, right: List<CalRowTag>) -> Bool {
   count(left) == count(right)
     && count(left |> filter(key =>
          cal_key_multiplicity(keys: left, key: key) != cal_key_multiplicity(keys: right, key: key)
@@ -204,7 +227,7 @@ fn cal_key_sets_agree(left: List<String>, right: List<String>) -> Bool {
 // before must still be present after, at least as often. Growth is permitted -- an added declaration
 // legitimately contributes occurrences, and some of them are spelled with names the subject already
 // used, `List` and `Int` among them -- but LOSS and SUBSTITUTION are not.
-fn cal_key_set_covers(before: List<String>, after: List<String>) -> Bool {
+fn cal_key_set_covers(before: List<CalRowTag>, after: List<CalRowTag>) -> Bool {
   count(before |> filter(key =>
     cal_key_multiplicity(keys: after, key: key) < cal_key_multiplicity(keys: before, key: key)
   )) == 0
@@ -249,8 +272,7 @@ fn cal_rows_named_in_category(
   category: OccurrenceCategory
 ) -> List<ReferenceOccurrenceBindingRow> {
   cal_rows_named(rows: rows, spelling: spelling) |> filter(row =>
-    (step0_occurrence_category_label(category: row.category) as String)
-      == (step0_occurrence_category_label(category: category) as String)
+    row.category == category
   )
 }
 
@@ -262,13 +284,35 @@ fn cal_binding_source_label(source: UnlistedImportBindingSource) -> String {
   }
 }
 
-fn cal_binding_source_of(disposition: ReferenceOccurrenceBindingDisposition) -> String {
+// THE SELECTORS BELOW MATCH CONSTRUCTORS; THE FUNCTIONS ABOVE RENDER. A control that selected rows
+// by comparing a rendered disposition or binding-source string against a string literal was using a
+// RENDERED FORM AS AN IDENTITY: a renderer defect that collapsed two dispositions onto one spelling
+// would make the selectors CONFLATE them, and the control would keep passing while counting the
+// wrong population. Every selection is on the constructor; labels are for cal_row_line and the other
+// display paths only. The renderer that served ONLY those comparisons, cal_binding_source_of, had no
+// caller left once they were typed and is deleted rather than kept as a second unused answer.
+fn cal_is_unresolved(disposition: ReferenceOccurrenceBindingDisposition) -> Bool {
+  match disposition {
+    ReferenceOccurrenceUnresolved => true
+    _ => false
+  }
+}
+
+fn cal_is_ambiguous(disposition: ReferenceOccurrenceBindingDisposition) -> Bool {
+  match disposition {
+    ReferenceOccurrenceAmbiguous { candidates: _ } => true
+    _ => false
+  }
+}
+
+fn cal_is_bound_via(
+  disposition: ReferenceOccurrenceBindingDisposition,
+  required_source: UnlistedImportBindingSource
+) -> Bool {
   match disposition {
     ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: _, binding_source: source } =>
-      cal_binding_source_label(source: source)
-    ReferenceOccurrenceUnresolved => "none"
-    ReferenceOccurrenceAmbiguous { candidates: _ } => "none"
-    ReferenceOccurrenceBindingRefused { cause: _ } => "none"
+      source == required_source
+    _ => false
   }
 }
 
@@ -450,9 +494,101 @@ test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Boo
     } => unobserved == 3 && converged == 4 && split == 1 && discriminated == 2 && unauthorable == 2
       && defects == 6 && uncalibrated_topology > 0 && uncalibrated_multiplicity > 0
     CalibrationCappedByConvergence { converged_family_count: _, split_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => false
+    CalibrationCappedBySplit { split_family_count: _, converged_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => false
     CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _ } => false
     CalibrationRosterIncomplete { unclaimed_branches: _, uncalibrated_families: _ } => false
   }
+}
+
+fn cal_standing_is_capped_by_split(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationCappedBySplit { split_family_count: _, converged_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => true
+    _ => false
+  }
+}
+
+fn cal_standing_is_capped_by_convergence(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationCappedByConvergence { converged_family_count: _, split_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => true
+    _ => false
+  }
+}
+
+fn cal_standing_is_full_discrimination(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _ } => true
+    _ => false
+  }
+}
+
+fn cal_standing_is_blind(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationBlindToFamilies { unobserved_family_count: _, converged_family_count: _, split_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, denominator_defect_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _ } => true
+    _ => false
+  }
+}
+
+// THE CAP CONTROL, AND ITS RED IS THE ONE THAT COULD NOT BE WRITTEN BEFORE. The standing fold used
+// to branch only on whether the convergence set was empty, so the state below -- nothing unobserved,
+// nothing converged, ONE SPLIT FAMILY -- returned CalibrationDiscriminatesEveryFamily: full
+// discrimination claimed over a family this module itself classifies as undiscriminated, because a
+// split family's rows cannot be joined back to the one authored reference that produced them.
+//
+// IT WAS NEVER A BUG IN ANYTHING THAT RAN. It was a state machine permitting a false claim, held
+// shut by a fact about today's corpus -- four families happen to converge, so the convergence arm
+// fires first -- and it would have fired the day convergence was repaired, which is a repair we
+// want. "Unreachable today" is the same argument as "n is small here": a guard that depends on a
+// measurement is not a guard.
+//
+// THIS IS WHY THE PARTITION IS AN ARGUMENT. Against the live rosters this state is not expressible
+// at all, so a control over step0_calibration_standing() would be permanently green on the very
+// point it claims to check -- a decoration that gets cited as coverage. Handed in as a fixture, the
+// forbidden state is authorable, and the control goes red if the cap is ever skipped again.
+test fn a_split_family_can_never_reach_full_discrimination() -> Bool {
+  cal_standing_is_capped_by_split(
+    standing: step0_standing_over_partition(
+      unclaimed: 0,
+      uncalibrated: 0,
+      unobserved: [],
+      split: [QualifiedContainmentReference],
+      converged: []
+    )
+  )
+    && cal_standing_is_capped_by_split(
+      standing: step0_standing_over_partition(
+        unclaimed: 0,
+        uncalibrated: 0,
+        unobserved: [],
+        split: [QualifiedContainmentReference],
+        converged: [TypeAnnotationReference]
+      )
+    )
+}
+
+// THE POSITIVE CONTROL BESIDE IT, so the arm above is not satisfied by a fold that answers
+// CalibrationCappedBySplit unconditionally. With the split set EMPTY and everything else identical,
+// the same fold must reach full discrimination -- and with a converged family present it must stop
+// at the convergence cap, which is the rung immediately below.
+test fn the_cap_fires_only_when_a_family_is_actually_split() -> Bool {
+  cal_standing_is_full_discrimination(
+    standing: step0_standing_over_partition(
+      unclaimed: 0, uncalibrated: 0, unobserved: [], split: [], converged: []
+    )
+  )
+    && cal_standing_is_capped_by_convergence(
+      standing: step0_standing_over_partition(
+        unclaimed: 0, uncalibrated: 0, unobserved: [], split: [], converged: [TypeAnnotationReference]
+      )
+    )
+    && cal_standing_is_blind(
+      standing: step0_standing_over_partition(
+        unclaimed: 0,
+        uncalibrated: 0,
+        unobserved: [TypeAnnotationReference],
+        split: [QualifiedContainmentReference],
+        converged: []
+      )
+    )
 }
 
 // THE PERTURBATION CONTROL, AND ITS SCOPE IS NARROWER THAN THE FIRST VERSION OF THIS COMMENT SAID.
@@ -496,10 +632,10 @@ test fn the_qualified_family_produces_both_of_its_declared_categories() -> Bool 
 // carries, which is the check whose absence let the wrong claim stand.
 test fn the_qualified_pair_carries_no_definer_resolvable_disposition() -> Bool {
   cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
-    count(rows |> filter(row => cal_disposition_label(disposition: row.disposition) == "unresolved"
+    count(rows |> filter(row => cal_is_unresolved(disposition: row.disposition)
       && (row.authored_name == "CalChoice" || row.authored_name == "CalLeft"))) > 0
       && count(rows |> filter(row =>
-          cal_binding_source_of(disposition: row.disposition) == "definer-resolvable")) == 0
+          cal_is_bound_via(disposition: row.disposition, required_source: DefinerResolvable))) == 0
   )
 }
 
@@ -512,13 +648,13 @@ test fn every_observed_outcome_claims_a_branch_the_run_exercises() -> Bool {
     count(step0_rows_claiming_observed_outcome()) == 3
       && count(step0_rows_with_uncalibrated_outcome()) == 14
       && count(rows |> filter(row =>
-          cal_binding_source_of(disposition: row.disposition) == "pool-coincidence")) > 0
+          cal_is_bound_via(disposition: row.disposition, required_source: PoolCoincidence))) > 0
       && count(rows |> filter(row =>
-          cal_disposition_label(disposition: row.disposition) == "unresolved")) > 0
+          cal_is_unresolved(disposition: row.disposition))) > 0
       && count(rows |> filter(row =>
-          cal_binding_source_of(disposition: row.disposition) == "listed-import")) == 0
+          cal_is_bound_via(disposition: row.disposition, required_source: ListedImport))) == 0
       && count(rows |> filter(row =>
-          cal_disposition_label(disposition: row.disposition) == "ambiguous")) == 0
+          cal_is_ambiguous(disposition: row.disposition))) == 0
   )
 }
 
@@ -600,6 +736,12 @@ test fn reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_de
   )
 }
 
+// THE SPELLINGS BELOW LOST A TRAILING COLON WHEN THE KEY BECAME TYPED, and that colon is the whole
+// argument for the typed carrier. Under the concatenated key these read "c:" and "scrutinee:",
+// because the caller had to encode the KEY'S OWN SEPARATOR to anchor a substring match to the name
+// field -- the caller knew the key's internal syntax, which is exactly the coupling a structured
+// carrier removes. With the field addressable the caller names the spelling and nothing else.
+//
 // INVARIANT B, OVER THE KEY MULTISET. Renaming a binder consistently -- the parameter and every use of it
 // -- is meaning-preserving, so the key multiset must map bijectively with only the renamed keys
 // differing: the two runs agree on every key mentioning neither name, and the total is unchanged.
@@ -609,8 +751,8 @@ test fn renaming_a_binder_consistently_disturbs_only_the_renamed_keys() -> Bool 
     right: cal_subject_of(entry_source: cal_entry_renamed_binder),
     holds: (base, renamed) =>
       cal_key_sets_agree(
-        left: cal_keys_from(rows: base) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false),
-        right: cal_keys_from(rows: renamed) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false)
+        left: cal_keys_from(rows: base) |> filter(key => cal_key_mentions(key: key, a: "c", b: "scrutinee") == false),
+        right: cal_keys_from(rows: renamed) |> filter(key => cal_key_mentions(key: key, a: "c", b: "scrutinee") == false)
       )
         && count(renamed) == count(base)
         && count(base) > 0

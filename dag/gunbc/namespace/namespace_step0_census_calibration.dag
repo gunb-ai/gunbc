@@ -252,15 +252,29 @@ fn step0_occurrence_category_label(category: OccurrenceCategory) -> NonEmptyStr 
   }
 }
 
-// THE OBSERVATION KEY, so the fold below can compare observations without a second identity scheme.
-// An unobserved family is its own key rather than a category, because collapsing it onto one would
-// make the blind families look like a convergence set -- which is the exact misreading this module
-// exists to prevent.
-fn step0_family_observation_key(observation: Step0FamilyObservation) -> String {
-  match observation {
-    FamilyObservedAsCategories { categories: categories } =>
-      join(categories |> map(category => step0_occurrence_category_label(category: category) as String), "+")
-    FamilyEmitsNoOccurrence { detail: _ } => "(no occurrence emitted)"
+// OBSERVATION SAMENESS IS DECIDED ON CONSTRUCTORS, NEVER ON RENDERED LABELS. This was a joined
+// label string, and that made ONE RENDERER DEFECT corrupt BOTH SIDES of every comparison below: if
+// two OccurrenceCategory constructors ever rendered to the same label the constructors would stay
+// distinct while this fold reported FALSE CONVERGENCE -- a stronger claim than the truth, produced
+// by a defect in a function that exists only for display. A label being compared is a label being
+// used as an identity, which is exactly the second naming scheme the roster fix removed elsewhere.
+// Labels survive in step0_occurrence_category_label and the other renderers, and nowhere else.
+//
+// AN UNOBSERVED FAMILY IS NEVER THE SAME OBSERVATION AS ANOTHER, including another unobserved one:
+// collapsing them onto one key would make the blind families look like a convergence set, which is
+// the exact misreading this module exists to prevent. The cross arms are therefore false rather
+// than compared, and the no-occurrence pair is false rather than true.
+fn step0_family_observations_are_the_same(
+  left: Step0FamilyObservation,
+  right: Step0FamilyObservation
+) -> Bool {
+  match left {
+    FamilyObservedAsCategories { categories: left_categories } => match right {
+      FamilyObservedAsCategories { categories: right_categories } =>
+        left_categories == right_categories
+      FamilyEmitsNoOccurrence { detail: _ } => false
+    }
+    FamilyEmitsNoOccurrence { detail: _ } => false
   }
 }
 
@@ -282,8 +296,10 @@ type Step0FamilyDiscrimination
 
 fn step0_families_sharing_observation(observation: Step0FamilyObservation) -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
-    step0_family_observation_key(observation: step0_family_observation(family: family))
-      == step0_family_observation_key(observation: observation)
+    step0_family_observations_are_the_same(
+      left: step0_family_observation(family: family),
+      right: observation
+    )
   )
 }
 
@@ -761,24 +777,50 @@ type Step0CalibrationStanding
       uncalibrated_multiplicity_row_count: Int
       capability: Step0DiscriminationCapability
     }
+  | CalibrationCappedBySplit {
+      split_family_count: Int
+      converged_family_count: Int
+      discriminated_family_count: Int
+      unauthorable_branch_count: Int
+      uncalibrated_topology_row_count: Int
+      uncalibrated_multiplicity_row_count: Int
+      capability: Step0DiscriminationCapability
+    }
   | CalibrationDiscriminatesEveryFamily {
       unauthorable_branch_count: Int
       uncalibrated_topology_row_count: Int
       uncalibrated_multiplicity_row_count: Int
     }
 
-fn step0_calibration_standing() -> Step0CalibrationStanding {
-  let unclaimed = count(step0_unclaimed_producer_branches())
-  let uncalibrated = count(step0_uncalibrated_families())
-  let unobserved = step0_unobserved_families()
-  let converged = step0_converged_families()
+// THE CAP ON A SPLIT FAMILY IS A CONSTRUCTOR, NOT A CONJUNCT, BECAUSE A MISSING CONJUNCT IS
+// EXACTLY HOW THE OVERCLAIM GOT IN. This fold previously branched only on whether the convergence
+// set was empty, so the reachable state unobserved = [] / converged = [] / split = [one family]
+// returned CalibrationDiscriminatesEveryFamily -- full discrimination claimed over a family this
+// module ITSELF classifies as NOT discriminated, because FamilySplitAcrossUnjoinedOccurrences means
+// its rows cannot be joined back to one authored reference.
+//
+// IT WAS HELD SHUT ONLY BY A FACT ABOUT TODAY'S CORPUS -- four families happen to converge, so the
+// convergence arm fires first and the split state is never reached. That is an INCIDENTAL guard,
+// and it decays the moment convergence is fixed, which is a fix we WANT: the day the instrument
+// stops converging, the overclaim fires. "Unreachable today" is the same argument as "n is small
+// here", and a guard that depends on a measurement is not a guard.
+//
+// THE PRECEDENCE IS THE DECLARED RANKING, and each rung is its own arm so no state can skip one:
+// blindness > split across unjoined occurrences > convergence > fully discriminated.
+fn step0_standing_over_partition(
+  unclaimed: Int,
+  uncalibrated: Int,
+  unobserved: List<Step0ReferenceFamily>,
+  split: List<Step0ReferenceFamily>,
+  converged: List<Step0ReferenceFamily>
+) -> Step0CalibrationStanding {
   if unclaimed > 0 || uncalibrated > 0 {
     CalibrationRosterIncomplete { unclaimed_branches: unclaimed, uncalibrated_families: uncalibrated }
   } else if count(unobserved) > 0 {
     CalibrationBlindToFamilies {
       unobserved_family_count: count(unobserved),
       converged_family_count: count(converged),
-      split_family_count: count(step0_split_families()),
+      split_family_count: count(split),
       discriminated_family_count: count(step0_discriminated_families()),
       unauthorable_branch_count: step0_unauthorable_branch_count(),
       denominator_defect_count: count(step0_denominator_defects()),
@@ -786,21 +828,50 @@ fn step0_calibration_standing() -> Step0CalibrationStanding {
       uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity())
     }
   } else {
-    match first(converged) {
-      Absent => CalibrationDiscriminatesEveryFamily {
-        unauthorable_branch_count: step0_unauthorable_branch_count(),
-        uncalibrated_topology_row_count: count(step0_rows_with_uncalibrated_topology()),
-        uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity())
-      }
-      Present { value: worst } => CalibrationCappedByConvergence {
+    match first(split) {
+      Present { value: worst_split } => CalibrationCappedBySplit {
+        split_family_count: count(split),
         converged_family_count: count(converged),
-        split_family_count: count(step0_split_families()),
         discriminated_family_count: count(step0_discriminated_families()),
         unauthorable_branch_count: step0_unauthorable_branch_count(),
         uncalibrated_topology_row_count: count(step0_rows_with_uncalibrated_topology()),
         uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity()),
-        capability: step0_family_discrimination_capability(family: worst)
+        capability: step0_family_discrimination_capability(family: worst_split)
+      }
+      Absent => match first(converged) {
+        Absent => CalibrationDiscriminatesEveryFamily {
+          unauthorable_branch_count: step0_unauthorable_branch_count(),
+          uncalibrated_topology_row_count: count(step0_rows_with_uncalibrated_topology()),
+          uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity())
+        }
+        Present { value: worst } => CalibrationCappedByConvergence {
+          converged_family_count: count(converged),
+          split_family_count: count(split),
+          discriminated_family_count: count(step0_discriminated_families()),
+          unauthorable_branch_count: step0_unauthorable_branch_count(),
+          uncalibrated_topology_row_count: count(step0_rows_with_uncalibrated_topology()),
+          uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity()),
+          capability: step0_family_discrimination_capability(family: worst)
+        }
       }
     }
   }
+}
+
+// THE LIVE STANDING IS THE PARTITION FOLD APPLIED TO TODAY'S ROSTERS, and the two are separated so
+// the precedence above has an AUTHORABLE RED. Asking whether the split cap can be skipped is not a
+// question this module could answer while the fold read the live rosters directly: the offending
+// state -- no blindness, no convergence, one split family -- is not expressible against a corpus in
+// which four families converge, so a control over the live standing is permanently green on the
+// point it claims to check, which is a decoration and not a wall (DESIGN section 4b). Handing the
+// partition in as an argument makes the forbidden state expressible in a FIXTURE, which is where a
+// compiler's regression probes belong.
+fn step0_calibration_standing() -> Step0CalibrationStanding {
+  step0_standing_over_partition(
+    unclaimed: count(step0_unclaimed_producer_branches()),
+    uncalibrated: count(step0_uncalibrated_families()),
+    unobserved: step0_unobserved_families(),
+    split: step0_split_families(),
+    converged: step0_converged_families()
+  )
 }
