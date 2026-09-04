@@ -961,51 +961,21 @@ pub struct TransitionAdmission {
 /// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
 /// spelling to product.placement_supply, the delta stops being producible, and this row is owed
 /// deletion by the next roster-touching change.
-///
-/// TWENTY-FOURTH DISSOLUTION (2026-09-04), PAID ON THE RULE THE TWENTY-THIRD JUST WROTE DOWN. The
-/// one `gunbc#10218 identity-equality re-home` row is deleted, and its consumption was READ FROM
-/// THE BASE rather than waited on: main declares `physical_asset_identity_eq` in
-/// `product.placement_supply` (dag/gunbc/product/placement_supply.dag) and
-/// `product.printed_chassis.manufacturing_manifest` imports it from there by name, so the base
-/// already binds that spelling to that target and the delta is not producible. That is exactly the
-/// check the entry above says costs a required run whenever it is guessed instead.
-///
-/// THE SIX ROWS THIS BRANCH ALSO DELETED ARE NOT RECORDED TWICE. An earlier head of this branch
-/// removed the four `gunbc#10028` and two `gunbc#10206` rows and wrote its own dissolution entry
-/// for them; main removed the same six independently and recorded it as the TWENTY-THIRD. One
-/// event, one record: my entry is dropped in favour of main's, because a second narration of the
-/// same deletion is the double-record this ledger already refuses once above.
-/// TWENTY-FIFTH DISSOLUTION (2026-09-04), PAID ON THE SAME RULE AND READ THE SAME WAY. The
-/// `gunbc#10328 guarantee_stall split` rows arriving with this merge are CONSUMED: main's
-/// `dag/test/claim/guarantee_stall_witness_test.dag` imports `all_guarantee_stalls` from
-/// `gunbc.guarantee_stall.roster` by name, so the base already binds that spelling to that target
-/// and no run can produce those deltas. Deleted here rather than carried, because carrying them
-/// costs a required run to rediscover -- the history the rule above is written from, and which this
-/// branch paid once already by unioning an earlier merge instead of reading the tree.
-/// TWENTIETH TRANSITION (2026-09-04, gunbc#10254). Authored as SEVENTEENTH against a base whose
-/// highest ordinal was SIXTEENTH; main landed SEVENTEENTH, EIGHTEENTH and NINETEENTH while this
-/// branch was open, so the merge renumbers rather than minting a fourth duplicate -- the ordinal
-/// exists to make an entry citable by its own name. The DGX Spark first-boot wizard's INTERFACE
-/// vocabulary -- screen routes, headings, controls, advance gates, validation rules and the
-/// client's username admission -- moved from `gunbc.spark.oobe_screen_observation` to
-/// `extdeps.systems.nvidia_dgx_spark_setup`, which already owned the `OobeSetupField` roster for
-/// that same wizard. DESIGN §3 external upstream decomposition: what NVIDIA's product PRESENTS is
-/// NVIDIA's authority, and what this repository MEASURED stays a receipt in the observing layer.
-///
-/// EVERY ROW IS A PURE RELOCATION. No declaration below changes what it denotes; the observing
-/// module and its witness now bind the same spellings through the vendor authority, so the wall
-/// reports `TargetChanged` at each binding site. A binding whose MEANING had moved would refuse on
-/// its own row rather than be covered here, and the rows are enumerated by exact identity rather
-/// than matched by the module pair, because a pattern would admit a genuine rebind that happened to
-/// land in the same two modules.
-///
-/// TRIGGER: these rows go when #10254 merges. Once the consolidation is on main, merge commit and
-/// base both carry it, no run can produce these deltas, and all of them report stale -- which
-/// refuses every unrelated PR, the shape recorded for the 53 and the 314 above. The shrink is the
-/// fix, not housekeeping.
-const SPARK_OOBE_VENDOR_INTERFACE_LABEL: &str =
-    "spark OOBE vendor-interface consolidation gunbc#10254 2026-09-04";
-
+// THE ONE gunbc#10218 ROW IS DELETED HERE, NOT CARRIED. It was CONSUMED -- its relocation is
+// already satisfied at the base because that PR merged -- and this roster's own rule is that a
+// consumed row's deletion is owed on the roster's next touch. This is that touch.
+//
+// WHAT THESE 19 ROWS ADMIT, AND WHY THEY ARE ALL ONE MOVE. gunbc.fleet_asset_identity was extracted
+// so that a printer's network endpoint and its inventory row could cite ONE declaration of
+// printer_01 rather than agreeing by label string. Binding the endpoint to the asset would otherwise
+// have made gunbc.fleet_intent_network and gunbc.fleet_physical_inventory import each other, and
+// DESIGN section 3 states the import graph's one structural law is acyclicity.
+//
+// Every delta below is the same shape: a spelling that resolved to gunbc.fleet_physical_inventory
+// now resolves to gunbc.fleet_asset_identity. No name changed, no value changed, and no consumer
+// reads a different constant -- the declarations moved beneath their readers rather than away from
+// them. The four test.claim.cooling_qualification_witness rows are the same move seen from a
+// witness that reads cooler_srv3 through the same namespace.
 /// TWENTY-FIRST TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
 /// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
 /// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
@@ -1020,1431 +990,242 @@ const SPARK_OOBE_VENDOR_INTERFACE_LABEL: &str =
 /// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
 /// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
 ///
-/// THE ORDINAL IS TWENTY-FIRST BECAUSE TWENTIETH WAS MINTED TWICE WHILE THIS BRANCH WAS OPEN, once
-/// by gunbc#10328 and once by gunbc#10254. This branch renumbers rather than mint a third: the
-/// ordinal exists to make an entry citable by its own name.
+/// THE ORDINAL IS TWENTY-FIRST BECAUSE THE BASE'S HIGHEST IS TWENTIETH. It was authored against a
+/// base where TWENTIETH had been minted twice, by gunbc#10328 and gunbc#10254; this merge takes the
+/// roster from main, where the gunbc#10254 rows and their entry are already deleted as consumed, so
+/// exactly one TWENTIETH remains and this entry follows it. The ordinal exists to make an entry
+/// citable by its own name, so it tracks the tree it lands in rather than the one it was written
+/// against.
 ///
 /// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "ObservedDirectRouteNavigation",
-            spelling: "OobeScreenRoute",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "fleet_host_spatial_facts",
+            spelling: "chassis_srv1",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "ObservedInitialNavigation",
-            spelling: "OobeScreenRoute",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "fleet_host_spatial_facts",
+            spelling: "chassis_srv2",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "OobeWalkTermination",
-            spelling: "OobeScreenRoute",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "fleet_host_spatial_facts",
+            spelling: "chassis_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "account_route_direct_navigation",
-            spelling: "OobeScreenRoute",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "fleet_host_spatial_facts",
+            spelling: "chassis_srv4",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "dgx_spark_0c75_oobe_account_run",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "fleet_host_spatial_facts",
+            spelling: "chassis_srv5_placeholder",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "dgx_spark_0c75_oobe_prefix_run",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "fleet_host_spatial_facts",
+            spelling: "chassis_srv6_placeholder",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "dgx_spark_0c75_oobe_prefix_run",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "installed_cooler_containments",
+            spelling: "cooler_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "dgx_spark_0c75_oobe_prefix_run",
-            spelling: "oobe_screen_welcome",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "installed_cooler_containments",
+            spelling: "cooler_srv4",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "initial_navigation_observation",
-            spelling: "OobeScreenRoute",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "installed_cooling_realizations",
+            spelling: "cooler_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "observed_account_username_probes",
-            spelling: "ClientAdmittedUsername",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "installed_cooling_realizations",
+            spelling: "cooler_srv4",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "observed_account_username_probes",
-            spelling: "ClientUsernameAdmission",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "pdu_01_asset",
+            spelling: "pdu_01",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "observed_account_walk_termination",
-            spelling: "OobeScreenRoute",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "srv1_chassis_asset",
+            spelling: "chassis_srv1",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "observed_walk_termination",
-            spelling: "OobeScreenRoute",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "srv3_cooler_asset",
+            spelling: "cooler_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.oobe_screen_observation",
-            in_declaration: "screen_presents_field",
-            spelling: "ObservedOobeScreen",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "srv4_cooler_asset",
+            spelling: "cooler_srv4",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "account_binds_entry_field",
-            spelling: "FormFieldName",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "gunbc.fleet_physical_inventory",
+            in_declaration: "switch_01_asset",
+            spelling: "switch_01",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "account_binds_entry_field",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "test.claim.cooling_qualification_witness",
+            in_declaration: "catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence",
+            spelling: "cooler_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "account_rule_holds",
-            spelling: "FieldMinimumLength",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "test.claim.cooling_qualification_witness",
+            in_declaration: "duplicate_cooling_ab",
+            spelling: "cooler_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "account_rule_holds",
-            spelling: "FieldMustEqual",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "test.claim.cooling_qualification_witness",
+            in_declaration: "duplicate_cooling_ba",
+            spelling: "cooler_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
+        label:
+            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
+            beneath both their users so the printer endpoint can cite one declaration",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "account_rule_holds",
-            spelling: "FieldRequiredNonEmpty",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "account_rule_holds",
-            spelling: "ObservedFieldValidationRule",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "AdvanceButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "ComboBoxOverHiddenField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "FormFieldName",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "HiddenBackingField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "OobeControl",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "SubmitButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "SubmittedValueRepresentation",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_binds_field",
-            spelling: "TextEntryField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "AdvanceButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "ComboBoxOverHiddenField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "ControlLabel",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "HiddenBackingField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "OobeControl",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "OobeControlIdentity",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "SubmitButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "TestId",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "control_matches",
-            spelling: "TextEntryField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "declared_minimum_length",
-            spelling: "FieldMinimumLength",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "declared_minimum_length",
-            spelling: "FieldMustEqual",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "declared_minimum_length",
-            spelling: "FieldRequiredNonEmpty",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "declared_minimum_length",
-            spelling: "ObservedFieldValidationRule",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "AdvanceButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "ComboBoxOverHiddenField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "FormFieldName",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "HiddenBackingField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "MaskedSecretEntry",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "OobeControl",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "PlainTextEntry",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "RequiredField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "SubmitButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "entry_field_matches",
-            spelling: "TextEntryField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "forward_control_address",
-            spelling: "AdvanceButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "forward_control_address",
-            spelling: "ComboBoxOverHiddenField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "forward_control_address",
-            spelling: "HiddenBackingField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "forward_control_address",
-            spelling: "OobeControl",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "forward_control_address",
-            spelling: "SubmitButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "forward_control_address",
-            spelling: "TextEntryField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "prefix_route_spelling",
-            spelling: "ObservedOobeScreen",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_creates_account",
-            spelling: "AcceptsLegalAgreement",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_creates_account",
-            spelling: "CreatesDeviceAccount",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_creates_account",
-            spelling: "ObservedOobeScreen",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_creates_account",
-            spelling: "PresentsNoConfigurableField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_creates_account",
-            spelling: "SubmitsSelections",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_has_control",
-            spelling: "ControlLabel",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_has_control",
-            spelling: "ObservedOobeScreen",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_has_control",
-            spelling: "OobeControlIdentity",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "screen_has_control",
-            spelling: "TestId",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "settings_binds_field",
-            spelling: "FormFieldName",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "settings_binds_field",
-            spelling: "SubmittedValueRepresentation",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "settings_binds_field",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "username_recorded_as_admitted",
-            spelling: "ClientAdmittedUsername",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "username_recorded_as_admitted",
-            spelling: "ClientRefusedUsername",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_gate_carries_the_three_measured_validation_rules",
-            spelling: "ForwardControlEnabledAfterScrollToEnd",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_gate_carries_the_three_measured_validation_rules",
-            spelling: "ForwardControlEnabledOnArrival",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_gate_carries_the_three_measured_validation_rules",
-            spelling: "ForwardControlEnabledWhenFieldsValidate",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_gate_carries_the_three_measured_validation_rules",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_screen_binds_three_named_fields_with_measured_secrecy",
-            spelling: "FormFieldName",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_screen_carries_no_entry_field_beyond_the_three_named",
-            spelling: "AdvanceButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_screen_carries_no_entry_field_beyond_the_three_named",
-            spelling: "ComboBoxOverHiddenField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_screen_carries_no_entry_field_beyond_the_three_named",
-            spelling: "HiddenBackingField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_screen_carries_no_entry_field_beyond_the_three_named",
-            spelling: "SubmitButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_screen_carries_no_entry_field_beyond_the_three_named",
-            spelling: "TextEntryField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_account_screen_carries_no_entry_field_beyond_the_three_named",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_coverage_follows_the_screens_presented_subjects",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_coverage_follows_the_screens_presented_subjects",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_coverage_follows_the_screens_presented_subjects",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_coverage_follows_the_screens_presented_subjects",
-            spelling: "oobe_screen_welcome",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "AccountContinueAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "EulaAcceptAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "SettingsContinueAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "WelcomeGetStartedAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_each_screen_carries_its_observed_forward_control",
-            spelling: "oobe_screen_welcome",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_eula_gate_requires_scroll_to_a_named_container",
-            spelling: "ForwardControlEnabledAfterScrollToEnd",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_eula_gate_requires_scroll_to_a_named_container",
-            spelling: "ForwardControlEnabledOnArrival",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_eula_gate_requires_scroll_to_a_named_container",
-            spelling: "ForwardControlEnabledWhenFieldsValidate",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_eula_gate_requires_scroll_to_a_named_container",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_exactly_one_screen_in_the_prefix_accepts_a_legal_agreement",
-            spelling: "AcceptsLegalAgreement",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_exactly_one_screen_in_the_prefix_accepts_a_legal_agreement",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_exactly_one_screen_in_the_prefix_creates_a_device_account",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_exactly_one_screen_in_the_prefix_creates_a_device_account",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_language_and_timezone_submit_vendor_ordinals_not_identifiers",
-            spelling: "Bcp47LanguageTagValue",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_language_and_timezone_submit_vendor_ordinals_not_identifiers",
-            spelling: "FormFieldName",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_language_and_timezone_submit_vendor_ordinals_not_identifiers",
-            spelling: "VendorOpaqueOrdinal",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_only_the_welcome_and_settings_screens_advance_on_arrival",
-            spelling: "ForwardControlEnabledAfterScrollToEnd",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_only_the_welcome_and_settings_screens_advance_on_arrival",
-            spelling: "ForwardControlEnabledOnArrival",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_only_the_welcome_and_settings_screens_advance_on_arrival",
-            spelling: "ForwardControlEnabledWhenFieldsValidate",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_only_the_welcome_and_settings_screens_advance_on_arrival",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_only_the_welcome_and_settings_screens_advance_on_arrival",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_only_the_welcome_and_settings_screens_advance_on_arrival",
-            spelling: "oobe_screen_welcome",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screen_headings_are_the_observed_text",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screen_headings_are_the_observed_text",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screen_headings_are_the_observed_text",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screen_headings_are_the_observed_text",
-            spelling: "oobe_screen_welcome",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "AccountContinueAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "EulaAcceptAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "SettingsContinueAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "WelcomeGetStartedAction",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "oobe_screen_eula",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_screens_do_not_share_control_identities",
-            spelling: "oobe_screen_welcome",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_all_three_backing_fields",
-            spelling: "Bcp47LanguageTagValue",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_all_three_backing_fields",
-            spelling: "FormFieldName",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_all_three_backing_fields",
-            spelling: "VendorOpaqueOrdinal",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_no_field_beyond_the_three_named",
-            spelling: "AdvanceButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_no_field_beyond_the_three_named",
-            spelling: "ComboBoxOverHiddenField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_no_field_beyond_the_three_named",
-            spelling: "HiddenBackingField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_no_field_beyond_the_three_named",
-            spelling: "SubmitButton",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_no_field_beyond_the_three_named",
-            spelling: "TextEntryField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_carries_no_field_beyond_the_three_named",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_submits_exactly_language_and_timezone",
-            spelling: "AcceptsLegalAgreement",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_submits_exactly_language_and_timezone",
-            spelling: "CreatesDeviceAccount",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_submits_exactly_language_and_timezone",
-            spelling: "PresentsNoConfigurableField",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_submits_exactly_language_and_timezone",
-            spelling: "SubmitsSelections",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_settings_screen_submits_exactly_language_and_timezone",
-            spelling: "oobe_screen_settings",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_the_only_password_length_rule_is_six_characters",
-            spelling: "ForwardControlEnabledAfterScrollToEnd",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_the_only_password_length_rule_is_six_characters",
-            spelling: "ForwardControlEnabledOnArrival",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_the_only_password_length_rule_is_six_characters",
-            spelling: "ForwardControlEnabledWhenFieldsValidate",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_oobe_screen_observation_witness",
-            in_declaration: "w_the_only_password_length_rule_is_six_characters",
-            spelling: "oobe_screen_account",
-            target: "extdeps.systems.nvidia_dgx_spark_setup",
+            module: "test.claim.cooling_qualification_witness",
+            in_declaration: "srv3_installed_cooling",
+            spelling: "cooler_srv3",
+            target: "gunbc.fleet_asset_identity",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2471,7 +1252,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
 ];
-
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
