@@ -16,9 +16,11 @@ import gunbc.spark.serving_engine {
   SparkEngineSlotVerdict, EngineSlotAvailable, EngineSlotRefused,
   SparkEngineSlotRefusal, UnifiedPoolAlreadyOccupied,
   spark_engine_slot_admits,
-  MemoryEnforcer, MemoryEnforcerKind, RayThresholdMonitor, HostMemGuard, KernelOomKiller,
+  MemoryEnforcerKind, RayThresholdMonitor, HostMemGuard, KernelOomKiller,
+  memory_enforcer_counts_device_reservation,
   EnforcerVerdict, EnforcerAdmitted, EnforcerRefused,
-  EnforcerRefusal, NoEnforcerDeclared, MoreThanOneEnforcer, RayMonitorLiveOnUnifiedPool,
+  EnforcerRefusal, NoEnforcerDeclared, MoreThanOneEnforcer,
+  DeviceReservationCountingEnforcerOnUnifiedPool,
   spark_memory_enforcer_admits
 }
 import extdeps.ollama.api { ollama_default_port }
@@ -44,13 +46,9 @@ data fx_ollama: ServingEngine = OllamaServing {
   }
 }
 
-data fx_guard: MemoryEnforcer = MemoryEnforcer {
-  kind: HostMemGuard, counts_device_reservation: false, swap_aware: true
-}
+data fx_guard: MemoryEnforcerKind = HostMemGuard
 
-data fx_ray_monitor: MemoryEnforcer = MemoryEnforcer {
-  kind: RayThresholdMonitor, counts_device_reservation: true, swap_aware: false
-}
+data fx_ray_monitor: MemoryEnforcerKind = RayThresholdMonitor
 
 fn slot_is_refused_as_occupied(v: SparkEngineSlotVerdict, incumbent: NonEmptyStr, applicant: NonEmptyStr) -> Bool {
   match v {
@@ -107,7 +105,7 @@ fn enforcer_refused_with(v: EnforcerVerdict, wanted: NonEmptyStr) -> Bool {
       match c {
         NoEnforcerDeclared => wanted == "none" as NonEmptyStr
         MoreThanOneEnforcer { count: _ } => wanted == "many" as NonEmptyStr
-        RayMonitorLiveOnUnifiedPool => wanted == "ray" as NonEmptyStr
+        DeviceReservationCountingEnforcerOnUnifiedPool { kind: _ } => wanted == "counts" as NonEmptyStr
       }
   }
 }
@@ -135,12 +133,41 @@ test fn w_two_enforcers_refuse_rather_than_layering() -> Bool {
     wanted: "many" as NonEmptyStr)
 }
 
-// RED. A live Ray monitor on a unified pool refuses, because it counts the device reservation and
-// therefore reads near its kill line with no requests in flight.
+// RED, AND THIS IS THE ROW THAT USED TO NAME THE WRONG FACT. A Ray launch on a unified pool with
+// NOTHING declared refused as `NoEnforcerDeclared` while the monitor Ray brings was live the whole
+// time -- a true sentence about the declaration and a false one about the host. The implied monitor
+// is now a member of the population, so the refusal names what is actually counting.
 test fn w_a_live_ray_monitor_on_a_unified_pool_refuses() -> Bool {
   enforcer_refused_with(
+    v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [], ray_monitor_disabled: false, backend: ExecutorRay),
+    wanted: "counts" as NonEmptyStr)
+}
+
+// RED. THE SAME REFUSAL WHEN THE MONITOR IS DECLARED RATHER THAN IMPLIED. Keyed on the backend flag
+// alone this admitted silently: `ray_monitor_disabled: true` says only that RAY did not start one,
+// and says nothing about a monitor the operator declared. The rule reads the population, so the
+// route by which an enforcer became live cannot change the verdict.
+test fn w_a_declared_ray_monitor_refuses_although_ray_started_none() -> Bool {
+  enforcer_refused_with(
+    v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_ray_monitor], ray_monitor_disabled: true, backend: ExecutorMp),
+    wanted: "counts" as NonEmptyStr)
+}
+
+// RED. A declared enforcer BESIDE the implied one is the two-enforcer incident, reached by the
+// implication rather than by two declarations. This is the case the old shape could not see at all.
+test fn w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers() -> Bool {
+  enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], ray_monitor_disabled: false, backend: ExecutorRay),
-    wanted: "ray" as NonEmptyStr)
+    wanted: "many" as NonEmptyStr)
+}
+
+// CONTROL, AND THE DISCRIMINATOR FOR THE DERIVED FIELD. What an enforcer counts is now a total
+// function of what it IS, so this row goes red if any kind's answer is edited -- which is the check
+// the deleted `counts_device_reservation` field could never carry, because a caller supplied it.
+test fn w_only_rays_monitor_counts_the_device_reservation() -> Bool {
+  memory_enforcer_counts_device_reservation(kind: RayThresholdMonitor)
+    && !memory_enforcer_counts_device_reservation(kind: HostMemGuard)
+    && !memory_enforcer_counts_device_reservation(kind: KernelOomKiller)
 }
 
 // CONTROL. Disabling the monitor admits the same configuration. Without this the row above would be
@@ -151,7 +178,7 @@ test fn w_the_same_configuration_admits_once_the_monitor_is_off() -> Bool {
 }
 
 // CONTROL. A NON-Ray backend on a unified pool admits with the monitor flag untouched -- the rule is
-// about the monitor Ray brings, not about unified memory in general.
+// about what is counting, not about unified memory in general.
 test fn w_a_non_ray_backend_is_outside_the_monitor_rule() -> Bool {
   enforcer_admitted(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], ray_monitor_disabled: false, backend: ExecutorMp))
@@ -159,11 +186,16 @@ test fn w_a_non_ray_backend_is_outside_the_monitor_rule() -> Bool {
       v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], ray_monitor_disabled: false, backend: ExecutorExternalLauncher))
 }
 
-// CONTROL. Ray on a DISCRETE host admits with the monitor live, because there the monitor's count and
-// the host's free memory are the same question.
-test fn w_ray_on_a_discrete_host_is_outside_the_monitor_rule() -> Bool {
+// CONTROL. Ray's monitor ALONE on a DISCRETE host admits, because there the device reservation and
+// the host's own memory are separately accounted and counting the reservation is merely
+// conservative. The declared list is empty on purpose: with a guard declared beside it this is the
+// two-enforcer refusal instead, which is true on a discrete host as well and would make this row
+// green for the wrong reason.
+test fn w_ray_on_a_discrete_host_is_outside_the_counting_rule() -> Bool {
   enforcer_admitted(
-    v: spark_memory_enforcer_admits(memory_kind: Dram, enforcers: [fx_guard], ray_monitor_disabled: false, backend: ExecutorRay))
+    v: spark_memory_enforcer_admits(memory_kind: Dram, enforcers: [], ray_monitor_disabled: false, backend: ExecutorRay))
+    && enforcer_admitted(
+      v: spark_memory_enforcer_admits(memory_kind: Hbm, enforcers: [fx_ray_monitor], ray_monitor_disabled: true, backend: ExecutorMp))
 }
 
 // ── THE VERIFIED NEGATIVES ARE POPULATED, NOT MERELY DECLARED ──────────────────────────────────
@@ -181,8 +213,11 @@ test fn w_all_serving_engine_claims_hold() -> Bool {
     && w_no_declared_enforcer_refuses()
     && w_two_enforcers_refuse_rather_than_layering()
     && w_a_live_ray_monitor_on_a_unified_pool_refuses()
+    && w_a_declared_ray_monitor_refuses_although_ray_started_none()
+    && w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers()
+    && w_only_rays_monitor_counts_the_device_reservation()
     && w_the_same_configuration_admits_once_the_monitor_is_off()
     && w_a_non_ray_backend_is_outside_the_monitor_rule()
-    && w_ray_on_a_discrete_host_is_outside_the_monitor_rule()
+    && w_ray_on_a_discrete_host_is_outside_the_counting_rule()
     && w_the_verified_negatives_carry_upstream_error_text()
 }

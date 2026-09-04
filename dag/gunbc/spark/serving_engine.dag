@@ -133,7 +133,7 @@ fn spark_engine_slot_admits(
   }
 }
 
-// ── EXACTLY ONE MEMORY ENFORCER, AND ITS DEFINITION OF "USED" IS PART OF ITS IDENTITY ──────────
+// ── EXACTLY ONE MEMORY ENFORCER, AND WHAT IT COUNTS IS DERIVED FROM WHAT IT IS ─────────────────
 //
 // TWO ENFORCERS WITH DIFFERENT DEFINITIONS OF "USED" KILL YOU WITH THE ONE YOU WERE NOT WATCHING.
 // Measured: Ray's threshold monitor counts the GPU reservation as node memory, so at a high
@@ -142,65 +142,94 @@ fn spark_engine_slot_admits(
 // counter stays at zero, which is what makes the death look unexplained. A second enforcer keyed on
 // MemAvailable sat BELOW that line and therefore could never fire first.
 //
-// THE FIELD THAT MATTERS IS `counts_device_reservation`. Two enforcers are not redundant coverage
-// when they disagree about what is being counted; they are two different questions, one of which is
-// answered by killing a process. So the enforcer is part of the realization, and more than one is a
-// refusal rather than defence in depth.
+// WHAT IS COUNTED IS A PROPERTY OF THE ENFORCER, SO IT IS DERIVED AND NOT DECLARED. A
+// `counts_device_reservation: Bool` field stood here beside `kind` and was read by nothing. It was
+// two defects at once: a second authority for a fact `kind` already decides, and -- worse -- a
+// required field with no consumer, which is a fact the model asserts and never verifies. It is now
+// a total function of the kind, so a caller cannot declare that Ray's monitor ignores the device
+// reservation. A `swap_aware` field is deleted outright rather than derived: it had no consumer AND
+// no measurement behind it for any of the three kinds, and deriving it would have been invention.
 type MemoryEnforcerKind = RayThresholdMonitor | HostMemGuard | KernelOomKiller
 
-type MemoryEnforcer {
-  kind: MemoryEnforcerKind
-  counts_device_reservation: Bool
-  swap_aware: Bool
+// RAY'S MONITOR COUNTS THE DEVICE RESERVATION; THE OTHER TWO DO NOT. The host guard is keyed on
+// MemAvailable and the kernel killer on resident pages, and neither can see a reservation that was
+// never faulted in. This is the measured asymmetry, and it is the whole reason a unified pool
+// tolerates one of these and not the other.
+fn memory_enforcer_counts_device_reservation(kind: MemoryEnforcerKind) -> Bool {
+  match kind {
+    RayThresholdMonitor => true
+    HostMemGuard => false
+    KernelOomKiller => false
+  }
 }
 
 type EnforcerVerdict
-  = EnforcerAdmitted { enforcer: MemoryEnforcer }
+  = EnforcerAdmitted { enforcer: MemoryEnforcerKind }
   | EnforcerRefused { cause: EnforcerRefusal }
 
 type EnforcerRefusal
   = NoEnforcerDeclared
   | MoreThanOneEnforcer { count: Nat }
-  | RayMonitorLiveOnUnifiedPool
+  | DeviceReservationCountingEnforcerOnUnifiedPool { kind: MemoryEnforcerKind }
 
-// A Ray-backed executor on a unified pool brings the threshold monitor with it, and that monitor
-// counts the device reservation. It must be declared OFF, or the realization is refused -- trading
-// KV pool for headroom underneath a mis-calibrated enforcer is the arm this refuses, because it
-// spends the resource the deployment exists to provide in order to appease a counter that is
-// measuring the wrong thing.
+// AN IMPLIED ENFORCER IS STILL AN ENFORCER, SO IT JOINS THE LIST INSTEAD OF BECOMING A SEPARATE ARM.
+// A Ray-backed executor brings the threshold monitor with it whether or not anyone declared it. That
+// used to be decided in the refusal function from the `backend` argument, which meant the rule was
+// keyed on the applicant's launch flag rather than on the enforcers actually live -- so a
+// `RayThresholdMonitor` sitting in the DECLARED list with the flag off was admitted, and a Ray
+// launch with an empty declared list refused as `NoEnforcerDeclared`, naming the wrong fact. Making
+// the implied monitor a real member of the list dissolves both: there is one population and one set
+// of rules over it.
+fn ray_implied_enforcers(
+  backend: VllmDistributedExecutorBackend,
+  ray_monitor_disabled: Bool,
+) -> List<MemoryEnforcerKind> {
+  match backend {
+    ExecutorMp => []
+    ExecutorExternalLauncher => []
+    ExecutorRay =>
+      match ray_monitor_disabled {
+        true => []
+        false => [RayThresholdMonitor]
+      }
+  }
+}
+
+// ONE POPULATION, THREE RULES, IN ORDER. None, more than one, and -- on a unified pool only -- an
+// enforcer that counts the device reservation. The third is a refusal rather than a warning because
+// trading KV pool for headroom underneath a mis-calibrated counter spends the resource the
+// deployment exists to provide in order to appease a measurement of the wrong thing.
 fn spark_memory_enforcer_admits(
   memory_kind: MemoryKind,
-  enforcers: List<MemoryEnforcer>,
+  enforcers: List<MemoryEnforcerKind>,
   ray_monitor_disabled: Bool,
   backend: VllmDistributedExecutorBackend,
 ) -> EnforcerVerdict {
-  match length(enforcers) == 0 {
-    true => EnforcerRefused { cause: NoEnforcerDeclared }
-    false =>
-      match length(enforcers) > 1 {
-        true => EnforcerRefused { cause: MoreThanOneEnforcer { count: length(enforcers) } }
+  let live = concat(
+    enforcers,
+    ray_implied_enforcers(backend: backend, ray_monitor_disabled: ray_monitor_disabled),
+  )
+  match first(live) {
+    Absent => EnforcerRefused { cause: NoEnforcerDeclared }
+    Present { value: e } =>
+      match length(live) > 1 {
+        true => EnforcerRefused { cause: MoreThanOneEnforcer { count: length(live) } }
         false =>
-          match ray_backed_on_unified_pool(memory_kind: memory_kind, backend: backend) && !ray_monitor_disabled {
-            true => EnforcerRefused { cause: RayMonitorLiveOnUnifiedPool }
-            false =>
-              match first(enforcers) {
-                Absent => EnforcerRefused { cause: NoEnforcerDeclared }
-                Present { value: e } => EnforcerAdmitted { enforcer: e }
-              }
+          match counting_enforcer_refused_on(memory_kind: memory_kind, kind: e) {
+            true => EnforcerRefused { cause: DeviceReservationCountingEnforcerOnUnifiedPool { kind: e } }
+            false => EnforcerAdmitted { enforcer: e }
           }
       }
   }
 }
 
-fn ray_backed_on_unified_pool(memory_kind: MemoryKind, backend: VllmDistributedExecutorBackend) -> Bool {
+// A DISCRETE HOST IS OUTSIDE THIS RULE. There the device reservation and the host's own memory are
+// separately accounted, so a monitor that counts the reservation is merely conservative rather than
+// wrong -- the refusal is about a UNIFIED pool, where the two are the same bytes.
+fn counting_enforcer_refused_on(memory_kind: MemoryKind, kind: MemoryEnforcerKind) -> Bool {
   match memory_kind {
     Dram => false
     Hbm => false
-    UnifiedShared =>
-      match backend {
-        ExecutorRay => true
-        ExecutorMp => false
-        ExecutorExternalLauncher => false
-      }
+    UnifiedShared => memory_enforcer_counts_device_reservation(kind: kind)
   }
 }
