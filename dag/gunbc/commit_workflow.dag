@@ -2345,11 +2345,17 @@ fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
 fn witness_seam_lists_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> Bool {
   if left.count() != right.count() {
     false
-  } else if left.count() == 0 {
-    true
   } else {
-    witness_seam_eq(a: left.first(), b: right.first())
-      && witness_seam_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Absent => true
+      Present { value: lh } =>
+        match right.first() {
+          Absent => true
+          Present { value: rh } =>
+            witness_seam_eq(a: lh, b: rh)
+              && witness_seam_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+        }
+    }
   }
 }
 
@@ -2469,13 +2475,13 @@ fn declaration_field_is_whole(field: DeclField) -> Bool {
 }
 
 fn declaration_refs_unique(declarations: List<DeclarationRef>) -> Bool {
-  if declarations.count() == 0 {
-    true
-  } else {
-    !declaration_ref_in_list(
-      target: declarations.first(),
-      refs: declarations.skip(n: 1)
-    ) && declaration_refs_unique(declarations: declarations.skip(n: 1))
+  match declarations.first() {
+    Absent => true
+    Present { value: head } =>
+      !declaration_ref_in_list(
+        target: head,
+        refs: declarations.skip(n: 1)
+      ) && declaration_refs_unique(declarations: declarations.skip(n: 1))
   }
 }
 
@@ -2500,12 +2506,14 @@ fn demand_check_count(check: CommitCheckKind, rows: List<EnrollmentWitnessDemand
 }
 
 fn first_duplicate_commit_check(roster: List<CommitCheckEnrollment>) -> DuplicateCommitCheck {
-  if roster.count() == 0 {
-    NoDuplicateCommitCheck
-  } else if commit_check_count(check: roster.first().check, roster: roster) > 1 {
-    DuplicateCommitCheckFound { check: roster.first().check }
-  } else {
-    first_duplicate_commit_check(roster: roster.skip(n: 1))
+  match roster.first() {
+    Absent => NoDuplicateCommitCheck
+    Present { value: head } =>
+      if commit_check_count(check: head.check, roster: roster) > 1 {
+        DuplicateCommitCheckFound { check: head.check }
+      } else {
+        first_duplicate_commit_check(roster: roster.skip(n: 1))
+      }
   }
 }
 
@@ -2593,12 +2601,12 @@ fn project_named_declaration_demands(
   names: List<String>,
   declarations: List<DeclarationRef>,
 ) -> NamedDeclarationDemandOutcome {
-  if names.count() == 0 {
-    NamedDeclarationsQualified { declarations: [] }
-  } else {
+  match names.first() {
+    Absent => NamedDeclarationsQualified { declarations: [] }
+    Present { value: head_name } =>
     let matching = filter(
       declarations,
-      declaration => declaration_matches_name(declaration: declaration, name: names.first())
+      declaration => declaration_matches_name(declaration: declaration, name: head_name)
     )
     if matching.count() == 0 {
       NamedDeclarationMissing {
@@ -2616,13 +2624,19 @@ fn project_named_declaration_demands(
         NamedDeclarationMissing { cause } => NamedDeclarationMissing { cause: cause }
         NamedDeclarationAmbiguous { cause } => NamedDeclarationAmbiguous { cause: cause }
         NamedDeclarationsQualified { declarations: rest } =>
-          let selected = concat([matching.first()], rest)
-          if declaration_refs_unique(declarations: selected) {
-            NamedDeclarationsQualified { declarations: selected }
-          } else {
-            NamedDeclarationAmbiguous {
-              cause: "named witness demand repeats one declaration identity" as NonEmptyStr
+          match matching.first() {
+            Absent => NamedDeclarationMissing {
+              cause: "named witness declaration is absent from complete discovery" as NonEmptyStr
             }
+            Present { value: selected_head } =>
+              let selected = concat([selected_head], rest)
+              if declaration_refs_unique(declarations: selected) {
+                NamedDeclarationsQualified { declarations: selected }
+              } else {
+                NamedDeclarationAmbiguous {
+                  cause: "named witness demand repeats one declaration identity" as NonEmptyStr
+                }
+              }
           }
       }
     }

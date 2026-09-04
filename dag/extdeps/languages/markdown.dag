@@ -460,9 +460,20 @@ fn md_parse_code(block_lines: List<String>) -> MarkdownBlock {
   }
 }
 
+// THE Absent ARM IS UNREACHABLE AND, UNIQUELY HERE, CANNOT REFUSE. `lines` is a
+// `split` result and split cannot return an empty list, so Absent cannot occur --
+// a property of split's implementation that its `List<T>` return type does not
+// carry. Elsewhere in this population the unreachable arm refuses; it cannot here,
+// because MarkdownBlock declares no refusal variant and md_parse_block is total,
+// so refusing would mean changing the return type of every caller. The arm
+// therefore routes to the same ParagraphBlock fallthrough the function already
+// produces when nothing else matches. Rostered as the weakest member of
+// gunbc.guarantee_stall split_non_emptiness_unmodelled_stall.
 fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> MarkdownBlock {
   let lines = split(s: block_src, delimiter: "\n")
-  let first = lines.first()
+  match lines.first() {
+    Absent => ParagraphBlock { inlines: md_parse_inline_rest(text: block_src, sp: sp) }
+    Present { value: first } =>
   if starts_with(s: block_src, prefix: sp.code_fence) {
     md_parse_code(block_lines: lines)
   } else if md_is_heading(line: first, sp: sp) {
@@ -476,6 +487,7 @@ fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> MarkdownBlock {
   } else {
 
     ParagraphBlock { inlines: md_parse_inline_rest(text: block_src, sp: sp) }
+  }
   }
 }
 
@@ -628,14 +640,19 @@ type InlineSplitResult
 
 fn md_split_on_delim_pair(text: String, delim: String) -> InlineSplitResult {
   let parts = split(s: text, delimiter: delim)
-  if parts.length() >= 3 {
-    let before = parts.first()
-    let tail = parts.skip(n: 1)
-    let inner = tail.first()
-    let after = join(tail.skip(n: 1), delim)
-    FoundSplit { parts: InlineSplit { before: before, inner: inner, after: after } }
-  } else {
-    NoSplit
+  let tail = parts.skip(n: 1)
+  match parts.first() {
+    Absent => NoSplit
+    Present { value: before } =>
+      match tail.first() {
+        Absent => NoSplit
+        Present { value: inner } =>
+          if parts.length() >= 3 {
+            FoundSplit { parts: InlineSplit { before: before, inner: inner, after: join(tail.skip(n: 1), delim) } }
+          } else {
+            NoSplit
+          }
+      }
   }
 }
 
@@ -702,7 +719,9 @@ fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<MarkdownInl
       if url_parts.length() < 2 {
         [ TextInline { text: text } ]
       } else {
-        let url = url_parts.first()
+        match url_parts.first() {
+          Absent => [ TextInline { text: text } ]
+          Present { value: url } =>
         let after_link = join(url_parts.skip(n: 1), sp.link_url_close)
         concat(
           md_text_inline_if_nonempty(s: before_bracket),
@@ -715,6 +734,7 @@ fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<MarkdownInl
             md_parse_inline_rest(text: after_link, sp: sp)
           )
         )
+        }
       }
     }
   }

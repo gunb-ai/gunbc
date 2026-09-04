@@ -195,16 +195,34 @@ fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
   })
 }
 
+// THE Absent ARMS BELOW ARE UNREACHABLE, AND THEY REFUSE RATHER THAN SUBSTITUTE.
+// Every optional here is `split(...).first()`, and `split` cannot return an empty
+// list -- on the empty string it returns [""] -- so Absent cannot occur. That
+// non-emptiness is a property of split's IMPLEMENTATION that its return type
+// `List<T>` does not carry, which is exactly why these positions are diagnosed at
+// all: nothing enforces the property the code relies on.
+//
+// The arms therefore refuse instead of substituting a plausible value. The choice
+// is only free while the unreachability argument holds, so it is made for the case
+// where that argument is WRONG -- a reimplemented split, a different producer, a
+// caller passing something that is not a split result. A refusal stops the line
+// loudly and located; a fabricated empty value would be the absorbing fallback
+// (DESIGN 5). Dissolves when split's return type carries non-emptiness AND these
+// callers consume it -- see gunbc.guarantee_stall split_non_emptiness_unmodelled_stall.
 fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
   if starts_with(s: s, prefix: sp.end_tag_open) {
     ParseOneRejected { reason: "unexpected end tag" }
   } else if starts_with(s: s, prefix: sp.tag_open) {
     let open_chunks = split(s: s, delimiter: sp.tag_close)
-    let open_content = open_chunks.first()
+    match open_chunks.first() {
+      Absent => ParseOneRejected { reason: "unterminated open tag" }
+      Present { value: open_content } =>
     let after_open_tag = html_strip_prefix(s: s, prefix: join([open_content, sp.tag_close], ""))
     let tag_and_attrs = html_strip_prefix(s: open_content, prefix: sp.tag_open)
     let tag_parts = split(s: tag_and_attrs, delimiter: sp.attr_sep)
-    let tag = tag_parts.first()
+    match tag_parts.first() {
+      Absent => ParseOneRejected { reason: "open tag names no element" }
+      Present { value: tag } =>
     let attrs_raw = join(tag_parts.skip(n: 1), sp.attr_sep)
     let attr_result = parse_attrs_with(attrs_str: attrs_raw, sp: sp)
     if attr_result.rejected {
@@ -221,10 +239,17 @@ fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
           }
       }
     }
+    }
+    }
   } else {
-    let text_raw = split(s: s, delimiter: sp.tag_open).first()
-    let rest = html_strip_prefix(s: s, prefix: text_raw)
-    ParsedOne { node: FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
+    match split(s: s, delimiter: sp.tag_open).first() {
+      Absent => ParseOneRejected { reason: "no text content before tag open" }
+      Present { value: text_raw } =>
+        ParsedOne {
+          node: FragmentText { content: unescape_text(s: text_raw) },
+          rest: html_strip_prefix(s: s, prefix: text_raw),
+        }
+    }
   }
 }
 
