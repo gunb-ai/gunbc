@@ -10,7 +10,6 @@ import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
 import extdeps.standards.micro_atx {
   MountingLocation, MountingLocationId, LocC, LocF,
   micro_atx_mounting_locations, micro_atx_standard_hole_diameter,
-  mounting_location_id_eq,
 }
 import product.printed_chassis.coupon {
   PlateDimensions, plate_dimensions, CouponOperation, OpThroughHole,
@@ -65,7 +64,7 @@ type LocationLookup
 
 fn location_scan(rows: List<MountingLocation>, id: MountingLocationId) -> LocationLookup {
   fold(rows, init: LocationAbsent, f: fn(acc, r) {
-    if mounting_location_id_eq(a: r.id, b: id) {
+    if r.id == id {
       match acc {
         LocationAbsent => LocationFound { location: r }
         LocationFound { location: l } => LocationDuplicated { count: 2 }

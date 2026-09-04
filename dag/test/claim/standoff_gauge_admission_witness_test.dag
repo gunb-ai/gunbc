@@ -76,24 +76,10 @@ fn w_a_location_the_standard_does_not_enumerate_refuses() -> Bool {
   ]
   match admit_standoff_gauge(rows: only_f, envelope: a1_mini_build_envelope, a: LocF, b: LocC,
                              margin: margin(), thickness: thickness()) {
-    GaugeLocationNotEnumerated { requested: r } => mounting_location_id_is_c(id: r)
+    GaugeLocationNotEnumerated { requested: r } => r == LocC
     GaugeAdmitted { geometry: g } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
-  }
-}
-
-fn mounting_location_id_is_c(id: MountingLocationId) -> Bool {
-  match id {
-    LocC => true
-    LocB => false
-    LocF => false
-    LocH => false
-    LocJ => false
-    LocL => false
-    LocM => false
-    LocR => false
-    LocS => false
   }
 }
 
@@ -160,14 +146,20 @@ fn w_a_gauge_too_long_for_the_bed_refuses() -> Bool {
   }
 }
 
-// THE HOLES ARE THE STANDARD'S DIAMETER, not a number chosen here. 3962 um is 0.156 inches.
+// THE HOLES ARE THE STANDARD'S DIAMETER, not a number chosen here.
+//
+// The assertion is an EQUALITY TO THE AUTHORITY and carries no literal of its own. An earlier form
+// also asserted == 3962, which is the authority's current value transcribed into a second place: a
+// correction to the standard -- a more precise inch conversion, say -- would have left this witness
+// red for a reason that has nothing to do with the gauge. Naming the instrument is the whole point;
+// what this proves is that the gauge PASSES THE AUTHORITY THROUGH rather than substituting a
+// diameter of its own, and that is exactly the property at issue.
 fn w_the_holes_carry_the_standards_diameter() -> Bool {
   match altrad8ud_standoff_gauge {
     GaugeAdmitted { geometry: g } => match g.holes.first() {
       Present { value: h } => match h {
         OpThroughHole { diameter: d, center_x: cx, center_y: cy } =>
-          micrometer_count(m: d) == micrometer_count(m: micro_atx_standard_hole_diameter) &&
-          micrometer_count(m: d) == 3962
+          micrometer_count(m: d) == micrometer_count(m: micro_atx_standard_hole_diameter)
       }
       Absent => false
     }
