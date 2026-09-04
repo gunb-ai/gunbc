@@ -154,6 +154,7 @@ import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.fleet_converge_plan_cli {
   fleet_converge_plan_cli_note,
   fleet_converge_apply_observation_subject,
+  fleet_converge_deploy_branch_admits,
   fleet_converge_plan_subject_host,
   SubjectHostResolved,
   SubjectHostRefused,
@@ -2273,4 +2274,15 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
     && !string_contains(s: as_owner, pattern: impersonation)
     && string_contains(s: as_owner, pattern: flock_word)
     && string_contains(s: as_operator, pattern: impersonation)
+}
+
+
+// THE DEPLOY BRANCH POLICY IS A COMPARISON, NOT A TRUST. An empty requirement refuses even when it
+// would trivially match, because that is the "any branch" policy the mode must never default to.
+test fn deploy_branch_policy_compares_and_never_admits_any_branch() -> Bool {
+  fleet_converge_deploy_branch_admits(observed: "main", required: "main")
+    && fleet_converge_deploy_branch_admits(observed: " main\n", required: "main")
+    && !fleet_converge_deploy_branch_admits(observed: "worktree-fleet-converge-status", required: "main")
+    && !fleet_converge_deploy_branch_admits(observed: "main", required: "")
+    && !fleet_converge_deploy_branch_admits(observed: "", required: "")
 }

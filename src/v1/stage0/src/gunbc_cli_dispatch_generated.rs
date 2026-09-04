@@ -66,12 +66,13 @@ pub enum Commands {
     /// Plan or apply fleet convergence for the host this process runs on, through the same
     /// plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,
     /// under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and
-    /// prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash.
+    /// prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash;
+    /// `--mode deploy` converges the srv1 dashboard deployment from this checkout's HEAD.
     Converge {
         /// Fleet host identity (e.g. "srv1") this process is expected to be running on; refuses on mismatch
         #[arg(long)]
         host: String,
-        /// plan | apply
+        /// plan | apply | deploy
         #[arg(long)]
         mode: String,
         /// Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving
@@ -86,6 +87,9 @@ pub enum Commands {
         /// Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere
         #[arg(long, default_value = "")]
         target: String,
+        /// Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout
+        #[arg(long, default_value = "main")]
+        candidate_branch: String,
     },
     /// Long-running HTTP server: compile once, then answer each request by
     /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
@@ -217,6 +221,7 @@ pub fn dispatch<H: CliDispatchHost>(
                 plan_run_id,
                 plan_hash,
                 target,
+                candidate_branch,
             },
             false,
         ) => crate::cli_run::run_bootstrap_dag_operation(
@@ -231,6 +236,7 @@ pub fn dispatch<H: CliDispatchHost>(
                 ("plan_run_id".to_string(), plan_run_id),
                 ("plan_hash".to_string(), plan_hash),
                 ("target".to_string(), target),
+                ("candidate_branch".to_string(), candidate_branch),
             ],
             "receipt_path",
             ".gunbc-converge-receipts",

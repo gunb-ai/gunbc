@@ -375,6 +375,7 @@ fn gunbc_fleet_converge_operation_binding() -> CliBootstrapDagOperationBinding {
       CliBootstrapOptionBinding { parameter: "plan_run_id", option_field: "plan_run_id" },
       CliBootstrapOptionBinding { parameter: "plan_hash", option_field: "plan_hash" },
       CliBootstrapOptionBinding { parameter: "target", option_field: "target" },
+      CliBootstrapOptionBinding { parameter: "candidate_branch", option_field: "candidate_branch" },
     ],
     receipt: CliBootstrapReceiptChannel { parameter: "receipt_path", path: ".gunbc-converge-receipts" },
     execution_class: BootstrapSuccessorOperation {},
@@ -555,7 +556,8 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         "Plan or apply fleet convergence for the host this process runs on, through the same",
         "plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,",
         "under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and",
-        "prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash."
+        "prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash;",
+        "`--mode deploy` converges the srv1 dashboard deployment from this checkout's HEAD."
       ],
       operands: [],
       options: [
@@ -572,7 +574,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           long: "mode",
           value: CliTextValue { text_default: none },
           arity: CliRequired,
-          doc: ["plan | apply"],
+          doc: ["plan | apply | deploy"],
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
@@ -605,6 +607,14 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: Present { value: "" } },
           arity: CliRequired,
           doc: ["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere"],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "candidate_branch",
+          long: "candidate-branch",
+          value: CliTextValue { text_default: Present { value: "main" } },
+          arity: CliRequired,
+          doc: ["Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout"],
           emission: CarriedByGeneratedDispatch
         }
       ],

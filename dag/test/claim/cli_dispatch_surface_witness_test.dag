@@ -162,7 +162,7 @@ test fn the_build_binding_names_only_fields_the_build_row_declares() -> Bool {
 
 test fn the_converge_binding_names_only_fields_the_converge_row_declares() -> Bool {
   bootstrap_binding_fields_are_row_fields(verb: "converge", binding: gunbc_fleet_converge_operation_binding())
-    && (gunbc_fleet_converge_operation_binding().public_options |> count) == 6
+    && (gunbc_fleet_converge_operation_binding().public_options |> count) == 7
 }
 
 // THE CONVERGE VERB LEFT THE UNWIRED ARM. This is the discriminating half of the wiring: the row

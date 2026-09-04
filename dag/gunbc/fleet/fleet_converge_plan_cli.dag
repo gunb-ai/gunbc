@@ -184,6 +184,8 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetRefused,
 }
 import extdeps.git
+import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_host_identity }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repository { gunbc_repository }
 import gunbc.running_release_identity { release_revision_text_valid }
@@ -1439,6 +1441,17 @@ func fleet_converge_local_plan_wet(scope: String, target: String) -> ProcessExit
 // A failure therefore writes its reason to the channel; a success writes the plan or apply receipt.
 data fleet_converge_operator_mode_plan: String = "plan"
 data fleet_converge_operator_mode_apply: String = "apply"
+data fleet_converge_operator_mode_deploy: String = "deploy"
+
+// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED, so the branch that checkout is on
+// is workflow policy and it is asked explicitly. The workflow deploys from main; an operator who
+// wants a different branch on the dashboard says so with --candidate-branch, and the value is
+// compared to the observed branch rather than trusted. An empty requirement refuses rather than
+// admitting whatever HEAD happens to be, because "any branch" is the one policy that must never
+// be the default of a command that restarts the served dashboard.
+fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bool {
+  trim(s: required) != "" && trim(s: observed) == trim(s: required)
+}
 
 func fleet_converge_operator_cli_entry(
   host: String,
@@ -1447,12 +1460,14 @@ func fleet_converge_operator_cli_entry(
   plan_run_id: String,
   plan_hash: String,
   target: String,
+  candidate_branch: String,
   receipt_path: String,
 ) -> ProcessExit
   uses net: Network
 {
   let outcome = fleet_converge_operator_cli_dispatch(
     host: host, mode: mode, scope: scope, plan_run_id: plan_run_id, plan_hash: plan_hash, target: target,
+    candidate_branch: candidate_branch,
   )
   let receipt_source = if mode == fleet_converge_operator_mode_apply {
     fleet_converge_apply_receipt_path
@@ -1460,10 +1475,17 @@ func fleet_converge_operator_cli_entry(
     fleet_converge_plan_receipt_path
   }
   let receipt_text = match outcome {
-    ExitSuccess => {
-      let r = Filesystem.Read(path: receipt_source)
-      if r.success { r.content } else { join(["receipt unreadable at ", receipt_source, ": ", r.error], "") }
-    }
+    ExitSuccess =>
+      if mode == fleet_converge_operator_mode_deploy {
+        match observe_operator_local_run_binding() {
+          OperatorLocalRunBound { binding: b } =>
+            join(["deploy-converged host=", trim(s: host), " candidate=", b.run_revision, " branch=", trim(s: candidate_branch), "\n"], "")
+          OperatorLocalRunUnbound { reason: why } => join(["deploy-converged host=", trim(s: host), " candidate=unread: ", why, "\n"], "")
+        }
+      } else {
+        let r = Filesystem.Read(path: receipt_source)
+        if r.success { r.content } else { join(["receipt unreadable at ", receipt_source, ": ", r.error], "") }
+      }
     ExitFailure { code: _, reason: why } => join(["converge-refused ", why, "\n"], "")
   }
   let w = Filesystem.Write(path: receipt_path, content: receipt_text)
@@ -1481,6 +1503,7 @@ func fleet_converge_operator_cli_dispatch(
   plan_run_id: String,
   plan_hash: String,
   target: String,
+  candidate_branch: String,
 ) -> ProcessExit
   uses net: Network
 {
@@ -1492,6 +1515,18 @@ func fleet_converge_operator_cli_dispatch(
         exit_failure(reason: join(["gunbc converge: ExpectedHostMismatch — --host names ", trim(s: host), " but this process runs on ", observed as String], ""))
       } else if mode == fleet_converge_operator_mode_plan {
         fleet_converge_local_plan_wet(scope: scope, target: target)
+      } else if mode == fleet_converge_operator_mode_deploy {
+        let deploy_host = deployment_plan_host_identity(spec: deployment_spec_srv1())
+        if trim(s: host) != deploy_host {
+          exit_failure(reason: join(["gunbc converge: DeployHostMismatch — the dashboard deployment is homed on ", deploy_host, " and this process runs on ", trim(s: host), "; run the deploy there"], ""))
+        } else {
+          let branch = trim(s: git.Core.CurrentBranch().branch)
+          if !fleet_converge_deploy_branch_admits(observed: branch, required: candidate_branch) {
+            exit_failure(reason: join(["gunbc converge: DeployBranchRefused — the checkout is on '", branch, "' and --candidate-branch requires '", trim(s: candidate_branch), "'; the candidate is HEAD of this checkout, so switch branches or name this one explicitly"], ""))
+          } else {
+            live_deploy_apply_srv1_operator_local_wet()
+          }
+        }
       } else if mode == fleet_converge_operator_mode_apply {
         if trim(s: plan_run_id) == "" || trim(s: plan_hash) == "" {
           exit_failure(reason: "gunbc converge: --mode apply requires --plan-run-id and --plan-hash from the plan receipt")
@@ -1501,7 +1536,7 @@ func fleet_converge_operator_cli_dispatch(
           fleet_converge_local_apply_wet(plan_run_id: trim(s: plan_run_id), plan_hash: trim(s: plan_hash))
         }
       } else {
-        exit_failure(reason: join(["gunbc converge: --mode must be plan or apply, got ", mode], ""))
+        exit_failure(reason: join(["gunbc converge: --mode must be plan, apply or deploy, got ", mode], ""))
       }
   }
 }

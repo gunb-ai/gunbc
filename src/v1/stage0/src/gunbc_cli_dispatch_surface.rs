@@ -378,6 +378,10 @@ pub fn gunbc_fleet_converge_operation_binding() -> Rc<CliBootstrapDagOperationBi
                 parameter: "target".to_string(),
                 option_field: "target".to_string(),
             }),
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "candidate_branch".to_string(),
+                option_field: "candidate_branch".to_string(),
+            }),
         ]),
         receipt: Rc::new(CliBootstrapReceiptChannel {
             parameter: "receipt_path".to_string(),
@@ -568,7 +572,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }), Rc::new(CliSubcommandRow {
     verb: "converge".to_string(),
     variant: "Converge".to_string(),
-    doc: Rc::new(vec!["Plan or apply fleet convergence for the host this process runs on, through the same".to_string(), "plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,".to_string(), "under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and".to_string(), "prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash.".to_string()]),
+    doc: Rc::new(vec!["Plan or apply fleet convergence for the host this process runs on, through the same".to_string(), "plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,".to_string(), "under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and".to_string(), "prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash;".to_string(), "`--mode deploy` converges the srv1 dashboard deployment from this checkout's HEAD.".to_string()]),
     operands: Rc::new(vec![]),
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "host".to_string(),
@@ -586,7 +590,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["plan | apply".to_string()]),
+    doc: Rc::new(vec!["plan | apply | deploy".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "scope".to_string(),
@@ -623,6 +627,15 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "candidate_branch".to_string(),
+    long: "candidate-branch".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("main".to_string()),
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliInvokesBootstrapDagOperation {
