@@ -31,7 +31,7 @@ data join_answers_with_one_arm_others_unjudged: RecurringFailureMode = Recurring
 
     "RUNG FOUND AT: below the ladder (silent wrongness). ",
 
-    "RUNG AFTER THE REPAIR: mechanically preventable -- v1.compiler.infer match_arm_join_diagnostics asks match_arm_types_are_proven_disjoint once per arm; that relation preserves the concrete-coproduct judgment and consumes the declared-conformance path's existing ground-kernel discipline for Int beside String. The order-sensitive coproduct RED, the conforming-first kernel RED, and their controls are enrolled at test.claim.match_arm_join_disjoint_coproduct_witness_test; the invalid state stays writable and safety depends on that check executing. ",
+    "RUNG AFTER THE REPAIR: mechanically preventable -- v1.compiler.infer match_arm_join_diagnostics asks match_arm_types_are_proven_disjoint once per arm; that relation preserves the concrete-coproduct judgment and consumes the declared-conformance path's existing ground-type discipline for Int beside String and List<Int> beside List<String>. The order-sensitive coproduct RED, the conforming-first scalar and collection REDs, and their controls are enrolled at test.claim.match_arm_join_disjoint_coproduct_witness_test; the invalid state stays writable and safety depends on that check executing. ",
 
     "CEILING: structurally guaranteed -- a join that produces a JUDGED type carrying every arm's verdict, rather than a representative selected from the arms, makes an unjudged arm unconstructible. ",
 

@@ -23,9 +23,10 @@ module test.claim.match_arm_join_disjoint_coproduct_witness_test
 // THE REFUSING AUTHORITY is v1.compiler.infer match_arm_join_diagnostics, asked once per arm at the
 // ExprMatch join, over the relation match_arm_types_are_disjoint_coproducts.
 //
-// THE THREE CONTROLS ARE NOT COSMETIC, and each names a class the wall must NOT answer -- a wall
-// that refused every match would satisfy the two reds above and measure nothing. Two of the three
-// are the exclusions the corpus self-compile forced: the first form of this wall asked
+// THE FIVE CONTROLS ARE NOT COSMETIC, and each names a class the wall must NOT answer -- a wall
+// that refused every match would satisfy the reds above and measure nothing. Two of the five
+// are the exclusions the corpus self-compile forced; the matching scalar and collection controls
+// bound the two established ground-type classes added here. The first form of this wall asked
 // node_type_compatible and refused four correct modules, in exactly the shapes controlled here.
 //
 // THE DELETE ARM WAS RUN AND EXACTLY ONE ROW MOVES. These five rows were executed against a binary
@@ -65,6 +66,14 @@ fn maj_kernel_arm_mismatch_fixture_source() -> String {
 
 fn maj_matching_kernel_arms_fixture_source() -> String {
   "module maj.control_kernel_green\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_matching_kernel_arms(fl: MajFlag) -> Int {\n  match fl {\n    MajYes => 1\n    MajNo => 2\n  }\n}\n"
+}
+
+fn maj_ground_element_collection_mismatch_fixture_source() -> String {
+  "module maj.control_collection_red\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_ground_element_collection_mismatch(fl: MajFlag) -> List<Int> {\n  match fl {\n    MajYes => [1]\n    MajNo => [\"wrong\"]\n  }\n}\n"
+}
+
+fn maj_matching_ground_element_collection_arms_fixture_source() -> String {
+  "module maj.control_collection_green\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_matching_ground_element_collection_arms(fl: MajFlag) -> List<Int> {\n  match fl {\n    MajYes => [1]\n    MajNo => [2]\n  }\n}\n"
 }
 
 // THE DISCRIMINATING RED. The join answers MajRes because MajRes is the FIRST arm, and the MajOth
@@ -145,6 +154,26 @@ test fn maj_matching_kernel_arms_still_compile() -> Bool {
   compile_dag_rust_emit_check(
     maj_matching_kernel_arms_fixture_source(),
     "src/maj_control_kernel_green.rs",
+    [],
+    []
+  )
+}
+
+// conformance_ground_type also establishes one level of non-keyed ground element collection.
+// Enroll that half explicitly so a later scalar-only narrowing cannot satisfy this wall.
+test fn maj_ground_element_collection_mismatch_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    maj_ground_element_collection_mismatch_fixture_source(),
+    "src/maj_control_collection_red.rs",
+    [],
+    []
+  )
+}
+
+test fn maj_matching_ground_element_collection_arms_still_compile() -> Bool {
+  compile_dag_rust_emit_check(
+    maj_matching_ground_element_collection_arms_fixture_source(),
+    "src/maj_control_collection_green.rs",
     [],
     []
   )
