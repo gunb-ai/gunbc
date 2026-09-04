@@ -219,6 +219,23 @@ type MatchPattern
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
 
+// IRREFUTABILITY IS A FACT ABOUT `MatchPattern`, SO IT LIVES WITH THE TYPE. It was previously
+// answered twice -- once for emission and once for exhaustiveness -- and two authorities for one
+// classification drift apart as the type grows, which is the parallel authority DESIGN section 3
+// forbids. Consumers import this; neither re-derives it.
+//
+// THE MATCH IS EXHAUSTIVE ON PURPOSE, with no `_` arm. A catch-all would answer `false` for any
+// constructor added to `MatchPattern` later, silently classifying a new irrefutable form as
+// refutable; without one, adding a constructor refuses here and the author is made to decide.
+fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
+  match pattern {
+    Wildcard => true
+    Bind { declaration: _ } => true
+    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => false
+    LitPattern { value: _ } => false
+  }
+}
+
 type UnaryOpKind = Not | Neg
 
 type StringPart
@@ -2489,10 +2506,13 @@ fn container_spelling_verdict(name: String) -> ContainerSpellingVerdict {
 // source index -- and the service path is exactly that: check_service_field_access_node
 // builds nominal_type_ref(name: "cron.Tab.List"), a LEAF TYPE NODE whose last
 // segment is a container name and which is not a container. Excluding it by
-// authorship rather than by an exception list is what keeps the six known
+// authorship rather than by an exception list is what keeps the five known
 // false-refusals (cron.Tab.List, Filesystem.List, github.Pulls.List,
-// tmux.Session.List, os.Hostname.Set, req.Header.Set) out by construction: a
-// seventh service operation named after a container needs no edit here.
+// tmux.Session.List, req.Header.Set) out by construction: a
+// sixth service operation named after a container needs no edit here.
+// (os.Hostname.Set left this list with the CLI-invocation migration: the op's
+// hand-authored transport row was deleted and the hostnamectl set-hostname
+// vertical realizes through hostnamectl.Process.Run.)
 fn type_node_name_is_authored(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match node.ident_span {
     Present { value: span } =>

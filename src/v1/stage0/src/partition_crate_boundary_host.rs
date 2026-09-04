@@ -225,7 +225,10 @@ impl PartitionCompileOutcome {
                     format!("Completed status={status} packages={}", packages.len())
                 } else {
                     format!(
-                        "Completed status={status} packages={} failed=[{}]",
+                        // Unlike the three count-shaped counter emissions in claim_executor and
+                        // cli_run, this field is a package-name list. Name both its subject and
+                        // its shape so a consumer cannot read it as another `failed` count.
+                        "Completed status={status} packages={} packages_failed=[{}]",
                         packages.len(),
                         failed_packages.join(" ")
                     )

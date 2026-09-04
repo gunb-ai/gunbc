@@ -89,6 +89,7 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 mod required_floor_runner;
+mod serve_budget_refusal;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
@@ -201,6 +202,13 @@ mod partition_crate_boundary_host;
 
 #[path = "emitted_closure_compile_host.rs"]
 mod emitted_closure_compile_host;
+
+// TEST-ONLY, and wired the same #[path] way as the hosts above rather than through lib.rs: the
+// falsifier exists to be invoked by one #[ignore] test and has no production caller, so declaring
+// it unconditionally would put a module nothing calls into every release build.
+#[cfg(test)]
+#[path = "evaluation_budget_consequence_falsifier_host.rs"]
+mod evaluation_budget_consequence_falsifier_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -3423,23 +3431,6 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
     SCAN_DIRS
         .get_or_init(|| witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content()))
         .clone()
-}
-
-/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
-/// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
-pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
-    let roots = default_source_roots();
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let index = build_module_path_index(&roots);
-    let expected = index
-        .iter()
-        .filter(|(module_path, rel_path)| {
-            !excludes
-                .iter()
-                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
-        })
-        .count();
-    loaded >= expected
 }
 
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
@@ -17297,6 +17288,25 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     Ok(subject_digest_for_closure(&sources))
 }
 
+/// The exact source-path population the entry loader will hand to resolution.
+///
+/// This stops at the loader boundary: it runs the same import, qualified-reference, and bare-name
+/// fixpoint as `resolve_entry_with_index`, but does not parse, typecheck, reconcile, or evaluate the
+/// resulting modules. A caller deciding whether a changed path intersects an entry can therefore
+/// ask the real loader before paying for the downstream work it is trying to avoid.
+pub fn entry_closure_source_paths(
+    index: &MultiEntryIndex,
+    entry: &str,
+) -> Result<Vec<String>, String> {
+    let mut paths: Vec<String> = load_sources_for_entry_with_pool(index, entry)?
+        .iter()
+        .map(|source| workspace_relative_repo_path(&source.path))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
@@ -18905,24 +18915,6 @@ pub struct ServeEvaluationBudget {
     pub wall_limit_ms: Option<u64>,
 }
 
-/// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
-/// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
-/// consumer can tell a spin from a stall without parsing prose.
-fn serve_budget_refusal_body(
-    entry: &str,
-    clock_key: &str,
-    elapsed_nanos: u128,
-    limit_ms: u64,
-) -> String {
-    format!(
-        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        serve_json_string(entry),
-        clock_key,
-        elapsed_nanos,
-        limit_ms
-    )
-}
-
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
 /// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
 /// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
@@ -19021,18 +19013,35 @@ pub fn handle_serve(
     // The budget is announced at startup because "unset" is a policy state that must be visible.
     // A process serving with no bound and a process serving with a bound are different
     // operational facts, and the difference has to be readable without inspecting argv.
+    // ONE CONTRACT, BOUND ONCE, BEFORE THE LISTENER SERVES. Every later use of the evaluated
+    // function name and of the limits reads THIS value; `function` and `serve_budget` are not
+    // consulted again below.
+    let armed_contract = serve_budget_refusal::serve_armed_contract(function.clone(), serve_budget);
+    // THE ANNOUNCEMENT NAMES THE ADDRESS ACTUALLY BOUND, not the one requested. They differ exactly
+    // when the caller asked the OS to choose (`--port 0`), which is the only collision-free way to
+    // take a loopback port; announcing the request there would publish `:0` and leave no way to
+    // reach the server it just started. A reader of this line can now attribute a connection to
+    // THIS process rather than to whoever happened to hold the requested port.
+    let bound = match listener.local_addr() {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!(
+                "error: bound {}:{} but could not read its address: {}",
+                host, port, e
+            );
+            std::process::exit(1);
+        }
+    };
     eprintln!(
         "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        host,
-        port,
-        function,
+        bound.ip(),
+        bound.port(),
+        serve_budget_refusal::serve_contract_entry(&armed_contract),
         release_revision,
-        serve_budget
-            .cpu_limit_ms
+        serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
-        serve_budget
-            .wall_limit_ms
+        serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
     );
@@ -19073,56 +19082,80 @@ pub fn handle_serve(
                     // arms and restores — a leaked deadline would be worse than none here,
                     // since `ctx` outlives every request and a stale CPU baseline would refuse
                     // all subsequent requests for the life of the process.
+                    // BOTH DERIVE FROM ONE CONTRACT. The arming subject and the invoked function
+                    // are read from the same value, so the interface no longer permits a process
+                    // armed for one entry to evaluate another and report a refusal naming the
+                    // wrong subject.
                     let result = {
                         let _budget = ctx.enter_evaluation_budget(
-                            &function,
-                            serve_budget.cpu_limit_ms,
-                            serve_budget.wall_limit_ms,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract),
+                            serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract),
                         );
-                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                        v1_interpreter::run_in_context_with_args(
+                            &ctx,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            &args,
+                            true,
+                        )
                     };
                     match result {
-                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
-                            entry,
-                            clock,
-                            elapsed_nanos,
-                            limit_ms,
-                        }) => {
-                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
-                            // the evaluation that would have rendered it is the one that was
-                            // just aborted, so asking it to describe its own abort would put
-                            // recovery behind the evaluator that failed.
-                            //
-                            // 500, not 503: this request is deterministic against a fixed
-                            // policy, so it will cross again on retry. A status meaning
-                            // "temporary capacity" would assert something the model does not
-                            // know, and no `Retry-After` is attached for the same reason
-                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
-                            eprintln!(
-                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
-                                entry,
-                                clock.key(),
-                                elapsed_nanos,
-                                limit_ms
-                            );
-                            serve_write_response(
+                        // ONE CLASSIFICATION, NOT A GUARD PLUS A RE-ASK. The previous shape called
+                        // the producer once for `is_some()` and again under `expect`, so the arm's
+                        // correctness rested on the two calls agreeing rather than on there being
+                        // one decision. The `Option` IS the decision.
+                        Err(ref e) => match serve_budget_refusal::serve_budget_refusal_from_exceeded(e) {
+                            Some(refusal) => {
+                                // THE REFUSAL MUST BE ABOUT THE CONTRACT THIS PROCESS ARMED. The
+                                // interpreter reports the entry it was armed with; a mismatch here
+                                // would mean arming and evaluation had different subjects, which
+                                // the single contract value exists to make unreachable. It refuses
+                                // rather than rendering a diagnostic that names the wrong function.
+                                if !serve_budget_refusal::serve_refusal_names_contract(
+                                    &refusal,
+                                    &armed_contract,
+                                ) {
+                                    eprintln!(
+                                        "serve: refusing to render a budget refusal whose entry is not the armed contract's subject"
+                                    );
+                                    serve_write_response(
+                                        &mut stream,
+                                        500,
+                                        "text/plain; charset=utf-8",
+                                        "budget refusal did not name the armed contract\n",
+                                    )
+                                } else {
+                                // Refusal rendering is HOST-SIDE by necessity, not by preference:
+                                // the evaluation that would have rendered it is the one that was
+                                // just aborted, so asking it to describe its own abort would put
+                                // recovery behind the evaluator that failed.
+                                //
+                                // 500, not 503: this request is deterministic against a fixed
+                                // policy, so it will cross again on retry. A status meaning
+                                // "temporary capacity" would assert something the model does not
+                                // know, and no `Retry-After` is attached for the same reason
+                                // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
+                                eprintln!(
+                                    "{}",
+                                    serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
+                                );
+                                serve_write_response(
+                                    &mut stream,
+                                    500,
+                                    "application/json; charset=utf-8",
+                                    &serve_budget_refusal::serve_budget_refusal_machine_body(
+                                        &refusal,
+                                    ),
+                                )
+                                }
+                            }
+                            None => serve_write_response(
                                 &mut stream,
                                 500,
-                                "application/json; charset=utf-8",
-                                &serve_budget_refusal_body(
-                                    &entry,
-                                    clock.key(),
-                                    elapsed_nanos,
-                                    limit_ms,
-                                ),
-                            )
-                        }
-                        Err(e) => serve_write_response(
-                            &mut stream,
-                            500,
-                            "text/plain; charset=utf-8",
-                            &format!("handler error: {}\n", e),
-                        ),
+                                "text/plain; charset=utf-8",
+                                &format!("handler error: {}\n", e),
+                            ),
+                        },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
                             Some((status, content_type, resp_body)) => serve_write_response(
                                 &mut stream,
@@ -21797,6 +21830,37 @@ fn explicit_witness_admission_keys() -> &'static [String] {
             &content,
         )
     })
+}
+
+/// The `(entry, function)` pairs admitted with cadence `QuarantineProbeExpectRed` -- the rows whose
+/// admission says DO NOT SCHEDULE THIS PER-PR.
+///
+/// Keyed on the CADENCE, not on "carries a row in the admission authority": a witness admitted
+/// under `bin_wet`, `SubstrateLongLaneRow` or any other head is a different obligation and must
+/// still be planned, and still red the floor, when a diff touches it.
+pub(crate) fn quarantine_probe_admission_pairs() -> Vec<(String, String)> {
+    static PAIRS: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    PAIRS
+        .get_or_init(|| {
+            let content = std::fs::read_to_string(
+                workspace_root().join(EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL),
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "quarantine probe admission: failed to read {}: {e}",
+                    EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL
+                )
+            });
+            crate::cli_run::witness_gates::quarantine_probe_admission_keys_from_source(
+                EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL,
+                &content,
+            )
+            .iter()
+            .filter_map(|key| key.split_once("::"))
+            .map(|(entry, function)| (entry.to_string(), function.to_string()))
+            .collect()
+        })
+        .clone()
 }
 
 /// The same keys split back into `(entry, function)` pairs — the grain the exclusion is decided
@@ -25224,7 +25288,10 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         return;
     }
     let deferred = merged.deferred_rows.len() as u64;
-    let failed = merged.failures.len() as u64;
+    // This is not the required floor's narrower unexpected-claim-failure population:
+    // DiscoverySummary::failures also includes non-Bool, runtime-error, unresolved-tool,
+    // timeout, panic, and not-attempted rows. Its denominator is the discovery-row population.
+    let discovery_rows_failed = merged.failures.len() as u64;
     // DECLARED GAP: this is one line per DISCOVERY INVOCATION, not per floor-plan batch. A run with
     // six plan batches emits four of these, all carrying the same label, because merge time is
     // where a merged summary exists and the plan's RunSegment/BatchSegment identity is not in
@@ -25239,7 +25306,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         merged.passed as u64,
         merged.skipped as u64,
         deferred,
-        failed,
+        discovery_rows_failed,
         merged.total_measured_nanos as u64,
     ) {
         Some(line) => eprintln!("{line}"),
@@ -25249,7 +25316,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
             "::error::observation render unavailable: could not render the batch summary through \
              gunbc.observation_ci_render `ci_batch_summary_text`; the routine witness lines were \
              folded and their summary is therefore MISSING, not empty (passed={} unaffected={} \
-             deferred={deferred} failed={failed})",
+             deferred={deferred} discovery_rows_failed={discovery_rows_failed})",
             merged.passed, merged.skipped
         ),
     }
@@ -36891,6 +36958,33 @@ mod import_closure_equivalence_tests {
         );
     }
 
+    /// Executing parity control for the preflight projection: compare the loader-boundary answer
+    /// with the population that survives the complete typed resolve of one real routed entry.
+    /// This is deliberately live-corpus/ignored because the full-resolve side is the ~minute-scale
+    /// work the production preflight exists to avoid.
+    #[test]
+    #[ignore = "live-corpus: full typed resolve parity control for the cheap entry-closure route"]
+    fn entry_closure_source_paths_match_full_resolve_on_routed_entry() {
+        let roots = default_source_roots();
+        let index = build_multi_entry_index(&roots);
+        let entry = workspace_root().join("dag/test/claim/discovery_census_witness_test.dag");
+        let entry = entry.to_string_lossy().into_owned();
+        let cheap: BTreeSet<String> = super::entry_closure_source_paths(&index, &entry)
+            .expect("loader-boundary closure")
+            .into_iter()
+            .collect();
+        let (resolved, _) = resolve_entry_with_index(&index, &entry).expect("full typed resolve");
+        let full: BTreeSet<String> = resolved
+            .modules
+            .iter()
+            .map(|module| workspace_relative_repo_path(&module.module.span.file))
+            .collect();
+        assert_eq!(
+            cheap, full,
+            "cheap closure must equal full resolved population"
+        );
+    }
+
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn import_closure_live_matches_legacy_bfs_on_budget_roster_completeness() {
@@ -38470,13 +38564,13 @@ pub fn run_floor_prepared_toll_receipt() {
 
     let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         None,
     )
     .expect("disk parse");
     let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         Some(&inventory),
     )
     .expect("inventory parse");
@@ -41262,6 +41356,25 @@ fn witness_eval_verdict_from_claim_outcome(
 }
 
 pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
+
+/// THE FALSIFIER'S ONE ENTRY AND ITS ONE PREDICATE, re-exported for the generated #[ignore] test.
+///
+/// The predicate is here rather than in the test body because a test that pattern-matched the
+/// outcome itself would be a second adjudication of the same terminal: RefusedWithCleanupFailure
+/// is a refusal, and a reader writing `matches!(_, Passed(_) | ...)` by hand is one edit away from
+/// treating a cleanup failure as a pass.
+#[cfg(test)]
+pub(crate) use evaluation_budget_consequence_falsifier_host::run_evaluation_budget_consequence_falsifier;
+
+#[cfg(test)]
+pub(crate) fn evaluation_budget_consequence_falsifier_passed(
+    outcome: &evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome,
+) -> bool {
+    matches!(
+        outcome,
+        evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome::Passed(_)
+    )
+}
 
 pub fn run_required_regen(
     candidate_dir_rel: &str,

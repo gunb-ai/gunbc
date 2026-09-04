@@ -1,0 +1,244 @@
+module test.claim.spark.spark_oobe_execution_placement_witness
+
+import std.types { Bool, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ssh.openssh_port_forwarding {
+  ForwardingAdmission,
+  ForwardingAdmitted,
+  ForwardingAdministrativelyProhibited,
+  ForwardingAdmissionUnobserved,
+  ForwardingAdmissionSubject,
+  SshAuthenticatedPrincipal,
+  SshLoginPrincipal,
+  SshCertificatePrincipal,
+  LocalForward,
+  RemoteForward,
+  forward_flag,
+}
+import extdeps.network.endpoint { SocketAddress, HostByName, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualified }
+import extdeps.access.posix { PosixLoginName }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.oobe_screen_observation { ObservedUnitAccessPointSsid }
+import gunbc.spark.oobe_execution_placement {
+  RendererCapabilityStanding,
+  RendererCapable,
+  RendererRuntimeUnavailable,
+  RendererPlaywrightPackageUnavailable,
+  RadioRelayStanding,
+  RadioRelayReady,
+  RelayHasNoRadioInterface,
+  RelayRadioNotAssociated,
+  RadioInterfaceName,
+  renderer_is_capable,
+  relay_is_ready,
+  renderer_host_of,
+  relay_host_of,
+  capable_renderer_count,
+  ready_relay_count,
+  host_is_capable_renderer,
+  host_is_ready_relay,
+  some_host_holds_both_roles,
+  observed_renderer_standings,
+  observed_relay_standings,
+  renderer_srv1_briansrls,
+  renderer_srv4_briansrls,
+  renderer_pi1_briansrls,
+  relay_pi1,
+  relay_srv4,
+  pi1_local_forward_to_unit_admission,
+  pi1_local_forward_to_unit_subject,
+  measured_route_use,
+  ForwardingUseStanding,
+  ObservationTrafficAdmitted,
+  SecretBearingTrafficAdmitted,
+  SecretBearingTrafficRefused,
+  SecretTrafficRefusalCause,
+  ProxyLocusNotAdmittedForCredentials,
+  TransportNotConfidential,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLAIM THE WHOLE PLACEMENT MODEL RESTS ON, and it is derived rather than asserted: no host is
+// both a capable renderer and a ready relay. That is why the actuator needs a composition at all.
+//
+// THE DISCRIMINATING RED: mark pi1 RendererCapable, or give srv4 a radio, and this goes red -- which
+// is exactly right, because either change would mean the composition is no longer forced and the
+// model should be re-derived rather than kept as a habit.
+test fn w_no_single_host_is_both_a_capable_renderer_and_a_ready_relay() -> Bool {
+  !some_host_holds_both_roles()
+    && host_is_capable_renderer(h: "srv4" as HostIdentity)
+    && host_is_ready_relay(h: "pi1" as HostIdentity)
+    && !host_is_ready_relay(h: "srv4" as HostIdentity)
+    && !host_is_capable_renderer(h: "pi1" as HostIdentity)
+}
+
+// The arity is defended separately from the membership, for the reason this repository keeps
+// relearning: naming srv4 and pi1 says nothing about whether a third row quietly became capable.
+test fn w_exactly_one_capable_renderer_and_one_ready_relay_were_measured() -> Bool {
+  capable_renderer_count() == 1
+    && ready_relay_count() == 1
+    && length(observed_renderer_standings) == 5
+    && length(observed_relay_standings) == 5
+}
+
+// THE CORRECTION THIS MODULE LANDS, DEFENDED. srv1 was reported as a renderer candidate on the
+// strength of its browser cache. It is refused for a MISSING PACKAGE while the artifact IS
+// present, and those two halves are asserted together: an arm that recorded the refusal but lost
+// the artifact flag would describe a bare host and mis-state what has to be installed.
+test fn w_srv1_is_refused_for_the_package_and_not_for_the_browser_artifact() -> Bool {
+  !renderer_is_capable(r: renderer_srv1_briansrls)
+    && match renderer_srv1_briansrls {
+      RendererPlaywrightPackageUnavailable { host: h, account: _, browser_artifact_present: p } =>
+        h == "srv1" && p
+      RendererCapable { host: _, account: _, architecture: _, node_runtime: _, playwright_package: _, browser_artifact: _ } => false
+      RendererRuntimeUnavailable { host: _, account: _ } => false
+    }
+}
+
+// pi1 is declined as a renderer for the RUNTIME, which is a different remedy from srv1's and must
+// not collapse into one "unavailable". It also carries no claim about the hardware: the arm says
+// no node runtime is present, not that this host could never render.
+test fn w_pi1_is_declined_for_a_missing_runtime_not_a_missing_package() -> Bool {
+  match renderer_pi1_briansrls {
+    RendererRuntimeUnavailable { host: h, account: _ } => h == "pi1"
+    RendererPlaywrightPackageUnavailable { host: _, account: _, browser_artifact_present: _ } => false
+    RendererCapable { host: _, account: _, architecture: _, node_runtime: _, playwright_package: _, browser_artifact: _ } => false
+  }
+}
+
+// THE CAPABILITY IS PER ACCOUNT AND THE ROWS SAY SO. srv4's renderer row is briansrls, and srv2's
+// and srv3's could only be measured as ubuntu because those hosts refuse the operator account.
+// Asserting the account here is what stops a later edit from attaching one host's login to
+// another host's observation, which would make the browser cache path a fiction.
+test fn w_renderer_rows_name_the_account_the_capability_was_measured_under() -> Bool {
+  match renderer_srv4_briansrls {
+    RendererCapable { host: h, account: a, architecture: arch, node_runtime: n, playwright_package: p, browser_artifact: b } =>
+      h == "srv4" && a == "briansrls" && (match arch { Aarch64 => true, X86_64 => false, X86 => false, Arm => false, Armv7 => false, Mips => false, Mipsel => false, Mips64 => false, Mips64el => false, Riscv64 => false, Wasm32 => false }) && n == "v22.23.2" && p == "1.62.1" && b == "chromium-1234"
+    RendererRuntimeUnavailable { host: _, account: _ } => false
+    RendererPlaywrightPackageUnavailable { host: _, account: _, browser_artifact_present: _ } => false
+  }
+}
+
+// ---- forwarding permission is a per-relay fact, and the fixtures prove the arms discriminate ---
+
+// THE RED IS AUTHORABLE HERE EVEN THOUGH NO SUCH ROW EXISTS IN THE POPULATION, which is why these
+// are fixtures rather than a gap. A relay carrying a radio and REFUSING a forwarding request is a
+// state this fleet has already seen once -- gunbc.fleet_reach records srv2 setting
+// AllowTcpForwarding no -- so an arm that read a refusal as permission is a real mistake to guard
+// against, not a hypothetical one.
+fn subject_for(host_label: DnsLabel) -> ForwardingAdmissionSubject {
+  ForwardingAdmissionSubject {
+    relay: HostByName {
+      name: HostName {
+        name: DomainName { labels: [host_label] },
+        qualification: PartiallyQualified,
+      },
+    },
+    principal: SshLoginPrincipal { login: "briansrls" as PosixLoginName },
+    direction: LocalForward,
+    target: SocketAddress {
+      host: host_by_ipv4(addr: ipv4_address(octet1: 10, octet2: 92, octet3: 7, octet4: 127)),
+      port: 80,
+    },
+  }
+}
+
+data fixture_admission_prohibited: ForwardingAdmission = ForwardingAdministrativelyProhibited {
+  subject: subject_for(host_label: "fixture-refuser" as DnsLabel),
+}
+
+// AND UNOBSERVED MUST NOT BE READ AS ADMITTED. This is the fail-closed half: a request nobody has
+// made is not a request that was granted, and an arm treating silence as permission would pick the
+// relay and fail at the first connection.
+data fixture_admission_unobserved: ForwardingAdmission = ForwardingAdmissionUnobserved {
+  subject: subject_for(host_label: "fixture-unasked" as DnsLabel),
+}
+
+fn admission_permits(a: ForwardingAdmission) -> Bool {
+  match a {
+    ForwardingAdmitted { subject: _ } => true
+    ForwardingAdministrativelyProhibited { subject: _ } => false
+    ForwardingAdmissionUnobserved { subject: _ } => false
+  }
+}
+
+test fn w_only_a_measured_admission_permits_a_forward() -> Bool {
+  admission_permits(a: pi1_local_forward_to_unit_admission)
+    && !admission_permits(a: fixture_admission_prohibited)
+    && !admission_permits(a: fixture_admission_unobserved)
+}
+
+// THE ADMISSION IS KEYED BY PRINCIPAL, DIRECTION AND TARGET, and the witness asserts all three.
+// A row that kept the relay and lost the principal would let one login's measurement license
+// another's request -- the confound that made the wrong user look like an incapable host.
+test fn w_the_admission_names_the_principal_direction_and_target_it_was_measured_for() -> Bool {
+  match pi1_local_forward_to_unit_admission {
+    ForwardingAdmitted { subject: s } =>
+      (match s.principal {
+          SshLoginPrincipal { login: l } => l == "briansrls"
+          SshCertificatePrincipal { principal: _ } => false
+        })
+        && (match s.direction { LocalForward => true, RemoteForward => false })
+        && s.target.port == 80
+    ForwardingAdministrativelyProhibited { subject: _ } => false
+    ForwardingAdmissionUnobserved { subject: _ } => false
+  }
+}
+
+// THE ROUTE THAT WORKED FOR OBSERVATION IS REFUSED FOR CREDENTIALS, and this is the witness that
+// stops "returned HTTP 200" from becoming "safe to transport secrets". The portal is HTTP, so every
+// locus on the path is inside the trust boundary of anything typed into the wizard; the measured
+// proxy locus is an ephemeral session container and is not an admitted production locus for a
+// host-administrator password.
+//
+// Discriminating RED: promote the measured route to SecretBearingTrafficAdmitted and this fails.
+test fn w_the_measured_route_is_refused_for_secret_bearing_traffic() -> Bool {
+  match measured_route_use {
+    SecretBearingTrafficRefused { cause: c } =>
+      match c {
+        ProxyLocusNotAdmittedForCredentials { proxy_locus: p } => p == "sleek-bear-442"
+        TransportNotConfidential { unit_endpoint: _ } => false
+      }
+    ObservationTrafficAdmitted => false
+    SecretBearingTrafficAdmitted { admitted_loci: _ } => false
+  }
+}
+
+// pi1's readiness is asserted with its measured members, not merely as a boolean, so a row that
+// kept the host and lost the association -- or silently downgraded the permission -- goes red.
+test fn w_pi1_is_ready_with_the_measured_interface_and_ssid() -> Bool {
+  match relay_pi1 {
+    RadioRelayReady { host: h, radio_interface: i, associated_ssid: s } =>
+      h == "pi1" && i == "wlan0" && s == "spark-0c75"
+    RelayHasNoRadioInterface { host: _ } => false
+    RelayRadioNotAssociated { host: _, radio_interface: _ } => false
+  }
+}
+
+// THE FOUR FLEET HOSTS HAVE NO RADIO, and the probe that established it carried its own positive
+// control: pi1 answered 1 where they answered 0. This witness defends the population rather than
+// one row, so a fleet host quietly gaining a RadioRelayReady arm without a measurement turns it red.
+fn relay_lacks_radio(r: RadioRelayStanding) -> Bool {
+  match r {
+    RelayHasNoRadioInterface { host: _ } => true
+    RadioRelayReady { host: _, radio_interface: _, associated_ssid: _ } => false
+    RelayRadioNotAssociated { host: _, radio_interface: _ } => false
+  }
+}
+
+test fn w_every_fleet_host_measured_carries_no_radio_and_only_pi1_does() -> Bool {
+  fold(observed_relay_standings, init: 0, f: (n, r) => if (relay_lacks_radio(r: r)) { n + 1 } else { n }) == 4
+    && !relay_lacks_radio(r: relay_pi1)
+}
+
+// The direction flags are not interchangeable and the Spark route needs both, so the mapping is
+// asserted rather than trusted: a swap would send the listener to the wrong side of the connection
+// and the failure would appear as an unreachable endpoint, nowhere near the cause.
+test fn w_forward_direction_maps_to_the_openssh_flag_that_means_it() -> Bool {
+  forward_flag(direction: LocalForward) == "-L"
+    && forward_flag(direction: RemoteForward) == "-R"
+}

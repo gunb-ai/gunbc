@@ -504,6 +504,45 @@ mod compiler_tests {
         );
     }
 
+    /// THE PRODUCT FALSIFIER FOR THE EVALUATION-BUDGET CONSEQUENCE BRIDGE.
+    ///
+    /// It moves the authority value in a disposable worktree and requires the SERVED response
+    /// to move with it: exactly one drift before regeneration, the regenerated constant
+    /// carrying the moved value, a rebuilt seed, a real thread-CPU breach over the committed
+    /// fixture, the moved code once and the former code zero times, then a restored tree.
+    ///
+    /// WHY THE PERTURBATION IS THE INSTRUMENT: unperturbed, every step of that chain is green
+    /// whether or not the seed reads the projection at all, because the value the boundary
+    /// would have chosen independently is the same value.
+    ///
+    /// #[ignore] AND WHY: this arm builds the compiler three times, runs two regeneration
+    /// generations and starts a server, which is tens of minutes rather than milliseconds,
+    /// while repo_self_test_command runs the whole --lib suite on every push. It is ENROLLED
+    /// AND OPT-IN: `cargo test --release -p v1-compiler --lib
+    /// evaluation_budget_consequence_falsifier -- --ignored`. An #[ignore] is a cost decision
+    /// and NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    #[test]
+    #[ignore]
+    fn evaluation_budget_consequence_falsifier() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let scratch = std::env::var("GUNBC_FALSIFIER_SCRATCH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let outcome =
+            crate::cli_run::run_evaluation_budget_consequence_falsifier(&repo_root, &scratch);
+        // The receipt is printed on the way past whichever verdict is reached, so a red names
+        // the step that refused rather than only the fact that the transaction did not pass.
+        eprintln!("evaluation-budget falsifier: {:?}", outcome);
+        assert!(
+            crate::cli_run::evaluation_budget_consequence_falsifier_passed(&outcome),
+            "the served consequence must move with its authority: {:?}",
+            outcome
+        );
+    }
+
     /// THE FUNCTION-VALUE ADAPTER, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
     ///
     /// The subject is `v1.compiler.emit_rust` `rust_call_arg_function_value_adapt`: the call-position
@@ -527,9 +566,11 @@ mod compiler_tests {
     /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
     /// two emitted crates, which is minutes rather than milliseconds, so it is ENROLLED AND OPT-IN --
     /// `cargo test --release -p v1-compiler --lib function_value_adapter_fixture_closure_discrimination
-    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. `rust-unit-tests` is
-    /// additionally not a `needs` of the required aggregate, so even un-ignored a red here would be
-    /// visible and would not block through the required context. CANDIDATE EVIDENCE, NO WALL: an
+    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. CANDIDATE
+    /// EVIDENCE, NO WALL, AND THE `#[ignore]` IS THE WHOLE OF THAT. A second clause stood here
+    /// until gunbc#10078, saying `rust-unit-tests` is additionally not a `needs` of the required
+    /// aggregate; the lane IS required now, so it is removed rather than softened -- deleting the
+    /// `#[ignore]` is by itself sufficient to put this on the acceptance path. Until then: an
     /// `#[ignore]` is a cost decision and NOT a rung, and nothing here may be cited as coverage that
     /// executes on the merge path or as a rung for the adapter.
     #[test]

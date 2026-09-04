@@ -7,12 +7,28 @@ module v2.lens.live_read_classification
 // does, and the three call sites refuse. Named from the definer, as v2.lens.effect_reach already
 // does for the same function.
 import v2.lens.witness_cost_locality { witness_import_closure }
+// Named from the definer for the same reason as the import above: the call-reachability walk this
+// module used to carry its own copy of now has one home in v2.std.fn_index, beside the FnArrowDecl
+// type it ranges over, and a bare reference here would resolve only on pool-membership coincidence.
+import v2.std.fn_index {
+  FnArrowDecl,
+  atom_identities_in_node,
+  call_reachable_decls,
+  call_reachable_decls_from_root,
+  decls_in_module,
+  fn_arrow_decl_facts_live,
+  is_path_like_lexeme,
+  tail_decls
+}
 import v2.lens.module_graph {
   dependency_closure,
   dependency_resolution_facts_live,
   module_declaration_facts_live,
   path_matches_touched
 }
+
+// This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
+data no_declared_pool_files: List<String> = []
 
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
@@ -27,10 +43,6 @@ data empty_symbol_list: List<Symbol> = []
 data empty_node_list: List<Node> = []
 
 fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
 
@@ -103,64 +115,8 @@ fn live_read_classification_from_facts_v0(
   )
 }
 
-fn decl_module_prefix(mod_path: String) -> String {
-  concat(mod_path, ".")
-}
-
-fn decl_belongs_to_module(decl: FnArrowDecl, mod_path: String) -> Bool {
-  starts_with(s: decl.qualified_name, prefix: decl_module_prefix(mod_path: mod_path))
-    || string_eq(a: decl.qualified_name, b: mod_path)
-}
-
-fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDecl> {
-  filter(
-    xs: decls,
-    predicate: fn(decl) { decl_belongs_to_module(decl: decl, mod_path: mod_path) }
-  )
-}
-
-fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
-  fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
-    list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
-  })
-}
-
-fn is_path_like_lexeme(text: String) -> Bool {
-  string_contains(s: text, pattern: ".dag")
-    || starts_with(s: text, prefix: "src/")
-    || starts_with(s: text, prefix: "dag/")
-}
-
 fn callee_text_is_known_carrier(text: String) -> Bool {
   contains(xs: live_read_carrier_callee_symbols_v0, item: text, eq: string_eq)
-}
-
-// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
-// children — the fold_node it once ran recursed the whole subtree while its step discarded
-// every child's collected atoms, so the descent computed results nothing consumed
-// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
-// below is extensionally the same function at the cost of one probe per child.
-fn atom_identities_in_node(node: Node) -> List<Symbol> {
-  let from_children = fold(node.children, init: empty_symbol_list, f: fn(acc, e) {
-    match node_atom_identity_optional(node: e.target) {
-      Present { value: sym } =>
-        if contains(xs: acc, item: sym, eq: symbol_eq) {
-          acc
-        } else {
-          list_snoc_item(xs: acc, item: sym)
-        }
-      Absent => acc
-    }
-  })
-  match node_atom_identity_optional(node: node) {
-    Present { value: sym } =>
-      if contains(xs: from_children, item: sym, eq: symbol_eq) {
-        from_children
-      } else {
-        list_snoc_item(xs: from_children, item: sym)
-      }
-    Absent => from_children
-  }
 }
 
 fn param_names_of(decl: FnArrowDecl) -> List<String> {
@@ -379,131 +335,6 @@ fn carriers_in_node(node: Node, param_names: List<String>) -> List<LiveReadCarri
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
-  fold_list(
-    xs: atom_identities_in_node(node: node),
-    empty: empty_string_list,
-    cons: fn(acc, sym) {
-      let text = symbol_lexeme(sym: sym)
-      if callee_text_is_known_carrier(text: text) || is_path_like_lexeme(text: text) {
-        acc
-      } else if contains(xs: acc, item: text, eq: string_eq) {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: text)
-      }
-    }
-  )
-}
-
-fn decls_matching_callee(
-  decls: List<FnArrowDecl>,
-  modules: List<String>,
-  callee: String
-) -> List<FnArrowDecl> {
-  filter(
-    xs: decls_in_modules(decls: decls, modules: modules),
-    predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
-  )
-}
-
-fn fn_arrow_decl_eq(a: FnArrowDecl, b: FnArrowDecl) -> Bool {
-  string_eq(a: a.qualified_name, b: b.qualified_name)
-}
-
-fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
-  any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
-}
-
-fn call_reachable_decls_go(
-  seeds: List<FnArrowDecl>,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>,
-  reached: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
-  match list_head(xs: seeds) {
-    HeadAbsent => reached
-    HeadFound { value: seed } =>
-      let rest = tail_decls(xs: seeds)
-      if decl_in_list(decl: seed, xs: reached) {
-        call_reachable_decls_go(
-          seeds: rest,
-          closure_modules: closure_modules,
-          decls: decls,
-          reached: reached
-        )
-      } else {
-        let next_reached = list_snoc_item(xs: reached, item: seed)
-        let callees = callees_from_node(node: seed.output)
-        let callee_decls = fold_list(xs: callees, empty: empty_decl_list, cons: fn(acc, callee) {
-          list_append(
-            left: acc,
-            right: decls_matching_callee(
-              decls: decls,
-              modules: closure_modules,
-              callee: callee
-            )
-          )
-        })
-        call_reachable_decls_go(
-          seeds: list_append(left: rest, right: callee_decls),
-          closure_modules: closure_modules,
-          decls: decls,
-          reached: next_reached
-        )
-      }
-  }
-}
-
-fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
-  match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_decl_list
-  }
-}
-
-fn call_reachable_decls(
-  entry_module: String,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
-  call_reachable_decls_go(
-    seeds: decls_in_module(decls: decls, mod_path: entry_module),
-    closure_modules: closure_modules,
-    decls: decls,
-    reached: empty_decl_list
-  )
-}
-
-data g2_root_grain_law: String = "THE ROOT IS THE ENROLLED DECLARATION, NOT ITS FILE. call_reachable_decls seeds every declaration in the entry module, so reachability is computed for the FILE: one sibling function calling a live-read carrier makes every witness in that file inherit the carrier, and their classifications become indistinguishable. That is entry-module grain wearing declaration-grain clothing, and it would have silently coarsened the manifest this lane is building — a manifest keyed per declaration whose VALUES were per file is worse than an honestly coarse one, because the key implies a precision the value does not have.
-
-The seeded variant below takes the exact enrolled function and roots the walk there. Entry-grain skip is then DERIVED by conjunction over the entry rows rather than assumed: an entry may fast-skip only when every enrolled row in it is completely classified and untouched. That derivation is what keeps a single live-read witness from making its siblings unskippable, which is the same precision loss as the G1 union one level down."
-
-fn decl_named_in_module(
-  decls: List<FnArrowDecl>,
-  mod_path: String,
-  fn_name: String
-) -> List<FnArrowDecl> {
-  filter(
-    xs: decls_in_module(decls: decls, mod_path: mod_path),
-    predicate: fn(decl) { string_eq(a: decl.name, b: fn_name) }
-  )
-}
-
-fn call_reachable_decls_from_root(
-  entry_module: String,
-  fn_name: String,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
-  call_reachable_decls_go(
-    seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
-    closure_modules: closure_modules,
-    decls: decls,
-    reached: empty_decl_list
-  )
-}
-
 fn carriers_from_reachable_decls(reachable: List<FnArrowDecl>) -> List<LiveReadCarrier> {
   fold_list(xs: reachable, empty: empty_carrier_list, cons: fn(acc, decl) {
     merge_carriers(
@@ -526,6 +357,7 @@ fn live_read_classification_g2_from_facts(
   let closure_modules = witness_import_closure(root: entry_module, facts: facts)
   let reachable = call_reachable_decls(
     entry_module: entry_module,
+    terminal_callee_symbols: live_read_carrier_callee_symbols_v0,
     closure_modules: closure_modules,
     decls: decls
   )
@@ -582,7 +414,7 @@ fn live_read_selection_manifest_over(
   })
 }
 
-data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
+data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. THE COVERAGE PREMISE IS NO LONGER UNPROVEN, and this sentence records the change rather than sitting beside it. It previously read that the mint site was a construction wall around an unproven premise, because fn_arrow_decl_facts_live answered from the calling context's resolved closure and no control showed a declaration outside that closure in its population. gunbc#10156 clause 2 gave the producer a caller-named subject: this mint site passes the SAME pool_roots to all three producers, so the population is the declared roots by construction, and dag/test/claim/fn_arrow_decl_facts_live_subject_witness_test shows by execution that a declaration outside the calling closure appears when its root is named and disappears when it is not. What the caller still owes is a truthful root list, and a root that contributes nothing refuses. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
 
 fn live_read_selection_manifest_live(
   requests: List<LiveReadSelectionRequest>,
@@ -599,7 +431,7 @@ fn live_read_selection_manifest_live(
       exclude_substrings: exclude_substrings
     ),
     nodes: module_declaration_facts_live(pool_roots: pool_roots),
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files)
   )
 }
 
@@ -643,6 +475,7 @@ fn live_read_classification_g2_from_edges(
   let reachable = call_reachable_decls_from_root(
     entry_module: entry_module,
     fn_name: fn_name,
+    terminal_callee_symbols: live_read_carrier_callee_symbols_v0,
     closure_modules: closure_modules,
     decls: decls
   )
@@ -782,24 +615,26 @@ fn live_read_selection_projection_from_facts(
 
 fn live_read_selection_projection_from_facts_v0(
   entry_module: String,
+  pool_roots: List<String>,
   facts: List<ModuleImportFact>
 ) -> LiveReadSelectionProjection {
   live_read_selection_projection_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files),
     carrier_homes: live_read_carrier_homes_v0
   )
 }
 
 fn live_read_classification_g2_from_facts_v0(
   entry_module: String,
+  pool_roots: List<String>,
   facts: List<ModuleImportFact>
 ) -> LiveReadClassification {
   live_read_classification_g2_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files),
     carrier_homes: live_read_carrier_homes_v0
   )
 }

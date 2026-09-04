@@ -112,6 +112,24 @@ type OobeControlIdentity
   = WelcomeGetStartedAction
   | SettingsContinueAction
   | EulaAcceptAction
+  | AccountContinueAction
+
+// THE ACCOUNT SCREEN MAKES THE ADDRESS-IS-NOT-IDENTITY POINT TWICE, and the second time is
+// sharper than the first. Every forward control shares the testid "nv-button", which
+// route-scoping resolves. But the account screen's THREE text inputs all share the testid
+// "nv-text-input-element" ON ONE ROUTE, so route-scoping does not resolve them at all. The only
+// observed discriminator is the form field NAME -- username, password, confirmPassword -- which
+// is also the name the submitted form carries. An actuator that resolved "the text input" on
+// this screen would fill whichever one the DOM happened to order first, and typing a password
+// into the username box fails in the most expensive possible way: it succeeds, and the
+// credential is stored in cleartext under a different field.
+type EntrySecrecy
+  = PlainTextEntry
+  | MaskedSecretEntry
+
+type FieldRequiredness
+  = RequiredField
+  | OptionalField
 
 type OobeControl
   = AdvanceButton {
@@ -133,6 +151,13 @@ type OobeControl
       field: FormFieldName,
       submitted_representation: SubmittedValueRepresentation,
     }
+  | TextEntryField {
+      address: TestId,
+      field: FormFieldName,
+      placeholder: PlaceholderText,
+      secrecy: EntrySecrecy,
+      requiredness: FieldRequiredness,
+    }
 
 // ------------------------------------------------------------------------------------------
 // THE ADVANCE GATE -- the finding that most justifies having driven a real device.
@@ -149,10 +174,43 @@ type OobeControl
 // would sit on that button until it timed out -- a hang whose cause is nowhere in the log.
 // Carrying the gate structurally means an author cannot write a screen transition that skips
 // it; the constructor demands the container.
+//
+// THE ACCOUNT SCREEN CARRIES A THIRD GATE SHAPE, and it is the one an automation is most likely
+// to mis-handle. Its Continue button is also disabled on arrival, but no scroll releases it:
+// it becomes enabled only when the field values themselves validate. That is a gate whose
+// precondition is the DATA, not a gesture, so it cannot be discharged by an action the driver
+// takes -- only by values the driver supplies. A driver written against the scroll gate would
+// scroll a page with nothing to scroll and then click a control that is still dead.
+//
+// The rules below were measured by supplying values and reading the control's enablement after
+// each, not read off the markup. Each carries the exact message the screen rendered, because
+// the message is the evidence: a rule with no observed message would be an inference about what
+// the client checks.
+type ObservedValidationMessage = NonEmptyStr where brand("ObservedValidationMessage")
+
+type ObservedFieldValidationRule
+  = FieldRequiredNonEmpty {
+      field: FormFieldName,
+      message: ObservedValidationMessage,
+    }
+  | FieldMinimumLength {
+      field: FormFieldName,
+      minimum: Int,
+      message: ObservedValidationMessage,
+    }
+  | FieldMustEqual {
+      field: FormFieldName,
+      other: FormFieldName,
+      message: ObservedValidationMessage,
+    }
+
 type OobeAdvanceGate
   = ForwardControlEnabledOnArrival
   | ForwardControlEnabledAfterScrollToEnd {
       scroll_container: TestId,
+    }
+  | ForwardControlEnabledWhenFieldsValidate {
+      rules: List<ObservedFieldValidationRule>,
     }
 
 // ------------------------------------------------------------------------------------------
@@ -180,10 +238,19 @@ type OobeAdvanceGate
 // either. It is distinct because the LEGAL BOUNDARY is what the automation must be able to see
 // in order to refuse to cross it unauthorized -- a different question from what the device
 // stored.
+//
+// CreatesDeviceAccount is a THIRD arm for the same reason AcceptsLegalAgreement is a second one,
+// and not a flavour of SubmitsSelections. Advancing past the settings screen submits choices
+// that can be made again; advancing past the account screen MINTS A CREDENTIAL on the device.
+// It is the step after which the wizard is no longer a fresh unit, it consumes a secret the
+// automation must have been authorized to use, and re-running it is not the same as running it
+// once. An automation that cannot SEE that distinction cannot be built to require authorization
+// before crossing it -- which is the whole reason the legal arm exists, applied to credentials.
 type OobeScreenEffect
   = PresentsNoConfigurableField
   | SubmitsSelections { fields: List<OobeSetupField> }
   | AcceptsLegalAgreement
+  | CreatesDeviceAccount { fields: List<OobeSetupField> }
 
 type OobeScreenRoute = NonEmptyStr where brand("OobeScreenRoute")
 type OobeScreenHeading = NonEmptyStr where brand("OobeScreenHeading")
@@ -322,6 +389,146 @@ data oobe_screen_eula: ObservedOobeScreen = ObservedOobeScreen {
 }
 
 // ------------------------------------------------------------------------------------------
+// SCREEN 04 -- /welcome/account
+//
+// The screen the earlier walk stopped in front of, now modeled. It is the credential boundary:
+// three required inputs and a submit that creates a local account on the device.
+//
+// THE THREE INPUTS SHARE ONE ADDRESS. All three carry data-testid "nv-text-input-element", on
+// one route, so the testid does not name any of them. The discriminator is the form field name,
+// which is also what the submitted form carries, so the model addresses them by name and
+// records the shared testid beside it rather than as the identity.
+//
+// THE SECRECY OF A FIELD IS OBSERVED, NOT ASSUMED FROM ITS LABEL. password and confirmPassword
+// render as type=password; username renders as type=text. That distinction is what lets a
+// workflow bind a secret-filling operation to exactly the fields that take a secret, and refuse
+// to route a secret into a plaintext control -- the FillTextControl/FillSecretControl split, in
+// the model rather than in the driver.
+//
+// WHAT THE VALIDATION ACTUALLY REQUIRES, and it is weaker than one would guess. The minimum
+// password length is SIX. Twelve lowercase letters with no digit, symbol or capital is accepted;
+// the only observed rejections are empty-required, under-six, and confirm-mismatch. Nothing here
+// enforces a complexity policy, so any policy this fleet wants is OUR obligation upstream of the
+// screen, not something the wizard will hold the line on.
+//
+// AND THE FINDING THAT MATTERS MOST: THE CLIENT ADMITS THE USERNAME "root". Supplied as the
+// username with a valid password, the Continue control became ENABLED. That is a measured
+// non-rejection, not an absence of evidence -- we asked and the screen said yes. A workflow that
+// let an operator or a generator choose "root" here would be inviting a collision with uid 0 on
+// a device whose wizard will not stop it. The refusal has to be ours, and it has to sit upstream
+// of the fill, because by the time the control is enabled the client has already agreed.
+// ------------------------------------------------------------------------------------------
+data oobe_screen_account: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome/account" as OobeScreenRoute,
+  heading: "Set Up Your NVIDIA DGX Spark" as OobeScreenHeading,
+  controls: [
+    TextEntryField {
+      address: "nv-text-input-element" as TestId,
+      field: "username" as FormFieldName,
+      placeholder: "Username" as PlaceholderText,
+      secrecy: PlainTextEntry,
+      requiredness: RequiredField,
+    },
+    TextEntryField {
+      address: "nv-text-input-element" as TestId,
+      field: "password" as FormFieldName,
+      placeholder: "Password" as PlaceholderText,
+      secrecy: MaskedSecretEntry,
+      requiredness: RequiredField,
+    },
+    TextEntryField {
+      address: "nv-text-input-element" as TestId,
+      field: "confirmPassword" as FormFieldName,
+      placeholder: "Confirm Password" as PlaceholderText,
+      secrecy: MaskedSecretEntry,
+      requiredness: RequiredField,
+    },
+    SubmitButton {
+      identity: AccountContinueAction,
+      address: "nv-button" as TestId,
+      label: "Continue" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledWhenFieldsValidate {
+    rules: [
+      FieldRequiredNonEmpty {
+        field: "username" as FormFieldName,
+        message: "This field is required" as ObservedValidationMessage,
+      },
+      FieldMinimumLength {
+        field: "password" as FormFieldName,
+        minimum: 6,
+        message: "Password must be at least 6 characters long" as ObservedValidationMessage,
+      },
+      FieldMustEqual {
+        field: "confirmPassword" as FormFieldName,
+        other: "password" as FormFieldName,
+        message: "Passwords do not match" as ObservedValidationMessage,
+      },
+    ],
+  },
+  effect: CreatesDeviceAccount { fields: [OobeUserAccount] },
+  presented_subjects: [OobeUserAccount],
+}
+
+// ------------------------------------------------------------------------------------------
+// WHAT THE CLIENT ADMITS AS A USERNAME.
+//
+// A SEPARATE ROW FROM THE VALIDATION RULES, because a rule is something the screen enforces and
+// this is a record of what it declined to enforce. Folding "root was accepted" into the rule
+// list would put a non-rule in a list of rules; keeping it here means a consumer asking "what
+// does the client reject" gets the rules, and a consumer asking "what did we actually try" gets
+// this.
+//
+// THE POPULATION IS TWO PROBES AND THIS ROW CLAIMS NOTHING BEYOND THEM. It does not say the
+// client admits every username; it says these two were supplied and the forward control became
+// enabled. The empty username is deliberately absent: it is refused, and it is already carried
+// as FieldRequiredNonEmpty above -- and it could not be written here anyway, because the
+// username type is NonEmptyStr and the invalid state has no constructor.
+type ClientUsernameAdmission
+  = ClientAdmittedUsername { username: NonEmptyStr }
+  | ClientRefusedUsername {
+      username: NonEmptyStr,
+      message: ObservedValidationMessage,
+    }
+
+data observed_account_username_probes: List<ClientUsernameAdmission> = [
+  ClientAdmittedUsername { username: "fleetadmin" },
+  ClientAdmittedUsername { username: "root" },
+]
+
+// ------------------------------------------------------------------------------------------
+// A ROUTE THAT RENDERS IS NOT A WIZARD THAT HAS PROGRESSED.
+//
+// /welcome/account was reached by navigating DIRECTLY to it, on a unit whose root still resolves
+// to /welcome -- so the account screen rendered without its predecessor screens having been
+// completed. The SPA does not gate its routes on progress.
+//
+// This is carried because it cuts both ways and both matter. It is why the screen above could be
+// modeled without accepting a licence or creating an account: the observation cost nothing on the
+// device. It is also a hazard for anything that infers state from location -- arriving at a route
+// establishes that the route renders, and nothing about what the unit has been configured with.
+// A workflow that treated "I am at /welcome/account" as "the EULA has been accepted" would be
+// reading a client-side path as device state.
+type ObservedRouteGating
+  = RouteRequiresPredecessorCompletion
+  | RouteRenderedWithoutPredecessorCompletion
+
+type ObservedDirectRouteNavigation {
+  requested_route: OobeScreenRoute
+  resulting_route: OobeScreenRoute
+  root_still_resolves_to: OobeScreenRoute
+  gating: ObservedRouteGating
+}
+
+data account_route_direct_navigation: ObservedDirectRouteNavigation = ObservedDirectRouteNavigation {
+  requested_route: "/welcome/account" as OobeScreenRoute,
+  resulting_route: "/welcome/account" as OobeScreenRoute,
+  root_still_resolves_to: "/welcome" as OobeScreenRoute,
+  gating: RouteRenderedWithoutPredecessorCompletion,
+}
+
+// ------------------------------------------------------------------------------------------
 // THE WALK, AND ITS HONEST END.
 //
 // THIS LIST IS A PREFIX OF THE WIZARD, NOT THE WIZARD. The walk stopped at the EULA because
@@ -336,11 +543,15 @@ data oobe_screen_eula: ObservedOobeScreen = ObservedOobeScreen {
 // (selection_view_read_as_population), and it would be especially cheap to commit here
 // because the observed rows are real and the missing ones leave no trace.
 // ------------------------------------------------------------------------------------------
-data observed_oobe_screen_prefix: List<ObservedOobeScreen> = [
-  gunbc.spark.oobe_screen_observation.oobe_screen_welcome,
-  gunbc.spark.oobe_screen_observation.oobe_screen_settings,
-  gunbc.spark.oobe_screen_observation.oobe_screen_eula,
-]
+// DERIVED FROM THE RUNS, and it has to be, now that there is more than one. The prefix used to be
+// hand-listed here while the single run row cited IT -- one authority, read backwards, which was
+// fine while one run produced every screen. A second run breaks that: a hand-listed union would
+// let a screen be observed by no run, or a run to claim a screen it never watched, with both
+// tables staying type-correct while they disagree. So the runs are the authority and the prefix
+// is folded out of them (DESIGN section 3).
+fn observed_oobe_screen_prefix() -> List<ObservedOobeScreen> {
+  flat_map(oobe_observation_runs, run => run.screens)
+}
 
 // ------------------------------------------------------------------------------------------
 // THE INITIAL NAVIGATION, which the first revision asserted in prose and never modeled.
@@ -379,6 +590,15 @@ data observed_walk_termination: OobeWalkTermination = WalkHaltedAwaitingOperator
   at_route: "/welcome/eula" as OobeScreenRoute,
 }
 
+// The second run halted one screen further on, and for a different reason than the first. Run 1
+// stopped in front of a legal act. Run 2 reached the account screen WITHOUT performing one --
+// the route renders directly -- and stopped in front of a credential act: filling the form is
+// free, pressing Continue creates an account. Both are the same shape of refusal and they are
+// separate rows because they are separate runs; a single termination would have to pick one.
+data observed_account_walk_termination: OobeWalkTermination = WalkHaltedAwaitingOperatorAuthority {
+  at_route: "/welcome/account" as OobeScreenRoute,
+}
+
 // ------------------------------------------------------------------------------------------
 // DOCUMENTED VERSUS OBSERVED.
 //
@@ -410,7 +630,7 @@ fn screen_presents_field(screen: ObservedOobeScreen, field: OobeSetupField) -> B
 // preserve the exact fork the repair exists to remove.
 fn observed_screen_covers_field(field: OobeSetupField) -> Bool {
   fold(
-    observed_oobe_screen_prefix,
+    observed_oobe_screen_prefix(),
     init: false,
     f: (acc, screen) => acc || screen_presents_field(screen: screen, field: field)
   )
@@ -466,8 +686,32 @@ type OobePortalObservationEnvironment {
   portal_origin: Uri
 }
 
+// HOW THE RENDERER REACHED THE PORTAL, which run 1's environment could not say and run 2 forced
+// into the open. The renderer, the radio relay and the origin the browser actually loaded are
+// three facts, and run 2 has a fourth participant between them: the browser on srv4 loaded a
+// LOOPBACK listener on its own host, forwarded through this session, forwarded again through the
+// relay, to the unit. srv4 holds no key to the relay, so it cannot open that channel itself --
+// measured, not assumed, and it is why a proxy locus exists at all rather than being an
+// implementation detail of "srv4 reaches the unit".
+//
+// The browser origin is recorded separately from the unit origin because they are not the same
+// string under forwarding, and same-origin behaviour is a property of what the browser loaded.
+//
+// PortalReachUnrecorded is for run 1 and is not a claim that it was direct. That run recorded
+// the unit's address as the origin and did not record the mechanism, so the mechanism is
+// unobserved -- the column DESIGN section 4b keeps off the ladder, declared rather than
+// backfilled from what seems likely now.
+type OobePortalReach
+  = PortalReachUnrecorded
+  | RendererThroughForwardedEndpoint {
+      proxy_locus: NonEmptyStr,
+      renderer_origin: Uri,
+      unit_origin: Uri,
+    }
+
 type OobeScreenObservationRun {
   environment: OobePortalObservationEnvironment
+  portal_reach: OobePortalReach
   observed_on: Rfc3339Timestamp
   screens: List<ObservedOobeScreen>
   termination: OobeWalkTermination
@@ -486,7 +730,53 @@ data dgx_spark_0c75_oobe_prefix_run: OobeScreenObservationRun = OobeScreenObserv
       locator: "10.92.7.127",
     },
   },
+  portal_reach: PortalReachUnrecorded,
   observed_on: "2026-09-02T02:39:00Z" as Rfc3339Timestamp,
-  screens: gunbc.spark.oobe_screen_observation.observed_oobe_screen_prefix,
+  screens: [
+    gunbc.spark.oobe_screen_observation.oobe_screen_welcome,
+    gunbc.spark.oobe_screen_observation.oobe_screen_settings,
+    gunbc.spark.oobe_screen_observation.oobe_screen_eula,
+  ],
   termination: gunbc.spark.oobe_screen_observation.observed_walk_termination,
 }
+
+// RUN 2 -- the account screen, reached without crossing either boundary run 1 stopped at.
+//
+// Same unit, same relay, same renderer and the same pinned Playwright build; a different route to
+// it, and a different halt. The renderer is srv4 again deliberately: srv1 carries browser binaries
+// but no Playwright package, so it is not a qualified renderer, and re-observing under a different
+// browser build would have made any selector difference ambiguous between "the image changed" and
+// "we looked with a different tool".
+data dgx_spark_0c75_oobe_account_run: OobeScreenObservationRun = OobeScreenObservationRun {
+  environment: OobePortalObservationEnvironment {
+    chromium_build: chromium_151_0_7922_34,
+    playwright_build: playwright_1_62_1,
+    browser_binary_provenance: PlaywrightManagedChromiumDownload,
+    rendering_host: "srv4" as RenderingHost,
+    radio_relay_host: "pi1" as RadioRelayHost,
+    unit_access_point: "spark-0c75" as ObservedUnitAccessPointSsid,
+    portal_origin: Uri {
+      scheme: Http,
+      locator: "127.0.0.1:18082",
+    },
+  },
+  portal_reach: RendererThroughForwardedEndpoint {
+    proxy_locus: "sleek-bear-442",
+    renderer_origin: Uri {
+      scheme: Http,
+      locator: "127.0.0.1:18082",
+    },
+    unit_origin: Uri {
+      scheme: Http,
+      locator: "10.92.7.127",
+    },
+  },
+  observed_on: "2026-09-03T02:42:20Z" as Rfc3339Timestamp,
+  screens: [gunbc.spark.oobe_screen_observation.oobe_screen_account],
+  termination: gunbc.spark.oobe_screen_observation.observed_account_walk_termination,
+}
+
+data oobe_observation_runs: List<OobeScreenObservationRun> = [
+  gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_prefix_run,
+  gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
+]

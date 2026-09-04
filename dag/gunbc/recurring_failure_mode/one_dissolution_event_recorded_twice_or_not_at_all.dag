@@ -1,0 +1,96 @@
+module gunbc.recurring_failure_mode.one_dissolution_event_recorded_twice_or_not_at_all
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data one_dissolution_event_recorded_twice_or_not_at_all: RecurringFailureMode = RecurringFailureMode {
+  identity: "one_dissolution_event_recorded_twice_or_not_at_all" as NonEmptyStr,
+
+  receipts: [
+    "**one dissolution event, recorded twice or not at all** (a roster rule assigns deletion of CONSUMED admissions to the next roster-touching change. ",
+
+    "The rule is CORRECT AND THIS ROW DOES NOT DISPUTE IT: the obligation reaches every concurrent roster-touching change and is discharged by whichever observes it first, exactly as its own prose says. ",
+
+    "What recurs is not a broken trigger but an ASYMMETRY BETWEEN THE TWO THINGS IT OBLIGES, AND BOTH HALVES OF IT CAN MERGE SILENTLY. ",
+
+    "The DELETION COMPOSES IDEMPOTENTLY: two branches removing the same rows compose to one absence with no conflict, which the authority itself records -- `v1_compiler.namespace_wave_admission` says of the 57-row case MAIN EMPTIED INDEPENDENTLY, WHICH IS THE TRIGGER MECHANISM WORKING RATHER THAN A COLLISION. ",
+
+    "The RECORD COMPOSES ADDITIVELY: each observer authors an ordinal-bearing dissolution writeup, and two writeups of ONE event merge cleanly into two. ",
+
+    "AN EARLIER REVISION OF THIS ROW CLAIMED THE DELETION COLLIDES LOUDLY, WHICH ITS OWN CITED SPECIMEN CONTRADICTS, and the error is instructive: this row's author generalised from a TEXTUAL CONFLICT they hit on gunbc#10248, which was an ADD/ADD on a roster line and not a deletion at all. ",
+
+    "Idempotence is exactly what lets the duplicated observation collapse while the duplicated history survives, so the deletion never reliably announces the race. ",
+
+    "INVALID STATE: one dissolution event carrying two records, or carrying none. ",
+
+    "HARM: both wrong arms are silent and neither is countable. ",
+
+    "Yield when nothing else is recording and N admissions vanish from main unexplained, which is precisely what the roster history exists to prevent; author when something else is recording and one event acquires two ordinal-bearing records, a DESIGN section 3 meaning fork committed inside the ledger that explains the deletion. ",
+
+    "THE DECIDING INPUT IS UNREADABLE, WHICH IS THE WHOLE CLASS: choosing between the arms requires knowing whether a competing branch is LIVE AND RECORDING. ",
+
+    "That is not derivable from the artifact, is not visible to review, and CHANGES BETWEEN CI ROUNDS -- so the decision is correct or incorrect for reasons the author cannot read and a later reader cannot reconstruct. ",
+
+    "No amount of care closes it. ",
+
+    "DISCOVERED BY valiant-bee-316 AND tidy-koi-619 across their own cuts; drafted here by a third lane at their request, from shas they supplied, so that one record exists rather than two -- which is this row obeying its own subject. ",
+
+    "The two main-side quotations below were verified verbatim against origin/main by the drafter rather than relayed. ",
+
+    "SPECIMENS -- THREE EVENTS, FIVE INSTANCES, TWO BRANCHES, ABOUT TWENTY HOURS. ",
+
+    "EVENT 1, 57 rows: main and a branch deleted the same consumed rows independently, recorded in main as SEVENTEENTH TRANSITION in `v1_compiler.namespace_wave_admission` -- neither aware of the other, both paying the rule. ",
+
+    "No double record, because one side was main. ",
+
+    "EVENT 2, 3 rows, consumed when gunbc#10011 merged as 4acf8ac234: TWO branches observed it independently and BOTH authored NINETEENTH DISSOLUTION -- 889a5f52493 and 29db34e975. ",
+
+    "One was yielded at 2fafa0f9591, deletion kept and record dropped in favour of a pointer. ",
+
+    "THIS IS THE CLASS FIRING AND BEING CAUGHT BY HAND. ",
+
+    "EVENT 3, 47 rows, consumed when gunbc#10106 merged as 78e022c51e4: only one branch observed it, so the same trigger correctly produced the OPPOSITE action -- record rather than yield, TWENTIETH DISSOLUTION at edbfcd7b45f. ",
+
+    "SAME TRIGGER, OPPOSITE CORRECT ACTION, DECIDED ENTIRELY BY WHETHER A COMPETING RECORD EXISTED. ",
+
+    "Plus three ORDINAL COLLISIONS on one file from one branch: SIXTEENTH TRANSITION taken mid-branch by gunbc#10010, then SEVENTEENTH TRANSITION and NINETEENTH DISSOLUTION both taken by gunbc#10106, forcing EIGHTEENTH TRANSITION -- the same silent-merge surface reached through the ordinal rather than the record. ",
+
+    "THE COST AND THE MECHANISM ARE TWO CLAIMS AND A READER WHO CONFLATES THEM REPAIRS THE WRONG THING. ",
+
+    "The cost is real: a branch touching the roster for its own unrelated reasons inherits another lane's sweep, each inheritance costing a commit, a CI round and a judgement call -- one call-reachability cut paid it TWICE for two upstream transitions it did not cause. ",
+
+    "But the same evidence shows the TRIGGER WORKING. ",
+
+    "Repairing the trigger would break the only part that is sound. ",
+
+    "RUNG FOUND AT: 1, mitigatable, resting on author diligence -- nothing refuses either wrong arm and nothing counts them. ",
+
+    "CEILING: 2, mechanically preventable, and the reason it is not higher is that the record is author-assigned PROSE; making the state unwritable means the record ceasing to be prose, which is a carrier question this row deliberately does not decide. ",
+
+    "Reaching 2 is decidable, BUT NOT FROM THE MERGE-BASE ALONE: a base containing no record admits BOTH concurrent branches, each locally clean, and the duplicate prose then composes without conflict -- so a check with perfect merge-base access still passes both and admits the second record. ",
+
+    "Decidability requires the EXACT WOULD-LAND COMPOSITION at a serialized boundary, which is why the trigger below names that rather than the base. ",
+
+    "NOT MEASURED, AND CARRIED AS UNMEASURED BECAUSE THE ORIGINATING LANE FLAGGED IT: whether the merge-base is REACHABLE to such a check at the point the admission phase runs. ",
+
+    "If it is not, the ceiling argument needs re-deriving before anyone builds against it. ",
+
+    "NEXT-RUNG TRIGGER, named as the CAPABILITY AND JOINING BOTH DIRECTIONS: at the serialized merge boundary, derive a dissolution-event identity from the CONSUMED ADMISSION POPULATION and require the exact would-land tree to contain EXACTLY ONE history record per event and EXACTLY ONE event per record -- refusing zero, refusing duplicates, and refusing or re-executing when current main differs from the main revision adjudicated. ",
+
+    "AN AT-MOST-ONE WALL IS NOT SUFFICIENT AND AN EARLIER REVISION OF THIS ROW NAMED ONE: refusing a record whose label already carries one says nothing about consumed rows deleted with NO record, which is half of the invalid state above. ",
+
+    "That is the section 4b(3) grain mismatch -- a two-armed loss under a one-armed trigger -- committed in the same row that warns against it. ",
+
+    "ITS DISCRIMINATING REDS ARE BOTH ARMS AND ONE OF THEM MUST CROSS THE RACE: consumed rows deleted with ZERO record; one event carrying TWO records; and, because a static two-record fixture does not exercise the actual specimen, TWO CONCURRENT BRANCHES SHARING A BASE WITH NO RECORD, each locally clean and admissible, where the SECOND composition refuses after the first lands. ",
+
+    "Positive control: one event, one record, admitted. ",
+
+    "CROSS-REFERENCE, NOT A MERGER: `ambient_process_state_read_by_a_concurrent_reader` shares the sentence CORRECTNESS DEPENDS ON CONCURRENT STATE THE ACTOR CANNOT READ, but there the defect is a READ that returns a well-formed value about a different subject, repaired by making the ambient fact a parameter. ",
+
+    "Here it is a WRITE DECISION with no readable input at all, repaired by making a second record refuse. ",
+
+    "Neither repair transfers, which is DESIGN section 4b's keying-on-the-repair test.)",
+  ],
+
+  evidence: [],
+}

@@ -1,30 +1,41 @@
-//! Green-by-execution anchor for the gunbc#5364 whole-tree wiring-liveness
-//! ENUMERATION widening (the reflection SOURCE side).
+//! Green-by-execution anchor for `fn_arrow_decl_facts_live`'s CALLER-NAMED SUBJECT
+//! (gunbc#10156 clause 2, the reflection SOURCE side).
 //!
-//! `cli_run::whole_tree_resolved_ctx` resolves every `.dag` module under the
-//! given source roots in one pass, so `eval_fn_arrow_decl_facts_live` (which
-//! walks `ctx.modules`) enumerates fn-arrow decls across the WHOLE tree rather
-//! than a single entry's import closure. This test exercises that accessor on a
-//! self-contained 3-module fixture whose two leaf modules (`wt.a`, `wt.b`) do
-//! NOT import each other — so a per-entry resolve of `wt.a` can never see
-//! `wt.b`'s fn, but the whole-tree resolve does. That delta IS the widening.
+//! WHAT THIS FILE USED TO PROVE, AND WHY THAT CLAIM NO LONGER EXISTS. The accessor
+//! walked `ctx.modules`, so its population was whatever module closure the calling
+//! context had resolved. This test's subject was that dependence: it resolved the
+//! fixture whole-tree, resolved `wt.a` alone, and asserted the first enumeration
+//! strictly exceeded the second. Both arms now return the same rows, because the
+//! population is a function of the declared `pool_roots` and of nothing else — so the
+//! old assertion is not merely stale, its premise is deleted. Rewritten rather than
+//! patched: a widening test kept alive over a producer that no longer widens would be
+//! green for a reason it does not state.
 //!
-//! WHY A FIXTURE, NOT THE REAL CORPUS: the wiring lens itself (`v2.lens.
-//! wiring_liveness`) lives under `src/v2`, and the `src/v2` corpus does not
-//! whole-tree-resolve today — many test scaffolds (and non-test modules like
-//! `v2.lens.testgen`) carry imports that only resolve inside a scoped closure,
-//! and the pipeline short-circuits the whole graph to `None` on any unresolved
-//! import (the `v2.lens.resolved_imports` open thread). So the whole-tree GATE
-//! over the real corpus is deferred (DESIGN §5 "wall after grounding") until
-//! that whole-tree-resolve grounding lands; this test proves the enumeration
-//! SUBSTRATE works wherever resolve succeeds.
+//! WHAT IT PROVES NOW, in the same fixture and with the same discriminating shape. The
+//! two leaf modules (`wt.a`, `wt.b`) do NOT import each other, and they sit in
+//! sibling directories, so:
+//!   * the SAME named subject yields the SAME rows from a whole-tree context and from
+//!     `wt.a`'s own single-entry closure — the row that goes red if `ctx.modules` is
+//!     still an input;
+//!   * a root that contributes no `.dag` file REFUSES rather than answering with a
+//!     silently smaller population.
+//!
+//! The exclusion half — naming one root and NOT seeing a sibling root's declaration,
+//! the row that goes red if the argument is ignored — needs two directories, which this
+//! fixture does not have; it lives in the `.dag` witness named below, over a fixture
+//! built for it.
+//!
+//! This target is compiled by `repo_self_clippy_command` and run by no CI step (see
+//! DESIGN, "Building & checks"). The executing evidence on the required floor is
+//! `dag/test/claim/fn_arrow_decl_facts_live_subject_witness_test.dag`; this file is
+//! the host-side control over the refusal arm, which `.dag` cannot author.
 
 use std::rc::Rc;
 
 use v1_compiler::cli_run::{self, whole_tree_resolved_ctx, WholeTreeCtx};
 use v1_compiler::coproduct_reflection::eval_fn_arrow_decl_facts_live;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -38,9 +49,15 @@ fn fixture_root() -> String {
         .into_owned()
 }
 
-/// The `qualified_name` of every `FnArrowDecl` row the accessor yields in `ctx`.
-fn enumerated_qualified_names(ctx: &InterpContext) -> Vec<String> {
-    let val = eval_fn_arrow_decl_facts_live(ctx, &[]).expect("eval_fn_arrow_decl_facts_live");
+fn pool_roots_arg(roots: &[&str]) -> Vec<(Option<String>, Value)> {
+    let items: im::Vector<Value> = roots.iter().copied().map(str_value).collect();
+    vec![(Some("pool_roots".to_string()), Value::List(Rc::new(items)))]
+}
+
+/// The `qualified_name` of every `FnArrowDecl` row the accessor yields for `roots`.
+fn enumerated_qualified_names(ctx: &InterpContext, roots: &[&str]) -> Vec<String> {
+    let val = eval_fn_arrow_decl_facts_live(ctx, &pool_roots_arg(roots))
+        .expect("eval_fn_arrow_decl_facts_live");
     let items = match &val {
         Value::List(items) => items,
         other => panic!("expected List of FnArrowDecl, got {other:?}"),
@@ -62,13 +79,12 @@ fn enumerated_qualified_names(ctx: &InterpContext) -> Vec<String> {
         .collect()
 }
 
-/// Resolve a single entry's import closure and enumerate within it — the
-/// per-entry mechanism the widening transcends (and the no-whole-tree control).
-fn closure_enumerated_qualified_names(entry_rel: &str) -> Vec<String> {
-    let entry_content = std::fs::read_to_string(workspace_root().join(entry_rel))
-        .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
+/// A context holding ONLY `wt.a`'s import closure — `wt.b` is unreachable from it.
+fn single_entry_closure_ctx() -> InterpContext {
+    let entry_content = std::fs::read_to_string(workspace_root().join(MOD_A_REL))
+        .unwrap_or_else(|e| panic!("read {MOD_A_REL}: {e}"));
     let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
-        entry_rel,
+        MOD_A_REL,
         &entry_content,
         &[workspace_root().join(FIXTURE_REL)],
     );
@@ -77,14 +93,11 @@ fn closure_enumerated_qualified_names(entry_rel: &str) -> Vec<String> {
         .graph
         .as_ref()
         .expect("fixture entry closure resolves to a graph");
-    let ctx =
-        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
-    enumerated_qualified_names(&ctx)
+    cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet)
 }
 
 #[test]
-fn whole_tree_enumeration_sees_fns_outside_a_per_entry_closure() {
-    // Whole-tree pass over the fixture: every module resolved in one pass.
+fn the_named_subject_decides_the_population_and_the_context_does_not() {
     let WholeTreeCtx {
         ctx,
         modules_resolved,
@@ -97,34 +110,37 @@ fn whole_tree_enumeration_sees_fns_outside_a_per_entry_closure() {
         "fixture is wt.common + wt.a + wt.b = 3 modules"
     );
 
-    let whole = enumerated_qualified_names(&ctx);
+    let both = enumerated_qualified_names(&ctx, &[FIXTURE_REL]);
     assert!(
-        whole.iter().any(|q| q == "wt.a.wt_a_wired"),
-        "whole-tree enumeration must include wt.a's fn, got {whole:?}"
-    );
-    assert!(
-        whole.iter().any(|q| q == "wt.b.wt_b_wired"),
-        "whole-tree enumeration must include wt.b's fn, got {whole:?}"
+        both.iter().any(|q| q == "wt.a.wt_a_wired") && both.iter().any(|q| q == "wt.b.wt_b_wired"),
+        "naming the fixture root must yield both leaf fns, got {both:?}"
     );
 
-    // Control: `wt.a` and `wt.b` do not import each other, so wt.a's per-entry
-    // closure can NEVER enumerate wt.b's fn. This is the discriminating delta —
-    // the exact coverage the host SOURCE half gains by going whole-tree.
-    let closure = closure_enumerated_qualified_names(MOD_A_REL);
-    assert!(
-        closure.iter().any(|q| q == "wt.a.wt_a_wired"),
-        "wt.a's own closure must enumerate its own fn, got {closure:?}"
+    // THE CONTEXT IS NOT AN INPUT. `wt.a`'s own closure cannot reach `wt.b` at all, yet
+    // the same named subject yields the same rows from it. Under the previous accessor
+    // this assertion was false by construction — that delta IS the climb.
+    let from_closure = enumerated_qualified_names(&single_entry_closure_ctx(), &[FIXTURE_REL]);
+    let mut a = both.clone();
+    let mut b = from_closure.clone();
+    a.sort();
+    b.sort();
+    assert_eq!(
+        a, b,
+        "the same named subject must yield the same population from any context"
     );
-    assert!(
-        !closure.iter().any(|q| q == "wt.b.wt_b_wired"),
-        "wt.a's closure must NOT see wt.b's fn (the gap whole-tree closes), got {closure:?}"
-    );
+}
 
-    // The widening, stated as a set relation proven by execution.
+#[test]
+fn a_root_that_contributes_nothing_refuses_rather_than_narrowing_silently() {
+    let WholeTreeCtx { ctx, .. } =
+        whole_tree_resolved_ctx(&[fixture_root()], &[], ExecutionMode::Wet)
+            .expect("whole-tree resolve of the self-contained fixture");
+    let refused = eval_fn_arrow_decl_facts_live(
+        &ctx,
+        &pool_roots_arg(&["src/v1/tests/fixtures/does_not_exist"]),
+    );
     assert!(
-        whole.len() > closure.len(),
-        "whole-tree enumeration ({}) must strictly exceed the per-entry closure ({})",
-        whole.len(),
-        closure.len()
+        refused.is_err(),
+        "a pool root contributing no .dag file must refuse, got {refused:?}"
     );
 }
