@@ -3659,8 +3659,8 @@ fn preamble() -> List<MarkdownBlock> {
 // hidden lane as retained and unexplained rather than as decided.
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main",
-  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence"],
+  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main + the harness, roadmap workflow and dashboard lanes",
+  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence", "harness", "roadmap", "dashboard"],
 }
 
 fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
