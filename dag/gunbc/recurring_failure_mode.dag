@@ -125,6 +125,42 @@ module gunbc.recurring_failure_mode
 // field 'evidence' in literal of type 'RecurringFailureMode'`). Nothing silent was found in that
 // set. A brace-balance or declared-versus-rostered check would be the DESIGN section 4b decoration:
 // permanently green, because the only corpus it could fire on never reaches it.
+//
+// A THIRD CONSEQUENCE NOBODY ARGUED FOR IN ADVANCE, appended by a later lane rather than authored
+// here: THE SPLIT MADE A QUESTION DECIDABLE THAT WAS PREVIOUSLY ONLY SEARCHABLE. This cut was
+// justified on merge geometry, and then on making a duplicate declaration unwritable because two
+// files cannot share a name. But the question a lane most often needs to answer about a contended
+// carrier is "which identities do I add?" -- and under the blob that was a substring search inside
+// an 11,751-character line, which is how two duplicate declarations hid in plain sight for two hours
+// on 2026-09-03 while three separate instruments read the file and reported clean. After the split
+// it is a set difference over filenames against the roster directory, and it returns an EMPTY RESULT
+// A READER CAN TRUST. A SET DIFFERENCE OVER FILENAMES HAS A MEANING; A GREP INSIDE A MEGA-LINE HAS A
+// HIT COUNT. The occasion was a parked branch carrying 83 stale declarations of this shape: the
+// emptiness of its own contribution was decidable in one command, and that is what made the
+// resolution safe to perform without its author.
+//
+// AN UNPREDICTED BENEFIT IS WORTH MORE IN THIS RECORD THAN A PREDICTED ONE, because it is evidence
+// the cut fell at a real joint rather than at a convenient one.
+//
+// AND THE SHARED-BLOCK-TAIL GEOMETRY ABOVE IS NOT A PROPERTY OF THIS CARRIER, OR OF `.dag` AT ALL.
+// The SECOND REPAIR paragraph measures it on rows -- a block whose `evidence: [],` / `}` tail is
+// factored out of the conflict region, so an additive resolution yields a first block whose closing
+// lines belong to the second. On 2026-09-03 the IDENTICAL geometry appeared in Rust, in
+// `v1_compiler.cli_run`, merging gunbc#10267 into gunbc#9725: both sides appended a `pub fn` at one
+// insertion point, BOTH BODIES WERE TRUNCATED AT THE MARKERS, and the single closing brace sat below
+// the region, shared. It is a property of ANY three-way merge where a block's tail is factored out,
+// and brace-delimited languages are exposed exactly as row files are.
+//
+// THE RUST FORM IS WORSE THAN THE ROW FORM, WHICH IS WHY IT IS RECORDED HERE RATHER THAN LEFT AS AN
+// ANECDOTE. Two row-bodies above one tail fail loudly -- the loss states are measured above and every
+// one of them is a parse or resolve refusal. Two FUNCTION bodies above one brace need not fail at
+// all: the outcome can be a function that SWALLOWED THE OTHER'S SIGNATURE AND COMPILED. A silently
+// wrong merge that typechecks is the artifact DESIGN section 5 ranks worst, and the reflexive
+// additive resolution is precisely what produces it.
+//
+// THE READ THAT CATCHES IT COSTS NOTHING: before unioning, look at the LAST line of each side and the
+// line immediately AFTER the closing marker. If neither side closes itself and the text below supplies
+// the closer, the union needs one inserted between them.
 
 import std.types { String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
