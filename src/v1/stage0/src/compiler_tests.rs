@@ -3462,6 +3462,82 @@ mod compiler_tests {
         );
     }
 
+    fn type_variable_declared_node() -> std::rc::Rc<crate::v1_std_core::Node> {
+        let base = named_type_node("T");
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            inferred: Some(std::rc::Rc::new(
+                crate::v1_std_core::InferredNode::TypeVariable {
+                    id: "T".to_string(),
+                },
+            )),
+            ..(*base).clone()
+        })
+    }
+
+    fn optional_produced_node() -> std::rc::Rc<crate::v1_std_core::Node> {
+        let base = named_type_node("String");
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,
+            ..(*base).clone()
+        })
+    }
+
+    #[test]
+    fn an_unsubstituted_formal_declines_visibly_and_emits_neither_accusation_nor_silence() {
+        use crate::v1_std_core::CompilerDiagnostic;
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let declared = type_variable_declared_node();
+        let produced = optional_produced_node();
+        let verdict = crate::v1_compiler_infer::optional_into_required_mismatch(
+            declared.clone(),
+            produced.clone(),
+        );
+        assert!(
+            matches!(&*verdict, crate::v1_compiler_infer::OptionalNarrowing::NarrowingUndetermined { .. }),
+            "an unsubstituted type parameter establishes optionality NEITHER way, so the judgment must decline rather than conclude required"
+        );
+        let diags = crate::v1_compiler_infer::optional_narrowing_diags(
+            verdict,
+            declared.clone(),
+            crate::v1_std_core::no_span(),
+            "probe.module".to_string(),
+            source_indices.clone(),
+        );
+        assert_eq!(
+            diags.len(),
+            1,
+            "SILENT ADMISSION RETURNED: the undetermined arm emitted nothing, which is the absorbing fallback -- no artifact to notice, so the deficit stops ranking for repair"
+        );
+        match &*diags[0].diagnostic {
+            CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => {}
+            CompilerDiagnostic::OptionalValueInRequiredPosition { .. } => panic!(
+                "FALSE POSITIVE RETURNED: the arm accused a position whose declared type is a type variable"
+            ),
+            other => panic!("undetermined arm emitted an unexpected diagnostic: {:?}", other),
+        }
+        let concrete_required = named_type_node("String");
+        assert!(
+            matches!(
+                &*crate::v1_compiler_infer::optional_into_required_mismatch(
+                    concrete_required,
+                    produced.clone()
+                ),
+                crate::v1_compiler_infer::OptionalNarrowing::NarrowsToRequired
+            ),
+            "a CONCRETE required declared type still narrows and must still be accused"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_compiler_infer::optional_into_required_mismatch(
+                    optional_produced_node(),
+                    produced.clone()
+                ),
+                crate::v1_compiler_infer::OptionalNarrowing::ConformsOrWidens
+            ),
+            "optional into optional conforms and must stay silent"
+        );
+    }
+
     #[test]
     fn witness_carrier_declines_a_non_witness_expected_type() {
         let source_indices = std::rc::Rc::new(HashMap::new());

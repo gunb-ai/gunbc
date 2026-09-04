@@ -862,6 +862,7 @@ fn ct_coercion_tests() -> String {
     ct_render_rust_applied_type_qualified_base_test(),
     ct_renderer_hop_identity_keying_test(),
     ct_generic_param_declines_fail_closed_unwrap_test(),
+    ct_optional_narrowing_undetermined_test(),
     ct_witness_carrier_declines_non_witness_expected_type_test())
 }
 
@@ -873,6 +874,84 @@ fn ct_coercion_tests() -> String {
 // the instantiated parameter is `Optional<Node>` and the unwrap strips exactly the Option the
 // return type demands. Arm 2 holds the other direction: a CONCRETE non-optional parameter still
 // takes the unwrap, so a repair that simply stopped injecting would go red here.
+// THE FIFTH FIXTURE CELL, AND IT LIVES HERE BECAUSE compiler_tests.rs IS A GENERATED MIRROR.
+// It was first hand-written into the mirror, where required-regen would have deleted it on the next
+// run -- evidence that disappears exactly when someone regenerates is the "holds until the next
+// edit" failure it exists to prevent.
+//
+// The seam has THREE outcomes and the original four cells asserted two, so the undetermined arm
+// shipped with no discriminating RED. The assertion is three-way ON PURPOSE: a cell checking only
+// that "some diagnostic is emitted" would have passed the silent code this replaced, because the
+// sibling arm still accused at every other site. It must go red when the arm emits the ACCUSATION
+// (the false positive returning) and red when it emits NOTHING (the silent admission returning).
+// Both directions were verified by mutation before this was enrolled.
+//
+// It is the only artifact that will tell a future reader the decline must stay OBSERVABLE:
+// optional_narrowing_refuses and optional_into_required_error were both deleted by the climb, so no
+// production code carries that history any more.
+fn ct_optional_narrowing_undetermined_test() -> String {
+  concat(
+    "    fn type_variable_declared_node() -> std::rc::Rc<crate::v1_std_core::Node> {\n",
+    "        let base = named_type_node(\"T\");\n",
+    "        std::rc::Rc::new(crate::v1_std_core::Node {\n",
+    "            inferred: Some(std::rc::Rc::new(\n",
+    "                crate::v1_std_core::InferredNode::TypeVariable { id: \"T\".to_string() },\n",
+    "            )),\n",
+    "            ..(*base).clone()\n",
+    "        })\n",
+    "    }\n\n",
+    "    fn optional_produced_node() -> std::rc::Rc<crate::v1_std_core::Node> {\n",
+    "        let base = named_type_node(\"String\");\n",
+    "        std::rc::Rc::new(crate::v1_std_core::Node {\n",
+    "            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,\n",
+    "            ..(*base).clone()\n",
+    "        })\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn an_unsubstituted_formal_declines_visibly_and_emits_neither_accusation_nor_silence() {\n",
+    "        use crate::v1_std_core::CompilerDiagnostic;\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        let declared = type_variable_declared_node();\n",
+    "        let produced = optional_produced_node();\n",
+    "        let verdict = crate::v1_compiler_infer::optional_into_required_mismatch(\n",
+    "            declared.clone(),\n",
+    "            produced.clone(),\n",
+    "        );\n",
+    "        assert!(\n",
+    "            matches!(&*verdict, crate::v1_compiler_infer::OptionalNarrowing::NarrowingUndetermined { .. }),\n",
+    "            \"an unsubstituted type parameter establishes optionality NEITHER way, so the judgment must decline rather than conclude required\"\n",
+    "        );\n",
+    "        let diags = crate::v1_compiler_infer::optional_narrowing_diags(\n",
+    "            verdict,\n",
+    "            declared.clone(),\n",
+    "            crate::v1_std_core::no_span(),\n",
+    "            \"probe.module\".to_string(),\n",
+    "            source_indices.clone(),\n",
+    "        );\n",
+    "        assert_eq!(\n",
+    "            diags.len(),\n",
+    "            1,\n",
+    "            \"SILENT ADMISSION RETURNED: the undetermined arm emitted nothing, which is the absorbing fallback -- no artifact to notice, so the deficit stops ranking for repair\"\n",
+    "        );\n",
+    "        match &*diags[0].diagnostic {\n",
+    "            CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => {}\n",
+    "            CompilerDiagnostic::OptionalValueInRequiredPosition { .. } => panic!(\n",
+    "                \"FALSE POSITIVE RETURNED: the arm accused a position whose declared type is a type variable\"\n",
+    "            ),\n",
+    "            other => panic!(\"undetermined arm emitted an unexpected diagnostic: {:?}\", other),\n",
+    "        }\n",
+    "        let concrete_required = named_type_node(\"String\");\n",
+    "        assert!(\n",
+    "            matches!(&*crate::v1_compiler_infer::optional_into_required_mismatch(concrete_required, produced.clone()), crate::v1_compiler_infer::OptionalNarrowing::NarrowsToRequired),\n",
+    "            \"a CONCRETE required declared type still narrows and must still be accused\"\n",
+    "        );\n",
+    "        assert!(\n",
+    "            matches!(&*crate::v1_compiler_infer::optional_into_required_mismatch(optional_produced_node(), produced.clone()), crate::v1_compiler_infer::OptionalNarrowing::ConformsOrWidens),\n",
+    "            \"optional into optional conforms and must stay silent\"\n",
+    "        );\n",
+    "    }\n\n")
+}
+
 fn ct_generic_param_declines_fail_closed_unwrap_test() -> String {
   concat(
     "    fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {\n",

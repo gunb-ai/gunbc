@@ -1168,22 +1168,67 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // because the widening produced a located diagnostic it read as the check working. Declining to
 // judge is not a weaker check -- it is the only honest verdict available before substitution, and
 // it keeps the deficit visible as an unjudged position rather than burying it in a false positive.
-type OptionalNarrowing = NarrowsToRequired | ConformsOrWidens | NarrowingUndetermined
+// ONE VARIANT MAY NOT ANSWER FOR TWO CAUSES. The undetermined diagnostic named a dissolution
+// trigger specific to builtin generic formals at the ARGUMENT seam, while the record-field seam
+// emits the same variant for an instantiation fallback -- so one of the two consumers necessarily
+// received a false remedy. The cause is therefore carried, and the rendered message derives its
+// trigger from the cause instead of asserting one.
+type OptionalNarrowingCause = DeclaredFormalUnsubstituted | ProducedTypeUnsubstituted | RecordFieldInstantiationUnavailable
 
-fn declared_optionality_undetermined(n: Node) -> Bool {
+fn optional_narrowing_cause_text(c: OptionalNarrowingCause) -> String {
+  match c {
+    DeclaredFormalUnsubstituted =>
+      "the DECLARED type at this position is an unsubstituted type parameter. Dissolves when builtin generic formals are substituted at the argument seam."
+    ProducedTypeUnsubstituted =>
+      "the PRODUCED value's type is an unsubstituted type parameter, so its cardinality is not yet established. Dissolves when call-site instantiation reaches this position."
+    RecordFieldInstantiationUnavailable =>
+      "the record-literal field template could not be instantiated, so the declared field type is unavailable here. Dissolves when record instantiation reports a typed cause instead of an absent template."
+  }
+}
+
+type OptionalNarrowing = NarrowsToRequired | ConformsOrWidens | NarrowingUndetermined { cause: OptionalNarrowingCause }
+
+// Either operand may fail to carry the dimension, so the predicate is named for the QUESTION it
+// answers rather than for one side of it. Reusing it on both sides is the whole content of the
+// produced-side repair below.
+fn optionality_undetermined(n: Node) -> Bool {
   match n.inferred {
     Present { value: i } => is_type_variable(inferred: i)
     Absent => false
   }
 }
 
+// THE PRODUCED SIDE IS TESTED FIRST, AND THAT ORDER IS THE REPAIR. Matching on
+// produced.return_cardinality first let `Required` short-circuit to ConformsOrWidens, so an
+// unsubstituted PRODUCED type parameter -- whose cardinality is Required only because nothing has
+// instantiated it yet -- was admitted without any unknown ever being considered. That is the
+// false-negative twin of the declared-side defect: same conflation of "proved required" with
+// "carries no answer", surviving on the other operand because the arms were ordered so it could
+// never be reached. When that T instantiates to an optional at a required destination, the check
+// was silent.
+// THE PRODUCED-SIDE REPAIR IS A SPELLING WIDENING, NOT A TYPE-VARIABLE FLAG, AND THE FIRST ATTEMPT
+// GOT THAT WRONG BY A FACTOR OF FOURTEEN. Flagging every produced TYPE VARIABLE as undetermined
+// conflated two unrelated facts: a type variable says nothing about OPTIONALITY, and a value of type
+// T at Required cardinality is fully determinate -- `witness_from_optional<T>` binds the already
+// narrowed payload and produces a `T`, which is correct generic code, not an unjudgeable position.
+// Measured over dag + src/v2 that arm fired at 219 sites; the review finding it was meant to close
+// concerns produced T INSTANTIATED to an optional at a required destination, which is a concrete
+// post-substitution state, not the uninstantiated one.
+//
+// The real gap is the one this seam already documented: the produced side tested
+// return_cardinality ALONE, so an optional spelled NOMINALLY -- the Optional coproduct rather than
+// the cardinality marker -- reached a required position unjudged. node_carries_optional is the
+// existing single authority that recognizes BOTH spellings, and reading the produced side through
+// it closes the false negative without inventing an unknown.
 fn optional_into_required_mismatch(declared: Node, produced: Node) -> OptionalNarrowing {
-  match produced.return_cardinality {
-    Required => ConformsOrWidens
-    CardOptional =>
-      if declared_optionality_undetermined(n: declared) { NarrowingUndetermined }
-      else if node_carries_optional(n: declared) { ConformsOrWidens }
-      else { NarrowsToRequired }
+  if node_carries_optional(n: produced) {
+    if optionality_undetermined(n: declared) {
+      NarrowingUndetermined { cause: DeclaredFormalUnsubstituted }
+    }
+    else if node_carries_optional(n: declared) { ConformsOrWidens }
+    else { NarrowsToRequired }
+  } else {
+    ConformsOrWidens
   }
 }
 
@@ -1209,10 +1254,11 @@ fn optional_narrowing_diags(v: OptionalNarrowing, declared: Node, span: SourceSp
         },
         module_name: module_name
       )]
-    NarrowingUndetermined =>
+    NarrowingUndetermined { cause: c } =>
       [make_error_node(
         diagnostic: OptionalNarrowingUndetermined {
           declared: node_type_shape(n: declared, source_indices: source_indices),
+          cause: optional_narrowing_cause_text(c: c),
           span: span
         },
         module_name: module_name
@@ -1489,18 +1535,57 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
 // This is why the fabricated value was worse than a refusal (DESIGN section 5): error_type is a
 // plausible-looking Node, so it substituted silently and the loss surfaced stages later as an
 // unresolvable method on a receiver nobody could point back to a declaration.
-fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
+// FIVE MATERIALLY DIFFERENT STATES WERE ANSWERING `none`, AND THE CALLER READ EVERY ONE AS
+// PERMISSION TO PROCEED to the raw declaration fields: (a) no generic arguments, so instantiation
+// is INAPPLICABLE and the legacy path is correct; (b) the expected type is absent; (c) the type
+// lookup failed; (d) declared and supplied generic arity disagreed; (e) variant-template selection
+// failed. Only (a) and (b) are "nothing to do here". (c), (d) and (e) are "the answer is UNKNOWN",
+// and returning the same `none` for both is the absorbing fallback at the type level -- an optional
+// used as a verdict, where Absent means both nothing-to-report and could-not-tell.
+//
+// Split at the SOURCE rather than at the one caller, because struct_fields has other consumers and
+// each of them inherited the same conflation. A caller may now only reach the legacy fallback on
+// NotApplicable; Unavailable carries its cause and is judged, never silently widened.
+type RecordLitInstantiation =
+  | InstantiationNotApplicable
+  | Instantiated { fields: List<Node> }
+  | InstantiationUnavailable { cause: String }
+
+// A record-literal type name that does not resolve on the TYPE axis is NOT
+// UNAVAILABLE, and the distinction cost 15 silent admissions. A record literal
+// names a VARIANT far more often than a generic type, and lookup_type_for asks
+// the TYPE axis -- so `CurrentCgroupObserved { .. }` fails that lookup as a
+// matter of course, because it is a variant and not a type. That is not "the
+// answer is unknown"; it is "instantiation has nothing to say here, and the
+// variant path is the legitimate handler". Classifying it Unavailable withdrew
+// the fallback from the ordinary variant route and, with no decline wired into
+// the named-type branch, a required field taking an optional value emitted
+// NOTHING on either arm. The genuinely unknown cases are arity disagreement and
+// failed template selection -- where a generic type WAS found and its
+// instantiation could not be completed.
+// A declaration with ZERO generic parameters has nothing to instantiate, so it is
+// InstantiationNotApplicable and never Unavailable -- even when the expected node
+// carries children. `exp.children` is only "the supplied type arguments" for a
+// generic type; on a resolved non-generic coproduct the children are its VARIANTS,
+// so comparing that count against `decl.params` was reading two different axes and
+// declined on 16 ordinary zero-field constructions (`NotAdmissionBearingReference {}`,
+// `EscapeProcessingRefused`, `CliProgramOperand`). The arity question is only
+// meaningful once the declaration actually declares parameters.
+fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitInstantiation {
   match type_name {
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
           if exp.children |> count == 0 {
-            none
+            InstantiationNotApplicable
           } else {
             match lookup_type_for(env: scope.type_env, node: exp) {
               Present { value: decl } =>
-                if (decl.params |> count) != (exp.children |> count) {
-                  none
+                if (decl.params |> count) == 0 {
+                  InstantiationNotApplicable
+                }
+                else if (decl.params |> count) != (exp.children |> count) {
+                  InstantiationUnavailable { cause: "declared generic arity does not match the supplied type arguments" }
                 } else {
                   let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
                     let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
@@ -1510,39 +1595,73 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                     }
                   )
                   match record_lit_instantiation_template_fields(tn: tn, exp: exp, decl: decl, scope: scope) {
-                  Absent => none
-                  Present { value: template_fields } =>
-                  Present { value: template_fields |> map(sf =>
-                    Node {
-                      occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
-                      children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
-                      return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
-                      transport: sf.transport, properties: sf.properties,
-                      type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
-                      has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
-                      expr_data: sf.expr_data
-                    }
-                  ) }
+                    Absent => InstantiationUnavailable { cause: "the record-literal field template could not be selected for this type name" }
+                    Present { value: template_fields } =>
+                      Instantiated { fields: template_fields |> map(sf =>
+                        Node {
+                          occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
+                          children: sf.children, connective: sf.connective, params: sf.params,
+                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
+                          return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
+                          transport: sf.transport, properties: sf.properties,
+                          type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
+                          has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
+                          expr_data: sf.expr_data
+                        }
+                      ) }
                   }
                 }
-              Absent => none
+              Absent => InstantiationNotApplicable
             }
           }
-        Absent => none
+        Absent => InstantiationNotApplicable
       }
-    Absent => none
+    Absent => InstantiationNotApplicable
   }
 }
 
-// TEMPLATE FIELDS FOR A GENERIC INSTANTIATION, WHICH MUST HANDLE VARIANTS AS WELL AS STRUCTS.
-// A record literal names either the type itself (a struct) or one of its VARIANTS -- `Accepted { .. }`
-// against an expected `Outcome<Symbol?>`. The instantiation used to compare the literal's name to the
-// expected type's name and give up when they differed, so every variant literal fell through to the
-// UNSUBSTITUTED field list and every consumer downstream saw the raw type parameter instead of its
-// instantiation. Refusing here rather than answering with raw `T` is the point: a caller that judges
-// a declared type cannot tell an unsubstituted parameter from a concrete one, so an unsubstituted
-// answer is a wrong answer wearing the shape of a right one.
+// The two dispositions the legacy path may take. NotApplicable is the only one that means
+// "instantiation had nothing to say here"; Unavailable means the answer is unknown and must not be
+// spelled the same way.
+fn record_lit_instantiation_fields(v: RecordLitInstantiation) -> List<Node>? {
+  match v {
+    Instantiated { fields: f } => Present { value: f }
+    InstantiationNotApplicable => none
+    InstantiationUnavailable { cause: _ } => none
+  }
+}
+
+// THE DECLINE MUST BE EMITTED HERE TOO. Gating the fallback on may_fall_back stopped Unavailable
+// from proceeding to the raw declaration fields -- correct -- but produced NO expectation and NO
+// diagnostic, so 13 corpus positions simply went quiet. That is the silent admission arriving inside
+// the repair for the silent admission: refusing to answer is only honest when the refusal is
+// OBSERVABLE. Unavailable now emits the undetermined disposition, carrying the instantiation's own
+// typed cause, at the record-field seam.
+fn record_lit_instantiation_undetermined_diags(v: RecordLitInstantiation, judged: Bool, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  match v {
+    InstantiationNotApplicable => []
+    Instantiated { fields: _ } => []
+    InstantiationUnavailable { cause: c } =>
+      if judged { [] }
+      else {
+        [make_error_node(
+          diagnostic: OptionalNarrowingUndetermined {
+            declared: c,
+            cause: optional_narrowing_cause_text(c: RecordFieldInstantiationUnavailable),
+            span: span
+          },
+          module_name: module_name
+        )]
+      }
+  }
+}
+fn record_lit_instantiation_may_fall_back(v: RecordLitInstantiation) -> Bool {
+  match v {
+    InstantiationNotApplicable => true
+    InstantiationUnavailable { cause: _ } => true
+    Instantiated { fields: _ } => false
+  }
+}
 fn record_lit_instantiation_template_fields(tn: String, exp: Node, decl: Node, scope: InferScope) -> List<Node>? {
   if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) {
     Present { value: decl.children }
@@ -7670,12 +7789,18 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
 // declares no fields, so `SingleAuthority { reason: "..." }` supplies one that does not exist. The
 // ambiguity guard is shared with MissingField for the same reason it exists there -- an ambiguous
 // name has not been resolved to a type, so neither half may judge its fields.
+// ONLY NotApplicable MAY FALL BACK HERE. An Unavailable instantiation used to spell itself `none`,
+// and was therefore indistinguishable at this call from "no generics to instantiate", so a failed
+// lookup, an arity disagreement or a failed template selection all silently proceeded to the raw
+// declaration fields as though instantiation had simply not applied. may_fall_back is the gate.
 fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
-  let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
-  let expected_struct_fields = if instantiated_struct_fields == none {
+  let instantiation = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
+  let instantiated_struct_fields = record_lit_instantiation_fields(v: instantiation)
+  let may_fall_back = record_lit_instantiation_may_fall_back(v: instantiation)
+  let expected_struct_fields = if may_fall_back {
     record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
   } else { none }
-  let expected_variant_node = if instantiated_struct_fields == none && expected_struct_fields == none {
+  let expected_variant_node = if may_fall_back && expected_struct_fields == none {
     match type_name {
       Present { value: _ } => record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope)
       Absent => none
@@ -7683,7 +7808,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   } else { none }
   let alias_struct_expansion = match type_name {
     Present { value: tn } =>
-      if instantiated_struct_fields == none && expected_struct_fields == none && expected_variant_node == none && expected == none {
+      if may_fall_back && expected_struct_fields == none && expected_variant_node == none && expected == none {
         record_lit_alias_struct_expansion(type_name: tn, scope: scope)
       } else { none }
     Absent => none
@@ -7929,7 +8054,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
-      diagnostics: concat(fi_diags, alias_struct_diags)
+      diagnostics: concat(concat(fi_diags, alias_struct_diags),
+        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, span: span, module_name: scope.module_name))
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
@@ -8004,7 +8130,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags),
+        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, span: span, module_name: scope.module_name))
     }
   }
 }

@@ -731,7 +731,41 @@ data pre_resolve_entry_closure_module_identity_stall: GuaranteeStall = Guarantee
   next_rung_trigger: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling"
 }
 
+// THE PRODUCED OPERAND IS READ PRE-SUBSTITUTION, AND THE PROOF IS THE CALL ITSELF: the seam passes
+// `declared: app.formal_subst`, a node that has been through an explicit substitution step, against
+// `produced: resolved_type(actual_expr)`, and resolved_type is a bare accessor -- it returns the
+// node inferred Resolved payload or the error type, and substitutes nothing. There is no
+// substituting read on the produced operand at either seam.
+//
+// THE CONSEQUENCE IS BELOW THE LADDER, NOT LOW ON IT. A call site whose produced type should have
+// been substituted and was not is ADMITTED SILENTLY: node_carries_optional answers false for a bare
+// type variable, so the position takes the conforming arm and no diagnostic is produced anywhere.
+// That is silent wrongness, which section 4b places outside the ladder rather than on its bottom rung.
+//
+// THIS IS A STALL AND NOT A RUNG DROP, and the distinction is load-bearing: a section 4b(3) drop
+// requires a population that PREVIOUSLY HELD a rung and lost it. This wall was never held for an
+// unsubstituted produced operand, so there is no previous rung to restore and naming one would be
+// inventing a rung to drop from.
+//
+// THE POPULATION IS NOT THE 219. Measured over dag + src/v2, a first attempt at this repair flagged
+// every position whose produced.inferred is a TypeVariable and fired at 219 sites; that arm was
+// retired rather than rostered, because a type variable says nothing about OPTIONALITY and most of
+// those 219 are a `T` inside a generic BODY where the value genuinely is a `T` -- correct code, and
+// the residue clustered exactly where generic code lives (std.change, std.claim_evidence,
+// std.keyed_roster, std.authorization_profile, v2.std.algebra), which is the shape of a predicate
+// matching a language FEATURE rather than a defect. Rostering it would have been an exemption
+// surface over correct code carrying a trigger that could never fire.
+data produced_operand_substitution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a call site whose PRODUCED type should have been substituted and was not is admitted silently at the optional-into-required seam, because the produced operand is read pre-substitution and a bare type variable carries no optionality either way",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "a SUBSTITUTING read on the produced operand at both seams -- the produced side is resolved_type, which returns the node inferred Resolved payload and substitutes nothing, while the declared side already reads formal_subst" },
+  population: UncountedNotEnumerable { reason: "the subject is a call site whose produced type should have been substituted and was not. The 219 sites where produced.inferred is a TypeVariable are NOT this population: most are a T inside a generic BODY where the value genuinely is a T. Separating the two requires the substituting read that does not exist, so the population is not enumerable until the grounding lands -- the same missing capability the blocker names, which is why no count is offered rather than a count being offered with a caveat" },
+  next_rung_trigger: "a substituting read on the produced operand EXISTS and is CONSUMED BY BOTH SEAMS -- the direct-call argument seam and the record-field seam -- sufficient for a produced type that instantiates to an optional at a required destination to refuse, demonstrated by a red on a fixture whose callee returns a type parameter instantiated to an optional at a required destination and a green on the same path instantiated to a required type; a helper that lands unconsumed by either seam does NOT retire this row, because the wall stays dead while the artifact exists"
+}
+
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  produced_operand_substitution_stall,
   pre_resolve_entry_closure_module_identity_stall,
   merge_admission_terminal_verdict_stall,
   generated_artifact_registry_membership_stall,

@@ -280,7 +280,7 @@ type CompilerDiagnostic
   | UnitVariantPhantomIdentityEvidenceUnavailable { name: String, span: SourceSpan }
   | TypeMismatch       { expected: String, got: String, span: SourceSpan }
   | OptionalValueInRequiredPosition { declared: String, span: SourceSpan }
-  | OptionalNarrowingUndetermined { declared: String, span: SourceSpan }
+  | OptionalNarrowingUndetermined { declared: String, cause: String, span: SourceSpan }
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
   | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
   | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
@@ -466,7 +466,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: s } => s
     TypeMismatch       { expected: _, got: _, span: s }        => s
     OptionalValueInRequiredPosition { declared: _, span: s }   => s
-    OptionalNarrowingUndetermined { declared: _, span: s }    => s
+    OptionalNarrowingUndetermined { declared: _, cause: _, span: s }    => s
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
     VariantNotFound    { variant: _, type_name: _, span: s }   => s
     FieldNotFound      { field: _, type_name: _, span: s }     => s
@@ -539,7 +539,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     UnitVariantPhantomIdentityEvidenceUnavailable { name: n, span: _ } => concat("unit-variant marker identity evidence unavailable for '", n, "'")
     TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
     OptionalValueInRequiredPosition { declared: d, span: _ }     => concat(concat("optional value in a required position: this position is declared '", d), "' and the value may be ABSENT. The declared type is not a rendering of the value's shape here -- an optional and its payload print identically at a primitive kernel -- so the cause is named rather than shown. Match on the value and decide the absent case, or supply a default.")
-    OptionalNarrowingUndetermined { declared: d, span: _ }      => concat(concat("cannot judge this position: the declared type is an unsubstituted type parameter, rendered '", d), "'. Optionality is not established either way here, so the check DECLINES rather than concluding required -- concluding required from an operand that carries no answer is the accusing arm of an absorbing fallback. This counts the seam's own deficit, NOT a defect in the code at this position. Dissolves when builtin generic formals are substituted at the argument seam.")
+    OptionalNarrowingUndetermined { declared: d, cause: c, span: _ } => concat(concat(concat("cannot judge this position: optionality is not established either way, and the position is rendered '", d), "'. The check DECLINES rather than concluding required -- concluding required from an operand that carries no answer is the accusing arm of an absorbing fallback. This counts the CHECK'S OWN deficit, NOT a defect in the code at this position. Cause: "), c)
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
     VariantNotFound    { variant: v, type_name: t, span: _ }      => concat("variant '", v, "' not found in type '", t, "'")
     FieldNotFound      { field: f, type_name: t, span: _ }        => concat("field '", f, "' not found in type '", t, "'")

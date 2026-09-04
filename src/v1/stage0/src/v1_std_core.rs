@@ -491,6 +491,11 @@ pub enum CompilerDiagnostic {
         declared: String,
         span: Rc<SourceSpan>,
     },
+    OptionalNarrowingUndetermined {
+        declared: String,
+        cause: String,
+        span: Rc<SourceSpan>,
+    },
     ArityMismatch {
         name: String,
         expected: i64,
@@ -810,6 +815,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         }
         CompilerDiagnostic::TypeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::OptionalValueInRequiredPosition { span: s, .. } => s.clone(),
+        CompilerDiagnostic::OptionalNarrowingUndetermined { span: s, .. } => s.clone(),
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
         CompilerDiagnostic::FieldNotFound { span: s, .. } => s.clone(),
@@ -878,6 +884,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::OptionalValueInRequiredPosition { declared: d, .. } => v1_rt::concat(v1_rt::concat("optional value in a required position: this position is declared '".to_string(), d.clone()), "' and the value may be ABSENT. The declared type is not a rendering of the value's shape here -- an optional and its payload print identically at a primitive kernel -- so the cause is named rather than shown. Match on the value and decide the absent case, or supply a default.".to_string()),
+    CompilerDiagnostic::OptionalNarrowingUndetermined { declared: d, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot judge this position: optionality is not established either way, and the position is rendered '".to_string(), d.clone()), "'. The check DECLINES rather than concluding required -- concluding required from an operand that carries no answer is the accusing arm of an absorbing fallback. This counts the CHECK'S OWN deficit, NOT a defect in the code at this position. Cause: ".to_string()), c.clone()),
     CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
     CompilerDiagnostic::VariantNotFound { variant: v, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),
     CompilerDiagnostic::FieldNotFound { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("field '".to_string(), f.clone()), "' not found in type '".to_string()), t.clone()), "'".to_string()),

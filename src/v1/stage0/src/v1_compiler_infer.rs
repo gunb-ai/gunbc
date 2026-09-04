@@ -8,6 +8,9 @@ use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
 use self::LiteralBoundary::*;
+use self::OptionalNarrowing::*;
+use self::OptionalNarrowingCause::*;
+use self::RecordLitInstantiation::*;
 use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
@@ -1503,27 +1506,101 @@ pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
         ))
 }
 
-pub fn optional_into_required_error(
-    declared: Rc<Node>,
-    span: Rc<SourceSpan>,
-    scope: Rc<InferScope>,
-) -> Rc<ErrorNode> {
-    crate::v1_std_core::make_error_node(
-        Rc::new(CompilerDiagnostic::OptionalValueInRequiredPosition {
-            declared: crate::v1_compiler_infer_types::node_type_shape(
-                declared.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            ),
-            span: span.clone(),
-        }),
-        scope.module_name.clone(),
-    )
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OptionalNarrowingCause {
+    DeclaredFormalUnsubstituted,
+    ProducedTypeUnsubstituted,
+    RecordFieldInstantiationUnavailable,
 }
 
-pub fn optional_into_required_mismatch(declared: Rc<Node>, produced: Rc<Node>) -> bool {
-    match produced.return_cardinality.clone() {
-        Cardinality::CardOptional => (node_carries_optional(declared.clone()) == false),
-        Cardinality::Required => false,
+pub fn optional_narrowing_cause_text(c: OptionalNarrowingCause) -> String {
+    match c.clone() {
+    OptionalNarrowingCause::DeclaredFormalUnsubstituted => "the DECLARED type at this position is an unsubstituted type parameter. Dissolves when builtin generic formals are substituted at the argument seam.".to_string(),
+    OptionalNarrowingCause::ProducedTypeUnsubstituted => "the PRODUCED value's type is an unsubstituted type parameter, so its cardinality is not yet established. Dissolves when call-site instantiation reaches this position.".to_string(),
+    OptionalNarrowingCause::RecordFieldInstantiationUnavailable => "the record-literal field template could not be instantiated, so the declared field type is unavailable here. Dissolves when record instantiation reports a typed cause instead of an absent template.".to_string(),
+}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OptionalNarrowing {
+    NarrowsToRequired,
+    ConformsOrWidens,
+    NarrowingUndetermined { cause: OptionalNarrowingCause },
+}
+impl OptionalNarrowing {
+    pub fn cause(&self) -> OptionalNarrowingCause {
+        match self {
+            OptionalNarrowing::NarrowsToRequired => panic!("no cause on unit variant"),
+            OptionalNarrowing::ConformsOrWidens => panic!("no cause on unit variant"),
+            OptionalNarrowing::NarrowingUndetermined { cause: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn optionality_undetermined(n: Rc<Node>) -> bool {
+    match n.inferred.clone() {
+        Some(i) => is_type_variable(i.clone()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn optional_into_required_mismatch(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+) -> Rc<OptionalNarrowing> {
+    if node_carries_optional(produced.clone()) {
+        if optionality_undetermined(declared.clone()) {
+            Rc::new(OptionalNarrowing::NarrowingUndetermined {
+                cause: OptionalNarrowingCause::DeclaredFormalUnsubstituted,
+            })
+        } else {
+            if node_carries_optional(declared.clone()) {
+                Rc::new(OptionalNarrowing::ConformsOrWidens)
+            } else {
+                Rc::new(OptionalNarrowing::NarrowsToRequired)
+            }
+        }
+    } else {
+        Rc::new(OptionalNarrowing::ConformsOrWidens)
+    }
+}
+
+pub fn optional_narrowing_diags(
+    v: Rc<OptionalNarrowing>,
+    declared: Rc<Node>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match (*v.clone()).clone() {
+        OptionalNarrowing::ConformsOrWidens => Rc::new(vec![]),
+        OptionalNarrowing::NarrowsToRequired => Rc::new(vec![crate::v1_std_core::make_error_node(
+            Rc::new(CompilerDiagnostic::OptionalValueInRequiredPosition {
+                declared: crate::v1_compiler_infer_types::node_type_shape(
+                    declared.clone(),
+                    source_indices.clone(),
+                ),
+                span: span.clone(),
+            }),
+            module_name.clone(),
+        )]),
+        OptionalNarrowing::NarrowingUndetermined { cause: c, .. } => {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::OptionalNarrowingUndetermined {
+                    declared: crate::v1_compiler_infer_types::node_type_shape(
+                        declared.clone(),
+                        source_indices.clone(),
+                    ),
+                    cause: optional_narrowing_cause_text(c.clone()),
+                    span: span.clone(),
+                }),
+                module_name.clone(),
+            )])
+        }
     }
 }
 
@@ -1948,47 +2025,54 @@ pub fn field_substitution_carrier(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RecordLitInstantiation {
+    InstantiationNotApplicable,
+    Instantiated { fields: Rc<Vec<Rc<Node>>> },
+    InstantiationUnavailable { cause: String },
+}
+
 pub fn record_lit_instantiated_fields(
     type_name: Option<String>,
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
-) -> Option<Rc<Vec<Rc<Node>>>> {
+) -> Rc<RecordLitInstantiation> {
     match type_name.clone() {
-        Some(tn) => {
-            match expected.clone() {
-                Some(exp) => {
-                    if ((exp.children.clone().len() as i64) == 0) {
-                        std::option::Option::None
-                    } else {
-                        match crate::v1_compiler_infer_env::lookup_type_for(
-                            scope.type_env.clone(),
-                            exp.clone(),
-                        ) {
-                            Some(decl) => {
+        Some(tn) => match expected.clone() {
+            Some(exp) => {
+                if ((exp.children.clone().len() as i64) == 0) {
+                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                } else {
+                    match crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        exp.clone(),
+                    ) {
+                        Some(decl) => {
+                            if ((decl.params.clone().len() as i64) == 0) {
+                                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                            } else {
                                 if ((decl.params.clone().len() as i64)
                                     != (exp.children.clone().len() as i64))
                                 {
-                                    std::option::Option::None
+                                    Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+    cause: "declared generic arity does not match the supplied type arguments".to_string(),
+})
                                 } else {
                                     {
                                         let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                    let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
+                        let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
 match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), crate::v1_compiler_infer_types::child_type_node(arg.clone())),
     std::option::Option::None => acc.clone(),
 }
 });
-                                        match record_lit_instantiation_template_fields(
-                                            tn.clone(),
-                                            exp.clone(),
-                                            decl.clone(),
-                                            scope.clone(),
-                                        ) {
-                                            std::option::Option::None => std::option::Option::None,
-                                            Some(template_fields) => Some(Rc::new({
-                                                let mut __result = Vec::new();
-                                                for sf in template_fields.iter().cloned() {
-                                                    __result.push(Rc::new(Node {
+                                        match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
+    std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+    cause: "the record-literal field template could not be selected for this type name".to_string(),
+}),
+    Some(template_fields) => Rc::new(RecordLitInstantiation::Instantiated {
+    fields: Rc::new({ let mut __result = Vec::new(); for sf in template_fields.iter().cloned() { __result.push(Rc::new(Node {
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: sf.name.clone(),
     span: sf.span.clone(),
@@ -2010,22 +2094,70 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
     match_pattern: sf.match_pattern.clone(),
     expr_data: sf.expr_data.clone(),
     ident: None,
-}));
-                                                }
-                                                __result
-                                            })),
-                                        }
+})); } __result }),
+}),
+}
                                     }
                                 }
                             }
-                            std::option::Option::None => std::option::Option::None,
+                        }
+                        std::option::Option::None => {
+                            Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
                         }
                     }
                 }
-                std::option::Option::None => std::option::Option::None,
+            }
+            std::option::Option::None => {
+                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+            }
+        },
+        std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationNotApplicable),
+    }
+}
+
+pub fn record_lit_instantiation_fields(v: Rc<RecordLitInstantiation>) -> Option<Rc<Vec<Rc<Node>>>> {
+    match (*v.clone()).clone() {
+        RecordLitInstantiation::Instantiated { fields: f, .. } => Some(f.clone()),
+        RecordLitInstantiation::InstantiationNotApplicable => std::option::Option::None,
+        RecordLitInstantiation::InstantiationUnavailable { cause: _, .. } => {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn record_lit_instantiation_undetermined_diags(
+    v: Rc<RecordLitInstantiation>,
+    judged: bool,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match (*v.clone()).clone() {
+        RecordLitInstantiation::InstantiationNotApplicable => Rc::new(vec![]),
+        RecordLitInstantiation::Instantiated { fields: _, .. } => Rc::new(vec![]),
+        RecordLitInstantiation::InstantiationUnavailable { cause: c, .. } => {
+            if judged.clone() {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::OptionalNarrowingUndetermined {
+                        declared: c.clone(),
+                        cause: optional_narrowing_cause_text(
+                            OptionalNarrowingCause::RecordFieldInstantiationUnavailable,
+                        ),
+                        span: span.clone(),
+                    }),
+                    module_name.clone(),
+                )])
             }
         }
-        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn record_lit_instantiation_may_fall_back(v: Rc<RecordLitInstantiation>) -> bool {
+    match (*v.clone()).clone() {
+        RecordLitInstantiation::InstantiationNotApplicable => true,
+        RecordLitInstantiation::InstantiationUnavailable { cause: _, .. } => true,
+        RecordLitInstantiation::Instantiated { fields: _, .. } => false,
     }
 }
 
@@ -6590,11 +6722,9 @@ if match (*actual_expr.expr_data.clone()).clone() {
                     {
                         let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
 let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
-if ((expr_is_bare_none_reference(actual_expr.clone(), source_indices.clone()) == false) && optional_into_required_mismatch(app.formal_subst.clone(), actual_raw.clone())) {
-                            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::OptionalValueInRequiredPosition {
-    declared: crate::v1_compiler_infer_types::node_type_shape(app.formal_subst.clone(), source_indices.clone()),
-    span: actual_expr.span.clone(),
-}), module_name.clone())])
+let narrowing_diags = optional_narrowing_diags(optional_into_required_mismatch(app.formal_subst.clone(), actual_raw.clone()), app.formal_subst.clone(), actual_expr.span.clone(), module_name.clone(), source_indices.clone());
+if ((expr_is_bare_none_reference(actual_expr.clone(), source_indices.clone()) == false) && ((narrowing_diags.clone().len() as i64) > 0)) {
+                            narrowing_diags.clone()
                         } else {
                             if direct_call_arg_type_mismatch(formal.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone()) {
                                 Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone()), actual_expr.span.clone(), module_name.clone())])
@@ -12625,16 +12755,16 @@ pub fn infer_record_lit_structural(
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
-        let instantiated_struct_fields =
+        let instantiation =
             record_lit_instantiated_fields(type_name.clone(), expected.clone(), scope.clone());
-        let expected_struct_fields =
-            if (instantiated_struct_fields.clone() == std::option::Option::None) {
-                record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
-            } else {
-                std::option::Option::None
-            };
-        let expected_variant_node = if ((instantiated_struct_fields.clone()
-            == std::option::Option::None)
+        let instantiated_struct_fields = record_lit_instantiation_fields(instantiation.clone());
+        let may_fall_back = record_lit_instantiation_may_fall_back(instantiation.clone());
+        let expected_struct_fields = if may_fall_back.clone() {
+            record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
+        } else {
+            std::option::Option::None
+        };
+        let expected_variant_node = if (may_fall_back.clone()
             && (expected_struct_fields.clone() == std::option::Option::None))
         {
             match type_name.clone() {
@@ -12650,7 +12780,7 @@ pub fn infer_record_lit_structural(
         };
         let alias_struct_expansion = match type_name.clone() {
             Some(tn) => {
-                if ((((instantiated_struct_fields.clone() == std::option::Option::None)
+                if (((may_fall_back.clone()
                     && (expected_struct_fields.clone() == std::option::Option::None))
                     && (expected_variant_node.clone() == std::option::Option::None))
                     && (expected.clone() == std::option::Option::None))
@@ -12938,8 +13068,9 @@ Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape
 };
 let formal_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(expected_required.clone(), scope.type_env.clone(), scope.module_name.clone());
 let actual_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(got_node.clone(), scope.type_env.clone(), scope.module_name.clone());
-if ((expr_is_bare_none_reference(ar_typed.clone(), scope.type_env.clone().source_indices.clone()) == false) && optional_into_required_mismatch(expected_node.clone(), got_node.clone())) {
-                            Rc::new(vec![optional_into_required_error(expected_node.clone(), ar_typed.span.clone(), scope.clone())])
+let narrowing_diags = optional_narrowing_diags(optional_into_required_mismatch(expected_node.clone(), got_node.clone()), expected_node.clone(), ar_typed.span.clone(), scope.module_name.clone(), scope.type_env.clone().source_indices.clone());
+if ((expr_is_bare_none_reference(ar_typed.clone(), scope.type_env.clone().source_indices.clone()) == false) && ((narrowing_diags.clone().len() as i64) > 0)) {
+                            narrowing_diags.clone()
                         } else {
                             if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clone(), scope.type_env.clone(), scope.type_env.clone().source_indices.clone()) {
                                 Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
@@ -13052,7 +13183,15 @@ Rc::new(FieldInferResult {
                 );
                 Rc::new(InferResult {
                     typed: texpr.clone(),
-                    diagnostics: v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                    diagnostics: v1_rt::concat(
+                        v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                        record_lit_instantiation_undetermined_diags(
+                            instantiation.clone(),
+                            ((struct_fields.clone().len() as i64) > 0),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        ),
+                    ),
                 })
             }
         } else {
@@ -13217,14 +13356,22 @@ Rc::new(FieldInferResult {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
-                                    type_diags.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                                        type_diags.clone(),
+                                    ),
+                                    sole_ctor_diags.clone(),
                                 ),
-                                sole_ctor_diags.clone(),
+                                missing_field_diags.clone(),
                             ),
-                            missing_field_diags.clone(),
+                            presence_ambiguity_diags.clone(),
                         ),
-                        presence_ambiguity_diags.clone(),
+                        record_lit_instantiation_undetermined_diags(
+                            instantiation.clone(),
+                            ((struct_fields.clone().len() as i64) > 0),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        ),
                     ),
                 })
             }
@@ -25676,6 +25823,12 @@ pub fn reconcile_with_census_extra(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclaredFormalUnsubstituted;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProducedTypeUnsubstituted;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RecordFieldInstantiationUnavailable;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PositionRecordLiteralField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
