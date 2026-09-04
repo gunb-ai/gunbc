@@ -106,6 +106,7 @@ import gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parame
 import gunbc.recurring_failure_mode.a_written_row_is_not_a_firing_mechanism { a_written_row_is_not_a_firing_mechanism }
 import gunbc.recurring_failure_mode.required_evidence_absent_reads_as_evidence_of_pass { required_evidence_absent_reads_as_evidence_of_pass }
 import gunbc.recurring_failure_mode.right_censored_cost_read_as_exact { right_censored_cost_read_as_exact }
+import gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_that_uses_it { guard_precondition_discharged_by_the_route_that_uses_it }
 import gunbc.recurring_failure_mode.cheap_question_through_an_expensive_carrier { cheap_question_through_an_expensive_carrier }
 import gunbc.recurring_failure_mode.host_page_thrash_named_by_host_rather_than_by_signature { host_page_thrash_named_by_host_rather_than_by_signature }
 
@@ -205,6 +206,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_written_row_is_not_a_firing_mechanism,
   required_evidence_absent_reads_as_evidence_of_pass,
   right_censored_cost_read_as_exact,
+  guard_precondition_discharged_by_the_route_that_uses_it,
   cheap_question_through_an_expensive_carrier,
   host_page_thrash_named_by_host_rather_than_by_signature,
 ]
