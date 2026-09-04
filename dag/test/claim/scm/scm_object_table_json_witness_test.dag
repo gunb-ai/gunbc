@@ -66,10 +66,14 @@ import gunbc.scm.object_table_json {
   ObjectTableMemberReadRefused,
   ObjectTableUnexpectedMember,
   ObjectTableTargetReferenceRefused,
-  ObjectTableUnknownKindTag,
-  ObjectTableUnknownConnectiveTag,
-  ObjectTableUnknownBehaviorTag,
-  ObjectTableUnknownLabelTag,
+  ObjectTableEntryRefused,
+  NodeEntryMemberReadRefused,
+  NodeEntryUnexpectedMember,
+  NodeEntryTargetReferenceRefused,
+  NodeEntryUnknownKindTag,
+  NodeEntryUnknownConnectiveTag,
+  NodeEntryUnknownBehaviorTag,
+  NodeEntryUnknownLabelTag,
   ObjectTableEdgeTargetUnresolved,
   ObjectTableEdgeTargetIsAuthoredSource,
   ObjectTableEdgeTargetIsCorpusManifest,
@@ -96,10 +100,16 @@ fn ot_cause_tag(acc: DecodeAcc) -> String {
         ObjectTableMemberReadRefused { cause: _ } => "member_read"
         ObjectTableUnexpectedMember { context: _, key: _ } => "unexpected_member"
         ObjectTableTargetReferenceRefused { cause: _ } => "target_reference"
-        ObjectTableUnknownKindTag { found: _ } => "kind"
-        ObjectTableUnknownConnectiveTag { found: _ } => "connective"
-        ObjectTableUnknownBehaviorTag { found: _ } => "behavior"
-        ObjectTableUnknownLabelTag { found: _ } => "label"
+        ObjectTableEntryRefused { cause: e } =>
+          match e {
+            NodeEntryMemberReadRefused { cause: _ } => "member_read"
+            NodeEntryUnexpectedMember { context: _, key: _ } => "unexpected_member"
+            NodeEntryTargetReferenceRefused { cause: _ } => "target_reference"
+            NodeEntryUnknownKindTag { found: _ } => "kind"
+            NodeEntryUnknownConnectiveTag { found: _ } => "connective"
+            NodeEntryUnknownBehaviorTag { found: _ } => "behavior"
+            NodeEntryUnknownLabelTag { found: _ } => "label"
+          }
         ObjectTableEdgeTargetUnresolved { reference: _ } => "edge_target"
         ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => "edge_target_source"
         ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => "edge_target_manifest"
@@ -191,6 +201,38 @@ fn ot_manifest_entry(path: String, at: String) -> JsonValue {
                 ),
               ]
             )
+          ]
+        )
+      ),
+    ]
+  )
+}
+
+fn ot_manifest_pair(path_a: String, at_a: String, path_b: String, at_b: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "manifest",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "path", value: json_string(s: path_a)),
+                json_kv(
+                  key: "source",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: at_a))]),
+                ),
+              ]
+            ),
+            json_object(
+              members: [
+                json_kv(key: "path", value: json_string(s: path_b)),
+                json_kv(
+                  key: "source",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: at_b))]),
+                ),
+              ]
+            ),
           ]
         )
       ),
@@ -319,6 +361,32 @@ test fn ot_a_manifest_entry_with_an_empty_path_refuses() -> Bool {
   ot_tag_of(
     entries: [ot_source_entry(text: "text"), ot_manifest_entry(path: "", at: "0")]
   ) == "manifest_path_empty"
+}
+
+// A WIRE MANIFEST NAMING ONE PATH TWICE REFUSES, and the refusal is the store's, reached through
+// the decoder rather than restated by it. A manifest denotes a path -> source function; two sources
+// at one path is not one, and answering with either would be the silent selection the store's own
+// refusal exists to prevent.
+test fn ot_a_wire_manifest_with_a_duplicated_path_refuses() -> Bool {
+  ot_tag_of(
+    entries: [
+      ot_source_entry(text: "alpha"),
+      ot_source_entry(text: "beta"),
+      ot_manifest_pair(path_a: "witness/dup.dag", at_a: "0", path_b: "witness/dup.dag", at_b: "1"),
+    ]
+  ) == "manifest_duplicate_path"
+}
+
+// THE DISCRIMINATING CONTROL FOR IT. The same two sources under two DIFFERENT paths is an ordinary
+// manifest, so the refusal above is about the repeated path and not about a two-entry manifest.
+test fn ot_a_wire_manifest_with_two_distinct_paths_decodes() -> Bool {
+  ot_tag_of(
+    entries: [
+      ot_source_entry(text: "alpha"),
+      ot_source_entry(text: "beta"),
+      ot_manifest_pair(path_a: "witness/a.dag", at_a: "0", path_b: "witness/b.dag", at_b: "1"),
+    ]
+  ) == "decoded"
 }
 
 // THE CONTROL: an ordinary manifest over a source it carries decodes.

@@ -45,8 +45,8 @@ import gunbc.scm.commit_closure {
   well_kinded_root,
 }
 import gunbc.scm.object_table_json {
-  ObjectTableDecodeRefusal,
-  object_table_load_standing,
+  NodeTableDecodeRefusal,
+  node_table_load_standing,
   EncodePositions,
   EncodeAcc,
   NodeDecodeAcc,
@@ -58,7 +58,7 @@ import gunbc.scm.object_table_json {
   encode_object,
   object_id_key,
   position_reference,
-  table_member_set_refusal,
+  node_entry_member_set_refusal,
 }
 import gunbc.scm.load_standing {
   LoadStanding,
@@ -223,7 +223,7 @@ type ClosureDocRefusal
   | ClosureDocRootPositionUnresolved { reference: String }
   | ClosureDocUnexpectedMember { key: String }
   | ClosureDocTargetReferenceRefused { cause: TargetReferenceRefusal }
-  | ClosureDocObjectTableRefused { cause: ObjectTableDecodeRefusal }
+  | ClosureDocNodeTableRefused { cause: NodeTableDecodeRefusal }
 
 // THE ENCODE DOMAIN IS ITS OWN TYPE, and this split is a correctness fix rather than tidiness.
 //
@@ -513,12 +513,13 @@ fn decode_node_step(acc: NodeDecodeAcc, object_value: JsonValue) -> NodeDecodeAc
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match table_member_set_refusal(
+      match node_entry_member_set_refusal(
         v: object_value,
         allowed: ["kind", "children"],
-        context: ObjectTableSemanticNodeMembers
+        context: NodeEntrySemanticNodeMembers
       ) {
-        Present { value: set_cause } => node_decode_acc_refused(acc: acc, cause: set_cause)
+        Present { value: set_cause } =>
+          node_decode_acc_refused(acc: acc, cause: NodeTableEntryRefused { cause: set_cause })
         Absent => decode_node_entry_into_node_table(acc: acc, object_value: object_value)
       }
   }
@@ -561,7 +562,7 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
       match decode_node_table(object_values: object_values) {
         NodeDecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
           match refusal {
-            Present { value: c } => ClosureDocRefused { cause: ClosureDocObjectTableRefused { cause: c } }
+            Present { value: c } => ClosureDocRefused { cause: ClosureDocNodeTableRefused { cause: c } }
             Absent =>
               match read_member(v: v, key: "root") {
                 MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
@@ -650,7 +651,7 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
       }
     ClosureDocUnexpectedMember { key: _ } => LoadDocumentMalformed
     ClosureDocRootPositionUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
+    ClosureDocNodeTableRefused { cause: c } => node_table_load_standing(cause: c)
     ClosureDocTargetReferenceRefused { cause: c } => target_reference_load_standing(cause: c)
   }
 }

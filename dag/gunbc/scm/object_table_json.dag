@@ -242,25 +242,57 @@ import v2.std.collection {
   map_lookup,
 }
 
+// THREE REFUSAL TYPES, BECAUSE THERE ARE THREE SUBJECTS AND ONE OF THEM IS SHARED.
+//
+// A NODE ENTRY'S SYNTAX -- its kind tag, its connective, its behavior, its edge labels, its target
+// references -- is one schema in both tables, so it is decoded once and its failures are one
+// population: NodeEntryDecodeRefusal.
+//
+// WHAT A TABLE DOES WITH A DECODED ENTRY IS NOT SHARED, and neither are the failures. A v4 node
+// table can fail to resolve a contained position and can collide on an identity, and that is all it
+// can do. A repository's mixed table can additionally find a source or manifest where a semantic
+// child was required, and can fail every way a manifest entry fails.
+//
+// ONE TYPE FOR BOTH WAS THE SAME DEFECT THE CLOSURE ROOT HAD, ONE LAYER DOWN. The node-only
+// decoder's positions carrier was narrowed to SemanticNodeObjectRef, so it could no longer RESOLVE a
+// contained reference to a source or manifest -- and then it reported its failures in a type that
+// still carried source-entry, manifest-path and mixed wrong-kind causes it cannot produce. Every
+// closure consumer had to answer for repository states, which is exactly the dishonest domain the
+// root arms were deleted for.
+type NodeEntryMemberContext
+  = NodeEntrySemanticNodeMembers
+  | NodeEntryTypeKindMembers
+  | NodeEntryAtomKindMembers
+  | NodeEntryComputationKindMembers
+  | NodeEntryNamedEdgeMembers
+  | NodeEntryPositionalEdgeMembers
+
+type NodeEntryDecodeRefusal
+  = NodeEntryMemberReadRefused { cause: MemberReadRefusal }
+  | NodeEntryTargetReferenceRefused { cause: TargetReferenceRefusal }
+  | NodeEntryUnexpectedMember { context: NodeEntryMemberContext, key: String }
+  | NodeEntryUnknownKindTag { found: String }
+  | NodeEntryUnknownConnectiveTag { found: String }
+  | NodeEntryUnknownBehaviorTag { found: String }
+  | NodeEntryUnknownLabelTag { found: String }
+
+// THE NODE TABLE'S OWN POPULATION, AND IT IS THREE ARMS. A contained reference either names an
+// earlier node position or names nothing; there is no third answer, because the position carrier has
+// no constructor for one.
+type NodeTableDecodeRefusal
+  = NodeTableEntryRefused { cause: NodeEntryDecodeRefusal }
+  | NodeTableEdgeTargetUnresolved { reference: String }
+  | NodeTableObjectCollision { identity: ObjectId }
+
 type ObjectTableMemberContext
-  = ObjectTableSemanticNodeMembers
-  | ObjectTableAuthoredSourceMembers
+  = ObjectTableAuthoredSourceMembers
   | ObjectTableCorpusManifestMembers
   | ObjectTableManifestEntryMembers
-  | ObjectTableTypeKindMembers
-  | ObjectTableAtomKindMembers
-  | ObjectTableComputationKindMembers
-  | ObjectTableNamedEdgeMembers
-  | ObjectTablePositionalEdgeMembers
 
 type ObjectTableDecodeRefusal
-  = ObjectTableMemberReadRefused { cause: MemberReadRefusal }
-  | ObjectTableTargetReferenceRefused { cause: TargetReferenceRefusal }
+  = ObjectTableEntryRefused { cause: NodeEntryDecodeRefusal }
+  | ObjectTableMemberReadRefused { cause: MemberReadRefusal }
   | ObjectTableUnexpectedMember { context: ObjectTableMemberContext, key: String }
-  | ObjectTableUnknownKindTag { found: String }
-  | ObjectTableUnknownConnectiveTag { found: String }
-  | ObjectTableUnknownBehaviorTag { found: String }
-  | ObjectTableUnknownLabelTag { found: String }
   | ObjectTableEdgeTargetUnresolved { reference: String }
   | ObjectTableEdgeTargetIsAuthoredSource { reference: String }
   | ObjectTableEdgeTargetIsCorpusManifest { reference: String }
@@ -269,6 +301,7 @@ type ObjectTableDecodeRefusal
   | ObjectTableManifestSourceUnresolved { reference: String }
   | ObjectTableManifestSourceIsSemanticNode { reference: String }
   | ObjectTableManifestSourceIsCorpusManifest { reference: String }
+  | ObjectTableTargetReferenceRefused { cause: TargetReferenceRefusal }
   | ObjectTableObjectCollision { identity: ObjectId }
 
 // THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per DESIGN section 3: the dispatch
@@ -280,9 +313,39 @@ type ObjectTableDecodeRefusal
 // cardinality would be a second authority for something the coproduct already states, and it rots
 // the moment an arm lands. The collision arm is the load-bearing one: it must not reach LoadDocumentMalformed, because that is the only standing
 // permitting supersession.
+fn node_entry_load_standing(cause: NodeEntryDecodeRefusal) -> LoadStanding {
+  match cause {
+    NodeEntryMemberReadRefused { cause: c } =>
+      match c {
+        MemberReadSubjectNotObject => LoadDocumentMalformed
+        MemberReadMissing { key: _ } => LoadDocumentMalformed
+        MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+        MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+      }
+    NodeEntryUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
+    NodeEntryTargetReferenceRefused { cause: c } => target_reference_load_standing(cause: c)
+    NodeEntryUnknownKindTag { found: _ } => LoadDocumentMalformed
+    NodeEntryUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
+    NodeEntryUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
+    NodeEntryUnknownLabelTag { found: _ } => LoadDocumentMalformed
+  }
+}
+
+// THE NODE TABLE'S CLASSIFIER, AND IT IS THREE ARMS BECAUSE ITS REFUSAL TYPE IS. The collision arm
+// is the load-bearing one here too: it must not reach LoadDocumentMalformed, because that is the
+// only standing permitting supersession.
+fn node_table_load_standing(cause: NodeTableDecodeRefusal) -> LoadStanding {
+  match cause {
+    NodeTableObjectCollision { identity: _ } => LoadIdentityCollision
+    NodeTableEntryRefused { cause: c } => node_entry_load_standing(cause: c)
+    NodeTableEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
+  }
+}
+
 fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
   match cause {
     ObjectTableObjectCollision { identity: _ } => LoadIdentityCollision
+    ObjectTableEntryRefused { cause: c } => node_entry_load_standing(cause: c)
     ObjectTableMemberReadRefused { cause: c } =>
       match c {
         MemberReadSubjectNotObject => LoadDocumentMalformed
@@ -292,10 +355,6 @@ fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
       }
     ObjectTableUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
     ObjectTableTargetReferenceRefused { cause: c } => target_reference_load_standing(cause: c)
-    ObjectTableUnknownKindTag { found: _ } => LoadDocumentMalformed
-    ObjectTableUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
-    ObjectTableUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
-    ObjectTableUnknownLabelTag { found: _ } => LoadDocumentMalformed
     ObjectTableEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
     ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => LoadDocumentMalformed
     ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => LoadDocumentMalformed
@@ -357,6 +416,20 @@ fn table_member_set_refusal(
   match unexpected_member_key(v: v, allowed: allowed) {
     Absent => none
     Present { value: key } => Present { value: ObjectTableUnexpectedMember { context: context, key: key } }
+  }
+}
+
+// AND THE SAME QUESTION ASKED OF A NODE ENTRY'S OWN MEMBERS, which both tables ask identically. Its
+// context vocabulary carries only the shapes a node entry has, so a caller cannot name a manifest
+// context here and a manifest decoder cannot name a kind context there.
+fn node_entry_member_set_refusal(
+  v: JsonValue,
+  allowed: List<String>,
+  context: NodeEntryMemberContext
+) -> NodeEntryDecodeRefusal? {
+  match unexpected_member_key(v: v, allowed: allowed) {
+    Absent => none
+    Present { value: key } => Present { value: NodeEntryUnexpectedMember { context: context, key: key } }
   }
 }
 
@@ -749,7 +822,7 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
 
 type ConnectiveDecode
   = ConnectiveDecoded { connective: Connective }
-  | ConnectiveDecodeFailed { cause: ObjectTableDecodeRefusal }
+  | ConnectiveDecodeFailed { cause: NodeEntryDecodeRefusal }
 
 // The identity member is read ONLY on the atom arm. A non-atom tag never consults it, so an image
 // that supplies one is not silently carrying an ignored field into a program whose identity does not
@@ -759,20 +832,20 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
     match read_string_member(v: kind_value, key: "identity") {
       MemberString { value: lexeme } =>
         ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
-      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
-      _ => ConnectiveDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
+      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+      _ => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
     }
   } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
   else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
   else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
   else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
   else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
-  else { ConnectiveDecodeFailed { cause: ObjectTableUnknownConnectiveTag { found: tag } } }
+  else { ConnectiveDecodeFailed { cause: NodeEntryUnknownConnectiveTag { found: tag } } }
 }
 
 type BehaviorDecode
   = BehaviorDecoded { behavior: Behavior }
-  | BehaviorDecodeFailed { cause: ObjectTableDecodeRefusal }
+  | BehaviorDecodeFailed { cause: NodeEntryDecodeRefusal }
 
 fn decode_behavior(tag: String) -> BehaviorDecode {
   if tag == "value" { BehaviorDecoded { behavior: Value } }
@@ -781,12 +854,12 @@ fn decode_behavior(tag: String) -> BehaviorDecode {
   else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
   else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
   else if tag == "match" { BehaviorDecoded { behavior: Match } }
-  else { BehaviorDecodeFailed { cause: ObjectTableUnknownBehaviorTag { found: tag } } }
+  else { BehaviorDecodeFailed { cause: NodeEntryUnknownBehaviorTag { found: tag } } }
 }
 
 type KindDecode
   = KindDecoded { kind: NodeKind }
-  | KindDecodeFailed { cause: ObjectTableDecodeRefusal }
+  | KindDecodeFailed { cause: NodeEntryDecodeRefusal }
 
 // THE MEMBER SET IS CHECKED AFTER THE VARIANT IS KNOWN AND BEFORE THE VARIANT IS BUILT. It cannot be
 // checked earlier: `identity` is required on an atom and forbidden on every other connective, so
@@ -794,10 +867,10 @@ type KindDecode
 // means a Conj carrying an identity refuses rather than decoding into a node whose stated identity
 // silently played no part in the node that resulted.
 fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
-  match table_member_set_refusal(
+  match node_entry_member_set_refusal(
     v: kind_value,
     allowed: if ctag == "atom" { ["kind", "connective", "identity"] } else { ["kind", "connective"] },
-    context: if ctag == "atom" { ObjectTableAtomKindMembers } else { ObjectTableTypeKindMembers }
+    context: if ctag == "atom" { NodeEntryAtomKindMembers } else { NodeEntryTypeKindMembers }
   ) {
     Present { value: c } => KindDecodeFailed { cause: c }
     Absent =>
@@ -809,10 +882,10 @@ fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
 }
 
 fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
-  match table_member_set_refusal(
+  match node_entry_member_set_refusal(
     v: kind_value,
     allowed: ["kind", "behavior"],
-    context: ObjectTableComputationKindMembers
+    context: NodeEntryComputationKindMembers
   ) {
     Present { value: c } => KindDecodeFailed { cause: c }
     Absent =>
@@ -825,24 +898,24 @@ fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
 
 fn decode_kind(kind_value: JsonValue) -> KindDecode {
   match read_string_member(v: kind_value, key: "kind") {
-    MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+    MemberFailed { cause: c } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
     MemberString { value: tag } =>
       if tag == "type" {
         match read_string_member(v: kind_value, key: "connective") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+          MemberFailed { cause: c } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
           MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
-          _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
+          _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
         }
       } else if tag == "computation" {
         match read_string_member(v: kind_value, key: "behavior") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+          MemberFailed { cause: c } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
           MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
-          _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
+          _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
         }
       } else {
-        KindDecodeFailed { cause: ObjectTableUnknownKindTag { found: tag } }
+        KindDecodeFailed { cause: NodeEntryUnknownKindTag { found: tag } }
       }
-    _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
+    _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
   }
 }
 
@@ -864,33 +937,33 @@ fn resolve_reference(positions: DecodePositions, reference: String) -> ScmObject
 
 type LabelDecode
   = LabelDecoded { label: EdgeLabel }
-  | LabelDecodeFailed { cause: ObjectTableDecodeRefusal }
+  | LabelDecodeFailed { cause: NodeEntryDecodeRefusal }
 
 // The member set here is the whole EDGE object, `target` included, because the label tag is what
 // closes it: a positional edge carrying a `name` is refused rather than read as a positional edge
 // whose name went nowhere.
 fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
-  match table_member_set_refusal(
+  match node_entry_member_set_refusal(
     v: edge_value,
     allowed: ["label", "name", "target"],
-    context: ObjectTableNamedEdgeMembers
+    context: NodeEntryNamedEdgeMembers
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent =>
       match read_string_member(v: edge_value, key: "name") {
-        MemberFailed { cause: c } => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
         MemberString { value: lexeme } =>
           LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-        _ => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+        _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
       }
   }
 }
 
 fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
-  match table_member_set_refusal(
+  match node_entry_member_set_refusal(
     v: edge_value,
     allowed: ["label", "target"],
-    context: ObjectTablePositionalEdgeMembers
+    context: NodeEntryPositionalEdgeMembers
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent => LabelDecoded { label: Positional }
@@ -899,16 +972,16 @@ fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
 
 fn decode_label(edge_value: JsonValue) -> LabelDecode {
   match read_string_member(v: edge_value, key: "label") {
-    MemberFailed { cause: c } => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+    MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
     MemberString { value: tag } =>
       if tag == "named" {
         decode_named_label(edge_value: edge_value)
       } else if tag == "positional" {
         decode_positional_label(edge_value: edge_value)
       } else {
-        LabelDecodeFailed { cause: ObjectTableUnknownLabelTag { found: tag } }
+        LabelDecodeFailed { cause: NodeEntryUnknownLabelTag { found: tag } }
       }
-    _ => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
+    _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
   }
 }
 
@@ -917,9 +990,18 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
 // content_hash_of_children. A dropped or doubled reverse would change every derived ObjectId
 // silently, leaving objects unreachable by the identity they were stored under -- so the round-trip
 // claims, not inspection, are what establish this is right.
-type EdgeAcc {
+// ONE ACCUMULATOR PER TABLE, FOR THE SAME REASON THERE IS ONE RESOLVER PER TABLE. A shared one would
+// have to carry whichever refusal type its caller wanted, which is the upward borrowing this cut
+// removes -- and it would put the mixed table's wrong-kind causes back inside the node table's
+// result the moment anyone read the field.
+type ObjectTableEdgeAcc {
   edges: List<StoredEdge>
   refusal: ObjectTableDecodeRefusal?
+}
+
+type NodeTableEdgeAcc {
+  edges: List<StoredEdge>
+  refusal: NodeTableDecodeRefusal?
 }
 
 // THE UNRESOLVED-TARGET ARM IS THE ONE THAT MAKES POSITIONS SAFE. Positions are only trustworthy
@@ -981,7 +1063,7 @@ type PendingEdge {
 
 type PendingEdgeAcc {
   edges: List<PendingEdge>
-  refusal: ObjectTableDecodeRefusal?
+  refusal: NodeEntryDecodeRefusal?
 }
 
 fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdgeAcc {
@@ -996,14 +1078,14 @@ fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdg
             MemberFailed { cause: c } =>
               PendingEdgeAcc {
                 edges: acc.edges,
-                refusal: Present { value: ObjectTableMemberReadRefused { cause: c } },
+                refusal: Present { value: NodeEntryMemberReadRefused { cause: c } },
               }
             MemberObject { value: target_value } =>
               match decode_target_reference(target_value: target_value) {
                 TargetReferenceRefused { cause: c } =>
                   PendingEdgeAcc {
                     edges: acc.edges,
-                    refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
+                    refusal: Present { value: NodeEntryTargetReferenceRefused { cause: c } },
                   }
                 resolved =>
                   PendingEdgeAcc {
@@ -1015,7 +1097,7 @@ fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdg
               PendingEdgeAcc {
                 edges: acc.edges,
                 refusal: Present {
-                  value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "target" } }
+                  value: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "target" } }
                 },
               }
           }
@@ -1028,15 +1110,15 @@ fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdg
 // so these two arms are live evidence rather than defence.
 fn resolve_edge_in_object_table(
   positions: DecodePositions,
-  acc: EdgeAcc,
+  acc: ObjectTableEdgeAcc,
   pending: PendingEdge
-) -> EdgeAcc {
+) -> ObjectTableEdgeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
       match pending.target {
         TargetUncontained { digest: identity } =>
-          EdgeAcc {
+          ObjectTableEdgeAcc {
             edges: concat(
               [StoredEdge { label: pending.label, target: SemanticNodeTarget { locator: identity } }],
               acc.edges,
@@ -1046,7 +1128,7 @@ fn resolve_edge_in_object_table(
         TargetContainedAt { reference: reference } =>
           match resolve_reference(positions: positions, reference: reference) {
             Present { value: SemanticNodeRef(node) } =>
-              EdgeAcc {
+              ObjectTableEdgeAcc {
                 edges: concat(
                   [StoredEdge { label: pending.label, target: node_target_of(reference: node) }],
                   acc.edges,
@@ -1054,23 +1136,23 @@ fn resolve_edge_in_object_table(
                 refusal: acc.refusal,
               }
             Present { value: AuthoredSourceRef(_) } =>
-              EdgeAcc {
+              ObjectTableEdgeAcc {
                 edges: acc.edges,
                 refusal: Present { value: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } },
               }
             Present { value: CorpusManifestRef(_) } =>
-              EdgeAcc {
+              ObjectTableEdgeAcc {
                 edges: acc.edges,
                 refusal: Present { value: ObjectTableEdgeTargetIsCorpusManifest { reference: reference } },
               }
             Absent =>
-              EdgeAcc {
+              ObjectTableEdgeAcc {
                 edges: acc.edges,
                 refusal: Present { value: ObjectTableEdgeTargetUnresolved { reference: reference } },
               }
           }
         TargetReferenceRefused { cause: c } =>
-          EdgeAcc {
+          ObjectTableEdgeAcc {
             edges: acc.edges,
             refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
           }
@@ -1083,15 +1165,15 @@ fn resolve_edge_in_object_table(
 // arm that could quietly report one as unresolved.
 fn resolve_edge_in_node_table(
   positions: NodeDecodePositions,
-  acc: EdgeAcc,
+  acc: NodeTableEdgeAcc,
   pending: PendingEdge
-) -> EdgeAcc {
+) -> NodeTableEdgeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
       match pending.target {
         TargetUncontained { digest: identity } =>
-          EdgeAcc {
+          NodeTableEdgeAcc {
             edges: concat(
               [StoredEdge { label: pending.label, target: SemanticNodeTarget { locator: identity } }],
               acc.edges,
@@ -1101,7 +1183,7 @@ fn resolve_edge_in_node_table(
         TargetContainedAt { reference: reference } =>
           match map_lookup(m: positions, key: reference) {
             Present { value: node } =>
-              EdgeAcc {
+              NodeTableEdgeAcc {
                 edges: concat(
                   [StoredEdge { label: pending.label, target: node_target_of(reference: node) }],
                   acc.edges,
@@ -1109,15 +1191,15 @@ fn resolve_edge_in_node_table(
                 refusal: acc.refusal,
               }
             Absent =>
-              EdgeAcc {
+              NodeTableEdgeAcc {
                 edges: acc.edges,
-                refusal: Present { value: ObjectTableEdgeTargetUnresolved { reference: reference } },
+                refusal: Present { value: NodeTableEdgeTargetUnresolved { reference: reference } },
               }
           }
         TargetReferenceRefused { cause: c } =>
-          EdgeAcc {
+          NodeTableEdgeAcc {
             edges: acc.edges,
-            refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
+            refusal: Present { value: NodeTableEntryRefused { cause: NodeEntryTargetReferenceRefused { cause: c } } },
           }
       }
   }
@@ -1235,12 +1317,13 @@ fn decode_object_or_source_step(acc: DecodeAcc, object_value: JsonValue) -> Deco
         MemberFailed { cause: c } =>
           match c {
             MemberReadMissing { key: _ } =>
-              match table_member_set_refusal(
+              match node_entry_member_set_refusal(
                 v: object_value,
                 allowed: ["kind", "children"],
-                context: ObjectTableSemanticNodeMembers
+                context: NodeEntrySemanticNodeMembers
               ) {
-                Present { value: set_cause } => decode_acc_refused(acc: acc, cause: set_cause)
+                Present { value: set_cause } =>
+                  decode_acc_refused(acc: acc, cause: ObjectTableEntryRefused { cause: set_cause })
                 Absent => decode_object_members(acc: acc, object_value: object_value)
               }
             MemberReadDuplicated { key: k } =>
@@ -1472,20 +1555,20 @@ fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
 // closure document and a repository object table. What it deliberately does NOT do is resolve a
 // contained position, because that is the one question whose answer depends on which table is asking.
 type NodeEntryShape
-  = NodeEntryShapeRefused { cause: ObjectTableDecodeRefusal }
+  = NodeEntryShapeRefused { cause: NodeEntryDecodeRefusal }
   | NodeEntryShapeDecoded { kind: NodeKind, edges: List<PendingEdge> }
 
 fn decode_node_entry_shape(object_value: JsonValue) -> NodeEntryShape {
   match read_member(v: object_value, key: "kind") {
     MemberFailed { cause: c } =>
-      NodeEntryShapeRefused { cause: ObjectTableMemberReadRefused { cause: c } }
+      NodeEntryShapeRefused { cause: NodeEntryMemberReadRefused { cause: c } }
     MemberObject { value: kind_value } =>
       match decode_kind(kind_value: kind_value) {
         KindDecodeFailed { cause: c } => NodeEntryShapeRefused { cause: c }
         KindDecoded { kind: kind } =>
           match read_member(v: object_value, key: "children") {
             MemberFailed { cause: c } =>
-              NodeEntryShapeRefused { cause: ObjectTableMemberReadRefused { cause: c } }
+              NodeEntryShapeRefused { cause: NodeEntryMemberReadRefused { cause: c } }
             MemberArray { elements: child_values } =>
               match fold(
                 child_values,
@@ -1502,13 +1585,13 @@ fn decode_node_entry_shape(object_value: JsonValue) -> NodeEntryShape {
               }
             _ =>
               NodeEntryShapeRefused {
-                cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
+                cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
               }
           }
       }
     _ =>
       NodeEntryShapeRefused {
-        cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
+        cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
       }
   }
 }
@@ -1520,16 +1603,17 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
     Present { value: _ } => acc
     Absent =>
       match decode_node_entry_shape(object_value: object_value) {
-        NodeEntryShapeRefused { cause: c } => decode_acc_refused(acc: acc, cause: c)
+        NodeEntryShapeRefused { cause: c } =>
+          decode_acc_refused(acc: acc, cause: ObjectTableEntryRefused { cause: c })
         NodeEntryShapeDecoded { kind: kind, edges: pending } =>
           match fold(
             pending,
-            init: EdgeAcc { edges: [], refusal: none },
+            init: ObjectTableEdgeAcc { edges: [], refusal: none },
             f: fn(edge_acc, edge) {
               resolve_edge_in_object_table(positions: acc.positions, acc: edge_acc, pending: edge)
             }
           ) {
-            EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
+            ObjectTableEdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
               match edge_refusal {
                 Present { value: c } => decode_acc_refused(acc: acc, cause: c)
                 Absent =>
@@ -1564,10 +1648,10 @@ type NodeDecodeAcc {
   store: ObjectStore
   positions: NodeDecodePositions
   next: Int
-  refusal: ObjectTableDecodeRefusal?
+  refusal: NodeTableDecodeRefusal?
 }
 
-fn node_decode_acc_refused(acc: NodeDecodeAcc, cause: ObjectTableDecodeRefusal) -> NodeDecodeAcc {
+fn node_decode_acc_refused(acc: NodeDecodeAcc, cause: NodeTableDecodeRefusal) -> NodeDecodeAcc {
   NodeDecodeAcc {
     store: acc.store,
     positions: acc.positions,
@@ -1581,22 +1665,23 @@ fn decode_node_entry_into_node_table(acc: NodeDecodeAcc, object_value: JsonValue
     Present { value: _ } => acc
     Absent =>
       match decode_node_entry_shape(object_value: object_value) {
-        NodeEntryShapeRefused { cause: c } => node_decode_acc_refused(acc: acc, cause: c)
+        NodeEntryShapeRefused { cause: c } =>
+          node_decode_acc_refused(acc: acc, cause: NodeTableEntryRefused { cause: c })
         NodeEntryShapeDecoded { kind: kind, edges: pending } =>
           match fold(
             pending,
-            init: EdgeAcc { edges: [], refusal: none },
+            init: NodeTableEdgeAcc { edges: [], refusal: none },
             f: fn(edge_acc, edge) {
               resolve_edge_in_node_table(positions: acc.positions, acc: edge_acc, pending: edge)
             }
           ) {
-            EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
+            NodeTableEdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
               match edge_refusal {
                 Present { value: c } => node_decode_acc_refused(acc: acc, cause: c)
                 Absent =>
                   match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
                     LocatorCollision { identity: i, existing: _, incoming: _ } =>
-                      node_decode_acc_refused(acc: acc, cause: ObjectTableObjectCollision { identity: i })
+                      node_decode_acc_refused(acc: acc, cause: NodeTableObjectCollision { identity: i })
                     Stored { store: next_store, node: node } =>
                       NodeDecodeAcc {
                         store: next_store,
