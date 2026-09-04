@@ -8,7 +8,7 @@ import gunbc.host_converge {
   ConvergePolicyUnsound,
   HostConverge,
   fleet_converge_policy,
-  find_by_identity,
+  host_converge_for_identity,
 }
 import gunbc.host_effect {
   HostEffect,
@@ -45,7 +45,7 @@ type HostConvergenceContext {
   transport: HostEffectTransport
 }
 
-type HostConvergenceDifference = HostConvergenceRequired
+type HostConvergenceRequired { field: String }
 
 type HostConvergenceRefusal
   = HostConvergencePolicyUnsound { reason: String }
@@ -60,7 +60,7 @@ fn observe_host_convergence(
     ConvergePolicyUnsound { reason: reason } =>
       WorldUnobservable { cause: HostConvergencePolicyUnsound { reason: reason } }
     ConvergePolicyDerived { hosts: hosts } =>
-      match find_by_identity(hosts, identity: subject.identity, key: fn(host) { host.identity }) {
+      match host_converge_for_identity(hosts: hosts, identity: subject.identity) {
         Present { value: host } => WorldObserved { value: host }
         Absent => WorldUnobservable {
           cause: HostConvergenceUnknownIdentity { identity: subject.identity },
@@ -73,15 +73,15 @@ fn host_convergence_differences(
   _: HostConvergenceSubject,
   _: HostConvergenceContext,
   _: HostConverge,
-) -> WorldDifference<HostConvergenceDifference> {
-  WorldDiverged { differences: [HostConvergenceRequired] }
+) -> WorldDifference<HostConvergenceRequired> {
+  WorldDiverged { differences: [HostConvergenceRequired { field: "converge-plan" }] }
 }
 
 fn apply_host_convergence(
   _: HostConvergenceSubject,
   context: HostConvergenceContext,
   observed: HostConverge,
-  _: List<HostConvergenceDifference>,
+  _: List<HostConvergenceRequired>,
 ) -> WorldActuation<Bool, HostConvergenceRefusal> {
   match converge_apply_for_host(host_converge: observed, transport: context.transport) {
     Absent => WorldActuationRefused {
@@ -105,7 +105,7 @@ fn unchanged_host_convergence_receipt(
   false
 }
 
-type HostWorldConvergenceHandler = WorldConvergenceHandler<HostConvergenceSubject, HostConvergenceContext, HostConverge, HostConvergenceDifference, Bool, HostConvergenceRefusal>
+type HostWorldConvergenceHandler = WorldConvergenceHandler<HostConvergenceSubject, HostConvergenceContext, HostConverge, HostConvergenceRequired, Bool, HostConvergenceRefusal>
 
 data host_world_convergence_handler: HostWorldConvergenceHandler = WorldConvergenceHandler {
   observe: observe_host_convergence,

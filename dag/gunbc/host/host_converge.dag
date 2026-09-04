@@ -320,6 +320,15 @@ fn find_by_identity<T>(items: List<T>, identity: HostIdentity, key: fn(T) -> Hos
   )
 }
 
+// THE MONOMORPHIC LOOKUP EVERY HostConverge CONSUMER GOES THROUGH, and it exists because of a
+// compiler deficit, not a taste one: a generic `-> T?` loses its Optional through inference, so a
+// `match` directly over find_by_identity's result sees bare HostConverge and reports Present as a
+// missing variant of it -- at the type declaration, nowhere near the call. Naming the return type
+// once here restores it for every consumer. Dissolves when generic Optional returns infer.
+fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
+  find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
+}
+
 type ConvergePolicy
   = ConvergePolicyDerived { hosts: List<HostConverge> }
   | ConvergePolicyUnsound { reason: String }
