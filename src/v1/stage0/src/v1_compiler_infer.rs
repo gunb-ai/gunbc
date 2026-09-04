@@ -1524,7 +1524,19 @@ pub fn declared_type_conformance_diags(
                 scope.module_name.clone(),
             )])
         } else {
-            if !both_ground.clone() {
+            if (nominal_product_inhabitance_refusal(
+                declared.clone(),
+                produced.clone(),
+                scope.clone(),
+            ) != std::option::Option::None)
+            {
+                Rc::new(vec![type_mismatch_error(
+                    crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()),
+                    crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()),
+                    span.clone(),
+                    scope.module_name.clone(),
+                )])
+            } else if !both_ground.clone() {
                 Rc::new(vec![])
             } else {
                 if crate::v1_compiler_infer_types::node_type_compatible(
@@ -4754,6 +4766,9 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
                     };
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
+                TypeHeadExposure::OpaqueTypeHead { .. } => {
+                    nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
+                }
                 _ => "".to_string(),
             }
         }
@@ -4764,10 +4779,20 @@ pub fn nominal_product_head_name_if_declared_product(
     name: String,
     scope: Rc<InferScope>,
 ) -> String {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), name.clone()) {
+    let representative =
+        transparent_alias_representative(scope.type_env.clone().symbol_index.clone(), name.clone());
+    match crate::v1_compiler_infer_env::lookup_type_by_name(
+        scope.type_env.clone(),
+        representative.clone(),
+    ) {
         Some(decl) => {
-            if ((decl.connective.clone() == Connective::Conj)
-                && ((decl.children.clone().len() as i64) > 0))
+            let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                decl.clone(),
+                scope.type_env.clone(),
+                scope.module_name.clone(),
+            );
+            if ((peeled.connective.clone() == Connective::Conj)
+                && ((peeled.children.clone().len() as i64) > 0))
             {
                 name.clone()
             } else {
