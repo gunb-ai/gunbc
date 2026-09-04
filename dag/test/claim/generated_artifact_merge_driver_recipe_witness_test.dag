@@ -55,8 +55,8 @@ test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_c
 // it must be escaped in the script bytes. Unescaped, bash consumes it before the author sees it.
 test fn heal_recipe_row_extractor_survives_the_drivers_own_quoting() -> Bool {
   let script = emitted_driver_script()
-  string_contains(s: script, pattern: "s/^- \\`\\([a-z0-9_]*\\)\\`.*/\\1/p")
-    && string_contains(s: script, pattern: "s/^- `\\([a-z0-9_]*\\)`.*/\\1/p") == false
+  string_contains(s: script, pattern: "\\`\\\\([a-z0-9_]*\\\\)\\`")
+    && string_contains(s: script, pattern: "- `\\([a-z0-9_]*") == false
 }
 
 // The two heal-delegated projections carry different row identities: a failure mode is a slug
@@ -64,8 +64,8 @@ test fn heal_recipe_row_extractor_survives_the_drivers_own_quoting() -> Bool {
 // the file it cannot parse and reports a pass it never measured.
 test fn heal_recipe_extracts_row_identity_from_both_delegated_projections() -> Bool {
   let script = emitted_driver_script()
-  string_contains(s: script, pattern: "s/^- \\`\\([a-z0-9_]*\\)\\`.*/\\1/p")
-    && string_contains(s: script, pattern: "s/^### \\(.*\\) — .*/\\1/p")
+  string_contains(s: script, pattern: "\\`\\\\([a-z0-9_]*\\\\)\\`")
+    && string_contains(s: script, pattern: "s/^### \\\\(.*\\\\) — .*/\\\\1/p")
 }
 
 // $ STAYS ACTIVE IN THE EMITTED ECHO, SO A RECIPE MAY NAME ONLY THE VARIABLE THE DRIVER DEFINES.
