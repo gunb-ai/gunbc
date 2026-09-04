@@ -152,8 +152,8 @@ pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
 };
 pub use emit_host::{
-    compile_dag_multi_module_fixture, emit_module_storage_binding_manifest,
-    emit_source_root_ingest_manifest,
+    compile_dag_multi_module_fixture, compile_dag_reference_occurrence_binding_census,
+    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3083,6 +3083,52 @@ pub enum MultiModuleCompileFixtureOutcome {
         diagnostics: Vec<CompileDiagnosticCensusRow>,
         source_digest: String,
         compiler_digest: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReferenceOccurrenceBindingDisposition {
+    Bound {
+        declaration_occurrence: i64,
+        provider_module: String,
+        binding_source: UnlistedImportBindingSource,
+    },
+    Unresolved,
+    Ambiguous {
+        candidates: Vec<i64>,
+    },
+    Refused {
+        cause: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceOccurrenceDenominatorRow {
+    pub occurrence: i64,
+    pub consumer_file: String,
+    pub consumer_module: String,
+    pub authored_name: String,
+    pub category: crate::std_occurrence_identity::OccurrenceCategory,
+    pub file_reference_ordinal: i64,
+    pub span_start: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceOccurrenceBindingRow {
+    pub denominator: ReferenceOccurrenceDenominatorRow,
+    pub disposition: ReferenceOccurrenceBindingDisposition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReferenceOccurrenceBindingCensus {
+    Refused {
+        cause: String,
+    },
+    Observed {
+        source_digest: String,
+        compiler_digest: String,
+        denominator: Vec<ReferenceOccurrenceDenominatorRow>,
+        observations: Vec<ReferenceOccurrenceBindingRow>,
     },
 }
 
@@ -12018,7 +12064,7 @@ thread_local! {
         match_pattern: None,
         expr_data: Rc::new(ExprData::ExprError {
             kind: ExprErrorKind::CensusHeadsBodyStripped,
-            message: "pool census heads-only: function body stripped — refuse to interpret"
+            message: "pool census heads-only: declaration body/value stripped — refuse to interpret"
                 .to_string(),
         }),
         ident: None,
@@ -15447,10 +15493,11 @@ fn parse_module_heads_for_pool_census(
         m
     });
     // The HEADS reading of the grammar, not the full one. Every declaration head is
-    // parsed by the same productions; a brace-delimited fn body is skipped at token
-    // grain instead of being built, because `census_heads_module_node` two lines below
-    // replaces every body with the shared stand-in anyway. Building 3875 modules' worth
-    // of function bodies for a consumer that discards them was the largest single term
+    // parsed by the same productions; brace-delimited fn bodies and data initializer
+    // values are skipped at token grain instead of being built, because
+    // `census_heads_module_node` below replaces every body with the shared stand-in
+    // anyway. Building thousands of modules' bodies for a consumer that discards them
+    // was the largest single term
     // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
     // — a cost-shape defect DESIGN §6's bare-minimum-cost rule says is always fixed.
     //
