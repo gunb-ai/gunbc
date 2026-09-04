@@ -65,7 +65,7 @@ import gunbc.scm.target_reference {
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
-  ClosureDocRequiresNodeAtAuthoredSource,
+  ClosureDocRequiresNodeAtWrongKind,
   ClosureDocEncodeRefusal,
   ClosureDocMemberReadRefused,
   ClosureDocEncodeOutcome,
@@ -88,7 +88,7 @@ import gunbc.scm.commit_closure {
   PartialClosureAdmissionOutcome,
   PartialClosureAdmitted,
   ClosureCompleteSoNothingToAdmit,
-  ClosureRequiresNodeAtAuthoredSource,
+  ClosureRequiresNodeAtWrongKind,
   admitted_reason,
   admitted_unresolved,
   unresolved_identities,
@@ -310,11 +310,11 @@ test fn an_admission_carries_the_decision_that_produced_it() -> Bool {
   let closure = CommitClosure { store: grafted, root: full.root }
   match admit_partial_commit_closure(closure: closure, reason: ClosureTrimmedForTransfer) {
     ClosureCompleteSoNothingToAdmit => false
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: transfer } =>
       match admit_partial_commit_closure(closure: closure, reason: ClosureGraftedWithoutChildren) {
         ClosureCompleteSoNothingToAdmit => false
-        ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+        ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
         PartialClosureAdmitted { admitted: graft } =>
           reason_is_transfer(r: admitted_reason(admitted: transfer))
             && !reason_is_transfer(r: admitted_reason(admitted: graft))
@@ -330,7 +330,7 @@ test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       (list_length(items: admitted_unresolved(admitted: a)) == 1)
         && names_exactly(missing: admitted_unresolved(admitted: a), expected: full.child)
@@ -348,7 +348,7 @@ test fn the_mint_refuses_a_complete_closure() -> Bool {
   match admitted_for(store: full.store, root: full.root) {
     PartialClosureAdmitted { admitted: _ } => false
     ClosureCompleteSoNothingToAdmit => true
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
   }
 }
 
@@ -401,7 +401,7 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
   }
   let admitted = match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       json_is_object(v: encode_admitted_partial_closure_document(admitted: a))
   }
@@ -424,7 +424,7 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
 fn cause_is_incomplete_without_admission(cause: ClosureDocEncodeRefusal) -> Bool {
   match cause {
     ClosureDocIncompleteWithoutAdmission { identity: _ } => true
-    ClosureDocRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureDocRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
   }
 }
 
@@ -439,7 +439,7 @@ test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       match parse_json_document(
         s: serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
@@ -650,7 +650,7 @@ test fn an_absent_child_is_still_a_fetchable_absence() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       match parse_json_document(
         s: serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
@@ -890,7 +890,7 @@ test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool 
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       match encode_complete_closure_document(
         closure: CommitClosure { store: full.store, root: full.root }
@@ -977,7 +977,7 @@ test fn a_partial_closure_spells_its_missing_child_uncontained() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
       match target_arm_of_first_child(
         objects: document_objects(v: encode_admitted_partial_closure_document(admitted: a))
@@ -1053,8 +1053,13 @@ test fn the_complete_writer_refuses_a_wrong_kind_closure_and_names_it() -> Bool 
       ClosureDocEncoded { value: _ } => false
       ClosureDocEncodeRefused { cause: c } =>
         match c {
-          ClosureDocRequiresNodeAtAuthoredSource { identities: ids } =>
-            (list_length(items: ids) == 1) && names_exactly(missing: ids, expected: fx.child)
+          ClosureDocRequiresNodeAtWrongKind {
+            source_occupied: ids,
+            manifest_occupied: manifests,
+          } =>
+            (list_length(items: ids) == 1)
+              && names_exactly(missing: ids, expected: fx.child)
+              && (list_length(items: manifests) == 0)
           ClosureDocIncompleteWithoutAdmission { identity: _ } => false
         }
     }

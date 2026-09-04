@@ -230,7 +230,10 @@ type ClosureDocRefusal
 // name this cause. DESIGN section 4b's top rung: not validated, not proven, unrepresentable.
 type ClosureDocEncodeRefusal
   = ClosureDocIncompleteWithoutAdmission { identity: String }
-  | ClosureDocRequiresNodeAtAuthoredSource { identities: List<ObjectId> }
+  | ClosureDocRequiresNodeAtWrongKind {
+      source_occupied: List<ObjectId>,
+      manifest_occupied: List<ObjectId>
+    }
 
 // THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
 // this writer may have meant". So once the tag matches, every JSON object in the document has a
@@ -650,9 +653,12 @@ type ClosureDocEncodeOutcome
 // incompleteness: no supply step repairs it.
 fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeOutcome {
   match admit_well_kinded_closure(closure: closure) {
-    NotWellKinded { identities: identities } =>
+    NotWellKinded { source_occupied: sources, manifest_occupied: manifests } =>
       ClosureDocEncodeRefused {
-        cause: ClosureDocRequiresNodeAtAuthoredSource { identities: identities }
+        cause: ClosureDocRequiresNodeAtWrongKind {
+          source_occupied: sources,
+          manifest_occupied: manifests,
+        }
       }
     WellKinded { admitted: image } =>
       match unresolved_identities(closure: closure) {

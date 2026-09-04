@@ -79,6 +79,11 @@ import gunbc.scm.object_store {
   ScmObject,
   SemanticNodeObject,
   AuthoredSourceObject,
+  find_authored_source_record,
+  AuthoredSourceFound,
+  AuthoredSourceAbsent,
+  AuthoredSourceIsSemanticNode,
+  AuthoredSourceIsCorpusManifest,
   AuthoredSourceContent,
   AuthoredSourceEmpty,
   AuthoredSourceText,
@@ -177,7 +182,7 @@ import gunbc.scm.commit_closure_json_v2 {
 // rather than a plausible one, so a fixture that ever did reach it fails its own assertion.
 fn scm_image_encode_or_empty(store: ObjectStore, root: SemanticNodeTarget) -> JsonValue {
   match admit_well_kinded_closure(closure: CommitClosure { store: store, root: root }) {
-    NotWellKinded { identities: _ } => json_object(members: [])
+    NotWellKinded { source_occupied: _, manifest_occupied: _ } => json_object(members: [])
     WellKinded { admitted: image } => encode_closure_document(image: image)
   }
 }
@@ -1501,13 +1506,11 @@ fn scm_image_source_round_trip_fixture() -> SourceRoundTrip {
 }
 
 fn scm_image_content_at(store: ObjectStore, locator: ObjectId) -> AuthoredSourceContent? {
-  match find_object(store: store, identity: locator) {
-    Absent => none
-    Present { value: object } =>
-      match object {
-        SemanticNodeObject(_) => none
-        AuthoredSourceObject(record) => Present { value: record.content }
-      }
+  match find_authored_source_record(store: store, identity: locator) {
+    AuthoredSourceFound(record) => Present { value: record.content }
+    AuthoredSourceAbsent { identity: _ } => none
+    AuthoredSourceIsSemanticNode { identity: _ } => none
+    AuthoredSourceIsCorpusManifest { identity: _ } => none
   }
 }
 
