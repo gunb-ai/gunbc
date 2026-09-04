@@ -96,6 +96,9 @@ import gunbc.recurring_failure_mode.one_dissolution_event_recorded_twice_or_not_
 import gunbc.recurring_failure_mode.exact_duplicate_match_arm_not_refused { exact_duplicate_match_arm_not_refused }
 import gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement { premise_that_a_shared_subject_means_disagreement }
 import gunbc.recurring_failure_mode.live_argument_threaded_past_the_arm_that_decides { live_argument_threaded_past_the_arm_that_decides }
+import gunbc.recurring_failure_mode.reachability_answered_is_consumed_as_protection_established { reachability_answered_is_consumed_as_protection_established }
+import gunbc.recurring_failure_mode.completion_predicate_satisfied_by_the_empty_population { completion_predicate_satisfied_by_the_empty_population }
+import gunbc.recurring_failure_mode.by_name_evaluation_is_a_string_not_a_binding { by_name_evaluation_is_a_string_not_a_binding }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -183,4 +186,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   exact_duplicate_match_arm_not_refused,
   premise_that_a_shared_subject_means_disagreement,
   live_argument_threaded_past_the_arm_that_decides,
+  reachability_answered_is_consumed_as_protection_established,
+  completion_predicate_satisfied_by_the_empty_population,
+  by_name_evaluation_is_a_string_not_a_binding,
 ]
