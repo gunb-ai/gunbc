@@ -1,0 +1,278 @@
+module extdeps.network.arista_7050s_52
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure {
+  Bandwidth, bandwidth,
+  ByteSize, byte_size, byte_size_count,
+  PacketRate, packet_rate, packet_rate_count,
+  Percent, percent, percent_count,
+  Watt, watt,
+  Milliwatt, milliwatt,
+  Volt, volt,
+  Millimeter, millimeter,
+  Celsius, celsius,
+  Gigabyte, gigabyte,
+  Mebibyte, mebibyte,
+  Nanosecond, nanosecond,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.network.switch_types { NetworkSwitchCatalogRow, SwitchPortGroup, TrackedGap }
+import extdeps.vendor.arista { arista }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import v2.std.optional { Present }
+
+// THE DCS-7050S-52, ARISTA'S 52-PORT 1/10GBE SFP+ SWITCH IN THE 7050 SERIES. Modelled from the
+// Arista 7050S datasheet read 2026-09-03. The canonical authority is the datasheet at
+// arista.com; its bytes were fetched via a third-party mirror (spectra.com hosts the same
+// document) because arista.com served a JavaScript challenge to this session's client -- the
+// citation is the route to the publisher's document, and the document's identity is carried in
+// arista7050s_datasheet below.
+//
+// THE -52 AND THE -64 ARE TWO SUBJECTS ON ONE DATASHEET, AND THE CONFUSION IS COMMON ENOUGH TO
+// STATE. The datasheet's overview reads: "The 7050S-64 switch offers 48 SFP+ and 4 QSFP+
+// interfaces while the 7050S-52 switch offers 52 SFP+ interfaces." The DCS-7050S-52 therefore
+// carries FIFTY-TWO 1/10GbE SFP+ ports and NO QSFP+ ports; several reseller listings describe a
+// "48 SFP+ + 4 QSFP+" 7050S-52, which is the -64's port map read onto the wrong model number.
+// This module models the datasheet's -52 row, and the seller's listing for the operator's
+// purchase is cited nowhere because it adds no product fact the datasheet does not carry.
+//
+// PROCUREMENT IS NOT A VENDOR FACT. The operator purchased this switch on eBay (order
+// 15-15103-52948, 2026-09-01); that purchase is a workflow/ops fact whose home is the fleet and
+// procurement layer, not extdeps. The listing's "240V 60Hz" is inside the datasheet's 100-240 V
+// 50/60 Hz envelope and adds nothing to model.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.arista.com/assets/data/pdf/Datasheets/7050S_Datasheet.pdf"
+  }
+}
+
+// The datasheet covers both 7050S-64 and 7050S-52; the row below is the -52 and says so at every
+// field. Document identity is carried here so a later reader can resolve the citation without
+// repeating the fetch.
+data arista7050s_datasheet: NonEmptyStr = "7050S Datasheet, Arista 7050 Series 10/40G Data Center Switches, covering the 7050S-64 (48 SFP+ + 4 QSFP+) and the 7050S-52 (52 SFP+)"
+
+// ================= THE SHARED CATALOG ROW =================
+
+data arista_7050s_52_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogRow {
+  model: "DCS-7050S-52",
+  manufacturer: arista,
+  port_inventory: [
+    SwitchPortGroup {
+      connector: "SFP+",
+      port_count: 52,
+      data_rates: [
+        bandwidth(1000000000),
+        bandwidth(10000000000),
+      ],
+    },
+  ],
+  fanless: false,
+  switching_capacity: Present { value: bandwidth(1040000000000) },
+  max_power_draw: milliwatt(185000),
+}
+
+// ================= THROUGHPUT AND LATENCY =================
+
+// The datasheet's model-comparison table states the -52's throughput as 1.04 Terabits/second and
+// 780 million packets per second, and the latency section states 800 to 1150 ns through the SFP+
+type Arista7050s52ThroughputFacts {
+  switching_capacity: Bandwidth
+  packet_rate: PacketRate
+  latency_min_ns: Nanosecond
+  latency_max_ns: Nanosecond
+}
+
+data arista_7050s_52_throughput: Arista7050s52ThroughputFacts = Arista7050s52ThroughputFacts {
+  switching_capacity: bandwidth(1040000000000),
+  packet_rate: packet_rate(780000000),
+  latency_min_ns: nanosecond(800),
+  latency_max_ns: nanosecond(1150),
+}
+
+// ================= PLATFORM =================
+
+// The datasheet's "Resilient Control Plane" and model-comparison table carry the compute facts:
+// dual-core x86 CPU, 4 GB DRAM, 2 GB flash, 9 MB dynamic packet buffer, and a factory-optional
+// 50 GB SSD. The SSD is an OPTION, not a shipped default -- the field carries Present only
+// because the option is factory-available, and the distinction is stated in the comment.
+type Arista7050s52PlatformFacts {
+  cpu: NonEmptyStr
+  system_memory: Gigabyte
+  flash_storage: Gigabyte
+  packet_buffer: Mebibyte
+  optional_ssd: Gigabyte
+  operating_system: NonEmptyStr
+}
+
+data arista_7050s_52_platform: Arista7050s52PlatformFacts = Arista7050s52PlatformFacts {
+  cpu: "Dual-Core x86",
+  system_memory: gigabyte(4),
+  flash_storage: gigabyte(2),
+  packet_buffer: mebibyte(9),
+  optional_ssd: gigabyte(50),
+  operating_system: "Arista EOS",
+}
+
+// ================= MANAGEMENT PORTS =================
+
+// One 100/1000 management port, one RS-232 (RJ-45) console port and one USB port are the
+// datasheet's model-comparison rows for the -52.
+type Arista7050s52ManagementFacts {
+  management_port: NonEmptyStr
+  console_port: NonEmptyStr
+  usb_ports: Int
+}
+
+data arista_7050s_52_management: Arista7050s52ManagementFacts = Arista7050s52ManagementFacts {
+  management_port: "100/1000",
+  console_port: "RS-232 RJ-45",
+  usb_ports: 1,
+}
+
+// ================= POWER AND COOLING =================
+
+// The model-comparison table gives typical/max draw as 103/185 W for the -52, and the power
+// supply table gives the AC envelope: 100-240 V, 2.2-5.3 A, 50/60 Hz, IEC 320-C13 input
+// connector. High-availability rows: 2 hot-swap PSUs (1+1 redundant), 4 N+1 hot-swap fans,
+// reversible airflow.
+// The datasheet states "Input Current 2.2-5.3A"; no fractional Ampere measure exists in
+// std.measure, so the vendor's own string is carried with the unit named, rather than a
+// fabricated integer.
+type Arista7050s52PowerFacts {
+  psu_count: Int
+  psu_hot_swap: Bool
+  psu_redundancy: NonEmptyStr
+  ac_input_range_min: Volt
+  ac_input_range_max: Volt
+  ac_input_current: NonEmptyStr
+  input_frequency: NonEmptyStr
+  input_connector: NonEmptyStr
+  typical_power_draw: Watt
+  max_power_draw: Watt
+}
+
+data arista_7050s_52_power: Arista7050s52PowerFacts = Arista7050s52PowerFacts {
+  psu_count: 2,
+  psu_hot_swap: true,
+  psu_redundancy: "1+1 redundant",
+  ac_input_range_min: volt(100),
+  ac_input_range_max: volt(240),
+  ac_input_current: "2.2-5.3 A",
+  input_frequency: "50/60 Hz",
+  input_connector: "IEC 320-C13",
+  typical_power_draw: watt(103),
+  max_power_draw: watt(185),
+}
+
+type Arista7050s52CoolingFacts {
+  fan_count: Int
+  fan_redundancy: NonEmptyStr
+  fan_hot_swap: Bool
+  reversible_airflow: Bool
+}
+
+data arista_7050s_52_cooling: Arista7050s52CoolingFacts = Arista7050s52CoolingFacts {
+  fan_count: 4,
+  fan_redundancy: "N+1 redundant",
+  fan_hot_swap: true,
+  reversible_airflow: true,
+}
+
+// ================= CHASSIS AND ENVIRONMENT =================
+
+type Arista7050s52ChassisFacts {
+  length_mm: Millimeter
+  height_mm: Millimeter
+  depth_mm: Millimeter
+  operating_temp_min: Celsius
+  operating_temp_max: Celsius
+  storage_temp_min: Celsius
+  storage_temp_max: Celsius
+  relative_humidity_min: Percent
+  relative_humidity_max: Percent
+  operating_altitude_ft: Int
+}
+
+data arista_7050s_52_chassis: Arista7050s52ChassisFacts = Arista7050s52ChassisFacts {
+  length_mm: millimeter(445),
+  height_mm: millimeter(44),
+  depth_mm: millimeter(406),
+  operating_temp_min: celsius(0),
+  operating_temp_max: celsius(40),
+  storage_temp_min: celsius(-40),
+  storage_temp_max: celsius(70),
+  relative_humidity_min: percent(5),
+  relative_humidity_max: percent(95),
+  operating_altitude_ft: 10000,
+}
+
+// ================= SCALE =================
+
+// The "Table Sizes" section of the datasheet. Carried as typed rows because these are the
+// numbers a consumer would join a workload against.
+type Arista7050s52ScaleFacts {
+  mac_addresses: Int
+  ipv4_routes_unicast: Int
+  ipv4_host_routes: Int
+  ipv6_routes_unicast: Int
+  ecmp_ways: Int
+  vlans: Int
+  jumbo_frame_size: ByteSize
+}
+
+data arista_7050s_52_scale: Arista7050s52ScaleFacts = Arista7050s52ScaleFacts {
+  mac_addresses: 128000,
+  ipv4_routes_unicast: 16000,
+  ipv4_host_routes: 32000,
+  ipv6_routes_unicast: 8000,
+  ecmp_ways: 32,
+  vlans: 4096,
+  jumbo_frame_size: byte_size(9216),
+}
+
+// ================= CROSS-CHECK AND OPEN GAPS =================
+
+// The datasheet's own model-comparison table is the cross-check: the -52 row states "52xSFP+"
+// ports, 1.04 Tbps throughput, 780 Mpps, 4 GB memory, 103/185 W draw -- and this module's rows
+// carry exactly those figures. The one number that is carried as a plain Int (780,000,000) is
+// the datasheet's own "780 Mpps", stated at the same precision.
+data arista_7050s_52_open_gaps: List<String> = [
+  "The datasheet gives throughput in the model-comparison table only; no separate switching-capacity figure is published, so the two are the same number and that is stated, not derived.",
+  "Weight (17 lb / 7.71 kg) is published in the datasheet's physical-characteristics section but no Weight measure exists in std.measure; the figure is deliberately not modelled as a bare Int to avoid an untyped number, and a consumer that needs it should extend std.measure first.",
+  "The 7050S-52-F (front-to-rear) and 7050S-52-R (rear-to-front) airflow variants share this chassis row; the operator's order is for the base DCS-7050S-52 and the variant suffix, if any, will be read off the delivered unit.",
+]
+
+data arista_7050s_52_tracked_gaps: List<TrackedGap> = [
+  TrackedGap {
+    feature_tag: "extdeps-foot-length-scale",
+    dissolves_on: "std.measure adds a Scale arm for the international foot on the Length axis (a non-decimal, non-SI scale analogous to Minute's Sixty on Time)",
+    note: "operating_altitude_ft as bare Int with unit in field name. Same gate class as extdeps-hour-scale in extdeps.network.mikrotik_crs812.",
+  },
+]
+
+fn arista_7050s_52_gap_count() -> Int {
+  count(arista_7050s_52_open_gaps)
+}
+
+fn arista_7050s_52_tracked_gap_count() -> Int {
+  count(arista_7050s_52_tracked_gaps)
+}
+
+// ================= MODEL SCOPE =================
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.network.arista_7050s_52",
+      decl_name: "arista_7050s_52_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
