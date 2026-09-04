@@ -27,13 +27,24 @@ import gunbc.namespace_step0_binding_provenance_contract {
 }
 
 // WHAT THIS MODULE IS FOR, AND THE ONE CLAIM IT EXISTS TO PREVENT. The reference-occurrence census
-// has a CANDIDATE producer whose coverage of the family roster is unestablished, and the tempting
-// receipt is "ten families, ten covered". This module makes that claim unwritable, because it is
-// false at the instrument's grain: the producer stamps std.occurrence_identity OccurrenceCategory,
-// which has SEVEN arms, and the roster it is measured against has TEN. At least three families
-// therefore converge BEFORE observation rather than after, and a matrix reporting full coverage over
-// a coarser instrument is rung inflation in its purest form -- the strongest-sounding claim placed
-// exactly where the discrimination does not exist.
+// has a CANDIDATE producer whose coverage of the family roster is REFUTED -- not unestablished,
+// which is what this paragraph said before the fixture was run and is a materially weaker standing
+// than the one now measured. The tempting receipt is "ten families, ten covered". This module makes
+// that claim unwritable.
+//
+// THE MEASURED PARTITION, WHICH IS THE AUTHORITY AND IS DERIVED BELOW RATHER THAN ASSERTED HERE:
+// three families produce no occurrence at all, four converge onto one category, one is SPLIT across
+// occurrences that cannot be joined back to the reference that produced them, and the rest are
+// discriminated at the instrument's grain. A matrix reporting full coverage over that is rung
+// inflation in its purest form -- the strongest-sounding claim placed exactly where the
+// discrimination does not exist.
+//
+// AN EARLIER VERSION OF THIS PARAGRAPH ARGUED THE POINT BY PIGEONHOLE -- seven categories against
+// ten families, so at least three must converge -- AND THAT INFERENCE IS NOT LICENSED. It assumes
+// every family lands in some category. FamilyEmitsNoOccurrence exists precisely because three do
+// not, and a family that produces nothing is not competing for a category at all. The pigeonhole
+// happened to name the right number for the wrong reason, which is the worst way for a claim to be
+// right.
 //
 // SO THE MATRIX IS FOUR AXES AND NOT A FLAT LIST, and its product is a DISCRIMINATION verdict per
 // family rather than a coverage tick. Axis 1 is the acquisition path -- the roster itself, owned by
@@ -167,8 +178,20 @@ data step0_census_producer_branch_roster: List<Step0CensusProducerBranch> = [
 // observations are walked from the same source -- so the rows balance perfectly over a population
 // that is missing members. An anti-join cannot reach it either: an anti-join needs a population to
 // join against, and these occurrences are not in one.
+// THE OBSERVED ARM CARRIES EVERY CATEGORY THE FAMILY PRODUCES, NOT ONE, AND THE SINGULAR VERSION
+// COULD GREEN WHILE LYING. QualifiedContainmentReference produces TWO occurrences under two
+// categories, and this arm recorded only FieldOccurrence while a SECOND authored function said the
+// multiplicity was two. Two authored answers to one question is the meaning fork DESIGN section 3
+// forbids, and the fold that was supposed to join them only checked blind-versus-observed against
+// zero-versus-nonzero -- so changing the qualified mapping from 2 to 1 left it GREEN. A producer
+// that stopped emitting the lexical half would have satisfied every check here while falsifying the
+// table, the defect roster and the PR describing them.
+//
+// Carrying the categories as a LIST dissolves the second authority: multiplicity is now the length,
+// so it cannot disagree with the categories, and step0_occurrences_per_authored_reference is gone
+// rather than kept in sync.
 type Step0FamilyObservation
-  = FamilyObservedAsCategory { category: OccurrenceCategory }
+  = FamilyObservedAsCategories { categories: List<OccurrenceCategory> }
   | FamilyEmitsNoOccurrence { detail: NonEmptyStr }
 
 // THE FIXTURE LAW, AND IT COST TWO WRONG CLAIMS OF MINE TO STATE CORRECTLY. A CALIBRATION FIXTURE
@@ -198,22 +221,22 @@ type Step0FamilyObservation
 // here distinguishes them. That is recorded as a convergence, not as two observations.
 fn step0_family_observation(family: Step0ReferenceFamily) -> Step0FamilyObservation {
   match family {
-    TypeAnnotationReference => FamilyObservedAsCategory { category: TypeOccurrence }
+    TypeAnnotationReference => FamilyObservedAsCategories { categories: [TypeOccurrence] }
     GenericTypeArgumentReference => FamilyEmitsNoOccurrence {
       detail: "a type named as a GENERIC ARGUMENT produces no reference occurrence; the generic HEAD produces one, so `List<CalLocalArg>` yields a row for List and none for the argument. Established with a spelling declared in the CONSUMER module and used in exactly one position, because a spelling that is IMPORTED cannot answer this question -- see the import-list defect below" as NonEmptyStr
     }
-    TopLevelValueReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
-    FunctionValueReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
-    OrdinaryCallReference => FamilyObservedAsCategory { category: CallableOccurrence }
-    NullaryConstructorReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
+    TopLevelValueReference => FamilyObservedAsCategories { categories: [LexicalValueOccurrence] }
+    FunctionValueReference => FamilyObservedAsCategories { categories: [LexicalValueOccurrence] }
+    OrdinaryCallReference => FamilyObservedAsCategories { categories: [CallableOccurrence] }
+    NullaryConstructorReference => FamilyObservedAsCategories { categories: [LexicalValueOccurrence] }
     PayloadConstructorReference => FamilyEmitsNoOccurrence {
       detail: "a constructor applied in record-construction form produces no reference occurrence; the type in the surrounding signature produces one, so the row nearby is not evidence that the construction was seen" as NonEmptyStr
     }
-    VariantExpressionReference => FamilyObservedAsCategory { category: LexicalValueOccurrence }
+    VariantExpressionReference => FamilyObservedAsCategories { categories: [LexicalValueOccurrence] }
     VariantPatternReference => FamilyEmitsNoOccurrence {
       detail: "a variant named in a match pattern produces no reference occurrence; the scrutinee and the payload binder each produce one, so the arm is represented in the denominator by everything except the name that selects it" as NonEmptyStr
     }
-    QualifiedContainmentReference => FamilyObservedAsCategory { category: FieldOccurrence }
+    QualifiedContainmentReference => FamilyObservedAsCategories { categories: [LexicalValueOccurrence, FieldOccurrence] }
   }
 }
 
@@ -235,7 +258,8 @@ fn step0_occurrence_category_label(category: OccurrenceCategory) -> NonEmptyStr 
 // exists to prevent.
 fn step0_family_observation_key(observation: Step0FamilyObservation) -> String {
   match observation {
-    FamilyObservedAsCategory { category: category } => step0_occurrence_category_label(category: category) as String
+    FamilyObservedAsCategories { categories: categories } =>
+      join(categories |> map(category => step0_occurrence_category_label(category: category) as String), "+")
     FamilyEmitsNoOccurrence { detail: _ } => "(no occurrence emitted)"
   }
 }
@@ -247,10 +271,14 @@ fn step0_family_observation_key(observation: Step0FamilyObservation) -> String {
 type Step0FamilyDiscrimination
   = FamilyDiscriminatedAtInstrumentGrain
   | FamilyConvergedWith {
-      category: OccurrenceCategory
+      categories: List<OccurrenceCategory>
       convergent_family_count: Int
     }
   | FamilyNotObserved { detail: NonEmptyStr }
+  | FamilySplitAcrossUnjoinedOccurrences {
+      categories: List<OccurrenceCategory>
+      detail: NonEmptyStr
+    }
 
 fn step0_families_sharing_observation(observation: Step0FamilyObservation) -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
@@ -259,13 +287,25 @@ fn step0_families_sharing_observation(observation: Step0FamilyObservation) -> Li
   )
 }
 
+// A FAMILY THE INSTRUMENT SPLITS IS NOT A FAMILY IT DISCRIMINATES, AND CALLING IT ONE WAS RUNG
+// INFLATION. One authored reference arriving as two occurrences under two categories is only
+// "discriminated at instrument grain" if the two rows can be joined back to the ONE AUTHORED
+// SEMANTIC SLOT they came from. The row schema carries no parent occurrence and no semantic-slot
+// identity -- which this module's own grain statement already admits about its comparison key -- so
+// nothing can perform that join, and a consumer counting occurrences counts this family twice with
+// no way to discover it should not have. It is its own arm, below discrimination, not beside it.
 fn step0_family_discrimination(family: Step0ReferenceFamily) -> Step0FamilyDiscrimination {
   match step0_family_observation(family: family) {
     FamilyEmitsNoOccurrence { detail: detail } => FamilyNotObserved { detail: detail }
-    FamilyObservedAsCategory { category: category } => {
-      let sharing = count(step0_families_sharing_observation(observation: FamilyObservedAsCategory { category: category }))
-      if sharing > 1 {
-        FamilyConvergedWith { category: category, convergent_family_count: sharing }
+    FamilyObservedAsCategories { categories: categories } => {
+      let sharing = count(step0_families_sharing_observation(observation: FamilyObservedAsCategories { categories: categories }))
+      if count(categories) > 1 {
+        FamilySplitAcrossUnjoinedOccurrences {
+          categories: categories,
+          detail: "one authored reference of this family arrives as more than one occurrence, and no field of the census row identifies the authored slot they share, so the rows cannot be joined back into the reference that produced them" as NonEmptyStr
+        }
+      } else if sharing > 1 {
+        FamilyConvergedWith { categories: categories, convergent_family_count: sharing }
       } else {
         FamilyDiscriminatedAtInstrumentGrain
       }
@@ -291,32 +331,19 @@ type Step0CensusUnit
 
 data step0_census_declared_unit: Step0CensusUnit = ReferenceOccurrenceUnit
 
+// THE MAPPING IS DERIVED, AND THE FOLD THAT USED TO CHECK IT IS GONE WITH THE TABLE IT CHECKED.
+// This was a SECOND AUTHORED TABLE saying how many occurrences each family produces, joined to the
+// observation table by a fold -- and the join was too weak to do the job it was written for. It
+// compared blind-against-zero and observed-against-nonzero, so it could not tell ONE from TWO:
+// editing the qualified family's count from 2 to 1 left it green while contradicting everything
+// else in this module. DESIGN section 5 prefers construction over validation, and the construction
+// was available -- the count IS the length of the observed category list, so the two cannot
+// disagree and there is nothing left to check.
 fn step0_occurrences_per_authored_reference(family: Step0ReferenceFamily) -> Int {
-  match family {
-    TypeAnnotationReference => 1
-    GenericTypeArgumentReference => 0
-    TopLevelValueReference => 1
-    FunctionValueReference => 1
-    OrdinaryCallReference => 1
-    NullaryConstructorReference => 1
-    PayloadConstructorReference => 0
-    VariantExpressionReference => 1
-    VariantPatternReference => 0
-    QualifiedContainmentReference => 2
+  match step0_family_observation(family: family) {
+    FamilyEmitsNoOccurrence { detail: _ } => 0
+    FamilyObservedAsCategories { categories: categories } => count(categories)
   }
-}
-
-// THE TWO TABLES MUST AGREE, and this fold is the join that makes disagreement loud. A family the
-// observation table calls blind must map to zero occurrences, and a family it calls observed must
-// map to at least one. Two authored tables about one instrument is exactly the meaning fork DESIGN
-// section 3 forbids unless something checks them against each other.
-fn step0_unit_mapping_disagreements() -> List<Step0ReferenceFamily> {
-  step0_reference_family_roster |> filter(family =>
-    match step0_family_observation(family: family) {
-      FamilyEmitsNoOccurrence { detail: _ } => step0_occurrences_per_authored_reference(family: family) != 0
-      FamilyObservedAsCategory { category: _ } => step0_occurrences_per_authored_reference(family: family) == 0
-    }
-  )
 }
 
 // WHERE THE REMOVED-EDGE ROSTER COMES FROM, SETTLED BY MEASUREMENT RATHER THAN BY ARGUMENT -- AND
@@ -464,12 +491,32 @@ type Step0OutcomeClaim
   = OutcomeObservedOnSubject { outcome: Step0CalibrationOutcome }
   | OutcomeUnexercisedOnSubject { detail: NonEmptyStr }
 
+// AND THE SAME TREATMENT FOR THE OTHER TWO AXES, BECAUSE REVIEW 59402's FINDING WAS NEVER ABOUT THE
+// OUTCOME COLUMN IN PARTICULAR. It was about a column asserting something no execution joins. When
+// only the outcome axis was repaired, topology and multiplicity stayed UNCONDITIONAL FACTS -- and
+// the matrix carried its own counterexample: a row declaring topology SameCategoryHomonymInTwoModules
+// beside a detail saying no two modules in this fixture declare one spelling at one category. Rows
+// named ShadowedByLet where the fixture has no `let`, and claimed across-file multiplicity for a
+// homonym the fixture explicitly lacks. All of them satisfied family and branch totality, because
+// totality asks whether a row EXISTS and never whether its columns were reached.
+//
+// A REQUIRED TOPOLOGY IS NOT A CALIBRATED ONE. The unexercised arm keeps the coverage obligation --
+// it names the topology still owed -- so declaring one unexercised REDUCES the claim without losing
+// the requirement, which is the difference between an honest gap and a quiet deletion.
+type Step0TopologyClaim
+  = TopologyObservedOnSubject { topology: Step0BindingTopology }
+  | TopologyRequiredButUncalibrated { required_topology: Step0BindingTopology, detail: NonEmptyStr }
+
+type Step0MultiplicityClaim
+  = MultiplicityObservedOnSubject { multiplicity: Step0OccurrenceMultiplicity }
+  | MultiplicityRequiredButUncalibrated { required_multiplicity: Step0OccurrenceMultiplicity, detail: NonEmptyStr }
+
 type Step0CalibrationSubject
   = FamilyOccurrence {
       family: Step0ReferenceFamily
-      topology: Step0BindingTopology
+      topology: Step0TopologyClaim
       outcome: Step0OutcomeClaim
-      multiplicity: Step0OccurrenceMultiplicity
+      multiplicity: Step0MultiplicityClaim
     }
   | InstrumentManifestDefect { defect: Step0ManifestDefect }
   | BranchUnauthorableFromSource { missing_harness: NonEmptyStr }
@@ -484,23 +531,23 @@ type Step0CalibrationRow {
 // does not mean unrevisable: a row the witness proves wrong is corrected, and that correction is the
 // finding rather than a maintenance chore.
 data step0_calibration_matrix: List<Step0CalibrationRow> = [
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "every bound observation in this fixture resolves through the pool rather than through the consumer import list, so the listed-import branch is unreachable from this subject" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: GenericTypeArgumentReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: FunctionValueReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "every bound observation in this fixture resolves through the pool rather than through the consumer import list, so the listed-import branch is unreachable from this subject" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDispositionBoundListedImport },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: NullaryConstructorReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: PayloadConstructorReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantExpressionReference, topology: GloballyUniqueSpelling, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantPatternReference, topology: ShadowedByPatternBinder, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: QualifiedContainmentReference, topology: ResolvedThroughContainment, outcome: OutcomeUnexercisedOnSubject { detail: "the qualified pair CalChoice.CalLeft is split into two occurrences and neither authored spelling carries a dot, so the definer-resolvable branch this row named is unreachable from this subject (review 59402)" as NonEmptyStr }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundDefinerResolvable },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: PoolUniqueOnly, outcome: OutcomeObservedOnSubject { outcome: CalibratedBoundPoolCoincidence }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: SameCategoryHomonymInTwoModules, outcome: OutcomeUnexercisedOnSubject { detail: "no two modules in this fixture declare the same spelling in the same category, so the ambiguous branch is unreachable from this subject" as NonEmptyStr }, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDispositionAmbiguous },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: DeclaredInSameModule, outcome: OutcomeObservedOnSubject { outcome: CalibratedBoundPoolCoincidence }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionBoundPoolCoincidence },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByParameter, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: ShadowedByLet, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedInOneFile }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: CrossCategoryHomonym, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: SpellingRepeatedAcrossFiles }, claimed_branch: BranchDenominatorRowEmitted },
-  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: GloballyUniqueSpelling, outcome: OutcomeObservedOnSubject { outcome: CalibratedUnresolved }, multiplicity: SingleOccurrenceOfItsSpelling }, claimed_branch: BranchDispositionUnresolved },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "every bound observation in this fixture resolves through the pool rather than through the consumer import list, so the listed-import branch is unreachable from this subject" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDispositionBoundListedImport },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: GenericTypeArgumentReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: FunctionValueReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SpellingRepeatedInOneFile } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "every bound observation in this fixture resolves through the pool rather than through the consumer import list, so the listed-import branch is unreachable from this subject" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SpellingRepeatedInOneFile } }, claimed_branch: BranchDispositionBoundListedImport },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: NullaryConstructorReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: PayloadConstructorReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantExpressionReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: VariantPatternReference, topology: TopologyRequiredButUncalibrated { required_topology: ShadowedByPatternBinder, detail: "the only pattern binder in this fixture is `n`, which no module-scope declaration shares, so no shadowing occurs" as NonEmptyStr }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityRequiredButUncalibrated { required_multiplicity: SpellingRepeatedInOneFile, detail: "no control joins a second occurrence of this family's spelling in one file to execution; the repeated-spelling multiplicity is calibrated only for `cal_called`, whose two occurrences are asserted by a_call_head_and_a_bare_function_value_are_stamped_differently" as NonEmptyStr } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: QualifiedContainmentReference, topology: TopologyObservedOnSubject { topology: ResolvedThroughContainment }, outcome: OutcomeUnexercisedOnSubject { detail: "the qualified pair CalChoice.CalLeft is split into two occurrences and neither authored spelling carries a dot, so the definer-resolvable branch this row named is unreachable from this subject (review 59402)" as NonEmptyStr }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDispositionBoundDefinerResolvable },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: TopologyObservedOnSubject { topology: PoolUniqueOnly }, outcome: OutcomeObservedOnSubject { outcome: CalibratedBoundPoolCoincidence }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDispositionBoundPoolCoincidence },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: TopologyRequiredButUncalibrated { required_topology: SameCategoryHomonymInTwoModules, detail: "no two modules in this fixture declare the same spelling at the same category, so nothing in this subject exercises the one topology whose failure is SILENT -- this is the load-bearing coverage gap of the whole matrix, not a rounding error" as NonEmptyStr }, outcome: OutcomeUnexercisedOnSubject { detail: "no two modules in this fixture declare the same spelling in the same category, so the ambiguous branch is unreachable from this subject" as NonEmptyStr }, multiplicity: MultiplicityRequiredButUncalibrated { required_multiplicity: SpellingRepeatedAcrossFiles, detail: "this fixture contains no spelling occurring as a reference in two files, so across-file multiplicity is owed and unreached -- and the rows that claimed it did so for a homonym the fixture explicitly lacks" as NonEmptyStr } }, claimed_branch: BranchDispositionAmbiguous },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: TopologyRequiredButUncalibrated { required_topology: DeclaredInSameModule, detail: "the consumer module does declare its own types, but no control joins an OBSERVED occurrence to a same-module declaration, so the topology is required and not yet calibrated" as NonEmptyStr }, outcome: OutcomeObservedOnSubject { outcome: CalibratedBoundPoolCoincidence }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDispositionBoundPoolCoincidence },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: TopologyRequiredButUncalibrated { required_topology: ShadowedByParameter, detail: "no parameter in this fixture carries the spelling of a module-scope declaration, so no shadowing occurs and the topology is named as owed rather than reached" as NonEmptyStr }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityRequiredButUncalibrated { required_multiplicity: SpellingRepeatedInOneFile, detail: "no control joins a second occurrence of this family's spelling in one file to execution; the repeated-spelling multiplicity is calibrated only for `cal_called`, whose two occurrences are asserted by a_call_head_and_a_bare_function_value_are_stamped_differently" as NonEmptyStr } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TopLevelValueReference, topology: TopologyRequiredButUncalibrated { required_topology: ShadowedByLet, detail: "this fixture contains no `let` at all, so the topology cannot occur in it" as NonEmptyStr }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityRequiredButUncalibrated { required_multiplicity: SpellingRepeatedInOneFile, detail: "no control joins a second occurrence of this family's spelling in one file to execution; the repeated-spelling multiplicity is calibrated only for `cal_called`, whose two occurrences are asserted by a_call_head_and_a_bare_function_value_are_stamped_differently" as NonEmptyStr } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: TypeAnnotationReference, topology: TopologyRequiredButUncalibrated { required_topology: CrossCategoryHomonym, detail: "no spelling in this fixture is declared twice at different categories, so nothing here exercises a binding decided by category" as NonEmptyStr }, outcome: OutcomeUnexercisedOnSubject { detail: "the fixture run produces no observation carrying this disposition, so this row calibrates the denominator branch only" as NonEmptyStr }, multiplicity: MultiplicityRequiredButUncalibrated { required_multiplicity: SpellingRepeatedAcrossFiles, detail: "this fixture contains no spelling occurring as a reference in two files, so across-file multiplicity is owed and unreached -- and the rows that claimed it did so for a homonym the fixture explicitly lacks" as NonEmptyStr } }, claimed_branch: BranchDenominatorRowEmitted },
+  Step0CalibrationRow { subject: FamilyOccurrence { family: OrdinaryCallReference, topology: TopologyObservedOnSubject { topology: GloballyUniqueSpelling }, outcome: OutcomeObservedOnSubject { outcome: CalibratedUnresolved }, multiplicity: MultiplicityObservedOnSubject { multiplicity: SingleOccurrenceOfItsSpelling } }, claimed_branch: BranchDispositionUnresolved },
   Step0CalibrationRow { subject: InstrumentManifestDefect { defect: RaggedManifest }, claimed_branch: BranchCensusRefusedRaggedManifest },
   Step0CalibrationRow { subject: InstrumentManifestDefect { defect: RepeatedSourcePath }, claimed_branch: BranchCensusRefusedNonUniquePath },
   Step0CalibrationRow { subject: InstrumentManifestDefect { defect: EntryNamesNoSuppliedSource }, claimed_branch: BranchCensusRefusedEntryNamesNoSuppliedSource },
@@ -523,34 +570,27 @@ data step0_calibration_matrix: List<Step0CalibrationRow> = [
 // roster is a closed type: adding an arm with no row that claims it makes this answer nonempty, and
 // the witness asserting it empty goes red. It is an identity join between two authored rosters and
 // not a count comparison -- a count equality would be satisfied by a row claiming the wrong branch.
+// THE JOIN IS CONSTRUCTOR EQUALITY. It was a rendered LABEL, and a label is a lossy projection of
+// the thing it describes: both sides ran through the same renderer, so two arms sharing a label
+// would let one row satisfy the check for a branch nobody claims. That is the cardinality defect
+// one level subtler -- a projection standing in for the constructor rather than a count standing in
+// for a set -- and it defeats exactly the substitution this join exists to catch.
 fn step0_unclaimed_producer_branches() -> List<Step0CensusProducerBranch> {
   step0_census_producer_branch_roster |> filter(branch =>
-    count(step0_calibration_matrix |> filter(row =>
-      (step0_census_producer_branch_label(branch: row.claimed_branch) as String)
-        == (step0_census_producer_branch_label(branch: branch) as String)
-    )) == 0
+    count(step0_calibration_matrix |> filter(row => row.claimed_branch == branch)) == 0
   )
 }
 
-fn step0_reference_family_ordinal(family: Step0ReferenceFamily) -> Int {
-  match family {
-    TypeAnnotationReference => 0
-    GenericTypeArgumentReference => 1
-    TopLevelValueReference => 2
-    FunctionValueReference => 3
-    OrdinaryCallReference => 4
-    NullaryConstructorReference => 5
-    PayloadConstructorReference => 6
-    VariantExpressionReference => 7
-    VariantPatternReference => 8
-    QualifiedContainmentReference => 9
-  }
-}
-
+// step0_reference_family_ordinal IS GONE, AND ITS ABSENCE IS THE POINT. It was a hand-authored
+// integer per family, used only to compare two families for equality -- so a family's identity was
+// carried by a number a human kept in sync, and two families sharing an ordinal by a typo would
+// have been indistinguishable to every join built on it. Making that safe needs an injectivity
+// witness over the ordinal map, which is strictly more machinery than the typed equality that was
+// available all along.
 fn step0_row_claims_family(row: Step0CalibrationRow, family: Step0ReferenceFamily) -> Bool {
   match row.subject {
     FamilyOccurrence { family: row_family, topology: _, outcome: _, multiplicity: _ } =>
-      step0_reference_family_ordinal(family: row_family) == step0_reference_family_ordinal(family: family)
+      row_family == family
     InstrumentManifestDefect { defect: _ } => false
     BranchUnauthorableFromSource { missing_harness: _ } => false
   }
@@ -615,7 +655,8 @@ fn step0_unobserved_families() -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
     match step0_family_discrimination(family: family) {
       FamilyNotObserved { detail: _ } => true
-      FamilyConvergedWith { category: _, convergent_family_count: _ } => false
+      FamilyConvergedWith { categories: _, convergent_family_count: _ } => false
+      FamilySplitAcrossUnjoinedOccurrences { categories: _, detail: _ } => false
       FamilyDiscriminatedAtInstrumentGrain => false
     }
   )
@@ -624,7 +665,8 @@ fn step0_unobserved_families() -> List<Step0ReferenceFamily> {
 fn step0_converged_families() -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
     match step0_family_discrimination(family: family) {
-      FamilyConvergedWith { category: _, convergent_family_count: _ } => true
+      FamilyConvergedWith { categories: _, convergent_family_count: _ } => true
+      FamilySplitAcrossUnjoinedOccurrences { categories: _, detail: _ } => false
       FamilyNotObserved { detail: _ } => false
       FamilyDiscriminatedAtInstrumentGrain => false
     }
@@ -635,8 +677,52 @@ fn step0_discriminated_families() -> List<Step0ReferenceFamily> {
   step0_reference_family_roster |> filter(family =>
     match step0_family_discrimination(family: family) {
       FamilyDiscriminatedAtInstrumentGrain => true
-      FamilyConvergedWith { category: _, convergent_family_count: _ } => false
+      FamilyConvergedWith { categories: _, convergent_family_count: _ } => false
+      FamilySplitAcrossUnjoinedOccurrences { categories: _, detail: _ } => false
       FamilyNotObserved { detail: _ } => false
+    }
+  )
+}
+
+fn step0_split_families() -> List<Step0ReferenceFamily> {
+  step0_reference_family_roster |> filter(family =>
+    match step0_family_discrimination(family: family) {
+      FamilySplitAcrossUnjoinedOccurrences { categories: _, detail: _ } => true
+      FamilyConvergedWith { categories: _, convergent_family_count: _ } => false
+      FamilyNotObserved { detail: _ } => false
+      FamilyDiscriminatedAtInstrumentGrain => false
+    }
+  )
+}
+
+// THE ROWS WHOSE TOPOLOGY OR MULTIPLICITY COLUMN IS OWED RATHER THAN REACHED. These are the folds
+// the standing consumes so that "every family has a row" can never again be reported as four-axis
+// calibration. A row exists for every family; that says nothing about whether this subject exercised
+// the topology or the multiplicity the row names.
+fn step0_rows_with_uncalibrated_topology() -> List<Step0CalibrationRow> {
+  step0_calibration_matrix |> filter(row =>
+    match row.subject {
+      FamilyOccurrence { family: _, topology: topology, outcome: _, multiplicity: _ } =>
+        match topology {
+          TopologyRequiredButUncalibrated { required_topology: _, detail: _ } => true
+          TopologyObservedOnSubject { topology: _ } => false
+        }
+      InstrumentManifestDefect { defect: _ } => false
+      BranchUnauthorableFromSource { missing_harness: _ } => false
+    }
+  )
+}
+
+fn step0_rows_with_uncalibrated_multiplicity() -> List<Step0CalibrationRow> {
+  step0_calibration_matrix |> filter(row =>
+    match row.subject {
+      FamilyOccurrence { family: _, topology: _, outcome: _, multiplicity: multiplicity } =>
+        match multiplicity {
+          MultiplicityRequiredButUncalibrated { required_multiplicity: _, detail: _ } => true
+          MultiplicityObservedOnSubject { multiplicity: _ } => false
+        }
+      InstrumentManifestDefect { defect: _ } => false
+      BranchUnauthorableFromSource { missing_harness: _ } => false
     }
   )
 }
@@ -659,18 +745,26 @@ type Step0CalibrationStanding
   | CalibrationBlindToFamilies {
       unobserved_family_count: Int
       converged_family_count: Int
+      split_family_count: Int
       discriminated_family_count: Int
       unauthorable_branch_count: Int
       denominator_defect_count: Int
+      uncalibrated_topology_row_count: Int
+      uncalibrated_multiplicity_row_count: Int
     }
   | CalibrationCappedByConvergence {
       converged_family_count: Int
+      split_family_count: Int
       discriminated_family_count: Int
       unauthorable_branch_count: Int
+      uncalibrated_topology_row_count: Int
+      uncalibrated_multiplicity_row_count: Int
       capability: Step0DiscriminationCapability
     }
   | CalibrationDiscriminatesEveryFamily {
       unauthorable_branch_count: Int
+      uncalibrated_topology_row_count: Int
+      uncalibrated_multiplicity_row_count: Int
     }
 
 fn step0_calibration_standing() -> Step0CalibrationStanding {
@@ -684,17 +778,27 @@ fn step0_calibration_standing() -> Step0CalibrationStanding {
     CalibrationBlindToFamilies {
       unobserved_family_count: count(unobserved),
       converged_family_count: count(converged),
+      split_family_count: count(step0_split_families()),
       discriminated_family_count: count(step0_discriminated_families()),
       unauthorable_branch_count: step0_unauthorable_branch_count(),
-      denominator_defect_count: count(step0_denominator_defects())
+      denominator_defect_count: count(step0_denominator_defects()),
+      uncalibrated_topology_row_count: count(step0_rows_with_uncalibrated_topology()),
+      uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity())
     }
   } else {
     match first(converged) {
-      Absent => CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: step0_unauthorable_branch_count() }
+      Absent => CalibrationDiscriminatesEveryFamily {
+        unauthorable_branch_count: step0_unauthorable_branch_count(),
+        uncalibrated_topology_row_count: count(step0_rows_with_uncalibrated_topology()),
+        uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity())
+      }
       Present { value: worst } => CalibrationCappedByConvergence {
         converged_family_count: count(converged),
+        split_family_count: count(step0_split_families()),
         discriminated_family_count: count(step0_discriminated_families()),
         unauthorable_branch_count: step0_unauthorable_branch_count(),
+        uncalibrated_topology_row_count: count(step0_rows_with_uncalibrated_topology()),
+        uncalibrated_multiplicity_row_count: count(step0_rows_with_uncalibrated_multiplicity()),
         capability: step0_family_discrimination_capability(family: worst)
       }
     }

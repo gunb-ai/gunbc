@@ -759,10 +759,12 @@ test fn import_dependence_is_unjudged_because_the_contract_says_no_producer_inha
   }
 }
 
-// THE CONTRACT'S OWN STANDING, executed rather than read: the roster is the frozen six families and
-// the four conservation laws are present, so a later census cannot quietly drop the family that
-// fails silently.
-// SET INCLUSION OVER IDENTITIES, NOT CARDINALITY, AND THE COUNT IT REPLACES IS WHY. This asserted
+// THE CONTRACT'S OWN STANDING, executed rather than read: every family on the roster and all four
+// conservation laws are present, so a later census cannot quietly drop the family that fails
+// silently. The roster is the closed TEN arms -- an earlier version of this sentence said "the
+// frozen six families" two lines above the paragraph explaining that it had widened to ten, which
+// is the same stale-count defect the paragraph is about, committed in its own header.
+// SET INCLUSION OVER CONSTRUCTOR IDENTITIES, NOT CARDINALITY, AND THE COUNT IT REPLACES IS WHY. This asserted
 // three literals -- 6 families, 4 laws, 10 fields -- and a count cannot express the thing it was
 // written to guard. It fires when a family is ADDED, which is safe, and passes when one family is
 // SWAPPED for another, which is exactly the silent drop the contract exists to prevent. It went red
@@ -773,25 +775,28 @@ test fn import_dependence_is_unjudged_because_the_contract_says_no_producer_inha
 // over IDENTITIES, adding passes, renaming fails, dropping fails and swapping fails. The receipt
 // fields are asserted the same way, by name, because a receipt missing its resolver policy or its
 // completeness standing is a receipt that can be silently wrong about which oracle answered it.
+// AND THE JOIN IS CONSTRUCTOR EQUALITY, NOT A RENDERED LABEL, WHICH THE FIRST VERSION OF THIS FIX
+// GOT WRONG. It compared `label(candidate) == label(required)`, running BOTH SIDES THROUGH THE SAME
+// RENDERER -- so the check was over descriptions, not identities, and its failure mode is the shared
+// corruption case: if two arms ever carry the same label, one roster member satisfies both checks
+// and a dropped constructor stays invisible. That is the cardinality defect one level subtler --
+// not a count standing in for a set, but a lossy projection standing in for the constructor -- and
+// it defeats the very substitution this control was rewritten to catch.
+//
+// The labels stay, for RENDERING. They are no longer the identity authority.
 fn contract_carries_family(family: Step0ReferenceFamily) -> Bool {
-  count(step0_binding_provenance_receipt_contract.reference_families |> filter(candidate =>
-    (step0_reference_family_label(family: candidate) as String)
-      == (step0_reference_family_label(family: family) as String)
-  )) > 0
+  count(step0_binding_provenance_receipt_contract.reference_families
+    |> filter(candidate => candidate == family)) > 0
 }
 
 fn contract_carries_law(law: Step0CensusConservationLaw) -> Bool {
-  count(step0_binding_provenance_receipt_contract.conservation_laws |> filter(candidate =>
-    (step0_conservation_law_statement(law: candidate) as String)
-      == (step0_conservation_law_statement(law: law) as String)
-  )) > 0
+  count(step0_binding_provenance_receipt_contract.conservation_laws
+    |> filter(candidate => candidate == law)) > 0
 }
 
 fn contract_carries_receipt_field(field: Step0CensusReceiptField) -> Bool {
-  count(step0_binding_provenance_receipt_contract.receipt_fields |> filter(candidate =>
-    (step0_census_receipt_field_reason(field: candidate) as String)
-      == (step0_census_receipt_field_reason(field: field) as String)
-  )) > 0
+  count(step0_binding_provenance_receipt_contract.receipt_fields
+    |> filter(candidate => candidate == field)) > 0
 }
 
 test fn the_binding_provenance_contract_carries_the_frozen_roster_and_laws() -> Bool {
