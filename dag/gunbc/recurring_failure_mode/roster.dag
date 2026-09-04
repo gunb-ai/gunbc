@@ -96,6 +96,7 @@ import gunbc.recurring_failure_mode.one_dissolution_event_recorded_twice_or_not_
 import gunbc.recurring_failure_mode.exact_duplicate_match_arm_not_refused { exact_duplicate_match_arm_not_refused }
 import gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement { premise_that_a_shared_subject_means_disagreement }
 import gunbc.recurring_failure_mode.live_argument_threaded_past_the_arm_that_decides { live_argument_threaded_past_the_arm_that_decides }
+import gunbc.recurring_failure_mode.summary_counters_aggregate_over_a_disposition_set_the_verdict_is_not_in { summary_counters_aggregate_over_a_disposition_set_the_verdict_is_not_in }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -183,4 +184,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   exact_duplicate_match_arm_not_refused,
   premise_that_a_shared_subject_means_disagreement,
   live_argument_threaded_past_the_arm_that_decides,
+  summary_counters_aggregate_over_a_disposition_set_the_verdict_is_not_in,
 ]
