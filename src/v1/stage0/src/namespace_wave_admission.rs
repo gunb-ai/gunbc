@@ -884,181 +884,60 @@ pub struct TransitionAdmission {
 /// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
-const CALL_REACHABILITY_GROUNDING_LABEL: &str =
-    "call-reachability grounding gunbc#10156 2026-09-03";
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.bmc_onboarding_quarantine_witness_test",
-            in_declaration: "onboarding_quarantine_lexemes",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+/// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
+/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
+/// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
+///
+/// TWENTY-THIRD DISSOLUTION (2026-09-03). Six incoming rows are removed by their own trigger, and
+/// each was checked against the base before the deletion rather than after a run reported it:
+///
+/// - the four `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows. #10028 merged
+///   as 8f8e513a23 and main declares `match_pattern_is_irrefutable` in v1.std.core
+///   (src/v1/00_core.dag), with v1.compiler.emit_rust referencing it from there;
+/// - the two `recurring_failure_mode_roster` rows. Main declares that datum in
+///   gunbc.recurring_failure_mode.roster (dag/gunbc/recurring_failure_mode/roster.dag), which is the
+///   target the rows name, so gunbc.design_ledgers now resolves the spelling there.
+///
+/// In both cases the base already binds the spelling to the target, so the delta is not producible
+/// and the row can only be stale.
+///
+/// FIVE CONFLICTS ON THIS ROSTER, FOUR CARRYING ALREADY-CONSUMED ROWS -- 47 for gunbc#10106, 17 for
+/// gunbc#10156, then these six. The first two were unioned in on the reasoning that incoming rows
+/// should be kept, and each cost a required run to discover they were closed. The rule was right
+/// both times and its INPUT was guessed.
+///
+/// SO THE RULE IS OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict here, keep the rows THIS
+/// branch authored whose transitions are open, and for every incoming row READ THE BASE -- does it
+/// already bind that spelling to that target? -- before carrying it. Consumption is decidable from
+/// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
+/// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
+///
+/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
+/// `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
+/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
+/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
+/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
+/// a specific product's helper to obtain an equality would invert the layering. The spelling is
+/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
+/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
+/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
+/// deletion by the next roster-touching change.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "gunbc#10218 identity-equality re-home: PhysicalAssetIdentity comparison moves to \
+            the module that owns the type",
+    subject: AdmissionSubject::Binding {
+        module: "product.printed_chassis.manufacturing_manifest",
+        in_declaration: "scan_printer_assets",
+        spelling: "physical_asset_identity_eq",
+        target: "product.placement_supply",
     },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "edit_locus_nodes_for_module",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "module_path_for_decl",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "effect_reach_classification_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "bind_g2_root",
-            spelling: "tail_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_home_decls_present",
-            spelling: "decls_in_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "literal_path_carriers_from_atoms",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_edges",
-            spelling: "call_reachable_decls_from_root",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "callees_from_atom_scan",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

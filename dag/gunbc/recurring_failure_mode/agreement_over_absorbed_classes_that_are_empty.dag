@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.agreement_over_absorbed_classes_that_are_empty
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data agreement_over_absorbed_classes_that_are_empty: RecurringFailureMode = RecurringFailureMode {
+  identity: "agreement_over_absorbed_classes_that_are_empty" as NonEmptyStr,
+
+  receipts: [
+    "**two instruments agree because the classes one of them ABSORBS happen to be empty** (two counters, reports or readers are compared, they return the same NUMBER, and the agreement is taken as evidence that they measure the same thing. ",
+
+    "They do not. ",
+
+    "One of them ranges over a WIDER POPULATION -- it additionally absorbs failure classes the other excludes -- and the two coincide exactly while those absorbed classes are EMPTY, which on a healthy system is most of the time. ",
+
+    "**NEITHER READING IS WRONG, WHICH IS WHAT SEPARATES THIS FROM ITS NEAREST NEIGHBOUR.** `disagreement_census_blind_to_agreed_wrong` is about two readers answering the same WRONG thing, where the defect is in the readings; here BOTH INSTRUMENTS ARE CORRECT ABOUT THEIR OWN SUBJECT and the defect is in the JOIN a reader performs between them. ",
+
+    "Nothing either instrument reports is false, so no amount of auditing either one finds it. ",
+
+    "**AND IT IS WORSE THAN DISAGREEMENT, NOT MILDER: disagreement is visible on the FIRST comparison, while this is invisible until the day one of the absorbed classes is non-empty -- so the evidence for the conflation arrives only at the moment it is doing damage.** SPECIMEN, 2026-09-02/03. ",
+
+    "One word, `failed`, was emitted by four sites of one binary carrying four subjects: lane PHASES, required-floor CLAIMS, a package LIST, and DISCOVERY ROWS. ",
+
+    "The discovery counter is not a narrower or wider spelling of the claim population -- it is a DIFFERENT population that additionally absorbs `NotBool`, `RuntimeError`, `HostToolUnresolved`, timeout, panic and `NotAttempted`. ",
+
+    "THOSE ARE PRECISELY THE CLASSES THAT ARE EMPTY ON A GOOD DAY, so the two counters agree on every ordinary run and diverge exactly when something has gone wrong in a way nobody is watching for. ",
+
+    "THE PROVENANCE IS THE ARGUMENT FOR A WALL RATHER THAN FOR MORE CARE: this fork was HIT AND CORRECTLY REPAIRED TWICE, by two independent authors, each at their own surface -- one lifting six fields onto a headline ledger line, one separating answered-wrong from never-answered after a session was dispatched against a regression that did not exist -- and each repair left the word forked everywhere else, because neither author had any signal to look sideways. ",
+
+    "Diligence did not catch it and could not have; the repair is a vocabulary-level split at the producer, which a separate lane owns. ",
+
+    "**RECOGNITION RULE, AND IT IS CHEAP: when two instruments AGREE, ask whether their subjects are the same POPULATION or merely the same NUMBER, and check the agreement on a run where the absorbed classes are NON-EMPTY. ",
+
+    "An agreement observed only over empty absorbed classes establishes nothing.** The corollary for authors is the same fact stated forward: a counter's name is not its subject, and two counters sharing a name is evidence about the naming surface rather than about what was counted.)",
+  ],
+
+  evidence: [],
+}

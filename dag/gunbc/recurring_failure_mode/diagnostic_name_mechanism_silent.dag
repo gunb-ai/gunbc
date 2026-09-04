@@ -1,0 +1,74 @@
+module gunbc.recurring_failure_mode.diagnostic_name_mechanism_silent
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data diagnostic_name_mechanism_silent: RecurringFailureMode = RecurringFailureMode {
+  identity: "diagnostic_name_mechanism_silent" as NonEmptyStr,
+
+  receipts: [
+    "diagnostic name accurate about the situation, silent about the mechanism (a diagnostic's NAME describes the state it was raised in faithfully and says nothing about WHICH PREDICATE produced it, so a reader who treats the name as a cause builds a coherent story with no load-bearing contact with the code. ",
+
+    "Nothing in the name is wrong, which is why review reads past it. ",
+
+    "THREE RECEIPTS IN ONE NIGHT FROM THREE READERS, provenance stated per receipt because a row about untraced names must not itself rest on an untraced relay. ",
+
+    "FIRST, measured by this row's author, and it leads because the reader was the author of the story: rustc labels reading `expected Rc<Vector<i64>>, found String` at 49 sites plus 2 reversed, from which a representation fork was inferred -- the model type `Symbol` rendering as `String` in parameter position and a vector in field position -- and published. ",
+
+    "Measured: `Symbol` renders CONSISTENTLY as `String`, `Connective.Atom` carries `identity: String`, and the `.dag` is well-typed with the same declared type on both sides. ",
+
+    "The published mechanism was wrong; the label was a faithful description of a mismatch the type-checker had computed. ",
+
+    "AND THE CHECK FAILED THE SAME WAY THE READING DID, which is the most instructive part rather than decoration: a grep for the printed type name returned zero and zero was read as absence, when the emitted source spells `Rc<Vec<i64>>` and `lib.rs` carries `use im::Vector as Vec`, so rustc was printing the resolved underlying name. ",
+
+    "A name was read as a fact about the tree twice in one investigation, once in the diagnostic and once in the refutation of it. ",
+
+    "WHAT THE 49 SITES ACTUALLY ARE, and it is UNCHASED: `Rc<Vec<i64>>` is how `List<Int>` renders, so they read expected `List<Int>` found `String` -- an ordinary mechanism, and a real one. ",
+
+    "The amendment closed the wrong explanation, not the defect. ",
+
+    "SECOND, reported by quick-bat-372 and independently verified: `MethodNotFound` names the situation correctly and does not say which predicate gates it -- `method_existence_decision` gates on `kernel_profile_lookup`, so a fully resolved USER product with no kernel profile answers `MethodExistenceUndecided`. ",
+
+    "THIRD, same provenance: `FieldNotFound` names a concept never emitted for field ACCESS at all, established by exhausting its three construction sites -- two pattern bindings and one guarded by a record literal's field names. ",
+
+    "WHY IT EARNS A ROW: two of the three would have shipped as PERMANENTLY-GREEN WITNESS ARMS, an assertion that a wall fired over a wall that cannot fire for that input, which is section 4b's decoration-cited-as-coverage reached by a route no other row names -- and all three were caught by reading the PRODUCER rather than by review. ",
+
+    "WHAT IS NOT CLAIMED: three instances in one night is a suggestive rate and not a base rate; all three surfaced while several lanes were unusually deep in diagnostic populations, so the frequency is a property of that work rather than of the corpus. ",
+
+    "Recognition rule: before treating a diagnostic name as a mechanism, read the function that produces it and find the predicate that gates it; if you cannot name that predicate, you have a situation and not a cause. ",
+
+    "A grep for the type name is a cheap first pass, not a sufficient check: rustc prints resolved names while source spells aliases, so `use X as Y` defeats the search in both directions and a zero can be confident and wrong. ",
+
+    "Read the producer. ",
+
+    "AMENDED 2026-08-28 -- THE PRODUCER'S OWN PROSE IS ALSO A NAME, so `read the producer` is necessary and NOT SUFFICIENT. ",
+
+    "The three receipts above are all DIAGNOSTIC names; the same failure reaches COMMENTS, and it is harder to see there because a comment is where a reader goes to ESCAPE the name. ",
+
+    "Two variants, and the ranking is the whole point. ",
+
+    "STALE prose is FALSIFIABLE BY READING: what it says is contradicted by the code as it stands, so a reader who checks the producer can always catch it. ",
+
+    "THAT IS NOT THE SAME AS SELF-CORRECTING, and an earlier revision of this row said it was -- `it rots when the code moves, and whoever next touches that code notices` -- which THIS ROW'S OWN SECOND RECEIPT REFUTES (review 57329): the deleted/still-here contradiction is LIVE in the tree today, and it was found by a reader who had gone there for an unrelated reason, NOT by the next person to touch the code. ",
+
+    "So the ranking below is about FALSIFIABILITY and not about correction rate. ",
+
+    "Stale prose persists exactly as long as nobody reads it, which is indefinitely; what makes it the lesser of the two is that a reader who does check is guaranteed to see the disagreement. ",
+
+    "WRONG-MECHANISM-CORRECT-CONCLUSION is NOT self-limiting: nothing it says is falsified by moving the code, so it survives every refactor, and the defect it names really existing READS AS CONFIRMATION of the explanation it gives -- load-bearing misinformation with a correct headline, routing every future reader to the wrong repair. ",
+
+    "RECEIPT, read independently by three readers rather than relayed: the comment above the floor's live-tree scan says its two computations `cannot agree except by coincidence` because one is a syntactic scan and the other falls through to `effect_reach_derived_reads_live_tree_for_entry`, a SEMANTIC reachability derivation -- locating the cause in the import graph. ",
+
+    "Read the control flow: `reads_live_tree_effective` calls `parse_entry_live_tree_disposition` first, and an UNDECLARED file reaches `Ok(declared.unwrap_or(true))`, so the function RETURNS before the derivation is consulted. ",
+
+    "The largest and simplest disagreement class is decided before the import graph is reached, and the mechanism the comment names has nothing to do with it. ",
+
+    "A SECOND RECEIPT FROM THE SAME PARAGRAPH, in the stale variant: it states the floor's copy is DELETED rather than reconciled, in the past tense, four lines above a section headed WHY IT IS STILL HERE explaining that the scan is live. ",
+
+    "RECOGNITION RULE, extending the one above rather than replacing it: THE CODE PATH IS THE FACT, and every sentence around it -- in a note, in a doc, or in the producer's own comment -- is commentary that may be stale or may be wrong about WHY. ",
+
+    "And having reached the producer, do not stop at the sentence that confirms your framing: this amendment exists because a reader quoted IT IS NO WALL from such a comment and dropped `and it is a partial classifier, not an enforcement` from four lines below, inside the same citation.)",
+  ],
+
+  evidence: [],
+}

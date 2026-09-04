@@ -56,6 +56,48 @@ type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
 
+// WHO REPAIRS A CONCURRENTLY-DIVERGED PROJECTION IS NOT ITS COMMIT POLICY. Both kinds below stay
+// committed, stay in the generated-artifact drift population, and stay protected by the refusing
+// merge driver. This axis answers only who pays to derive the merged authorities after that driver
+// has done its job.
+//
+// The design ledgers are the exceptional pair because their authority is the small, authored
+// roster append while their projection is unbounded (docs/design-failure-modes.md is 436 KiB at
+// this ruling). Requiring every lane to run the whole-tree regenerator before it can finish an
+// otherwise mechanical merge puts that large shared projection on every lane's critical path.
+// heal-generated-artifacts already checks out the pushed branch head, derives every committed
+// artifact from that head's authorities, commits the result, and dispatches a revalidation bound
+// to the healed SHA. Therefore a lane may commit the driver-left ours bytes PROVISIONALLY for only
+// this pair, after staging the explicit unmerged path, and let that one actuator replace them.
+// The required generated-artifact phase remains unchanged: it may red on H0 and must agree on H1.
+//
+// Every other artifact retains AuthorRegeneratesBeforeMerge. In particular this is not inferred
+// from ProjectDocumentation: DESIGN.md and ROADMAP.md do not share the ledger's append/content
+// asymmetry, and widening by consumer would silently move future documents onto a repair route
+// nobody judged for them.
+type ConcurrentDivergenceRepair
+  = AuthorRegeneratesBeforeMerge
+  | HealRegeneratesAfterProvisionalMerge
+
+fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRepair {
+  match a {
+    DesignFailureModesArtifact => HealRegeneratesAfterProvisionalMerge
+    DesignRungDropsArtifact => HealRegeneratesAfterProvisionalMerge
+    _ => AuthorRegeneratesBeforeMerge
+  }
+}
+
+fn heal_regenerated_after_provisional_merge_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => match concurrent_divergence_repair(a: a) {
+    AuthorRegeneratesBeforeMerge => false
+    HealRegeneratesAfterProvisionalMerge => true
+  })
+}
+
+fn heal_regenerated_after_provisional_merge_paths() -> List<String> {
+  map(heal_regenerated_after_provisional_merge_artifacts(), a => artifact_path(a: a))
+}
+
 // THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its
 // path from a directory and an entry name -- some literal, some computed from a spec host or a plan
 // slug -- and the joined string was the only thing this module published. A consumer that must LIST

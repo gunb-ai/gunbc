@@ -198,10 +198,10 @@ fn idempotent_operation_run_via_test_claim(claim: TestClaim) -> TestClaimRun<Nod
 
 fn idempotent_operation_generated_run(row: Outcome<TestClaim>) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
   match row {
-    Accepted { value: claim, diagnostics: None } =>
+    Accepted { value: claim, diagnostics: ds } =>
       Accepted {
         value: idempotent_operation_run_via_test_claim(claim: claim),
-        diagnostics: None
+        diagnostics: ds
       }
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }
@@ -236,7 +236,7 @@ fn idempotent_operation_generated_run(row: Outcome<TestClaim>) -> Outcome<TestCl
 // establishes nothing, so `Rejected` now answers false where it used to answer true.
 fn idempotent_operation_run_non_pass(row: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match row {
-    Accepted { value: run, diagnostics: None } =>
+    Accepted { value: run, diagnostics: _ } =>
       verdict_establishes_divergence(v: run.verdict)
     Rejected { diagnostics: _ } => false
   }

@@ -17,7 +17,8 @@ import gunbc.generated_artifact {
   artifact_commit_policy,
   CommitRequired, NotCommitted,
   GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
-  committed_generated_artifacts
+  committed_generated_artifacts,
+  heal_regenerated_after_provisional_merge_paths
 }
 import gunbc.generated_workflow_provenance {
   generated_workflow_provenance_header,
@@ -98,7 +99,10 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
-    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command))
+    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(
+      regen_command: ci_heal_author_commit_regen_command,
+      heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+    ))
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
     CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
       CouponProgramGenerated { content } => artifact_generated(content: content)
