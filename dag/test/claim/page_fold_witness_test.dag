@@ -10,9 +10,9 @@ import std.page_fold {
   PageFoldOutcome, PagesClosed, PagesRefused,
   PageFoldDemand, DemandPage, DemandNone,
   page_fold_begin, page_fold_observe, page_fold_demand,
-  page_fold_run, page_fold_refusal_key, page_cursor_eq
+  page_fold_run, page_fold_live, page_fold_refusal_key, page_cursor_eq
 }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, uri_wire }
 import extdeps.standards.rfc_8288 {
   LinkFieldValueParse, LinkFieldValueParsed, LinkValueMissingAngleBrackets,
   RelNext, RelPrev, RelLast,
@@ -164,7 +164,7 @@ fn github_next_from_header(raw: String) -> String {
         ContinuationClosed => "closed"
         ContinuationNext { cursor: cur } =>
           match cur {
-            LinkNext { target: u } => u.locator as String
+            LinkNext { target: u } => uri_wire(uri: u) as String
             OffsetPage { page: p } => "offset"
             OpaqueToken { token: t } => "token"
           }
@@ -221,12 +221,12 @@ test fn github_link_header_drives_a_bounded_fold_to_closure_witness() -> Bool {
   ]
   let closed = page_fold_run(
     subject: subject(), bound: PageBound { max_pages: 10 },
-    first: LinkNext { target: Uri { scheme: Https, locator: "https://api.github.com/r/1/issues?page=1" as NonEmptyStr } },
+    first: LinkNext { target: Uri { scheme: Https, locator: "api.github.com/r/1/issues?page=1" as NonEmptyStr } },
     pages: pages
   )
   let starved = page_fold_run(
     subject: subject(), bound: PageBound { max_pages: 1 },
-    first: LinkNext { target: Uri { scheme: Https, locator: "https://api.github.com/r/1/issues?page=1" as NonEmptyStr } },
+    first: LinkNext { target: Uri { scheme: Https, locator: "api.github.com/r/1/issues?page=1" as NonEmptyStr } },
     pages: pages
   )
 
@@ -256,7 +256,7 @@ test fn github_offset_advance_witness() -> Bool {
     OffsetAdvanceOnNonOffsetCursor { shape: s } => false
   }
   let refused = match github_next_offset_cursor(
-    current: LinkNext { target: Uri { scheme: Https, locator: "https://api.github.com/x" as NonEmptyStr } }
+    current: LinkNext { target: Uri { scheme: Https, locator: "api.github.com/x" as NonEmptyStr } }
   ) {
     OffsetAdvanced { cursor: c } => false
     OffsetAdvanceOnNonOffsetCursor { shape: s } => s as String == "link_next"
@@ -293,4 +293,133 @@ test fn page_fold_demand_tracks_the_open_cursor_witness() -> Bool {
          b: OffsetPage { page: 7 }
        )
     && demand_key(d: page_fold_demand(state: s2)) == "none"
+}
+
+// REVIEW 60022, FINDING 1 -- A SPACE-SEPARATED rel IS ORDINARY VALID INPUT AND USED TO CLOSE THE
+// FOLD. RFC 8288 section 3.3 makes the rel value a list of relation types, so `rel="next prev"`
+// names a next link. Read as one relation it matched nothing, the header reported no next link,
+// and the listing was declared complete at that page -- a false end-of-listing produced by the
+// parser, which is the one outcome this module exists to prevent. The second arm is the ordering
+// control: the tokens must be found wherever the relation sits in the list, not only first.
+test fn link_header_space_separated_relations_witness() -> Bool {
+  let next_first = "<https://api.github.com/r/1/i?page=2>; rel=\"next prev\""
+  let next_last = "<https://api.github.com/r/1/i?page=2>; rel=\"prev next\""
+  let neither = "<https://api.github.com/r/1/i?page=2>; rel=\"prev first\""
+
+  github_next_from_header(raw: next_first) == "https://api.github.com/r/1/i?page=2"
+    && github_next_from_header(raw: next_last) == "https://api.github.com/r/1/i?page=2"
+    && github_next_from_header(raw: neither) == "closed"
+}
+
+// REVIEW 60022, FINDING 2 -- A TARGET THIS MODULE CANNOT DEREFERENCE MUST REFUSE, NOT BE INVENTED.
+// RFC 8288 targets are URI-References, so a relative one is valid input; resolving it needs the
+// response's base URI, which this module is never given. The previous form assigned it HTTPS and
+// kept the whole string as the locator, producing a confident absolute cursor pointing somewhere
+// nobody named. The third arm pins the locator SHAPE, which is the half a wire-level assertion
+// alone would miss: extdeps.uri renders a Uri as scheme_wire ++ locator, so a locator that still
+// carried its own scheme would render twice.
+test fn link_header_target_resolution_witness() -> Bool {
+  let relative = "</repos/o/r/issues?page=2>; rel=\"next\""
+  let schemeless = "<api.github.com/r/1/i?page=2>; rel=\"next\""
+  let non_http = "<mailto:someone@example.com>; rel=\"next\""
+  let absolute = "<https://api.github.com/r/1/i?page=2>; rel=\"next\""
+
+  github_next_from_header(raw: relative) == "unreadable"
+    && github_next_from_header(raw: schemeless) == "unreadable"
+    && github_next_from_header(raw: non_http) == "unreadable"
+    && github_next_from_header(raw: absolute) == "https://api.github.com/r/1/i?page=2"
+    && match github_continuation_from_link_header(header: LinkHeaderPresent { field_value: absolute }) {
+         ContinuationRead { continuation: c } => match c {
+           ContinuationNext { cursor: cur } => match cur {
+             LinkNext { target: u } => u.locator as String == "api.github.com/r/1/i?page=2"
+             OffsetPage { page: n } => false
+             OpaqueToken { token: t } => false
+           }
+           ContinuationClosed => false
+         }
+         LinkHeaderUnreadable { parse: pp } => false
+       }
+}
+
+// THE CALLER'S FIRST CURSOR AND THE AUTHORITY'S CONTINUATIONS ARE ALLOWED TO DIFFER IN SHAPE, and
+// this is the witness for the ContinuationShapeSeen repair. GitHub's ListForRef is ADDRESSED by
+// query parameters and CONTINUES by a Link header, so an offset opens the fold and every
+// continuation after it is a link target. Comparing each continuation against the CURRENT cursor
+// made that ordinary listing refuse on page one. What must still refuse is the SERVING side
+// switching protocols mid-stream, which the second arm holds.
+test fn page_fold_admits_offset_open_with_link_continuations_witness() -> Bool {
+  let mixed = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 10 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      PageObservation {
+        items: ["a"],
+        continuation: ContinuationNext {
+          cursor: LinkNext { target: Uri { scheme: Https, locator: "api.github.com/r?page=2" as NonEmptyStr } }
+        }
+      },
+      page(items: ["b"], next: ContinuationClosed)
+    ]
+  )
+  let server_switched = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 10 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      PageObservation {
+        items: ["a"],
+        continuation: ContinuationNext {
+          cursor: LinkNext { target: Uri { scheme: Https, locator: "api.github.com/r?page=2" as NonEmptyStr } }
+        }
+      },
+      page(items: ["b"], next: to_page(n: 3))
+    ]
+  )
+
+  outcome_refusal_key(o: mixed) == "closed"
+    && outcome_items(o: mixed) == "a,b"
+    && outcome_refusal_key(o: server_switched) == "continuation_shape_changed"
+}
+
+// THE LIVE DRIVER EXECUTES, AND IT IS THE ARM THAT REPLACES A DELETED CAPABILITY TRIGGER.
+// An earlier revision declared this driver unwritable and filed the missing construct as a
+// next-rung trigger. The claim was false -- recursion over an effect-returning call is the
+// construct -- so the trigger is gone and this witness is what stands in its place. `fetch` here is
+// a pure function so the witness stays hermetic; the driver cannot tell the difference, which is
+// precisely why the same driver serves a live transport.
+fn served_page(c: PageCursor) -> PageObservation<String> {
+  match c {
+    OffsetPage { page: n } =>
+      if n >= 3 {
+        PageObservation { items: ["p3"], continuation: ContinuationClosed }
+      } else if n == 2 {
+        PageObservation {
+          items: ["p2"],
+          continuation: ContinuationNext { cursor: OffsetPage { page: 3 } }
+        }
+      } else {
+        PageObservation {
+          items: ["p1"],
+          continuation: ContinuationNext { cursor: OffsetPage { page: 2 } }
+        }
+      }
+    OpaqueToken { token: t } => PageObservation { items: [], continuation: ContinuationClosed }
+    LinkNext { target: u } => PageObservation { items: [], continuation: ContinuationClosed }
+  }
+}
+
+test fn page_fold_live_driver_pumps_to_closure_witness() -> Bool {
+  let closed = page_fold_live(
+    subject: subject(), bound: PageBound { max_pages: 10 },
+    first: OffsetPage { page: 1 }, fetch: served_page
+  )
+  let bounded = page_fold_live(
+    subject: subject(), bound: PageBound { max_pages: 2 },
+    first: OffsetPage { page: 1 }, fetch: served_page
+  )
+
+  outcome_refusal_key(o: closed) == "closed"
+    && outcome_items(o: closed) == "p1,p2,p3"
+    && outcome_pages_read(o: closed) == 3
+    && outcome_refusal_key(o: bounded) == "page_budget_exhausted"
+    && outcome_items(o: bounded) == ""
 }

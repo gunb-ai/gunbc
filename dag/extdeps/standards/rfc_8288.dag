@@ -3,7 +3,11 @@ module extdeps.standards.rfc_8288
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https, Http }
+import extdeps.uri {
+  Uri, Https, Http,
+  UriScheme, ParsedHrefScheme, HrefScheme, RelativeHref, UnknownHref,
+  parse_href_scheme, uri_scheme_is_http, uri_scheme_wire
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -63,9 +67,38 @@ fn link_relation_from_key(raw: String) -> LinkRelation {
   }
 }
 
+// A LINK-VALUE CARRIES A SET OF RELATION TYPES, NOT ONE. RFC 8288 section 3.3 defines the `rel`
+// parameter's value as a space-separated list of relation types, and `rel="next prev"` is ordinary
+// valid input. Modelling it as a single relation made that spelling parse as one unrecognised
+// relation named "next prev" -- so a listing whose next link was expressed that way reported NO
+// next link, and the fold above it closed. That is the exact false end-of-listing this module
+// exists to prevent, produced by the module itself: a fabricated plausible output, not a refusal.
 type WebLink {
   target: Uri
-  relation: LinkRelation
+  relations: List<LinkRelation>
+}
+
+fn web_link_has_relation(l: WebLink, relation: LinkRelation) -> Bool {
+  fold_list(
+    xs: l.relations,
+    empty: false,
+    cons: fn(found, r) { found || link_relation_key(r: r) == link_relation_key(r: relation) }
+  )
+}
+
+// EACH TOKEN IS ITS OWN RELATION AND AN EMPTY LIST IS NOT A LINK. Splitting on the space and
+// dropping empties handles the runs of whitespace the grammar permits; a value that yields no
+// token at all is a `rel` parameter that names nothing, which refuses at the call site rather than
+// producing a link nothing can select.
+fn parse_relation_tokens(raw: String) -> List<LinkRelation> {
+  fold_list(
+    xs: split(s: raw, delimiter: " "),
+    empty: [],
+    cons: fn(acc, tok) {
+      let t = trim(s: tok)
+      if t == "" { acc } else { concat(acc, [link_relation_from_key(raw: t)]) }
+    }
+  )
 }
 
 // THE PARSE REFUSES RATHER THAN SKIPPING, and for a pagination cursor the direction matters more
@@ -84,6 +117,7 @@ type LinkFieldValueParse
   | LinkValueMissingAngleBrackets { field_value: String, segment: String }
   | LinkValueMissingRelParameter { field_value: String, segment: String }
   | LinkValueParameterNotModelled { field_value: String, segment: String, parameter: String }
+  | LinkValueTargetNotAbsoluteHttp { field_value: String, segment: String, target: String }
 
 // LIST INDEXING IS TOTAL HERE, AND THE EMPTY STRING IT RETURNS IS NOT A FALLBACK.
 // `first()` is optional-valued, so every position read owes an absence arm. Each call site below
@@ -112,7 +146,7 @@ type LinkSegmentParse
   | LinkSegmentRefused { reason: LinkFieldValueParse }
 
 type RelParameterParse
-  = RelParsed { relation: LinkRelation }
+  = RelParsed { relations: List<LinkRelation> }
   | RelRefused { reason: LinkFieldValueParse }
 
 fn parse_rel_parameter(field_value: String, segment: String, params: List<String>) -> RelParameterParse {
@@ -141,15 +175,60 @@ fn parse_rel_parameter(field_value: String, segment: String, params: List<String
           }
         } else {
           match acc {
-            RelParsed { relation: r } => acc
-            RelRefused { reason: r } => RelParsed {
-              relation: link_relation_from_key(raw: strip_quotes(raw: trim(s: nth_field(xs: kv, n: 1))))
-            }
+            RelParsed { relations: rs } => acc
+            RelRefused { reason: r } =>
+              let tokens = parse_relation_tokens(raw: strip_quotes(raw: trim(s: nth_field(xs: kv, n: 1))))
+              if length(tokens) == 0 {
+                RelRefused {
+                  reason: LinkValueMissingRelParameter { field_value: field_value, segment: segment }
+                }
+              } else {
+                RelParsed { relations: tokens }
+              }
           }
         }
       }
     }
   )
+}
+
+// THE TARGET IS RESOLVED THROUGH extdeps.uri's OWN SCHEME AUTHORITY, NOT BY A PREFIX TEST HERE.
+//
+// The first version of this function assigned Https to every target that did not begin with
+// "http://" and then stored the WHOLE URI in `locator`. Both halves were wrong and they compounded.
+// `extdeps.uri` fixes the shape: `uri_wire` is `uri_scheme_wire(scheme) ++ locator`, so the locator
+// EXCLUDES the scheme -- storing the full URI beside a scheme yields "https://https://api..." the
+// moment anyone renders it. And defaulting the scheme fabricated one for inputs that have none:
+// RFC 8288 targets are URI-References, so "/repos/x/y?page=2" is valid and relative, and it became
+// a confident absolute HTTPS URL pointing somewhere nobody named.
+//
+// `parse_href_scheme` and `uri_scheme_wire` already answer both questions and are the single
+// authority for them, so this consumes them rather than re-deriving. A relative reference, an
+// unknown scheme, and a non-HTTP scheme all REFUSE: this target becomes the cursor for the next
+// request, and a cursor that cannot be dereferenced as an HTTP request is not a weaker cursor, it
+// is a different kind of thing. Resolving a relative reference needs the response's base URI, which
+// this module is not given; refusing says so instead of guessing a base.
+type LinkTargetResolution
+  = LinkTargetResolved { uri: Uri }
+  | LinkTargetUnresolvable
+
+fn link_target_uri(target: String) -> LinkTargetResolution {
+  match parse_href_scheme(url: target) {
+    RelativeHref => LinkTargetUnresolvable
+    UnknownHref => LinkTargetUnresolvable
+    HrefScheme { scheme: sch } =>
+      if uri_scheme_is_http(s: sch) {
+        let prefix_len = string_length(s: uri_scheme_wire(s: sch) as String)
+        let rest = substring(s: target, start: prefix_len, end: string_length(s: target))
+        if rest == "" {
+          LinkTargetUnresolvable
+        } else {
+          LinkTargetResolved { uri: Uri { scheme: sch, locator: rest as NonEmptyStr } }
+        }
+      } else {
+        LinkTargetUnresolvable
+      }
+  }
 }
 
 fn parse_link_segment(field_value: String, raw_segment: String) -> LinkSegmentParse {
@@ -177,15 +256,17 @@ fn parse_link_segment(field_value: String, raw_segment: String) -> LinkSegmentPa
         segment: segment,
         params: split(s: substring(s: tail, start: 1, end: string_length(s: tail)), delimiter: ";")
       ) {
-        RelParsed { relation: rel } => LinkSegmentParsed {
-          link: WebLink {
-            target: Uri {
-              scheme: if starts_with(s: target_raw, prefix: "http://") { Http } else { Https }
-              locator: target_raw as NonEmptyStr
+        RelParsed { relations: rels } =>
+          match link_target_uri(target: target_raw) {
+            LinkTargetResolved { uri: u } => LinkSegmentParsed {
+              link: WebLink { target: u, relations: rels }
             }
-            relation: rel
+            LinkTargetUnresolvable => LinkSegmentRefused {
+              reason: LinkValueTargetNotAbsoluteHttp {
+                field_value: field_value, segment: segment, target: target_raw
+              }
+            }
           }
-        }
         RelRefused { reason: r } => LinkSegmentRefused { reason: r }
       }
     }
@@ -216,6 +297,7 @@ fn parse_link_field_value(field_value: String) -> LinkFieldValueParse {
         LinkValueMissingAngleBrackets { field_value: f, segment: s } => acc
         LinkValueMissingRelParameter { field_value: f, segment: s } => acc
         LinkValueParameterNotModelled { field_value: f, segment: s, parameter: p } => acc
+        LinkValueTargetNotAbsoluteHttp { field_value: f, segment: s, target: t } => acc
       }
     }
   )
@@ -229,7 +311,7 @@ fn link_with_relation(links: List<WebLink>, relation: LinkRelation) -> Uri? {
       match found {
         Present { value: u } => found
         Absent =>
-          if link_relation_key(r: l.relation) == link_relation_key(r: relation) {
+          if web_link_has_relation(l: l, relation: relation) {
             Present { value: l.target }
           } else {
             none

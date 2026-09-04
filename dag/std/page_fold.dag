@@ -2,7 +2,7 @@ module std.page_fold
 
 import std.types { NonEmptyStr, Int, Bool, List, String }
 import std.integer { PositiveInt }
-import extdeps.uri { Uri }
+import extdeps.uri { Uri, uri_wire }
 
 // THREE CLAIMS, NOT ONE, AND CONFLATING THEM IS WHY THIS MODULE DID NOT EXIST FOR SO LONG.
 //
@@ -105,7 +105,7 @@ fn page_cursor_eq(a: PageCursor, b: PageCursor) -> Bool {
     LinkNext { target: ua } => match b {
       OffsetPage { page: pb } => false
       OpaqueToken { token: tb } => false
-      LinkNext { target: ub } => ua.locator == ub.locator
+      LinkNext { target: ub } => uri_wire(uri: ua) == uri_wire(uri: ub)
     }
   }
 }
@@ -198,11 +198,30 @@ type PageFoldStatus
   | FoldEnded
   | FoldRefused { refusal: PageFoldRefusal }
 
+// THE SHAPE THE SERVING SIDE HAS SPOKEN SO FAR, WHICH IS NOT THE SHAPE THE CALLER OPENED WITH.
+//
+// This distinction was found by binding the fold to a real operation and is worth stating rather
+// than merely fixing. `extdeps.github.workflow_runs` ListForRef is ADDRESSED by query parameters
+// and CONTINUES by an RFC 8288 Link header, so its first cursor is an offset and every
+// continuation after it is a link target. Comparing each continuation against the CURRENT cursor
+// made the first page of every such listing look like a protocol switch, and the fold refused on
+// page one -- a wall that fires on the correct end state, which DESIGN's own repair-trap note says
+// is a guard ratifying a coincidence rather than replacing it.
+//
+// The invariant that is actually worth holding is that the SERVING SIDE does not switch protocols
+// mid-stream. How the caller addressed page one is a different fact and is allowed to differ. So
+// the shape is unset until the authority has spoken once, and is compared only against what the
+// authority said before.
+type ContinuationShapeSeen
+  = ShapeUnset
+  | ShapeSeen { key: NonEmptyStr }
+
 type PageFoldState<I> {
   subject: PageFoldSubject
   bound: PageBound
   pages_read: Int
   items: List<I>
+  shape: ContinuationShapeSeen
   status: PageFoldStatus
 }
 
@@ -212,6 +231,7 @@ fn page_fold_begin<I>(subject: PageFoldSubject, bound: PageBound, first: PageCur
     bound: bound
     pages_read: 0
     items: []
+    shape: ShapeUnset
     status: FoldOpen { next: first }
   }
 }
@@ -228,6 +248,17 @@ fn page_fold_demand<I>(state: PageFoldState<I>) -> PageFoldDemand {
     FoldOpen { next: c } => DemandPage { cursor: c }
     FoldEnded => DemandNone
     FoldRefused { refusal: r } => DemandNone
+  }
+}
+
+type ContinuationShapeAdmission
+  = ShapeAdmitted
+  | ShapeRefused { from_shape: NonEmptyStr }
+
+fn continuation_shape_admission(seen: ContinuationShapeSeen, offered: NonEmptyStr) -> ContinuationShapeAdmission {
+  match seen {
+    ShapeUnset => ShapeAdmitted
+    ShapeSeen { key: k } => if k == offered { ShapeAdmitted } else { ShapeRefused { from_shape: k } }
   }
 }
 
@@ -248,6 +279,7 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
       bound: state.bound
       pages_read: state.pages_read
       items: state.items
+      shape: state.shape
       status: FoldRefused {
         refusal: PageObservedAfterFoldEnded { subject: state.subject, pages_read: state.pages_read }
       }
@@ -262,60 +294,66 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
           bound: state.bound
           pages_read: read
           items: carried
+          shape: state.shape
           status: FoldEnded
         }
         ContinuationNext { cursor: nxt } =>
+          let next_shape = page_cursor_shape_key(c: nxt)
           if page_cursor_eq(a: current, b: nxt) {
             PageFoldState {
               subject: state.subject
               bound: state.bound
               pages_read: read
               items: state.items
+              shape: state.shape
               status: FoldRefused {
                 refusal: CursorDidNotAdvance { subject: state.subject, page_index: read, cursor: nxt }
               }
             }
           } else {
-            if page_cursor_shape_key(c: current) != page_cursor_shape_key(c: nxt) {
-              PageFoldState {
+            match continuation_shape_admission(seen: state.shape, offered: next_shape) {
+              ShapeRefused { from_shape: from_key } => PageFoldState {
                 subject: state.subject
                 bound: state.bound
                 pages_read: read
                 items: state.items
+                shape: state.shape
                 status: FoldRefused {
                   refusal: ContinuationShapeChanged {
                     subject: state.subject
                     page_index: read
-                    from_shape: page_cursor_shape_key(c: current)
-                    to_shape: page_cursor_shape_key(c: nxt)
+                    from_shape: from_key
+                    to_shape: next_shape
                   }
                 }
               }
-            } else {
-              if read >= state.bound.max_pages {
-                PageFoldState {
-                  subject: state.subject
-                  bound: state.bound
-                  pages_read: read
-                  items: state.items
-                  status: FoldRefused {
-                    refusal: PageBudgetExhausted {
-                      subject: state.subject
-                      max_pages: state.bound.max_pages
-                      pages_read: read
-                      stopped_at: nxt
+              ShapeAdmitted =>
+                if read >= state.bound.max_pages {
+                  PageFoldState {
+                    subject: state.subject
+                    bound: state.bound
+                    pages_read: read
+                    items: state.items
+                    shape: ShapeSeen { key: next_shape }
+                    status: FoldRefused {
+                      refusal: PageBudgetExhausted {
+                        subject: state.subject
+                        max_pages: state.bound.max_pages
+                        pages_read: read
+                        stopped_at: nxt
+                      }
                     }
                   }
+                } else {
+                  PageFoldState {
+                    subject: state.subject
+                    bound: state.bound
+                    pages_read: read
+                    items: carried
+                    shape: ShapeSeen { key: next_shape }
+                    status: FoldOpen { next: nxt }
+                  }
                 }
-              } else {
-                PageFoldState {
-                  subject: state.subject
-                  bound: state.bound
-                  pages_read: read
-                  items: carried
-                  status: FoldOpen { next: nxt }
-                }
-              }
             }
           }
       }
@@ -374,16 +412,55 @@ fn page_fold_run<I>(
   )
 }
 
-// THE RESIDUE, NAMED RATHER THAN LEFT TO BE DISCOVERED: nothing in this module performs a request.
-// A .dag caller that must page a live listing today binds the transport at its own realization
-// boundary and drives the two projections above, because the substrate has no construct for an
-// effectful loop whose continuation is decided by the value the previous effect returned -- Loop
-// is bounded and forward over a value the graph already carries, and a page sequence is not such a
-// value until the reads have happened.
+// THE LIVE DRIVER. `page_fold_run` folds a page sequence someone already has; this one PERFORMS
+// the reads, calling `fetch` for each cursor the fold demands until the authority closes the
+// listing or a refusal fires.
 //
-// THE CAPABILITY THAT WOULD CLOSE IT is an effect-driven bounded loop: a Loop whose iteration
-// count is bounded by a declared budget and whose per-iteration input is the typed result of a
-// declared effect, with the refusal on budget exhaustion raised by the loop rather than by the
-// caller. Until that exists, page_fold_run over a recorded sequence is the executing form and the
-// live form is a realization binding; this is a stated boundary, not a rung claim about live reads.
-data page_fold_effect_loop_capability_trigger: String = "std.page_fold drives a page sequence purely and does not perform the reads. NEXT-RUNG TRIGGER: an effect-driven bounded Loop construct in the substrate -- iteration count bounded by a declared budget, per-iteration input the typed result of a declared effect, budget exhaustion refused by the loop itself. Naming a transport, a handler, or one paginated operation does NOT satisfy this trigger: those are one caller each, and the loss is that EVERY live listing read in the tree is driven by hand-bound realization rather than by a modeled construct."
+// AN EARLIER REVISION OF THIS MODULE DECLARED THAT THIS COULD NOT BE WRITTEN, and the correction is
+// recorded here rather than quietly dropped, because the false claim was the more dangerous
+// artifact. It said the substrate had no construct for an effectful loop whose continuation is
+// decided by the value the previous effect returned, and it named that construct as a capability
+// trigger. THAT WAS ASSERTED, NOT MEASURED, AND IT IS FALSE. Recursion is sugar over Loop and a
+// `.dag` function may invoke a service operation, so a recursive function whose next argument is
+// derived from the previous call's effect result IS the construct. MEASURED, not reasoned: a probe
+// descending a directory tree, where each iteration's path came from the previous listing's
+// entries, executed three chained effects -- and it was run only after a control that MUST fail
+// actually failed, because two earlier readings of the same probe came back clean while the
+// compiler was never reaching the module at all.
+//
+// A trigger naming an absence that does not exist is permanent by construction: nothing can retire
+// it, and it would have been cited as the reason no live pager was built. So it is deleted rather
+// than softened, and this driver stands in its place.
+//
+// `fetch` IS THE EFFECT AND IT IS THE CALLER'S. This module performs no read of its own and names
+// no transport: which operation is invoked, over which protocol, under which credential, is a
+// realization fact that belongs at the caller's boundary (DESIGN section 3 -- the dispatch that
+// selects a realization is itself realization). What lives here is the bound, the advance and the
+// closure, which are the same whatever the transport.
+//
+// TERMINATION IS STRUCTURAL RATHER THAN TRUSTED. Every recursive call passes through
+// `page_fold_observe`, which either ends the fold, refuses, or advances to a cursor that is not the
+// one just demanded, and which increments the page count -- so the descent is on the budget and the
+// recursion is bounded by `bound.max_pages` no matter what the serving side answers.
+fn page_fold_live<I>(
+  subject: PageFoldSubject,
+  bound: PageBound,
+  first: PageCursor,
+  fetch: fn(PageCursor) -> PageObservation<I>
+) -> PageFoldOutcome<I> {
+  page_fold_pump(
+    state: page_fold_begin(subject: subject, bound: bound, first: first),
+    fetch: fetch
+  )
+}
+
+fn page_fold_pump<I>(
+  state: PageFoldState<I>,
+  fetch: fn(PageCursor) -> PageObservation<I>
+) -> PageFoldOutcome<I> {
+  match page_fold_demand(state: state) {
+    DemandNone => page_fold_finish(state: state)
+    DemandPage { cursor: c } =>
+      page_fold_pump(state: page_fold_observe(state: state, page: fetch(c)), fetch: fetch)
+  }
+}
