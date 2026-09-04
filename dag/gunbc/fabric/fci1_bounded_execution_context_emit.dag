@@ -10,7 +10,7 @@ import gunbc.fci1_bounded_execution_context {
   fci1_bounded_execution_context,
 }
 import v2.std.optional { Present, Absent }
-import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
+import extdeps.systemd { WorkingDirectoryProperty, RuntimeDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
 
 type Fci1BoundedExecutionContextEmission
   = Fci1BoundedExecutionContextEmitted { content: String }
@@ -81,7 +81,7 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
           "    --property=\"", systemd_unit_property_wire(property: WorkingDirectoryProperty) as String, "=$checkout_root\" \\\n",
           "    --property=\"", systemd_unit_property_wire(property: MemoryMax) as String, "=$FCI1_MEMORY_MAX_BYTES\" \\\n",
           "    --property=\"", systemd_unit_property_wire(property: MemoryHigh) as String, "=$FCI1_MEMORY_HIGH_BYTES\" \\\n",
-          "    --property=\"RuntimeDirectory=$runtime_directory\" -- \"$@\"\n",
+          "    --property=\"", systemd_unit_property_wire(property: RuntimeDirectoryProperty) as String, "=$runtime_directory\" -- \"$@\"\n",
           "}\n",
           "fci1_run_unbounded_memory_control() {\n",
           "  local unit=$1 checkout_root=$2; shift 2\n",
