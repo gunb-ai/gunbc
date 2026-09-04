@@ -171,6 +171,20 @@ type MaterialSuitability
   | SuitabilityNotRecommended
   | SuitabilityUnstated
 
+// HOW MANY ROWS IN A MATERIAL-KEYED TABLE NAME ONE MATERIAL. ONE AUTHORITY, TWO LOOKUPS.
+//
+// Both tables in this module are keyed by FilamentMaterial and both must refuse a material named
+// twice rather than silently taking one row. That refusal is one decision, so it is counted in one
+// place: a second copy would let the two lookups disagree, and the way this function came to exist
+// is exactly that -- the feed-path lookup shipped with the last-match-wins arm the suitability
+// lookup had already been repaired for. DESIGN section 2: net concepts must not grow by
+// re-invention, and a defect class is not closed at one site.
+fn material_key_match_count(keys: List<FilamentMaterial>, material: FilamentMaterial) -> Int {
+  fold(keys, init: 0, f: fn(acc, k) {
+    if filament_material_eq(a: k, b: material) { acc + 1 } else { acc }
+  })
+}
+
 // WHETHER A FEED MECHANISM CAN CONVEY A MATERIAL, WHICH IS NOT WHETHER THE MACHINE CAN PRINT IT.
 //
 // These two grades look alike and are not the same fact, so they are deliberately two types rather
@@ -207,13 +221,36 @@ fn feed_path_suitability_row(material: FilamentMaterial, suitability: FeedPathSu
   FeedPathSuitabilityRow { material: material, suitability: suitability }
 }
 
+type FeedPathSuitabilityLookup
+  = FeedPathResolved { suitability: FeedPathSuitability }
+  | FeedPathRowsConflict { material: FilamentMaterial, count: Int }
+
+fn feed_path_row_keys(rows: List<FeedPathSuitabilityRow>) -> List<FilamentMaterial> {
+  fold(rows, init: [], f: fn(acc, r) { concat(acc, [r.material]) })
+}
+
 // LOOKUP DEFAULTS TO UNSTATED, NEVER TO ADMITTED. An unlisted material means the manual is silent,
 // and reading silence as permission is the fail-open arm DESIGN section 5 forbids: it would feed a
 // material the vendor never cleared through a mechanism the vendor documents exclusions for.
-fn feed_path_suitability(rows: List<FeedPathSuitabilityRow>, material: FilamentMaterial) -> FeedPathSuitability {
-  fold(rows, init: FeedPathUnstated, f: fn(acc, r) {
-    if filament_material_eq(a: r.material, b: material) { r.suitability } else { acc }
-  })
+//
+// AND DUPLICATE ROWS REFUSE RATHER THAN RESOLVING TO THE LAST ONE. The first revision of this
+// function folded to the last matching row's suitability, which is byte-for-byte the defect
+// material_suitability below was rewritten to refuse -- landed sixty lines from the repair, in the
+// same file, by the same author, in the same change. That is why the count is not re-derived here:
+// both lookups now ask material_key_match_count, so the decision that a duplicate is a conflict has
+// ONE authority and closing the class at one site cannot leave the other site open. Selecting the
+// last value stays local and is only ever reached when the count is exactly one.
+fn feed_path_suitability(rows: List<FeedPathSuitabilityRow>, material: FilamentMaterial) -> FeedPathSuitabilityLookup {
+  let count = material_key_match_count(keys: feed_path_row_keys(rows: rows), material: material)
+  if count > 1 {
+    FeedPathRowsConflict { material: material, count: count }
+  } else {
+    FeedPathResolved {
+      suitability: fold(rows, init: FeedPathUnstated, f: fn(acc, r) {
+        if filament_material_eq(a: r.material, b: material) { r.suitability } else { acc }
+      })
+    }
+  }
 }
 
 type MaterialSuitabilityRow sole_constructor {
@@ -266,21 +303,19 @@ type MaterialSuitabilityLookup
   = SuitabilityResolved { suitability: MaterialSuitability }
   | SuitabilityRowsConflict { material: FilamentMaterial, count: Int }
 
-type SuitabilityScan sole_constructor {
-  count: Int
-  suitability: MaterialSuitability
+fn suitability_row_keys(rows: List<MaterialSuitabilityRow>) -> List<FilamentMaterial> {
+  fold(rows, init: [], f: fn(acc, r) { concat(acc, [r.material]) })
 }
 
 fn material_suitability(rows: List<MaterialSuitabilityRow>, material: FilamentMaterial) -> MaterialSuitabilityLookup {
-  let scan = fold(rows, init: SuitabilityScan { count: 0, suitability: SuitabilityUnstated }, f: fn(acc, row) {
-    match filament_material_eq(a: row.material, b: material) {
-      true => SuitabilityScan { count: acc.count + 1, suitability: row.suitability }
-      false => acc
-    }
-  })
-  if scan.count > 1 {
-    SuitabilityRowsConflict { material: material, count: scan.count }
+  let count = material_key_match_count(keys: suitability_row_keys(rows: rows), material: material)
+  if count > 1 {
+    SuitabilityRowsConflict { material: material, count: count }
   } else {
-    SuitabilityResolved { suitability: scan.suitability }
+    SuitabilityResolved {
+      suitability: fold(rows, init: SuitabilityUnstated, f: fn(acc, row) {
+        if filament_material_eq(a: row.material, b: material) { row.suitability } else { acc }
+      })
+    }
   }
 }

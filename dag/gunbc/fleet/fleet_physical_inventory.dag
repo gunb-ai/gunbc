@@ -98,6 +98,7 @@ data chassis_srv5_placeholder: PhysicalAssetIdentity = "chassis-srv5-placeholder
 data chassis_srv6_placeholder: PhysicalAssetIdentity = "chassis-srv6-placeholder" as PhysicalAssetIdentity
 data switch_01: PhysicalAssetIdentity = "switch-01" as PhysicalAssetIdentity
 data printer_01: PhysicalAssetIdentity = "printer-01" as PhysicalAssetIdentity
+data ams_01: PhysicalAssetIdentity = "ams-01" as PhysicalAssetIdentity
 data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
 data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
 
@@ -154,11 +155,12 @@ data pdu_01_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-// THE FIRST PRINTER, PHYSICALLY RECEIVED AND ON THE OPERATOR LAN. physical_serial stays `none`
-// because a serial CORROBORATES an individuation, it does not establish one: this machine is
-// individuated by being the sole BBL FTPS responder on the operator segment, and that observation
-// lives with the endpoint row rather than here. Filling a serial later adds corroboration and
-// changes no admission.
+// THE FIRST PRINTER, PHYSICALLY RECEIVED AND ON THE OPERATOR LAN. The serial was read off the
+// machine by the operator on 2026-09-04 and CORROBORATES an individuation the operator label
+// already established -- it does not establish one, which is why the row was admissible before it
+// was known and why filling it moved no admission. The machine is independently individuated by
+// being the sole BBL FTPS responder on the operator segment, and that observation lives with the
+// endpoint row rather than here.
 data printer_01_asset: PhysicalAsset = PhysicalAsset {
   identity: printer_01,
   catalog: DeclarationRef {
@@ -166,7 +168,27 @@ data printer_01_asset: PhysicalAsset = PhysicalAsset {
     decl_name: "a1_mini_build_envelope",
     field: WholeDeclaration,
   },
-  physical_serial: none,
+  physical_serial: Present { value: "0300CA652201400" },
+  procurement: none,
+}
+
+// THE AMS LITE IS ITS OWN ASSET, WITH ITS OWN SERIAL, AND IT IS NOT A PRINTER. It ships separately,
+// carries a separate serial the operator read off it, and DESIGN section 3 already made it a
+// separate extdeps subject because its feed-path exclusions are not the machine's print grades. The
+// same split holds for the physical row: folding it into printer_01_asset would give one identity to
+// two objects that can be separated, replaced, or moved to printer-02 independently.
+//
+// It is deliberately absent from owned_printer_inventory. That roster is joined by
+// admit_printer_asset, whose catalog check admits only the A1 mini module, so an AMS row there would
+// be refused -- correctly, and for the right reason.
+data ams_01_asset: PhysicalAsset = PhysicalAsset {
+  identity: ams_01,
+  catalog: DeclarationRef {
+    module_path: "extdeps.printing.bambu_lab_ams_lite",
+    decl_name: "ams_lite_feed_path_suitability",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "03C06A642135418" },
   procurement: none,
 }
 

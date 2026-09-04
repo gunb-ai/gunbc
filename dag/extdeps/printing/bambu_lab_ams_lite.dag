@@ -11,6 +11,9 @@ import extdeps.printing.fdm {
   Pva,
   FiberReinforcedPolymer,
   FeedPathSuitability,
+  FeedPathSuitabilityLookup,
+  FeedPathResolved,
+  FeedPathRowsConflict,
   FeedPathSuitabilityRow,
   FeedPathExcluded,
   FeedPathUnstated,
@@ -85,6 +88,10 @@ data ams_lite_feed_path_suitability: List<FeedPathSuitabilityRow> = [
   ),
 ]
 
-fn ams_lite_feeds(material: FilamentMaterial) -> FeedPathSuitability {
+// THE LOOKUP'S REFUSAL ARM IS RELAYED, NOT ABSORBED. This returns the whole lookup rather than
+// unwrapping to a bare suitability, because a duplicate row in the table above is a defect in THIS
+// module's rows and a caller that received FeedPathUnstated for it could not tell a silent manual
+// from a broken table.
+fn ams_lite_feeds(material: FilamentMaterial) -> FeedPathSuitabilityLookup {
   feed_path_suitability(rows: ams_lite_feed_path_suitability, material: material)
 }
