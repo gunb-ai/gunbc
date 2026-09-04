@@ -70,15 +70,6 @@ enum RetainedCommands {
         args: Vec<String>,
     },
 
-    /// Apply a host's typed converge policy in-process
-    /// (`gunbc.fleet_converge_cli.converge_cli_run`) and print a
-    /// `converge-receipt` line on the byte-locked receipt grammar.
-    Converge {
-        /// Fleet host identity (e.g. "srv1") to converge
-        #[arg(long)]
-        host: String,
-    },
-
     /// Long-running HTTP server: compile once, then answer each request by
     /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
     /// The seam is parse/write only — routing and handlers live in .dag.
@@ -797,32 +788,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             .apply()
         }
 
-        // The refusal names a CONDITION, not a branch. An earlier revision said "not available
-        // on integration/cli-run-cut", which the merge itself would have falsified -- the §3
-        // stale-citation decay that needs no edit to break. The PR reference stays: a PR is
-        // historical after merge, not false.
-        // Converge is NOT wired here. The terminal route is the modeled convergence spine --
-        // gunbc.fleet_converge_timer -> fleet_converge_apply -> host_effect_realize
-        // host_effect_apply -- consuming modeled desired state and native host-effect
-        // realizations. An earlier revision implemented this seam as resolve-a-.dag-entry +
-        // build-an-interpreter-context + run: the cheapest implementation while the frozen
-        // engine stands, and exactly why it is wrong -- it would make the interpreter
-        // LOAD-BEARING FOR A NEW capability while two lanes are deleting it, converting
-        // removable debt into an architectural dependency.
-        RetainedCommands::Converge { .. } => Verdict {
-            status: 2,
-            message: Some(
-                "error: `converge` is not wired to the retained engine.\n  \
-                 cause: its cli_run handler is deleted and may not be rebuilt on the \
-                 frozen v1 engine. Converge's terminal route is the modeled convergence \
-                 spine (fleet_converge_timer -> fleet_converge_apply -> \
-                 host_effect_realize), which EXISTS — so this verb has a successor to \
-                 route to and needs no host seam.\n  \
-                 status: declared Y-incomplete, not a runtime failure. See PR #8286."
-                    .to_string(),
-            ),
-        }
-        .apply(),
+        // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
+        // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
+        // the same route `build` takes, so no arm here can answer for it.
 
         // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
         // #8286 deleted this seam together with converge's, but converge has a successor that

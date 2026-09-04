@@ -297,6 +297,10 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bin gunbc
+      - name: Declare which ledger rows this heal will repair
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function heal_repair_declaration
       - name: Regenerate every committed generated artifact
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -361,6 +365,7 @@ jobs:
           if [ -e "docs/plans/cli-run-hollowing-plan.md" ]; then git add "docs/plans/cli-run-hollowing-plan.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/cli-run-hollowing-plan.md"; fi
           if [ -e "docs/plans/discrete-cost-derivation.md" ]; then git add "docs/plans/discrete-cost-derivation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/discrete-cost-derivation.md"; fi
           if [ -e "docs/plans/deploy-convergence-observed-side.md" ]; then git add "docs/plans/deploy-convergence-observed-side.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/deploy-convergence-observed-side.md"; fi
+          if [ -e "docs/plans/floor-claim-cost-distribution.md" ]; then git add "docs/plans/floor-claim-cost-distribution.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/floor-claim-cost-distribution.md"; fi
           PRIOR_HEAD=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
@@ -371,7 +376,11 @@ jobs:
             exit 0
           else
             CHANGED_ARTIFACTS=$(git diff --cached --name-only)
-            git commit --no-verify -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            HEAL_MESSAGE_FILE=$(mktemp)
+            printf '%s\n' "chore: regenerate drifted generated artifacts (ci auto-heal)" > "$HEAL_MESSAGE_FILE"
+            if [ ! -s "target/heal-repair-declaration.txt" ]; then echo "::error::HealRepairDeclarationMissing path=target/heal-repair-declaration.txt -- the declaration step did not produce a judgment for this head, so a commit here would record zero repairs over an unstated population" >&2; exit 1; fi
+            cat "target/heal-repair-declaration.txt" >> "$HEAL_MESSAGE_FILE"
+            git commit --no-verify -F "$HEAL_MESSAGE_FILE"
             HEALED_HEAD=$(git rev-parse HEAD)
             git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"

@@ -231,6 +231,7 @@ type LegacyProseIdentity
   | FabricEvidenceGating
   | EmittedBytesWitnessRequiredLane
   | DirectCallArgSeamV2Exemption
+  | DirectCallUnboundCarriedGenericCompat
   | FloorCostClaimQualificationUnavailable
   | SparkRoleScopedRetirementProductionRoot
   | FloorCutHeal
@@ -266,6 +267,7 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     FloorCostHighCpuWithheld => "floor_cost_high_cpu_withheld"
     EmittedBytesWitnessRequiredLane => "emitted_bytes_witness_required_lane"
     DirectCallArgSeamV2Exemption => "direct_call_arg_seam_v2_exemption"
+    DirectCallUnboundCarriedGenericCompat => "direct_call_unbound_carried_generic_compat"
     FloorCostClaimQualificationUnavailable => "floor_cost_claim_qualification_unavailable"
     SparkRoleScopedRetirementProductionRoot => "spark_role_scoped_retirement_production_root"
     FloorCutHeal => "floor_cut_heal"
@@ -408,6 +410,7 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   FloorCostHighCpuWithheld,
   EmittedBytesWitnessRequiredLane,
   DirectCallArgSeamV2Exemption,
+  DirectCallUnboundCarriedGenericCompat,
   FloorCostClaimQualificationUnavailable,
   SparkRoleScopedRetirementProductionRoot,
   FloorCutHeal,

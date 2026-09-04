@@ -48,6 +48,8 @@ import extdeps.systemd.unit_file {
   ServiceType,
   ServiceUser,
   ServiceGroup,
+  ServiceSlice,
+  WorkingDirectory,
   EnvironmentFile,
   ExecStart,
   NotInstallable,
@@ -55,7 +57,8 @@ import extdeps.systemd.unit_file {
 }
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
 import gunbc.host_layout { instance_receipts_dir }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  deployment_slice_unit_name, DeploymentSpec, deployment_spec_srv1 }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 
 // THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
@@ -533,10 +536,19 @@ fn convergence_exec_start(
 // remaining consumer is this unit. Renaming it belongs to the change that deletes those legs,
 // because that change owns both ends; doing it here would rename a live production file out from
 // under a unit still using it.
+// THE ONESHOT'S WORKING DIRECTORY IS THE RUNNER CHECKOUT, THE SAME PATH THE ENV FILE CARRIES AS
+// GUNBC_TREE_SRC. The admitted binary discovers its workspace root by walking cwd's ancestors for
+// .git and then requires every --source-root to sit under that root, so a unit whose cwd is `/`
+// refuses (`workspace_root: / is not inside a git checkout`) and one whose cwd is the deployed
+// repository refuses too (`path .../dag is not under process workspace root /opt/gunbc/gunbc`) --
+// both measured on srv1 by the first deploys through `gunbc converge --mode deploy`. systemd does
+// not expand environment variables in WorkingDirectory=, so the path is a parameter here and the
+// writer expands it from the deploying shell's PWD, exactly as the env file's value is written.
 fn convergence_unit_doc(
   spec: DeploymentSpec,
   candidate: String,
   receipt_path: String,
+  working_directory: String,
 ) -> String {
   let user = spec.service.service_user
   serialize_systemd_unit_file(file: ServiceUnitFile {
@@ -547,6 +559,8 @@ fn convergence_unit_doc(
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: user },
       ServiceGroup { name: user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      WorkingDirectory { path: working_directory as NonEmptyStr },
       EnvironmentFile { path: spec.names.tree_sync_env_path },
       ExecStart {
         command: convergence_exec_start(
