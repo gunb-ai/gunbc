@@ -1,0 +1,50 @@
+module gunbc.rung_drop.spark_serving_fleet_global_configuration_drop
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for both fleet-global values above (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHY ONE ROW AND NOT TWO. The context ceiling and the slot count are the same defect in two
+// spellings: a value measured on one node, one artifact, one runtime configuration and one
+// concurrency condition, then applied to two hosts and every realization the cell can load. Two
+// rows would be two places to update when one restoration discharges both, and the restoration IS
+// shared -- neither value becomes qualified until per-realization observation exists.
+//
+// WHAT WAS ACTUALLY MEASURED, so the gap between evidence and scope is legible rather than implied:
+// spark-a3ee, the hf.co/antirez/deepseek-v4-gguf IQ2_XXS build, Ollama 0.32.9, one resident session,
+// buffer figures read from /api/ps. That is one cell of a matrix whose other axes are the six other
+// resident models, the second host, and every concurrency above one.
+//
+// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT. A per-realization observation table is not
+// sufficient by itself: while a global default exists, an unmeasured realization still INHERITS
+// these numbers automatically, so measuring some of the roster leaves the same unqualified
+// inheritance for the rest. The capability is that no realization can be served at a configuration
+// it has not been observed at -- which requires both the observations and the removal of automatic
+// inheritance.
+//
+// DECLARED 2026-09-01 IN gunbc.spark.serving_desired AND ROSTERED NOWHERE UNTIL NOW.
+
+data spark_serving_fleet_global_configuration_drop: RungDrop = RungDrop {
+  identity: "spark_serving_fleet_global_configuration" as NonEmptyStr,
+
+  subject: "the serving cell's default context window and concurrent slot count, applied fleet-wide from single-realization evidence",
+
+  declared: "2026-09-01",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+    "gunbc.spark.serving_desired spark_serving_desired_context_length",
+    "gunbc.spark.serving_desired spark_serving_desired_serving_slots_value",
+    ],
+    restoration_trigger: "no realization can be served at a configuration it has not been observed at: a per-realization runner-memory observation exists for every model the cell loads, at the configuration selected for it, AND the fleet-global default no longer confers an unmeasured realization automatic admission -- an unobserved realization must refuse rather than inherit. An observation table alone does not discharge this row, because inheritance is the half that makes an unmeasured model's admission silent",
+  }
+}

@@ -107,6 +107,8 @@ import gunbc.recurring_failure_mode.a_written_row_is_not_a_firing_mechanism { a_
 import gunbc.recurring_failure_mode.required_evidence_absent_reads_as_evidence_of_pass { required_evidence_absent_reads_as_evidence_of_pass }
 import gunbc.recurring_failure_mode.right_censored_cost_read_as_exact { right_censored_cost_read_as_exact }
 import gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_that_uses_it { guard_precondition_discharged_by_the_route_that_uses_it }
+import gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_comparison { denominator_moved_between_measurement_and_comparison }
+import gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked { absent_reads_identically_to_never_looked }
 import gunbc.recurring_failure_mode.emitted_entry_point_succeeds_doing_nothing { emitted_entry_point_succeeds_doing_nothing }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
@@ -206,5 +208,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   required_evidence_absent_reads_as_evidence_of_pass,
   right_censored_cost_read_as_exact,
   guard_precondition_discharged_by_the_route_that_uses_it,
+  denominator_moved_between_measurement_and_comparison,
+  absent_reads_identically_to_never_looked,
   emitted_entry_point_succeeds_doing_nothing,
 ]

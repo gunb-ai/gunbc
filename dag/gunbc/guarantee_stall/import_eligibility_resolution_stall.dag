@@ -1,0 +1,53 @@
+module gunbc.guarantee_stall.import_eligibility_resolution_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
+
+// A REFERENCE THAT RESOLVES UNDER ONE IMPORT LIST AND REFUSES UNDER A SUPERSET OF IT.
+// Filed as a class because the specimen is user-visible and nobody had filed it: adding an import
+// of an UNRELATED module silently breaks a bare reference that resolved without it. The failure is
+// loud at the reference -- an undefined-variable diagnostic -- but the CAUSAL relation is
+// unreachable from it, since nothing in the message connects the new import line to the broken
+// name and no author's model of what an import does predicts it. Loud failure with an unreachable
+// cause is the shape that costs the most time per incident.
+//
+// MECHANISM, measured rather than inferred. cli_run build_both_closure_edge_index skips a file
+// before populating bare_out for it when source_declares_import_lines is true, and the struct
+// field's own doc calls bare_scan_eligible the import-stripped files that may originate
+// bare-reference edges. So a bare reference is a closure edge ONLY from a zero-import file.
+// Confirmed by discriminator rather than by reading the predicate: one four-file fixture, one
+// binary, one line varied -- with no import the provider is pulled and the name resolves clean;
+// with one import of an unrelated carrier the provider is not pulled and the name refuses.
+//
+// WHY THE CEILING IS GUARANTEED AND NOT IMPOSSIBLE: eligibility is decided from the file text the
+// compiler already holds, so a closure relation that does not vary with import-declaration is
+// derivable. It is not IMPOSSIBLE, because both programs remain writable -- the source can express
+// a file with imports and one without; what a repair removes is the DIVERGENCE between them, not
+// the ability to author either.
+// ON THE GROUNDING FIELD, recorded because the first version of this row got it wrong in a way
+// nothing in this repository would have caught. It cited "the ClosureBoundResolution ruling" as
+// the authority the class waits on. No such authority exists: the name was coined in cross-session
+// correspondence and its only occurrences in the tree were this row and its own trigger. That is
+// DESIGN section 3's cite-the-symbol violation in its purest form -- a citation naming a symbol
+// that does not resolve -- and it is the exposure the 2026-08-23 cited-symbol drop declared as
+// unbounded, arriving inside two days of the census being decommissioned. Caught by review 55910,
+// which is the mitigation that drop names and is strictly weaker than the wall it replaced.
+//
+// THE FINDING DOES NOT CARRY THE RECLASSIFICATION IT PROPOSED, and the distinction is the point of
+// the coproduct. The review concluded that an unauthored authority makes this ClimbableButUnbuilt.
+// It does not: waiting on a DECISION and waiting on CONSTRUCTION rank differently for work, and
+// this class genuinely waits on the first -- the repair direction is undetermined, so building is
+// not merely unstarted but unspecifiable. What the finding correctly kills is the pretence that
+// the decision had a home. A blocker may name an open question; it may not name a phantom ruling.
+data import_eligibility_resolution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a bare reference resolves under one import list and refuses under a superset of it, because bare-reference closure edges originate only from zero-import files",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "an undecided QUESTION, stated here rather than cited, because no authority in this tree answers it yet: is candidacy for a subject asked against the CENSUS population or the CLOSURE population. The class cannot climb until that is decided, because the repair direction depends on the answer -- bounding lookup leaves the loader still admitting providers by bare reference, and bounding load changes which files enter the subject at all. So this stall waits on a DECISION rather than on construction, which is what separates it from ClimbableButUnbuilt -- and the separation is structural rather than a matter of degree: the two answers land in DIFFERENT LANES, bounding lookup being a semantic-authority repair and bounding load a proof-authority one, so the answer decides WHO BUILDS as well as WHAT. That is why the work here is not merely unstarted but UNSPECIFIABLE, and why filing this as ClimbableButUnbuilt would be worse than imprecise: it would tell a reader to go build something at a moment when no owner can be named, converting a blocked decision into misdirected effort. The question was coined in cross-session correspondence under a name that has no carrier here, and naming it as though a ruling existed would have been a citation to a symbol that does not resolve"
+  },
+  population: UncountedNotEnumerable {
+    reason: "the AFFECTED population is references whose resolution would change, and nothing enumerates them -- a reference that resolves today emits no diagnostic to count and a reference that refuses is indistinguishable in the message from a genuinely absent declaration. What CAN be measured is the ELIGIBLE FILE count -- .dag files carrying no import line -- and that is a denominator for where the mechanism can ORIGINATE, never a count of what it affects. Quoting the eligible count as the class size is the conflation this row exists to prevent. No figure is carried here, and the omission is deliberate rather than an oversight: the count is a minority of the corpus that MOVES with every merge, no entry point re-derives it, and a transcribed number is a positional citation of a run's output -- unreachable from the thing that owns it, so it rots without anyone touching either end. A row whose whole subject is that a number is the WRONG denominator would be the worst possible place to freeze that number into source. The eligible count is also RISING by construction: the namespace cut takes modules to zero imports, so each wave switches bare-edge origination on for the modules it strips"
+  },
+  next_rung_trigger: "the census-or-closure candidacy question is decided AND its answer lands as a namespace-cut PREREQUISITE rather than a post-cut repair, bounding which modules may supply a resolution candidate for a subject. Reclassified from post-cut to prerequisite because the cut is what makes the mechanism universal -- a repair scheduled after the event that generalises it is scheduled backwards. Not satisfied by bounding lookup alone: the closure constructor extends by bare reference to a fixpoint before any lookup runs, so a wall placed only at lookup sits downstream of the door that already opened"
+}
