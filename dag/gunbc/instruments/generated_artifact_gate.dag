@@ -19,9 +19,26 @@ import gunbc.generated_artifact_observation {
 }
 import v2.std.algebra { fold_list, length }
 import gunbc.generated_artifact_assessment {
+  GeneratedArtifactPopulationFindings,
   generated_artifact_population_findings,
   generated_artifact_population_findings_empty,
   generated_artifact_population_findings_rendered
+}
+
+// ONE VERDICT CONSTRUCTOR FOR THE REQUIRED GATE AND HEAL'S SECOND PASS. Keeping the injected
+// expected/observed populations at this pure seam gives the non-idempotence refusal a real RED:
+// a fixture can present different first- and second-pass bytes to the exact function production
+// calls, rather than merely testing a nearby findings renderer. The observation and findings are
+// still each produced once; this consumes the retained finding population instead of recomputing it.
+fn generated_artifact_agreement_verdict(findings: GeneratedArtifactPopulationFindings) -> ProcessExit {
+  if generated_artifact_population_findings_empty(f: findings) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "generated-artifact agreement failed: ",
+      generated_artifact_population_findings_rendered(f: findings)
+    ))
+  }
 }
 
 fn exit_ok(e: ProcessExit) -> Bool {
@@ -56,21 +73,16 @@ func run_generated_artifact_drift_gate_body() -> ProcessExit {
   let observations = observe_generated_artifact_population()
   let findings = generated_artifact_population_findings(expected: committed_generated_artifacts(), observations: observations)
   let all_ok = generated_artifact_population_findings_empty(f: findings)
-  let reason = if all_ok {
-    ""
-  } else {
-    concat("generated-artifact agreement failed: ", generated_artifact_population_findings_rendered(f: findings))
-  }
+  let verdict = generated_artifact_agreement_verdict(
+    findings: findings
+  )
+  let reason = generated_artifact_drift_failure_reason(exit: verdict)
   if all_ok {
     record_generated_artifact_drift_gate_clean()
   } else {
     record_generated_artifact_drift_gate_failure_detail(detail: reason)
   }
-  return if all_ok {
-    ExitSuccess
-  } else {
-    exit_failure(reason: reason)
-  }
+  return verdict
 }
 
 func main() -> ProcessExit {
@@ -239,4 +251,24 @@ func main_wet() -> ProcessExit {
       acc
     }
   })
+}
+
+// HEAL MAY COMMIT ONLY A FIXED POINT. The first pass is the actuator: it overwrites every
+// committed projection from this checkout's authorities. The second pass is the same independent
+// observation used by the required drift gate: it reads those bytes, generates every expected
+// body again, and returns the typed, located finding population on any disagreement. A warning is
+// not an arm here; any non-idempotent artifact returns ExitFailure before the workflow reaches its
+// commit step.
+//
+// This is deliberately a separate entry from main_wet. Authors regenerating an ordinary
+// concurrent projection retain the one-pass command, while heal-generated-artifacts binds the
+// stronger actuator-plus-proof because it is about to write a commit without a human inspecting
+// the bytes. Both passes preserve committed_generated_artifacts() source order; there is no sort.
+func main_wet_verified() -> ProcessExit {
+  let first = main_wet()
+  if exit_ok(e: first) {
+    run_generated_artifact_drift_gate_body()
+  } else {
+    first
+  }
 }
