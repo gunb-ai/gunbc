@@ -64,6 +64,31 @@ data artifact_declares_a_threshold_it_is_not_measured_against: RecurringFailureM
     "Changing the constant from 100 to 500 does NOT discharge this: a second hand-authored literal agreeing with the current line by coincidence reproduces the class the moment either moves, and the defect is that the value is authored at all rather than derived. ",
 
     "NOT REPAIRED HERE: the emit-family cost work and the mis-grounding of the 500ms line itself are separate subjects with their own dispatch; this row is the modelling defect in the instrument, which is what makes it filable independently of either.)",
+    "**MEASURED 2026-09-03, AND IT SHARPENS THIS ROW'S OWN THESIS: CORRECTING THE LINE VALUE WOULD NOT DISCHARGE THE DEFECT, BECAUSE THE COMPARED COLUMN IS NOT THE JUDGED QUANTITY EITHER. ",
+
+    "The trigger above asks each row to emit the line actually applied; that is necessary and it is not sufficient, because a correct line compared against the wrong column still cannot predict a refusal. ",
+
+    "EXECUTED PROOF, floor run 33806684407, which reported ZERO deadline interrupts: `test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one` reports `cpu_ms=744` on `eval_steps=225857` -- genuine evaluation work, not a host-effect outlier -- with `outcome=pass`, while `v2.test.emit.produced_decl_two_target.produced_decl_two_targets_render_own_order` was interrupted at `cpu_at_least=508ms/500ms` in run 33795674825. ",
+
+    "If the artifact's `cpu_ms` were the quantity the deadline judges, the 744 refuses before the 508 does. ",
+
+    "It does not, so the column is CHARGED cpu while the judge nets out shared-artifact fill. ",
+
+    "THE CONSEQUENCE FOR A CONSUMER IS THE SAME HARM THIS ROW ALREADY NAMES, ONE LEVEL DEEPER: a reader asking whether a row is near the line, whether a refusal was predictable, or whether a population regressed is answered wrongly even after the line value is fixed, because the two numbers being compared denominate different things and nothing in the artifact says so. ",
+
+    "SO THE TRIGGER IS AMENDED, STILL AS A CAPABILITY: each cost row emits the line actually applied AND the quantity actually compared against it, both derived from the authority the enforcement reads, sufficient for a consumer to reproduce the judge's verdict from the row alone. ",
+
+    "A row from which the verdict cannot be recomputed is the whole defect, and line-versus-column is two ways to have it rather than two defects. ",
+
+    "**A SECOND MISREADING OF THE SAME ARTIFACT, MEASURED ACROSS 23 RUNS AND RECORDED BECAUSE IT IS A CAP WEARING AN INVARIANT'S CLOTHES: the floor log's `[over-cost]` listing is TRUNCATED, and nothing in it says so. ",
+
+    "It printed exactly 26 rows in every one of 23 consecutive `witnesses.yml` push runs on main -- a constancy that reads as the strongest possible evidence the work is stable, which is how it was nearly cited. ",
+
+    "It is a display cap: the lowest listed row is 336ms while this row's own census records ~300 of 3534 rows exceeding the declared line, and the 26 identities are not the same set between runs. ",
+
+    "A CONSTANT PRODUCED BY A CAP IS INDISTINGUISHABLE FROM A CONSTANT PRODUCED BY STABILITY, and the cap direction is the reassuring one. ",
+
+    "This belongs on this row rather than a new one because it is the same subject -- the artifact misleading a consumer about a population it appears to report -- and its trigger is the same shape: the listing states its own truncation and the total it was drawn from, sufficient for a consumer to tell a complete population from a prefix of one. ",
   ],
 
   evidence: [],
