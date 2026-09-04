@@ -676,3 +676,16 @@ fn shape_fleet_ssh_exec(
     concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
   )
 }
+
+// Bare-host shaper for the SshShell path (no FleetSshExecutionContext, no trust options).
+// This EXISTS as a single callable authority so the shape of a bare-host SSH invocation is
+// stated once rather than duplicated at each call site, and a witness can compare it.
+// Unlike shape_fleet_ssh_exec there is no trust policy, credential binding, or ambient-config
+// suppression — the host is passed directly and ambient ssh_config applies. This is the same
+// behaviour the deleted ExecArgv transport literal produced, now callable rather than embedded.
+// DISSOLVE-ON: when every SshShell caller routes through a FleetSshExecutionContext this function
+// is deleted (its callers migrate to shape_fleet_ssh_exec) and the dissolved condition is the
+// function's own population.
+fn shape_ssh_shell_exec(host: NonEmptyStr, argv: List<String>) -> List<String> {
+  concat([host as String, "--"], argv)
+}
