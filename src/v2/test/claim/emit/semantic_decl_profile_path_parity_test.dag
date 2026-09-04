@@ -2,9 +2,9 @@ module v2.test.emit.semantic_decl_profile_path_parity
 
 import v2.extdeps.languages.rust {
   rust_decl_general_lex,
-  rust_semantic_decl_serialize_profile_bundle_node,
-  rust_target_model
+  rust_semantic_decl_serialize_profile_bundle_node
 }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import v2.std.compilers.semantic_decl_emission {
   decode_semantic_decl_serialize_profile_bundle,
   semantic_decl_emission_from_target,
@@ -27,7 +27,7 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
     Accepted { value: direct, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: direct) {
         Accepted { value: direct_lex, diagnostics: _ } =>
-          match semantic_decl_emission_from_target(target: rust_target_model()) {
+          match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
             Accepted { value: emission, diagnostics: _ } =>
               match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
                 Accepted { value: emission_lex, diagnostics: _ } =>
@@ -50,7 +50,7 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
 }
 
 test fn target_emission_lex_matches_live_for_kw_enum() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
         Accepted { value: decoded_lex, diagnostics: _ } =>
