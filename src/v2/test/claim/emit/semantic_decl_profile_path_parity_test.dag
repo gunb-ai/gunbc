@@ -85,12 +85,12 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
   }
 }
 
-// Comprehensive parity witness: every lex row and every binding spelling the
-// bundle-decoded profile matches the emission-derived profile. This covers
-// everything that candidate consumers (semantic_decl_lex_binding_parity,
-// semantic_decl_all_lex_parity, semantic_decl_binding_keys_parity,
-// semantic_decl_lookup_receipt_test) read from the profile, so those modules
-// can safely decode the pre-serialized bundle instead of re-deriving it.
+// Parity control: the serialized profile bundle (rust_semantic_decl_serialize_profile_bundle_node)
+// agrees with the profile derived from the emission. Every lex row (12 token classes) and every
+// binding spelling (6 keys) is compared, so a perturbation to any production lex row or binding
+// spelling that the bundle carries but the emission must encode it at the same spelling would go
+// red. This witness pays a full serialize+decode cost itself on a single identity, which is
+// acceptable; the consumers it guards derive the profile from the staging fixture (~130 steps).
 test fn all_bundle_rows_match_emission_profile() -> Bool {
   match decode_semantic_decl_serialize_profile_bundle(
     bundle: rust_semantic_decl_serialize_profile_bundle_node()
