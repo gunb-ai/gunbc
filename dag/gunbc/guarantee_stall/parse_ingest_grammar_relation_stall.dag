@@ -1,0 +1,14 @@
+module gunbc.guarantee_stall.parse_ingest_grammar_relation_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data parse_ingest_grammar_relation_stall: GuaranteeStall = GuaranteeStall {
+  subject: "parse and ingest disagree over the same grammar round trip",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Empty {} } },
+  next_rung_trigger: "the same-grammar parse-to-ingest round trip holds"
+}
