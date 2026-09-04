@@ -963,20 +963,24 @@ const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#
 /// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
 /// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
 ///
-/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
-/// `physical_asset_identity_eq` was authored privately inside
-/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
-/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
-/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
-/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
-/// a specific product's helper to obtain an equality would invert the layering. The spelling is
-/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
-/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
-/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04, gunbc#10197). The one incoming `gunbc#10218` row is
+/// removed by its own trigger, and this entry exists because the alternative
+/// -- deleting the row and leaving the present-tense block that described it -- is the exact defect
+/// the TWENTY-FIRST DISSOLUTION above names, at one row instead of seventeen but in the same shape.
 ///
-/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
-/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
-/// deletion by the next roster-touching change.
+/// What the row admitted: `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and moved to product.placement_supply, which OWNS
+/// PhysicalAssetIdentity and already carried host_identity_eq for the sibling branded type. The
+/// spelling was unchanged on both sides and only its TARGET moved, which is TargetChanged, and run
+/// 33792437834 reported it ADMITTED-BY that row.
+///
+/// Why it no longer stands: its stated trigger -- "once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply" -- has fired. #10218 merged as 95cf3959a2a, and at this
+/// branch's merge base d6fb9d61c81 product.placement_supply declares
+/// `fn physical_asset_identity_eq` while product.printed_chassis.manufacturing_manifest imports it
+/// from there. Base and head therefore agree, the delta is not producible, and a surviving row could
+/// only be stale. Checked against the tree before the deletion rather than after a run reported it,
+/// which is the rule stated directly above being executed rather than restated.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
