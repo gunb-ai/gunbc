@@ -1,11 +1,9 @@
 module v2.test.emit.semantic_decl_binding_keys_parity
 
-import v2.extdeps.languages.rust {
-  rust_decl_derive_binding_spellings,
-  rust_semantic_decl_serialize_profile_bundle_node
-}
+import v2.extdeps.languages.rust { rust_decl_derive_binding_spellings }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import v2.std.compilers.semantic_decl_emission {
-  decode_semantic_decl_serialize_profile_bundle,
+  semantic_decl_emission_from_target,
   semantic_decl_profile_binding_spellings
 }
 import v2.std.compilers.target_model { bound_spelling_from_map }
@@ -14,11 +12,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 fn binding_pair_matches(binding: Symbol) -> Bool {
-  match decode_semantic_decl_serialize_profile_bundle(
-    bundle: rust_semantic_decl_serialize_profile_bundle_node()
-  ) {
-    Accepted { value: profile, diagnostics: _ } =>
-      match semantic_decl_profile_binding_spellings(profile: profile) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
         Accepted { value: decoded_bindings, diagnostics: _ } =>
           match bound_spelling_from_map(
             binding_spellings: decoded_bindings,
