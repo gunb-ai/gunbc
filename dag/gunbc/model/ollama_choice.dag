@@ -1,8 +1,13 @@
-module gunbc.model.choice
+module gunbc.model.ollama_choice
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
+import gunbc.model.release_relative_selection {
+  WithinReleaseQuality, ReleaseRanked, UniqueReleaseRelativeMaximum,
+  NoRankedAlternative, UniqueMaximumFound, NoCommonReleaseScale, MaximumNotUnique,
+  unique_release_relative_maximum,
+}
 import std.content_hash {
   ContentHash, ContentHashComparison, ContentHashEqual, ContentHashDifferent,
   ContentHashCrossFamilyIncomparable, compare_content_hash,
@@ -110,7 +115,7 @@ import extdeps.ollama.server_env {
 // a runtime identity. NEXT-RUNG TRIGGER for this axis alone: an observed runtime build identity --
 // the binary's own digest or a version endpoint reading -- at which point it joins the two above.
 // SEALING A CARRIER DOES NOT GROUND ITS INPUTS, which is what the predecessor got wrong here.
-// ServingRuntimeIdentity was sole_constructor -- and its one mint accepted a freely authored
+// OllamaServingRuntimeIdentity was sole_constructor -- and its one mint accepted a freely authored
 // {name, version}, so two different Ollama binaries both minted `ollama x 0.32.9` and compared
 // equal. The seal stopped an outside record literal and did nothing about the fiction inside it.
 //
@@ -123,7 +128,7 @@ import extdeps.ollama.server_env {
 //
 // The only mint now delegates there. A runtime identity therefore cannot exist without an observed
 // version and an observed asset digest that agree on one catalog row.
-type ServingRuntimeIdentity sole_constructor {
+type OllamaServingRuntimeIdentity sole_constructor {
   materialization: Fnv1a64Structural
 }
 
@@ -132,14 +137,14 @@ type ServingRuntimeIdentity sole_constructor {
 // TOTAL. An OBSERVED runtime is a reading off a live host, and whether that reading names a release
 // we know is exactly the question, so its identity is OPTIONAL. Both route through the same seed, so
 // an observation that does name a cited release mints the identity that release already had.
-fn serving_runtime_identity_for_release(rel: OllamaBinaryRelease) -> ServingRuntimeIdentity {
-  ServingRuntimeIdentity { materialization: ollama_runtime_materialization_identity(rel: rel) }
+fn serving_runtime_identity_for_release(rel: OllamaBinaryRelease) -> OllamaServingRuntimeIdentity {
+  OllamaServingRuntimeIdentity { materialization: ollama_runtime_materialization_identity(rel: rel) }
 }
 
 fn serving_runtime_identity_from_observation(
   version: String,
   asset_digest_hex: String,
-) -> ServingRuntimeIdentity? {
+) -> OllamaServingRuntimeIdentity? {
   match ollama_binary_release_for_observed_asset_digest(digest_hex: asset_digest_hex) {
     Absent => none
     Present { value: rel } =>
@@ -151,7 +156,7 @@ fn serving_runtime_identity_from_observation(
   }
 }
 
-fn serving_runtime_equal(a: ServingRuntimeIdentity, b: ServingRuntimeIdentity) -> Bool {
+fn serving_runtime_equal(a: OllamaServingRuntimeIdentity, b: OllamaServingRuntimeIdentity) -> Bool {
   content_hash_eq_structural(left: a.materialization, right: b.materialization)
 }
 
@@ -238,11 +243,11 @@ fn observed_configuration_matches(
       == (observed_parallel_assignment as String)
 }
 
-type ServingRealizationIdentity sole_constructor {
+type OllamaServingRealizationIdentity sole_constructor {
   release_id: ReleaseIdentity
   quant_label: NonEmptyStr
   artifact_digest: ContentHash
-  runtime: ServingRuntimeIdentity
+  runtime: OllamaServingRuntimeIdentity
 }
 
 // The only mint. sole_constructor already refuses a record literal outside this module; this is the
@@ -251,9 +256,9 @@ fn serving_realization_identity(
   release_id: ReleaseIdentity,
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
-  runtime: ServingRuntimeIdentity,
-) -> ServingRealizationIdentity {
-  ServingRealizationIdentity {
+  runtime: OllamaServingRuntimeIdentity,
+) -> OllamaServingRealizationIdentity {
+  OllamaServingRealizationIdentity {
     release_id: release_id,
     quant_label: quant_label,
     artifact_digest: artifact_digest,
@@ -314,8 +319,8 @@ fn compare_bool_axis(same: Bool) -> RealizationComparison {
 }
 
 fn compare_serving_realization(
-  a: ServingRealizationIdentity,
-  b: ServingRealizationIdentity,
+  a: OllamaServingRealizationIdentity,
+  b: OllamaServingRealizationIdentity,
 ) -> RealizationComparison {
   realization_comparison_then(
     earlier: realization_comparison_then(
@@ -370,7 +375,7 @@ fn prefill_configuration_matches(
     b: exact_runtime_configuration_identity(configuration: configuration))
 }
 
-fn serving_realization_equal(a: ServingRealizationIdentity, b: ServingRealizationIdentity) -> Bool {
+fn serving_realization_equal(a: OllamaServingRealizationIdentity, b: OllamaServingRealizationIdentity) -> Bool {
   realization_comparison_fold(
     comparison: compare_serving_realization(a: a, b: b),
     same: true, different: false, incomparable: false)
@@ -386,8 +391,8 @@ fn incomparable_axis(comparison: RealizationComparison) -> NonEmptyStr? {
   }
 }
 
-type QuantizedCandidate {
-  realization: ServingRealizationIdentity
+type OllamaQuantizedCandidate {
+  realization: OllamaServingRealizationIdentity
   quality_rank: Int
   declared_context: TokenCount
   semantic_context: SemanticContextEvidence?
@@ -399,7 +404,7 @@ type QuantizedCandidate {
 // candidate. It was a `TokenCount?` -- a number with no subject, which could not be checked against
 // the thing it was being used to qualify.
 type SemanticContextEvidence {
-  realization: ServingRealizationIdentity
+  realization: OllamaServingRealizationIdentity
   verified_to: TokenCount
 }
 
@@ -451,7 +456,7 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
 // exactly that -- a queue on a serialized host, read as a property of the model. And a rate measured
 // on one node does not describe another. Both now join.
 type FreshPrefillObservation sole_constructor {
-  realization: ServingRealizationIdentity
+  realization: OllamaServingRealizationIdentity
   configuration: ObservedOllamaLaunchConfiguration
   node: HostIdentity
   concurrent_sessions: Nat
@@ -463,7 +468,7 @@ fn observed_fresh_prefill(
   release_id: ReleaseIdentity,
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
-  runtime: ServingRuntimeIdentity,
+  runtime: OllamaServingRuntimeIdentity,
   configuration: ObservedOllamaLaunchConfiguration,
   node: HostIdentity,
   receipt: ExecutedRequestReceipt,
@@ -526,7 +531,7 @@ fn fresh_prefill_at_point(
 
 fn first_prefill_incomparable_axis(
   observations: List<FreshPrefillObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
 ) -> NonEmptyStr? {
   fold(observations, none, (found, o) =>
     match found {
@@ -554,7 +559,7 @@ fn first_prefill_incomparable_axis(
 // does not belong. Any relevant incomparable prefill reading stalls.
 fn fresh_prefill_qualification(
   observations: List<FreshPrefillObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
@@ -578,7 +583,7 @@ fn fresh_prefill_qualification(
 
 fn prefill_qualification_at_floor(
   observations: List<FreshPrefillObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
@@ -597,7 +602,7 @@ fn prefill_qualification_at_floor(
 
 fn prefill_rate_at_floor(
   observations: List<FreshPrefillObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
@@ -639,7 +644,7 @@ fn prefill_rate_at_floor(
 // The node must match exactly for a third reason: it is not an axis with a direction at all.
 fn slowest_fresh_rate_at_floor(
   observations: List<FreshPrefillObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   node: HostIdentity,
   hot_sessions: Nat,
   floor: TokenCount,
@@ -716,7 +721,7 @@ type RunnerAttemptOutcome
   | RunnerFailedForOtherCause { cause: NonEmptyStr }
 
 type OllamaRunnerMemoryObservation sole_constructor {
-  realization: ServingRealizationIdentity
+  realization: OllamaServingRealizationIdentity
   configuration: ObservedOllamaLaunchConfiguration
   node: HostIdentity
   instrument: NonEmptyStr
@@ -745,7 +750,7 @@ fn observed_memory_attempt(
   release_id: ReleaseIdentity,
   quant_label: NonEmptyStr,
   artifact_digest: ContentHash,
-  runtime: ServingRuntimeIdentity,
+  runtime: OllamaServingRuntimeIdentity,
   configuration: ObservedOllamaLaunchConfiguration,
   node: HostIdentity,
   instrument: NonEmptyStr,
@@ -897,7 +902,7 @@ type MemoryFitEvidence
 // could not be lined up is carried out so the refusal names what to fix.
 fn served_qualifying_observations(
   observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
@@ -914,7 +919,7 @@ fn served_qualifying_observations(
 
 fn refused_at_exact_point(
   observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
@@ -933,7 +938,7 @@ fn refused_at_exact_point(
 // the same rule as a refusal, for the same reason.
 fn failed_otherwise_at_exact_point(
   observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
@@ -1039,14 +1044,14 @@ fn participates_at_point(
 // separates a contradiction from ordinary fit.
 fn incomparable_axis_of(
   o: OllamaRunnerMemoryObservation,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
 ) -> NonEmptyStr? {
   incomparable_axis(comparison: compare_serving_realization(a: o.realization, b: realization))
 }
 
 fn first_axis_in(
   observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
 ) -> NonEmptyStr? {
   fold(observations, none, (found, o) =>
     match found {
@@ -1072,7 +1077,7 @@ fn first_axis_in(
 // Anything else genuinely cannot move the answer and does not stall.
 fn incomparable_rows_in(
   rows: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
 ) -> List<OllamaRunnerMemoryObservation> {
   filter(rows, o =>
     match incomparable_axis_of(o: o, realization: realization) {
@@ -1084,7 +1089,7 @@ fn incomparable_rows_in(
 fn arm_deciding_axis(
   arm_rows: List<OllamaRunnerMemoryObservation>,
   comparable_rows: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
 ) -> NonEmptyStr? {
   let incomparable = incomparable_rows_in(rows: arm_rows, realization: realization)
   match shallowest_of(observations: comparable_rows) {
@@ -1099,7 +1104,7 @@ fn arm_deciding_axis(
 
 fn deciding_incomparable_axis(
   observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
@@ -1280,7 +1285,7 @@ fn shallowest_of(
 
 fn memory_fit_evidence(
   observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
@@ -1298,7 +1303,7 @@ fn memory_fit_evidence(
 
 fn decidable_memory_fit_evidence(
   observations: List<OllamaRunnerMemoryObservation>,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
   floor: TokenCount,
   hot_sessions: Nat,
   node: HostIdentity,
@@ -1335,7 +1340,7 @@ fn decidable_memory_fit_evidence(
 
 // The operator's floors. Each is a REFUSAL THRESHOLD, never a preference to be traded away silently:
 // a candidate below a floor is not a worse choice, it is not a choice.
-type ServingConstraints {
+type OllamaServingConstraints {
   context_floor: TokenCount
   hot_sessions: Nat
   prefill_floor: TokensPerSecond
@@ -1405,8 +1410,8 @@ type RejectionAxis
   | ContextBelowFloor { declared: TokenCount, floor: TokenCount }
   | PrefillBelowFloor { measured: TokensPerSecond, floor: TokensPerSecond }
 
-type CandidateVerdict
-  = ServingCandidateAdmissible { candidate: QuantizedCandidate, fit: OllamaRunnerMemoryObservation }
+type OllamaCandidateVerdict
+  = ServingCandidateAdmissible { candidate: OllamaQuantizedCandidate, fit: OllamaRunnerMemoryObservation }
   | ServingCandidateRejected { identity: ReleaseIdentity, quant_label: NonEmptyStr, axis: RejectionAxis }
   | ServingCandidateUnanswerable { identity: ReleaseIdentity, quant_label: NonEmptyStr, missing: MissingFact }
 
@@ -1451,7 +1456,7 @@ type CandidateVerdict
 // architecture admits, not a measurement of what the model retrieves, and the gap between them is
 // exactly where silent degradation lives. Admitting on the declaration would reintroduce the rung
 // error the publication layer exists to prevent, one module downstream of where it was removed.
-fn unanswerable(candidate: QuantizedCandidate, missing: MissingFact) -> CandidateVerdict {
+fn unanswerable(candidate: OllamaQuantizedCandidate, missing: MissingFact) -> OllamaCandidateVerdict {
   ServingCandidateUnanswerable {
     identity: candidate.realization.release_id,
     quant_label: candidate.realization.quant_label,
@@ -1459,7 +1464,7 @@ fn unanswerable(candidate: QuantizedCandidate, missing: MissingFact) -> Candidat
   }
 }
 
-fn rejected(candidate: QuantizedCandidate, axis: RejectionAxis) -> CandidateVerdict {
+fn rejected(candidate: OllamaQuantizedCandidate, axis: RejectionAxis) -> OllamaCandidateVerdict {
   ServingCandidateRejected {
     identity: candidate.realization.release_id,
     quant_label: candidate.realization.quant_label,
@@ -1467,11 +1472,11 @@ fn rejected(candidate: QuantizedCandidate, axis: RejectionAxis) -> CandidateVerd
   }
 }
 
-fn evaluate_candidate(
-  candidate: QuantizedCandidate,
+fn qualify_ollama_candidate(
+  candidate: OllamaQuantizedCandidate,
   node: HostIdentity,
-  constraints: ServingConstraints,
-) -> CandidateVerdict {
+  constraints: OllamaServingConstraints,
+) -> OllamaCandidateVerdict {
   match memory_fit_evidence(
     observations: candidate.runtime_memory_observations,
     realization: candidate.realization,
@@ -1569,7 +1574,7 @@ type SemanticContextQualification
 
 fn semantic_context_qualification(
   evidence: SemanticContextEvidence?,
-  realization: ServingRealizationIdentity,
+  realization: OllamaServingRealizationIdentity,
 ) -> SemanticContextQualification {
   match evidence {
     Absent => SemanticContextNotForThisRealization
@@ -1582,9 +1587,9 @@ fn semantic_context_qualification(
   }
 }
 
-// The single eliminator for CandidateVerdict, for the reason runner_attempt_fold exists.
+// The single eliminator for OllamaCandidateVerdict, for the reason runner_attempt_fold exists.
 fn candidate_verdict_fold<T>(
-  verdict: CandidateVerdict,
+  verdict: OllamaCandidateVerdict,
   admissible: T,
   rejected: T,
   unanswerable: T,
@@ -1596,41 +1601,38 @@ fn candidate_verdict_fold<T>(
   }
 }
 
-fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
+fn verdict_is_admissible(verdict: OllamaCandidateVerdict) -> Bool {
   candidate_verdict_fold(verdict: verdict, admissible: true, rejected: false, unanswerable: false)
 }
 
-fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
+fn verdict_is_unanswerable(verdict: OllamaCandidateVerdict) -> Bool {
   candidate_verdict_fold(verdict: verdict, admissible: false, rejected: false, unanswerable: true)
 }
 
-// QUALITY IS ORDINAL WITHIN ONE RELEASE, and this carrier says so structurally. A bare Int rank
-// invites the one comparison that has no meaning -- IQ2_XXS of release A against Q4 of release B --
-// and nothing in the type stops it; the guard has to live in whichever function remembers. Pairing
-// the rank with the release it is ordinal under moves the guard into `compare_within_release`, the
-// single primitive through which every comparison in this module passes.
-type WithinReleaseQuality {
-  identity: ReleaseIdentity
-  rank: Int
-}
-
-// Absent when the two ranks are ordinal under DIFFERENT releases, which is not a tie and not an
-// ordering -- it is the absence of a common scale, and returning any Int here would invent one.
-fn compare_within_release(a: WithinReleaseQuality, b: WithinReleaseQuality) -> Int? {
-  match release_identity_equal(a: a.identity, b: b.identity) {
-    false => none
-    true => Present { value: a.rank - b.rank }
-  }
-}
-
-// Absent for a candidate that is not admissible. The predecessor returned `0 - 1` for those, which
-// is an INVENTED ORDINAL: it places a rejected candidate below every real rank on a scale it was
-// never measured on, and a release legitimately ranking its own artifacts from -1 would collide with
-// it. A fact that was never established is carried as absent, not as a sentinel.
-fn verdict_quality(verdict: CandidateVerdict) -> WithinReleaseQuality? {
+// THE OLLAMA-LOCAL PROJECTION ONTO THE NEUTRAL RANKING KERNEL, and the only place this module
+// decides what "quality" means for an Ollama artifact.
+//
+// Absent for a candidate that is not admissible -- and absent is the whole point. The predecessor
+// returned `0 - 1` for those, which is an INVENTED ORDINAL: it places a rejected candidate below
+// every real rank on a scale it was never measured on, and a release legitimately ranking its own
+// artifacts from -1 would collide with it. A fact that was never established is carried as absent,
+// not as a sentinel.
+//
+// WHAT THIS ACTUALLY GUARANTEES, stated narrowly enough to be true. It is NOT that the kernel can
+// only ever see verdicts routed through here -- the kernel is public and generic, so any caller may
+// construct a ReleaseRanked and invoke it. The real claim is about the production path:
+// choose_ollama_serving_candidate supplies ranked Ollama verdicts ONLY through this function, and
+// the kernel cannot read inside the payload or decide admissibility, so qualification authority
+// stays in this module even though maximum-and-tie policy no longer does. `ReleaseRanked` is named
+// for what it promises (a payload with a release-relative key) rather than for admissibility,
+// precisely so that holding one is never mistaken for a qualification anyone granted.
+fn ollama_ranked_admissible(verdict: OllamaCandidateVerdict) -> ReleaseRanked<OllamaCandidateVerdict>? {
   match verdict {
     ServingCandidateAdmissible { candidate: c, fit: _ } =>
-      Present { value: WithinReleaseQuality { identity: c.realization.release_id, rank: c.quality_rank } }
+      Present { value: ReleaseRanked {
+        quality: WithinReleaseQuality { identity: c.realization.release_id, rank: c.quality_rank },
+        payload: verdict,
+      } }
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => none
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => none
   }
@@ -1639,10 +1641,10 @@ fn verdict_quality(verdict: CandidateVerdict) -> WithinReleaseQuality? {
 // THE ANSWER, or a refusal carrying every rejection so the binding constraint is READ rather than
 // argued. There is no arm that returns a best-effort pick when nothing fits: a degraded choice
 // presented as the answer is the failure mode this whole exercise exists to remove.
-type ServingChoice
-  = ChoseCandidate { verdict: CandidateVerdict }
-  | NoCandidateAdmissible { rejections: List<CandidateVerdict> }
-  | SelectionUnanswerable { cause: UnanswerableCause, evaluations: List<CandidateVerdict> }
+type OllamaServingChoice
+  = ChoseCandidate { verdict: OllamaCandidateVerdict }
+  | NoCandidateAdmissible { rejections: List<OllamaCandidateVerdict> }
+  | SelectionUnanswerable { cause: UnanswerableCause, evaluations: List<OllamaCandidateVerdict> }
 
 // WHY NO ANSWER EXISTS YET, as distinct from no candidate qualifying. Both refuse; they tell the
 // operator to do completely different things.
@@ -1672,129 +1674,68 @@ fn unanswerable_cause_wire(cause: UnanswerableCause) -> String {
   }
 }
 
-fn choose_serving_candidate(
-  candidates: List<QuantizedCandidate>,
+// THIS IS THE OLLAMA-SPECIFIC HALF: it QUALIFIES, and it delegates selection. The runtime-neutral
+// maximum/tie kernel now lives in gunbc.model.release_relative_selection, and this function's only
+// remaining contribution to selection is `ollama_ranked_admissible` -- the projection that decides
+// what an Ollama artifact's release-relative quality IS. The kernel cannot read the payload it
+// ranks, so no realization dispatch could migrate there even by accident.
+//
+// WHY THE NAME KEPT "CHOOSE" RATHER THAN BECOMING A QUALIFIER. The module does two separable things:
+// runtime-specific candidate QUALIFICATION, and maximum-quality SELECTION with release-relative rank
+// and tie refusal. Only the first is Ollama-specific by nature. Calling the whole module a qualifier
+// would have misdescribed the second half and quietly asserted a decomposition that has not happened
+// -- so `qualify_ollama_candidate` names the half that really is qualification, and the entry point
+// stays a chooser because it still chooses.
+//
+// WHAT THE RENAME DOES AND DOES NOT CLAIM. It claims only that these concepts stop advertising a
+// runtime-neutral domain they never served: runtime identity is minted solely from Ollama release
+// authority, the configuration is an ObservedOllamaLaunchConfiguration, the fit evidence is an
+// OllamaRunnerMemoryObservation, and the admissible verdict carries that observation. It does NOT
+// claim a vLLM path exists, and no Vllm arm, FitEvidence coproduct or generic alias was added here
+// -- each would have kept realization dispatch in a central selector, which is the shape this
+// sequence exists to remove. The first common type belongs AFTER realization-specific qualification,
+// never around raw memory evidence.
+//
+// NO COMPATIBILITY RE-EXPORT WAS LEFT BEHIND, deliberately. A generic wrapper preserving the old
+// `choose_serving_candidate` spelling would retain exactly the misleading public surface this cut
+// removes; the compile failures at old import sites ARE the census (DESIGN section 3's delete-first
+// rule -- in a fail-closed substrate the deletion is what makes every real dependent refuse loudly).
+//
+// WHAT THE EXTRACTION DID NOT DO. It did not make a vLLM path exist. A second realization still owes
+// its own qualifier, its own evidence carriers and its own projection into ReleaseRanked; what it no
+// longer owes is a duplicate maximum-and-tie policy, and what it must never be given is an arm
+// inside this function.
+fn choose_ollama_serving_candidate(
+  candidates: List<OllamaQuantizedCandidate>,
   node: HostIdentity,
-  constraints: ServingConstraints,
-) -> ServingChoice {
+  constraints: OllamaServingConstraints,
+) -> OllamaServingChoice {
   let verdicts = map(candidates, c =>
-    evaluate_candidate(candidate: c, node: node, constraints: constraints))
+    qualify_ollama_candidate(candidate: c, node: node, constraints: constraints))
   let unresolved = filter(verdicts, v => verdict_is_unanswerable(verdict: v))
-  let admissible = filter(verdicts, v => verdict_is_admissible(verdict: v))
   match length(unresolved) > 0 {
     true => SelectionUnanswerable {
       cause: UnresolvedCandidateCouldWin { unresolved_count: length(unresolved) },
       evaluations: verdicts,
     }
-    false => match quality_maximum(verdicts: admissible) {
-      NoQualityToCompare => NoCandidateAdmissible { rejections: verdicts }
-      QualityIncomparableAcrossReleases => SelectionUnanswerable {
-        cause: CrossReleaseQualityOrderAbsent {
-          distinct_release_count: distinct_release_count(verdicts: admissible),
-        },
-        evaluations: verdicts,
-      }
-      QualityMaximumFound { quality: top } => {
-        let tied = verdicts_at_quality(verdicts: admissible, quality: top)
-        match length(tied) > 1 {
-          true => SelectionUnanswerable {
-            cause: QualityRankTie { tied_count: length(tied), rank: top.rank },
-            evaluations: verdicts,
-          }
-          false => match first(tied) {
-            Absent => NoCandidateAdmissible { rejections: verdicts }
-            Present { value: best } => ChoseCandidate { verdict: best }
-          }
+    false => {
+      let ranked = fold(verdicts, [], (acc, v) =>
+        match ollama_ranked_admissible(verdict: v) {
+          Absent => acc
+          Present { value: r } => append(acc, [r])
+        })
+      match unique_release_relative_maximum(alternatives: ranked) {
+        NoRankedAlternative => NoCandidateAdmissible { rejections: verdicts }
+        NoCommonReleaseScale { distinct_release_count: n } => SelectionUnanswerable {
+          cause: CrossReleaseQualityOrderAbsent { distinct_release_count: n },
+          evaluations: verdicts,
         }
+        MaximumNotUnique { quality: top, tied_count: n } => SelectionUnanswerable {
+          cause: QualityRankTie { tied_count: n, rank: top.rank },
+          evaluations: verdicts,
+        }
+        UniqueMaximumFound { payload: best } => ChoseCandidate { verdict: best }
       }
     }
   }
-}
-
-
-
-// How many DISTINCT releases the admissible set spans, keyed by ReleaseIdentity rather than by a
-// display name. A name-keyed count is wrong in both directions: two revisions of one family share a
-// name and would merge, while one release referred to by an alias in one row and its canonical name
-// in another would split. This module already has an exact identity available, so counting anything
-// else is a second, weaker key for a fact the identity already decides.
-//
-// It fills a DIAGNOSTIC and no longer decides anything. The refusal itself now comes from
-// `quality_maximum` failing to find a common scale, so the count cannot disagree with the decision.
-//
-// The dedupe is the corpus's fold/any/append idiom rather than a call to guarantee_measurement's
-// distinct_string_count: std carries no distinct, and reaching into the guarantee-measurement module
-// for a list primitive would invert the layering -- a model-selection authority would then depend on
-// a measurement authority for something neither owns.
-fn distinct_release_count(verdicts: List<CandidateVerdict>) -> Nat {
-  length(fold(map(verdicts, v => verdict_release(verdict: v)), [], (acc, r) =>
-    match any(acc, e => release_identity_equal(a: e, b: r)) {
-      true => acc
-      false => append(acc, [r])
-    }))
-}
-
-fn verdict_release(verdict: CandidateVerdict) -> ReleaseIdentity {
-  match verdict {
-    ServingCandidateAdmissible { candidate: c, fit: _ } => c.realization.release_id
-    ServingCandidateRejected { identity: r, quant_label: _, axis: _ } => r
-    ServingCandidateUnanswerable { identity: r, quant_label: _, missing: _ } => r
-  }
-}
-
-// THE MAXIMUM, or a typed statement of why none exists. Three arms because three things are
-// genuinely different: nothing to compare, a maximum, and quantities with no common scale.
-//
-// The predecessor returned an Int option and relied on the CALLER checking the release count first.
-// That is the arrangement DESIGN 5 names as validation standing where construction was available:
-// the guard was satisfiable by editing the caller while the comparison still lied. Here the fold
-// cannot produce a number across releases, because `compare_within_release` has no arm that does.
-type QualityMaximum
-  = NoQualityToCompare
-  | QualityMaximumFound { quality: WithinReleaseQuality }
-  | QualityIncomparableAcrossReleases
-
-// TIES ARE NOT BROKEN HERE. An earlier revision kept the earlier candidate and its annotation
-// claimed that made the result stable under re-ordering -- which is exactly backwards, since keeping
-// the earlier candidate is the one rule whose output DOES change when the roster is reversed. Two
-// candidates at equal rank have no maximum, and inventing one is the same fabrication this module
-// refuses across releases, applied within a release. So this returns the top quality and the caller
-// refuses when more than one candidate shares it.
-//
-// TOTAL over the empty list, via NoQualityToCompare. The predecessor seeded its fold with a
-// head-or-fabricate helper that manufactured a ServingCandidateRejected { "none", DoesNotFitMemory
-// { 0, 0 } }. That row was unreachable from its only caller, which is exactly what made it
-// dangerous: a synthetic verdict a later consumer would read as a real rejection of a real model
-// against a real zero-byte capacity, with nothing in the type marking it invented.
-fn quality_maximum(verdicts: List<CandidateVerdict>) -> QualityMaximum {
-  fold(verdicts, NoQualityToCompare, (best, v) =>
-    match verdict_quality(verdict: v) {
-      Absent => best
-      Present { value: q } =>
-        match best {
-          QualityIncomparableAcrossReleases => QualityIncomparableAcrossReleases
-          NoQualityToCompare => QualityMaximumFound { quality: q }
-          QualityMaximumFound { quality: b } =>
-            match compare_within_release(a: q, b: b) {
-              Absent => QualityIncomparableAcrossReleases
-              Present { value: d } =>
-                match d > 0 {
-                  true => QualityMaximumFound { quality: q }
-                  false => QualityMaximumFound { quality: b }
-                }
-            }
-        }
-    })
-}
-
-fn verdicts_at_quality(verdicts: List<CandidateVerdict>, quality: WithinReleaseQuality) -> List<CandidateVerdict> {
-  filter(verdicts, v =>
-    match verdict_quality(verdict: v) {
-      Absent => false
-      Present { value: q } =>
-        match compare_within_release(a: q, b: quality) {
-          Absent => false
-          Present { value: d } => d == 0
-        }
-    })
 }

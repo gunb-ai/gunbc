@@ -421,9 +421,17 @@ pub(crate) fn floor_required_opaque_host_call_surface(
              unpollable is unreadable and no claim's preemption reachability can be observed. \
              The floor refuses rather than arming an empty surface, which would report every \
              completed-over-ceiling crossing as an ordinary overshoot. Repair the join in \
-             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?}",
+             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?} \
+             wrong_dispatch_site={:?}",
             floor_value_shape(ctx.field(fields, "unresolved")),
             floor_value_shape(ctx.field(fields, "not_free_call")),
+            // THE THIRD POPULATION, AND IT HAS ITS OWN REPAIR. `unresolved` is a roster row
+            // pointing at nothing and `not_free_call` is an arm whose dispatch shape the
+            // criterion does not admit; `wrong_dispatch_site` is an arm that IS a free call but
+            // is dispatched somewhere other than `eval_builtin_inner`, so the recorder installed
+            // there can never observe it. Reporting it as either of the other two would send a
+            // repairer to the wrong authority.
+            floor_value_shape(ctx.field(fields, "wrong_dispatch_site")),
         )),
         other => Err(format!(
             "{qualified}: unknown OpaqueHostCallSurface arm {other:?}"
@@ -538,6 +546,29 @@ pub fn run_claim_measured(
             eval_steps,
             fill_eval_steps,
             measured_eval_steps,
+        );
+        // THE DISCRIMINATOR FOR THE PREEMPTION-REACHABILITY COLUMN, PRINTED OVER THE POPULATION
+        // THAT MAKES IT DECIDABLE. A shared fill is opaque host work by construction — that is
+        // what the fill IS — so any claim reaching this line provably ran a host call, and its
+        // reach record is therefore FALSIFIABLE here and nowhere else in the corpus.
+        //
+        // WHY THE DENOMINATOR IS PRINTED BESIDE THE REACH RATHER THAN THE REACH ALONE. On run
+        // 33832137832 the column read `cooperatively_pollable` for 3602 of 3602 claims,
+        // INCLUDING a witness authored to enter a listed arm, and an empty reach cannot say
+        // which of its two causes produced it: the claim called no listed arm, or the hook was
+        // never on the path the call took. `dispatches` separates them. Zero dispatches under a
+        // claim that just paid a multi-hundred-millisecond fill is the decoration reading, and
+        // it is a statement about the INSTRUMENT; a positive count with an empty reach is a
+        // statement about the IDENTITY TEST, and the last name observed says which spelling to
+        // compare against. Both readings are actionable and neither is available from the
+        // published column.
+        let (dispatches, last_name) = v1_interpreter::builtin_dispatches_observed();
+        eprintln!(
+            "[floor-reach-probe] claim={function} fill_cpu_ms={} reach={} dispatches={}              last_builtin={}",
+            fill_cpu_nanos / 1_000_000,
+            preemption_reachability_label(&v1_interpreter::opaque_host_call_reach()),
+            dispatches,
+            last_name.unwrap_or_else(|| "<none>".to_string()),
         );
     }
     ctx.clear_eval_deadline();

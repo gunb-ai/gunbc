@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.refusal_reabsorbed_by_intermediate_default
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data refusal_reabsorbed_by_intermediate_default: RecurringFailureMode = RecurringFailureMode {
+  identity: "refusal_reabsorbed_by_intermediate_default" as NonEmptyStr,
+
+  receipts: [
+    "**a refusal is only a refusal if it SURVIVES ITS CALLER -- a producer can be correct at its inability boundary while the composed path still fabricates an answer** (INVALID STATE: a producer returns its typed empty or refusal at an explicit inability boundary, and an intermediate consumer reads that outcome as permission to substitute a default, a nickname, a shallower identity, or an empty-success. The composed path widens even though the producing site is correct in isolation. HARM: the fabricated value reaches a judgment site that believes it is comparing real data, so a mismatch that should have been loud is silently admitted -- section 5's forbidden state, reached by a route in which no single frame did anything obviously wrong.)",
+
+    "WHY SITE-LOCAL REVIEW IS STRUCTURALLY BLIND TO IT, WHICH IS THE WHOLE REASON IT IS A CLASS. Inspection at the producer sees the intended refusal. A unit test at the producer sees the intended refusal. A reviewer reading the diff that ADDS the refusal sees a correct refusal being added. Only following the outcome through EVERY consumer reveals that a later frame absorbs it and recreates an answer -- and nothing in the producer's diff points at the frame that will do so. The defect is not in any line you would think to look at.",
+
+    "MEASURED INSTANCE, gunbc#10146: carried_structural_type_name was repaired to return empty at its depth-16 ceiling -- correct, and correct in isolation. Its PARENT FRAME converted that empty back to `here`, so declared_alias_target_matches_produced continued to receive a fabricated shallow identity and alias admission continued to succeed. The first repair was therefore indistinguishable from no repair at the only site that decides, and it was caught on a full-path reread rather than at the edit. THE FIRST FIX WAS ITSELF AN INSTANCE OF THE CLASS IT WAS FIXING.",
+
+    "DISTINGUISHING WITNESS, and note that it must assert at the JUDGMENT SITE and not at the producer: construct a chain that reaches the inability boundary, then assert AT THE FINAL JUDGMENT SITE that no fallback identity or value is admitted and the typed refusal or loud mismatch survives unchanged. A witness that asserts at the producer passes against both the broken and the repaired composition and therefore discriminates nothing.",
+
+    "REPAIR RULE: A REFUSAL IS ABSORBING ACROSS THE FULL CALLER CHAIN. Consumers may propagate a typed cause or enrich it; none may translate it into a default, a nickname, a shallower identity, an empty-success, or an acceptance. The rule is stated over the chain rather than over any frame, because every frame in the observed instance was locally defensible.",
+
+    "BOUNDARY AGAINST THE ABSORBING-FALLBACK ROW, WHICH IS ADJACENT AND NOT THE SAME. There, a FAILURE ARM widens instead of refusing -- the producer is the defect, and the repair is to make that arm refuse. Here the producer ALREADY REFUSES CORRECTLY and a CONSUMER undoes it. Different site, different repair, and no single capability retires both: making failure arms refuse does nothing about a caller that re-absorbs a correct refusal.",
+
+    "RUNG FOUND AT: mitigatable, and the mitigation was a human performing a full-path reread after a review flagged the site. CEILING: structurally guaranteed -- a typed refusal whose absorption by a consumer is not expressible cannot appear in an Accepted program, and the decidable fact is whether any frame maps a refusal outcome onto a non-refusal value. NEXT-RUNG TRIGGER, stated as a CAPABILITY and deliberately not as an artifact: the compiler can decide, for a producer's refusal outcome, whether every consumer on every path either propagates it or refuses -- and refuses the program when one converts it to a value. Adding the depth-ceiling witness, or repairing this one parent frame, satisfies none of that and leaves every other producer-consumer pair in the tree exposed identically.",
+  ],
+
+  evidence: [],
+}

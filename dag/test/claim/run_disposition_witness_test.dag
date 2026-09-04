@@ -186,8 +186,12 @@ test fn w_RED_a_replacement_created_after_the_cancel_is_never_superseded() -> Bo
 // AVAILABILITY DOMINATES THE OBSERVATION, WHICH IS A STRICTLY STRONGER STATEMENT THAN ABSENCE.
 //
 // The two main-branch specimens in the measured window are cancelled push runs. A push cannot be
-// superseded, because witnesses.yml enables cancel-in-progress only for pull_request -- so those
-// runs are not merely unexplained, they are structurally incapable of the benign explanation. This
+// superseded, because the emitted `concurrency.group` is
+// `witness-floor-${{ github.event.pull_request.number || github.run_id }}` and a push carries no
+// pull_request number, so it falls back to `run_id` and every push run is ALONE IN ITS GROUP. The
+// reason is the group expression, NOT `cancel-in-progress`, which witnesses.yml sets to an
+// UNCONDITIONAL `false` for every event -- so those runs are not merely unexplained, they are
+// structurally incapable of the benign explanation. This
 // asserts that ordering by handing a push run the MOST benign-looking evidence available (a
 // positive-lag replacement) and requiring it to still classify external.
 test fn w_RED_a_push_cancel_is_external_even_with_a_prior_replacement() -> Bool {

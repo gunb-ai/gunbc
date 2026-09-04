@@ -10,10 +10,11 @@ import gunbc.guarantee_stall {
   CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt,
   BoundedPopulation, UncountedNotEnumerable,
   stall_is_below_ceiling, stall_report_message,
-  next_rung_trigger_enforcement_stall,
-  all_guarantee_stalls, every_stall_is_below_its_ceiling, every_stall_names_a_trigger,
-  every_restored_stall_is_rostered_once, restored_stalls,
-  heterogeneous_child_list_stall, stall_roster_size,
+  every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size,
+}
+import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
+import gunbc.guarantee_stall.roster {
+  all_guarantee_stalls, restored_stalls, every_restored_stall_is_rostered_once,
 }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
