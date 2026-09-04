@@ -37,6 +37,7 @@ import gunbc.emit_diagnostic_observation {
 import std.measure { Nanosecond, nanosecond_count, ByteSize, byte_size_count }
 import extdeps.crypto.hash { Digest }
 import extdeps.github.actions_environment {
+  ActionsRunEnvironmentObservations,
   ActionsRunCoordinate,
   ActionsRunCoordinateObserved,
   ActionsRunCoordinateMissing,
@@ -1624,9 +1625,7 @@ type EmitObservationContext {
   working_tree: WorkingTreeStanding
   compiler: Digest
   assembler: Digest
-  run_identity: ActionsRunCoordinate
-  run_attempt: ActionsRunCoordinate
-  runner_binding: ActionsRunCoordinate
+  observations: ActionsRunEnvironmentObservations
 }
 
 // THE BINDING IS A COPRODUCT AND A DIVERGENT ONE CARRIES NO CONTEXT, which is the guarantee that
@@ -1645,9 +1644,7 @@ type ObservationBinding
 
 fn observation_binding(
   subjects: List<EmissionMeasurementSubject>,
-  run_identity: ActionsRunCoordinate,
-  run_attempt: ActionsRunCoordinate,
-  runner_binding: ActionsRunCoordinate
+  observations: ActionsRunEnvironmentObservations
 ) -> ObservationBinding {
   match component_agreement(subjects: subjects) {
     ComponentDiverges { component: c, values: vs } => BindingDivergent { component: c, values: vs }
@@ -1666,9 +1663,7 @@ fn observation_binding(
                   working_tree: subject.working_tree,
                   compiler: subject.compiler,
                   assembler: subject.assembler,
-                  run_identity: run_identity,
-                  run_attempt: run_attempt,
-                  runner_binding: runner_binding
+                  observations: observations
                 }
               }
           }
@@ -1690,8 +1685,8 @@ fn observation_binding_text(binding: ObservationBinding) -> String {
       concat(
         concat(concat("bound\trevision\t", ctx.source_revision as String), concat("\ttree\t", working_tree_standing_text(standing: ctx.working_tree))),
         concat(
-          concat(concat("\tcompiler\t", ctx.compiler.hex as String), concat("\trun\t", run_coordinate_text(coordinate: ctx.run_identity))),
-          concat(concat("\tattempt\t", run_coordinate_text(coordinate: ctx.run_attempt)), concat("\trunner\t", run_coordinate_text(coordinate: ctx.runner_binding)))
+          concat(concat("\tcompiler\t", ctx.compiler.hex as String), concat("\trun\t", run_coordinate_text(coordinate: ctx.observations.run_identity))),
+          concat(concat("\tattempt\t", run_coordinate_text(coordinate: ctx.observations.run_attempt)), concat("\trunner\t", run_coordinate_text(coordinate: ctx.observations.runner)))
         )
       )
     BindingDivergent { component: c, values: vs } =>
@@ -1938,13 +1933,13 @@ fn pricing_context_refusal(context: EmitObservationContext) -> PricingContextSta
   match context.working_tree {
     WorkingTreeDirty => PricingContextRefused { cause: PricingWorkingTreeDirty }
     WorkingTreeClean =>
-      match context.run_identity {
+      match context.observations.run_identity {
         ActionsRunCoordinateMissing { variable: n } =>
           PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
         ActionsRunCoordinateEmpty { variable: n } =>
           PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
         ActionsRunCoordinateObserved { value: _ } =>
-          match context.run_attempt {
+          match context.observations.run_attempt {
             ActionsRunCoordinateMissing { variable: n } =>
               PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
             ActionsRunCoordinateEmpty { variable: n } =>
@@ -2025,12 +2020,12 @@ fn emit_pricing_receipt_text(receipt: EmitPricingReceipt) -> String {
       concat(
         concat(
           concat("pricing\trevision\t", ctx.source_revision as String),
-          concat("\trun\t", run_coordinate_text(coordinate: ctx.run_identity))
+          concat("\trun\t", run_coordinate_text(coordinate: ctx.observations.run_identity))
         ),
         concat(
           concat(
-            concat("\tattempt\t", run_coordinate_text(coordinate: ctx.run_attempt)),
-            concat("\trunner\t", run_coordinate_text(coordinate: ctx.runner_binding))
+            concat("\tattempt\t", run_coordinate_text(coordinate: ctx.observations.run_attempt)),
+            concat("\trunner\t", run_coordinate_text(coordinate: ctx.observations.runner))
           ),
           concat(
             concat(
