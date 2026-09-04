@@ -2,7 +2,7 @@ module extdeps.ray.threshold_memory_monitor
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { Percent, percent, ByteSize, Millisecond, millisecond, Gibibyte, gibibyte, gibibyte_to_byte_size }
+import std.measure { Percent, percent, ByteSize, Millisecond, millisecond, millisecond_count, Gibibyte, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -132,12 +132,12 @@ data ray_threshold_monitor_defaults: RayThresholdMonitorDefaults = RayThresholdM
   read_at: ray_source_revision_read
 }
 
-// ── DISABLING THE MONITOR IS A ZERO REFRESH, WHICH IS WHY IT IS DERIVED AND NOT SPELLED ─────────
+// ── A ZERO REFRESH DISABLES THE THRESHOLD ARM, AND THE NAME SAYS SO ────────────────────────────
 //
-// Upstream documents the disable as setting the refresh interval to zero at Ray start. That is one
-// fact expressed two ways -- a config field and its environment spelling -- so the argv is computed
-// from the same row the default comes from rather than authored beside it.
-fn ray_memory_monitor_disable_env() -> NonEmptyStr {
+// The argv is computed from the same row the default comes from rather than authored beside it, so a
+// rename of the config field moves both at once. The FUNCTION is named for the threshold monitor
+// rather than for "the memory monitor" because that is all it disables -- see `ray_built_monitors`.
+fn ray_threshold_monitor_disable_env() -> NonEmptyStr {
   concat(ray_config_env_spelling(c: MemoryMonitorRefreshMs) as String, "=0") as NonEmptyStr
 }
 
@@ -154,6 +154,7 @@ type RayMonitorLogLine
   | NodeMemoryAboveThreshold
   | UserSliceMemoryAboveThreshold
   | NodeMemoryUncapturable
+  | ThresholdMonitorDisabled
 
 fn ray_monitor_log_format(line: RayMonitorLogLine) -> NonEmptyStr {
   match line {
@@ -165,6 +166,8 @@ fn ray_monitor_log_format(line: RayMonitorLogLine) -> NonEmptyStr {
       "User slice memory usage above threshold, used: %d, threshold_bytes: %d, total bytes: %d, threshold fraction: %f" as NonEmptyStr
     NodeMemoryUncapturable =>
       "Unable to capture node memory. Monitor will not be able to detect memory usage above threshold." as NonEmptyStr
+    ThresholdMonitorDisabled =>
+      "ThresholdMemoryMonitor disabled. Specify `RAY_memory_monitor_refresh_ms` > 0 to enable the monitor." as NonEmptyStr
   }
 }
 
@@ -178,38 +181,85 @@ fn ray_monitor_line_reports_measurement(line: RayMonitorLogLine) -> Bool {
     NodeMemoryAboveThreshold => true
     UserSliceMemoryAboveThreshold => true
     NodeMemoryUncapturable => false
+    ThresholdMonitorDisabled => false
   }
 }
 
-// ── WHICH MONITOR THE FACTORY SELECTS, WHICH IS A PARAMETER AND NOT A SPELLING ──────────────────
+// THE THREE CAUSES OF A SILENT THRESHOLD LOG ARE ALL DECIDABLE, WHICH IS THE POINT OF CARRYING THE
+// DISABLED LINE. No threshold line means one of: the monitor ran and saw nothing above threshold
+// (neither line present); it ran and could not SEE (the uncapturable line present); or it was never
+// built at all (the disabled line present, naming the variable). Because the zero interval swaps the
+// OBJECT and logs on construction, the third is announced rather than inferred -- so a reader is
+// never left treating "no alarm" as evidence of safety.
+fn ray_startup_line_explains_threshold_silence(line: RayMonitorLogLine) -> Bool {
+  match line {
+    ThresholdMonitorDisabled => true
+    NodeMemoryUncapturable => true
+    ThresholdExceeded => false
+    NodeMemoryAboveThreshold => false
+    UserSliceMemoryAboveThreshold => false
+  }
+}
+
+// ── WHAT THE FACTORY BUILDS, READ FROM Create's BODY AND NOT FROM ITS SIGNATURE ────────────────
 //
-// `memory_monitor_factory.h` selects on a `resource_isolation_enabled` boolean passed to `Create`,
-// not on an environment variable, so there is nothing to cite as a spelling and the selection is
-// modelled as what it is: a function of platform and one flag. The header does not say where that
-// flag originates, and this module does not guess -- it is an argument, and its provenance is the
-// caller's fact rather than this citation's.
-type RayMonitorPlatform = LinuxPlatform | NonLinuxPlatform
+// SELECTION DEPENDS ON CONFIG THE SIGNATURE DOES NOT NAME. `Create` takes
+// (kill_workers_callback, resource_isolation_enabled, cgroup_manager) -- the refresh interval is
+// nowhere in it. The interval is read from the `RayConfig` GLOBAL inside the body:
+//
+//   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
+//
+// An earlier revision of this module modelled selection from the signature alone and was WRONG for
+// the disable case -- the case that matters most -- because a header's parameter list is not the set
+// of inputs a function reads. That is the whole reason this section cites the body.
+//
+// THE ZERO INTERVAL SWAPS THE OBJECT, IT DOES NOT SKIP THE PUSH. Above zero the factory pushes a
+// ThresholdMemoryMonitor; at zero it pushes a NoopMemoryMonitor and logs a line naming the variable.
+// There is therefore no "constructed but never scheduled" state, which is what makes the disabled
+// case DECIDABLE FROM THE LOG rather than inferable only from configuration.
+type RayBuiltMonitor = ThresholdMonitorBuilt | NoopMonitorBuilt | EventMonitorBuilt
 
-type RaySelectedMonitors
-  = ThresholdOnly
-  | ThresholdAndEvent
-  | NoopMonitor
-
-fn ray_selected_monitors(
-  platform: RayMonitorPlatform,
+// ONE POPULATION, AND `disable` NAMES ONLY ONE MEMBER OF IT. The event monitor is pushed BEFORE the
+// interval is read and is guarded solely by `resource_isolation_enabled`, so with isolation ON and a
+// zero interval the factory builds [Event, Noop] -- a LIVE cgroup-driven monitor beside a no-op.
+//
+// SO `RAY_memory_monitor_refresh_ms=0` DOES NOT DISABLE MEMORY ENFORCEMENT. It disables the THRESHOLD
+// arm. An earlier draft of this module called that argv "disable the monitor", which overstates in
+// exactly the direction a refusal must not overstate: a caller reading it would conclude a host is
+// unenforced when a cgroup-driven monitor is still killing workers on it.
+fn ray_built_monitors(
   resource_isolation_enabled: Bool,
-) -> RaySelectedMonitors {
-  match platform {
-    NonLinuxPlatform => NoopMonitor
-    LinuxPlatform =>
-      match resource_isolation_enabled {
-        true => ThresholdAndEvent
-        false => ThresholdOnly
-      }
+  refresh: Millisecond,
+) -> List<RayBuiltMonitor> {
+  concat(
+    match resource_isolation_enabled {
+      true => [EventMonitorBuilt]
+      false => []
+    },
+    match millisecond_count(refresh) == 0 {
+      true => [NoopMonitorBuilt]
+      false => [ThresholdMonitorBuilt]
+    },
+  )
+}
+
+fn ray_built_monitor_enforces(m: RayBuiltMonitor) -> Bool {
+  match m {
+    ThresholdMonitorBuilt => true
+    EventMonitorBuilt => true
+    NoopMonitorBuilt => false
   }
 }
 
-// THE PRESSURE MONITOR HAS NO ARM ABOVE, AND THAT IS THE MODELLED FACT RATHER THAN AN OMISSION.
-// It exists in the same upstream directory and `Create` never returns it, so a consumer reasoning
-// about "the memory monitor Ray runs" is reasoning about at most two implementations.
+// ── WHAT IS DELIBERATELY NOT MODELLED HERE ─────────────────────────────────────────────────────
+//
+// NO PLATFORM ARM. An earlier revision carried `NonLinuxPlatform -> Noop`, taken from a comment on
+// master's header. The 2.58.0 factory body read for this module contains NO platform branch, and a
+// row asserting one would be a citation to a revision it was not read at -- the precise failure the
+// `count_swap_in_memory_monitor` absence above records this module already coming close to once.
+// If the behaviour exists it belongs here with a reading behind it, and until then its absence is
+// the honest state.
+//
+// NO PROVENANCE FOR `resource_isolation_enabled`. It is an argument to `Create`, so where it comes
+// from is the caller's fact rather than this citation's.
 fn ray_pressure_monitor_is_factory_selectable() -> Bool { false }
