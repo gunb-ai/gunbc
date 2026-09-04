@@ -11,7 +11,10 @@ import std.measure {
 import extdeps.network.ipv4 { ipv4_address, render_ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
-import gunbc.spark.fabric_link_desired { fabric_rail0, fabric_endpoint_on }
+import gunbc.spark.fabric_link_desired {
+  fabric_rail0, fabric_endpoint_on,
+  fabric_link_identity, fabric_link_identity_eq, SparkFabricPair, SparkFabricRail,
+}
 import gunbc.spark.llama_cpp_rpc_observed {
   llama_cpp_rpc_front_door,
   llama_cpp_rpc_weights_peer,
@@ -432,6 +435,19 @@ test fn an_unobserved_artifact_identity_is_not_bound() -> Bool {
 // octets would let a rail move from enp1s0f0np0 to another NIC, or from MTU 9000 to 1500, without
 // this going red.
 //
+// THE RAIL ASSERTION WAS RE-EXPRESSED, AND THAT IS NOT AN EXCEPTION TO THE RULE BELOW.
+//
+// This clause used to read `link.name == "cx7-rail0"`. Two things were wrong with it and neither is a
+// change to the observation. `cx7-rail0` is the NetworkManager PROFILE ID, which the fabric module
+// itself records as a per-host actuation detail that both ends are free to disagree about -- so the
+// clause was asserting a host's local spelling as if it were the link's identity. And it was doing so
+// through a caller-authored string field that no longer exists: link identity is now the closed
+// `FabricLinkIdentity { pair, rail }`, and this reads it.
+//
+// The rail this names is unchanged -- srv7/srv8, rail0 -- and every other literal below is untouched,
+// which is the evidence that the desired fabric did not move and the snapshot rule was not triggered.
+// A representation change is not an observation change; the rule below governs the second.
+//
 // WHEN IT FIRES, THE FIX IS NOT TO UPDATE THE LITERALS. A red here means the desired fabric has
 // moved away from what the dated observation used, and the correct response is to snapshot the
 // observed rail into this module as its own dated value -- the side of the fork that stops being
@@ -446,7 +462,9 @@ test fn the_dated_observation_still_agrees_with_the_fabric_row_it_cites() -> Boo
           match fabric_endpoint_on(link: link, host: operator_host_srv7) {
             Absent => false
             Present { value: door } =>
-              (link.name as String) == "cx7-rail0"
+              fabric_link_identity_eq(
+                a: link.identity,
+                b: fabric_link_identity(pair: Srv7Srv8, rail: Rail0))
                 && render_ipv4_address(addr: peer.address) == "192.168.100.11"
                 && render_ipv4_address(addr: door.address) == "192.168.100.10"
                 && (peer.interface as String) == "enp1s0f0np0"

@@ -797,7 +797,7 @@ data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTa
 
 data gunbc_ci_heal_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
-  function: "main_wet",
+  function: "main_wet_verified",
 }
 
 data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1522,9 +1522,12 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   )
 }
 
-// THE HEAL REGEN INVOKE: `gunbc run` on the generated-artifact drift gate's `main_wet`, which
+// THE HEAL REGEN INVOKE: `gunbc run` on the generated-artifact drift gate's
+// `main_wet_verified`, which
 // writes each `committed_generated_artifacts()` projection to its path -- a fail-closed fold, so a
-// write error stops the line and never leaves a partial commit. It runs on the same
+// write error stops the line and never leaves a partial commit -- then performs a second generation
+// through the drift gate and refuses, typed and located, before commit if any written byte is not
+// the generator's fixed point. It runs on the same
 // `witness_layer_roots` and released `gunbc` binary the deploy job consumes. Idempotent by
 // construction: on a tree already at the fixed point the writes are byte-identical, the downstream
 // commit-push step sees no git diff and pushes nothing, and the loop terminates in one heal.
