@@ -1,6 +1,7 @@
 module gunbc.model.release_relative_selection
 
 import std.types { Bool, List, Int }
+import std.algebra { Ordering, Less, Equal, Greater }
 import std.nat { Nat }
 import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
 
@@ -31,12 +32,17 @@ import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
 // bare-alias reuse DESIGN section 6 warns against: the coincidence is superficial, the law is not.
 //
 // It is not gunbc.model.publication either. Publication owns what a model release IS; this owns a
-// POLICY for selecting among already-qualified artifacts. ReleaseIdentity is nevertheless the right
+// POLICY for selecting a unique maximum under a release-relative order. It does NOT own
+// qualification and does not assert that anything reaching it was qualified: a realization-local
+// serving caller is expected to project its own admissible verdicts into ReleaseRanked before
+// invoking the kernel, and that expectation lives with the caller, not in this module's subject.
+// Saying otherwise here would contradict the naming discipline recorded on ReleaseRanked below.
+// ReleaseIdentity is nevertheless the right
 // shared key, because that type is modeled independently of whoever serves, packages, distributes or
 // hosts the model -- which is precisely why it can cross a realization boundary when an
 // OllamaRunnerMemoryObservation cannot.
 //
-// AND A RUNTIME SOURCE REVISION MUST NEVER ENTER THIS KEY. gunbc.extdeps.vllm's
+// AND A RUNTIME SOURCE REVISION MUST NEVER ENTER THIS KEY. extdeps.vllm.server's
 // vllm_source_revision_read identifies the SOURCE against which runtime laws were read; it is not
 // the publisher's release identity and the two answer different questions. A future vLLM-qualified
 // payload carries its runtime provenance opaquely through T, where this module cannot read it.
@@ -56,11 +62,23 @@ type WithinReleaseQuality {
 }
 
 // Absent when the two ranks are ordinal under DIFFERENT releases, which is not a tie and not an
-// ordering -- it is the absence of a common scale, and returning any Int here would invent one.
-fn compare_within_release(a: WithinReleaseQuality, b: WithinReleaseQuality) -> Int? {
+// ordering -- it is the absence of a common scale, and returning any ordering here would invent one.
+//
+// THE CODOMAIN IS Ordering, NOT AN Int DIFFERENCE, and that is a correctness fix rather than a
+// stylistic one. The predecessor returned `a.rank - b.rank`. Int realizes as signed i64, so a pair
+// as ordinary as rank 9223372036854775807 against rank -1 demands a difference outside the
+// represented domain -- and depending on the execution path that wraps, traps, or refuses. A
+// purported ordering authority that is not TOTAL over its own declared inputs is not an authority.
+//
+// It was also the wrong codomain semantically. Quality rank is ORDINAL: the established fact is
+// less, equal, or greater, and the magnitude of the interval between two ranks is not a fact this
+// domain has. Subtraction answered a question nobody asked and could not answer it safely.
+fn compare_within_release(a: WithinReleaseQuality, b: WithinReleaseQuality) -> Ordering? {
   match release_identity_equal(a: a.identity, b: b.identity) {
     false => none
-    true => Present { value: a.rank - b.rank }
+    true => if a.rank < b.rank { Present { value: Less } }
+      else if a.rank > b.rank { Present { value: Greater } }
+      else { Present { value: Equal } }
   }
 }
 
@@ -94,9 +112,13 @@ type ReleaseRanked<T> {
 // TIES ARE NOT BROKEN HERE, and that is a refusal rather than an omission. An earlier revision of
 // the Ollama chooser kept the earlier candidate and claimed that made the result stable under
 // re-ordering, which is exactly backwards: keeping the earlier candidate is the one rule whose
-// output DOES change when the roster is reversed. Two candidates at equal rank have no maximum, and
-// inventing one is the same fabrication this module refuses across releases, applied within a
-// release.
+// output DOES change when the roster is reversed.
+//
+// Be exact about WHAT is absent under a tie. A maximum QUALITY exists and is well defined -- it is
+// carried on the MaximumNotUnique arm. What does not exist is a unique maximum PAYLOAD, and
+// selecting one anyway is the same fabrication this module refuses across releases, applied within
+// a release. The four arms already draw that line; this sentence exists so the prose does not
+// blur it back.
 //
 // EMPTY INPUT IS ITS OWN ARM rather than a sentinel alternative. The predecessor seeded its fold
 // with a helper that manufactured a rejected verdict against a zero-byte capacity -- a synthetic row
@@ -124,11 +146,9 @@ fn release_relative_peak<T>(alternatives: List<ReleaseRanked<T>>) -> ReleaseRela
       PeakFound { quality: b } =>
         match compare_within_release(a: a.quality, b: b) {
           Absent => PeakIncomparable
-          Present { value: d } =>
-            match d > 0 {
-              true => PeakFound { quality: a.quality }
-              false => PeakFound { quality: b }
-            }
+          Present { value: Greater } => PeakFound { quality: a.quality }
+          Present { value: Equal } => PeakFound { quality: b }
+          Present { value: Less } => PeakFound { quality: b }
         }
     })
 }
@@ -148,7 +168,9 @@ fn alternatives_at<T>(
   filter(alternatives, a =>
     match compare_within_release(a: a.quality, b: quality) {
       Absent => false
-      Present { value: d } => d == 0
+      Present { value: Equal } => true
+      Present { value: Less } => false
+      Present { value: Greater } => false
     })
 }
 

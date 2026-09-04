@@ -1618,8 +1618,11 @@ fn verdict_is_unanswerable(verdict: OllamaCandidateVerdict) -> Bool {
 // artifacts from -1 would collide with it. A fact that was never established is carried as absent,
 // not as a sentinel.
 //
-// THE KERNEL NEVER SEES A VERDICT IT DID NOT RECEIVE THROUGH HERE. It cannot construct one, cannot
-// read inside the payload it carries, and cannot decide admissibility -- so qualification authority
+// WHAT THIS ACTUALLY GUARANTEES, stated narrowly enough to be true. It is NOT that the kernel can
+// only ever see verdicts routed through here -- the kernel is public and generic, so any caller may
+// construct a ReleaseRanked and invoke it. The real claim is about the production path:
+// choose_ollama_serving_candidate supplies ranked Ollama verdicts ONLY through this function, and
+// the kernel cannot read inside the payload or decide admissibility, so qualification authority
 // stays in this module even though maximum-and-tie policy no longer does. `ReleaseRanked` is named
 // for what it promises (a payload with a release-relative key) rather than for admissibility,
 // precisely so that holding one is never mistaken for a qualification anyone granted.
