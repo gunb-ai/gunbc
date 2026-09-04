@@ -1,0 +1,198 @@
+module gunbc.model.release_relative_selection
+
+import std.types { Bool, List, Int }
+import std.algebra { Ordering, Less, Equal, Greater }
+import std.nat { Nat }
+import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
+
+// THE RUNTIME-NEUTRAL HALF OF SERVING SELECTION, AND THE REASON IT IS A SEPARATE AUTHORITY.
+//
+// gunbc.model.ollama_choice does two separable things: it QUALIFIES candidates against
+// Ollama-specific evidence, and it then SELECTS a maximum under a release-relative order. Only the
+// first is realization-specific. Leaving the second inside the Ollama module would force a second
+// realization to either duplicate the maximum and tie policy or reach into an Ollama authority for
+// it, and both are how one selector ends up dispatching on runtime -- the shape the realization-axis
+// cut exists to remove.
+//
+// THE BOUNDARY IS AFTER QUALIFICATION AND BEFORE MAXIMUM SELECTION, and it is exact in both
+// directions. Earlier would drag memory observations, launch configuration, realization identity or
+// missing-fact classification into a module that claims to be neutral -- the same lie the rename in
+// gunbc#10358 removed, re-introduced one layer down. Later would leave maximum and tie policy
+// duplicated per realization, which is the duplication this module exists to prevent.
+//
+// WHAT THIS MODULE MAY SEE: a release identity, an ordinal rank, and an opaque payload. That is the
+// whole vocabulary. It never matches on the payload, never projects a field out of it, never
+// compares two payloads, never serializes or reconstructs one. It returns the exact payload value it
+// was handed. A kernel that could inspect T would be a realization dispatcher wearing a type
+// parameter.
+//
+// WHAT THIS MODULE IS NOT: it is not a mathematical maximum and does not belong in std. It carries a
+// DOMAIN LAW -- that quality is ordinal only within one publisher release, and that no order exists
+// across releases. std has no business holding that, and a generic std maximum would be exactly the
+// bare-alias reuse DESIGN section 6 warns against: the coincidence is superficial, the law is not.
+//
+// It is not gunbc.model.publication either. Publication owns what a model release IS; this owns a
+// POLICY for selecting a unique maximum under a release-relative order. It does NOT own
+// qualification and does not assert that anything reaching it was qualified: a realization-local
+// serving caller is expected to project its own admissible verdicts into ReleaseRanked before
+// invoking the kernel, and that expectation lives with the caller, not in this module's subject.
+// Saying otherwise here would contradict the naming discipline recorded on ReleaseRanked below.
+// ReleaseIdentity is nevertheless the right
+// shared key, because that type is modeled independently of whoever serves, packages, distributes or
+// hosts the model -- which is precisely why it can cross a realization boundary when an
+// OllamaRunnerMemoryObservation cannot.
+//
+// AND A RUNTIME SOURCE REVISION MUST NEVER ENTER THIS KEY. extdeps.vllm.server's
+// vllm_source_revision_read identifies the SOURCE against which runtime laws were read; it is not
+// the publisher's release identity and the two answer different questions. A future vLLM-qualified
+// payload carries its runtime provenance opaquely through T, where this module cannot read it.
+
+// QUALITY IS ORDINAL WITHIN ONE RELEASE, and this carrier says so structurally. A bare Int rank
+// invites the one comparison that has no meaning -- IQ2_XXS of release A against Q4 of release B --
+// and nothing in the type stops it; the guard then has to live in whichever function remembers.
+// Pairing the rank with the release it is ordinal under moves the guard into
+// compare_within_release, the single primitive every comparison here passes through.
+//
+// THIS TYPE MOVED HERE rather than being copied. Two spellings of one concept, one per realization,
+// would be the meaning fork DESIGN section 3 forbids -- and it would fork at exactly the point where
+// the two realizations must agree in order to be comparable at all.
+type WithinReleaseQuality {
+  identity: ReleaseIdentity
+  rank: Int
+}
+
+// Absent when the two ranks are ordinal under DIFFERENT releases, which is not a tie and not an
+// ordering -- it is the absence of a common scale, and returning any ordering here would invent one.
+//
+// THE CODOMAIN IS Ordering, NOT AN Int DIFFERENCE, and that is a correctness fix rather than a
+// stylistic one. The predecessor returned `a.rank - b.rank`. Int realizes as signed i64, so a pair
+// as ordinary as rank 9223372036854775807 against rank -1 demands a difference outside the
+// represented domain -- and depending on the execution path that wraps, traps, or refuses. A
+// purported ordering authority that is not TOTAL over its own declared inputs is not an authority.
+//
+// It was also the wrong codomain semantically. Quality rank is ORDINAL: the established fact is
+// less, equal, or greater, and the magnitude of the interval between two ranks is not a fact this
+// domain has. Subtraction answered a question nobody asked and could not answer it safely.
+fn compare_within_release(a: WithinReleaseQuality, b: WithinReleaseQuality) -> Ordering? {
+  match release_identity_equal(a: a.identity, b: b.identity) {
+    false => none
+    true => if a.rank < b.rank { Present { value: Less } }
+      else if a.rank > b.rank { Present { value: Greater } }
+      else { Present { value: Equal } }
+  }
+}
+
+// AN ALTERNATIVE THIS KERNEL MAY RANK -- AND THE NAME IS DELIBERATELY NOT "QUALIFIED".
+//
+// This carrier promises exactly one thing: a payload has been associated with a release-relative
+// ordering key. It does NOT assert that the payload passed anyone's admission test, and it must not
+// be read as though it did. The qualification authority stays with the realization-local projection
+// that produces one of these from its own admissible arm.
+//
+// The distinction is load-bearing and was learned the expensive way in gunbc#10335. There, a lookup
+// helper took its POPULATION as a parameter and trusted it, so any caller could mint the canonical
+// FoundExactlyOne carrier from a list of its own choosing. A public generic carrier called
+// "QualifiedCandidate" would be that same defect in generic form -- a counterfeit qualification
+// mint, type-correct and freely constructible by anyone who can name the type. Naming the carrier
+// for the property it ACTUALLY promises, rather than the property its consumer wants, is what stops
+// that.
+type ReleaseRanked<T> {
+  quality: WithinReleaseQuality
+  payload: T
+}
+
+// THE MAXIMUM, OR A TYPED STATEMENT OF WHY NONE EXISTS. Four arms because four things are genuinely
+// different, and collapsing any pair of them would fabricate an answer:
+//
+//   - nothing was ranked at all
+//   - exactly one alternative stands highest
+//   - the alternatives have no common scale, so "highest" is not a question this can answer
+//   - several alternatives share the top rank, so a maximum exists but a UNIQUE one does not
+//
+// TIES ARE NOT BROKEN HERE, and that is a refusal rather than an omission. An earlier revision of
+// the Ollama chooser kept the earlier candidate and claimed that made the result stable under
+// re-ordering, which is exactly backwards: keeping the earlier candidate is the one rule whose
+// output DOES change when the roster is reversed.
+//
+// Be exact about WHAT is absent under a tie. A maximum QUALITY exists and is well defined -- it is
+// carried on the MaximumNotUnique arm. What does not exist is a unique maximum PAYLOAD, and
+// selecting one anyway is the same fabrication this module refuses across releases, applied within
+// a release. The four arms already draw that line; this sentence exists so the prose does not
+// blur it back.
+//
+// EMPTY INPUT IS ITS OWN ARM rather than a sentinel alternative. The predecessor seeded its fold
+// with a helper that manufactured a rejected verdict against a zero-byte capacity -- a synthetic row
+// a later consumer would read as a real rejection of a real model, with nothing in the type marking
+// it invented.
+type UniqueReleaseRelativeMaximum<T>
+  = NoRankedAlternative
+  | UniqueMaximumFound { payload: T }
+  | NoCommonReleaseScale { distinct_release_count: Nat }
+  | MaximumNotUnique { quality: WithinReleaseQuality, tied_count: Nat }
+
+// The top quality, or the absence of a common scale. Separated from the uniqueness question because
+// they fail differently: no common scale is a statement about the POPULATION, while a tie is a
+// statement about the maximum itself.
+type ReleaseRelativePeak
+  = NoPeak
+  | PeakFound { quality: WithinReleaseQuality }
+  | PeakIncomparable
+
+fn release_relative_peak<T>(alternatives: List<ReleaseRanked<T>>) -> ReleaseRelativePeak {
+  fold(alternatives, NoPeak, (best, a) =>
+    match best {
+      PeakIncomparable => PeakIncomparable
+      NoPeak => PeakFound { quality: a.quality }
+      PeakFound { quality: b } =>
+        match compare_within_release(a: a.quality, b: b) {
+          Absent => PeakIncomparable
+          Present { value: Greater } => PeakFound { quality: a.quality }
+          Present { value: Equal } => PeakFound { quality: b }
+          Present { value: Less } => PeakFound { quality: b }
+        }
+    })
+}
+
+fn distinct_ranking_releases<T>(alternatives: List<ReleaseRanked<T>>) -> Nat {
+  length(fold(alternatives, [], (acc, a) =>
+    match any(acc, e => release_identity_equal(a: e, b: a.quality.identity)) {
+      true => acc
+      false => append(acc, [a.quality.identity])
+    }))
+}
+
+fn alternatives_at<T>(
+  alternatives: List<ReleaseRanked<T>>,
+  quality: WithinReleaseQuality,
+) -> List<ReleaseRanked<T>> {
+  filter(alternatives, a =>
+    match compare_within_release(a: a.quality, b: quality) {
+      Absent => false
+      Present { value: Equal } => true
+      Present { value: Less } => false
+      Present { value: Greater } => false
+    })
+}
+
+// THE KERNEL. It returns the EXACT payload it was handed -- not a reconstruction, not a projection,
+// not a copy assembled from parts it inspected -- which is what keeps T genuinely opaque.
+fn unique_release_relative_maximum<T>(
+  alternatives: List<ReleaseRanked<T>>,
+) -> UniqueReleaseRelativeMaximum<T> {
+  match release_relative_peak(alternatives: alternatives) {
+    NoPeak => NoRankedAlternative
+    PeakIncomparable => NoCommonReleaseScale {
+      distinct_release_count: distinct_ranking_releases(alternatives: alternatives) }
+    PeakFound { quality: q } => {
+      let top = alternatives_at(alternatives: alternatives, quality: q)
+      match first(top) {
+        Absent => NoRankedAlternative
+        Present { value: winner } =>
+          match length(top) == 1 {
+            true => UniqueMaximumFound { payload: winner.payload }
+            false => MaximumNotUnique { quality: q, tied_count: length(top) }
+          }
+      }
+    }
+  }
+}
