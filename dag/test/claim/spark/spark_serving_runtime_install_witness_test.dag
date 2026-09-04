@@ -1,6 +1,9 @@
 module test.claim.spark_serving_runtime_install_witness
 
 import std.types { String, List, Bool, NonEmptyStr }
+import std.measure { token_count, positive_slot_count, positive_measure_count }
+import gunbc.spark.serving_desired { spark_serving_desired_bind_listen }
+import gunbc.spark.serving_release { ServingContract }
 import gunbc.spark.serving_realization { InstallOwnedRuntimeClosure, MaterializeModelArtifact }
 import gunbc.spark.serving_converge_realize {
   SparkServingInstallRemoteCommandsPresent,
@@ -20,9 +23,21 @@ fn install_steps() -> List<NonEmptyStr> {
   match realize_spark_serving_install_effect_command(
     effect: InstallOwnedRuntimeClosure,
     executor_login: spark_serving_default_executor_login(),
+    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
+  }
+}
+
+
+// THE CONTRACT IS A FIXTURE: the fleet's own is a refusal until a per-realization observation is
+// recorded; these witnesses exercise the realizer, a function of the contract it is given.
+fn w_contract() -> ServingContract {
+  ServingContract {
+    bind: spark_serving_desired_bind_listen,
+    default_context: token_count(count: 1048576),
+    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
   }
 }
 
@@ -30,6 +45,7 @@ fn step_argv(identity: String) -> List<String> {
   match realize_spark_serving_install_effect_command(
     effect: InstallOwnedRuntimeClosure,
     executor_login: spark_serving_default_executor_login(),
+    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
@@ -62,6 +78,7 @@ fn pull_steps() -> List<NonEmptyStr> {
   match realize_spark_serving_install_effect_command(
     effect: MaterializeModelArtifact,
     executor_login: spark_serving_default_executor_login(),
+    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
@@ -74,6 +91,7 @@ fn pull_step_argv(identity: String) -> List<String>? {
   match realize_spark_serving_install_effect_command(
     effect: MaterializeModelArtifact,
     executor_login: spark_serving_default_executor_login(),
+    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => none
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>

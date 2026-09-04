@@ -5,6 +5,7 @@ import std.content_hash { content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.spark.serving_release {
+  ServingContract,
   SparkServingOccurrence,
   SparkServingRelease,
 }
@@ -26,8 +27,6 @@ import gunbc.spark.serving_install_paths {
 import gunbc.spark.serving_desired {
   spark_serving_desired_bind_host_port,
   spark_serving_automation_principal_login,
-  spark_serving_desired_default_context,
-  spark_serving_desired_serving_slots,
 }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.spark.serving_unit_render { spark_serving_desired_user_unit_content_identity }
@@ -187,8 +186,8 @@ fn spark_serving_serving_principal() -> NonEmptyStr {
 // The desired unit member's state is the identity of the bytes that will be WRITTEN, taken through
 // the same function the observation takes over the bytes it READS. Hashing the typed spec instead
 // would put the two sides in different identity domains, so a converged host could never match.
-fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
-  spark_serving_desired_user_unit_content_identity()
+fn spark_serving_user_unit_state_digest(contract: ServingContract) -> NonEmptyStr {
+  spark_serving_desired_user_unit_content_identity(contract: contract)
 }
 
 // The DESIRED enablement is a constant, because the model declares the unit must survive a reboot.
@@ -251,9 +250,9 @@ fn spark_serving_user_unit_registration_state(content_digest: NonEmptyStr) -> No
 // none), so it gets its own value rather than being folded into either.
 data spark_serving_user_unit_registered_without_content_state: NonEmptyStr = "user-unit-registered-without-content" as NonEmptyStr
 
-fn spark_serving_desired_user_unit_registration_state_digest() -> NonEmptyStr {
+fn spark_serving_desired_user_unit_registration_state_digest(contract: ServingContract) -> NonEmptyStr {
   spark_serving_user_unit_registration_state(
-    content_digest: spark_serving_desired_user_unit_content_identity(),
+    content_digest: spark_serving_desired_user_unit_content_identity(contract: contract),
   )
 }
 
@@ -306,13 +305,13 @@ fn spark_serving_executor_linger_disabled_state_digest() -> NonEmptyStr {
   )
 }
 
-fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteIntent {
+fn spark_serving_user_unit_file_write_intent(contract: ServingContract) -> SparkServingUserUnitWriteIntent {
   SparkServingUserUnitWriteIntent {
     path: spark_serving_user_unit_path(),
     spec: spark_serving_user_unit_spec(
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-      default_context: spark_serving_desired_default_context(),
-      serving_slots: spark_serving_desired_serving_slots(),
+      default_context: contract.default_context,
+      serving_slots: contract.serving_slots,
     ),
   }
 }
@@ -353,14 +352,14 @@ fn spark_serving_desired_members(
       host: host,
       principal: principal,
       address: SparkServingUserUnitAddress,
-      state_digest: spark_serving_user_unit_state_digest(),
+      state_digest: spark_serving_user_unit_state_digest(contract: occurrence.launch_profile.contract),
       ownership: Owned,
     ),
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingUserUnitRegistrationAddress,
-      state_digest: spark_serving_desired_user_unit_registration_state_digest(),
+      state_digest: spark_serving_desired_user_unit_registration_state_digest(contract: occurrence.launch_profile.contract),
       ownership: Owned,
     ),
     spark_serving_member(

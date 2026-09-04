@@ -34,8 +34,6 @@ import gunbc.spark.serving_install_paths {
 }
 import gunbc.spark.serving_desired {
   spark_serving_desired_bind_host_port,
-  spark_serving_desired_default_context,
-  spark_serving_desired_serving_slots,
 }
 
 // THE ONE PLACE A SPARK SERVING UNIT BECOMES BYTES.
@@ -176,22 +174,22 @@ fn spark_serving_user_unit_text(spec: SparkServingUserUnitSpec) -> String {
   serialize_systemd_unit_file(file: spark_serving_user_unit_file(spec: spec))
 }
 
-fn spark_serving_desired_user_unit_text() -> String {
+fn spark_serving_desired_user_unit_text(contract: ServingContract) -> String {
   spark_serving_user_unit_text(
     spec: spark_serving_user_unit_spec(
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-      default_context: spark_serving_desired_default_context(),
-      serving_slots: spark_serving_desired_serving_slots(),
+      default_context: contract.default_context,
+      serving_slots: contract.serving_slots,
     ),
   )
 }
 
-fn spark_serving_desired_user_unit_definition_identity() -> NonEmptyStr {
+fn spark_serving_desired_user_unit_definition_identity(contract: ServingContract) -> NonEmptyStr {
   spark_serving_user_unit_definition_identity(
     spec: spark_serving_user_unit_spec(
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-      default_context: spark_serving_desired_default_context(),
-      serving_slots: spark_serving_desired_serving_slots(),
+      default_context: contract.default_context,
+      serving_slots: contract.serving_slots,
     ),
   )
 }
@@ -232,8 +230,8 @@ fn spark_serving_user_unit_content_wire(text: String) -> String {
   )
 }
 
-fn spark_serving_desired_user_unit_content_identity() -> NonEmptyStr {
+fn spark_serving_desired_user_unit_content_identity(contract: ServingContract) -> NonEmptyStr {
   spark_serving_user_unit_content_identity(
-    wire_base64: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
+    wire_base64: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text(contract: contract)),
   )
 }

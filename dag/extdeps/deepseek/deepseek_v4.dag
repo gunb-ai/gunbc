@@ -38,11 +38,18 @@ type DeepseekV4ReasoningMode
   | DeepseekV4ThinkHigh
   | DeepseekV4ThinkMax
 
+// THE WIRE LABEL FOR THINK MAX IS "max", AND AN EARLIER REVISION OF THIS ROW SAID "xhigh". That was
+// a transcription from a compatibility table read backwards: the Thinking Mode guide lists the
+// user-set efforts low/high/max and then states that the compatibility values medium and xhigh
+// BOTH MAP TO high -- so "xhigh" is not a stronger setting than "high", it is an alias for it, and a
+// harness sending it to ask for Think Max would have received Think High and never known. The vLLM
+// recipe for this model names Think Max explicitly as reasoning_effort "max".
+// Sources: api-docs.deepseek.com/guides/thinking_mode ; recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash
 fn deepseek_v4_reasoning_mode_wire(mode: DeepseekV4ReasoningMode) -> NonEmptyStr {
   match mode {
     DeepseekV4NonThink => "non-think" as NonEmptyStr
     DeepseekV4ThinkHigh => "high" as NonEmptyStr
-    DeepseekV4ThinkMax => "xhigh" as NonEmptyStr
+    DeepseekV4ThinkMax => "max" as NonEmptyStr
   }
 }
 
@@ -84,3 +91,25 @@ fn deepseek_v4_output_budget_for_input(window: TokenCount, input_tokens: TokenCo
   let i = token_count_value(t: input_tokens)
   if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
 }
+
+// WHETHER THINKING IS ON WHEN A REQUEST SAYS NOTHING IS A PROPERTY OF THE SERVING REALIZATION, NOT
+// OF THE MODEL, and the two realizations this fleet can reach disagree. The official API enables
+// thinking by default at effort high. A vLLM deployment enables it only when the request carries
+// chat_template_kwargs thinking=true; the recipe's non-think example sends no kwargs at all and is
+// described as the fast mode. A harness that assumes one default while talking to the other
+// therefore runs the model in a mode nobody chose -- which is what happened on 2026-09-04, when
+// every measured run reached vLLM with no switch and produced zero thinking blocks in twenty-three
+// rounds. The two facts are carried separately so neither can be cited for the other.
+data deepseek_v4_thinking_default_official_api: Bool = true
+data deepseek_v4_thinking_default_vllm: Bool = false
+
+// THE REQUEST KEYS THE CHAT TEMPLATE RECOGNISES ON vLLM. These are what turn into the model's
+// trained thinking marker; text in the prompt asking the model to think harder does not.
+data deepseek_v4_vllm_thinking_kwarg: NonEmptyStr = "thinking" as NonEmptyStr
+data deepseek_v4_vllm_reasoning_effort_kwarg: NonEmptyStr = "reasoning_effort" as NonEmptyStr
+
+// MULTI-TURN TOOL USE MUST PASS PRIOR REASONING BACK. The guide: "the reasoning_content of all
+// previous turns should be passed back to the API and will be concatenated into the context". A
+// client that drops or re-labels the reasoning channel on replay is not merely losing information;
+// it is handing the model a transcript that was never produced.
+data deepseek_v4_tool_use_requires_reasoning_replay: Bool = true

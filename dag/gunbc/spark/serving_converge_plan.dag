@@ -52,7 +52,9 @@ import gunbc.spark.serving_membership {
   spark_serving_membership_noop,
   spark_serving_desired_members,
 }
-import gunbc.spark.serving_release { SparkServingOccurrence, SparkServingRelease }
+import gunbc.spark.serving_release {
+  ServingContract,
+  ServingLaunchProfile, SparkServingOccurrence, SparkServingRelease }
 import gunbc.spark.serving_converge_realize {
   realize_spark_serving_install_effect_command,
   realize_spark_serving_retirement_effect_command,
@@ -65,6 +67,7 @@ import gunbc.spark.serving_desired {
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
   spark_serving_occurrence,
+  spark_serving_launch_admission, ServingLaunchAdmission, LaunchAdmitted, LaunchRefused,
 }
 import gunbc.spark.serving_member_realization {
   spark_serving_realization_for_member_action,
@@ -160,11 +163,12 @@ fn fleet_converge_spark_serving_action_at(
 
 fn fleet_converge_spark_serving_typed_action(
   action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+  contract: ServingContract,
 ) -> FleetConvergeSparkServingTypedAction? {
   match spark_serving_realization_for_member_action(action: action) {
     Absent => Absent
     Present { value: realization } =>
-      match spark_serving_planned_realization_executions(realization: realization) {
+      match spark_serving_planned_realization_executions(realization: realization, contract: contract) {
         Absent => Absent
         Present { value: executions } =>
           match executions.first() {
@@ -200,10 +204,11 @@ fn fleet_converge_spark_serving_typed_action(
 // realization, and the shared fold takes the per-effect realizer as its only difference.
 fn spark_serving_planned_realization_executions(
   realization: SparkServingMemberRealization,
+  contract: ServingContract,
 ) -> List<PlannedEffectExecution>? {
   match realization {
     SparkServingMemberInstalls { effects: es } =>
-      spark_serving_planned_effect_executions(effects: es)
+      spark_serving_planned_effect_executions(effects: es, contract: contract)
     SparkServingMemberRetires { effects: es } =>
       spark_serving_planned_retirement_executions(effects: es)
   }
@@ -239,6 +244,7 @@ fn spark_serving_planned_retirement_executions(
 
 fn spark_serving_planned_effect_executions(
   effects: List<ServingInstallEffect>,
+  contract: ServingContract,
 ) -> List<PlannedEffectExecution>? {
   fold(effects, init: Present { value: [] }, f: fn(acc, effect) {
     match acc {
@@ -247,6 +253,7 @@ fn spark_serving_planned_effect_executions(
         match realize_spark_serving_install_effect_command(
           effect: effect,
           executor_login: spark_serving_automation_principal_login(),
+          contract: contract,
         ) {
           SparkServingInstallRemoteCommandsRefused { reason: _ } => none
           SparkServingInstallRemoteCommandsPresent { steps: steps } =>
@@ -294,6 +301,7 @@ type SparkServingTypedActionProjection
 fn fleet_converge_spark_serving_typed_actions(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
   desired: List<SparkServingMember>,
+  contract: ServingContract,
 ) -> SparkServingTypedActionProjection {
   match spark_serving_freeze_execution_schedule(
     plan: plan,
@@ -302,7 +310,7 @@ fn fleet_converge_spark_serving_typed_actions(
     SparkServingScheduleRefused { cause: why } =>
       SparkServingTypedActionsRefused { cause: why }
     SparkServingScheduleFrozen { schedule: schedule } =>
-      fleet_converge_spark_serving_typed_actions_in_order(plan: plan, schedule: schedule)
+      fleet_converge_spark_serving_typed_actions_in_order(plan: plan, schedule: schedule, contract: contract)
   }
 }
 
@@ -313,6 +321,7 @@ fn fleet_converge_spark_serving_typed_actions(
 fn fleet_converge_spark_serving_typed_actions_in_order(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
   schedule: SparkServingFrozenExecutionSchedule,
+  contract: ServingContract,
 ) -> SparkServingTypedActionProjection {
   let scheduled = scheduled_rows_from_frozen_schedule(
     schedule: schedule,
@@ -320,7 +329,7 @@ fn fleet_converge_spark_serving_typed_actions_in_order(
       flat_map(
         filter(plan.actions, a => fleet_converge_spark_serving_action_at(action: a) == at),
         a =>
-          match fleet_converge_spark_serving_typed_action(action: a) {
+          match fleet_converge_spark_serving_typed_action(action: a, contract: contract) {
             Present { value: row } => [row]
             Absent => []
           }
@@ -384,15 +393,41 @@ type SparkServingScheduledRowsVerdict
     }
   | SparkServingScheduledRowsRefused { cause: String }
 
+// THE PRODUCTION LINE-STOP. This is the per-host planner every converge run passes through, and
+// it is where an unobserved realization refuses: before any occurrence is built, before any member
+// is planned, with the key in the cause. The fleet-desired data row and the converge-realize write
+// operation carry the same refusal, but this function is the one production actually reaches --
+// the other two are consumed only by witnesses -- so a wall that lived only there would have been
+// a wall beside the door. Verified by census: spark_serving_occurrence has exactly two production
+// callers, and this is the one on the converge path.
 fn spark_serving_scheduled_rows_for_release(
   host: NonEmptyStr,
   projection: SparkServingObservedMemberProjection,
   serving_release: SparkServingRelease,
 ) -> SparkServingScheduledRowsVerdict {
+  match spark_serving_launch_admission(serving_release: serving_release) {
+    LaunchRefused { cause: c } =>
+      SparkServingScheduledRowsRefused {
+        cause: join(["plan-refused realization-unobserved host=", host as String, ": ", c as String], ""),
+      }
+    LaunchAdmitted { profile: p } =>
+      spark_serving_scheduled_rows_for_admitted_release(
+        host: host, projection: projection, serving_release: serving_release, profile: p,
+      )
+  }
+}
+
+fn spark_serving_scheduled_rows_for_admitted_release(
+  host: NonEmptyStr,
+  projection: SparkServingObservedMemberProjection,
+  serving_release: SparkServingRelease,
+  profile: ServingLaunchProfile,
+) -> SparkServingScheduledRowsVerdict {
   match spark_serving_full_membership_plan(
     occurrence: spark_serving_occurrence(
       host: host as HostIdentity,
       serving_release: serving_release,
+      profile: profile,
     ),
     serving_release: serving_release,
     projection: projection,
@@ -433,7 +468,7 @@ fn spark_serving_scheduled_rows_for_release(
           ], ""),
         }
       } else {
-        match fleet_converge_spark_serving_typed_actions(plan: full_plan, desired: desired_members) {
+        match fleet_converge_spark_serving_typed_actions(plan: full_plan, desired: desired_members, contract: profile.contract) {
           SparkServingTypedActionsRefused { cause: why } =>
             SparkServingScheduledRowsRefused { cause: join(["plan-refused typed-actions ", why], "") }
           SparkServingTypedActionsProjected { rows: spark_rows } =>

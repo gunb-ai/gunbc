@@ -775,7 +775,7 @@ fn spark_serving_computed_rows<Row>(
   admit_callers: [
     decl_ref(
       module_path: "gunbc.spark.serving_converge_plan",
-      decl_name: "spark_serving_scheduled_rows_for_release",
+      decl_name: "spark_serving_scheduled_rows_for_admitted_release",
     ),
   ]
 {

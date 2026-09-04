@@ -18,10 +18,9 @@ import gunbc.spark.serving_unit_render {
   spark_serving_definition_identity_environment_assignment,
 }
 import gunbc.spark.serving_desired {
-  spark_serving_desired_bind_host_port,
-  spark_serving_desired_default_context,
-  spark_serving_desired_serving_slots,
+  spark_serving_desired_bind_host_port, spark_serving_desired_bind_listen,
 }
+import gunbc.spark.serving_release { ServingContract }
 
 // THE CONFIGURED CONTEXT WINDOW IS CAUSAL, AND THESE ARE THE ARMS THAT GO RED IF IT STOPS BEING SO.
 //
@@ -35,18 +34,32 @@ import gunbc.spark.serving_desired {
 // Each arm is red against the pre-change tree: with no rendering, both windows produce identical
 // bytes and an identical content identity.
 
+
+// THE CONTRACT THESE WITNESSES RENDER AGAINST IS A FIXTURE, NOT THE FLEET'S. The fleet no longer
+// declares a window or slot count -- both come from a per-realization observation, and the live
+// realization has none, so the fleet's own contract is a refusal. These witnesses test the RENDERER:
+// that the unit text is a function of the contract it is given. The values are the ones the fleet
+// used to carry globally, kept so the assertions keep their historical meaning.
+fn w_contract() -> ServingContract {
+  ServingContract {
+    bind: spark_serving_desired_bind_listen,
+    default_context: token_count(count: 1048576),
+    serving_slots: slots(n: 4),
+  }
+}
+
 fn spec_with_window(window: TokenCount) -> SparkServingUserUnitSpec {
   spark_serving_user_unit_spec(
     bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
     default_context: window,
-    serving_slots: spark_serving_desired_serving_slots(),
+    serving_slots: w_contract().serving_slots,
   )
 }
 
 fn spec_with_slots(slots: PositiveSlotCount) -> SparkServingUserUnitSpec {
   spark_serving_user_unit_spec(
     bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-    default_context: spark_serving_desired_default_context(),
+    default_context: w_contract().default_context,
     serving_slots: slots,
   )
 }
@@ -90,9 +103,9 @@ test fn the_configured_window_changes_the_unit_content_identity() -> Bool {
 // deriving it. Stated in both directions so it cannot be satisfied by a renderer that ignores its
 // argument and returns one fixed text.
 test fn the_desired_unit_is_rendered_at_the_declared_window() -> Bool {
-  spark_serving_desired_user_unit_text()
-    == text_with_window(window: spark_serving_desired_default_context())
-    && spark_serving_desired_user_unit_text() != text_with_window(window: token_count(count: 4096))
+  spark_serving_desired_user_unit_text(contract: w_contract())
+    == text_with_window(window: w_contract().default_context)
+    && spark_serving_desired_user_unit_text(contract: w_contract()) != text_with_window(window: token_count(count: 4096))
 }
 
 
@@ -125,9 +138,9 @@ test fn the_slot_count_changes_the_unit_content_identity() -> Bool {
 // count the serving policy declares and at no other, so the policy stays the single authority the
 // bytes derive from.
 test fn the_desired_unit_is_rendered_at_the_declared_slot_count() -> Bool {
-  spark_serving_desired_user_unit_text()
-    == text_with_slots(slots: spark_serving_desired_serving_slots())
-    && spark_serving_desired_user_unit_text() != text_with_slots(slots: slots(n: 0))
+  spark_serving_desired_user_unit_text(contract: w_contract())
+    == text_with_slots(slots: w_contract().serving_slots)
+    && spark_serving_desired_user_unit_text(contract: w_contract()) != text_with_slots(slots: slots(n: 0))
 }
 
 // The invocation marker is derived from the typed spec and rendered into the unit. Hashing the

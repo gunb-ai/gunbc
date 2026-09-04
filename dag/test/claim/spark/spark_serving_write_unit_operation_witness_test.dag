@@ -1,6 +1,8 @@
 module test.claim.spark_serving_write_unit_operation_witness_test
 
 import std.types { Bool, String, List, Int }
+import std.measure { token_count, positive_slot_count, positive_measure_count }
+import gunbc.spark.serving_release { ServingContract }
 import gunbc.spark.serving_realization {
   ServingInstallEffect,
   WriteUserUnitFile,
@@ -12,8 +14,8 @@ import gunbc.spark.serving_converge_realize {
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
   realize_spark_serving_install_effect_commands,
-}
-import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
+ spark_serving_write_user_unit_operation }
+import gunbc.spark.serving_desired { spark_serving_automation_principal_login , spark_serving_desired_bind_listen }
 import gunbc.remote_operation {
   RemoteOperation,
   RemoteArgv,
@@ -39,6 +41,20 @@ import gunbc.spark.serving_install_paths { spark_serving_user_unit_path, spark_s
 
 // Position-wise kind, so an ordering claim asserts WHERE each kind sits, not only how many exist. A
 // count-only claim is satisfied by any permutation, including the write before its own directory.
+
+// THE CONTRACT IS A FIXTURE. The fleet no longer declares a window or slot count globally -- both
+// come from a per-realization observation, and the live realization has none, so the fleet's own
+// contract is a refusal. These witnesses exercise the render/observe path, which is a function of
+// the contract it is given; the values are the ones the fleet used to carry, so the assertions keep
+// their historical meaning.
+fn w_contract() -> ServingContract {
+  ServingContract {
+    bind: spark_serving_desired_bind_listen,
+    default_context: token_count(count: 1048576),
+    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
+  }
+}
+
 fn kind_at(ops: List<RemoteOperation>, i: Int) -> String {
   match ops[i] {
     Absent => "<none>"
@@ -54,7 +70,20 @@ fn realize(effects: List<ServingInstallEffect>) -> SparkServingInstallRemoteComm
   realize_spark_serving_install_effect_commands(
     effects: effects,
     executor_login: spark_serving_automation_principal_login(),
+    contract: w_contract(),
   )
+}
+
+// THE TOP-LEVEL OPERATION REFUSES WHILE THE LIVE REALIZATION IS UNOBSERVED. Every witness above
+// realizes the unit through a FIXTURE contract, which is what lets them keep asserting the render;
+// this one asks the operation the fleet actually exposes, with no fixture, and requires it to stop
+// the line with the unobserved key in its reason. It is the executing evidence for the rung drop
+// that was retired when the per-realization table landed.
+test fn the_unit_write_refuses_at_the_top_level_while_the_realization_is_unobserved() -> Bool {
+  match spark_serving_write_user_unit_operation() {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
+  }
 }
 
 // ── The defect this closes ──────────────────────────────────────────────────────────────────────
@@ -131,7 +160,7 @@ test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool 
         Present { value: op } =>
           match op {
             RemoteFileBytes { write: w, mode: _ } =>
-              w.content == spark_serving_desired_user_unit_text()
+              w.content == spark_serving_desired_user_unit_text(contract: w_contract())
                 && (w.path as String) == (spark_serving_user_unit_path() as String)
             RemoteArgv { argv: _ } => false
           }
@@ -232,4 +261,13 @@ test fn the_wire_discriminates_where_the_label_does_not() -> Bool {
 test fn an_argv_operations_words_are_in_its_wire() -> Bool {
   remote_operation_wire(operation: RemoteArgv { argv: ["mkdir", "-p", "/a"] })
     != remote_operation_wire(operation: RemoteArgv { argv: ["mkdir", "-p", "/b"] })
+}
+
+// The refusal's text, projected as a String so the interpreter can print it: a coproduct value
+// renders as its type name on the run line, a String renders as itself.
+fn spark_serving_write_user_unit_refusal_reason() -> String {
+  match spark_serving_write_user_unit_operation() {
+    SparkServingInstallRemoteCommandsRefused { reason: r } => r
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => "PRESENT"
+  }
 }

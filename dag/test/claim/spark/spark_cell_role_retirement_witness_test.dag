@@ -1,6 +1,7 @@
 module test.claim.spark.spark_cell_role_retirement_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.measure { token_count, positive_slot_count, positive_measure_count }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.cell_role {
@@ -23,14 +24,14 @@ import gunbc.spark.serving_desired {
   spark_serving_desired_admission,
   spark_serving_desired_hosts,
   spark_serving_desired_model_artifact,
-  spark_serving_desired_launch_profile,
-}
+
+ spark_serving_desired_bind_listen }
 import gunbc.spark.serving_release {
   SparkServingRelease,
   SparkServingOccurrence,
   RuntimeArtifactIdentity,
   spark_serving_release_identity,
-}
+ ServingLaunchProfile, ServingContract, OllamaSingleHost }
 import gunbc.spark.serving_converge_plan {
   SparkServingRoleScopedDesired,
   SparkServingRoleScopedDesiredReady,
@@ -486,6 +487,17 @@ test fn w_a_plan_mixing_installs_and_removals_refuses() -> Bool {
 // production paths existed and neither retired anything: iterate the desired-serving hosts and srv6
 // is absent from the loop, so no retirement is planned; or call the planner for srv6 and it restores
 // serving on the machine that was supposed to stop.
+fn w_profile() -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    engine: OllamaSingleHost,
+    contract: ServingContract {
+      bind: spark_serving_desired_bind_listen,
+      default_context: token_count(count: 131072),
+      serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 0)),
+    },
+  }
+}
+
 fn w_release() -> SparkServingRelease {
   SparkServingRelease {
     runtime: RuntimeArtifactIdentity { closure_digest: "w-closure" },
@@ -497,7 +509,7 @@ fn w_occurrence(host: HostIdentity) -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: w_release()),
-    launch_profile: spark_serving_desired_launch_profile(),
+    launch_profile: w_profile(),
   }
 }
 

@@ -38,6 +38,10 @@ import extdeps.ollama.capability {
   OllamaPlatformSupportUncatalogued,
   ollama_runtime_model_compatibility_verdict,
 }
+import gunbc.spark.serving_realization_config {
+  ServingRealizationKey, ServingConfigAdmission, ConfigAdmitted, ConfigRefusedUnobserved,
+  serving_config_admission, serving_config_refusal_text,
+}
 import gunbc.spark.serving_release {
   SparkServingRelease,
   SparkServingOccurrence,
@@ -264,22 +268,26 @@ type SparkServingFleetDesired
   = SparkServingFleetDesiredReady { occurrences: List<SparkServingOccurrence> }
   | SparkServingFleetDesiredRefused { cause: NonEmptyStr }
 
-fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRelease) -> SparkServingOccurrence {
+fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRelease, profile: ServingLaunchProfile) -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: serving_release),
-    launch_profile: spark_serving_desired_launch_profile(),
+    launch_profile: profile,
   }
 }
 
 fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
   match spark_serving_desired_admission {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      SparkServingFleetDesiredReady {
-        occurrences: map(
-          spark_serving_desired_hosts,
-          h => spark_serving_occurrence(host: h, serving_release: r),
-        ),
+      match spark_serving_launch_admission(serving_release: r) {
+        LaunchRefused { cause: c } => SparkServingFleetDesiredRefused { cause: c }
+        LaunchAdmitted { profile: p } =>
+          SparkServingFleetDesiredReady {
+            occurrences: map(
+              spark_serving_desired_hosts,
+              h => spark_serving_occurrence(host: h, serving_release: r, profile: p),
+            ),
+          }
       }
     SparkServingDesiredRefused { cause: c } =>
       SparkServingFleetDesiredRefused { cause: c }
@@ -288,14 +296,37 @@ fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
 
 data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired_from_admission()
 
-fn spark_serving_desired_launch_profile() -> ServingLaunchProfile {
-  ServingLaunchProfile {
+// THE LAUNCH PROFILE IS ADMITTED OR REFUSED; IT IS NEVER DEFAULTED. The contract's window and slot
+// count come from the observation recorded for THIS release under THIS engine, and from nowhere
+// else. A refusal carries the key, so the operator's next action is named.
+type ServingLaunchAdmission
+  = LaunchAdmitted { profile: ServingLaunchProfile }
+  | LaunchRefused { cause: NonEmptyStr }
+
+fn spark_serving_launch_admission(serving_release: SparkServingRelease) -> ServingLaunchAdmission {
+  let key = ServingRealizationKey {
+    release_identity: spark_serving_release_identity(spec: serving_release),
     engine: spark_serving_desired_engine,
-    contract: ServingContract {
-      bind: spark_serving_desired_bind_listen,
-      default_context: spark_serving_desired_context_length,
-      serving_slots: spark_serving_desired_serving_slots_value,
-    },
+  }
+  match serving_config_admission(key: key) {
+    ConfigRefusedUnobserved { key: k } => LaunchRefused { cause: serving_config_refusal_text(key: k) }
+    ConfigAdmitted { config: c, observation: _ } =>
+      LaunchAdmitted { profile: ServingLaunchProfile {
+        engine: spark_serving_desired_engine,
+        contract: ServingContract {
+          bind: spark_serving_desired_bind_listen,
+          default_context: c.default_context,
+          serving_slots: c.serving_slots,
+        },
+      } }
+  }
+}
+
+// The fleet's admitted profile, for consumers that need the contract and can carry a refusal.
+fn spark_serving_desired_launch_admission() -> ServingLaunchAdmission {
+  match spark_serving_desired_admission {
+    SparkServingDesiredRefused { cause: c } => LaunchRefused { cause: c }
+    SparkServingDesiredAdmitted { serving_release: r } => spark_serving_launch_admission(serving_release: r)
   }
 }
 
@@ -312,77 +343,10 @@ data spark_serving_desired_engine: ServingEngine = VllmTensorParallel {
   world_size: 2,
 }
 
-// THE SERVER'S DEFAULT CONTEXT WINDOW, AUTHORED AS THE MIGRATION DECISION.
-//
-// TWO VALUES STOOD HERE BEFORE AND NEITHER WAS EVER ENACTED. The 8192 was never rendered into the
-// unit at all. The 131072 that replaced it was rendered by this module's own renderer and still did
-// not reach either host: read directly on 2026-09-01, the deployed user unit on spark-a3ee and
-// spark-3bd5 carried three Environment lines and no OLLAMA_CONTEXT_LENGTH among them. That absence
-// is what the observed-versus-desired unit comparison exists to report, and did not.
-//
-// THE EVIDENCE SENTENCE IS WHY THAT WENT UNNOTICED FOR SO LONG, and it is the more useful half of
-// this history. It read that the wet observation was EVIDENCE and not source, citing both hosts
-// reporting `context_length: 131072` from /api/ps. But /api/ps reports what a LOADED RUNNER holds,
-// which extdeps.ollama.server_env states is a different fact from the server default and must not be
-// collapsed into it. An effective reading was admitted as evidence for a configured value, and it
-// could not have discriminated: with no assignment on either host the number being confirmed was the
-// runtime's own automatic default. A declaration cited its own absence as confirmation.
-//
-// 1048576 IS SELECTED, and what makes it defensible is a LOAD rather than a reading: the served
-// build declares its full window, and at that window it loads and serves within the cell's memory.
-//
-// NO BYTE FIGURE IS TRANSCRIBED HERE, and that is deliberate rather than an omission. A number
-// copied into prose is unreachable from the thing that owns it and rots without either end being
-// touched -- which is exactly how the sentence this replaces came to cite an /api/ps reading as
-// proof of a value that had never been rendered onto either host. The instrument is
-// `gunbc.spark.serving_observe spark_serving_observe_ci_wet`, whose residency readback is parsed by
-// `gunbc.spark.serving_readback_parse` and already decodes the runner's size_vram figure; that
-// producer, not any figure written here, is the authority for what a build costs at a window.
-//
-// A smaller default remains writable. A larger one than a model declares is a real request the
-// runtime is free to refuse -- Ollama clamps to the model's declared maximum, so this is a CEILING
-// ACROSS THE ROSTER and never a per-model promise.
-data spark_serving_desired_context_length: TokenCount = token_count(count: 1048576)
-
-// HOW MANY REQUESTS ONE LOADED MODEL SERVES CONCURRENTLY -- the P1b row, now authored.
-//
-// THE NOTE ABOVE SAID THIS TRADED AGAINST CONTEXT "BECAUSE THE SLOT COUNT DIVIDES THE CONTEXT
-// WINDOW". That sentence is deleted rather than softened, because it is false. Holding the model and
-// the host fixed and varying only OLLAMA_NUM_PARALLEL, the runner reports the SAME context_length at
-// one slot and at two, and a larger buffer at two. Each slot receives its own full window: THE COUNT
-// MULTIPLIES MEMORY, IT DOES NOT DIVIDE CONTEXT. The two axes do trade inside one budget, but
-// multiplicatively.
-//
-// Re-derive with the same instrument named below rather than from figures written here -- the
-// readback already decodes both quantities the comparison needs, and a transcribed pair would be a
-// second copy of a fact whose producer exists.
-//
-// WHY THE VALUE IS NOT 1. Unset, the runtime chose a single slot, and a single slot SERIALIZES: a
-// long prefill occupies the host for its whole duration while every other caller queues behind it,
-// and the queue is readable as a latency regression in the model rather than as contention -- which
-// is how it was in fact first read. That is not a throughput cost, it is a head-of-line block, and
-// the harness workload this cell exists to serve is concurrent by construction.
-//
-// WHAT THIS VALUE IS NOT EVIDENCE FOR, and the reason a rung drop is filed below rather than a
-// footnote written here: the per-slot price is a property of the REALIZATION. It was measured on a
-// build whose cache is compressed, and an architecture without that compression pays far more per
-// slot -- llama4:scout in particular declares a window far beyond this ceiling and has no such
-// compression. A count chosen against one model's per-slot cost is not evidence for another's, and
-// this row applies to every realization the cell loads.
-data spark_serving_desired_serving_slots_value: PositiveSlotCount = positive_slot_count(count: positive_measure_count(predecessor: 3))
-
 // The unit's window is DERIVED from the serving policy rather than authored beside it. This is the
 // causal link the repair adds: the policy is the single authority, the unit text is a function of
 // it, and the unit's content identity is a function of the text -- so a policy change cannot fail
 // to reach the file, and cannot reach it without producing a member delta.
-fn spark_serving_desired_serving_slots() -> PositiveSlotCount {
-  spark_serving_desired_launch_profile().contract.serving_slots
-}
-
-fn spark_serving_desired_default_context() -> TokenCount {
-  spark_serving_desired_launch_profile().contract.default_context
-}
-
 fn spark_serving_terminal_intent() -> SparkServingIntent {
   SparkServingIntent {
     lifecycle: SurvivesReboot,
@@ -403,35 +367,10 @@ fn spark_serving_automation_principal() -> NamedPrincipal {
 }
 
 
-// ============================================================================================
-// THE DECLARED RUNG DROP for both fleet-global values above (DESIGN 4b(3)).
-// ============================================================================================
-//
-// WHY ONE ROW AND NOT TWO. The context ceiling and the slot count are the same defect in two
-// spellings: a value measured on one node, one artifact, one runtime configuration and one
-// concurrency condition, then applied to two hosts and every realization the cell can load. Two
-// rows would be two places to update when one restoration discharges both, and the restoration IS
-// shared -- neither value becomes qualified until per-realization observation exists.
-//
-// WHAT WAS ACTUALLY MEASURED, so the gap between evidence and scope is legible rather than implied:
-// spark-a3ee, the hf.co/antirez/deepseek-v4-gguf IQ2_XXS build, Ollama 0.32.9, one resident session,
-// buffer figures read from /api/ps. That is one cell of a matrix whose other axes are the six other
-// resident models, the second host, and every concurrency above one.
-//
-// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT. A per-realization observation table is not
-// sufficient by itself: while a global default exists, an unmeasured realization still INHERITS
-// these numbers automatically, so measuring some of the roster leaves the same unqualified
-// inheritance for the rest. The capability is that no realization can be served at a configuration
-// it has not been observed at -- which requires both the observations and the removal of automatic
-// inheritance.
-data spark_serving_fleet_global_configuration_drop: GuaranteeRungDrop = GuaranteeRungDrop {
-  subject: "the serving cell's default context window and concurrent slot count, applied fleet-wide from single-realization evidence",
-  previous: MechanicallyPreventable,
-  temporary: Mitigatable,
-  reason: DeletedWithoutReplacement,
-  population: [
-    "gunbc.spark.serving_desired spark_serving_desired_context_length",
-    "gunbc.spark.serving_desired spark_serving_desired_serving_slots_value",
-  ],
-  restoration_trigger: "no realization can be served at a configuration it has not been observed at: a per-realization runner-memory observation exists for every model the cell loads, at the configuration selected for it, AND the fleet-global default no longer confers an unmeasured realization automatic admission -- an unobserved realization must refuse rather than inherit. An observation table alone does not discharge this row, because inheritance is the half that makes an unmeasured model's admission silent",
-}
+// THE FLEET-GLOBAL CONFIGURATION DROP IS RETIRED. Its restoration trigger read: no realization can
+// be served at a configuration it has not been observed at, AND the fleet-global default no longer
+// confers automatic admission. Both halves now hold by construction in
+// gunbc.spark.serving_realization_config -- the config is looked up per (release, engine) key with
+// no default arm -- so the two rows the drop named are DELETED here rather than left to feed a
+// profile nothing should read. Per DESIGN section 4b(4) the evidence stays: the witness that the
+// live realization refuses today is the executing proof the wall is real.

@@ -1,0 +1,112 @@
+module test.claim.spark.serving_realization_config_witness
+
+import std.types { Bool, String, NonEmptyStr, Timestamp }
+import std.measure { TokenCount, token_count, PositiveSlotCount, positive_slot_count, positive_measure_count, ByteSize, byte_size }
+import gunbc.spark.serving_release {
+  ServingEngine, OllamaSingleHost, VllmTensorParallel, SparkServingRelease, RuntimeArtifactIdentity,
+  spark_serving_release_identity,
+}
+import gunbc.spark.serving_desired {
+  spark_serving_desired_model_artifact, spark_serving_desired_engine,
+  ServingLaunchAdmission, LaunchAdmitted, LaunchRefused, spark_serving_desired_launch_admission, spark_serving_launch_admission,
+  SparkServingFleetDesired, SparkServingFleetDesiredReady, SparkServingFleetDesiredRefused, spark_serving_fleet_desired,
+}
+import gunbc.spark.serving_realization_config {
+  ServingRealizationKey, ServingRealizationConfig, ServingConfigObservation, serving_config_observation,
+  ServingConfigAdmission, ConfigAdmitted, ConfigRefusedUnobserved,
+  serving_config_admission, serving_realization_key_eq,
+}
+import gunbc.fleet_intent_network { operator_host_srv5 }
+
+// THE WALL, MEASURED ON THE LIVE FLEET RATHER THAN A FIXTURE. The desired realization -- the
+// vLLM tensor-parallel pair over the desired model -- has never had a runner-memory observation
+// recorded, so the admission must REFUSE it. This is the discriminating red the rung drop's
+// restoration trigger asked for, and it is the reason convergence is stopped: a green here would
+// mean an unmeasured realization was admitted, which is the exact state that wedged a host.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+test fn the_live_desired_realization_is_refused_until_observed() -> Bool {
+  match spark_serving_desired_launch_admission() {
+    LaunchRefused { cause: _ } => true
+    LaunchAdmitted { profile: _ } => false
+  }
+}
+
+// THE LINE IS STOPPED, TYPED. Fleet-desired carries the refusal rather than an occurrence list
+// sized by a default that no longer exists.
+// THE LINE IS STOPPED, TYPED -- and this witness names the refusal MY wall raises, not the one
+// upstream of it. Measured 2026-09-04: the fleet's desired state was ALREADY refused by release
+// admission (an observed load under "ollama 0.32.9" against a required "v0.32.9"), so a witness
+// reading spark_serving_fleet_desired would pass on that text and never reach the config lookup.
+// Driving spark_serving_launch_admission with a fixture release isolates the config wall: the only
+// thing that can refuse here is the empty observation table.
+test fn fleet_desired_refuses_rather_than_defaulting() -> Bool {
+  match spark_serving_fleet_desired {
+    SparkServingFleetDesiredRefused { cause: _ } => true
+    SparkServingFleetDesiredReady { occurrences: _ } => false
+  }
+}
+
+test fn an_admitted_release_with_no_observation_is_refused_by_the_config_wall() -> Bool {
+  match spark_serving_launch_admission(serving_release: w_release()) {
+    LaunchRefused { cause: c } => (c as String).contains("not been observed at")
+    LaunchAdmitted { profile: _ } => false
+  }
+}
+
+fn w_release() -> SparkServingRelease {
+  SparkServingRelease {
+    runtime: RuntimeArtifactIdentity { closure_digest: "w-closure" },
+    model: spark_serving_desired_model_artifact(),
+  }
+}
+
+fn w_key(engine: ServingEngine) -> ServingRealizationKey {
+  ServingRealizationKey { release_identity: spark_serving_release_identity(spec: w_release()), engine: engine }
+}
+
+fn w_config() -> ServingRealizationConfig {
+  ServingRealizationConfig {
+    default_context: token_count(count: 131072),
+    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 1)),
+  }
+}
+
+fn w_observation(engine: ServingEngine) -> ServingConfigObservation {
+  serving_config_observation(
+    key: w_key(engine: engine), config: w_config(),
+    resident_vram: byte_size(count: 93000000000), resident_context: token_count(count: 131072),
+    cell: operator_host_srv5, observed_at: "2026-09-04T04:00Z",
+  )
+}
+
+// THE CONTROL. The same lookup, over a table holding an observation for the key, admits it. Without
+// this the refusal witness would pass against a lookup that refuses everything.
+test fn an_observed_key_is_admitted_from_its_own_row() -> Bool {
+  let table = [w_observation(engine: OllamaSingleHost)]
+  match (table |> filter(o => serving_realization_key_eq(a: o.key, b: w_key(engine: OllamaSingleHost)))).first() {
+    Absent => false
+    Present { value: o } => (o.config.default_context == w_config().default_context)
+  }
+}
+
+// THE ENGINE IS PART OF THE KEY. An observation taken under ollama is NOT evidence for a vLLM
+// launch of the same bytes: the memory shapes differ, and the 2026-09-03 wedge was precisely an
+// engine inheriting a reading taken under another. A key equality that ignored the engine would
+// pass the control above and silently re-open that hole.
+test fn an_observation_under_one_engine_does_not_admit_another() -> Bool {
+  !serving_realization_key_eq(
+    a: w_observation(engine: OllamaSingleHost).key,
+    b: w_key(engine: VllmTensorParallel { world_size: 2 }),
+  )
+}
+
+test fn the_same_release_and_engine_compare_equal() -> Bool {
+  serving_realization_key_eq(
+    a: w_key(engine: VllmTensorParallel { world_size: 2 }),
+    b: w_key(engine: VllmTensorParallel { world_size: 2 }),
+  ) && !serving_realization_key_eq(
+    a: w_key(engine: VllmTensorParallel { world_size: 2 }),
+    b: w_key(engine: VllmTensorParallel { world_size: 4 }),
+  )
+}

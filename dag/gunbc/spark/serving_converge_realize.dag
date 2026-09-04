@@ -1,6 +1,7 @@
 module gunbc.spark.serving_converge_realize
 
 import std.types { String, List, NonEmptyStr, Bool }
+import gunbc.spark.serving_release { ServingContract }
 import std.measure { Second, second, second_count }
 import extdeps.systemd.systemctl { systemctl_user_enable_argv, systemctl_user_start_argv, systemctl_user_stop_argv, systemctl_user_disable_argv }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
@@ -26,7 +27,8 @@ import gunbc.spark.serving_realization {
   RemoveUserUnitFile,
   ReloadUserManagerAfterRemoval,
 }
-import gunbc.spark.serving_desired { spark_serving_automation_principal_login, spark_serving_desired_manifest, spark_serving_desired_model_ref, spark_serving_local_api_version_url }
+import gunbc.spark.serving_desired {
+  ServingLaunchAdmission, LaunchAdmitted, LaunchRefused, spark_serving_desired_launch_admission, spark_serving_automation_principal_login, spark_serving_desired_manifest, spark_serving_desired_model_ref, spark_serving_local_api_version_url }
 import extdeps.ollama.api { ollama_model_ref_wire, OllamaModelRef }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv, PlannedRemoteStep }
@@ -482,10 +484,22 @@ fn spark_serving_checksum_line(hex: NonEmptyStr, path: String) -> String {
 // both unnecessary and a privilege escalation for a write the account can already perform. `-p` makes
 // it idempotent, which matters because this effect re-runs on every converge until the unit member
 // reports converged.
+// THE UNIT IS WRITTEN ONLY FROM AN ADMITTED CONTRACT. An unobserved realization refuses HERE, at
+// the operation that would have installed a unit sized by inheritance, with the key in the reason.
 fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommandsVerdict {
+  match spark_serving_desired_launch_admission() {
+    LaunchRefused { cause: c } =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: join(["spark_serving_converge_realize: WriteUserUnitFile refused — ", c as String], ""),
+      }
+    LaunchAdmitted { profile: p } => spark_serving_write_user_unit_operation_for(contract: p.contract)
+  }
+}
+
+fn spark_serving_write_user_unit_operation_for(contract: ServingContract) -> SparkServingInstallRemoteCommandsVerdict {
   match typed_remote_file_write_seal(
     path: spark_serving_user_unit_path(),
-    content: spark_serving_desired_user_unit_text(),
+    content: spark_serving_desired_user_unit_text(contract: contract),
     allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
   ) {
     TypedRemoteFileWriteAdmissionRefused { cause: why } =>
@@ -728,6 +742,7 @@ fn spark_serving_concat_step_verdicts(
 fn realize_spark_serving_install_effect_command(
   effect: ServingInstallEffect,
   executor_login: NonEmptyStr,
+  contract: ServingContract,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match effect {
     EnableLingerForOwnAccount =>
@@ -751,7 +766,7 @@ fn realize_spark_serving_install_effect_command(
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: StartSystemUnit is not implemented in the Spark serving slice",
       }
-    WriteUserUnitFile => spark_serving_write_user_unit_operation()
+    WriteUserUnitFile => spark_serving_write_user_unit_operation_for(contract: contract)
     InstallRuntimePackage =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
@@ -823,6 +838,7 @@ fn realize_spark_serving_retirement_effect_command(
 fn realize_spark_serving_install_effect_commands(
   effects: List<ServingInstallEffect>,
   executor_login: NonEmptyStr,
+  contract: ServingContract,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   fold(
     effects,
@@ -834,6 +850,7 @@ fn realize_spark_serving_install_effect_commands(
           match realize_spark_serving_install_effect_command(
             effect: effect,
             executor_login: executor_login,
+            contract: contract,
           ) {
             SparkServingInstallRemoteCommandsRefused { reason: why } =>
               SparkServingInstallRemoteCommandsRefused { reason: why }
