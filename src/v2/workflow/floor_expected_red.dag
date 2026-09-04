@@ -1086,7 +1086,19 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // different heads are admitted. The claim was a guess wearing a measurement's clothes, and it is
 // the same failure this file already records one paragraph above.
 //
-// SEVEN IDENTITIES, because each names a discrimination a partial repair could miss while greening
+// SIX IDENTITIES NOW, SEVEN AS ENROLLED, and the difference is a climb rather than an edit. The
+// plain-record row -- a different plain record at a declared return -- PASSED on 2026-09-04 after
+// #10402 enforced concrete nominal record inhabitance at declarations, so the roster's
+// self-emptying arm fired exactly as the paragraph below says it would: the row named itself for
+// removal by reddening the build, and it is removed here. Its witness is NOT retired; under
+// DESIGN 4b(4) `w_a_different_plain_record_at_a_declared_return_is_refused` stays enrolled in
+// `dag/test/claim/declared_type_expected_type_path_witness_test.dag` as a permanent regression
+// control, and it is now a passing one. WHAT DID NOT CLIMB: the six application rows below still
+// fail, so the honest statement above is unchanged for them -- in declared-return position two
+// nominal APPLICATIONS are still not compared. #10402 closed the plain-record half of that
+// sentence and nothing else, which is why this is one removal and not the roster emptying.
+//
+// EACH REMAINING IDENTITY names a discrimination a partial repair could miss while greening
 // the others -- and greening them is not harmless, since this roster SELF-EMPTIES on pass. A repair
 // comparing only the first argument would retire the two position-zero rows while the production
 // Measure<Memory, Gibi, Nat> hole, which differs at the MIDDLE argument, stayed open. One comparing
@@ -1110,7 +1122,7 @@ fn floor_expected_red_chunk_24() -> List<String> {
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_last_type_argument_at_a_declared_return_is_refused",
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_plain_record_at_a_declared_return_is_refused", tail: Empty {} } } } } } } }
+  tail: Empty {} } } } } } }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
