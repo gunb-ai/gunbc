@@ -1,0 +1,14 @@
+module gunbc.guarantee_stall.operation_argv_binding_wall_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the operation-argv binding wall does not materialize the previously unbindable operation",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.operation_argv_binding_wall_witness.operation_argv_previously_unbindable_operation_now_materializes", tail: Empty {} } },
+  next_rung_trigger: "node://adhoc-a3b0e05f-374 lands: the operation-argv binding wall materializes the controlled previously-unbindable operation"
+}

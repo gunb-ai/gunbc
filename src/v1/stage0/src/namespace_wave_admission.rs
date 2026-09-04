@@ -850,91 +850,75 @@ pub struct TransitionAdmission {
 /// file every lane must write by construction, cannot be made safe by diligence. Recorded here as
 /// the observation; choosing the replacement carrier is not this cut's to make.
 ///
-/// TWENTY-FIRST DISSOLUTION (2026-09-03, gunbc#10197). The 17 `call-reachability grounding
-/// gunbc#10156` rows are gone, by their own trigger: #10156 merged (54b13232458), so main carries
-/// the grounding and no run's base and head can differ on it. This branch observed them CONSUMED on
-/// its own required run and deleted them here; gunbc#10028 independently deleted the same 17 on
-/// main's side while this branch was in CI. Both were right -- the trigger obliges EVERY concurrent
-/// roster-touching change -- so this is the concurrent-discovery shape the nineteenth and twentieth
-/// entries already recorded, arriving a third time.
+/// EIGHTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
+/// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
+/// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
+/// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
+/// head is `v2.std.fn_index` -- verified as the only `TargetChanged` shape in the report, so no row
+/// here adjudicates a delta this transition did not cause. Measured from required run 33700978133
+/// on cdd31b664a, which reported exactly `17 unadjudicated delta(s)`.
 ///
-/// SO THIS ENTRY IS A RECORD AND NOT A CLAIM OF AUTHORSHIP, and the distinction matters because
-/// #10028 deleted the rows and authored NO entry. Its diff left this file with the rows gone and
-/// their EIGHTEENTH TRANSITION doc block still standing above an array that no longer contained
-/// them -- a block describing seventeen rows a reader cannot find. That orphaned block is removed
-/// here. There is no competing record to collide with, so this is the single authority for the
-/// event rather than the second one, which is the only condition under which writing it is correct.
+/// THE BASES ARE NOT ALL ONE MODULE, and that is the transition's shape rather than an error: the
+/// concept had FOUR authorities, so the spellings move from four different bases -- the two lenses
+/// that carried the walk, plus `v2.lens.production_qualification_origin_probe` and
+/// `v2.lens.affected_set.entry_selection`, which each held a copy of one helper. One row names a
+/// consumer outside `src/v2` entirely: `test.claim.bmc_onboarding_quarantine_witness_test` bound
+/// `atom_identities_in_node` by name. Nothing broke -- the name still resolves -- but a cross-root
+/// binding whose target moved is exactly the delta a reader must be shown.
 ///
-/// THE ORDINAL COLLISION THE TWENTIETH ENTRY CALLED A PROPERTY OF THE CARRIER IS NOW OBSERVED A
-/// FOURTH TIME, at 57 rows, at 3, and now at 17. Its diagnosis stands unchanged and unimproved by
-/// this instance: an author-assigned ordinal, in prose, in a file every lane must write by
-/// construction, cannot be made safe by diligence. Nothing here attempts to fix that; the
-/// replacement carrier is not this cut's to choose either.
+/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Seventeen deltas, seventeen rows, each naming
+/// its module, its declaration and the exact spelling whose target moved. A wildcard over
+/// "anything that moved to v2.std.fn_index" would also admit the next relocation nobody reviewed.
 ///
-/// TWENTY-SECOND DISSOLUTION (2026-09-03, gunbc#10197). Six more consumed admissions are deleted on
-/// this same touch, from two cohorts that both landed while this branch was in CI: four
-/// `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows and two `gunbc#10206
-/// recurring_failure_mode split` rows. Their target changes have landed on main, so no run's base
-/// and head can differ on them, and the required run reported them by name as `6 CONSUMED
-/// ADMISSION(S) DUE FOR DELETION on this roster-touching change`.
+/// TRIGGER: #10156 MERGING. After that, main carries the grounding, so a later run's base and head
+/// both have it and no run can produce these deltas.
 ///
-/// THE SIX WERE READ OFF THE RUN'S OWN PER-ADMISSION LINES, NOT OFF A COHORT NAME, and that is the
-/// whole reason this entry is right. The report was relayed to this branch as "all six are #10028"
-/// -- a plausible reading, since four of them are, and one that would have left the two #10206 rows
-/// standing and the phase red for a second round. The gate prints one line per consumed admission;
-/// deleting what those lines name, rather than what a cohort label suggests, is the difference
-/// between a count that agrees and a set that is right.
+/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established and the
+/// eighteenth dissolution then confirmed: rows authored in the same PR that performs their own move
+/// are satisfied at the BASE of every later run, never merely unmatched. Born consumed, like the
+/// SJT-1, DCH-1 and #10077 cohorts. Their deletion is therefore owed by whoever next touches this
+/// roster, on the convention the entry above honoured rather than delegated.
 ///
-/// THIS IS THE THIRD COHORT THIS ONE CHANGE HAS HAD TO RETIRE (17, then 6) FOR EVENTS IT DID NOT
-/// CAUSE, which is the eighteenth entry's predicted cost arriving twice in one PR rather than once.
-/// It is not evidence of anything new; it is the same coupling at a higher rate, because the more
-/// lanes touch this roster the more consumed rows any single toucher inherits. Recorded as an
-/// observation, as the twentieth entry recorded its own: choosing the replacement carrier is still
-/// not this cut's to make.
-///
-/// NINETEENTH TRANSITION (2026-09-03). Per-row file split of the declared rung-drop rows,
-/// gunbc#10197: `gunbc.rung_drop`'s 30 rows move out of the monolith into one module each under
-/// `gunbc.rung_drop.<row>`, with the enumeration in `gunbc.rung_drop.roster`. The type, the
-/// renderings and the folds stay in `gunbc.rung_drop`, so a consumer that binds a TYPE is
-/// unaffected and only a consumer that binds a ROW or the roster retargets.
-///
-/// A FILE SPLIT IS A NAMESPACE RELOCATION OF EVERY CONSUMER BINDING, WHICH IS WHY THESE ROWS EXIST
-/// AT ALL. The split is deliberately mechanical -- its whole virtue is that it is re-derivable --
-/// and that is exactly the property that makes it invisible to a reader: 30 identical-looking
-/// moves, none of which changes what any spelling DENOTES. This gate is what turns that from silent
-/// into adjudicated, and the rows below are the adjudication.
-///
-/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Sixteen deltas, sixteen rows, each naming its
-/// module, its declaration and the exact spelling whose target moved. A wildcard over "anything
-/// that moved from gunbc.rung_drop into gunbc.rung_drop.*" would admit the next row relocation
-/// nobody reviewed -- and this carrier's growth surface is precisely that a new drop adds a new
-/// module, so the pattern would go on admitting forever.
-///
-/// EVERY ROW IS `TargetChanged` AND NONE IS A REBIND. The same motion also produced 9
-/// `ExplicitlyEvaluatedZeroDelta` membership deltas and 1 `SameDeclarationIdentityRebind`, both of
-/// which self-adjudicate; the 16 below are the only class that needs admission, and 16 is the
-/// unadjudicated count the run reported. The join is by identity and not by the number agreeing --
-/// a count that matched while the identities did not would be the coincidence this roster's rule
-/// exists to refuse.
-///
-/// MEASURED, NOT PREDICTED: required run 33789531276, base da71b057882, which reported `16
-/// unadjudicated delta(s)` with the floor CLEAN in the same run, so the phase failure was these
-/// rows and nothing else. The 16 were read off that run's own per-delta lines rather than
-/// re-derived by hand, and run 33797225221 then reported 26 deltas with zero unadjudicated, zero
-/// stale and zero consumed -- which is the green that makes them evidence rather than intent.
-///
-/// TRIGGER: #10197 MERGING. After that, main carries the split, so a later run's base and head both
-/// have it and no run can produce these deltas.
-///
-/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established: rows
-/// authored in the same PR that performs their own move are satisfied at the BASE of every later
-/// run, never merely unmatched. Born consumed. Their deletion is owed by whoever next touches this
-/// roster.
-///
-/// THE ORDINAL IS THE NEXT UNUSED ONE. EIGHTEENTH is the highest TRANSITION in use and TWENTIETH
-/// the highest DISSOLUTION, so this entry is NINETEENTH and TWENTY-FIRST respectively.
-const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
+/// THE ORDINAL IS THE NEXT UNUSED ONE, NOT THE NEXT IN SEQUENCE, because this ledger's transition
+/// ordinals already collide: FOURTH and FIFTH each name two different transitions (gunbc#9665 and
+/// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
+/// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
+/// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
+/// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
+/// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
+/// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at
+/// the declaration tail and the roster tail, so row lanes conflicted with each other by
+/// construction. The direction is forced by acyclicity rather than chosen -- a row module imports
+/// `GuaranteeStall` from the type module, so the type module cannot import the rows back -- which
+/// is why the enumeration leaves for `gunbc.guarantee_stall.roster` and each row for
+/// `gunbc.guarantee_stall.<row>`.
+///
+/// TEN DELTAS, TEN ROWS, ENUMERATED BY IDENTITY AND NOT MATCHED BY PATTERN, on the rule the
+/// eighteenth transition states: a wildcard over "anything that moved under
+/// gunbc.guarantee_stall" would also admit the next relocation nobody reviewed. All ten are
+/// bindings in ONE consumer, `test.claim.guarantee_stall_witness_test`, and they split two ways --
+/// six whose spelling now resolves to the roster module (`all_guarantee_stalls`,
+/// `restored_stalls`, `every_restored_stall_is_rostered_once`), four whose spelling now resolves to
+/// one row module (`next_rung_trigger_enforcement_stall`). The three folds that take a
+/// `List<GuaranteeStall>` PARAMETER did not move and produce no delta, which is the check on the
+/// claim: had they moved too, this ledger would be showing thirteen.
+///
+/// THE MEMBERSHIP ADDITIONS ARE NOT HERE AND THAT IS NOT AN OMISSION. The witness reaching the two
+/// new modules classified `ExplicitlyEvaluatedZeroDelta` and auto-admits; only `TargetChanged`
+/// refuses. A row for an auto-admitted disposition would be a decoration that later reports stale.
+///
+/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY -- no branch, no dispatch,
+/// no code path; the mechanism that reads them is unchanged. What would be a scaffold is a second
+/// route around the adjudicator, and there is none.
+///
+/// DISSOLVE-ON is gunbc#10328 merging, and the trigger names the CAPABILITY rather than an
+/// artifact: once main carries the split, base and head both have it and NO RUN CAN PRODUCE THESE
+/// TEN DELTAS. They will report CONSUMED rather than stale, born consumed like the #10206, SJT-1
+/// and DCH-1 cohorts, because a row authored in the same PR that performs its own move is satisfied
+/// at the BASE of every later run. Their deletion is charged to WHOEVER NEXT TOUCHES THIS ROSTER,
+/// which is this module's standing convention and not a follow-up PR anyone could forget.
+///
 /// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
 /// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
 /// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
@@ -963,24 +947,93 @@ const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#
 /// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
 /// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
 ///
-/// TWENTY-FOURTH DISSOLUTION (2026-09-04, gunbc#10197). The one incoming `gunbc#10218` row is
-/// removed by its own trigger, and this entry exists because the alternative
-/// -- deleting the row and leaving the present-tense block that described it -- is the exact defect
-/// the TWENTY-FIRST DISSOLUTION above names, at one row instead of seventeen but in the same shape.
+/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
+/// `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
+/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
+/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
+/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
+/// a specific product's helper to obtain an equality would invert the layering. The spelling is
+/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
+/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
+/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
 ///
-/// What the row admitted: `physical_asset_identity_eq` was authored privately inside
-/// product.printed_chassis.manufacturing_manifest and moved to product.placement_supply, which OWNS
-/// PhysicalAssetIdentity and already carried host_identity_eq for the sibling branded type. The
-/// spelling was unchanged on both sides and only its TARGET moved, which is TargetChanged, and run
-/// 33792437834 reported it ADMITTED-BY that row.
+/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
+/// deletion by the next roster-touching change.
 ///
-/// Why it no longer stands: its stated trigger -- "once gunbc#10218 merges, the base binds the
-/// spelling to product.placement_supply" -- has fired. #10218 merged as 95cf3959a2a, and at this
-/// branch's merge base d6fb9d61c81 product.placement_supply declares
-/// `fn physical_asset_identity_eq` while product.printed_chassis.manufacturing_manifest imports it
-/// from there. Base and head therefore agree, the delta is not producible, and a surviving row could
-/// only be stale. Checked against the tree before the deletion rather than after a run reported it,
-/// which is the rule stated directly above being executed rather than restated.
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04), PAID ON THE RULE THE TWENTY-THIRD JUST WROTE DOWN. The
+/// one `gunbc#10218 identity-equality re-home` row is deleted, and its consumption was READ FROM
+/// THE BASE rather than waited on: main declares `physical_asset_identity_eq` in
+/// `product.placement_supply` (dag/gunbc/product/placement_supply.dag) and
+/// `product.printed_chassis.manufacturing_manifest` imports it from there by name, so the base
+/// already binds that spelling to that target and the delta is not producible. That is exactly the
+/// check the entry above says costs a required run whenever it is guessed instead.
+///
+/// THE SIX ROWS THIS BRANCH ALSO DELETED ARE NOT RECORDED TWICE. An earlier head of this branch
+/// removed the four `gunbc#10028` and two `gunbc#10206` rows and wrote its own dissolution entry
+/// for them; main removed the same six independently and recorded it as the TWENTY-THIRD. One
+/// event, one record: my entry is dropped in favour of main's, because a second narration of the
+/// same deletion is the double-record this ledger already refuses once above.
+/// TWENTY-FIFTH DISSOLUTION (2026-09-04), PAID ON THE SAME RULE AND READ THE SAME WAY. The
+/// `gunbc#10328 guarantee_stall split` rows arriving with this merge are CONSUMED: main's
+/// `dag/test/claim/guarantee_stall_witness_test.dag` imports `all_guarantee_stalls` from
+/// `gunbc.guarantee_stall.roster` by name, so the base already binds that spelling to that target
+/// and no run can produce those deltas. Deleted here rather than carried, because carrying them
+/// costs a required run to rediscover -- the history the rule above is written from, and which this
+/// branch paid once already by unioning an earlier merge instead of reading the tree.
+/// TWENTIETH TRANSITION (2026-09-04, gunbc#10254). Authored as SEVENTEENTH against a base whose
+/// highest ordinal was SIXTEENTH; main landed SEVENTEENTH, EIGHTEENTH and NINETEENTH while this
+/// branch was open, so the merge renumbers rather than minting a fourth duplicate -- the ordinal
+/// exists to make an entry citable by its own name. The DGX Spark first-boot wizard's INTERFACE
+/// vocabulary -- screen routes, headings, controls, advance gates, validation rules and the
+/// client's username admission -- moved from `gunbc.spark.oobe_screen_observation` to
+/// `extdeps.systems.nvidia_dgx_spark_setup`, which already owned the `OobeSetupField` roster for
+/// that same wizard. DESIGN §3 external upstream decomposition: what NVIDIA's product PRESENTS is
+/// NVIDIA's authority, and what this repository MEASURED stays a receipt in the observing layer.
+///
+/// EVERY ROW IS A PURE RELOCATION. No declaration below changes what it denotes; the observing
+/// module and its witness now bind the same spellings through the vendor authority, so the wall
+/// reports `TargetChanged` at each binding site. A binding whose MEANING had moved would refuse on
+/// its own row rather than be covered here, and the rows are enumerated by exact identity rather
+/// than matched by the module pair, because a pattern would admit a genuine rebind that happened to
+/// land in the same two modules.
+///
+/// TRIGGER: these rows go when #10254 merges. Once the consolidation is on main, merge commit and
+/// base both carry it, no run can produce these deltas, and all of them report stale -- which
+/// refuses every unrelated PR, the shape recorded for the 53 and the 314 above. The shrink is the
+/// fix, not housekeeping.
+/// TWENTY-SIXTH DISSOLUTION (2026-09-04, gunbc#10197), PAID ON THE SAME RULE, READ THE SAME WAY,
+/// AND AT FULL IDENTITY GRAIN RATHER THAN ON THE TRIGGER SENTENCE. All 142
+/// `spark OOBE vendor-interface consolidation gunbc#10254` rows are deleted, and the
+/// SPARK_OOBE_VENDOR_INTERFACE_LABEL that named them goes with them, because a label with no rows
+/// is a second name for an empty set.
+///
+/// The entry directly above states the trigger -- "these rows go when #10254 merges" -- and #10254
+/// merged as deb3c86b96e, which is this branch's merge base. That sentence is NOT what authorized
+/// the deletion. Each of the 142 rows was joined against main's tree by its own (module, spelling,
+/// target) triple: for every row, the named module's source at deb3c86b96e already imports that
+/// spelling from `extdeps.systems.nvidia_dgx_spark_setup` -- 14 rows in
+/// gunbc.spark.oobe_screen_observation and 128 in
+/// test.claim.spark.spark_oobe_screen_observation_witness, zero rows unbound. Base and head
+/// therefore agree on all 142, no run can produce those deltas, and a surviving row could only be
+/// stale.
+///
+/// THE FIRST RUN OF THAT JOIN REPORTED 128 UNBOUND AND WAS WRONG, and it is recorded because the
+/// failure is silent by construction. The witness module's path was guessed from its module path as
+/// `.../spark_oobe_screen_observation_witness.dag`; the real file is
+/// `..._witness_test.dag`. Reading a path that does not exist returns empty, and empty reads exactly
+/// like "the import is absent" -- the answer that would have had me CARRY 128 consumed rows.
+/// The repair is that a source read asserts the file is non-empty before its absence is allowed to
+/// mean anything.
+///
+/// MY OWN TWENTY-FOURTH ENTRY IS DROPPED IN FAVOUR OF MAIN'S. Both sides deleted the one
+/// `gunbc#10218` row, independently and on the same base check, so the deletion is taken once and
+/// narrated once -- the rule main's TWENTY-FOURTH states for the six rows before it, applied to the
+/// entry that would otherwise double-record it.
+///
+const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: RUNG_DROP_PER_ROW_SPLIT_LABEL,

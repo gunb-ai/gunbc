@@ -108,6 +108,7 @@ import gunbc.recurring_failure_mode.required_evidence_absent_reads_as_evidence_o
 import gunbc.recurring_failure_mode.right_censored_cost_read_as_exact { right_censored_cost_read_as_exact }
 import gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_that_uses_it { guard_precondition_discharged_by_the_route_that_uses_it }
 import gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_comparison { denominator_moved_between_measurement_and_comparison }
+import gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked { absent_reads_identically_to_never_looked }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -207,4 +208,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   right_censored_cost_read_as_exact,
   guard_precondition_discharged_by_the_route_that_uses_it,
   denominator_moved_between_measurement_and_comparison,
+  absent_reads_identically_to_never_looked,
 ]
