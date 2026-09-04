@@ -29,6 +29,7 @@ import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
   SudoRm,
+  SudoUseradd,
   SudoSystemctl,
 }
 
@@ -47,6 +48,7 @@ type ExecutorPrivilegedOperation
   | SystemdEnableUnit { unit: NonEmptyStr }
   | SystemdStartUnit { unit: NonEmptyStr }
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
+  | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -67,6 +69,14 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       ci_runner_sudo_binary_path(b: SudoRm),
       "-rf" as NonEmptyStr,
       p
+    ]
+    EnsureSystemAccount { login: l, shell: sh } => [
+      ci_runner_sudo_binary_path(b: SudoUseradd),
+      "--system" as NonEmptyStr,
+      "--no-create-home" as NonEmptyStr,
+      "--shell" as NonEmptyStr,
+      sh,
+      l
     ]
     SystemdDaemonReload => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
