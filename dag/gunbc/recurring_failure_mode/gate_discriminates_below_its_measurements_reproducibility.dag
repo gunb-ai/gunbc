@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.gate_discriminates_below_its_measurements_reproducibility
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data gate_discriminates_below_its_measurements_reproducibility: RecurringFailureMode = RecurringFailureMode {
+  identity: "gate_discriminates_below_its_measurements_reproducibility" as NonEmptyStr,
+
+  receipts: [
+    "**a merge-blocking gate whose line sits INSIDE the run-to-run variance of the quantity it compares, so admission is decided by which machine the subject landed on rather than by the subject** (the threshold is real, the measurement is of the right quantity, the comparison is correct, and the verdict is still not a property of the thing being judged. Nothing in the mechanism is wrong; the RESOLUTION of the decision is finer than the REPRODUCIBILITY of its input. ",
+
+    "**THE DISTINGUISHING TEST IS A DETERMINISTIC WORK MEASURE BESIDE THE CLOCK, AND WITHOUT ONE THE CLASS IS UNDECIDABLE.** A cost that differs between two runs is otherwise ambiguous between the subject changing and the machine changing. Where the instrument publishes a per-subject work count that is a function of the declared work alone, an identical count across two runs proves the subject did not move, so the whole difference is machine. ",
+
+    "SPECIMEN, gunbc 2026-09-04, floor runs 33833513693 (main, green) and 33832137832 (an unrelated pull request, refused). Two identities, from `required_floor_claim_cost.tsv` in both runs: `v2.test.emit.rust_logic_meet_join_emit.rust_logic_meet_emit_holds` at eval_steps 159355 both times, cpu 312ms PASS against cpu 508ms REFUSED; and `v2.test.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates` at eval_steps 169297 both times, cpu 418ms PASS against cpu 500ms REFUSED. BYTE-IDENTICAL DECLARED WORK, 1.63x and 1.20x ON THE CLOCK, opposite verdicts, against a 500ms line. ",
+
+    "**THE CONTROL THAT SEPARATES THIS FROM ORDINARY HOST CONTENTION IS PART OF THE CLASS AND NOT AN OPTIONAL EXTRA.** A floor cost refusal very often names a witness while actually measuring a busy machine, and if the whole distribution had shifted, the pair above would be an artefact with nothing to repair. It had not: over 2168 rows present in BOTH runs with identical eval_steps, the MEDIAN cpu ratio is 1.00 -- the corpus did not get slower. Restricted to rows above 100ms so small-cost noise cannot inflate it (n=299): median 1.08, p90 1.28, p99 1.69, max 1.97. The variance is per-row jitter, not a shifted run. A report of this class without that control is indistinguishable from a slow-machine anecdote. ",
+
+    "**THE PROPERTY THAT MAKES IT WORSE THAN `SOME ROWS ARE CLOSE TO THE LINE`: THE EXPOSED POPULATION IS INVISIBLE TO INSPECTION OF ANY PASSING RUN.** On the green run, rows visibly above 450ms: ZERO. Rows that would cross 500ms at the observed p90 inflation: FOUR. A reader auditing the green artifact sees nothing near the line and correctly concludes, from what is in front of them, that there is no exposure. The exposure is real and structurally unobservable from a single pass, so the usual diligence -- look at the distribution, see how much headroom there is -- returns a reassuring answer BY CONSTRUCTION. ",
+
+    "AND THE SMALLNESS OF THE CROSSING POPULATION IS PART OF THE ARGUMENT RATHER THAN A WEAKNESS. Only two rows in 3602 exceeded the line on the failing run. This is not a corpus that is broadly over budget; it is a corpus with a narrow bracket of rows whose true cost STRADDLES the line. NON-DETERMINISM AT THE GATE, NOT A COST PROBLEM -- and the remedies differ completely: making the corpus faster does not fix a gate whose decision is a coin flip for whatever rows happen to sit in the bracket. ",
+
+    "BOUNDED AGAINST THREE NEIGHBOURS. `artifact_declares_a_threshold_it_is_not_measured_against` is a threshold compared to the WRONG quantity; here the quantity is right. `right_censored_cost_read_as_exact` is a BOUND read as a point; here every figure is a completed measurement. And ordinary flakiness is a test whose OUTCOME is unstable; here the outcome is perfectly stable and the COST is not, so every green run looks deterministic and nothing in the subject is intermittent. ",
+
+    "RECOGNITION RULE: FOR EVERY BLOCKING THRESHOLD, ASK WHAT THE SAME SUBJECT MEASURES ACROSS TWO RUNS, AND COMPARE THE SPREAD TO THE DISTANCE BETWEEN THE POPULATION AND THE LINE. If the p90 inflation moves any row across, that row's verdict is a fact about the machine. The tell available without a second run: a blocking line denominated in a CLOCK beside a published DETERMINISTIC work measure that nothing compares against. ",
+
+    "RUNG FOUND AT: MITIGATABLE. The harm is contained only by a human noticing the verdict is not reproducible and rerunning, which also means a genuine regression and a jitter crossing are handled by the same gesture. ",
+
+    "ATTAINABLE CEILING: MECHANICALLY PREVENTABLE, and honestly not higher. Wall-clock and CPU-clock costs on shared hardware are external facts, so no construction makes an unreproducible measurement reproducible -- DESIGN's OUTSIDE THE MODELED GUARANTEE column. What IS decidable is whether a gate is permitted to discriminate at a resolution its input cannot support. ",
+
+    "NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY AND WITH WHAT IT MUST BE SUFFICIENT FOR: A BLOCKING COST GATE WHOSE DECISION IS DENOMINATED IN THE DETERMINISTIC WORK MEASURE, with the clock retained as a reported observation rather than as the admission criterion -- sufficient for two runs of an unchanged subject to reach the SAME verdict, which is the property that is false today. Two things that do NOT discharge it: raising the line, which relocates the bracket without removing it and leaves the next row to straddle the new value; and rerunning until green, which is the absorbing fallback the ladder forbids, because it converts an unreproducible refusal into a silent admission and destroys the signal that the gate is deciding by machine.)",
+  ],
+
+  evidence: [],
+}

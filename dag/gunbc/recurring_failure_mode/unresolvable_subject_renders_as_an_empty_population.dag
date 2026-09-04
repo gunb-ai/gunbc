@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.unresolvable_subject_renders_as_an_empty_population
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unresolvable_subject_renders_as_an_empty_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "unresolvable_subject_renders_as_an_empty_population" as NonEmptyStr,
+
+  receipts: [
+    "**a query whose SUBJECT never resolved, answering with the same empty result as a subject that genuinely holds nothing** (the identifier is accepted, the request succeeds, the exit status is zero, and the returned collection is empty -- not because the instrument looked and found nothing, but because it never located the thing it was asked about. The word `nothing` is being used for two facts at once: I LOOKED AND FOUND NOTHING, and I NEVER LOOKED. No field in the output separates them. ",
+
+    "**THE DIRECTION IS ALWAYS REASSURING, WHICH IS WHY IT IS NOT MERELY UNTIDY.** Zero runs reads as nothing-to-wait-for; zero failures reads as nothing-failed; zero rows reads as no-exposure. So the failure arrives precisely as the answer that ENDS the investigation, and the reader stops at the point where the instrument stopped without either of them noticing that it stopped early. ",
+
+    "SPECIMEN, gunbc#10311, 2026-09-04. `gh run list --repo gunb-ai/gunbc --commit <11-character sha>` returned `[]` with exit 0. The same query with the full forty-character sha returned TWO runs -- a queued `workflow_dispatch` and a completed `pull_request`. Same head, same tool, same minute; reproduced independently by snappy-koi-879 on a different head within the hour. The question being asked was whether a healed head had been picked up for revalidation, i.e. exactly the question whose reassuring answer stops you looking: the honest report would have been that the head was STRANDED, and it was merely QUEUED. ",
+
+    "**THE INPUT THAT BREAKS IT IS THE DEFAULT FORM IN WHICH WE HAND EACH OTHER SUBJECTS, AND THAT IS WHAT MAKES IT A FLEET HAZARD RATHER THAN A TOOL QUIRK.** Every status message, review comment and hand-off in this repository quotes ten- and eleven-character shas, because that is what git prints and what prose wants. So the abbreviated form is not a careless variant a disciplined reader avoids -- it is the form the subject ARRIVES in, and using it directly is one copy-paste from a status message away for anyone. ",
+
+    "RECOGNITION RULE: A QUERY WHOSE SUBJECT IS AN IDENTIFIER MUST DISTINGUISH `IDENTIFIER DID NOT RESOLVE` FROM `SUBJECT IS EMPTY`, AND WHERE THE TOOL WILL NOT, RESOLVE THE IDENTIFIER TO ITS CANONICAL FORM BEFORE ASKING. For git objects that means forty characters, and it means treating ANY sha that arrived in prose as unresolved until it has been expanded. The general test: ask what the instrument returns for a subject that does not exist, and if that is indistinguishable from a subject that is empty, the query cannot support a negative conclusion. ",
+
+    "BOUNDED AGAINST `empty_capture_read_as_clean_result`, WHICH IS THE NEAREST NEIGHBOUR AND IS NOT THIS. There, the instrument DID refuse and said so -- the refusal simply travelled on a channel the reader did not keep -- so the information existed and the repair is to keep the other stream. HERE NO REFUSAL EXISTS ANYWHERE: the tool treats an unresolvable identifier as a filter that matches nothing, so there is no discarded diagnostic to recover and the repair is to canonicalize the SUBJECT before the query. It is also not `selection_view_read_as_population`, where a real population is narrowed by a view; here the population was never addressed. ",
+
+    "RUNG FOUND AT: BELOW THE LADDER for any consumer that draws a negative conclusion, because an answer about a subject that was never located, consumed as an answer about the subject, is a fabricated plausible output. It is MITIGATABLE only in the sense that a caller who canonicalizes first cannot reach it, and that is a discipline rather than a mechanism. ",
+
+    "ATTAINABLE CEILING: MECHANICALLY PREVENTABLE FOR OUR OWN CALLERS, and no higher, because the defect lives in an external tool whose output shape we do not own -- DESIGN's OUTSIDE THE MODELED GUARANTEE boundary. What is decidable on our side is whether a subject was canonicalized before being asked about. ",
+
+    "NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY: A TYPED SUBJECT CARRIER FOR EXTERNAL LOOKUPS WHOSE CONSTRUCTOR ADMITS ONLY A CANONICAL IDENTIFIER AND WHOSE ABBREVIATED FORM MUST BE EXPANDED THROUGH A RESOLVER THAT REFUSES ON MISS -- sufficient for a query against a sha that arrived in prose being a compile-time impossibility rather than an empty answer. `Remember to use the full sha` is the artifact-grained version and discharges nothing: the whole class consists of people who intended to.)",
+  ],
+
+  evidence: [],
+}
