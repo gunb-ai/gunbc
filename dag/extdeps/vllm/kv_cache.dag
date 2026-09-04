@@ -30,7 +30,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// ── THE POOL IS OBSERVED, AND THE CARRIER IS SHAPED SO THAT A COMPUTED ONE CANNOT BE WRITTEN ───
+// ── THE POOL IS OBSERVED, AND ITS SOURCE LINE CLASS IS BOUND BY CONSTRUCTION ───────────────────
 //
 // THE POOL IS A RESIDUAL OF LARGE NUMBERS: the memory budget minus the weights minus a PROFILED
 // activation peak minus a cudagraph reservation. Every term but the first is measured by the engine
@@ -39,12 +39,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // it by two thirds. A quantity with that shape cannot be predicted from the arguments; it can only
 // be read back.
 //
-// SO THE CONSTRUCTOR TAKES THE CAPTURED LINE, NOT JUST A NUMBER. This is the whole point of the
-// carrier: to write a pool figure you must also carry the engine text it came from, so a fabricated
-// pool has to fabricate a log line beside it and is visible as such in review. That is
-// MECHANICALLY PREVENTABLE and deliberately not claimed as more: nothing here stops an author
-// typing both halves. What it removes is the ACCIDENT -- the arithmetic that looks like a
-// derivation and silently answers a different question.
+// SO THE CONSTRUCTOR TAKES A TYPED READING, NOT A NUMBER AND A STRING. What that buys is exactly
+// two things, and the heading above is narrowed to them because an earlier draft of it claimed the
+// carrier made a COMPUTED pool unwritable, which is more than this graph delivers:
+//
+//   STRUCTURAL   a pool cannot be constructed without a `VllmStartupReading`, and cannot be
+//                constructed from either non-KV line class -- those refuse by name.
+//   MITIGATABLE  agreement between the authored `TokenCount` and the count the captured text
+//                actually reports. A genuine KV-cache-size line paired with a wrong number is
+//                admitted, and this module does not detect it.
+//
+// The second is stated in full rather than softened, because the rung a module reports must be the
+// rung its executed evidence establishes, and no row here goes red for a mismatched number. What the
+// construction removes is the ACCIDENT -- the arithmetic that looks like a derivation and silently
+// answers a different question, and the wrong-line pairing that used to typecheck.
 //
 // NEXT-RUNG TRIGGER, named rather than left implicit: a parser that takes the captured stdout of a
 // launch and produces this carrier, so the only inhabitant is one the engine actually printed. That
