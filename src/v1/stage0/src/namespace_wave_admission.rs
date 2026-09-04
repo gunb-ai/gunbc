@@ -885,6 +885,40 @@ pub struct TransitionAdmission {
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
+/// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
+/// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
+/// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at
+/// the declaration tail and the roster tail, so row lanes conflicted with each other by
+/// construction. The direction is forced by acyclicity rather than chosen -- a row module imports
+/// `GuaranteeStall` from the type module, so the type module cannot import the rows back -- which
+/// is why the enumeration leaves for `gunbc.guarantee_stall.roster` and each row for
+/// `gunbc.guarantee_stall.<row>`.
+///
+/// TEN DELTAS, TEN ROWS, ENUMERATED BY IDENTITY AND NOT MATCHED BY PATTERN, on the rule the
+/// eighteenth transition states: a wildcard over "anything that moved under
+/// gunbc.guarantee_stall" would also admit the next relocation nobody reviewed. All ten are
+/// bindings in ONE consumer, `test.claim.guarantee_stall_witness_test`, and they split two ways --
+/// six whose spelling now resolves to the roster module (`all_guarantee_stalls`,
+/// `restored_stalls`, `every_restored_stall_is_rostered_once`), four whose spelling now resolves to
+/// one row module (`next_rung_trigger_enforcement_stall`). The three folds that take a
+/// `List<GuaranteeStall>` PARAMETER did not move and produce no delta, which is the check on the
+/// claim: had they moved too, this ledger would be showing thirteen.
+///
+/// THE MEMBERSHIP ADDITIONS ARE NOT HERE AND THAT IS NOT AN OMISSION. The witness reaching the two
+/// new modules classified `ExplicitlyEvaluatedZeroDelta` and auto-admits; only `TargetChanged`
+/// refuses. A row for an auto-admitted disposition would be a decoration that later reports stale.
+///
+/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY -- no branch, no dispatch,
+/// no code path; the mechanism that reads them is unchanged. What would be a scaffold is a second
+/// route around the adjudicator, and there is none.
+///
+/// DISSOLVE-ON is gunbc#10328 merging, and the trigger names the CAPABILITY rather than an
+/// artifact: once main carries the split, base and head both have it and NO RUN CAN PRODUCE THESE
+/// TEN DELTAS. They will report CONSUMED rather than stale, born consumed like the #10206, SJT-1
+/// and DCH-1 cohorts, because a row authored in the same PR that performs its own move is satisfied
+/// at the BASE of every later run. Their deletion is charged to WHOEVER NEXT TOUCHES THIS ROSTER,
+/// which is this module's standing convention and not a follow-up PR anyone could forget.
+///
 /// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
 /// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
 /// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
@@ -913,13 +947,35 @@ pub struct TransitionAdmission {
 /// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
 /// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
 ///
-/// TWENTY-FOURTH DISSOLUTION (2026-09-04). The `gunbc#10218` row is removed by that same rule,
-/// decided against the base rather than after a run: #10218 merged as 95cf3959a2a, main declares
-/// `physical_asset_identity_eq` in product.placement_supply (dag/gunbc/product/placement_supply.dag)
-/// and product.printed_chassis.manufacturing_manifest imports it from there, so the base already
-/// binds the spelling to the target and the delta is no longer producible.
-
-/// TWENTIETH TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
+/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
+/// `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
+/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
+/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
+/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
+/// a specific product's helper to obtain an equality would invert the layering. The spelling is
+/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
+/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
+/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
+/// deletion by the next roster-touching change.
+///
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04), PAID ON THE RULE THE TWENTY-THIRD JUST WROTE DOWN. The
+/// one `gunbc#10218 identity-equality re-home` row is deleted, and its consumption was READ FROM
+/// THE BASE rather than waited on: main declares `physical_asset_identity_eq` in
+/// `product.placement_supply` (dag/gunbc/product/placement_supply.dag) and
+/// `product.printed_chassis.manufacturing_manifest` imports it from there by name, so the base
+/// already binds that spelling to that target and the delta is not producible. That is exactly the
+/// check the entry above says costs a required run whenever it is guessed instead.
+///
+/// THE SIX ROWS THIS BRANCH ALSO DELETED ARE NOT RECORDED TWICE. An earlier head of this branch
+/// removed the four `gunbc#10028` and two `gunbc#10206` rows and wrote its own dissolution entry
+/// for them; main removed the same six independently and recorded it as the TWENTY-THIRD. One
+/// event, one record: my entry is dropped in favour of main's, because a second narration of the
+/// same deletion is the double-record this ledger already refuses once above.
+/// TWENTY-FIRST TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
 /// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
 /// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
 /// `TargetChanged` and is not auto-admitted. Measured from required run 33830830910 on 91354f99fd,
@@ -931,16 +987,116 @@ pub struct TransitionAdmission {
 /// its result reads as the bare element type and reports `Present` as a missing variant of it, at
 /// that type's declaration, in another file. Two callers had each privately worked around this with
 /// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
-/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it, so
-/// the move is the section 3 repair and these two rows are its measured cost.
+/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
 ///
-/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN: two deltas, two rows, each naming its module,
-/// its declaration and the exact spelling whose target moved.
+/// THE ORDINAL IS TWENTY-FIRST BECAUSE gunbc#10328 TOOK TWENTIETH WHILE THIS BRANCH WAS IN FLIGHT,
+/// and this branch renumbered rather than collide — the ledger already carries two duplicate
+/// ordinals and a third would make an entry uncitable by its own name.
 ///
 /// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_live_stall_is_below_its_ceiling::`all_guarantee_stalls`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "every_live_stall_is_below_its_ceiling",
+            spelling: "all_guarantee_stalls",
+            target: "gunbc.guarantee_stall.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_live_stall_names_a_next_rung_trigger::`all_guarantee_stalls`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "every_live_stall_names_a_next_rung_trigger",
+            spelling: "all_guarantee_stalls",
+            target: "gunbc.guarantee_stall.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_restored_stall_is_still_rostered::`all_guarantee_stalls`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "every_restored_stall_is_still_rostered",
+            spelling: "all_guarantee_stalls",
+            target: "gunbc.guarantee_stall.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_restored_stall_is_still_rostered::`every_restored_stall_is_rostered_once`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "every_restored_stall_is_still_rostered",
+            spelling: "every_restored_stall_is_rostered_once",
+            target: "gunbc.guarantee_stall.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_restored_stall_is_still_rostered::`restored_stalls`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "every_restored_stall_is_still_rostered",
+            spelling: "restored_stalls",
+            target: "gunbc.guarantee_stall.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (the_stall_roster_is_not_empty::`all_guarantee_stalls`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "the_stall_roster_is_not_empty",
+            spelling: "all_guarantee_stalls",
+            target: "gunbc.guarantee_stall.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (live_stall_is_below_its_ceiling::`next_rung_trigger_enforcement_stall`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "live_stall_is_below_its_ceiling",
+            spelling: "next_rung_trigger_enforcement_stall",
+            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (stall_permanence_follows_the_blocker::`next_rung_trigger_enforcement_stall`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "stall_permanence_follows_the_blocker",
+            spelling: "next_rung_trigger_enforcement_stall",
+            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (stall_report_names_subject_and_trigger::`next_rung_trigger_enforcement_stall`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "stall_report_names_subject_and_trigger",
+            spelling: "next_rung_trigger_enforcement_stall",
+            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (uncounted_population_does_not_render_as_empty::`next_rung_trigger_enforcement_stall`)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.guarantee_stall_witness_test",
+            in_declaration: "uncounted_population_does_not_render_as_empty",
+            spelling: "next_rung_trigger_enforcement_stall",
+            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside \
                 its type (converge_cli_codex_runtime_knob_registered_for_host)",

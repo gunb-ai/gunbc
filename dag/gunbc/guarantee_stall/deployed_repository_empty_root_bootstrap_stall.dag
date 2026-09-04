@@ -1,0 +1,26 @@
+module gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+// THIS IS A PRE-EXISTING CAPABILITY GAP, NOT A RUNG LOWERED BY THE CUT-OVER. The legacy transport
+// did put HEAD/objects/refs beside working bytes in an empty directory, but omitted the index and
+// therefore could not produce the consistent repository state this deployment claims. Calling that
+// a bootstrap would count mutation as success and repeat the exact conflation RLM-2c removes.
+// Git-native convergence now refuses the unobservable pre-state through
+// ConvergencePreStateUnobservable, and placement carries that located cause to the outer deploy in
+// its durable receipt. The refusal is evidence of the gap; it is not the missing capability.
+// THE POPULATION IS ONE PRODUCTION SUBJECT, NOT A SNAPSHOT OF AN OPEN SET. There is one production
+// constructor, deployment_spec_srv1, and the realization binding is global rather than a field a
+// future spec can silently choose. Any later production spec therefore inherits GitNativeConvergence;
+// at a fresh root it reaches the same typed ConvergencePreStateUnobservable wall and cannot proceed.
+// The boundary is the refusal construction, not a hand-maintained roster count.
+data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeStall {
+  subject: "an empty deployed repository root cannot be brought to one consistent candidate revision by live deploy",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "gunbc.live_deploy.spec deployment_spec_srv1 at a fresh repository root", tail: Empty {} } },
+  next_rung_trigger: "a modeled Git-native bootstrap sufficient to initialize an empty deployed repository from the admitted runner checkout at the exact candidate, with HEAD, index and tracked worktree read back as that one revision before any later deployment member runs; copying any .git path as files, relaxing ConvergencePreStateUnobservable, or merely creating an empty git directory does not satisfy the capability"
+}
