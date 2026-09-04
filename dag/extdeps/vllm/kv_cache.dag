@@ -1,0 +1,133 @@
+module extdeps.vllm.kv_cache
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { TokenCount, Percent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.log_lines { VllmStartupLine, GpuKvCacheSize, vllm_startup_line_prefix }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.vllm.ai/en/latest/design/kernel/mla.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.kv_cache",
+      decl_name: "VllmObservedKvPool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── THE POOL IS OBSERVED, AND THE CARRIER IS SHAPED SO THAT A COMPUTED ONE CANNOT BE WRITTEN ───
+//
+// THE POOL IS A RESIDUAL OF LARGE NUMBERS: the memory budget minus the weights minus a PROFILED
+// activation peak minus a cudagraph reservation. Every term but the first is measured by the engine
+// after it loads, so small argument changes move the result by multiples rather than by percentages
+// -- a utilization step of a few points moved it several-fold, and adding one batching argument cut
+// it by two thirds. A quantity with that shape cannot be predicted from the arguments; it can only
+// be read back.
+//
+// SO THE CONSTRUCTOR TAKES THE CAPTURED LINE, NOT JUST A NUMBER. This is the whole point of the
+// carrier: to write a pool figure you must also carry the engine text it came from, so a fabricated
+// pool has to fabricate a log line beside it and is visible as such in review. That is
+// MECHANICALLY PREVENTABLE and deliberately not claimed as more: nothing here stops an author
+// typing both halves. What it removes is the ACCIDENT -- the arithmetic that looks like a
+// derivation and silently answers a different question.
+//
+// NEXT-RUNG TRIGGER, named rather than left implicit: a parser that takes the captured stdout of a
+// launch and produces this carrier, so the only inhabitant is one the engine actually printed. That
+// parser is `gunbc.spark.serving_readback_parse`'s job and does not read this line yet.
+type VllmObservedKvPool sole_constructor {
+  tokens: TokenCount
+  captured_line: NonEmptyStr
+  observed_at_revision: VllmSourceRevision
+}
+
+fn vllm_observed_kv_pool(tokens: TokenCount, captured_line: NonEmptyStr) -> VllmObservedKvPool {
+  VllmObservedKvPool {
+    tokens: tokens,
+    captured_line: captured_line,
+    observed_at_revision: vllm_source_revision_read
+  }
+}
+
+fn vllm_observed_kv_pool_line() -> VllmStartupLine { GpuKvCacheSize }
+
+// ── BLOCK ARITHMETIC IS A DIFFERENT QUANTITY WEARING THE SAME UNITS ────────────────────────────
+//
+// `num_gpu_blocks * block_size` is the obvious reconstruction and it is WRONG under MLA with the
+// DeepSeek fp8 layout, by roughly an order of magnitude in the direction that looks plausible. It is
+// recorded as a typed refusal subject rather than as a warning because it was computed twice, by
+// someone who knew better the second time: the failure mode is not ignorance of the rule, it is that
+// the arithmetic is available and reads like a derivation.
+type VllmPoolReconstruction
+  = BlockCountTimesBlockSize
+  | UtilizationTimesTotalMemory
+
+fn vllm_pool_reconstruction_is_authoritative(r: VllmPoolReconstruction) -> Bool {
+  match r {
+    BlockCountTimesBlockSize => false
+    UtilizationTimesTotalMemory => false
+  }
+}
+
+fn vllm_pool_reconstruction_ground(r: VllmPoolReconstruction) -> NonEmptyStr {
+  match r {
+    BlockCountTimesBlockSize =>
+      "under MLA with the DeepSeek fp8 layout this reports a small fraction of the logged pool; the block accounting is not the KV accounting" as NonEmptyStr
+    UtilizationTimesTotalMemory =>
+      "the utilization fraction bounds the BUDGET, not the pool; weights, the profiled activation peak and the cudagraph reservation are subtracted from it" as NonEmptyStr
+  }
+}
+
+// ── THE RESOLVED FORMAT IS NOT THE REQUESTED ONE ───────────────────────────────────────────────
+//
+// `--kv-cache-dtype fp8` on a DeepSeek MLA checkpoint RESOLVES to `fp8_ds_mla`, and the engine
+// announces the resolution on its own line. A realization that records the requested spelling has
+// recorded the argument it sent and not the format it got; those differ, and the difference is what
+// decides bytes per token.
+type VllmResolvedKvFormat
+  = ResolvedFp8DsMla
+  | ResolvedUnobserved
+
+fn vllm_resolved_kv_format_is_observed(f: VllmResolvedKvFormat) -> Bool {
+  match f {
+    ResolvedFp8DsMla => true
+    ResolvedUnobserved => false
+  }
+}
+
+// ── CONTEXT CAP AND POOL ARE MEASURED PAIRS, NOT A CURVE ───────────────────────────────────────
+//
+// A LARGER CAP GAVE A LARGER POOL on this checkpoint, reproduced at two utilizations. That is the
+// opposite of the intuition that a bigger window costs pool, and the intuition is what a formula
+// would have encoded. So the relation is carried as OBSERVED PAIRS with the utilization they were
+// taken at, and there is deliberately no interpolation function: two points do not establish a
+// shape, and a fitted curve here would be a fabricated answer for every cap nobody measured.
+type VllmCapPoolObservation sole_constructor {
+  max_model_len: TokenCount
+  utilization: Percent
+  pool: VllmObservedKvPool
+}
+
+fn vllm_cap_pool_observation(
+  max_model_len: TokenCount,
+  utilization: Percent,
+  pool: VllmObservedKvPool,
+) -> VllmCapPoolObservation {
+  VllmCapPoolObservation {
+    max_model_len: max_model_len,
+    utilization: utilization,
+    pool: pool
+  }
+}

@@ -1,0 +1,93 @@
+module test.claim.vllm_kv_pool_witness_test
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { TokenCount, Percent, token_count, percent }
+import extdeps.vllm.log_lines {
+  VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
+  vllm_startup_line_prefix, vllm_startup_lines
+}
+import extdeps.vllm.kv_cache {
+  VllmObservedKvPool, vllm_observed_kv_pool, vllm_observed_kv_pool_line,
+  VllmPoolReconstruction, BlockCountTimesBlockSize, UtilizationTimesTotalMemory,
+  vllm_pool_reconstruction_is_authoritative,
+  VllmResolvedKvFormat, ResolvedFp8DsMla, ResolvedUnobserved, vllm_resolved_kv_format_is_observed,
+  VllmCapPoolObservation, vllm_cap_pool_observation
+}
+
+// WHAT IS DELIBERATELY NOT CHECKED HERE, STATED SO ITS ABSENCE IS NOT READ AS AN OVERSIGHT.
+//
+// There is no row asserting "a pool cannot be constructed without a captured line". That state has
+// NO CONSTRUCTOR: `VllmObservedKvPool` is `sole_constructor` and `captured_line` is a required
+// field, so the invalid program cannot be written in the accepted corpus OR in a fixture handed to
+// the compiler by this module. A check whose RED is unauthorable is permanently green by
+// construction, carries no information, and is worse than absent because it would be cited as
+// coverage (DESIGN section 4b). The construction IS the guarantee; these rows cover what
+// construction does not decide.
+
+// ── THE RECONSTRUCTIONS ARE REFUSED, AND BOTH ARMS ARE HELD ────────────────────────────────────
+//
+// RED. Neither arithmetic route is authoritative. Both arms are asserted separately rather than as
+// one conjunction, because they fail for DIFFERENT reasons -- block accounting is not KV accounting,
+// while the utilization product bounds a budget the pool is then subtracted out of -- and a single
+// row would let one arm silently flip while the other held it green.
+test fn w_block_arithmetic_is_not_the_pool() -> Bool {
+  !vllm_pool_reconstruction_is_authoritative(r: BlockCountTimesBlockSize)
+}
+
+test fn w_the_utilization_product_is_a_budget_not_a_pool() -> Bool {
+  !vllm_pool_reconstruction_is_authoritative(r: UtilizationTimesTotalMemory)
+}
+
+// ── THE RESOLVED FORMAT DISCRIMINATES OBSERVED FROM UNOBSERVED ─────────────────────────────────
+//
+// RED plus its positive control. A carrier that answered `true` for both arms would make
+// "we observed the format" indistinguishable from "we never looked", which is the absent-reads-as-
+// never-looked shape this repository already files.
+test fn w_an_unobserved_format_is_not_an_observation() -> Bool {
+  !vllm_resolved_kv_format_is_observed(f: ResolvedUnobserved)
+    && vllm_resolved_kv_format_is_observed(f: ResolvedFp8DsMla)
+}
+
+// ── THE STARTUP LINES ARE CITED BY PREFIX, AND THE THREE ARE DISTINCT ──────────────────────────
+//
+// A prefix that collided with another would make a parser select the wrong line while still
+// reporting a match. Distinctness is the property that makes prefix-citation safe.
+test fn w_the_three_startup_prefixes_are_distinct() -> Bool {
+  (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: MaximumConcurrency))
+    && (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: ResolvedKvCacheFormat))
+    && (vllm_startup_line_prefix(line: MaximumConcurrency) != vllm_startup_line_prefix(line: ResolvedKvCacheFormat))
+    && length(vllm_startup_lines) == 3
+}
+
+// The pool carrier names the line it is read from, so a future parser cannot bind it to the
+// concurrency line and still typecheck against this expectation.
+test fn w_the_pool_is_read_from_the_kv_cache_size_line() -> Bool {
+  vllm_startup_line_prefix(line: vllm_observed_kv_pool_line())
+    == vllm_startup_line_prefix(line: GpuKvCacheSize)
+}
+
+// ── A CAP/POOL OBSERVATION CARRIES THE UTILIZATION IT WAS TAKEN AT ─────────────────────────────
+//
+// Two readings at different utilizations are not comparable, and an observation that dropped the
+// utilization would look like a function of the cap alone -- which is exactly the curve this module
+// refuses to fit. This holds the pairing, not a value.
+test fn w_a_cap_pool_pair_carries_its_utilization_and_its_source_line() -> Bool {
+  let obs = vllm_cap_pool_observation(
+    max_model_len: token_count(count: 524288),
+    utilization: percent(count: 82),
+    pool: vllm_observed_kv_pool(
+      tokens: token_count(count: 3330000),
+      captured_line: "GPU KV cache size: 3,330,000 tokens" as NonEmptyStr))
+  obs.utilization == percent(count: 82)
+    && obs.max_model_len == token_count(count: 524288)
+}
+
+test fn w_all_vllm_kv_pool_claims_hold() -> Bool {
+  w_block_arithmetic_is_not_the_pool()
+    && w_the_utilization_product_is_a_budget_not_a_pool()
+    && w_an_unobserved_format_is_not_an_observation()
+    && w_the_three_startup_prefixes_are_distinct()
+    && w_the_pool_is_read_from_the_kv_cache_size_line()
+    && w_a_cap_pool_pair_carries_its_utilization_and_its_source_line()
+}
