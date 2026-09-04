@@ -90,23 +90,28 @@ fn page_cursor_shape_key(c: PageCursor) -> NonEmptyStr {
   }
 }
 
+// EQUALITY IS NOT UNIFORM ACROSS THE ARMS, AND THAT IS THE WHOLE REASON THIS FUNCTION EXISTS.
+//
+// `==` already decides a closed coproduct natively -- true for like variants, false for unlike,
+// payload-comparing on payload-carrying arms -- so re-deriving it arm by arm would be a second
+// representation of a native relation, the `parallel_representation_debt` class. Two of the three
+// arms are therefore left to `==` rather than restated.
+//
+// LinkNext is the exception and it is a SEMANTIC one, not a stylistic preference. A cursor named
+// by a link target is the same cursor when it addresses the same resource, and two `Uri` values
+// that differ in internal representation may address the same resource. Structural equality would
+// call those two distinct and the fold would follow the same page forever, reporting a budget
+// overrun for a cycle. So this arm compares WIRE FORM, which is the identity the serving authority
+// actually keys on, and the arm-by-arm shape is what makes that single deviation visible.
 fn page_cursor_eq(a: PageCursor, b: PageCursor) -> Bool {
   match a {
-    OffsetPage { page: pa } => match b {
-      OffsetPage { page: pb } => pa == pb
-      OpaqueToken { token: tb } => false
-      LinkNext { target: ub } => false
-    }
-    OpaqueToken { token: ta } => match b {
-      OffsetPage { page: pb } => false
-      OpaqueToken { token: tb } => ta == tb
-      LinkNext { target: ub } => false
-    }
     LinkNext { target: ua } => match b {
+      LinkNext { target: ub } => uri_wire(uri: ua) == uri_wire(uri: ub)
       OffsetPage { page: pb } => false
       OpaqueToken { token: tb } => false
-      LinkNext { target: ub } => uri_wire(uri: ua) == uri_wire(uri: ub)
     }
+    OffsetPage { page: pa } => a == b
+    OpaqueToken { token: ta } => a == b
   }
 }
 
@@ -222,6 +227,7 @@ type PageFoldState<I> {
   pages_read: Int
   items: List<I>
   shape: ContinuationShapeSeen
+  demanded: List<PageCursor>
   status: PageFoldStatus
 }
 
@@ -232,6 +238,7 @@ fn page_fold_begin<I>(subject: PageFoldSubject, bound: PageBound, first: PageCur
     pages_read: 0
     items: []
     shape: ShapeUnset
+    demanded: [first]
     status: FoldOpen { next: first }
   }
 }
@@ -262,10 +269,23 @@ fn continuation_shape_admission(seen: ContinuationShapeSeen, offered: NonEmptySt
   }
 }
 
-// THE ONE TRANSITION. Every arm below either ends the fold, refuses, or advances to a STRICTLY
-// different cursor, so the state machine cannot revisit a cursor it has already demanded and the
-// page count rises by exactly one per observation -- the descent that makes the bound a real bound
-// rather than a hope.
+// THE ONE TRANSITION. Every arm below either ends the fold, refuses, or advances to a cursor NOT
+// ALREADY DEMANDED, and the page count rises by exactly one per observation -- the descent that
+// makes the bound a real bound rather than a hope.
+//
+// THE NON-ADVANCE CHECK IS MEMBERSHIP IN EVERY CURSOR DEMANDED SO FAR, NOT A COMPARISON WITH THE
+// CURRENT ONE, and the difference is a defect this module shipped with. Comparing only the current
+// cursor catches page 1 -> page 1 and misses page 1 -> page 2 -> page 1: every individual step
+// advances, so the cycle runs until the budget stops it and reports `PageBudgetExhausted`. That is
+// the wrong diagnosis for a cycling authority and it is a §5 widen -- the fold terminated, so
+// nothing was unsafe, but the refusal named a budget that was adequate rather than the cursor
+// sequence that never converged, and those have different remedies. Immediate non-advancement is
+// the length-one case of revisiting, so ONE arm covers both rather than two arms splitting a
+// single class.
+//
+// The comparison is O(pages) per observation and so O(max_pages^2) per fold. That is bounded by a
+// declared constructor rather than by the corpus, which is the property that makes it payable:
+// max_pages is small and authored, and the alternative is a cheaper check that answers wrongly.
 //
 // THE BOUND IS CHECKED WHEN A FURTHER PAGE IS DEMANDED, not when one is delivered, and the
 // distinction is load-bearing. A listing that fits in exactly max_pages pages and then says
@@ -280,12 +300,13 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
       pages_read: state.pages_read
       items: state.items
       shape: state.shape
+      demanded: state.demanded
       status: FoldRefused {
         refusal: PageObservedAfterFoldEnded { subject: state.subject, pages_read: state.pages_read }
       }
     }
     FoldRefused { refusal: r } => state
-    FoldOpen { next: current } =>
+    FoldOpen { next: _ } =>
       let read = state.pages_read + 1
       let carried = concat(state.items, page.items)
       match page.continuation {
@@ -295,17 +316,19 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
           pages_read: read
           items: carried
           shape: state.shape
+          demanded: state.demanded
           status: FoldEnded
         }
         ContinuationNext { cursor: nxt } =>
           let next_shape = page_cursor_shape_key(c: nxt)
-          if page_cursor_eq(a: current, b: nxt) {
+          if (state.demanded |> any(d => page_cursor_eq(a: d, b: nxt))) {
             PageFoldState {
               subject: state.subject
               bound: state.bound
               pages_read: read
               items: state.items
               shape: state.shape
+              demanded: state.demanded
               status: FoldRefused {
                 refusal: CursorDidNotAdvance { subject: state.subject, page_index: read, cursor: nxt }
               }
@@ -318,6 +341,7 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
                 pages_read: read
                 items: state.items
                 shape: state.shape
+                demanded: state.demanded
                 status: FoldRefused {
                   refusal: ContinuationShapeChanged {
                     subject: state.subject
@@ -335,6 +359,7 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
                     pages_read: read
                     items: state.items
                     shape: ShapeSeen { key: next_shape }
+                    demanded: state.demanded
                     status: FoldRefused {
                       refusal: PageBudgetExhausted {
                         subject: state.subject
@@ -351,6 +376,7 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
                     pages_read: read
                     items: carried
                     shape: ShapeSeen { key: next_shape }
+                    demanded: concat(state.demanded, [nxt])
                     status: FoldOpen { next: nxt }
                   }
                 }

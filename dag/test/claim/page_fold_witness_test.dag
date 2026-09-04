@@ -127,6 +127,60 @@ test fn page_fold_non_advancing_cursor_refuses_witness() -> Bool {
   outcome_refusal_key(o: stuck) == "cursor_did_not_advance" && outcome_items(o: stuck) == ""
 }
 
+// A CURSOR CYCLE THAT NEVER REPEATS ITSELF IMMEDIATELY IS STILL A CYCLE, AND THIS IS THE WITNESS
+// FOR A DEFECT THIS MODULE SHIPPED WITH. page 1 -> page 2 -> page 1: every individual step
+// advances, so a check comparing only the current cursor with the next one admits every step and
+// the fold spins until the budget stops it. It then reports `page_budget_exhausted` -- a refusal
+// naming a budget that was in fact adequate, for an authority whose cursor sequence never
+// converges. The remedies differ (raise the bound versus fix the serving side), so collapsing them
+// is the §5 widen the fold exists to refuse.
+//
+// THE BOUND HERE IS DELIBERATELY GENEROUS. max_pages 50 against a 3-page cycle means budget
+// exhaustion is not even close, so this witness cannot pass by accident of a tight budget: the
+// only way to reach `cursor_did_not_advance` is to have actually recognised the revisit.
+test fn page_fold_cursor_cycle_refuses_as_non_advance_witness() -> Bool {
+  let cycled = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 50 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      page(items: ["a"], next: to_page(n: 2)),
+      page(items: ["b"], next: to_page(n: 1))
+    ]
+  )
+  outcome_refusal_key(o: cycled) == "cursor_did_not_advance" && outcome_items(o: cycled) == ""
+}
+
+// A LONGER CYCLE THAT RETURNS TO A NON-FIRST CURSOR, so the check cannot be satisfied by comparing
+// against the FIRST cursor alone -- which is the other cheap approximation of membership, and it
+// would pass the witness above while missing 1 -> 2 -> 3 -> 2.
+test fn page_fold_cursor_cycle_to_a_middle_cursor_refuses_witness() -> Bool {
+  let cycled = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 50 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      page(items: ["a"], next: to_page(n: 2)),
+      page(items: ["b"], next: to_page(n: 3)),
+      page(items: ["c"], next: to_page(n: 2))
+    ]
+  )
+  outcome_refusal_key(o: cycled) == "cursor_did_not_advance" && outcome_items(o: cycled) == ""
+}
+
+// THE POSITIVE CONTROL FOR BOTH: a fold whose cursors are all distinct must still CLOSE. Without
+// this, a membership check that refused everything would pass both witnesses above.
+test fn page_fold_distinct_cursors_still_close_witness() -> Bool {
+  let closed = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 50 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      page(items: ["a"], next: to_page(n: 2)),
+      page(items: ["b"], next: to_page(n: 3)),
+      page(items: ["c"], next: ContinuationClosed)
+    ]
+  )
+  outcome_items(o: closed) == "a,b,c"
+}
+
 // TWO PROTOCOLS ANSWERING ONE LISTING REFUSE. An offset fold that is suddenly handed an opaque
 // token has not continued -- it has been answered by something other than what it asked, and
 // following it would page a different listing while reporting the first one complete.
