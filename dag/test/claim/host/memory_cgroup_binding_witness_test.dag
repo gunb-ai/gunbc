@@ -1,0 +1,317 @@
+module test.claim.memory_cgroup_binding_witness
+
+import std.logic { Bool }
+import std.measure { byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_budget_source {
+  HostBudgetObservation,
+  HostBudgetObserved,
+  BudgetSourceCgroupMemoryHigh,
+  BudgetSourceCgroupMemoryMax,
+  BudgetSourceDarwinPhysicalMemory,
+}
+import gunbc.memory_cgroup_binding {
+  CgroupBindRequest,
+  CgroupBindRequested,
+  CgroupBindRequestUnreadable,
+  CgroupBindDecision,
+  BindNotRequested,
+  BindUnnecessaryLimitAlreadyBinds,
+  BindApplicable,
+  BindRefused,
+  MemoryControllerUnavailable,
+  CgroupTreeNotWritable,
+  RequestNotBelowMachineMemory,
+  MachineMemoryUnreadable,
+  RequestUnreadable,
+  RequestNotAboveCurrentUsage,
+  CurrentUsageUnreadable,
+  cgroup_bind_decision,
+  cgroup_bind_decision_refuses,
+  cgroup_bind_decision_writes,
+  cgroup_bind_decision_refusal_text,
+  cgroup_bind_decision_note,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURES ARE THE TWO RUNNERS THIS REPOSITORY ACTUALLY DISPATCHES TO, measured 2026-09-04
+// rather than invented, so the discrimination this file claims is the one that decides a real
+// run. remote_runner is the BuildBuddy action: /proc/self/cgroup reads 0::/, the cgroup2 root
+// carries no memory.max or memory.high, the memory controller IS listed and the tree IS writable
+// by the uid-0 guest, and the default machine holds about 7.3 GiB against a measured 8.37 GiB
+// requirement -- which is why the sized fixture below is the only admitting one. ci_runner is the
+// self-hosted actions runner, whose slice already binds memory.high, and it is here as the
+// control that must NOT be written to: a fix that bound a second cgroup underneath a machine
+// already doing the right thing would red every green lane.
+fn ten_gib() -> CgroupBindRequest {
+  CgroupBindRequested { bound: byte_size(count: 10737418240) }
+}
+
+fn memory_max_bound_observation() -> HostBudgetObservation {
+  HostBudgetObserved {
+    source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/actions-runner.slice" },
+    bytes: byte_size(count: 16106127360)
+  }
+}
+
+// The two sources that DO NOT hard-bound this process, named from the same authority that decides
+// it: memory.high is a reclaim throttle allocations may cross, and Darwin physical memory is a
+// fact about the machine rather than about this process.
+fn memory_high_observation() -> HostBudgetObservation {
+  HostBudgetObserved {
+    source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/actions-runner.slice" },
+    bytes: byte_size(count: 16106127360)
+  }
+}
+
+fn darwin_observation() -> HostBudgetObservation {
+  HostBudgetObserved {
+    source: BudgetSourceDarwinPhysicalMemory,
+    bytes: byte_size(count: 17179869184)
+  }
+}
+
+// THE ADMITTING ARM, and it is the capability this module exists to restore: an action holding no
+// observation at all, on a machine sized larger than the bound it asks for, writes the bound and
+// proceeds. Nothing else in the corpus can produce an enforceable limit where none existed.
+test fn an_unbounded_action_on_a_sized_machine_binds() -> Bool {
+  match cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  ) {
+    BindApplicable { bound: bound } => byte_size_count(b: bound) == 10737418240
+    BindNotRequested => false
+    BindUnnecessaryLimitAlreadyBinds { source: _ } => false
+    BindRefused { cause: _ } => false
+  }
+}
+
+// RED: the default remote runner, unsized. The bound asked for is larger than the whole machine,
+// so writing it would produce a memory.max that can never be reached -- a limit in name that
+// bounds nothing while being cited as a bound. The refusal names both quantities and says which
+// side to move, because raising the bound to fit the machine is the one repair that reproduces
+// the original defect.
+test fn RED_a_bound_not_below_machine_memory_refuses_and_names_both_quantities() -> Bool {
+  let decision = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 7838253056) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  cgroup_bind_decision_refuses(d: decision)
+    && !cgroup_bind_decision_writes(d: decision)
+    && string_contains(s: cgroup_bind_decision_refusal_text(d: decision), pattern: "MemoryCgroupBindRefused")
+    && string_contains(s: cgroup_bind_decision_refusal_text(d: decision), pattern: "10737418240")
+    && string_contains(s: cgroup_bind_decision_refusal_text(d: decision), pattern: "7838253056")
+    && string_contains(
+      s: cgroup_bind_decision_refusal_text(d: decision),
+      pattern: "size the executor larger than the bound"
+    )
+}
+
+// The boundary is STRICT and it is checked from both sides one byte apart, so a fixture at an
+// extreme could not stand in for it: equal to the machine refuses, one byte below binds.
+test fn the_machine_boundary_is_strict_on_both_sides() -> Bool {
+  let equal = cgroup_bind_decision(
+    request: Present { value: CgroupBindRequested { bound: byte_size(count: 7838253056) } },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 7838253056) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  let below = cgroup_bind_decision(
+    request: Present { value: CgroupBindRequested { bound: byte_size(count: 7838253055) } },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 7838253056) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  cgroup_bind_decision_refuses(d: equal) && cgroup_bind_decision_writes(d: below)
+}
+
+// The two mechanism refusals. Neither may degrade into proceeding unbounded: an executor that
+// could not write its limit has NO limit, which is the state this whole module exists to end.
+test fn RED_an_unwritable_or_uncontrolled_tree_refuses_rather_than_proceeding_unbounded() -> Bool {
+  let no_controller = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: false,
+    cgroup_tree_writable: true
+  )
+  let not_writable = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: false
+  )
+  cgroup_bind_decision_refuses(d: no_controller)
+    && cgroup_bind_decision_refuses(d: not_writable)
+    && !cgroup_bind_decision_writes(d: no_controller)
+    && !cgroup_bind_decision_writes(d: not_writable)
+    && string_contains(s: cgroup_bind_decision_refusal_text(d: no_controller), pattern: "memory controller")
+    && string_contains(s: cgroup_bind_decision_refusal_text(d: not_writable), pattern: "not writable")
+}
+
+// An unreadable machine size refuses rather than assuming the request fits. This is the arm that
+// would otherwise be the absorbing one: proceeding on an unknown machine is precisely how a
+// decoration gets written and then cited.
+test fn RED_an_unreadable_machine_refuses_rather_than_assuming_the_request_fits() -> Bool {
+  let decision = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Absent,
+    machine_memory: Absent,
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  cgroup_bind_decision_refuses(d: decision)
+    && string_contains(s: cgroup_bind_decision_refusal_text(d: decision), pattern: "unreadable")
+}
+
+// THE CI CONTROL, and it is the one that keeps this change from being a regression somewhere it
+// was never needed. A runner whose slice already binds memory.high takes the unnecessary arm: no
+// write, no refusal, and the announcement names the limit that already holds. A green lane stays
+// green and does not acquire a second authority for its own bound.
+test fn a_process_already_bound_by_memory_max_is_not_written_to() -> Bool {
+  let decision = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Present { value: memory_max_bound_observation() },
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  !cgroup_bind_decision_refuses(d: decision)
+    && !cgroup_bind_decision_writes(d: decision)
+    && string_contains(s: cgroup_bind_decision_note(d: decision), pattern: "unnecessary")
+    && string_contains(s: cgroup_bind_decision_note(d: decision), pattern: "actions-runner.slice")
+}
+
+// No request is a no-op on every machine, including one that would have refused. Binding is
+// opt-in: nothing acquires a limit it did not ask for, and no existing caller changes behaviour.
+test fn no_request_is_a_no_op_even_where_a_request_would_have_refused() -> Bool {
+  let decision = cgroup_bind_decision(
+    request: Absent,
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 7838253056) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: false,
+    cgroup_tree_writable: false
+  )
+  !cgroup_bind_decision_refuses(d: decision)
+    && !cgroup_bind_decision_writes(d: decision)
+    && cgroup_bind_decision_refusal_text(d: decision) == ""
+    && string_contains(s: cgroup_bind_decision_note(d: decision), pattern: "not requested")
+}
+
+
+// RED — A MALFORMED REQUEST MUST NOT READ AS NO REQUEST. Silence is the right answer to a question
+// nobody asked and never to one asked badly: an operator who asked to be bounded with a value that
+// cannot be parsed would otherwise proceed unbounded and be told nothing. Review 5117628699.
+test fn RED_an_unreadable_request_refuses_rather_than_becoming_no_request() -> Bool {
+  let decision = cgroup_bind_decision(
+    request: Present { value: CgroupBindRequestUnreadable { raw: "twelve gigs" } },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  cgroup_bind_decision_refuses(d: decision)
+    && !cgroup_bind_decision_writes(d: decision)
+    && string_contains(s: cgroup_bind_decision_refusal_text(d: decision), pattern: "twelve gigs")
+    && string_contains(
+      s: cgroup_bind_decision_refusal_text(d: decision),
+      pattern: "refused rather than treated as no request"
+    )
+}
+
+// RED — A BOUND AT OR BELOW WHAT THE PROCESS ALREADY HOLDS is fatal the instant it is written, so
+// the run dies before any later admission arm could report it as too small. Zero is the extreme
+// case the first revision admitted, because its only size relation was bound < machine.
+test fn RED_a_bound_not_above_current_usage_refuses_including_zero() -> Bool {
+  let zero = cgroup_bind_decision(
+    request: Present { value: CgroupBindRequested { bound: byte_size(count: 0) } },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  let at_usage = cgroup_bind_decision(
+    request: Present { value: CgroupBindRequested { bound: byte_size(count: 1073741824) } },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  let one_above = cgroup_bind_decision(
+    request: Present { value: CgroupBindRequested { bound: byte_size(count: 1073741825) } },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  cgroup_bind_decision_refuses(d: zero)
+    && cgroup_bind_decision_refuses(d: at_usage)
+    && cgroup_bind_decision_writes(d: one_above)
+    && string_contains(
+      s: cgroup_bind_decision_refusal_text(d: zero),
+      pattern: "not above what this process ALREADY holds"
+    )
+}
+
+// RED — THE NON-BOUNDING-SOURCE CONTROL, the discriminating half of the already-bound arm. Neither
+// memory.high nor Darwin physical memory hard-bounds this process, so neither may suppress a
+// requested kernel bind; the first revision accepted any observation and told the operator a limit
+// bound them when nothing did. Review 5117628699.
+test fn RED_a_non_bounding_observation_does_not_suppress_the_bind() -> Bool {
+  let under_high = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Present { value: memory_high_observation() },
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  let on_darwin = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Present { value: darwin_observation() },
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Present { value: byte_size(count: 1073741824) },
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  cgroup_bind_decision_writes(d: under_high) && cgroup_bind_decision_writes(d: on_darwin)
+}
+
+// An unreadable resident size refuses for the same reason an unreadable machine does: whether the
+// bound would be instantly fatal is UNKNOWN, and a limit written under that ignorance can kill the
+// run before it diagnoses anything.
+test fn RED_an_unreadable_current_usage_refuses() -> Bool {
+  let decision = cgroup_bind_decision(
+    request: Present { value: ten_gib() },
+    existing: Absent,
+    machine_memory: Present { value: byte_size(count: 26448039936) },
+    current_usage: Absent,
+    memory_controller_available: true,
+    cgroup_tree_writable: true
+  )
+  cgroup_bind_decision_refuses(d: decision)
+    && !cgroup_bind_decision_writes(d: decision)
+}

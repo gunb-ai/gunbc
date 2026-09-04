@@ -357,3 +357,20 @@ test fn witness_unallocated_cannot_reach_access_grounding() -> Bool {
     HostAccessPrivilegeNotProven => false
   }
 }
+
+
+// CONTROL 11 -- the PUBLICATION helper's realization IS selected, persistent, and unallocated
+// until the host's uid is observed; the Spark inference principal above stays Unselected, so the
+// two rows together pin that selection is per principal and never a default.
+test fn witness_publication_helper_realization_is_a_persistent_account() -> Bool {
+  match publication_helper_realization_standing(host: spark5) {
+    PersistentServiceAccount { allocation: AccountUnallocated { occurrence: o } } =>
+      match o.principal {
+        FleetAccountPublicationHelper => true
+        _ => false
+      }
+    PersistentServiceAccount { allocation: _ } => false
+    ServicePrincipalRealizationUnselected => false
+    DynamicServicePrincipal { supervisor: _ } => false
+  }
+}

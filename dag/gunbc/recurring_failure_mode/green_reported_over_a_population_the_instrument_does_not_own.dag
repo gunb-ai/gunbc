@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.green_reported_over_a_population_the_instrument_does_not_own
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data green_reported_over_a_population_the_instrument_does_not_own: RecurringFailureMode = RecurringFailureMode {
@@ -49,12 +50,19 @@ data green_reported_over_a_population_the_instrument_does_not_own: RecurringFail
 
     "The tell is two actuators over one declared population with no join between their denominators. ",
 
-    "NEXT-RUNG TRIGGER, a capability and not an artifact: ONE adjudication over the whole declared generated-artifact population, so that a stale projection is a refusal from the same run that adjudicates the mirrors; failing that, a green that NAMES ITS OWN BOUNDARY -- reporting the artifacts it did not adjudicate rather than a bare count -- which is the weaker form and turns silent non-coverage into a stated one. ",
+    "THE FORMER NEXT-RUNG TRIGGER FIRED ON 2026-09-04, AND IS RETIRED BY ITS TRIGGER AND BY NOTHING ELSE. gunbc#10455 deleted RegenPhase from both gunbc.required_ci_phase_roster RequiredCiPhase and its host realization, moved its stage0-mirror adjudicator under the surviving GeneratedArtifactPhase beside the registry-projection adjudicator, runs the second population even when the first refuses, and emits one terminal OK or FAIL naming both populations. A stale projection or drifted mirror now refuses from the SAME phase and neither half can lend its green to the other. ",
 
-    "RUNG: mitigatable. ",
+    "RUNG: mechanically preventable. The invalid source shape remains writable: the bootstrap host can still omit one component call or reintroduce an independently-green phase, and safety depends on the composite phase executing and its permanent controls staying enrolled. It is therefore not structural guarantee or impossibility. ",
 
-    "NOT REPAIRED HERE: extending an actuator's population or splitting its report is a change to the regen authority and does not belong in the diff that discovered it.)",
+    "EXECUTED EVIDENCE FOR THE CLIMB. The permanent floor-discovered controls refuse both asymmetric states -- registry green with a drifted stage0 mirror, and mirrors green with a stale registry projection -- while an all-clean positive control accepts, excluding a compositor that merely refuses everything. On gunbc#10455's required CI execution the announced phase roster omitted regen and the surviving phase reported `generated-artifact OK populations=registry-projections,stage0-mirrors`; independently, the authoring run observed stage0-mirrors 156/156 clean, continued into a typed registry MemoryStallRefusedPageThrash instead of short-circuiting, and emitted the single terminal composite FAIL naming both populations. ",
+
+    "NEXT-RUNG TRIGGER, from mechanically preventable to structurally guaranteed: required-run dispatch and heal-before-push consume an exhaustive adjudicator DERIVED from every arm of gunbc.required_ci_phase_roster DeclaredGeneratedArtifactPopulation, such that adding an arm without an adjudicator is a compile refusal and neither consumer can construct Accepted until every arm returns clean. This is the missing construction; a test that the current two calls remain present would only add another mechanical wall.)",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.whole_generated_artifact_adjudication_test", decl_name: "registry_green_does_not_cover_a_drifted_stage0_mirror", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.whole_generated_artifact_adjudication_test", decl_name: "mirror_green_does_not_cover_a_stale_registry_projection", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.whole_generated_artifact_adjudication_test", decl_name: "both_declared_populations_clean_is_the_only_green", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_executor", decl_name: "run", field: WholeDeclaration },
+  ],
 }
