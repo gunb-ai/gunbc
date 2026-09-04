@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.empty_observation_narrow
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data empty_observation_narrow: RecurringFailureMode = RecurringFailureMode {
+  identity: "empty_observation_narrow" as NonEmptyStr,
+
+  receipts: [
+    "**empty-observation narrow** (the absorbing fallback's mirror: ⊥-as-answer conflated with ⊥-as-ignorance — an observation that could not express what changed rendered as the verdict \"nothing is affected\", so the run narrows to nothing instead of widening. ",
+
+    "Strictly worse than the widen §5 already forbids: a widen is merely expensive, a narrow is silently uncovered. ",
+
+    "Live specimen: a push whose baseline ref *is* the pushed ref diffs the commit against itself, and the witness floor reported the resulting zero-path observation as \"N unaffected (import-closure, skipped without resolve)\" — receipt, two main pushes reporting an identical `4118 unaffected` on different commits, a skip count that cannot be a function of the diff. ",
+
+    "The tell that one observation is wrong rather than three local choices reasonable: its consumers disagree — compile-clean widened to whole-tree, regen gated on the event name, the witness floor skipped) **RECEIPT, AND IT MOVES THE CLASS FROM AN OBSERVATION'S EXPRESSIVENESS TO AN ANALYSIS'S RANGE** (quick-crab-396, 2026-09-02). ",
+
+    "Authoring a coproduct arm named `Refused`, I ran a corpus-wide collision census over TYPE names, got a clean answer, and authored the name. ",
+
+    "required-regen then refused: `variant 'Refused' appears in both 'TypeRealizationDecision' and 'EmitterOutcome'`, and re-running the census over VARIANT spellings found `Refused` live in SIX declaring types. ",
+
+    "THE DEFECT WAS NOT A MISSING ANALYSIS. ",
+
+    "The compiler already computes exactly this collision -- it is what refused -- but it computes it during v2 self-compile over ONE RESOLVED CLOSURE, and the question being asked was about the CORPUS. ",
+
+    "Same subject, two ranges. ",
+
+    "From the author's seat the narrow analysis's silence was indistinguishable from a negative result, which is this row's own conflation with the scope quantifier moved: not an observation that could not EXPRESS what changed, but one that could not REACH where the answer lived. ",
+
+    "WHY IT IS FILED HERE RATHER THAN AS A NEW CLASS: the mechanism is identical and only the axis differs, and DESIGN section 2 prices a fresh authority for an existing concept as a failed decomposition. ",
+
+    "RECOGNITION RULE: when a check answers clean, ask what POPULATION it ranged over and whether that is the population the question was about -- an analysis scoped to the wrong range is, from the caller's seat, indistinguishable from an analysis that does not exist. ",
+
+    "NEXT-RUNG TRIGGER for this instance, named as the capability and not as an artifact: A CORPUS-WIDE NAMESPACE CENSUS OVER EVERY TYPE DECLARATION AND EVERY COPRODUCT ARM, sufficient to answer 'is this spelling already declared anywhere in the corpus' before a name is authored, rather than after emission. ",
+
+    "ONE census over the one Node tree, not a second check beside the type-name one -- two checks over one namespace is the range split that produced this instance.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.execution_provenance_loss
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data execution_provenance_loss: RecurringFailureMode = RecurringFailureMode {
+  identity: "execution_provenance_loss" as NonEmptyStr,
+
+  receipts: [
+    "**execution-provenance loss** (a reported value is consumed as though an observation produced it, while the carrier holds no proof the observation path ran. ",
+
+    "**Distinct from state-space conflation, and the repair law is what separates them**: there the carrier cannot represent the distinction and the fix is to split the states; here the carrier already has the state — the consumer simply cannot tell whether it was *reached*, and the fix is to bind an execution receipt to the value. ",
+
+    "Three specimens in one night, all on main, none of them a missing variant. ",
+
+    "`known_red_held=206` is `36 held + 170 that RUNTIME-ERRORED`: the substrate splits those into distinct arms, so the states exist; what the quoted figure loses is *did the assertion run*, and an expected-red row that threw is not evidence the red is expected — it is a row whose assertion never executed. ",
+
+    "A floor whose `TerminalLedgerUnrenderable` count is `0` reads identically whether the ledger checks passed or preparation refused before a ledger existed. ",
+
+    "And a `.dag` board of `E0599=23 E0308=128` reads identically whether cargo ran or normalize refused upstream of it. ",
+
+    "**The receipt that makes this worth a row rather than a caution:** for three hours after #8976 put a §4c-illegal annotation inside a match body, the compiler refused at strict preparation while downstream measurements kept producing valid-looking values — one lane concluded a defect was closed, another concluded the same defect was still firing, both citing runs where it could not appear at all; three separate A/B comparisons reported perfect agreement, one because both arms were broken identically, one because a missing flag meant no arm executed, and one because the defect had been fixed between runs so both arms were the same bytes. ",
+
+    "Every one of those is downstream of a single fact: **a masked run and a clean run rendered identically.** Recognition rule: if a count of zero and an unreached stage produce the same output, the number is not an observation. ",
+
+    "The construction move, and it is stronger than naming known masks because it also forecloses the undiscovered ones: any stage capable of preventing a downstream observation from executing must participate in the observation carrier, so `refused before stage N` cannot inhabit the same carrier as `stage N executed with zero findings` — a known mask is a hole someone found, execution provenance is what stops an unfound hole from masquerading as a measurement.)",
+  ],
+
+  evidence: [],
+}

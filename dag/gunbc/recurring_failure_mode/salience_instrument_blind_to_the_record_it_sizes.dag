@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.salience_instrument_blind_to_the_record_it_sizes
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data salience_instrument_blind_to_the_record_it_sizes: RecurringFailureMode = RecurringFailureMode {
+  identity: "salience_instrument_blind_to_the_record_it_sizes" as NonEmptyStr,
+
+  receipts: [
+    "**a salience instrument blind to the record it sizes** (a change's SIZE IN THE DIFF is read to decide how much attention it deserves, and for one class of artifact that number is wrong by orders of magnitude, so a substantive edit is allocated a trivial edit's scrutiny. ",
+
+    "The instrument is not merely inaccurate, it is a SALIENCE instrument -- read FIRST, to decide where to look -- which is why the error does damage a plainly wrong number would not: nobody checks a figure they have already used to decide the thing is not worth checking. ",
+
+    "SPECIMEN, 2026-09-02, gunbc#10044: `git diff --stat -- dag/gunbc/rung_drop.dag` reported `1 insertion(+), 1 deletion(-)` for an edit adding 15,286 bytes, because every `RungDrop` in that corpus is ONE VERY LONG LINE. ",
+
+    "Three consecutive independent reviews described that hunk as a small wording tweak; a fourth, earlier one attributed it to `direct_call_arg_seam_v2_exemption`, A ROW THE DIFF DOES NOT TOUCH, because git's `@@` header names the declaration PRECEDING the hunk and the edited record is a single line. ",
+
+    "So one representation produced two distinct review failures -- under-sizing and misattribution -- and n=3 on the first within one pull request. ",
+
+    "THE APPROVALS WERE NOT WRONG ON WHAT THEY READ: each verdict is defensible over the prose rows the same diff carries, which render normally. ",
+
+    "What the count concealed is that the PR had three approvals and NO review coverage of the half that carried the receipt. ",
+
+    "A review tally is a claim about attention, and this instrument silently redirects attention before any reviewer forms a judgment. ",
+
+    "RUNG FOUND AT: silent wrongness, which is not a rung -- the misallocation leaves no trace, produces a green, and is indistinguishable from a reviewer who looked and found nothing. ",
+
+    "CEILING: mechanically preventable. ",
+
+    "The size of a record's diff can be made to track the size of its content, which is a representation question and decidable; it does not reach structural impossibility because nothing stops a future record from being authored as one long line again. ",
+
+    "NEXT-RUNG TRIGGER, AND IT IS DELIBERATELY NOT 'REVIEWERS SHOULD LOOK HARDER': a representation in which a record's diff size tracks its content size -- the long-line record broken across lines so a diff has hunks proportional to the change, or a review surface that reads the generated projection (`docs/design-failure-modes.md` renders the same content as prose and diffs legibly) rather than the `.dag` line. ",
+
+    "'Look harder' is advice, and advice is what a class gets when nobody wants to pay for the fix; it also cannot be discharged, since every reviewer meets the same instrument. ",
+
+    "RECOGNITION RULE: when a review's description of a hunk is smaller than the hunk, check whether the artifact's line structure and the change's content structure agree. ",
+
+    "Where one record is one line, EVERY size signal derived from lines -- the diffstat, the hunk header, a line-count budget, a review-effort heuristic -- is answering about the file's shape rather than the change's. ",
+
+    "The tell is a reviewer citing the enclosing declaration rather than the edited one.)",
+  ],
+
+  evidence: [],
+}

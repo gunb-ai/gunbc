@@ -3,11 +3,6 @@ module tools.rust_stage0_gates
 import std.types { List }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.affected_set.corpus_dependency_view {
-  corpus_dependency_view_per_pr_substrate_ready
-}
-import v2.lens.affected_set.entry_selection { entry_affected_by_dependency_view }
-import gunbc.ci_layer_roots { witness_layer_roots }
 
 fn rust_monolith_suffixes() -> List<String> {
   [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
@@ -40,16 +35,25 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
   coproduct_reflection_conformance_consumed_unit
 ]
 
-fn unit_is_affected(u: ConsumedInputUnit, paths: List<String>) -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
-    entry_affected_by_dependency_view(
-      entry_path: u.entry_path,
-      pool_roots: witness_layer_roots,
-      touched_paths: paths
-    )
-  } else {
-    true
-  }
+// PER-PR SELECTION IS NOT ENABLED HERE, AND THAT IS NOW SAID RATHER THAN PROBED FOR
+// (gunbc#10156 clause 2). This read `if corpus_dependency_view_per_pr_substrate_ready()`, calling
+// entry_affected_by_dependency_view when the fn-arrow substrate happened to cover the corpus and
+// returning must-run when it did not. That predicate is deleted: it asked at runtime about a
+// producer whose subject was its caller's resolved closure, and the producer now takes pool_roots,
+// so the question has no referent.
+//
+// THIS PRESERVES THE BEHAVIOUR THIS GATE ACTUALLY HAD, and the receipt for that is not this file's:
+// v2.lens.affected_set.entry_selection records a 2026-07-10 probe measuring the predicate FALSE on
+// a pristine main clone, which is the arm below. So the selection call was already unreachable in
+// practice; making it unconditional would not have restored a live selection, it would have newly
+// enrolled a whole-corpus dependency walk in a per-PR gate that has never run one.
+//
+// Must-run is also the DECLARED default here, not a convenience: unit_must_run_failclosed_note
+// states absent declaration = must-run. Enabling per-PR selection is the subject of
+// v2.lens.affected_set.corpus_dependency_view corpus_dependency_view_per_pr_execution_gate, which
+// still stands; it is not this change's to discharge and is not discharged by it.
+fn unit_is_affected(_u: ConsumedInputUnit, _paths: List<String>) -> Bool {
+  true
 }
 
 fn any_declared_unit_affected(paths: List<String>) -> Bool {
@@ -87,32 +91,21 @@ fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
   }
 }
 
-fn witness_dag_only_gates_when_substrate_ready() -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
-    should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == false
-  } else {
-    should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == true
-  }
+// The three rows below each carried BOTH arms of the deleted predicate and asserted whichever one
+// the runtime happened to be in — a witness that cannot fail whichever way the probe answers, which
+// is a row with no discriminating red. With selection declared off, each asserts the one thing that
+// is true, and a change that silently enabled selection here would turn them red.
+fn witness_dag_only_gates_fire_without_per_pr_selection() -> Bool {
+  should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == true
 }
 
-fn witness_empty_paths_gates_when_substrate_ready() -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
-    should_run_gates(paths: [], git_success: true) == false
-  } else {
-    should_run_gates(paths: [], git_success: true) == true
-  }
+fn witness_empty_paths_gate_fires_without_per_pr_selection() -> Bool {
+  should_run_gates(paths: [], git_success: true) == true
 }
 
-fn witness_declared_unit_unaffected_by_other_dag_when_substrate_ready() -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
-    unit_must_run(
-      unit: "coproduct_reflection_conformance_test",
-      paths: ["src/v2/std/text.dag"]
-    ) == false
-  } else {
-    unit_must_run(
-      unit: "coproduct_reflection_conformance_test",
-      paths: ["src/v2/std/text.dag"]
-    ) == true
-  }
+fn witness_declared_unit_must_run_without_per_pr_selection() -> Bool {
+  unit_must_run(
+    unit: "coproduct_reflection_conformance_test",
+    paths: ["src/v2/std/text.dag"]
+  ) == true
 }

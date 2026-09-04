@@ -884,10 +884,29 @@ pub struct TransitionAdmission {
 /// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
-const CALL_REACHABILITY_GROUNDING_LABEL: &str =
-    "call-reachability grounding gunbc#10156 2026-09-03";
 
-/// SEVENTEENTH TRANSITION (2026-09-04, gunbc#10254). The DGX Spark first-boot wizard's INTERFACE
+/// NINETEENTH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
+/// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
+/// because the type module cannot import the rows back without a cycle. Two bindings in
+/// `gunbc.design_ledgers` therefore resolve to a new target, which is `TargetChanged` and is not
+/// one of the auto-admitted dispositions.
+///
+/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY. They add no branch, no
+/// dispatch and no code path; the mechanism that reads them is unchanged and every namespace
+/// rebind in this repository is declared exactly this way. What would be a scaffold here is a
+/// second route around the adjudicator, and there is none: the whole point of the row is to make
+/// the transition adjudicated rather than silent.
+///
+/// DISSOLVE-ON is gunbc#10206 merging, and the trigger names the CAPABILITY rather than an
+/// artifact: once main carries the split, no run can produce these two deltas, so the rows become
+/// stale and a stale row refuses unrelated changes. By this module's own rule the deletion is
+/// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
+/// forget; the required run reports them as consumed admissions due for deletion on that change.
+///
+/// TWENTIETH TRANSITION (2026-09-04, gunbc#10254). Authored as SEVENTEENTH against a base whose
+/// highest ordinal was SIXTEENTH; main landed SEVENTEENTH, EIGHTEENTH and NINETEENTH while this
+/// branch was open, so the merge renumbers rather than minting a fourth duplicate -- the ordinal
+/// exists to make an entry citable by its own name. The DGX Spark first-boot wizard's INTERFACE
 /// vocabulary -- screen routes, headings, controls, advance gates, validation rules and the
 /// client's username admission -- moved from `gunbc.spark.oobe_screen_observation` to
 /// `extdeps.systems.nvidia_dgx_spark_setup`, which already owned the `OobeSetupField` roster for
@@ -2330,172 +2349,62 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.bmc_onboarding_quarantine_witness_test",
-            in_declaration: "onboarding_quarantine_lexemes",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "edit_locus_nodes_for_module",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
+            module: "gunbc.design_ledgers",
+            in_declaration: "failure_mode_preamble_blocks",
+            spelling: "recurring_failure_mode_roster",
+            target: "gunbc.recurring_failure_mode.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.affected_set.entry_selection",
-            in_declaration: "module_path_for_decl",
-            spelling: "decl_belongs_to_module",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "collect_pattern_rc_variant_guards",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "effect_reach_classification_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_typed_match_arm_strs",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flow_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_arm_has_refutable_plain_field",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
+        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "path_literal_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "bind_g2_root",
-            spelling: "tail_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_home_decls_present",
-            spelling: "decls_in_module",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carrier_scan_step",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_in_node",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "literal_path_carriers_from_atoms",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_edges",
-            spelling: "call_reachable_decls_from_root",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "live_read_classification_g2_from_facts",
-            spelling: "call_reachable_decls",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "path_pattern_from_lexeme",
-            spelling: "is_path_like_lexeme",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "callees_from_atom_scan",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_REACHABILITY_GROUNDING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.production_qualification_origin_probe",
-            in_declaration: "node_contains_atom_text",
-            spelling: "atom_identities_in_node",
-            target: "v2.std.fn_index",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "rc_pattern_preludes",
+            spelling: "match_pattern_is_irrefutable",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
