@@ -34,6 +34,9 @@ import v2.std.node_query {
 }
 import v2.std.text { Char, String }
 
+// This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
+data no_declared_pool_files: List<String> = []
+
 type DualRepViolationKind
   = SameSymbolEquality
   | DataLiteralMirror
@@ -569,10 +572,11 @@ fn dual_rep_module_scans_from_decls(
 }
 
 fn dual_rep_module_scans_from_fn_index(
+  pool_roots: List<String>,
   modules: List<DualRepModuleRef>
 ) -> List<DualRepModuleScan> {
   dual_rep_module_scans_from_decls(
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files),
     data_init_decls: data_init_decl_facts_live(),
     modules: modules
   )

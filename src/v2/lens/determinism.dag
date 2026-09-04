@@ -233,21 +233,68 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // this judgment "determinism" would not have made that live read tree-grain. So the facts arrive as
 // PARAMETERS and no live producer is imported here.
 //
-// THERE IS NO LIVE CONSUMER OF THIS PRODUCER TODAY, AND THIS PARAGRAPH SAID OTHERWISE UNTIL
-// REVIEW 59343 CAUGHT IT. It named v2.test.claim.enforcement.determinism_transitive_witness as a
-// corpus-cadence consumer "stamped ReadsLiveTree, whose failure reaches the required PR floor", and
-// claimed that wording satisfied the amended clause 2. That consumer was WITHDRAWN in this same
-// change; the stamp is gone with it, and the only consumers left are the three fixture rows in that
-// module. Leaving the sentence standing was rung inflation in the precise §4b(1) sense -- a module
-// describing a guarantee that its own sibling file says was removed -- and the reviewer was right
-// that the two files contradicted each other.
+// CLAUSE 2 IS NOT SATISFIED, AND THIS PARAGRAPH SAYS SO BEFORE IT SAYS ANYTHING THAT SOUNDS LIKE
+// PROGRESS. The trigger is a CAPABILITY -- a consumer whose declared substrate and cadence
+// truthfully match the inputs it reads, WHOSE FAILURE REACHES THE REQUIRED PR FLOOR, and which
+// cannot predict-skip. v2.test.claim.enforcement.determinism_transitive_witness
+// determinism_transitive_live_closure_holds meets three of those four. It declares ReadsLiveTree in
+// its own entry file, which is both the substrate declaration and what makes it unskippable by
+// affected-set selection; it reads exactly the roots it names, since fn_arrow_decl_facts_live now
+// takes pool_roots and the same roots bind the closure it walks; and it is an ordinary
+// required-floor row, not a long-lane or cadence one. THE FOURTH -- that its failure reaches the
+// floor -- WAS UNMET FOR THE STRONGEST POSSIBLE REASON UNTIL gunbc#10282: through this substrate it
+// could not fail at all, and a consumer that cannot fail does not discharge a clause about where
+// its failure lands. That reason is gone; what remains open is stated two paragraphs down and is a
+// reachability question rather than a representation one.
 //
-// WHAT IS TRUE: this producer is pure, parameterized, and exercised by fixture rows that
-// discriminate. What clause 2 asks for is a consumer whose declared substrate and cadence match its
-// inputs, whose failure reaches the required PR floor, and which cannot predict-skip. That
-// capability DOES NOT EXIST on this branch, the trigger has therefore not fired, and the obligation
-// is carried at work item node://adhoc-ac804155-cdd -- see the withdrawal annotation in
-// v2.test.claim.enforcement.determinism_transitive_witness for the blocker and the measurements.
+// THE MECHANISM THAT MADE IT UNFAILABLE, named at the symbols, AND THE REPAIR THAT CLOSED IT.
+// `v1_compiler.coproduct_reflection` `marshal_skeleton` returned `conj_record` at both of its
+// return sites, and `conj_record` builds every node as `TypeNode { connective: Conj }`.
+// `v2.std.node_query` `node_is_call` matches `ComputationNode { behavior: Transform }` and answers
+// false on everything else. A Conj TypeNode cannot satisfy that match, so `node_callee_symbol` was
+// Absent at every node of every fn-arrow body skeleton, `local_determinism_axis` returned
+// Deterministic unconditionally, and `determinism_transitive_holds` over a
+// `fn_arrow_decl_facts_live` population was GREEN BY CONSTRUCTION -- DESIGN §4b's own question
+// asked too late, a row carrying no information while looking exactly like coverage.
+//
+// THE §4b(2) STALL FILED HERE NAMED THE CAPABILITY AND THE CAPABILITY LANDED, SO THE STALL IS
+// RETIRED BY ITS TRIGGER RATHER THAN BY THIS PARAGRAPH BEING REWRITTEN. The trigger read: the
+// fn-arrow body skeleton represents a call at a shape `node_is_call` accepts. gunbc#10282 reshaped
+// the PRODUCER -- `marshal_generic` emits `ComputationNode { behavior: Transform }` for an
+// `ExprCall` with a non-empty authored name, whose first positional child is already the callee
+// identity leaf -- rather than widening this lens to accept the Conj spelling, which would have
+// left the substrate with two definitions of a call. It was NOT the corpus-wide cut this paragraph
+// anticipated: every other skeleton consumer reads atoms or folds kind-agnostically, and the single
+// consumer that matched on the kind was a private fork of `node_is_call` in
+// `v2.lens.no_dual_representation_test.scan`, which the same change deleted in favour of the
+// authority.
+//
+// WHAT THAT DOES AND DOES NOT DISCHARGE, kept apart because the difference is the whole of clause 2.
+// It discharges the SHAPE half: this lens's refusal is now authorable over the live substrate, so
+// the live consumer's green is a statement about its closure rather than about the representation.
+// It does NOT establish that a live RED is constructible end-to-end today, and no such claim is
+// made here. `v2.std.fn_index` `atom_identities_in_node` reads callees at DEPTH ONE from
+// `decl.output`, so a call inside a block body sits below the horizon `call_reachable_decls` seeds
+// from; whether that narrows the live path is undecided by execution and is tracked at work item
+// adhoc-6af6a225-11d. Clause 2 therefore stands on the reachability question, not on the shape one.
+//
+// WHAT gunbc#10245 DID BUY, stated without letting it stand in for the clause. The acquisition had
+// no caller-named subject, so no live-tree consumer of this producer could reach the floor's
+// per-subject line at any grain -- decomposition INVERTED on a zero-arity whole-tree walk. It has
+// one now, and the consumer above executes on it. That is a real climb for the PRODUCER and it is
+// not the clause; the clause additionally wants the consumer's failure to reach the floor, and the
+// shape gap is what still stands between those two facts.
+//
+// THIS PARAGRAPH HAS BEEN WRONG ONCE, IN THE OTHER DIRECTION, AND THAT HISTORY IS KEPT BECAUSE IT
+// IS THE USEFUL PART. Until review 59343 caught it, it named that same witness as a live consumer
+// "stamped ReadsLiveTree, whose failure reaches the required PR floor" AFTER gunbc#10156 had
+// withdrawn the consumer and removed the stamp -- rung inflation in the precise §4b(1) sense, a
+// module describing a guarantee its own sibling file contradicted. The draft this replaced made the
+// same error a third time and in a subtler place: the consumer was genuinely restored, the stamp
+// genuinely re-added, and three of four criteria genuinely met, so the paragraph read as verified
+// while the one criterion it could not meet was the one nobody had executed against. Two files
+// carry the two halves of this clause's story and they have contradicted each other twice; the fix
+// every time is to edit them in one change, and to run the wall before describing it.
 //
 // The clause deliberately does not say "corpus cadence forever": if a later compiler representation
 // carries transitive declaration reachability on the InferredTree itself, a pure tree-grain
