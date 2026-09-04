@@ -21543,10 +21543,25 @@ mod opaque_host_call_reach_tests {
     // Reach is per claim: the floor clears it between claims and the surface survives that.
     #[test]
     fn reset_clears_the_reach_but_leaves_the_surface_armed() {
-        set_opaque_host_call_surface(Some(vec![
-            "free_call.compile_dag_rust_emit_check".to_string()
-        ]));
+        // THE PRE-RESET ASSERTION IS THE HALF THIS TEST IS NAMED FOR, AND IT WAS DEAD. The
+        // fixture armed the surface with `free_call.compile_dag_rust_emit_check` -- the arm
+        // IDENTITY -- while the recorder compares the bare `authored_spelling` the authority
+        // publishes, so no reach was ever recorded and "reset CLEARS the reach" asserted nothing:
+        // the post-reset value would have been `CooperativelyPollable` whether reset ran or not.
+        // Only the surviving half, that the surface stays armed rather than going
+        // `SurfaceUnarmed`, was carrying any weight. A vocabulary change under a test leaves the
+        // test green and its name false, which is why the spelling is now taken from the
+        // authority and the cleared state is asserted against a reach that DEMONSTRABLY existed
+        // first.
+        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
         note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec!["compile_dag_rust_emit_check".to_string()],
+            },
+            "the reach must exist BEFORE the reset, or clearing it proves nothing"
+        );
         reset_opaque_host_call_reach();
         assert_eq!(
             opaque_host_call_reach(),
