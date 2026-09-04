@@ -82,14 +82,14 @@ fn launch_environment_probe_source(
   ], "")
 }
 
-data clean_census: CompileDiagnosticCensus =
-  compile_dag_diagnostic_census(launch_environment_probe_source(
+data clean_census: CompileDiagnosticCensus = compile_dag_diagnostic_census(
+  launch_environment_probe_source(
     slots: "", activation: "", caps: "", fabric: "", all_once: "", all_terminal: "", all_emission: "", sentinel: "",
-  ))
+  ),
+)
 
-data foreign_axis_census: CompileDiagnosticCensus =
-  compile_dag_diagnostic_census(
-    launch_environment_probe_source(
+data foreign_axis_census: CompileDiagnosticCensus = compile_dag_diagnostic_census(
+  launch_environment_probe_source(
       slots: ", observed_slots: []",
       activation: ", observed_activation_readiness: [], observed_unit_standings: []",
       caps: ", observed_caps: []",
@@ -98,8 +98,8 @@ data foreign_axis_census: CompileDiagnosticCensus =
       all_terminal: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
       all_emission: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
       sentinel: ", __launch_excess_field_probe: []",
-    ),
-  )
+  ),
+)
 
 fn census_rows_or_empty(census: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
   match census {
