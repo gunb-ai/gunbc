@@ -128,6 +128,7 @@ import gunbc.recurring_failure_mode.duplicate_declaration_arrives_through_a_clea
 import gunbc.recurring_failure_mode.verdict_stale_at_the_merge_instant { verdict_stale_at_the_merge_instant }
 import gunbc.recurring_failure_mode.container_status_read_as_a_claim_about_its_members { container_status_read_as_a_claim_about_its_members }
 import gunbc.recurring_failure_mode.a_live_authority_name_carries_a_superseded_claim { a_live_authority_name_carries_a_superseded_claim }
+import gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions { instruction_and_subject_resolved_from_different_revisions }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -247,4 +248,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   verdict_stale_at_the_merge_instant,
   container_status_read_as_a_claim_about_its_members,
   a_live_authority_name_carries_a_superseded_claim,
+  instruction_and_subject_resolved_from_different_revisions,
 ]
