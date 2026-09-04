@@ -1,0 +1,55 @@
+module extdeps.iso.iso_286
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// ISO 286 -- GEOMETRICAL PRODUCT SPECIFICATIONS (GPS): ISO CODE SYSTEM FOR TOLERANCES ON LINEAR
+// SIZES. This module owns ONE thing: the standard's three-way classification of a fit. It does not
+// carry deviation tables, IT grades, or hole/shaft basis rules, because nothing in this repository
+// consumes them yet and modelling an unread table would be worse than the gap.
+//
+// It is a SEPARATE MODULE FROM ISO 273 deliberately. They are independently governed and
+// independently versioned documents, and DESIGN's external-upstream rule is that each such document
+// gets its own module authority rather than a shared "ISO" hub that would enumerate both.
+data iso_286_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/45975.html"
+  }
+}
+
+data iso_286_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.iso.iso_286",
+      decl_name: "IsoFitClass",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: iso_286_authority,
+  further_citations: []
+}
+
+data iso_286_edition: NonEmptyStr = "ISO 286-1:2010"
+
+// THE STANDARD'S OWN THREE CLASSES, WITH THE STANDARD'S OWN NAMES.
+//
+// A fit is classified by the RELATIONSHIP BETWEEN TWO TOLERANCE ZONES -- the hole's and the
+// shaft's -- and not by how the assembly feels in a hand:
+//
+//   ClearanceFit     the zones do not overlap and the hole is always larger; there is always a gap
+//   TransitionFit    the zones overlap, so a given pair may assemble loose OR tight
+//   InterferenceFit  the zones do not overlap and the shaft is always larger; assembly needs force
+//
+// THIS IS A DIMENSIONAL CLASSIFICATION AND MUST NOT BE ASSIGNED FROM A TACTILE READING. A person
+// reporting that a screw "needed real force" has observed something CONSISTENT WITH an interference
+// fit; they have not measured two tolerance zones. A consumer that wants to record what a hand felt
+// owns its own observation vocabulary and may borrow these NAMES for the shared concept, which is
+// what single authority asks for -- but converting the feel into this classification, and then into
+// a deviation, is the laundering DESIGN warns about: a dimensional claim nobody took with a caliper.
+type IsoFitClass
+  = ClearanceFit
+  | TransitionFit
+  | InterferenceFit

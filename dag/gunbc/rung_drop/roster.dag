@@ -30,6 +30,7 @@ import gunbc.rung_drop.floor_cut_receipt_discriminating_arms { floor_cut_receipt
 import gunbc.rung_drop.floor_cost_claim_qualification_unavailable { floor_cost_claim_qualification_unavailable }
 import gunbc.rung_drop.emitted_bytes_witness_required_lane { emitted_bytes_witness_required_lane }
 import gunbc.rung_drop.direct_call_arg_seam_v2_exemption { direct_call_arg_seam_v2_exemption }
+import gunbc.rung_drop.direct_call_unbound_carried_generic_compat { direct_call_unbound_carried_generic_compat }
 import gunbc.rung_drop.floor_cut { floor_cut }
 import gunbc.rung_drop.measurement_bankruptcy { measurement_bankruptcy }
 import gunbc.rung_drop.regen_producer { regen_producer }
@@ -66,6 +67,7 @@ data rung_drop_roster: List<RungDrop> = [
   floor_cost_claim_qualification_unavailable,
   emitted_bytes_witness_required_lane,
   direct_call_arg_seam_v2_exemption,
+  direct_call_unbound_carried_generic_compat,
   floor_cut,
   measurement_bankruptcy,
   regen_producer,
