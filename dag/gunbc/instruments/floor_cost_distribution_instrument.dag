@@ -50,7 +50,14 @@ import gunbc.floor_cost_distribution {
   split_crossing_rows,
   crossing_population_identities,
   IdentityDisposition,
-  split_disposition_identities
+  split_disposition_identities,
+  SameHeadAttemptPair,
+  EvalStepDeterminismViolation,
+  AttemptHeadsDiffer,
+  CompletedIdentityAbsent,
+  CompletedIdentityUnavailable,
+  CompletedIdentityStepsDiffer,
+  same_head_eval_step_violations
 }
 
 // THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
@@ -100,22 +107,31 @@ fn run_cost_path(root: String, run: NonEmptyStr) -> String {
   concat(concat(root, concat("/", run as String)), concat("/", floor_cost_artifact_file))
 }
 
-fn load_run_cost(root: String, run: NonEmptyStr) -> RunLoad {
-  let path = run_cost_path(root: root, run: run)
+// THE READ IS PARAMETERISED BY PATH AND LABEL, AND `load_run_cost` IS ONE CALLER OF IT. A second
+// caller arrived with the attempt-pair sample below, whose members are addressed at a FINER GRAIN
+// than a run: two attempts of one run share a run id, so a path built from the run id alone cannot
+// name either of them. Copying this body to vary the path would have made the refusal vocabulary --
+// unreadable, empty, refused-with-cause -- a second time, and the two copies would drift on the
+// next cause added.
+fn load_cost_at(path: String, label: NonEmptyStr) -> RunLoad {
   let read = Filesystem.Read(path: path)
   if !read.success {
-    RunUnreadable { run: run, path: path }
+    RunUnreadable { run: label, path: path }
   } else {
     match parse_claim_cost_tsv(text: read.content) {
-      ArtifactRefused { cause: c } => RunRefused { run: run, path: path, cause: c }
+      ArtifactRefused { cause: c } => RunRefused { run: label, path: path, cause: c }
       ArtifactRows { rows: rows } =>
         if count(rows) == 0 {
-          RunEmpty { run: run, path: path }
+          RunEmpty { run: label, path: path }
         } else {
-          RunLoaded { run: RunCost { run: run, rows: rows } }
+          RunLoaded { run: RunCost { run: label, rows: rows } }
         }
     }
   }
+}
+
+fn load_run_cost(root: String, run: NonEmptyStr) -> RunLoad {
+  load_cost_at(path: run_cost_path(root: root, run: run), label: run)
 }
 
 fn loaded_runs(loads: List<RunLoad>) -> List<RunCost> {
@@ -633,9 +649,34 @@ fn floor_cost_envelope_check() -> ProcessExit {
 // structurally blind to this population -- pointing this census at it would measure zero over a
 // sample that cannot contain a member, and a zero from a blind sample is the strongest possible
 // misreading. These are runs of `witnesses.yml` whose required floor recorded
-// `completed_over_cost_requirement` at or above one, taken from the same 131-run scan that
-// commissioned this family.
+// `completed_over_cost_requirement` at or above one.
+//
+// THE ROSTER IS AN APPEND SURFACE AND THAT IS THIS CENSUS'S GROWTH PATH, NOT A DEFECT IN IT. The
+// `preemption_reachability` column is NEW, so the older a sampled run is the likelier its artifact
+// predates the column and refuses -- which is why the first sample could answer for only three of
+// its seven runs. Appending runs discovered by a later scan needs no code change and the census
+// strengthens on its own as refused runs accumulate. Two scans have contributed so far: the
+// commissioning scan over 131 runs, and a second over the 90 runs that completed after it, whose
+// three additions all carry the column and so DOUBLE the answerable population.
+//
+// RUN 33846875188 IS THIS REPOSITORY'S OWN, and it is here by the same mechanical predicate as
+// every other member rather than because of where it came from: it is the required-witnesses-floor
+// of gunbc#10369, whose first attempt refused with one completed-over-cost crossing beside two
+// cpu_deadline interrupts on a roster-append diff. It was deliberately NOT appended while #10369
+// was open -- adding it there would have made that PR's content a function of that PR's own CI
+// result, so its re-run would no longer have been a re-run of the same subject. The second attempt
+// of this run is the left/right of `floor_cost_attempt_pairs` below, which is the finer-grained
+// reading of the same evidence.
+//
+// A RUN EARNS ITS PLACE BY ITS FLOOR'S OWN RECEIPT, never by what this census would conclude from
+// it. The admission predicate is `completed_over_cost_requirement >= 1` read off the run, so no
+// row is here because it looked interesting once loaded -- a sample selected by its own analysis
+// output is a view, not a population.
 data floor_cost_crossing_sampled_runs: List<NonEmptyStr> = [
+  "33846875188" as NonEmptyStr,
+  "33840420183" as NonEmptyStr,
+  "33839967352" as NonEmptyStr,
+  "33836628401" as NonEmptyStr,
   "33832675896" as NonEmptyStr,
   "33832137832" as NonEmptyStr,
   "33826628566" as NonEmptyStr,
@@ -776,6 +817,257 @@ fn floor_cost_crossing_check() -> ProcessExit {
       concat(["floor cost crossing census: no run in the sample could be read"], refused_load_lines(loads: loads)),
       "\n"
     ))
+  } else {
+    ExitSuccess
+  }
+}
+
+
+// =============================================================================================
+// THE SAME-HEAD ATTEMPT PAIR: THE CROSS-ENVELOPE A/B THAT `SameHeadAttemptPair` WAS DECLARED FOR
+// AND HAS NEVER HAD A PRODUCER.
+//
+// `gunbc.floor_cost_distribution` has carried `SameHeadAttemptPair`,
+// `EvalStepDeterminismViolation` and `same_head_eval_step_violations` -- a comparison that refuses
+// before looking at a single row when the two heads differ, so a caller cannot turn two different
+// trees into a plausible determinism result -- and NOTHING HAS EVER CALLED THEM on real bytes.
+// A model with no producer is specification without execution (DESIGN section 5), and the missing
+// producer is the whole of what this section adds: no new comparison, no new vocabulary.
+//
+// WHY THE SAMPLE IS A PAIR OF ATTEMPTS AND NOT A PAIR OF RUNS, which is the distinction this makes
+// addressable for the first time. `floor_cost_crossing_sampled_runs` holds RUN identities, and two
+// attempts of one run share a run id, so that roster cannot name either attempt of a re-run. A pair
+// of attempts on ONE commit is a strictly better control than any pair of runs: across two runs the
+// confounder is held constant, while across two attempts of one commit it DOES NOT EXIST.
+//
+// THE HEAD IS AN AUTHORED CLAIM TODAY, AND THIS IS VALIDATION RATHER THAN CONSTRUCTION. The cost
+// artifact carries no head SHA, so the head each attempt executed is DECLARED here and checked by
+// `same_head_eval_step_violations` before any row is read. State the guarantee at its real strength:
+// the guard compares two values THE AUTHOR SUPPLIED, so it catches a roster whose heads disagree and
+// it does NOT catch a roster that declares one head over artifacts drawn from two different trees.
+// DESIGN section 5's tell applies exactly -- the check can be satisfied by editing the DECLARATION
+// while the bytes still lie.
+//
+// THE CONSTRUCTION IS AVAILABLE AND THE TRIGGER NAMES IT, so this does not stall silently. The
+// artifacts endpoint that already serves `artifact_id` also serves `workflow_run.head_sha` in the
+// SAME response, and that field is byte-identical across two attempts of one run -- which is exactly
+// and only the fact this guard needs. It is a RUN-grain fact and that is not a shortfall: "are these
+// two artifacts from one tree" is a run-grain question, so the run-grain answer is exact for it.
+//
+// THE TRIGGER: an ARTIFACTS LISTING operation on `extdeps.github.workflow_runs`, and
+// `FloorAttemptRef.head` resolving THROUGH it instead of from this literal. Only the listing is
+// missing -- that module already models `WorkflowRun.head_sha` as a `CommitSha` and already carries
+// an operation keyed on `head_sha` that puts it on the wire, so the head half of this capability
+// exists and is typed.
+//
+// AND THE TRIGGER NAMES THAT MODULE RATHER THAN `extdeps.github.actions_runs` DELIBERATELY. Both
+// modules declare the SAME upstream authority -- locator
+// `docs.github.com/en/rest/actions/workflow-runs`, character for character -- so by the tree's own
+// declarations they are one upstream concept with two authorities, and they have grown two type
+// families for it: `RunConclusion` (10 variants) beside `WorkflowRunConclusion` (8), and
+// `WorkflowRunRecord` (stringly `status`/`conclusion`, epoch `Int` timestamps, no head) beside
+// `WorkflowRun` (`CommitSha`, `WorkflowRunStatus`, `Timestamp`). The fork is UNDECLARED: that
+// module's `conclusion_authority_consolidation_frontier_rows` is about a genuinely different pair
+// -- `WorkflowRunConclusion` against `CheckConclusion` from the CHECKS api -- and says nothing about
+// these two, which are not different APIs at all.
+//
+// THIS COMMENT DOES NOT FIX THAT AND MUST NOT BE READ AS DECLARING IT. It records only what the
+// trigger has to avoid: building the artifacts operation onto the stringly module would satisfy this
+// trigger while deepening a fork over one cited spec, and DESIGN section 3 says a fork always gets
+// consolidated later -- so that arm is deferred cost rather than a shortcut. Consolidating the two
+// is its own change against that upstream's authority, with its own review.
+//
+// Until the listing lands, this field is an authored claim and must not be cited as proof the pair
+// is one tree.
+//
+// THE ARTIFACT ID IS CARRIED BECAUSE IT IS THE ONLY THING THAT ADDRESSES AN ATTEMPT. GitHub serves
+// no per-attempt artifacts endpoint: a re-run's upload lands as a SECOND artifact under the SAME
+// NAME on the same run, distinguishable only by artifact id and creation time. So the id is the
+// acquisition handle a reader needs to fetch these exact bytes again, and without it "attempt 1"
+// names nothing retrievable.
+type FloorAttemptRef {
+  run: NonEmptyStr
+  attempt: NonEmptyStr
+  head: NonEmptyStr
+  artifact_id: NonEmptyStr
+}
+
+type FloorAttemptPair {
+  left: FloorAttemptRef
+  right: FloorAttemptRef
+}
+
+// ONE PAIR TODAY, AND IT IS THE ONE THE CENSUS ITSELF PRODUCED. Run 33846875188 is the
+// required-witnesses-floor of gunbc#10369 -- a roster-append diff that adds three run-id string
+// literals and a comment to a list no witness loads. Its first attempt REFUSED with one
+// completed-over-cost crossing and two cpu_deadline interrupts; its second attempt, on the same
+// commit with no change of any kind, was CLEAN. Both attempts' artifacts are retained.
+data floor_cost_attempt_pairs: List<FloorAttemptPair> = [
+  FloorAttemptPair {
+    left: FloorAttemptRef {
+      run: "33846875188" as NonEmptyStr,
+      attempt: "1" as NonEmptyStr,
+      head: "ceb7aea829fa73bedc7ad38d38523d81a8c7a2dc" as NonEmptyStr,
+      artifact_id: "9928032537" as NonEmptyStr
+    },
+    right: FloorAttemptRef {
+      run: "33846875188" as NonEmptyStr,
+      attempt: "2" as NonEmptyStr,
+      head: "ceb7aea829fa73bedc7ad38d38523d81a8c7a2dc" as NonEmptyStr,
+      artifact_id: "9931292338" as NonEmptyStr
+    }
+  }
+]
+
+// THE LABEL IS WHAT THE ENVELOPE FAMILY WILL PRINT AS `hottest_run` / `coolest_run`, so it names the
+// ATTEMPT rather than the run -- otherwise both members of a pair render as the same string and the
+// extreme census cannot say which side of the pair carried an extreme.
+fn attempt_label(ref: FloorAttemptRef) -> NonEmptyStr {
+  concat(concat(ref.run as String, "/attempt-"), ref.attempt as String) as NonEmptyStr
+}
+
+fn attempt_cost_path(root: String, ref: FloorAttemptRef) -> String {
+  concat(
+    concat(root, concat("/", concat(ref.run as String, concat("/attempt-", ref.attempt as String)))),
+    concat("/", floor_cost_artifact_file)
+  )
+}
+
+fn load_attempt_cost(root: String, ref: FloorAttemptRef) -> RunLoad {
+  load_cost_at(path: attempt_cost_path(root: root, ref: ref), label: attempt_label(ref: ref))
+}
+
+fn attempt_ref_line(ref: FloorAttemptRef) -> String {
+  join(
+    [
+      concat("\tattempt\t", attempt_label(ref: ref) as String),
+      concat("head=", ref.head as String),
+      concat("artifact_id=", ref.artifact_id as String)
+    ],
+    "\t"
+  )
+}
+
+// THE VIOLATION IS RENDERED BY ARM, never counted. Each arm names a different fact about the pair
+// and a reader triaging one identity needs the arm, not a total: heads differing is a sample defect,
+// an absent counterpart is a plan difference, an unavailable one is a preemption, and differing
+// steps is the finding this comparison exists to look for.
+fn eval_step_violation_line(v: EvalStepDeterminismViolation) -> String {
+  match v {
+    AttemptHeadsDiffer { left_head: lh, left_attempt: la, right_head: rh, right_attempt: ra } =>
+      concat(
+        "\tHEADS-DIFFER -- this is not one tree and no determinism reading is available: ",
+        concat(concat(la as String, concat("=", lh as String)), concat(" vs ", concat(ra as String, concat("=", rh as String))))
+      )
+    CompletedIdentityAbsent { identity: i, module: _, completed_attempt: c, absent_attempt: a } =>
+      concat("\tABSENT ", concat(i, concat(" completed on ", concat(c as String, concat(", not present on ", a as String)))))
+    CompletedIdentityUnavailable { identity: i, module: _, completed_attempt: c, unavailable_attempt: u } =>
+      concat("\tUNAVAILABLE ", concat(i, concat(" completed on ", concat(c as String, concat(", reached no verdict on ", u as String)))))
+    CompletedIdentityStepsDiffer { identity: i, module: _, left_attempt: la, left_steps: ls, right_attempt: ra, right_steps: rs } =>
+      concat(
+        "\tSTEPS-DIFFER ",
+        concat(i, concat(concat(concat(" ", la as String), concat("=", to_string(ls))), concat(concat(" ", ra as String), concat("=", to_string(rs)))))
+      )
+  }
+}
+
+// THE ENVELOPE IS REPORTED WITH ITS MEDIAN BESIDE ITS MAXIMUM, ALWAYS, AND THAT IS NOT A
+// PRESENTATION CHOICE. A maximum over several hundred rows is an extreme-value statistic that ONE
+// row can drive, so a max alone cannot distinguish a fat tail from a single outlier; a median alone
+// cannot see the tail at all. The pair is what makes an unremarkable centre and a real tail
+// readable as one fact, and either number quoted by itself misleads in a different direction.
+//
+// `work_invariant_envelopes` IS WHAT MAKES THIS A CONTROL RATHER THAN A COMPLAINT ABOUT NOISE: the
+// population is rows whose evaluator step count was IDENTICAL on both attempts, so the cpu movement
+// it reports is movement with the work held fixed at ROW grain, on one commit.
+fn attempt_pair_envelope_lines(runs: List<RunCost>, min_ms: Millisecond) -> List<String> {
+  let all = identity_envelopes(runs: runs)
+  let complete = complete_envelopes(envelopes: all, runs_expected: 2, min_ms: min_ms)
+  let controlled = work_invariant_envelopes(envelopes: complete)
+  concat(
+    [
+      concat("identities observed\t", to_string(count(all))),
+      concat("identities completing on BOTH attempts at or above the floor\t", to_string(count(complete))),
+      concat("of those, step-count IDENTICAL on both attempts\t", to_string(count(controlled))),
+      concat("worst cpu envelope over the identical-work population\t", concat(to_string(worst_envelope_permille(envelopes: controlled)), " permille"))
+    ],
+    [50, 90, 99] |> map(p => percentile_line(values: envelope_permilles(envelopes: controlled), percent: p))
+  )
+}
+
+fn attempt_pair_figures(pair: FloorAttemptPair, left: RunCost, right: RunCost, min_ms: Millisecond) -> List<String> {
+  let violations = same_head_eval_step_violations(pair: SameHeadAttemptPair {
+    left_head: pair.left.head,
+    left_attempt: attempt_label(ref: pair.left),
+    left_rows: left.rows,
+    right_head: pair.right.head,
+    right_attempt: attempt_label(ref: pair.right),
+    right_rows: right.rows
+  })
+  concat(
+    concat(
+      [attempt_ref_line(ref: pair.left), attempt_ref_line(ref: pair.right)],
+      concat(
+        [concat("evaluator-step determinism violations\t", to_string(count(violations)))],
+        violations |> map(v => eval_step_violation_line(v: v))
+      )
+    ),
+    attempt_pair_envelope_lines(runs: [left, right], min_ms: min_ms)
+  )
+}
+
+// A PAIR WHOSE EITHER SIDE COULD NOT BE READ PRODUCES NO FIGURES AT ALL, which is the opposite
+// ruling from the crossing census beside it and correct for the same reason that one reports:
+// a crossing census over one loaded run is a complete statement about that run, while HALF a pair
+// is not a comparison. There is nothing partial to report here, so the refusal is total and names
+// which side failed.
+fn attempt_pair_lines(pair: FloorAttemptPair, left: RunLoad, right: RunLoad, min_ms: Millisecond) -> List<String> {
+  match left {
+    RunLoaded { run: l } => match right {
+      RunLoaded { run: r } => attempt_pair_figures(pair: pair, left: l, right: r, min_ms: min_ms)
+      RunUnreadable { run: _, path: _ } => concat(["attempt pair: REFUSING -- the right attempt could not be read"], refused_load_lines(loads: [right]))
+      RunEmpty { run: _, path: _ } => concat(["attempt pair: REFUSING -- the right attempt could not be read"], refused_load_lines(loads: [right]))
+      RunRefused { run: _, path: _, cause: _ } => concat(["attempt pair: REFUSING -- the right attempt could not be read"], refused_load_lines(loads: [right]))
+    }
+    RunUnreadable { run: _, path: _ } => concat(["attempt pair: REFUSING -- the left attempt could not be read"], refused_load_lines(loads: [left]))
+    RunEmpty { run: _, path: _ } => concat(["attempt pair: REFUSING -- the left attempt could not be read"], refused_load_lines(loads: [left]))
+    RunRefused { run: _, path: _, cause: _ } => concat(["attempt pair: REFUSING -- the left attempt could not be read"], refused_load_lines(loads: [left]))
+  }
+}
+
+fn floor_cost_attempt_pair_lines(root: String, pairs: List<FloorAttemptPair>, min_ms: Millisecond) -> List<String> {
+  pairs |> flat_map(pair => attempt_pair_lines(
+    pair: pair,
+    left: load_attempt_cost(root: root, ref: pair.left),
+    right: load_attempt_cost(root: root, ref: pair.right),
+    min_ms: min_ms
+  ))
+}
+
+fn floor_cost_attempt_pair_report() -> String {
+  join(
+    floor_cost_attempt_pair_lines(
+      root: floor_cost_artifact_root,
+      pairs: floor_cost_attempt_pairs,
+      min_ms: millisecond(count: 50)
+    ),
+    "\n"
+  )
+}
+
+// THE ACTUATOR REFUSES ON A PAIR THAT COULD NOT BE COMPARED, which includes the heads-differ arm:
+// a sample that silently became a cross-tree comparison is the one failure this whole family exists
+// to prevent, so it must not exit green.
+fn floor_cost_attempt_pair_check() -> ProcessExit {
+  let lines = floor_cost_attempt_pair_lines(
+    root: floor_cost_artifact_root,
+    pairs: floor_cost_attempt_pairs,
+    min_ms: millisecond(count: 50)
+  )
+  let refusals = lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING"))
+  let heads = lines |> filter(l => starts_with(s: l, prefix: "\tHEADS-DIFFER"))
+  if count(refusals) + count(heads) > 0 {
+    exit_failure(reason: join(concat(refusals, heads), "\n"))
   } else {
     ExitSuccess
   }

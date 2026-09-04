@@ -1,0 +1,86 @@
+module test.claim.fleet.fleet_printer_access_witness_test
+
+import std.types { Bool, List, NonEmptyStr }
+import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
+import gunbc.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet_printer_access {
+  PrinterAccessCodeLocus,
+  PrinterAccessCodeLocusFound,
+  PrinterAccessCodeLocusUnknown,
+  PrinterAccessCodeLocusConflict,
+  printer_01_access_code_locus,
+  printer_02_access_code_locus,
+  printer_access_code_loci,
+  printer_access_code_locus,
+  printer_access_code_locus_in,
+}
+
+fn roster_has_printer(rows: List<PrinterAccessCodeLocus>, printer: PhysicalAssetIdentity) -> Bool {
+  length(filter(rows, row => row.printer == printer)) == 1
+}
+
+fn declared_printer_has_locus(printer: PhysicalAssetIdentity) -> Bool {
+  roster_has_printer(rows: printer_access_code_loci, printer: printer)
+}
+
+fn roster_row_is_declared(row: PrinterAccessCodeLocus) -> Bool {
+  row == printer_01_access_code_locus || row == printer_02_access_code_locus
+}
+
+test fn printer_access_code_locus_roster_is_the_exact_declared_population() -> Bool {
+  declared_printer_has_locus(printer: printer_01)
+    && declared_printer_has_locus(printer: printer_02)
+    && length(filter(printer_access_code_loci, row => roster_row_is_declared(row: row))) == length(printer_access_code_loci)
+}
+
+fn secret_names(ref: SecretRef, name: NonEmptyStr) -> Bool {
+  ref.secret == name
+    && ref.version == "1"
+    && secret_ref_version_resource(ref: ref)
+      == join(["projects/gunbai-secrets/secrets/", name, "/versions/1"], "")
+}
+
+test fn each_printer_locus_names_its_exact_secret_manager_version() -> Bool {
+  printer_01_access_code_locus.printer == printer_01
+    && secret_names(
+         ref: printer_01_access_code_locus.secret,
+         name: "printer-01-lan-access-code" as NonEmptyStr)
+    && printer_02_access_code_locus.printer == printer_02
+    && secret_names(
+         ref: printer_02_access_code_locus.secret,
+         name: "printer-02-lan-access-code" as NonEmptyStr)
+}
+
+test fn an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus() -> Bool {
+  let unknown = "printer-03" as PhysicalAssetIdentity
+  match printer_access_code_locus(printer: unknown) {
+    PrinterAccessCodeLocusUnknown { printer: p } => p == unknown
+    PrinterAccessCodeLocusFound { locus: _ } => false
+    PrinterAccessCodeLocusConflict { printer: _, matches: _ } => false
+  }
+}
+
+test fn duplicate_printer_loci_refuse_instead_of_taking_the_last_row() -> Bool {
+  match printer_access_code_locus_in(
+    rows: [printer_01_access_code_locus, printer_01_access_code_locus],
+    printer: printer_01,
+  ) {
+    PrinterAccessCodeLocusConflict { printer: p, matches: n } => p == printer_01 && n == 2
+    PrinterAccessCodeLocusUnknown { printer: _ } => false
+    PrinterAccessCodeLocusFound { locus: _ } => false
+  }
+}
+
+test fn both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources() -> Bool {
+  printer_01_access_code_locus.human_retrieval.locator == "drive.google.com/file/d/174-47si4_SpEWYfDJnWUkRDS-k1QnPsb/view"
+    && printer_02_access_code_locus.human_retrieval.locator == "drive.google.com/file/d/12m1vfJmdzSQ_3BxfnwEWaF-MuI0ujwFj/view"
+}
+
+test fn fleet_printer_access_witnesses_hold() -> Bool {
+  printer_access_code_locus_roster_is_the_exact_declared_population()
+    && each_printer_locus_names_its_exact_secret_manager_version()
+    && an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus()
+    && duplicate_printer_loci_refuse_instead_of_taking_the_last_row()
+    && both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
+}
