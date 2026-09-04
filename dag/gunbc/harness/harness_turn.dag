@@ -377,6 +377,13 @@ fn harness_assistant_message_json(blocks: List<HarnessWireBlock>) -> JsonValue {
   ])
 }
 
+// A THINKING BLOCK REPLAYS AS A THINKING BLOCK. Until 2026-09-04 this arm re-labelled the model's
+// reasoning as a text block on the next turn, which never mattered because no thinking block had
+// ever arrived. With the reasoning switch declared and a parser-equipped server, they will -- and
+// the official guide requires prior turns' reasoning to be passed back AS reasoning, concatenated
+// into the context. Replaying it as speech hands the model a transcript in which it said aloud what
+// it had only thought, and then asks it to continue from there. extdeps records the requirement
+// (deepseek_v4_tool_use_requires_reasoning_replay); this arm is the harness honoring it.
 fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
   match block {
     WireTextBlock { text } =>
@@ -386,8 +393,8 @@ fn harness_wire_block_json(block: HarnessWireBlock) -> JsonValue {
       ])
     WireThinkingBlock { thinking } =>
       json_object([
-        json_kv(key: "type", value: json_string(s: "text")),
-        json_kv(key: "text", value: json_string(s: thinking)),
+        json_kv(key: "type", value: json_string(s: "thinking")),
+        json_kv(key: "thinking", value: json_string(s: thinking)),
       ])
     WireToolUseBlock { id, name, input } =>
       json_object([

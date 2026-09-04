@@ -15,7 +15,7 @@ import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import std.measure { token_count_value, second_count }
 import gunbc.harness.harness_wire { harness_router_context_window, harness_router_admission_cap }
 import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
-import gunbc.harness.harness_turn { harness_stop_reason_truncated, harness_reasoning_kwargs, harness_text_carries_leaked_reasoning }
+import gunbc.harness.harness_turn { harness_stop_reason_truncated, harness_reasoning_kwargs, harness_text_carries_leaked_reasoning, harness_wire_block_json }
 import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax }
 import extdeps.languages.json.emit { json_object, serialize_json }
@@ -209,4 +209,16 @@ test fn a_thinking_block_and_plain_text_are_not_leaks() -> Bool {
 test fn think_high_sends_thinking_without_an_effort_key() -> Bool {
   let wire = serialize_json(v: json_object(harness_reasoning_kwargs(mode: DeepseekV4ThinkHigh)))
   wire.contains("\"thinking\": true") && !wire.contains("reasoning_effort")
+}
+
+
+// REASONING ROUND-TRIPS AS REASONING. A thinking block re-encoded for replay must carry type
+// "thinking", never "text": the guide requires prior reasoning passed back as reasoning, and a
+// relabel would make the model's thought into its speech on the next turn. The control half checks
+// a text block still replays as text, so the fix did not simply relabel everything.
+test fn a_thinking_block_replays_as_a_thinking_block() -> Bool {
+  let th = serialize_json(v: harness_wire_block_json(block: WireThinkingBlock { thinking: "We need 17*23." }))
+  let tx = serialize_json(v: harness_wire_block_json(block: WireTextBlock { text: "391" }))
+  th.contains("\"type\": \"thinking\"") && th.contains("\"thinking\": \"We need 17*23.\"")
+    && tx.contains("\"type\": \"text\"") && !tx.contains("thinking")
 }
