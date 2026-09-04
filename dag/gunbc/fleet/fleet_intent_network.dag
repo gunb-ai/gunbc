@@ -1,6 +1,10 @@
 module gunbc.fleet_intent_network
 
-import gunbc.fleet_asset_identity { printer_01 }
+import std.types { NonEmptyStr }
+import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
+import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import product.network_topology {
   NetworkAttachmentRole,
   NetworkEndpoint,
@@ -264,6 +268,36 @@ data printer_01_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+// BOTH PRINTER RESERVATIONS, TRANSCRIBED FROM THE OPERATOR'S LIVE CR1000A TABLE ON 2026-09-04. The
+// table reports Static, Active and expiry Never for both bindings. These rows carry MAC and status;
+// each endpoint projects the same address into the topology until NetworkEndpoint.address reaches
+// the grounded IpAddress carrier named by the dissolve-on row.
+data printer_01_lan_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "68:EE:8F:66:2A:28" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 234),
+  lease: StaticDhcpReservation {
+    reservation_label: "printer-01" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data printer_02_lan_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "68:EE:8F:60:AC:14" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 235),
+  lease: StaticDhcpReservation {
+    reservation_label: "printer-02" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data printer_02_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "printer-02-lan",
+  subject: EndpointAsset { asset: printer_02 },
+  address: "192.168.1.235",
+  role: FabricationAppliance,
+  locality: Lan,
+}
+
 data fleet_intent_network: NetworkTopology = NetworkTopology {
   tailnet_domain: Present { value: "tailecbe08.ts.net" },
   segments: [
@@ -286,6 +320,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv1_tailscale_endpoint,
     srv2_tailscale_endpoint,
     printer_01_lan_endpoint,
+    printer_02_lan_endpoint,
   ],
 }
 
