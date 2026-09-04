@@ -1,0 +1,798 @@
+module test.claim.namespace_step0_census_calibration_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, exit_failure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity {
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  TypeOccurrence,
+  CallableOccurrence,
+  ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
+  FieldOccurrence,
+  MethodOccurrence
+}
+import tools.multi_module_compile_fixture { FixtureSource, fixture_source }
+import tools.reference_occurrence_binding_census {
+  ReferenceOccurrenceBindingCensus,
+  ReferenceOccurrenceBindingCensusObserved,
+  ReferenceOccurrenceBindingCensusRefused,
+  ReferenceOccurrenceBindingRow,
+  ReferenceOccurrenceBindingDisposition,
+  ReferenceOccurrenceBound,
+  ReferenceOccurrenceUnresolved,
+  ReferenceOccurrenceAmbiguous,
+  ReferenceOccurrenceBindingRefused,
+  reference_occurrence_binding_census
+}
+import gunbc.compile_clean_diagnostic_policy {
+  UnlistedImportBindingSource,
+  ListedImport,
+  PoolCoincidence,
+  DefinerResolvable
+}
+import gunbc.namespace_step0_binding_provenance_contract {
+  Step0ReferenceFamily,
+  TypeAnnotationReference,
+  QualifiedContainmentReference
+}
+import gunbc.namespace_step0_census_calibration {
+  Step0CalibrationStanding,
+  CalibrationRosterIncomplete,
+  CalibrationBlindToFamilies,
+  CalibrationCappedByConvergence,
+  CalibrationCappedBySplit,
+  CalibrationDiscriminatesEveryFamily,
+  step0_calibration_standing,
+  step0_standing_over_partition,
+  step0_occurrence_category_label,
+  step0_unclaimed_producer_branches,
+  step0_uncalibrated_families,
+  step0_split_families,
+  step0_rows_with_uncalibrated_topology,
+  step0_rows_with_uncalibrated_multiplicity,
+  step0_rows_claiming_observed_outcome,
+  step0_rows_with_uncalibrated_outcome
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE ESTABLISHES, AND IT IS A NEGATIVE RESULT. The candidate reference-occurrence
+// producer's coverage of the family roster was recorded as UNESTABLISHED. It is now REFUTED, by
+// execution, on a hand-authored subject: three families of the roster produce no denominator row at
+// all, and two things that are not references produce one each. Both directions of error are here,
+// and they do not cancel. The counts are stated by the calibration tables and joined by the controls
+// below -- they are named in this sentence only to say that neither direction is empty.
+//
+// EVERY BYTE OF THE SUBJECT IS FIXTURE-OWNED, so no corpus rename can turn a control green while the
+// instrument is broken, and the pool is exactly this manifest -- the instrument consults no module
+// index. CalMiddle exists ONLY in pattern position on purpose: CalLeft appears in an expression too,
+// so a control asserting "no row for CalLeft" would be false for the wrong reason. Precisely: it
+// appears only in PATTERN position AS A CANDIDATE REFERENCE USE -- it is of course also present in
+// its own declaration and in the import list, and an earlier version of this sentence said "only in
+// pattern position" flatly, which is false as written.
+data cal_provider: String = "module cal.provider\n\ntype CalOnlyGeneric { z: Int }\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalMiddle\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
+
+data cal_entry: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+// THE PERTURBED SUBJECT, AND IT IS WHAT TURNS "I FOUND NO ROW" INTO "THERE IS NO ROW". It is the
+// same fixture with CalMiddle removed from the coproduct, from the import list and from the match --
+// every appearance of one variant, deleted. If a variant in pattern position produced an occurrence,
+// this subject MUST observe fewer of them than the one above, and the control below compares the two
+// counts. An absence read off a single run is an observation; an absence that survives a
+// perturbation which had to move it is a control.
+//
+// IT SETTLES NOTHING ABOUT THE IMPORT LIST, AND AN EARLIER VERSION OF THIS COMMENT SAID IT DID. The
+// claim was that a name in an import list produces no occurrence because deleting one moved the
+// count by zero. That is the refuted universal: THIS NON-HEAD IMPORT-LIST ENTRY produces none, the
+// FIRST entry produces one, and a count cannot tell those apart because deleting an entry hands the
+// fabricated head row to whichever name is now first. The import list is settled by the controls
+// that compare populations, not by this one.
+data cal_provider_without_middle: String = "module cal.provider\n\ntype CalOnlyGeneric { z: Int }\n\ntype CalPayload { n: Int }\n\ntype CalChoice\n  = CalLeft\n  | CalRight { n: Int }\n\ndata cal_top_value: Int = 7\n\nfn cal_called(n: Int) -> Int { n }\n"
+
+data cal_entry_without_middle: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+data cal_entry_reordered_imports: String = "module cal.entry\n\nimport cal.provider { cal_called, cal_top_value, CalRight, CalMiddle, CalLeft, CalChoice, CalPayload, CalOnlyGeneric }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+data cal_entry_renamed_binder: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(scrutinee: CalChoice) -> Int {\n  match scrutinee {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+data cal_entry_reordered_declarations: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalHolder { field: CalPayload }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+// THE SUBJECT IS A COPRODUCT, BECAUSE THE EARLIER VERSION OF THIS FUNCTION MAPPED A REFUSAL TO THE
+// EMPTY LIST -- and that is the absorbing fallback DESIGN section 5 names: the refusal was destroyed
+// here and RECONSTRUCTED downstream as an observed population of size zero, indistinguishable in
+// every control from an instrument that ran and saw nothing. The liveness gate closed the false
+// green it could produce, but a gate that compensates for an erased refusal is not the same thing as
+// not erasing it: liveness is a property of the OBSERVED arm, not a repair of a missing one.
+//
+// So no accessor in this file returns a bare list or a bare count. Every control opens the carrier
+// and every control carries a refusal arm that reds. The cause is not printed from a `-> Bool` arm,
+// which is why `step0_calibration_probe` exists beside them: it is the located reader for the same
+// subject, and it is the entry point a red sends you to.
+type CalSubject
+  = CalSubjectObserved { denominator_size: Int, rows: List<ReferenceOccurrenceBindingRow> }
+  | CalSubjectRefused { cause: NonEmptyStr }
+
+type CalNamedSubject {
+  label: NonEmptyStr
+  subject: CalSubject
+}
+
+fn cal_subject_from(sources: List<FixtureSource>) -> CalSubject {
+  match reference_occurrence_binding_census(sources: sources, entry: "cal/entry.dag" as NonEmptyStr) {
+    ReferenceOccurrenceBindingCensusRefused { cause: cause } => CalSubjectRefused { cause: cause }
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: observations } =>
+      CalSubjectObserved { denominator_size: count(denominator), rows: observations }
+  }
+}
+
+fn cal_subject_of(entry_source: String) -> CalSubject {
+  cal_subject_from(sources: [
+    fixture_source("cal/provider.dag", cal_provider),
+    fixture_source("cal/entry.dag", entry_source)
+  ])
+}
+
+// ONE OPENER PER ARITY, so a control states its assertion and never its refusal handling. A refused
+// subject on EITHER side of a two-subject invariant reds, rather than the invariant being evaluated
+// over one real population and one fabricated empty one -- which would have made a comparison
+// control pass or fail for a reason having nothing to do with the property.
+fn cal_subject_holds(subject: CalSubject, holds: fn(Int, List<ReferenceOccurrenceBindingRow>) -> Bool) -> Bool {
+  match subject {
+    CalSubjectRefused { cause: _ } => false
+    CalSubjectObserved { denominator_size: size, rows: rows } => holds(size, rows)
+  }
+}
+
+fn cal_pair_holds(
+  left: CalSubject,
+  right: CalSubject,
+  holds: fn(List<ReferenceOccurrenceBindingRow>, List<ReferenceOccurrenceBindingRow>) -> Bool
+) -> Bool {
+  match left {
+    CalSubjectRefused { cause: _ } => false
+    CalSubjectObserved { denominator_size: _, rows: left_rows } => match right {
+      CalSubjectRefused { cause: _ } => false
+      CalSubjectObserved { denominator_size: _, rows: right_rows } => holds(left_rows, right_rows)
+    }
+  }
+}
+
+data cal_entry_without_local_declarations: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
+
+// THE COMPARISON KEY, AND ITS GRAIN IS STATED EXACTLY BECAUSE IT IS WEAKER THAN THE WORD "IDENTITY"
+// WOULD SUGGEST. Occurrence ids are graph-scoped, so they cannot be joined across two compilations,
+// and spans move under exactly the transformations these invariants apply -- which is the contract's
+// law 4 (pre and post may not be joined by byte span or spelling) constraining what is left to use.
+// What survives is the authored spelling paired with the category the instrument stamped, compared as
+// a MULTISET so a substitution fails even when the totals agree.
+//
+// WHAT THAT ESTABLISHES AND WHAT IT DOES NOT, at three grains:
+//   - CARDINALITY: REJECTED. It passes on an unsafe swap and fails on a safe addition.
+//   - TAG PLUS CATEGORY: ESTABLISHED, and discriminating on THIS subject for a specific reason --
+//     every perturbed spelling here is unique in the fixture and re-mentioned by no construct, so no
+//     other occurrence can stand in for it. That is the fixture law doing the work, not the key.
+//   - EXACT AUTHORED-OCCURRENCE IDENTITY: NOT ESTABLISHED BY THESE CONTROLS. The key is not an
+//     OccurrenceId, carries no containment path and no semantic slot, so two authored occurrences of
+//     one spelling in one category are indistinguishable to it. Calling this an "identity set" would
+//     claim a grain it does not have; it is a tag-and-category multiset, and the capability that
+//     would raise it is the same one `Step0DiscriminationCapability` already names.
+// THE TAG IS A TYPED CARRIER, NOT A CONCATENATED STRING. Keying on
+// concat(authored_name, ":", category_label) put the category's identity through a RENDERER, so one
+// renderer defect collapsing two category labels would silently LOSE the category distinction from
+// the multiset -- and it would do so on both sides at once, which is precisely the shared-corruption
+// shape a comparison cannot detect. A separator collision between a spelling and a label could do
+// the same with no defect at all. The category rides as its own constructor-valued field.
+type CalRowTag {
+  authored_name: String
+  category: OccurrenceCategory
+}
+
+fn cal_row_key(row: ReferenceOccurrenceBindingRow) -> CalRowTag {
+  CalRowTag { authored_name: row.authored_name, category: row.category }
+}
+
+// EACH CLAIM COMPILES EACH SUBJECT ONCE. These take the rows a claim already has rather than an
+// entry source, so a control that compares two subjects performs two compiles and not six -- the
+// repeated demand had one shared-state ancestor and was authored duplication (DESIGN section 2).
+fn cal_keys_from(rows: List<ReferenceOccurrenceBindingRow>) -> List<CalRowTag> {
+  rows |> map(row => cal_row_key(row: row))
+}
+
+// THE SPELLING TEST IS EQUALITY ON THE TAG'S OWN FIELD, NOT A SUBSTRING SEARCH. This read
+// string_contains over the concatenated key, which matched any spelling CONTAINING the perturbed one
+// -- so a fixture spelling that happened to be a prefix or infix of another would have been counted
+// as the renamed identity and the invariant would have reported agreement it had not established.
+// The typed tag makes the field directly available, so the check is exact rather than lexical.
+fn cal_key_mentions(key: CalRowTag, a: String, b: String) -> Bool {
+  key.authored_name == a || key.authored_name == b
+}
+
+fn cal_key_multiplicity(keys: List<CalRowTag>, key: CalRowTag) -> Int {
+  count(keys |> filter(candidate => candidate == key))
+}
+
+fn cal_key_sets_agree(left: List<CalRowTag>, right: List<CalRowTag>) -> Bool {
+  count(left) == count(right)
+    && count(left |> filter(key =>
+         cal_key_multiplicity(keys: left, key: key) != cal_key_multiplicity(keys: right, key: key)
+       )) == 0
+    && count(right |> filter(key =>
+         cal_key_multiplicity(keys: left, key: key) != cal_key_multiplicity(keys: right, key: key)
+       )) == 0
+}
+
+// ADDITION IS ADDITIVE, WHICH IS THE ONLY FORM OF INVARIANT D THAT IS SOUND HERE. Every key present
+// before must still be present after, at least as often. Growth is permitted -- an added declaration
+// legitimately contributes occurrences, and some of them are spelled with names the subject already
+// used, `List` and `Int` among them -- but LOSS and SUBSTITUTION are not.
+fn cal_key_set_covers(before: List<CalRowTag>, after: List<CalRowTag>) -> Bool {
+  count(before |> filter(key =>
+    cal_key_multiplicity(keys: after, key: key) < cal_key_multiplicity(keys: before, key: key)
+  )) == 0
+}
+
+fn cal_manifest_without_middle() -> List<FixtureSource> {
+  [
+    fixture_source("cal/provider.dag", cal_provider_without_middle),
+    fixture_source("cal/entry.dag", cal_entry_without_middle)
+  ]
+}
+
+fn cal_subject_without_middle() -> CalSubject {
+  cal_subject_from(sources: cal_manifest_without_middle())
+}
+
+fn cal_manifest() -> List<FixtureSource> {
+  [
+    fixture_source("cal/provider.dag", cal_provider),
+    fixture_source("cal/entry.dag", cal_entry)
+  ]
+}
+
+fn cal_census() -> ReferenceOccurrenceBindingCensus {
+  reference_occurrence_binding_census(sources: cal_manifest(), entry: "cal/entry.dag" as NonEmptyStr)
+}
+
+fn cal_subject() -> CalSubject {
+  cal_subject_from(sources: cal_manifest())
+}
+
+// THE ROW SELECTORS TAKE THE POPULATION RATHER THAN FETCHING IT, which is the same move: a selector
+// that fetched its own rows would need its own refusal arm, and the only value it could return there
+// is the empty list this file just stopped fabricating.
+fn cal_rows_named(rows: List<ReferenceOccurrenceBindingRow>, spelling: String) -> List<ReferenceOccurrenceBindingRow> {
+  rows |> filter(row => row.authored_name == spelling)
+}
+
+fn cal_rows_named_in_category(
+  rows: List<ReferenceOccurrenceBindingRow>,
+  spelling: String,
+  category: OccurrenceCategory
+) -> List<ReferenceOccurrenceBindingRow> {
+  cal_rows_named(rows: rows, spelling: spelling) |> filter(row =>
+    row.category == category
+  )
+}
+
+fn cal_binding_source_label(source: UnlistedImportBindingSource) -> String {
+  match source {
+    ListedImport => "listed-import"
+    PoolCoincidence => "pool-coincidence"
+    DefinerResolvable => "definer-resolvable"
+  }
+}
+
+// THE SELECTORS BELOW MATCH CONSTRUCTORS; THE FUNCTIONS ABOVE RENDER. A control that selected rows
+// by comparing a rendered disposition or binding-source string against a string literal was using a
+// RENDERED FORM AS AN IDENTITY: a renderer defect that collapsed two dispositions onto one spelling
+// would make the selectors CONFLATE them, and the control would keep passing while counting the
+// wrong population. Every selection is on the constructor; labels are for cal_row_line and the other
+// display paths only. The renderer that served ONLY those comparisons, cal_binding_source_of, had no
+// caller left once they were typed and is deleted rather than kept as a second unused answer.
+fn cal_is_unresolved(disposition: ReferenceOccurrenceBindingDisposition) -> Bool {
+  match disposition {
+    ReferenceOccurrenceUnresolved => true
+    _ => false
+  }
+}
+
+fn cal_is_ambiguous(disposition: ReferenceOccurrenceBindingDisposition) -> Bool {
+  match disposition {
+    ReferenceOccurrenceAmbiguous { candidates: _ } => true
+    _ => false
+  }
+}
+
+fn cal_is_bound_via(
+  disposition: ReferenceOccurrenceBindingDisposition,
+  required_source: UnlistedImportBindingSource
+) -> Bool {
+  match disposition {
+    ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: _, binding_source: source } =>
+      source == required_source
+    _ => false
+  }
+}
+
+fn cal_disposition_label(disposition: ReferenceOccurrenceBindingDisposition) -> String {
+  match disposition {
+    ReferenceOccurrenceBound { declaration_occurrence: _, provider_module: provider, binding_source: source } =>
+      concat("bound:", concat(provider as String, concat(":", cal_binding_source_label(source: source))))
+    ReferenceOccurrenceUnresolved => "unresolved"
+    ReferenceOccurrenceAmbiguous { candidates: _ } => "ambiguous"
+    ReferenceOccurrenceBindingRefused { cause: _ } => "refused"
+  }
+}
+
+fn cal_row_line(row: ReferenceOccurrenceBindingRow) -> String {
+  concat(
+    concat(row.consumer_file as String, concat(" ", row.authored_name)),
+    concat(
+      concat(" ", step0_occurrence_category_label(category: row.category) as String),
+      concat(" ", cal_disposition_label(disposition: row.disposition))
+    )
+  )
+}
+
+// THE INSTRUMENT THAT RE-DERIVES THE TABLE, an entry point rather than a transcribed list, because a
+// number copied into prose is unreachable from the thing that owns it and rots without anyone
+// touching either end (DESIGN section 6). Run it with
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/namespace_step0_census_calibration_witness_test.dag \
+//     --function step0_calibration_probe
+// It renders every named subject -- observed ones with their denominator, row count and one line per
+// occurrence, refused ones with the CAUSE and the subject that produced it -- and exits NONZERO,
+// because a probe that exited 0 would be reporting a verdict it never reached.
+// THE PROBE READS EVERY NAMED SUBJECT, NOT JUST THE BASE ONE, AND THAT GAP WAS A REAL HOLE. The PR
+// describing this file called the probe "the located reader a red sends you to" while it ran
+// `cal_manifest()` alone. So a paired control whose RIGHT-HAND subject refused would collapse to
+// false, `cal_pair_holds` would discard both the cause and which side refused, and the documented
+// reader would rerun the BASE subject and report it healthy. The Bool arm is allowed to lose the
+// cause -- a Bool has nowhere to put it -- but then something must still be able to find it, and
+// nothing could. Every transformed subject is enumerated below, by name.
+fn cal_named_subjects() -> List<CalNamedSubject> {
+  [
+    CalNamedSubject { label: "base" as NonEmptyStr, subject: cal_subject() },
+    CalNamedSubject { label: "without-middle" as NonEmptyStr, subject: cal_subject_without_middle() },
+    CalNamedSubject { label: "reordered-imports" as NonEmptyStr, subject: cal_subject_of(entry_source: cal_entry_reordered_imports) },
+    CalNamedSubject { label: "renamed-binder" as NonEmptyStr, subject: cal_subject_of(entry_source: cal_entry_renamed_binder) },
+    CalNamedSubject { label: "reordered-declarations" as NonEmptyStr, subject: cal_subject_of(entry_source: cal_entry_reordered_declarations) },
+    CalNamedSubject { label: "without-local-declarations" as NonEmptyStr, subject: cal_subject_of(entry_source: cal_entry_without_local_declarations) }
+  ]
+}
+
+fn cal_named_subject_line(named: CalNamedSubject) -> String {
+  match named.subject {
+    CalSubjectRefused { cause: cause } =>
+      concat(concat("SUBJECT ", named.label as String), concat(" REFUSED: ", cause as String))
+    CalSubjectObserved { denominator_size: size, rows: rows } =>
+      concat(
+        concat(concat("SUBJECT ", named.label as String), concat(" observed denominator=", to_string(size))),
+        concat(concat(" rows=", to_string(count(rows))), concat("\n", join(rows |> map(row => cal_row_line(row: row)), "\n")))
+      )
+  }
+}
+
+fn step0_calibration_probe() -> ProcessExit {
+  exit_failure(reason: join(cal_named_subjects() |> map(named => cal_named_subject_line(named: named)), "\n"))
+}
+
+// ---------------------------------------------------------------------------
+// CONTROL 0, FIRST, BECAUSE EVERY ABSENCE CONTROL BELOW IS VACUOUS WITHOUT IT. An instrument that
+// refused, or that saw nothing, answers "no row for CalRight" exactly as a blind one does. So the
+// subject is established as OBSERVED and nonempty before any absence is read as a finding, and the
+// positive control is a spelling the instrument demonstrably does emit.
+test fn the_instrument_observed_this_subject_and_is_not_silent() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (size, rows) =>
+    size > 0
+      && count(rows) == size
+      && count(cal_rows_named(rows: rows, spelling: "CalChoice")) > 0
+  )
+}
+
+// CONTROL 1. A PAYLOAD CONSTRUCTOR IN EXPRESSION POSITION PRODUCES NO OCCURRENCE. `CalRight { n: 2 }`
+// is authored in the fixture and the instrument emits nothing for it -- while the type in the
+// surrounding signature DOES get a row, which is why a reader glancing at nearby rows would conclude
+// the construction was seen. This is a family the census is blind to, not one it measures coarsely.
+test fn a_payload_constructor_in_expression_position_produces_no_occurrence() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named(rows: rows, spelling: "CalRight")) == 0
+  )
+}
+
+// CONTROL 2. A VARIANT IN PATTERN POSITION PRODUCES NO OCCURRENCE. CalMiddle is authored ONLY inside
+// a match arm, so its absence cannot be explained by anything else in the subject. The scrutinee and
+// the payload binder each produce a row, so the arm is represented in the denominator by everything
+// except the name that selects it.
+test fn a_variant_in_pattern_position_produces_no_occurrence() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named(rows: rows, spelling: "CalMiddle")) == 0
+  )
+}
+
+// CONTROL 3, THE POSITIVE ONE THAT MAKES CONTROLS 1 AND 2 MEAN SOMETHING, and it answers the
+// acquisition-path question by measurement rather than by reading the walk. ONE spelling, cal_called,
+// appears twice in the same file: once in call-head position and once as a bare value. The instrument
+// stamps the first CallableOccurrence and the second LexicalValueOccurrence. So the walk does
+// separate acquisition path -- and an instrument that separates that while emitting nothing for a
+// payload constructor is discriminating, not uniformly coarse.
+test fn a_call_head_and_a_bare_function_value_are_stamped_differently() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "cal_called", category: CallableOccurrence)) == 1
+      && count(cal_rows_named_in_category(rows: rows, spelling: "cal_called", category: LexicalValueOccurrence)) == 1
+  )
+}
+
+// CONTROL 4. THE DENOMINATOR IS WRONG IN THE OTHER DIRECTION TOO. The label of a named argument --
+// the `n` in `cal_called(n: 1)` -- is emitted as a reference occurrence and stamped
+// CallableOccurrence, though it names a parameter of the callee and refers to no declaration. So the
+// population is short some real occurrences and long some invented ones at the same time, and the
+// two errors are over different populations and cannot cancel.
+test fn a_named_argument_label_is_emitted_as_a_reference_occurrence() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "n", category: CallableOccurrence)) > 0
+  )
+}
+
+// CONTROL 5. A NULLARY CONSTRUCTOR IS NOT STAMPED ConstructorOccurrence. `CalLeft` in expression
+// position comes back LexicalValueOccurrence, in the same bucket as a top-level data reference and a
+// bare function value -- so four authored families share one observation key and ConstructorOccurrence
+// is stamped for nothing in this subject.
+test fn a_nullary_constructor_is_stamped_as_a_lexical_value() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "CalLeft", category: LexicalValueOccurrence)) > 0
+      && count(cal_rows_named_in_category(rows: rows, spelling: "CalLeft", category: ConstructorOccurrence)) == 0
+  )
+}
+
+// CONTROL 6. ONE AUTHORED QUALIFIED REFERENCE BECOMES TWO OCCURRENCES UNDER TWO CATEGORIES, and
+// neither is a namespace segment: `CalChoice.CalLeft` emits the container head as a lexical value and
+// the member as a FIELD. A per-occurrence figure over this family is therefore not a count of
+// authored references, which is a multiplicity fact the outcome axis alone would never surface.
+test fn a_qualified_containment_reference_is_split_into_two_occurrences() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "CalLeft", category: FieldOccurrence)) == 1
+      && count(cal_rows_named_in_category(rows: rows, spelling: "CalChoice", category: NamespaceSegmentOccurrence)) == 0
+  )
+}
+
+// ---------------------------------------------------------------------------
+// THE ROSTER-TOTALITY CONTROLS, which need no compile: they join the branch roster to the matrix and
+// the family roster to the matrix, by identity rather than by count. A branch added with no row
+// claiming it, or a family added with no row authoring an occurrence of it, goes red here.
+test fn every_producer_branch_is_claimed_by_a_calibration_row() -> Bool {
+  count(step0_unclaimed_producer_branches()) == 0
+}
+
+test fn every_reference_family_is_claimed_by_a_calibration_row() -> Bool {
+  count(step0_uncalibrated_families()) == 0
+}
+
+// AND THE STANDING REPORTS BLINDNESS BEFORE CONVERGENCE. Some families are not observed at all, some
+// converge onto a shared observation key, one is SPLIT across occurrences nothing can join back to
+// the reference that produced it, and the rest are discriminated; the partition is read from the
+// tables rather than transcribed here, because the last transcription of it went stale in place. The
+// arm matters more than the counts: CalibrationBlindToFamilies and CalibrationCappedByConvergence
+// are different claims, and only the second can be reported as coverage at any grain -- a converged
+// family is counted in the wrong bucket, a split family is counted TWICE with nothing to say so, and
+// an unobserved family is not counted anywhere. If this file's controls above ever
+// flip because the producer was repaired, THIS is the assertion that goes red and names the table
+// row to correct; it is a join to the instrument, not a snapshot of it.
+test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Bool {
+  match step0_calibration_standing() {
+    CalibrationBlindToFamilies {
+      unobserved_family_count: unobserved,
+      converged_family_count: converged,
+      split_family_count: split,
+      discriminated_family_count: discriminated,
+      unauthorable_branch_count: unauthorable,
+      denominator_defect_count: defects,
+      uncalibrated_topology_row_count: uncalibrated_topology,
+      uncalibrated_multiplicity_row_count: uncalibrated_multiplicity
+    } => unobserved == 3 && converged == 4 && split == 1 && discriminated == 2 && unauthorable == 2
+      && defects == 6 && uncalibrated_topology > 0 && uncalibrated_multiplicity > 0
+    CalibrationCappedByConvergence { converged_family_count: _, split_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => false
+    CalibrationCappedBySplit { split_family_count: _, converged_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => false
+    CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _ } => false
+    CalibrationRosterIncomplete { unclaimed_branches: _, uncalibrated_families: _ } => false
+  }
+}
+
+fn cal_standing_is_capped_by_split(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationCappedBySplit { split_family_count: _, converged_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => true
+    _ => false
+  }
+}
+
+fn cal_standing_is_capped_by_convergence(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationCappedByConvergence { converged_family_count: _, split_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _, capability: _ } => true
+    _ => false
+  }
+}
+
+fn cal_standing_is_full_discrimination(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _ } => true
+    _ => false
+  }
+}
+
+fn cal_standing_is_blind(standing: Step0CalibrationStanding) -> Bool {
+  match standing {
+    CalibrationBlindToFamilies { unobserved_family_count: _, converged_family_count: _, split_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, denominator_defect_count: _, uncalibrated_topology_row_count: _, uncalibrated_multiplicity_row_count: _ } => true
+    _ => false
+  }
+}
+
+// THE CAP CONTROL, AND ITS RED IS THE ONE THAT COULD NOT BE WRITTEN BEFORE. The standing fold used
+// to branch only on whether the convergence set was empty, so the state below -- nothing unobserved,
+// nothing converged, ONE SPLIT FAMILY -- returned CalibrationDiscriminatesEveryFamily: full
+// discrimination claimed over a family this module itself classifies as undiscriminated, because a
+// split family's rows cannot be joined back to the one authored reference that produced them.
+//
+// IT WAS NEVER A BUG IN ANYTHING THAT RAN. It was a state machine permitting a false claim, held
+// shut by a fact about today's corpus -- four families happen to converge, so the convergence arm
+// fires first -- and it would have fired the day convergence was repaired, which is a repair we
+// want. "Unreachable today" is the same argument as "n is small here": a guard that depends on a
+// measurement is not a guard.
+//
+// THIS IS WHY THE PARTITION IS AN ARGUMENT. Against the live rosters this state is not expressible
+// at all, so a control over step0_calibration_standing() would be permanently green on the very
+// point it claims to check -- a decoration that gets cited as coverage. Handed in as a fixture, the
+// forbidden state is authorable, and the control goes red if the cap is ever skipped again.
+test fn a_split_family_can_never_reach_full_discrimination() -> Bool {
+  cal_standing_is_capped_by_split(
+    standing: step0_standing_over_partition(
+      unclaimed: 0,
+      uncalibrated: 0,
+      unobserved: [],
+      split: [QualifiedContainmentReference],
+      converged: []
+    )
+  )
+    && cal_standing_is_capped_by_split(
+      standing: step0_standing_over_partition(
+        unclaimed: 0,
+        uncalibrated: 0,
+        unobserved: [],
+        split: [QualifiedContainmentReference],
+        converged: [TypeAnnotationReference]
+      )
+    )
+}
+
+// THE POSITIVE CONTROL BESIDE IT, so the arm above is not satisfied by a fold that answers
+// CalibrationCappedBySplit unconditionally. With the split set EMPTY and everything else identical,
+// the same fold must reach full discrimination -- and with a converged family present it must stop
+// at the convergence cap, which is the rung immediately below.
+test fn the_cap_fires_only_when_a_family_is_actually_split() -> Bool {
+  cal_standing_is_full_discrimination(
+    standing: step0_standing_over_partition(
+      unclaimed: 0, uncalibrated: 0, unobserved: [], split: [], converged: []
+    )
+  )
+    && cal_standing_is_capped_by_convergence(
+      standing: step0_standing_over_partition(
+        unclaimed: 0, uncalibrated: 0, unobserved: [], split: [], converged: [TypeAnnotationReference]
+      )
+    )
+    && cal_standing_is_blind(
+      standing: step0_standing_over_partition(
+        unclaimed: 0,
+        uncalibrated: 0,
+        unobserved: [TypeAnnotationReference],
+        split: [QualifiedContainmentReference],
+        converged: []
+      )
+    )
+}
+
+// THE PERTURBATION CONTROL, AND ITS SCOPE IS NARROWER THAN THE FIRST VERSION OF THIS COMMENT SAID.
+// Removing every appearance of one variant -- its declaration, its import-list entry and its match
+// arm -- changes the observed occurrence COUNT by zero. What that discriminates is the variant in
+// PATTERN position: if it produced an occurrence, this deletion had to move the number.
+//
+// IT SAYS NOTHING ABOUT THE IMPORT LIST, and an earlier revision claimed it did. A count is blind to
+// substitution: deleting a name from the list hands the fabricated head row to whichever name is now
+// first, so the number holds while the population changes. The import list is discriminated by
+// `only_the_head_of_an_import_list_is_emitted_as_a_reference` and by invariant A, which compare
+// POPULATIONS and not sizes. Both counts here are nonzero, so this is not two silences agreeing.
+test fn removing_a_variant_entirely_does_not_change_the_occurrence_count() -> Bool {
+  match cal_subject() {
+    CalSubjectRefused { cause: _ } => false
+    CalSubjectObserved { denominator_size: with_middle, rows: _ } => match cal_subject_without_middle() {
+      CalSubjectRefused { cause: _ } => false
+      CalSubjectObserved { denominator_size: without_middle, rows: _ } =>
+        with_middle > 0 && without_middle > 0 && with_middle == without_middle
+    }
+  }
+}
+
+// THE TWO AUTHORED TABLES ABOUT ONE INSTRUMENT MUST AGREE. A family the observation table calls
+// blind must map to zero occurrences per authored reference, and a family it calls observed must map
+// to at least one. Without this join they are a meaning fork waiting to drift.
+test fn the_qualified_family_produces_both_of_its_declared_categories() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "CalChoice", category: LexicalValueOccurrence)) == 1
+      && count(cal_rows_named_in_category(rows: rows, spelling: "CalLeft", category: FieldOccurrence)) == 1
+      && count(step0_split_families()) == 1
+  )
+}
+
+// CONTROL 13, FILED BY REVIEW 59402 AND WIDENED BY MEASURING RATHER THAN READING. The matrix claimed
+// QualifiedContainmentReference calibrates the definer-resolvable branch. It cannot: the instrument
+// selects that branch only for an authored spelling carrying a dot, and control 7 already
+// established that `CalChoice.CalLeft` reaches the census as TWO occurrences, `CalChoice` and
+// `CalLeft`, neither of which carries one. So the branch is unreachable from this subject and the
+// row's outcome column was unfalsifiable. This control checks the disposition the pair ACTUALLY
+// carries, which is the check whose absence let the wrong claim stand.
+test fn the_qualified_pair_carries_no_definer_resolvable_disposition() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(rows |> filter(row => cal_is_unresolved(disposition: row.disposition)
+      && (row.authored_name == "CalChoice" || row.authored_name == "CalLeft"))) > 0
+      && count(rows |> filter(row =>
+          cal_is_bound_via(disposition: row.disposition, required_source: DefinerResolvable))) == 0
+  )
+}
+
+// CONTROL 14, THE GENERAL FORM OF CONTROL 13, so the next overstated row goes red without a reviewer
+// finding it. Every row whose outcome column claims a disposition must claim a branch the fixture
+// run actually exercises. The fixture exercises the pool-coincidence and unresolved branches and no
+// other, which is why only three of the seventeen family rows carry an observed outcome.
+test fn every_observed_outcome_claims_a_branch_the_run_exercises() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(step0_rows_claiming_observed_outcome()) == 3
+      && count(step0_rows_with_uncalibrated_outcome()) == 14
+      && count(rows |> filter(row =>
+          cal_is_bound_via(disposition: row.disposition, required_source: PoolCoincidence))) > 0
+      && count(rows |> filter(row =>
+          cal_is_unresolved(disposition: row.disposition))) > 0
+      && count(rows |> filter(row =>
+          cal_is_bound_via(disposition: row.disposition, required_source: ListedImport))) == 0
+      && count(rows |> filter(row =>
+          cal_is_ambiguous(disposition: row.disposition))) == 0
+  )
+}
+
+// CONTROL 15, AND THE SPELLING IT USES IS THE WHOLE POINT. A generic ARGUMENT produces no reference
+// occurrence; the generic HEAD produces one. `CalLocalArg` is declared in the CONSUMER module and
+// appears in exactly one authored position, inside `List<CalLocalArg>` -- so it is in no import list,
+// no annotation, and no pattern, and nothing in the subject can stand in for it in either direction.
+//
+// An earlier version of this control used `CalOnlyGeneric`, which is IMPORTED, and it reported the
+// opposite. That row was the import list, not the argument (control 16). The `List` count is the
+// other half: the head is admitted from the same declaration, so the zero is the argument position
+// and not a declaration the walk skipped.
+test fn a_generic_type_argument_produces_no_occurrence() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named(rows: rows, spelling: "CalLocalArg")) == 0
+      && count(cal_rows_named_in_category(rows: rows, spelling: "List", category: TypeOccurrence)) > 0
+  )
+}
+
+// CONTROL 16, A FABRICATED ROW, AND THE SECOND ONE THIS SUBJECT CARRIES. The FIRST name in an import
+// list is emitted as a reference occurrence; every later name in the same list carries no role. An
+// import-list entry is not a use site, so the row refers to nothing. Control 5 records a second row
+// that refers to nothing, the named-argument label. Whether the two share a cause is NOT asserted
+// here: a common-cause story would have to come from the rule the walk actually applies, and until
+// that rule is written and discriminated, collapsing them would hide the possibility that one is
+// positional and the other is about construct kind -- which are different repairs.
+//
+// It is checked by PERTURBATION rather than by reading one listing, because a claim about list
+// POSITION cannot be established from a single arrangement. `CalOnlyGeneric` was authored at the
+// head of the entry's import list, ahead of `CalPayload`, which used to hold that position. The
+// admitted row moved with the position: `CalOnlyGeneric` gained one and `CalPayload` lost the one it
+// had, while neither name's authored USES changed at all. Both counts are nonzero somewhere in the
+// subject, so this is not two silences agreeing.
+test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "CalOnlyGeneric", category: TypeOccurrence)) == 1
+      && count(cal_rows_named(rows: rows, spelling: "CalLocalArg")) == 0
+      && count(cal_rows_named(rows: rows, spelling: "CalMiddle")) == 0
+  )
+}
+
+// ---------------------------------------------------------------------------
+// THE METAMORPHIC INVARIANTS. Each changes something that MUST NOT MATTER and asserts the
+// measurement does not move. They need no oracle: nobody has to know the right denominator, only
+// that it cannot depend on this. That makes them stronger than any fixture whose expected numbers
+// were authored by the same person who authored the instrument's reading, and it is how control 16's
+// fabrication was found rather than reasoned about.
+
+// A CARDINALITY ASSERTION IS BLIND TO SUBSTITUTION, WHEREVER IT APPEARS. It fails on a safe addition
+// and passes on an unsafe swap, so it is the wrong shape for every completeness question in this
+// lane -- the contract's roster check and the invariants below are the same defect at two layers,
+// and so is every figure this census eventually publishes. These four are therefore stated over the
+// TAG-AND-CATEGORY MULTISET defined above -- not over identities, a grain these controls do not
+// reach. Each changes something that MUST NOT MATTER and asserts the population does not move; none
+// needs an oracle, because a semantics-preserving transformation supplies its own.
+
+// INVARIANT A -- AND IT DOES NOT HOLD, WHICH IS WHY IT IS ASSERTED IN ITS BROKEN FORM. Reordering an
+// import list is meaning-preserving, so the observed key multiset must not move. It moves -- and the SIZE
+// does not, which is exactly why the cardinality version of this invariant would have passed clean
+// over the fabrication it exists to catch. What changes is WHICH NAME HOLDS THE ROW: the head of the
+// list is emitted as a reference and the rest are not, so putting a different name first hands the
+// row to that name and takes it from the one that had it, with no authored use changed.
+//
+// Asserting the invariant here would put a permanent red in CI, reporting nothing the defect roster
+// does not carry. Asserting the DEFECT keeps the property executing and makes the repair visible:
+// this control reds the day the fabrication is fixed and is then INVERTED to the invariant it was
+// always meant to be. That inversion is its dissolution condition, and it is the DESIGN 4b(4) rule
+// that a discriminating RED stays enrolled rather than retiring on the climb.
+test fn reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_defect() -> Bool {
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry),
+    right: cal_subject_of(entry_source: cal_entry_reordered_imports),
+    holds: (base, moved) =>
+      count(base) > 0
+        && (cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: moved)) == false)
+        && count(moved) == count(base)
+        && count(base |> filter(row => row.authored_name == "CalOnlyGeneric")) == 1
+        && count(moved |> filter(row => row.authored_name == "CalOnlyGeneric")) == 0
+  )
+}
+
+// THE SPELLINGS BELOW LOST A TRAILING COLON WHEN THE KEY BECAME TYPED, and that colon is the whole
+// argument for the typed carrier. Under the concatenated key these read "c:" and "scrutinee:",
+// because the caller had to encode the KEY'S OWN SEPARATOR to anchor a substring match to the name
+// field -- the caller knew the key's internal syntax, which is exactly the coupling a structured
+// carrier removes. With the field addressable the caller names the spelling and nothing else.
+//
+// INVARIANT B, OVER THE KEY MULTISET. Renaming a binder consistently -- the parameter and every use of it
+// -- is meaning-preserving, so the key multiset must map bijectively with only the renamed keys
+// differing: the two runs agree on every key mentioning neither name, and the total is unchanged.
+test fn renaming_a_binder_consistently_disturbs_only_the_renamed_keys() -> Bool {
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry),
+    right: cal_subject_of(entry_source: cal_entry_renamed_binder),
+    holds: (base, renamed) =>
+      cal_key_sets_agree(
+        left: cal_keys_from(rows: base) |> filter(key => cal_key_mentions(key: key, a: "c", b: "scrutinee") == false),
+        right: cal_keys_from(rows: renamed) |> filter(key => cal_key_mentions(key: key, a: "c", b: "scrutinee") == false)
+      )
+        && count(renamed) == count(base)
+        && count(base) > 0
+  )
+}
+
+// INVARIANT C, OVER THE KEY MULTISET. Swapping two independent declarations is meaning-preserving, so the
+// key multiset must be unchanged -- not merely the same size. This is the one that catches an
+// ordinal or a running counter leaking into what gets admitted, which is invariant A's defect shape.
+test fn reordering_independent_declarations_does_not_change_the_observed_population() -> Bool {
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry),
+    right: cal_subject_of(entry_source: cal_entry_reordered_declarations),
+    holds: (base, swapped) =>
+      cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: swapped))
+        && count(base) > 0
+  )
+}
+
+// INVARIANT D, AND THE FIRST VERSION OF IT WAS WRONG -- THE CONTROL, NOT THE CENSUS. I stated it as
+// "the keys mentioning neither added spelling agree exactly", ran it, and it went RED. The cause was
+// mine: `type CalLocalBox { cells: List<CalLocalArg> }` legitimately contributes `List` and `Int`
+// occurrences, and those spellings are shared with occurrences the subject already had, so an exact
+// agreement on "other spellings" demanded that a real addition add nothing. That is the homonym trap
+// of this file's own fixture law, committed a third time and in a property statement rather than an
+// observation -- which is its own evidence that the law needs to govern how invariants are phrased,
+// not only which spellings a fixture uses.
+//
+// The sound form needs no oracle and no count of what was added: addition is ADDITIVE. Every key
+// present before is present after at least as often, so growth passes while LOSS and SUBSTITUTION
+// fail. The strict size increase keeps it from being vacuous, and `CalLocalArg` contributing nothing
+// is control 15 restated from the other side -- the added generic argument is admitted by nobody.
+test fn adding_an_unreferenced_declaration_only_adds() -> Bool {
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry_without_local_declarations),
+    right: cal_subject_of(entry_source: cal_entry),
+    holds: (before, after) =>
+      cal_key_set_covers(before: cal_keys_from(rows: before), after: cal_keys_from(rows: after))
+        && count(after) > count(before)
+        && count(before) > 0
+        && count(after |> filter(row => row.authored_name == "CalLocalArg")) == 0
+  )
+}

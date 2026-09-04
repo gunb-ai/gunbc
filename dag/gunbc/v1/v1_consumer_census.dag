@@ -411,7 +411,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
     boundary: v1cc_boundary(
       consumer: wfw(decl: "rust_unit_tests_step"),
       authority: v1_compiler_crate_root,
-      disposition: retired(reason: "the job's entire subject is the v1 crate's own #[test] functions, none of which asserts anything outside v1. #9663 added it because those tests ran on no CI path; it is one merge window old and retires with the code it was built to cover rather than being ported"),
+      disposition: retired(reason: "the job's entire subject is the v1 crate's own #[test] functions, none of which asserts anything outside v1. #9663 added it because those tests ran on no CI path; it is one merge window old and retires with the code it was built to cover rather than being ported. DELETED 2026-09-04 under the runner-capacity ruling, ahead of the crate it covered: the carrier no longer exists in gunbc.witness_floor_workflow and the loss is declared at gunbc.rung_drop rust_unit_tests_off_the_merge_path. This row is kept rather than dropped because the census is a record of what consumed v1, not of what still does"),
     ),
     medium: WorkflowArgv,
     subject: V1CompilerCrate,
