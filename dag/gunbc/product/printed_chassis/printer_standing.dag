@@ -1,0 +1,83 @@
+module product.printed_chassis.printer_standing
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.nat { Nat }
+import product.placement_supply { PhysicalAssetIdentity }
+
+// WHETHER FEEDSTOCK HAS REACHED THE TOOLHEAD, WHICH IS NOT WHETHER A SLOT HOLDS A SPOOL.
+//
+// These are two facts and conflating them cost a real print. On 2026-09-04 printer-01 was dispatched
+// a coupon with a spool seated in AMS slot 1: the slot sensor read present, and the operator and the
+// dispatcher both took that for "loaded". The machine ran thirty-three percent of the job at layer
+// zero, moving the head over an empty plate, extruding nothing. Nothing refused, because nothing was
+// asked. The printer's own report carried the distinction the whole time -- a slot-occupancy bit
+// that was set, and a toolhead index and extruder switch that were not.
+//
+// So the standing is keyed to the toolhead, and FeedstockInSlotOnly is a NAMED state rather than a
+// gap between two others. It is the exact condition that ran that job, and it must be reachable and
+// refusable, not merely absent from the admitted arm.
+type FilamentPathStanding
+  = FeedstockAtToolhead { slot: Nat }
+  | FeedstockInSlotOnly { slots_occupied: Nat }
+  | FeedstockAbsent
+  | FeedstockPathUnobserved
+
+// THE FOURTH ARM IS NOT A FAILURE, IT IS THE ABSENCE OF AN OBSERVATION. DESIGN section 4b keeps
+// external reality off the guarantee ladder: a printer that did not answer is not a printer that
+// answered "no". Reading silence as either arm fabricates a fact nobody measured -- as idle it
+// dispatches into an unknown machine, as busy it refuses a machine that was ready.
+type PrinterActivityStanding
+  = PrinterIdle
+  | PrinterRunning { percent: Nat }
+  | PrinterHalted { error_code: Nat }
+  | PrinterActivityUnobserved
+
+type PrinterStanding sole_constructor {
+  printer: PhysicalAssetIdentity
+  activity: PrinterActivityStanding
+  filament_path: FilamentPathStanding
+}
+
+type PrintDispatchRefusalCause
+  = FeedstockSeatedButNotLoaded { slots_occupied: Nat }
+  | FeedstockNotPresent
+  | PrinterBusy { percent: Nat }
+  | PrinterInError { error_code: Nat }
+  | ActivityNotObserved
+  | FilamentPathNotObserved
+
+type PrintDispatchAdmission
+  = PrintDispatchAdmitted { printer: PhysicalAssetIdentity, slot: Nat }
+  | PrintDispatchRefused { printer: PhysicalAssetIdentity, cause: PrintDispatchRefusalCause }
+
+// EVERY ARM REFUSES OR ADMITS BY NAME, AND THERE IS NO WILDCARD.
+//
+// A `_ =>` arm here would absorb exactly the state this module exists to catch: a new standing added
+// later -- a spool runout mid-load, a filament jam -- would fall into whichever side the wildcard
+// pointed at, silently, with nothing failing to compile. DESIGN section 5's absorbing fallback is a
+// failure arm that widens instead of refusing, and a wildcard over a closed coproduct is how it gets
+// written without anyone deciding to write it.
+fn admit_print_dispatch(standing: PrinterStanding) -> PrintDispatchAdmission {
+  match standing.activity {
+    PrinterRunning { percent: p } =>
+      PrintDispatchRefused { printer: standing.printer, cause: PrinterBusy { percent: p } }
+    PrinterHalted { error_code: e } =>
+      PrintDispatchRefused { printer: standing.printer, cause: PrinterInError { error_code: e } }
+    PrinterActivityUnobserved =>
+      PrintDispatchRefused { printer: standing.printer, cause: ActivityNotObserved }
+    PrinterIdle =>
+      match standing.filament_path {
+        FeedstockAtToolhead { slot: s } =>
+          PrintDispatchAdmitted { printer: standing.printer, slot: s }
+        FeedstockInSlotOnly { slots_occupied: n } =>
+          PrintDispatchRefused {
+            printer: standing.printer,
+            cause: FeedstockSeatedButNotLoaded { slots_occupied: n },
+          }
+        FeedstockAbsent =>
+          PrintDispatchRefused { printer: standing.printer, cause: FeedstockNotPresent }
+        FeedstockPathUnobserved =>
+          PrintDispatchRefused { printer: standing.printer, cause: FilamentPathNotObserved }
+      }
+  }
+}

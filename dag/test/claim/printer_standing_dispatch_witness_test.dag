@@ -1,0 +1,94 @@
+module test.claim.printer_standing_dispatch_witness_test
+
+import std.types { Bool, String }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.printed_chassis.printer_standing {
+  PrinterStanding,
+  PrinterIdle, PrinterRunning, PrinterHalted, PrinterActivityUnobserved,
+  FeedstockAtToolhead, FeedstockInSlotOnly, FeedstockAbsent, FeedstockPathUnobserved,
+  PrintDispatchAdmitted, PrintDispatchRefused,
+  FeedstockSeatedButNotLoaded, FeedstockNotPresent, PrinterBusy, PrinterInError,
+  ActivityNotObserved, FilamentPathNotObserved,
+  admit_print_dispatch,
+  PrinterActivityStanding,
+  FilamentPathStanding,
+  PrintDispatchRefusalCause,
+}
+
+data subject: PhysicalAssetIdentity = "printer-01" as PhysicalAssetIdentity
+
+fn standing(activity: PrinterActivityStanding, path: FilamentPathStanding) -> PrinterStanding {
+  PrinterStanding { printer: subject, activity: activity, filament_path: path }
+}
+
+fn refuses_with(activity: PrinterActivityStanding, path: FilamentPathStanding, expected: PrintDispatchRefusalCause) -> Bool {
+  match admit_print_dispatch(standing: standing(activity: activity, path: path)) {
+    PrintDispatchRefused { printer: p, cause: c } => c == expected && p as String == subject as String
+    PrintDispatchAdmitted { printer: _, slot: _ } => false
+  }
+}
+
+// THE INCIDENT, MADE EXECUTABLE. This is the exact standing printer-01 reported on 2026-09-04 while
+// it ran a third of a job at layer zero extruding nothing: one slot occupied, nothing at the
+// toolhead. It must refuse, and it must refuse NAMING that state rather than collapsing it into
+// "no feedstock" -- the operator had in fact loaded a spool, and a refusal saying otherwise would
+// send them to check the thing that was already true.
+test fn w_a_spool_seated_in_a_slot_but_not_loaded_refuses_dispatch() -> Bool {
+  refuses_with(
+    activity: PrinterIdle,
+    path: FeedstockInSlotOnly { slots_occupied: 1 },
+    expected: FeedstockSeatedButNotLoaded { slots_occupied: 1 },
+  )
+}
+
+// THE POSITIVE CONTROL, AND IT IS THE SAME PRINTER ONE STEP LATER. After the load completed, the
+// toolhead index and the extruder switch both read present, and that -- not slot occupancy -- is
+// what admits.
+test fn w_feedstock_at_the_toolhead_admits_and_carries_the_slot() -> Bool {
+  match admit_print_dispatch(standing: standing(activity: PrinterIdle, path: FeedstockAtToolhead { slot: 0 })) {
+    PrintDispatchAdmitted { printer: p, slot: s } => s == 0 && p as String == subject as String
+    PrintDispatchRefused { printer: _, cause: _ } => false
+  }
+}
+
+// SEATED-BUT-NOT-LOADED AND ABSENT ARE DIFFERENT REFUSALS. If these collapsed, the model would be
+// back to the single bit that caused the incident.
+test fn w_an_empty_machine_refuses_differently_from_a_seated_one() -> Bool {
+  refuses_with(activity: PrinterIdle, path: FeedstockAbsent, expected: FeedstockNotPresent)
+    && refuses_with(
+         activity: PrinterIdle,
+         path: FeedstockInSlotOnly { slots_occupied: 2 },
+         expected: FeedstockSeatedButNotLoaded { slots_occupied: 2 })
+}
+
+// ACTIVITY IS DECIDED BEFORE FEEDSTOCK. A busy printer with perfect feedstock must still refuse, or
+// a dispatch would interrupt a running job.
+test fn w_a_busy_printer_refuses_even_with_feedstock_at_the_toolhead() -> Bool {
+  refuses_with(
+    activity: PrinterRunning { percent: 33 },
+    path: FeedstockAtToolhead { slot: 0 },
+    expected: PrinterBusy { percent: 33 },
+  )
+}
+
+test fn w_a_halted_printer_relays_its_error_code_rather_than_a_label() -> Bool {
+  refuses_with(
+    activity: PrinterHalted { error_code: 50348044 },
+    path: FeedstockAtToolhead { slot: 0 },
+    expected: PrinterInError { error_code: 50348044 },
+  )
+}
+
+// SILENCE REFUSES ON BOTH AXES, AND THE TWO SILENCES ARE NOT THE SAME REFUSAL. An unobserved
+// printer and an observed printer whose filament path was not read send an operator to different
+// places, so the causes stay distinct.
+test fn w_an_unobserved_standing_refuses_on_the_axis_that_was_silent() -> Bool {
+  refuses_with(
+    activity: PrinterActivityUnobserved,
+    path: FeedstockAtToolhead { slot: 0 },
+    expected: ActivityNotObserved)
+  && refuses_with(
+    activity: PrinterIdle,
+    path: FeedstockPathUnobserved,
+    expected: FilamentPathNotObserved)
+}
