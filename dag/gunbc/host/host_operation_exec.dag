@@ -88,7 +88,7 @@ import v2.std.operation_argv {
 // two legs want ONE description. What is missing is only a .dag-level way to INVOKE by that triple --
 // there is no free-function sibling of shell_materialize_operation_argv, and no generic local
 // process-exec service exists in this corpus either (no `service Process`, no local `Exec`; the only
-// Exec/ExecArgv operations declared anywhere are ssh.Session's).
+// Exec/ExecPortableWords operations declared anywhere are ssh.Session's).
 //
 // 🟡 dissolve-on: WHEN an invoke-by-triple sibling of shell_materialize_operation_argv exists, this
 // coproduct is DELETED and both derivations below collapse into that one triple. The condition is the
