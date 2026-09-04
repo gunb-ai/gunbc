@@ -1578,14 +1578,21 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 // population the heal touches is the population the phase adjudicates. And the loop has no runner
 // today regardless -- the heal job went with `ci.yml` at the same cut, so `.github/workflows`
 // carries fleet-converge, fleet-desired and witnesses, and none of them heals.
+// `gunbc_run_step_script` returns a whole-step body with no trailing newline. The separator below
+// is therefore part of this composition: without it the second ROOT assignment is appended to the
+// first invocation's function word, so the authority drifts from the two-command workflow and the
+// generated command itself is not executable.
 fn gunbc_ci_heal_regen_invoke() -> String {
   concat(
-    gunbc_run_step_script(
-      source_roots: witness_layer_roots,
-      entry: gunbc_ci_heal_regen_target.entry,
-      function: gunbc_ci_heal_regen_target.function,
-      claim_run: false,
-      receipt_rel: none
+    concat(
+      gunbc_run_step_script(
+        source_roots: witness_layer_roots,
+        entry: gunbc_ci_heal_regen_target.entry,
+        function: gunbc_ci_heal_regen_target.function,
+        claim_run: false,
+        receipt_rel: none
+      ),
+      "\n"
     ),
     gunbc_run_step_script(
       source_roots: witness_layer_roots,
