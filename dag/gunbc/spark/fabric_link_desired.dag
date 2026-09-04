@@ -241,10 +241,31 @@ type SparkFabricLinkLookup
   | FabricLinkMissing { identity: FabricLinkIdentity }
   | FabricLinkIdentityDuplicated { identity: FabricLinkIdentity, count: Int }
 
-fn spark_fabric_link_from(
-  matches: List<FabricLink>,
-  identity: FabricLinkIdentity,
-) -> SparkFabricLinkLookup {
+// THE POPULATION IS PART OF THE AUTHORITY, NOT AN ARGUMENT TO IT.
+//
+// This decision was briefly split into a `spark_fabric_link_from(matches:, identity:)` kernel that
+// this function called with the filtered roster. That helper took the population as a PARAMETER and
+// trusted it, so a caller supplying a one-element list got `FoundExactlyOne` back without the link
+// ever being compared to the requested identity -- `matches: [srv7-srv8 rail0], identity: Srv5Srv6 +
+// Rail0` returned the srv7/srv8 link as an exact match.
+//
+// Adding an equality check inside it would have closed that one mismatch and left the real hole
+// open: any caller could still hand in a population of its own choosing and mint the SAME
+// `FoundExactlyOne` carrier the canonical fleet lookup returns. The carrier's meaning is "the fleet
+// declares exactly one such rail", and that is a claim about `spark_fabric_links()` -- not about
+// whatever list the caller had to hand. A parameter that can be varied cannot be the subject the
+// answer is about.
+//
+// The split existed for no reason except that a list PATTERN did not parse and I reached for a
+// helper instead of `let`. That is the workaround tell in DESIGN section 5: the obstacle was the
+// substrate, the detour was around it, and what it silently bought was a public bypass of the
+// module's own authority. `let` was available the whole time.
+//
+// If an arbitrary-population kernel is ever wanted, it must return a visibly non-canonical
+// assessment type. It may not mint this one.
+fn spark_fabric_link(identity: FabricLinkIdentity) -> SparkFabricLinkLookup {
+  let matches = filter(spark_fabric_links(), l =>
+    fabric_link_identity_eq(a: l.identity, b: identity))
   if length(matches) == 1 {
     match matches.first() {
       Present { value: only } => FoundExactlyOne { link: only }
@@ -255,13 +276,6 @@ fn spark_fabric_link_from(
   } else {
     FabricLinkIdentityDuplicated { identity: identity, count: length(matches) }
   }
-}
-
-fn spark_fabric_link(identity: FabricLinkIdentity) -> SparkFabricLinkLookup {
-  spark_fabric_link_from(
-    matches: filter(spark_fabric_links(), l =>
-      fabric_link_identity_eq(a: l.identity, b: identity)),
-    identity: identity)
 }
 
 // AND THE ENDPOINT A HOST OWNS ON A NAMED RAIL, which is the operation the consumer sentence at the

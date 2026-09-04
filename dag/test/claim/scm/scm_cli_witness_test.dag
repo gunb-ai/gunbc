@@ -60,6 +60,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   FilesystemFileObservation,
   filesystem_listing_observation,
   filesystem_read_outcome,
@@ -433,5 +434,6 @@ test fn an_established_absence_derives_the_only_path_it_authorizes() -> Bool {
     FilesystemFileRead { path: _, content: _ } => false
     FilesystemFileIndeterminate { cause: _ } => false
     FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
   }
 }
