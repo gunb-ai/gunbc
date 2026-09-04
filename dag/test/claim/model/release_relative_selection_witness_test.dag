@@ -145,9 +145,17 @@ test fn w_two_releases_have_no_common_scale_in_both_orders() -> Bool {
 // distinct_ranking_releases with `length(alternatives)` leaves it green. Here one release
 // contributes two alternatives, so a row count reports 3 where the distinct count reports 2.
 //
-// Both release-block orders are exercised because the dedupe is a fold: an accumulator that only
-// checked the immediately preceding entry, or that seeded itself from the head, would answer
-// correctly in one order and not the other.
+// THREE ROSTERS, AND THE THIRD IS THE ONE THAT CARRIES THE DEDUPE CLAIM. An earlier version of this
+// annotation said the two block orders caught "an accumulator that only checked the immediately
+// preceding entry". THAT WAS FALSE, and it is worth saying why rather than quietly deleting it: in
+// both [A,A,B] and [B,A,A] the two A-rows are ADJACENT, so a previous-entry-only accumulator
+// compares A against A, dedupes correctly, and reports 2. It stays GREEN on both. Block order alone
+// varies which release is seen first; it never separates the repeats.
+//
+// Only the INTERLEAVED roster [A,B,A] does. There the second A's predecessor is B, so an accumulator
+// carrying just the last entry admits it as new and reports 3 where the distinct count is 2. The
+// claim and the fixture now match: two orders for head-seeding, interleaving for previous-entry-only
+// membership.
 test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
   is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
     ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20), ranked_b(rank: 1, payload: 30),
@@ -155,6 +163,16 @@ test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
     && is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
       ranked_b(rank: 1, payload: 30), ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20),
     ]), expected_releases: 2)
+    && w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent()
+}
+
+// THE REPEATS ARE SEPARATED, which is the only arrangement that fails a previous-entry-only
+// membership test. Held as its own row rather than folded into the arm above so that a failure names
+// the interleaving rather than a three-way conjunction.
+test fn w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent() -> Bool {
+  is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
+    ranked_a(rank: 1, payload: 10), ranked_b(rank: 1, payload: 30), ranked_a(rank: 2, payload: 20),
+  ]), expected_releases: 2)
 }
 
 // A TIE REFUSES rather than picking, in both orders, and reports the same top quality and
@@ -206,6 +224,7 @@ test fn w_all_release_relative_selection_claims_hold() -> Bool {
     && w_the_comparator_is_total_at_the_bounds_of_int()
     && w_two_releases_have_no_common_scale_in_both_orders()
     && w_the_release_count_counts_releases_and_not_rows()
+    && w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent()
     && w_an_equal_top_rank_refuses_in_both_orders()
     && w_a_tie_beneath_a_unique_maximum_does_not_refuse()
     && w_a_duplicated_top_alternative_is_not_silently_deduplicated()
