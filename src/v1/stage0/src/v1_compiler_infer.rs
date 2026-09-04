@@ -4781,27 +4781,31 @@ pub fn nominal_product_head_name_if_declared_product(
     name: String,
     scope: Rc<InferScope>,
 ) -> String {
-    let representative =
-        transparent_alias_representative(scope.type_env.clone().symbol_index.clone(), name.clone());
-    match crate::v1_compiler_infer_env::lookup_type_by_name(
-        scope.type_env.clone(),
-        representative.clone(),
-    ) {
-        Some(decl) => {
-            let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                decl.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
-            if ((peeled.connective.clone() == Connective::Conj)
-                && ((peeled.children.clone().len() as i64) > 0))
-            {
-                name.clone()
-            } else {
-                "".to_string()
+    {
+        let representative = transparent_alias_representative(
+            scope.type_env.clone().symbol_index.clone(),
+            name.clone(),
+        );
+        match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            representative.clone(),
+        ) {
+            Some(decl) => {
+                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    decl.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                if ((peeled.connective.clone() == Connective::Conj)
+                    && ((peeled.children.clone().len() as i64) > 0))
+                {
+                    name.clone()
+                } else {
+                    "".to_string()
+                }
             }
+            std::option::Option::None => "".to_string(),
         }
-        std::option::Option::None => "".to_string(),
     }
 }
 
