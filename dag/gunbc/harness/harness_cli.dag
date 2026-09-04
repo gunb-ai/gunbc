@@ -95,7 +95,13 @@ data harness_default_wire_shape: HarnessWireShape = OpenAiChatCompletionsShape
 // measured decode floor below, 65,536 tokens is roughly forty-five minutes of generation, so one
 // legitimate long answer exceeded any deadline this harness could carry -- which is a far better
 // explanation of the observed hangs than router state was.
-data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 8192))
+// RAISED FROM 8,192 ON A MEASUREMENT, NOT A GUESS. The first Think Max run on a mechanical brief
+// produced 7,899 completion tokens in a single round -- 96% of the previous ceiling -- and a
+// reasoning model that deliberates does so in the completion, not somewhere the ceiling ignores.
+// One longer round would have ended the run through the truncation refusal, correctly. At the
+// declared floor 16,384 tokens is about eleven minutes of decode, and the deadline below follows
+// by derivation rather than being re-guessed beside it.
+data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 16384))
 
 // THE SLOWEST DECODE THIS DEPLOYMENT IS EXPECTED TO SUSTAIN, in tokens per second. It is a declared
 // policy floor rather than a measurement of any one run: observed rates here span 2.4 tok/s under

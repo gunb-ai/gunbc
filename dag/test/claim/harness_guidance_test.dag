@@ -143,11 +143,12 @@ test fn one_response_fits_inside_the_working_window() -> Bool {
 }
 
 // THE DERIVED DEADLINE IS READ BACK, not assumed. Integer division is the whole reason this witness
-// exists: 8192/24 truncates to 341, and a language that rounded or carried a remainder differently
+// exists: 16384/24 truncates to 682 (+300 = 982; an earlier revision of this line said 983 and the
+// interpreter refused it), and a language that rounded differently
 // would move the deadline without moving anything an author wrote. Pinning the arithmetic here means
 // the value is measured by the interpreter rather than by the author's mental model of it.
 test fn the_request_deadline_derives_to_the_expected_seconds() -> Bool {
-  second_count(s: harness_request_deadline) == 641
+  second_count(s: harness_request_deadline) == 982
 }
 
 // A TRUNCATED TOOL CALL MUST NOT BE TREATED AS A COMPLETE ONE. This pins the predicate the round arm
