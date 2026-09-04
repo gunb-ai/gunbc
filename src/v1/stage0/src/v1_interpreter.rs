@@ -7165,13 +7165,6 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
-                arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
-                    crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
-            }
-            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view"
-                lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
-                arm "v4_bridge.corpus_dependency_view_per_pr_substrate_refuse" { "corpus_dependency_view_per_pr_substrate_refuse" } =>
-                    crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse($ctx, &$args),
             }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
@@ -7269,10 +7262,6 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
-}
-
-pub fn corpus_dependency_view_bridge_fn_names() -> &'static [&'static str] {
-    CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS
 }
 
 pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
@@ -17912,12 +17901,101 @@ macro_rules! v1_builtin_dispatch {
     };
 }
 
+// ── OPAQUE-HOST-CALL REACH: OBSERVED AT THE ONE DISPATCH THAT CAN SEE IT ──────────────────
+//
+// WHY THIS EXISTS AND WHY IT IS HERE RATHER THAN AT THE FLOOR. `v2.workflow.required_floor`
+// classifies a completed-over-limit claim as `CompletedPastSafetyLimit` CARRYING a
+// `ClaimPreemptionReachability`, and `gunbc.v1_interpreter_opaque_host_call` already grounds
+// which operations are unpollable. But the seed had no way to say which arm a claim actually
+// REACHED, so the field was supplied by hand in `test.claim.preemption_reachability` and
+// discarded everywhere else -- the two populations the model distinguishes arrived at the floor
+// as one bucket. `eval_builtin_inner` is the single point every `free_call.*` arm passes
+// through, so recording reach here costs one site rather than one per arm, and no arm can be
+// added that silently escapes it.
+//
+// IT RECORDS, IT DOES NOT DECIDE. Nothing here compares a cost or blocks a claim: the floor
+// reads this to REPORT which population a crossing belongs to, and blocking behaviour is
+// unchanged. The roster is NOT duplicated in Rust -- the floor reads
+// `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
+// it, so the surface keeps one authority and an ungrounded surface refuses the run rather than
+// arming an empty one (an empty roster would report every crossing as pollable, which is the
+// reassuring direction and exactly the absorbing fallback DESIGN section 5 forbids).
+thread_local! {
+    static OPAQUE_HOST_CALL_SURFACE: std::cell::RefCell<Option<Vec<String>>> =
+        const { std::cell::RefCell::new(None) };
+    static OPAQUE_HOST_CALL_REACHED: std::cell::RefCell<Vec<String>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Arm the recorder with the grounded surface. `None` DISARMS it, which is not the same fact as
+/// an empty surface: a disarmed recorder answers `SurfaceUnarmed` and a caller that cannot tell
+/// those apart would read "no opaque call reached" out of "nobody told me what opaque means".
+pub fn set_opaque_host_call_surface(operations: Option<Vec<String>>) {
+    OPAQUE_HOST_CALL_SURFACE.with(|s| *s.borrow_mut() = operations);
+    OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow_mut().clear());
+}
+
+/// Clear the per-claim record. Called by the floor before each claim; the surface stays armed.
+pub fn reset_opaque_host_call_reach() {
+    OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow_mut().clear());
+}
+
+/// Which armed opaque operations this claim reached, in first-reach order, deduplicated.
+pub fn opaque_host_call_reach() -> OpaqueHostCallReach {
+    let armed = OPAQUE_HOST_CALL_SURFACE.with(|s| s.borrow().is_some());
+    if !armed {
+        return OpaqueHostCallReach::SurfaceUnarmed;
+    }
+    let reached = OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow().clone());
+    if reached.is_empty() {
+        OpaqueHostCallReach::CooperativelyPollable
+    } else {
+        OpaqueHostCallReach::OpaqueHostCallUnbounded {
+            operations: reached,
+        }
+    }
+}
+
+/// The seed's spelling of `v2.workflow.floor_terminal_ledger`'s `ClaimPreemptionReachability`,
+/// plus the third state the model does not need and the seed does: the surface was never armed.
+/// `SurfaceUnarmed` is a REFUSAL cause at the floor, never a synonym for `CooperativelyPollable`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpaqueHostCallReach {
+    SurfaceUnarmed,
+    CooperativelyPollable,
+    OpaqueHostCallUnbounded { operations: Vec<String> },
+}
+
+/// Record a dispatch if the arm identity is on the armed surface. The identity compared is the
+/// AUTHORED SPELLING `free_call.<name>`, which is what
+/// `gunbc.v1_interpreter_opaque_host_call` rosters -- not the bare builtin name, because the
+/// roster deliberately carries both the `free_call.*` and `cli_run.*` spellings of one arm and
+/// matching on the bare name would collide them.
+fn note_opaque_host_call_reach(name: &str) {
+    OPAQUE_HOST_CALL_SURFACE.with(|s| {
+        let borrowed = s.borrow();
+        let Some(surface) = borrowed.as_ref() else {
+            return;
+        };
+        let identity = format!("free_call.{name}");
+        if surface.iter().any(|op| op == &identity) {
+            OPAQUE_HOST_CALL_REACHED.with(|r| {
+                let mut reached = r.borrow_mut();
+                if !reached.iter().any(|o| o == &identity) {
+                    reached.push(identity);
+                }
+            });
+        }
+    });
+}
+
 fn eval_builtin_inner(
     name: &str,
     args: &[(Option<String>, Value)],
     ctx: &InterpContext,
 ) -> InterpResult<Option<Value>> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+    note_opaque_host_call_reach(name);
     v1_builtin_arms!(v1_builtin_dispatch, name, positional, ctx)
 }
 
@@ -18508,6 +18586,20 @@ pub fn eval_profile_enabled() -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PerformanceReceipt {
     pub subject_key: String,
+    /// WHICH PREEMPTION POPULATION THIS CLAIM BELONGS TO, OBSERVED RATHER THAN ASSUMED.
+    ///
+    /// `v2.workflow.required_floor` classifies a completed-over-limit claim as
+    /// `CompletedPastSafetyLimit` carrying a `ClaimPreemptionReachability`, because completion is
+    /// evidence of safety ONLY for a claim the poll could have stopped. For a claim whose cost
+    /// accrued inside an opaque host call no stride point falls inside it, so it completes
+    /// however far over the ceiling and the limit observed nothing. Until this field the seed
+    /// could not tell the two apart: the reachability was hand-supplied in
+    /// `test.claim.preemption_reachability` and every real crossing arrived at the floor as one
+    /// undifferentiated bucket, which is why nobody could say how many crossings were missed
+    /// interrupts and how many were near-line overshoots.
+    ///
+    /// IT REPORTS; IT DOES NOT GATE. Blocking behaviour is unchanged by this field's presence.
+    pub opaque_host_call_reach: OpaqueHostCallReach,
     pub work_shape: String,
     /// Wall-clock duration of the witness — the MEASUREMENT basis, and what every
     /// existing receipt column projects.
@@ -18628,6 +18720,7 @@ pub fn performance_receipt_from_witness(
         .unwrap_or(0);
     PerformanceReceipt {
         subject_key,
+        opaque_host_call_reach: opaque_host_call_reach(),
         work_shape: work_shape.to_string(),
         wall_nanos,
         cpu_nanos,
@@ -21317,6 +21410,110 @@ mod evaluator_step_work_measure_tests {
             "the claim that PAID for a shared fill and the claim that read it warm must carry \
              the same marginal step count, or the measure is a function of execution order: \
              filler={marginal_filler}, reader={marginal_reader}"
+        );
+    }
+}
+
+// ── OPAQUE-HOST-CALL REACH: THE EXECUTED EVIDENCE ────────────────────────────────────────────
+//
+// These are the discriminating controls for the recorder, not a demonstration that it runs. Each
+// one is RED under a specific wrong behaviour, and the third is the one that matters most: an
+// unarmed surface must NOT answer `CooperativelyPollable`, because that is the reassuring
+// direction — it would report every completed-over-ceiling crossing as an ordinary overshoot on
+// a run that never observed reachability at all.
+#[cfg(test)]
+mod opaque_host_call_reach_tests {
+    use super::*;
+
+    // The tests share one thread-local recorder, so each arms the surface it needs rather than
+    // inheriting whatever ran before it. Serial by construction within a thread; the arming call
+    // is itself the reset.
+    #[test]
+    fn a_listed_arm_is_recorded_and_an_unlisted_one_is_not() {
+        set_opaque_host_call_surface(Some(vec![
+            "free_call.compile_dag_rust_emit_check".to_string()
+        ]));
+        note_opaque_host_call_reach("parse_stage0_cargo_manifest_bins");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "an arm that is NOT on the surface must leave the claim in the pollable population"
+        );
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec!["free_call.compile_dag_rust_emit_check".to_string()],
+            },
+            "a listed arm must move the claim into the unbounded population, carrying the \
+             operation rather than only the fact"
+        );
+    }
+
+    // THE IDENTITY COMPARED IS THE AUTHORED SPELLING, NOT THE BARE NAME. The roster carries both
+    // `free_call.X` and `cli_run...X` for one arm; matching on the bare name would collide them
+    // and admit an arm the surface never listed.
+    #[test]
+    fn the_bare_builtin_name_does_not_match_a_free_call_identity() {
+        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "a surface listing the BARE name must not match the `free_call.` identity — the \
+             roster's spellings are distinct and collapsing them would admit unlisted arms"
+        );
+    }
+
+    // THE ONE THAT GUARDS THE REASSURING DIRECTION.
+    #[test]
+    fn an_unarmed_surface_is_unknown_and_never_the_benign_population() {
+        set_opaque_host_call_surface(None);
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::SurfaceUnarmed,
+            "an unarmed surface must report UNKNOWN; answering `CooperativelyPollable` would \
+             report every crossing on such a run as a benign overshoot"
+        );
+    }
+
+    // Reach is per claim: the floor clears it between claims and the surface survives that.
+    #[test]
+    fn reset_clears_the_reach_but_leaves_the_surface_armed() {
+        set_opaque_host_call_surface(Some(vec![
+            "free_call.compile_dag_rust_emit_check".to_string()
+        ]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        reset_opaque_host_call_reach();
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "after a reset the next claim starts clean — but still ARMED, or every later claim \
+             would report `SurfaceUnarmed`"
+        );
+    }
+
+    // A claim reaching two opaque arms reports both: naming only the first would under-state the
+    // surface a repair has to cover.
+    #[test]
+    fn multiple_reached_operations_are_all_carried_and_deduplicated() {
+        set_opaque_host_call_surface(Some(vec![
+            "free_call.compile_dag_rust_emit_check".to_string(),
+            "free_call.compile_dag_diagnostic_census".to_string(),
+        ]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        note_opaque_host_call_reach("compile_dag_diagnostic_census");
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec![
+                    "free_call.compile_dag_rust_emit_check".to_string(),
+                    "free_call.compile_dag_diagnostic_census".to_string(),
+                ],
+            },
+            "both operations must appear, in first-reach order, without the repeat"
         );
     }
 }
