@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.trigger_names_route_while_capability_remains_dead
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data trigger_names_route_while_capability_remains_dead: RecurringFailureMode = RecurringFailureMode {
+  identity: "trigger_names_route_while_capability_remains_dead" as NonEmptyStr,
+
+  receipts: [
+    "**a trigger names a route while the capability remains dead** (a loss is stated at capability grain, but its retirement trigger names one call, predicate or pipeline route that is merely upstream of that capability; the route can already exist while the lost judgment is still absent, so the trigger retires the row on a false reading). ",
+
+    "This is DESIGN 4b(3)'s trigger hazard observed in the tree rather than restated from doctrine: a trigger naming less than the capability it restores becomes true while the capability remains false. ",
+
+    "**MEASURED SPECIMEN, 2026-09-03, immediately before gunbc#10226 landed.** `v2.workflow.floor_expected_red` chunk_23 carried a missing compiler wall: a direct call accepted `FreeMonoid<Node>` where `FreeMonoid<NormalizedTree>` was declared because no child `DeclaredTypeObligation` was constructed for the generic argument. Its removal trigger named `container_element_nominal_brand_mismatch` reaching the direct-call-argument position. ",
+
+    "That trigger was already satisfied on main: `direct_call_arg_type_mismatch` called `container_element_nominal_brand_mismatch` at the direct-call seam, and that helper delegated to `nominal_call_arg_brand_mismatch` on the elements. Yet the calibrated mismatch still compiled clean when unrelated inherited `UnresolvedType` diagnostics were removed. The route existed and the capability did not. ",
+
+    "The predicate was re-run against current main 12f02154cdb immediately before marking gunbc#10226 ready: the call remained present, `PositionGenericTypeArgument` still had no obligation construction site, and the invalid generic-container call remained the class's admitted specimen. Thus the finding is not inferred from a stale branch diff. ",
+
+    "The corrected capability trigger was: construct a child obligation at `PositionGenericTypeArgument` and decide it through the shared `declared_type_inhabitance` relation. gunbc#10226 discharged that trigger through `v1.compiler.infer` `direct_call_generic_type_argument_inhabitance_diags`; the expected-red admission in `v2.workflow.floor_expected_red` chunk_23 was deleted and the witness stayed enrolled as a permanent regression control, tightened in `test.claim.record_literal_call_arg_handoff_witness_test` `record_literal_container_element_mismatch_at_call_arg_still_refuses` to count blocking `DeclaredTypeNotInhabited` rows whose rendered subject is `generic type argument`, so the old inherited `UnresolvedType` refusal cannot satisfy it. ",
+
+    "**RECOGNITION RULE: compare the grammatical grain of the loss sentence with the grammatical grain of the trigger sentence, then execute or inspect the trigger predicate against the unrepaired tree.** If the loss names a capability or judgment while the trigger names a call, route, phase or helper, ask whether that named artifact is already present. If it is present while the discriminating RED still fails, the trigger names reachability rather than restoration and must not retire the row. ",
+
+    "The discriminator is stronger than searching for the trigger's words: evaluate the old trigger exactly as written on the tree where the capability is known absent. A true trigger beside the still-authorable failing capability probe is the class. ",
+
+    "**BOUNDARY.** This is not `restoration_promise_names_a_route_that_does_not_exist`: that class promises a future route absent from the tree and can wait forever; this class names a route already present and can retire immediately. It is not `reachability_read_as_occupancy` either: that class mistakes a reachable site for an occupied measured population, while this one gives an existing route authority to dissolve a separately stated lifecycle obligation. ",
+
+    "**RUNG: 1 (mitigatable)** — a reviewer can compare loss and trigger grain and run the trigger predicate against the unrepaired tree, which is how this specimen was caught. ",
+
+    "**CEILING: 3 (mechanically preventable)** — triggers and losses become typed references to the same capability identity, and retirement requires the capability's discriminating witness to hold at its named position; a route identity cannot inhabit a capability trigger by spelling alone. ",
+
+    "**NEXT-RUNG TRIGGER:** the recurring-failure carrier models loss subject and dissolution subject as typed identities at one declared grain, and the retirement fold rejects a trigger whose subject differs from the capability its row says is absent.",
+  ],
+
+  evidence: [],
+}
