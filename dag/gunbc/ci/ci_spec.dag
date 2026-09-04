@@ -1790,6 +1790,19 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
   ]
 }
 
+// THE MISSING DECLARATION REFUSES; IT DOES NOT COMMIT WITHOUT ONE. The trailer arm below previously
+// read `if [ -s <path> ]; then cat ...; fi`, which omitted the repair trailer whenever the file was
+// absent or empty and committed anyway. That is the exact shape gunbc.ledger_row_coherence
+// ledger_repair_judged_token exists to prevent, reappearing one layer down in shell: a head whose
+// declaration step silently produced nothing would commit with no trailer, and a later reader
+// counting repairs would see zero repairs over an unstated population and read a COVERAGE COLLAPSE
+// as a FIXED DEFECT. The module refuses to let a repair go unrecorded and the shell was still free
+// to let the record itself go missing.
+//
+// EMPTY REFUSES AS WELL AS ABSENT, deliberately rather than incidentally: a run that judged the
+// ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
+// judged. The denominator is zero, which is precisely the state that must never be mistaken for a
+// clean numerator.
 fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
@@ -1815,7 +1828,17 @@ fn ci_heal_shell_lines() -> List<String> {
             "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
             "  HEAL_MESSAGE_FILE=$(mktemp)",
             "  printf '%s\\n' \"chore: regenerate drifted generated artifacts (ci auto-heal)\" > \"$HEAL_MESSAGE_FILE\"",
-            concat(concat("  if [ -s \"", heal_repair_declaration_artifact_path), concat("\" ]; then cat \"", concat(heal_repair_declaration_artifact_path, "\" >> \"$HEAL_MESSAGE_FILE\"; fi"))),
+            concat(
+              concat("  if [ ! -s \"", heal_repair_declaration_artifact_path),
+              concat(
+                "\" ]; then echo \"::error::HealRepairDeclarationMissing path=",
+                concat(
+                  heal_repair_declaration_artifact_path,
+                  " -- the declaration step did not produce a judgment for this head, so a commit here would record zero repairs over an unstated population\" >&2; exit 1; fi"
+                )
+              )
+            ),
+            concat(concat("  cat \"", heal_repair_declaration_artifact_path), "\" >> \"$HEAL_MESSAGE_FILE\""),
             "  git commit --no-verify -F \"$HEAL_MESSAGE_FILE\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
             "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",

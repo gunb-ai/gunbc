@@ -604,7 +604,8 @@ jobs:
             CHANGED_ARTIFACTS=$(git diff --cached --name-only)
             HEAL_MESSAGE_FILE=$(mktemp)
             printf '%s\n' "chore: regenerate drifted generated artifacts (ci auto-heal)" > "$HEAL_MESSAGE_FILE"
-            if [ -s "target/heal-repair-declaration.txt" ]; then cat "target/heal-repair-declaration.txt" >> "$HEAL_MESSAGE_FILE"; fi
+            if [ ! -s "target/heal-repair-declaration.txt" ]; then echo "::error::HealRepairDeclarationMissing path=target/heal-repair-declaration.txt -- the declaration step did not produce a judgment for this head, so a commit here would record zero repairs over an unstated population" >&2; exit 1; fi
+            cat "target/heal-repair-declaration.txt" >> "$HEAL_MESSAGE_FILE"
             git commit --no-verify -F "$HEAL_MESSAGE_FILE"
             HEALED_HEAD=$(git rev-parse HEAD)
             git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
