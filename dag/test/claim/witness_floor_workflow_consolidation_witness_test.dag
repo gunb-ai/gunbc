@@ -1,6 +1,6 @@
 module test.claim.witness_floor_workflow_consolidation_witness_test
 
-import std.types { Bool, String }
+import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs }
@@ -305,12 +305,20 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // FABRIC_EVIDENCE roster binding, because a lane that gates without running is the fail-open a
 // skipped required check produces. The row goes green again only together with the drop's
 // retirement, which is a measured wall and not a pull request.
-test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
-  !any(xs: witness_floor_lane_job_ids(), predicate: fn(job_id) {
+// POSITIVE-CONTROL SEAM: the countable must author RED when a deleted lane is supplied. Without
+// this input boundary, a planned/pass receipt would not distinguish a live absence wall from a
+// vacuous projection that always returned an empty list.
+fn deleted_lane_job_ids_are_absent(job_ids: List<String>) -> Bool {
+  !any(xs: job_ids, predicate: fn(job_id) {
       job_id == "fabric-evidence"
         || job_id == "rust-unit-tests"
         || job_id == "emit-copy-qualification-battery"
     })
+}
+
+test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
+  deleted_lane_job_ids_are_absent(job_ids: witness_floor_lane_job_ids())
+    && !deleted_lane_job_ids_are_absent(job_ids: ["fabric-evidence"])
     && !any(xs: non_empty_to_list(xs: required_lanes_roster()), predicate: fn(lane) {
       lane.var_name == "FABRIC_EVIDENCE"
     })
