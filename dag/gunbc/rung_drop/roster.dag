@@ -39,6 +39,9 @@ import gunbc.rung_drop.lens_enforcement_censuses { lens_enforcement_censuses }
 import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
 import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
 import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
+import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
+import gunbc.rung_drop.emit_copy_qualification_without_a_consumer { emit_copy_qualification_without_a_consumer }
+import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
 import gunbc.rung_drop.spark_role_scoped_retirement_production_root { spark_role_scoped_retirement_production_root }
 import gunbc.rung_drop.builtin_signature_arity_pairing_fabricates { builtin_signature_arity_pairing_fabricates }
 import gunbc.rung_drop.concat_binary_signature_exempt_from_arg_binding { concat_binary_signature_exempt_from_arg_binding }
@@ -49,6 +52,7 @@ import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_ga
 import gunbc.rung_drop.spark_serving_fleet_global_configuration_drop { spark_serving_fleet_global_configuration_drop }
 import gunbc.rung_drop.witness_deferral_freeze_forward_rule_rung_drop { witness_deferral_freeze_forward_rule_rung_drop }
 import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
+import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_debt_straddling_produced_decl }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -71,6 +75,9 @@ data rung_drop_roster: List<RungDrop> = [
   required_gate_bankruptcy,
   text_boundary_identity_wall,
   fabric_evidence_gating,
+  rust_unit_tests_off_the_merge_path,
+  emit_copy_qualification_without_a_consumer,
+  floor_cost_high_cpu_withheld,
   spark_role_scoped_retirement_production_root,
   builtin_signature_arity_pairing_fabricates,
   concat_binary_signature_exempt_from_arg_binding,
@@ -81,6 +88,7 @@ data rung_drop_roster: List<RungDrop> = [
   spark_serving_fleet_global_configuration_drop,
   witness_deferral_freeze_forward_rule_rung_drop,
   deleted_cadence_reference_drop,
+  floor_cost_debt_straddling_produced_decl,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
