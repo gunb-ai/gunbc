@@ -3433,23 +3433,6 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
         .clone()
 }
 
-/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
-/// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
-pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
-    let roots = default_source_roots();
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let index = build_module_path_index(&roots);
-    let expected = index
-        .iter()
-        .filter(|(module_path, rel_path)| {
-            !excludes
-                .iter()
-                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
-        })
-        .count();
-    loaded >= expected
-}
-
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
     let synthetic = "module gunbc.ci_layer_roots\n\n\
          data witness_layer_roots: List<String> = [\"alpha_layer_root\", \"beta_layer_root\", \"gamma_layer_root\"]\n";
@@ -21849,6 +21832,37 @@ fn explicit_witness_admission_keys() -> &'static [String] {
     })
 }
 
+/// The `(entry, function)` pairs admitted with cadence `QuarantineProbeExpectRed` -- the rows whose
+/// admission says DO NOT SCHEDULE THIS PER-PR.
+///
+/// Keyed on the CADENCE, not on "carries a row in the admission authority": a witness admitted
+/// under `bin_wet`, `SubstrateLongLaneRow` or any other head is a different obligation and must
+/// still be planned, and still red the floor, when a diff touches it.
+pub(crate) fn quarantine_probe_admission_pairs() -> Vec<(String, String)> {
+    static PAIRS: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    PAIRS
+        .get_or_init(|| {
+            let content = std::fs::read_to_string(
+                workspace_root().join(EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL),
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "quarantine probe admission: failed to read {}: {e}",
+                    EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL
+                )
+            });
+            crate::cli_run::witness_gates::quarantine_probe_admission_keys_from_source(
+                EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL,
+                &content,
+            )
+            .iter()
+            .filter_map(|key| key.split_once("::"))
+            .map(|(entry, function)| (entry.to_string(), function.to_string()))
+            .collect()
+        })
+        .clone()
+}
+
 /// The same keys split back into `(entry, function)` pairs — the grain the exclusion is decided
 /// at. An empty function is the declared file-grain form and is expanded upstream, so it never
 /// reaches here as a pair.
@@ -38550,13 +38564,13 @@ pub fn run_floor_prepared_toll_receipt() {
 
     let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         None,
     )
     .expect("disk parse");
     let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         Some(&inventory),
     )
     .expect("inventory parse");

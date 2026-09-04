@@ -46,8 +46,10 @@ import v2.std.node {
 import v2.std.text { String }
 
 // Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a
-// repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide
-// frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL
+// repository-wide census. fn_arrow_decl_facts_live(pool_roots:) now answers over the roots its
+// caller names, so this carrier's scope is exactly the subject each entry point declares and no
+// longer whatever closure happened to be resolved; repository-wide frequency is still unknown
+// because naming the corpus roots is a per-caller choice, not this carrier's claim. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL
 // skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker
 // only — never target-model proxy, never declaration-name recognition). Origin vocabulary:
 // ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only —
@@ -358,9 +360,12 @@ fn derived_production_qualification_mint_sites_from_facts(
   )
 }
 
-fn derived_production_qualification_mint_sites_live() -> List<DerivedProductionQualificationMintSiteRow> {
+fn derived_production_qualification_mint_sites_live(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> List<DerivedProductionQualificationMintSiteRow> {
   derived_production_qualification_mint_sites_from_facts(
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: pool_files)
   )
 }
 
@@ -408,15 +413,27 @@ fn planted_fixture_origin_mint_site_count() -> Int {
   )
 }
 
-fn known_fixture_origin_mint_surface_count_in_scope() -> Int {
+fn known_fixture_origin_mint_surface_count_in_scope(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> Int {
   count_derived_fixture_origin_mint_sites(
-    sites: derived_production_qualification_mint_sites_live()
+    sites: derived_production_qualification_mint_sites_live(
+      pool_roots: pool_roots,
+      pool_files: pool_files
+    )
   )
 }
 
-fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
+fn ingest_mint_surface_discovered_in_live_scope(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> Bool {
   any(
-    xs: derived_production_qualification_mint_sites_live(),
+    xs: derived_production_qualification_mint_sites_live(
+      pool_roots: pool_roots,
+      pool_files: pool_files
+    ),
     predicate: fn(row) {
       string_contains(s: row.qualified_name, pattern: ingest_mint_entry_name_suffix)
         && emission_qualification_eq(
@@ -552,10 +569,15 @@ fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
 }
 
 fn structural_red_control_live_fixture_mint_site_discovered(
+  pool_roots: List<String>,
+  pool_files: List<String>,
   live_qualified_name: String
 ) -> Bool {
   any(
-    xs: derived_production_qualification_mint_sites_live(),
+    xs: derived_production_qualification_mint_sites_live(
+      pool_roots: pool_roots,
+      pool_files: pool_files
+    ),
     predicate: fn(row) {
       string_eq(a: row.qualified_name, b: live_qualified_name)
         && production_qualification_origin_eq(
@@ -570,8 +592,11 @@ fn structural_red_control_live_fixture_mint_site_discovered(
   )
 }
 
-fn production_qualification_origin_probe_admission_holds() -> Bool {
+fn production_qualification_origin_probe_admission_holds(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> Bool {
   production_qualification_origin_probe_admission_holds_for_decls(
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: pool_files)
   )
 }
