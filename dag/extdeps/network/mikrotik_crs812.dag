@@ -238,7 +238,7 @@ data crs812_dimensions_datasheet: Crs812Dimensions = Crs812Dimensions {
 // A correct Hour type requires adding a new Scale arm, which is a load-bearing std change and
 // its own PR. The figure is therefore carried as a bare Int with the unit in the field name
 // (mtbf_hours). Same class as feature:extdeps-foot-length-scale in extdeps.network.arista_7050s_52.
-// See crs812_mtbf_gap in the open-gaps list below.
+// See crs812_tracked_gaps below for the dissolution condition.
 type Crs812EnvironmentalFacts {
   operating_temp_min: Celsius
   operating_temp_max: Celsius
