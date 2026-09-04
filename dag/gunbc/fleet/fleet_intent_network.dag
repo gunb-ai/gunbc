@@ -11,6 +11,7 @@ import product.network_topology {
   ContainerBridgeSecondary,
   TailscaleEndpoint,
   LanGateway,
+  FabricationAppliance,
   Lan,
   DockerBridge,
   TailscaleOverlay,
@@ -245,6 +246,19 @@ data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+// THE PRINTER IS AN APPLIANCE ON THE OPERATOR LAN, NOT A HOST. `host` is absent because no
+// HostIdentity names it and inventing one would be a second name for printer_01. Its reachability
+// zone is HostLan, which network_reachability already says ContainerRunner cannot reach -- so every
+// route from this repo to this address is brokered through a host on the segment, by the model and
+// not by a workaround.
+data printer_01_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "printer-01-lan",
+  host: none,
+  address: "192.168.1.234",
+  role: FabricationAppliance,
+  locality: Lan,
+}
+
 data fleet_intent_network: NetworkTopology = NetworkTopology {
   tailnet_domain: Present { value: "tailecbe08.ts.net" },
   segments: [
@@ -266,6 +280,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv4_bmc_endpoint,
     srv1_tailscale_endpoint,
     srv2_tailscale_endpoint,
+    printer_01_lan_endpoint,
   ],
 }
 

@@ -1,0 +1,54 @@
+module test.claim.ams_lite_feed_path_witness_test
+
+import std.types { Bool }
+import extdeps.printing.fdm {
+  Tpu, Tpe, Pva, Pla, Abs, FiberReinforcedPolymer,
+  FeedPathExcluded, FeedPathUnstated,
+  ExcludedAsFlexible, ExcludedAsMoistureAbsorbent, ExcludedAsHighModulusOrBrittle,
+}
+import extdeps.printing.bambu_lab_ams_lite { ams_lite_feeds }
+import extdeps.printing.bambu_lab_a1_mini { a1_mini_material_suitability }
+import extdeps.printing.fdm { material_suitability, MaterialSuitabilityLookup }
+
+// THE DISCRIMINATING ROW. The machine grades Tpu ideal and the feed path excludes it. A model that
+// collapsed the two facts into one grade cannot make this witness green, which is the whole reason
+// FeedPathSuitability is a second type rather than a reuse of MaterialSuitability.
+test fn w_tpu_is_machine_ideal_and_feed_path_excluded() -> Bool {
+  let feed = match ams_lite_feeds(material: Tpu) {
+    FeedPathExcluded { cause: c } => c == ExcludedAsFlexible
+    FeedPathUnstated => false
+    _ => false
+  }
+  feed
+}
+
+test fn w_each_excluded_material_carries_its_own_stated_cause() -> Bool {
+  let tpe = match ams_lite_feeds(material: Tpe) {
+    FeedPathExcluded { cause: c } => c == ExcludedAsFlexible
+    _ => false
+  }
+  let pva = match ams_lite_feeds(material: Pva) {
+    FeedPathExcluded { cause: c } => c == ExcludedAsMoistureAbsorbent
+    _ => false
+  }
+  let cf = match ams_lite_feeds(material: FiberReinforcedPolymer) {
+    FeedPathExcluded { cause: c } => c == ExcludedAsHighModulusOrBrittle
+    _ => false
+  }
+  tpe && pva && cf
+}
+
+// SILENCE IS NOT PERMISSION. Pla is not in the rows because no quoted sentence admits it, and Abs is
+// not in the rows because the manual does not mention it. Both must read Unstated -- if either ever
+// reads admitted, a row was authored without a citation.
+test fn w_an_unmentioned_material_is_unstated_not_admitted() -> Bool {
+  let pla = match ams_lite_feeds(material: Pla) {
+    FeedPathUnstated => true
+    _ => false
+  }
+  let abs = match ams_lite_feeds(material: Abs) {
+    FeedPathUnstated => true
+    _ => false
+  }
+  pla && abs
+}

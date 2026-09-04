@@ -33,6 +33,7 @@ type NetworkAttachmentRole =
   | ContainerBridgeSecondary
   | TailscaleEndpoint
   | LanGateway
+  | FabricationAppliance
 
 type NetworkReachabilityZone =
     ContainerRunner

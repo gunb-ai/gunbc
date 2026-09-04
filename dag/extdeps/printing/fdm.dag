@@ -148,6 +148,7 @@ type FilamentMaterial
   = Pla
   | Petg
   | Tpu
+  | Tpe
   | Pva
   | Abs
   | Asa
@@ -169,6 +170,51 @@ type MaterialSuitability
   = SuitabilityIdeal
   | SuitabilityNotRecommended
   | SuitabilityUnstated
+
+// WHETHER A FEED MECHANISM CAN CONVEY A MATERIAL, WHICH IS NOT WHETHER THE MACHINE CAN PRINT IT.
+//
+// These two grades look alike and are not the same fact, so they are deliberately two types rather
+// than one. The A1 mini's own vendor table grades Tpu and Pva SuitabilityIdeal -- the machine prints
+// both, fed from the external spool holder -- while the AMS Lite manual excludes both from the AMS
+// Lite path. Collapsing feed-path exclusion into MaterialSuitabilityNotRecommended would report a
+// material the vendor endorses as one the machine cannot print, and would lose which of the two
+// facts a consumer is actually reading. DESIGN section 3: a materially different contract needs a
+// materially different name.
+//
+// THE EXCLUSION CARRIES ITS STATED CAUSE, because the causes are not interchangeable. A flexible
+// filament is excluded by the geometry of the path; an absorbent one by what sitting in the path
+// does to the material; a high-modulus or brittle one by fracture and wear. A consumer choosing a
+// substitute material needs the cause, not merely the refusal -- and a blocklist of product names
+// would be a second naming scheme for properties the material already has.
+type FeedPathExclusionCause
+  = ExcludedAsFlexible
+  | ExcludedAsMoistureAbsorbent
+  | ExcludedAsHighModulusOrBrittle
+
+// The third arm is the same silence-preserving arm MaterialSuitability carries, and for the same
+// reason: a material the manual does not mention is neither admitted nor excluded by it.
+type FeedPathSuitability
+  = FeedPathAdmitted
+  | FeedPathExcluded { cause: FeedPathExclusionCause }
+  | FeedPathUnstated
+
+type FeedPathSuitabilityRow sole_constructor {
+  material: FilamentMaterial
+  suitability: FeedPathSuitability
+}
+
+fn feed_path_suitability_row(material: FilamentMaterial, suitability: FeedPathSuitability) -> FeedPathSuitabilityRow {
+  FeedPathSuitabilityRow { material: material, suitability: suitability }
+}
+
+// LOOKUP DEFAULTS TO UNSTATED, NEVER TO ADMITTED. An unlisted material means the manual is silent,
+// and reading silence as permission is the fail-open arm DESIGN section 5 forbids: it would feed a
+// material the vendor never cleared through a mechanism the vendor documents exclusions for.
+fn feed_path_suitability(rows: List<FeedPathSuitabilityRow>, material: FilamentMaterial) -> FeedPathSuitability {
+  fold(rows, init: FeedPathUnstated, f: fn(acc, r) {
+    if filament_material_eq(a: r.material, b: material) { r.suitability } else { acc }
+  })
+}
 
 type MaterialSuitabilityRow sole_constructor {
   material: FilamentMaterial

@@ -97,6 +97,7 @@ data chassis_srv4: PhysicalAssetIdentity = "chassis-srv4" as PhysicalAssetIdenti
 data chassis_srv5_placeholder: PhysicalAssetIdentity = "chassis-srv5-placeholder" as PhysicalAssetIdentity
 data chassis_srv6_placeholder: PhysicalAssetIdentity = "chassis-srv6-placeholder" as PhysicalAssetIdentity
 data switch_01: PhysicalAssetIdentity = "switch-01" as PhysicalAssetIdentity
+data printer_01: PhysicalAssetIdentity = "printer-01" as PhysicalAssetIdentity
 data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
 data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
 
@@ -147,6 +148,22 @@ data pdu_01_asset: PhysicalAsset = PhysicalAsset {
   catalog: DeclarationRef {
     module_path: "extdeps.power.eaton_tripp_lite",
     decl_name: "eaton_tripp_lite_rs_1215_family_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+// THE FIRST PRINTER, PHYSICALLY RECEIVED AND ON THE OPERATOR LAN. physical_serial stays `none`
+// because a serial CORROBORATES an individuation, it does not establish one: this machine is
+// individuated by being the sole BBL FTPS responder on the operator segment, and that observation
+// lives with the endpoint row rather than here. Filling a serial later adds corroboration and
+// changes no admission.
+data printer_01_asset: PhysicalAsset = PhysicalAsset {
+  identity: printer_01,
+  catalog: DeclarationRef {
+    module_path: "extdeps.printing.bambu_lab_a1_mini",
+    decl_name: "a1_mini_build_envelope",
     field: WholeDeclaration,
   },
   physical_serial: none,
