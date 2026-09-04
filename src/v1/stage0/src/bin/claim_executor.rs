@@ -36,6 +36,12 @@ struct VersionedRequiredCiMeasurementReceipt {
     receipt: RequiredCiMeasurementReceipt,
 }
 
+fn completed_required_ci_measurement_receipt(
+    blockers: Vec<RequiredCiBlocker>,
+) -> RequiredCiMeasurementReceipt {
+    RequiredCiMeasurementReceipt::MeasurementCompleted { blockers }
+}
+
 fn write_required_ci_measurement_receipt(
     path: &str,
     receipt: RequiredCiMeasurementReceipt,
@@ -515,7 +521,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     if required_ci_mode {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
-        let mut measurement_unreached: Option<String> = None;
         let mut ran: Vec<&'static str> = Vec::new();
         // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
         // the index the parse phase built rather than acquiring the corpus again; holding it
@@ -835,6 +840,60 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("generated-artifact");
         }
 
+        // PHASE 2b — regen SECOND generation: does the emit reproduce itself.
+        //
+        // WHAT THIS PHASE CAN AND CANNOT SEE, stated here because the honest claim is much
+        // narrower than "the fixed point is now checked". When the first generation EQUALS the
+        // committed mirrors, this pass is green by construction: the tree it re-emits from is the
+        // one that produced the first generation, so only a NONDETERMINISTIC emit can separate
+        // them. It therefore catches emit nondeterminism and nothing else. In particular it
+        // cannot see a self-consistently wrong seed -- a producer built from a wrong mirror emits
+        // that same wrong mirror and every generation agrees -- and enrolling it must not be read
+        // as closing that gap. `gunbc.rung_drop` `floor_cut_regen_second_generation_agreement`
+        // states the same bound: a repeatability comparison sees a GENERATION DISAGREEMENT, never
+        // deterministic wrongness.
+        //
+        // IT IS ENROLLED ANYWAY BECAUSE IT IS NEARLY FREE AND ITS RED IS REAL. One extra emit, no
+        // install and no rebuild -- the expensive variant that installs the generation and
+        // rebuilds the producer buys only BUILD nondeterminism on top, at the price of a crate
+        // build per required run, and is deliberately not what this enrols.
+        if required_ci_phase_selected(RequiredCiPhase::RegenFixedPoint, required_ci_lane) {
+            eprintln!("required-ci: phase regen-fixed-point (second generation vs first)");
+            match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None) {
+                Ok(outcome) => {
+                    // `unmeasured` rather than a plausible default: a None here means the pass
+                    // built the wrong receipt variant, which is a defect to report and not a
+                    // verdict to substitute.
+                    let fpe = outcome
+                        .receipt
+                        .fixed_point_equal()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unmeasured".to_string());
+                    eprintln!("required-ci: regen-fixed-point fixed_point_equal={fpe}");
+                    for failure in &outcome.failures {
+                        eprintln!("required-ci: regen-fixed-point FAIL {failure}");
+                    }
+                    if !outcome.failures.is_empty() {
+                        phase_failures.push("regen-fixed-point".to_string());
+                    } else if outcome.receipt.fixed_point_equal() != Some(true) {
+                        eprintln!(
+                            "required-ci: regen-fixed-point REFUSED — no fixed_point_equal was                              measured, so this run has no second-generation verdict to report"
+                        );
+                        phase_failures.push("regen-fixed-point (unmeasured)".to_string());
+                    }
+                }
+                // A PASS THAT CANNOT RUN REFUSES RATHER THAN SKIPS. The reachable causes are an
+                // absent or unparseable prior receipt and a prior measured at a different commit,
+                // and every one of them means this run holds NO second-generation evidence.
+                // Treating "could not check" as "checked" is the absorbing fallback exactly.
+                Err(e) => {
+                    eprintln!("required-ci: regen-fixed-point REFUSED {e}");
+                    phase_failures.push(format!("regen-fixed-point ({e})"));
+                }
+            }
+            ran.push("regen-fixed-point");
+        }
+
         // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
         // the requesting session, after the 2026-08-23 break reached main and stayed for
         // hours with every required phase green: the required run parses src/v1 .dag,
@@ -877,7 +936,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 Err(e) => {
                     eprintln!("required-ci: floor refused: {e}");
                     phase_failures.push(format!("floor refused: {e}"));
-                    measurement_unreached = Some(e);
                 }
             }
             ran.push("floor");
@@ -947,12 +1005,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                     });
                 }
             }
-            let receipt = match measurement_unreached {
-                Some(cause) => RequiredCiMeasurementReceipt::MeasurementUnreached { cause },
-                None => RequiredCiMeasurementReceipt::MeasurementCompleted {
-                    blockers: measurement_blockers,
-                },
-            };
+            // Reaching this branch means the measurement process returned after running every
+            // selected phase. A phase refusal is therefore a completed measurement carrying
+            // blockers, never MeasurementUnreached. The latter is sealed by the workflow's
+            // outer finalizer only when this process cannot return a receipt at all (for example,
+            // a failed instrument build or a killed process).
+            let receipt = completed_required_ci_measurement_receipt(measurement_blockers);
             if let Err(e) = write_required_ci_measurement_receipt(&path, receipt) {
                 eprintln!("required-ci: measurement REFUSED {e}");
                 return Err(ExitCode::from(1));
@@ -1408,6 +1466,7 @@ enum RequiredCiPhase {
     NamespaceWaveAdmission,
     Regen,
     GeneratedArtifact,
+    RegenFixedPoint,
     Floor,
 }
 
@@ -1416,6 +1475,7 @@ impl RequiredCiPhase {
         match self {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
+            RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
@@ -1438,19 +1498,25 @@ impl RequiredCiPhase {
             RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
+            // THE FIXED POINT RIDES WITH REGEN BY NECESSITY, NOT PREFERENCE. It reads the receipt
+            // the regen phase wrote at `target/stage0-regen-receipt.json`, and target/ does not
+            // survive checkout, so a lane boundary between them would leave it with no prior
+            // measurement to reference and nothing to compare.
+            RequiredCiPhase::RegenFixedPoint => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-// THE REQUIRED GATE IS FIVE PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
+// THE REQUIRED GATE IS SIX PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main. The other three removed phases remain outside required CI and inside the declared drop.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
     RequiredCiPhase::GeneratedArtifact,
+    RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
 ];
 
@@ -1463,11 +1529,12 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
     "ParsePhase",
     "NamespaceWaveAdmissionPhase",
     "RegenPhase",
     "GeneratedArtifactPhase",
+    "RegenFixedPointPhase",
     "FloorPhase",
 ];
 
@@ -1980,6 +2047,25 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_returned_subject_refusal_is_a_completed_measurement() {
+        let blocker = RequiredCiBlocker {
+            phase: "floor".to_string(),
+            identity: "fixture.subject_refusal".to_string(),
+            cause: "type mismatch".to_string(),
+        };
+        assert_eq!(
+            completed_required_ci_measurement_receipt(vec![blocker]),
+            RequiredCiMeasurementReceipt::MeasurementCompleted {
+                blockers: vec![RequiredCiBlocker {
+                    phase: "floor".to_string(),
+                    identity: "fixture.subject_refusal".to_string(),
+                    cause: "type mismatch".to_string(),
+                }],
+            }
+        );
+    }
 
     #[test]
     fn blocking_measurement_round_trips_with_the_planted_identity_and_refuses() {

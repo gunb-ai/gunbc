@@ -976,38 +976,128 @@ pub struct TransitionAdmission {
 // reads a different constant -- the declarations moved beneath their readers rather than away from
 // them. The four test.claim.cooling_qualification_witness rows are the same move seen from a
 // witness that reads cooler_srv3 through the same namespace.
-/// TWENTY-EIGHTH DISSOLUTION (2026-09-04, gunbc#10355). All 19 `gunbc#10344 asset-identity
-/// extraction` rows are deleted. #10344 merged as 61274d0eb08 and is this branch's base, so the
-/// standing prior applies -- an incoming row has already landed -- and the join confirms it for
-/// every row: each spelling is DECLARED in the module the row names as its target.
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04, gunbc#10358), PAID BECAUSE THIS CHANGE TOUCHES THE
+/// ROSTER. The nineteen `gunbc#10344` asset-identity extraction rows are deleted.
 ///
-/// THE FIRST PASS OF THAT JOIN REPORTED FOUR UNBOUND AND WAS WRONG, in a new way worth recording
-/// because it fails toward KEEPING a stale row rather than deleting a live one. It asked whether
-/// the row's module imports the spelling DIRECTLY FROM the target, and answered no for the four
-/// `cooler_srv3` rows in test.claim.cooling_qualification_witness, which imports that spelling from
-/// gunbc.fleet_physical_inventory. But fleet_physical_inventory imports it from
-/// gunbc.fleet_asset_identity, which is where `data cooler_srv3` is declared, so the witness's
-/// binding resolves THROUGH the re-export to a declaration the target owns. A direct-import test
-/// answers a question about the IMPORT PATH; the wall's `target` is a question about the OWNING
-/// MODULE, and those differ exactly when a name is re-exported.
+/// THE PROOF IS THE GROUPED JOIN, NOT ONE SPECIMEN. An earlier draft of this entry cited a single
+/// row -- `gunbc.fleet_physical_inventory` importing `chassis_srv1` -- and concluded that all
+/// nineteen were consumed. That implication established one row and asserted nineteen, which is the
+/// same overbroad shape this ledger exists to refuse. The actual partition at the base is:
 ///
-/// SO THE JOIN IS: does the spelling's DECLARING module equal the target. Re-run that way, 19/19
-/// bind and none is open.
+///   15  gunbc.fleet_physical_inventory        -> gunbc.fleet_asset_identity
+///    4  test.claim.cooling_qualification_witness -> gunbc.fleet_asset_identity
 ///
-/// IT IS THE SECOND TIME THIS BRANCH GUESSED A RESOLUTION STEP INSTEAD OF READING IT. The earlier
-/// one resolved a MODULE to a FILE by transliterating its module path, which put `tools.ci_gates`
-/// at a `dag/tools/ci_gates.dag` that does not exist -- it declares itself in
-/// `dag/gunbc/instruments/ci_gates.dag` -- and an empty read is indistinguishable from an absent
-/// import. This one resolved a SPELLING to its OWNER by looking at the import path. Different
-/// layers, one shape: a step that is decidable from the tree was inferred from a name instead, and
-/// both failures were silent and plausible. The rule both produce is the same -- index the corpus
-/// and read the declaration.
+/// A COUNT HERE IS OCCURRENCES, NOT CONSTANTS, and saying it the other way is how the previous
+/// draft of this paragraph went wrong a second time. The admission key is
+/// `(module, in_declaration, spelling)`, so one constant referenced from two declarations is two
+/// rows. The fifteen are 10 DISTINCT SPELLINGS ACROSS 8 DECLARATIONS, not fifteen constants and not
+/// "`chassis_srv1` and its twelve siblings": `cooler_srv3` alone contributes three rows
+/// (`installed_cooler_containments`, `installed_cooling_realizations`, `srv3_cooler_asset`) and
+/// `chassis_srv1` two (`fleet_host_spatial_facts`, `srv1_chassis_asset`). Main's
+/// `fleet_physical_inventory` imports each of those ten names from `gunbc.fleet_asset_identity`, so
+/// every admitted spelling binds to the admitted target in a singleton set. The label's own
+/// "13 PhysicalAssetIdentity constants" is the MOVED POPULATION, not this cohort: all ten admitted
+/// spellings are among the thirteen, and the three that never appear here -- `ams_01`,
+/// `pi_controller`, `printer_01` -- moved with the others but are referenced by no admitted
+/// occurrence. So 13, 10 and 15 count three different things (constants moved, names referenced,
+/// occurrences admitted) and none is a restatement of another.
 ///
-/// ORDINALS 24 THROUGH 27 ARE NOT IN THIS FILE. They narrated deletions that later roster-touching
-/// changes trimmed once the rows were gone; the gap is a record of that trimming, not a lost entry
-/// to be reconstructed here.
+/// The four resolve THROUGH A RE-EXPORT CHAIN and are worth stating separately, because they look
+/// like a different target until the channel is read correctly. All four are the SAME spelling,
+/// `cooler_srv3`, in four different declarations of the cooling witness
+/// (`srv3_installed_cooling`, `duplicate_cooling_ab`, `duplicate_cooling_ba`, and
+/// `catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence`) -- which is the occurrence grain
+/// again, from the opposite direction: one name, four rows. That witness imports `cooler_srv3` from
+/// `gunbc.fleet_physical_inventory`, not from the asset authority -- but the binding channel follows
+/// the chain to the module that actually DECLARES the name, which is `gunbc.fleet_asset_identity`.
+/// Same admitted target, one hop further out.
 ///
-/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
+/// Neither consumer file is in this diff, so base equals head for both and
+/// `admission_consumed_at_base` holds on all nineteen.
+///
+/// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND BY NO OTHER. `consumed_due` is
+/// `roster_touched && !consumed.is_empty()`: a consumed row does NOT refuse unrelated pull requests,
+/// and it comes due on the roster file's own next touch. This change is that touch. The treadmill is
+/// deliberate -- #10344 discharged #10197's rows on exactly this rule, and the next roster-touching
+/// change will discharge the cohort below.
+///
+/// THE gunbc#10197 ROWS ARE NOT NARRATED HERE. An earlier head of this branch deleted them and wrote
+/// its own entry; main deleted the same sixteen independently in #10344. One event, one record -- my
+/// entry is dropped in favour of main's action, which is the rule the TWENTY-THIRD entry already
+/// states for the six rows before it.
+///
+/// OLLAMA-CHOICE RECLASSIFICATION (2026-09-04, gunbc#10358). `gunbc.model.choice` advertised a
+/// runtime-neutral domain it never served: every runtime identity was minted solely from Ollama
+/// release authority, the configuration carrier was an `ObservedOllamaLaunchConfiguration`, and the
+/// fit evidence was an `OllamaRunnerMemoryObservation`. The module and its Ollama-specific
+/// declarations are renamed to say so, and no compatibility re-export is left behind, so the
+/// compile failures at the old import sites ARE the census (DESIGN section 3 delete-first).
+///
+/// EVERY ROW BELOW IS A PURE RELOCATION. Not one declaration changes what it denotes; the witness
+/// binds the same spellings through the renamed authority, so the wall reports `TargetChanged` at
+/// each binding site. A binding whose MEANING had moved would refuse on its own row rather than be
+/// covered here. The rows are enumerated by exact identity rather than matched by the module pair,
+/// because a pattern would admit a genuine rebind that happened to land in the same two modules --
+/// and the whole point of a rename wave is that it must not be able to hide one.
+///
+/// WHY ONLY THE WITNESS MODULE APPEARS. The wall's binding channel is authored NAME OCCURRENCES
+/// resolved per module, and `test.claim.model.serving_choice_witness_test` is the only consumer that
+/// imports these spellings by bare name. The other three touched files -- `gunbc.model.population`,
+/// `gunbc.spark.serving_convergence_withholding` and `std.measure` -- carry the old module name only
+/// in prose, which the binding channel does not and should not observe.
+///
+/// TRIGGER, STATED AS THE MECHANISM ACTUALLY IMPLEMENTS IT. An earlier draft of this paragraph said
+/// the rows would report STALE and refuse EVERY unrelated PR. Both halves were wrong, and the
+/// correction matters because the wrong version overstates this cohort's blast radius.
+///
+/// After #10358 lands, each of these spellings binds to `gunbc.model.ollama_choice` at the base, so
+/// `admission_consumed_at_base` holds and the rows report CONSUMED -- not stale. A stale row matches
+/// no delta; a consumed row is one the base has already satisfied. Different states, different
+/// reporters.
+///
+/// Consumed rows are NOT globally blocking. The refusal predicate is
+/// `consumed_due = roster_touched && !consumed_admissions.is_empty()`, so they come due on the roster
+/// file's OWN next touch and on no other change -- an enrolled unit test names exactly that
+/// behaviour. Unrelated pull requests are unaffected.
+///
+/// They also cannot be removed in the cut that merges the rename: this change needs them PRESENT to
+/// admit its own wave. Deletion belongs to the first post-merge change that touches this roster, and
+/// an immediate dedicated cleanup is the intended shrink rather than waiting for an unrelated lane to
+/// inherit the debt.
+/// TWENTY-NINTH DISSOLUTION (2026-09-04, gunbc#10355). All 255 `gunbc#10358` selector-reclass rows
+/// are deleted, and OLLAMA_CHOICE_RECLASS_LABEL with them. #10358 merged as 97345e55d50 and is this
+/// branch's base, so the standing prior applies, and the join confirms it for every row: 255 of 255
+/// name a spelling DECLARED in the module the row names as its target, none open.
+///
+/// THE FIRST TWO PASSES OF THAT JOIN WERE BOTH WRONG, AND BOTH FAILED THE SAME WAY -- an incomplete
+/// index answering "not found" in a shape indistinguishable from "not declared":
+///
+///   THE PARSER missed 11 of the 255 rows, because it required `module`/`spelling` to be a single
+///   string literal and these rows carry continuation-joined literals. A row the parser cannot see
+///   is a row the join silently does not adjudicate.
+///
+///   THE DECLARATION INDEX missed every COPRODUCT VARIANT, because it read only `data`, `fn` and
+///   `type` at line start. So `ChoseCandidate`, `NoCandidateAdmissible` and 181 siblings resolved to
+///   an EMPTY owner set, which the join then read as "the target does not declare this" and reported
+///   as 183 OPEN rows. Keeping those would have left 183 stale rows refusing every later unrelated
+///   PR.
+///
+/// THIS IS THE THIRD TIME ON THIS BRANCH that a resolution step was inferred instead of read: the
+/// module-to-file step was transliterated from a module path, the spelling-to-owner step was taken
+/// from the import path instead of the declaration, and now the declaration set itself was built
+/// from a pattern that did not cover the language. Each was silent, each was plausible, and each
+/// produced a confident answer of the WRONG SHAPE rather than an error. The standing lesson is the
+/// same one three times: an index that can be incomplete must be able to say SO, because "absent"
+/// and "I did not look there" are different facts that this file keeps conflating.
+///
+/// WHAT WOULD ACTUALLY SETTLE IT is the production predicate rather than any hand join.
+/// `admission_consumed_at_base` resolves the full (module, enclosing declaration, spelling) subject
+/// through the re-export chain and requires the base candidate set to be the EXACT SINGLETON named
+/// by the target. Every hand join above is a NECESSARY condition only; it agreed with the mechanism
+/// on these rows and did not establish what the mechanism establishes. The wall's own run at the
+/// exact head is the proof, and it is the thing to trust.
+///
+/// TWENTY-SECOND TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
 /// two questions, and the spelling `merge` was carrying two contracts: roles, requirements and
 /// supersession -- what the module does -- and two-commit merging, which it does not do and which
 /// `gunbc.scm.ancestry` is the subject of. The nouns move to their own authority,
@@ -1025,9 +1115,15 @@ pub struct TransitionAdmission {
 /// module addition, which the wall classifies on its own rows; what needs naming here is the 30
 /// binding sites whose TARGET moved while their spelling did not.
 ///
+/// THE ORDINAL IS TWENTY-SECOND, NOT TWENTY-FIRST. An earlier head of this branch numbered it
+/// twenty-first; that entry was lost when a conflict was resolved by taking main's file whole, and
+/// main has since landed its own transitions. Renumbering rather than reusing keeps each entry
+/// citable by a name that means one thing.
+///
 /// TRIGGER: these rows go when #10355 merges. The base then binds each spelling to
 /// `gunbc.scm.proposal`, the deltas stop being producible, and they are owed deletion by the next
-/// roster-touching change -- decidable by the declaring-module join above, and so not to be guessed.
+/// roster-touching change -- decidable by the declaring-module join above, whose known failure modes
+/// are recorded there, and confirmable only by the wall itself.
 ///
 const SCM_PROPOSAL_VOCABULARY_LABEL: &str =
     "gunbc#10355 SCM proposal-vocabulary split: the proposal nouns move from gunbc.scm.merge to \
