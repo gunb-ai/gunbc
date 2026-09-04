@@ -1510,6 +1510,15 @@ fn openbmc_remote_jq_refusal_text(cause: OpenBmcRemoteJqRefusal) -> String {
 // the caller now describes a semantic JqInvocation -- file input, raw output, last-result exit --
 // and the remote realization derives the flags and the RFC 4254 command string. The decode reads
 // JqOutcome, never success/stdout/stderr.
+//
+// LOSSY REFUSAL CARRIER: OpenBmcIntegerResult carries a rendered String (reason), not a typed
+// cause. openbmc_remote_jq_refusal_text converts the typed OpenBmcRemoteJqRefusalCause to prose
+// at this boundary, so every consumer downstream of this function is cause-blind for refusals --
+// they can test the prose or nothing. The typed cause is preserved through the execute layer
+// (OpenBmcRemoteJqRefused carries OpenBmcRemoteJqRefusal) and can be matched there. If a
+// downstream consumer needs cause discrimination, carry the typed cause through rather than
+// rendering at the caller boundary -- see docs/plans/cli-invocation-emission-design.md §18,
+// follow-up: typed refusal carrier for OpenBmcIntegerResult.
 data openbmc_fan_stepwise_count_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length"
 
 fn openbmc_fan_config_stepwise_count(
