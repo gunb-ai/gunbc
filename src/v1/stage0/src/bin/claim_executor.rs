@@ -243,6 +243,20 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
+    // BEFORE ANY WORK, AND BEFORE ARGUMENTS, because a limit acquired after the first large
+    // allocation bounds nothing that already happened. On a machine that already binds this
+    // process — every self-hosted CI runner — this is a no-op that says so; on an executor with
+    // no limit at all it creates one, so the whole-corpus adjudication can run somewhere the
+    // kernel is enforcing a ceiling instead of thrashing against a machine.
+    // A refused bind STOPS THE LINE: the run asked to be bounded, it is not bounded, and
+    // proceeding would be exactly the escape hatch the request existed to close.
+    // Authority: `gunbc.memory_cgroup_binding`.
+    let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
+    if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
+        return Err(ExitCode::FAILURE);
+    }
+
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut verify_artifacts: Vec<String> = Vec::new();
