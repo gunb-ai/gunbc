@@ -70,7 +70,8 @@ data crs812_datasheet_authority: ExternalAuthority = ExternalAuthority {
 // subtlety worth stating: the product-page heading calls them "1G/2.5G/5G/10G" ports but the
 // parenthetical -- echoed by the manual and the datasheet -- says supported rates are
 // 10M/100M/1G/10G. The supported set is modelled, and the heading's 2.5G/5G is recorded as a
-// vendor-side inconsistency in crs812_ethernet_heading_gap below. The QSFP56-DD and QSFP56 port
+// vendor-side inconsistency (the heading calls 2.5G/5G rates the port does not support,
+// recorded in crs812_open_gaps). The QSFP56-DD and QSFP56 port
 // rates are the datasheet's "40G/50G/100G/200G/400G" and "40G/50G/100G/200G" callouts.
 data crs812_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogRow {
   model: "CRS812-8DS-2DQ-2DDQ-RM",
@@ -323,12 +324,6 @@ data crs812_accessories: List<Crs812Accessory> = [
 
 // ================= OPEN GAPS =================
 
-data crs812_ethernet_heading_gap: String = "The product-page spec table heads the two Ethernet ports '1G/2.5G/5G/10G Ethernet ports' while its own parenthetical, the manual and the datasheet all say the supported rates are 10M/100M/1G/10G. The supported set is modelled; the heading's 2.5G/5G claim is unmodelled vendor copy that contradicts the parenthetical."
-
-data crs812_switching_capacity_gap: String = "No first-party MikroTik document read for this model publishes a switching capacity or forwarding rate. The shared catalog row carries switching_capacity: Absent, and no derived figure is authored."
-
-data crs812_depth_gap: String = "The manual and the datasheet disagree on the chassis depth: 156 mm vs 268 mm. Both readings are carried with their sources; neither is promoted. A measurement of the delivered unit would settle it."
-
 data crs812_tracked_gaps: List<TrackedGap> = [
   TrackedGap {
     feature_tag: "extdeps-hour-scale",
@@ -338,9 +333,9 @@ data crs812_tracked_gaps: List<TrackedGap> = [
 ]
 
 data crs812_open_gaps: List<String> = [
-  crs812_ethernet_heading_gap,
-  crs812_switching_capacity_gap,
-  crs812_depth_gap,
+  "The product-page spec table heads the two Ethernet ports '1G/2.5G/5G/10G Ethernet ports' while its own parenthetical, the manual and the datasheet all say the supported rates are 10M/100M/1G/10G. The supported set is modelled; the heading's 2.5G/5G claim is unmodelled vendor copy that contradicts the parenthetical.",
+  "No first-party MikroTik document read for this model publishes a switching capacity or forwarding rate. The shared catalog row carries switching_capacity: Absent, and no derived figure is authored.",
+  "The manual and the datasheet disagree on the chassis depth: 156 mm vs 268 mm. Both readings are carried with their sources; neither is promoted. A measurement of the delivered unit would settle it.",
 ]
 
 fn crs812_gap_count() -> Int {
