@@ -1,4 +1,4 @@
-module test.claim.scm_merge_witness
+module test.claim.scm_role_requirement_integration_witness
 
 import std.types { Bool, Int, String, List }
 

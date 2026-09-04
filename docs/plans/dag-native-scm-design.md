@@ -360,7 +360,7 @@ the first consumer would fuse a model proof with unrelated frontend and performa
 **Direction after `NATIVE-COMMIT-0`, operator ruling 2026-08-21: a CLI vertical before the depth
 recursion**, reversing the "headline win is the next slice" ordering above. The reason is DESIGN
 §5's specification-without-execution trap, not a changed view of which slice is more valuable.
-Nothing has ever *consumed* this kernel: the 15 claims in `test.claim.scm_merge_witness` are
+Nothing has ever *consumed* this kernel: the 15 claims in `test.claim.scm_role_requirement_integration_witness` are
 assertions **about** it, authored alongside it, and a witness suite is not a consumer. A CLI is the
 first artifact that uses the store, checkout, identity and merge together under conditions nobody
 authored to make them pass.
@@ -381,7 +381,7 @@ No merge kernel should be built without these. Each is a RED unless marked other
 **Structural merge — with measured coverage as of 2026-08-21 (#8719 merged).** The corpus opens "no
 merge kernel should be built without these", and a kernel was built, so this states which rows it
 actually answers. **4 of 13 are covered.** The `witness` column names the claim in
-`test.claim.scm_merge_witness`; the `blocked on` column says what would close each gap, because
+`test.claim.scm_role_requirement_integration_witness`; the `blocked on` column says what would close each gap, because
 "uncovered" collapses three situations — a gap the current grain could close today, a gap needing
 the sub-node recursion, and a gap needing vocabulary the model does not yet have.
 
@@ -408,7 +408,7 @@ structural scenario waiting on neither depth nor new vocabulary, hence the cheap
 available.
 
 **Coverage claims about this table must be measured, not recalled.** The number above came from
-joining the 15 claims in `test.claim.scm_merge_witness` against these rows one at a time. An earlier
+joining the 15 claims in `test.claim.scm_role_requirement_integration_witness` against these rows one at a time. An earlier
 estimate from reading was "roughly five" — close enough to feel safe, wrong enough to mis-scope the
 next slice.
 
