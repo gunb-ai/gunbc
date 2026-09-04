@@ -1,0 +1,14 @@
+module gunbc.guarantee_stall.doc_graph_dangling_link_population_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data doc_graph_dangling_link_population_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the derived documentation graph contains dangling links",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Empty {} } } } },
+  next_rung_trigger: "the derived dangling-link identity population is empty and every enrolled projection reports NowPassing"
+}

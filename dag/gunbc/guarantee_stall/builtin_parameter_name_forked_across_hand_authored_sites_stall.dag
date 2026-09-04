@@ -1,0 +1,14 @@
+module gunbc.guarantee_stall.builtin_parameter_name_forked_across_hand_authored_sites_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data builtin_parameter_name_forked_across_hand_authored_sites_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a builtin parameter's name is authored independently in two more places than its declaration",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "src/v1/stage0/src/v1_interpreter.rs expect_int/expect_value_str diagnostic literals (\"substring start\", \"substring end\", \"char_at pos\")", tail: Cons { head: "src/v1/runtime_rust.dag emitted Rust signatures for 47 of the 132 registry builtins", tail: Empty } } },
+  next_rung_trigger: "a builtin parameter's name is DERIVED from the declared BuiltinParam at both sites -- the interpreter's diagnostic text and the emitted runtime's signature -- rather than authored as a literal in either. ONE trigger, not two: the capability is identical for both sites and splitting it would let each look closable while the capability that closes them stayed dead."
+}
