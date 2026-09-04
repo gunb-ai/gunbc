@@ -285,6 +285,32 @@ fn merge_queue_check_response_timeout() -> Minute {
   measure_add(a: witness_floor_lane_timeout, b: merge_queue_response_margin)
 }
 
+// THE CONTENTION THIS PROPOSAL TARGETS IS MEASURED, NOT ARGUED FROM FIRST PRINCIPLES, AND THE
+// INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED. Re-derive over any window with:
+//
+//   git log origin/main --since='12 hours ago' --oneline | wc -l
+//   git log origin/main --since='12 hours ago' --oneline -- docs/design-failure-modes.md | wc -l
+//   git log origin/main --since='12 hours ago' --format='%h %ad' --date=format:'%H:%M' -- docs/design-failure-modes.md
+//
+// Run on 2026-09-04 against origin/main it reported 48 landings, of which 14 touched
+// `docs/design-failure-modes.md` -- a generated projection whose merge driver REFUSES whenever both
+// sides changed it since the base, which is every landing for any branch that also touched it. The
+// last three intervals from that same command were 06:44, 08:08, 08:17.
+//
+// THE NUMBER THAT DECIDES IT IS NOT THE RATE BUT ITS RELATION TO THE VALIDATION TIME. When the
+// interval between collisions falls below the time to get a resolved head through the required
+// aggregate, resolving promptly CANNOT WIN: every resolution is obsolete before the run that would
+// validate it finishes, and resolving faster makes it worse, because each attempt is a new head, a
+// fresh queue position, and a fresh set of voided approvals. Three lanes were in that state
+// simultaneously on the date above, and one branch ran six regenerate-then-remerge cycles and
+// converged zero times.
+//
+// A QUEUE IS EXACTLY THE MECHANISM THAT DISSOLVES THAT, and this is the argument for the proposal
+// rather than a complaint about the file: serialised landing resolves each conflict ONCE, against a
+// base that cannot move underneath the resolution while it is being validated. The alternative
+// available without a queue -- resolve once, at the moment of landing, and let the branch sit behind
+// its base until then -- is the same discipline enforced by hand, which is why it works and why it
+// does not scale past the lanes willing to observe it.
 data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
   grouping_strategy: AllGreenGrouping,
   merge_method: QueueSquash,
