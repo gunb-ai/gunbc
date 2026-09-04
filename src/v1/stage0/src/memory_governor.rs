@@ -1114,22 +1114,43 @@ fn cgroup_memory_controller_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Whether this process may create a child group under the cgroup2 root. Probed by CREATING the
-/// leaf this bind would use rather than by inspecting permission bits: the question is whether
-/// the write succeeds, and anything short of performing it is a prediction.
-fn cgroup_leaf_create(dir: &Path) -> bool {
+/// Whether this process may create the child group this bind would use, and whether THIS call is
+/// what created it. Probed by performing the creation rather than by inspecting permission bits:
+/// the question is whether the write succeeds, and anything short of performing it is a
+/// prediction.
+///
+/// AN ALREADY-EXISTING LEAF IS NOT EVIDENCE OF ANYTHING, which is the correction this signature
+/// carries (reported by tidy-swift-334 on #10465). The previous form mapped `AlreadyExists` to
+/// `true`, so a run that created the leaf and then refused left residue that the NEXT run read
+/// back as proof of its own writability — a prediction sourced from an earlier failure instead
+/// of from permission bits, and blind to permissions revoked in between. Existence is therefore
+/// reported as `created: false` and settles nothing; the only writability evidence this module
+/// accepts is a write it performed, and the `memory.max` write that follows is the one that
+/// decides.
+fn cgroup_leaf_create(dir: &Path) -> Option<bool> {
     match std::fs::create_dir(dir) {
-        Ok(()) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => true,
-        Err(_) => false,
+        Ok(()) => Some(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Some(false),
+        Err(_) => None,
+    }
+}
+
+/// Undo a leaf THIS call created. Only ever asked about a directory `cgroup_leaf_create` reported
+/// creating, so a group that was already there — another run's, or an operator's — is never
+/// removed by a refusal.
+fn cgroup_leaf_remove_if_created(dir: &Path, created: bool) {
+    if created {
+        let _ = std::fs::remove_dir(dir);
     }
 }
 
 /// Create the bound, move this process into it, and return the executed decision.
 ///
-/// THE ORDER IS THE SAFETY PROPERTY. The decision is taken first from an observation read
-/// through the ordinary budget path, so a machine that already binds this process is never
-/// written to; the write happens only on the `Applicable` arm; and afterwards every consumer
+/// THE ORDER IS THE SAFETY PROPERTY, AND IT IS STRONGER THAN THE FIRST REVISION CLAIMED. The
+/// decision is taken first from an observation read through the ordinary budget path, so a
+/// machine that already binds this process is never written to; NO ARM THAT REFUSES TOUCHES THE
+/// CGROUP TREE AT ALL, and any failure after the first write unwinds the group this call
+/// created, so a refusal leaves the tree exactly as it found it; and afterwards every consumer
 /// still reads its budget through `read_host_budget_resolution` exactly as before. This
 /// function supplies no number to anybody — a successful bind is invisible except as an
 /// observation that now exists, which is what keeps `gunbc.host_budget_source` the single
@@ -1152,39 +1173,54 @@ pub fn apply_memory_cgroup_bind() -> CgroupBindDecision {
         HostBudgetResolution::Resolved { observation, .. } => Some(observation),
         _ => None,
     };
-    let leaf = Path::new("/sys/fs/cgroup").join(BIND_MEMORY_CGROUP_LEAF);
     let controller = cgroup_memory_controller_available();
-    // The writability probe is only performed when a write could follow: creating the leaf on a
-    // machine that already binds this process would leave a group behind for no reason.
-    let writable = if controller && existing.is_none() {
-        cgroup_leaf_create(&leaf)
-    } else {
-        false
-    };
-    let decision = cgroup_bind_decision(
+
+    // ASK THE DECISION WHAT IT WOULD ANSWER IF THE TREE WERE WRITABLE, BEFORE TOUCHING THE TREE.
+    // Writability is the one input that cannot be read without performing a write, and the other
+    // three can refuse on their own — no request, an existing bound, no controller, an unreadable
+    // machine, a bound not below it. If the answer is already not `Applicable` then it does not
+    // depend on writability at all, so the probe is skipped and the tree is left untouched.
+    let hypothetical = cgroup_bind_decision(
         request,
         existing.as_ref(),
         machine_memory_total_bytes(),
         controller,
-        writable || existing.is_some(),
+        true,
     );
-    if let CgroupBindDecision::Applicable { bound } = decision {
-        // A FAILED WRITE IS A REFUSAL, NOT A DEGRADED SUCCESS. Either arm below leaves the
-        // process exactly as unbounded as it was, so reporting anything but a refusal would be
-        // the escape hatch this whole module exists to close.
-        let _ = std::fs::write("/sys/fs/cgroup/cgroup.subtree_control", "+memory");
-        if std::fs::write(leaf.join("memory.max"), bound.to_string()).is_err() {
-            return CgroupBindDecision::Refused {
-                cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
-            };
-        }
-        if std::fs::write(leaf.join("cgroup.procs"), std::process::id().to_string()).is_err() {
-            return CgroupBindDecision::Refused {
-                cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
-            };
-        }
+    let CgroupBindDecision::Applicable { bound } = hypothetical else {
+        return hypothetical;
+    };
+
+    // ONLY NOW IS THE TREE TOUCHED, and every failure from here unwinds what this call created.
+    // A REFUSAL LEAVES THE TREE EXACTLY AS IT FOUND IT — which the previous revision claimed and
+    // did not do: it created the leaf before the decision existed, so a run refusing for an
+    // unreadable machine or an oversized request still deposited an empty group with no
+    // memory.max in it. That is precisely the unbounded-cgroup state this module exists to
+    // diagnose, manufactured by the tool that reports on it.
+    let leaf = Path::new("/sys/fs/cgroup").join(BIND_MEMORY_CGROUP_LEAF);
+    let Some(created) = cgroup_leaf_create(&leaf) else {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    };
+
+    // A FAILED WRITE IS A REFUSAL, NOT A DEGRADED SUCCESS. Both arms below leave the process
+    // exactly as unbounded as it was, so reporting anything but a refusal would be the escape
+    // hatch this whole module exists to close.
+    let _ = std::fs::write("/sys/fs/cgroup/cgroup.subtree_control", "+memory");
+    if std::fs::write(leaf.join("memory.max"), bound.to_string()).is_err() {
+        cgroup_leaf_remove_if_created(&leaf, created);
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
     }
-    decision
+    if std::fs::write(leaf.join("cgroup.procs"), std::process::id().to_string()).is_err() {
+        cgroup_leaf_remove_if_created(&leaf, created);
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    }
+    CgroupBindDecision::Applicable { bound }
 }
 
 #[cfg(test)]
