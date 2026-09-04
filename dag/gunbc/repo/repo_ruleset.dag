@@ -294,8 +294,14 @@ fn merge_queue_check_response_timeout() -> Minute {
 //
 // Run on 2026-09-04 against origin/main it reported 48 landings, of which 14 touched
 // `docs/design-failure-modes.md` -- a generated projection whose merge driver REFUSES whenever both
-// sides changed it since the base, which is every landing for any branch that also touched it. The
-// last three intervals from that same command were 06:44, 08:08, 08:17.
+// sides changed it since the base. THE REFUSAL IS CERTAIN ONLY WHEN BOTH SIDES MOVED, and that is a
+// conditional rather than a universal: a branch that touched the projection collides only once main
+// also touches it, which the same command puts at 14 of 48 landings rather than at certainty. A
+// branch that lands quickly may never collide, and one was open beside this measurement that never
+// did. What the rate governs is EXPOSURE: the probability of a collision grows with how long a
+// branch stays open against that churn, so the cost falls on exactly the branches that wait --
+// which is every branch waiting on a queue position. The last three intervals from that same
+// command were 06:44, 08:08, 08:17.
 //
 // THE NUMBER THAT DECIDES IT IS NOT THE RATE BUT ITS RELATION TO THE VALIDATION TIME. When the
 // interval between collisions falls below the time to get a resolved head through the required
