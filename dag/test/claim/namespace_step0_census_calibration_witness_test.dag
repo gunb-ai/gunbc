@@ -51,8 +51,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHAT THIS FILE ESTABLISHES, AND IT IS A NEGATIVE RESULT. The candidate reference-occurrence
 // producer's coverage of the family roster was recorded as UNESTABLISHED. It is now REFUTED, by
-// execution, on a hand-authored subject: two families produce no denominator row at all, and a thing
-// that is not a reference produces one. Both directions of error are here, and they do not cancel.
+// execution, on a hand-authored subject: three families of the roster produce no denominator row at
+// all, and two things that are not references produce one each. Both directions of error are here,
+// and they do not cancel. The counts are stated by the calibration tables and joined by the controls
+// below -- they are named in this sentence only to say that neither direction is empty.
 //
 // EVERY BYTE OF THE SUBJECT IS FIXTURE-OWNED, so no corpus rename can turn a control green while the
 // instrument is broken, and the pool is exactly this manifest -- the instrument consults no module
@@ -78,23 +80,80 @@ data cal_entry_renamed_binder: String = "module cal.entry\n\nimport cal.provider
 
 data cal_entry_reordered_declarations: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalHolder { field: CalPayload }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\ntype CalLocalArg { w: Int }\n\ntype CalLocalBox { cells: List<CalLocalArg> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
 
-fn cal_rows_of(entry_source: String) -> List<ReferenceOccurrenceBindingRow> {
-  match reference_occurrence_binding_census(
-    sources: [fixture_source("cal/provider.dag", cal_provider), fixture_source("cal/entry.dag", entry_source)],
-    entry: "cal/entry.dag" as NonEmptyStr
-  ) {
-    ReferenceOccurrenceBindingCensusRefused { cause: _ } => []
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: _, observations: observations } => observations
+// THE SUBJECT IS A COPRODUCT, BECAUSE THE EARLIER VERSION OF THIS FUNCTION MAPPED A REFUSAL TO THE
+// EMPTY LIST -- and that is the absorbing fallback DESIGN section 5 names: the refusal was destroyed
+// here and RECONSTRUCTED downstream as an observed population of size zero, indistinguishable in
+// every control from an instrument that ran and saw nothing. The liveness gate closed the false
+// green it could produce, but a gate that compensates for an erased refusal is not the same thing as
+// not erasing it: liveness is a property of the OBSERVED arm, not a repair of a missing one.
+//
+// So no accessor in this file returns a bare list or a bare count. Every control opens the carrier
+// and every control carries a refusal arm that reds. The cause is not printed from a `-> Bool` arm,
+// which is why `step0_calibration_probe` exists beside them: it is the located reader for the same
+// subject, and it is the entry point a red sends you to.
+type CalSubject
+  = CalSubjectObserved { denominator_size: Int, rows: List<ReferenceOccurrenceBindingRow> }
+  | CalSubjectRefused { cause: NonEmptyStr }
+
+fn cal_subject_from(sources: List<FixtureSource>) -> CalSubject {
+  match reference_occurrence_binding_census(sources: sources, entry: "cal/entry.dag" as NonEmptyStr) {
+    ReferenceOccurrenceBindingCensusRefused { cause: cause } => CalSubjectRefused { cause: cause }
+    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: observations } =>
+      CalSubjectObserved { denominator_size: count(denominator), rows: observations }
+  }
+}
+
+fn cal_subject_of(entry_source: String) -> CalSubject {
+  cal_subject_from(sources: [
+    fixture_source("cal/provider.dag", cal_provider),
+    fixture_source("cal/entry.dag", entry_source)
+  ])
+}
+
+// ONE OPENER PER ARITY, so a control states its assertion and never its refusal handling. A refused
+// subject on EITHER side of a two-subject invariant reds, rather than the invariant being evaluated
+// over one real population and one fabricated empty one -- which would have made a comparison
+// control pass or fail for a reason having nothing to do with the property.
+fn cal_subject_holds(subject: CalSubject, holds: fn(Int, List<ReferenceOccurrenceBindingRow>) -> Bool) -> Bool {
+  match subject {
+    CalSubjectRefused { cause: _ } => false
+    CalSubjectObserved { denominator_size: size, rows: rows } => holds(size, rows)
+  }
+}
+
+fn cal_pair_holds(
+  left: CalSubject,
+  right: CalSubject,
+  holds: fn(List<ReferenceOccurrenceBindingRow>, List<ReferenceOccurrenceBindingRow>) -> Bool
+) -> Bool {
+  match left {
+    CalSubjectRefused { cause: _ } => false
+    CalSubjectObserved { denominator_size: _, rows: left_rows } => match right {
+      CalSubjectRefused { cause: _ } => false
+      CalSubjectObserved { denominator_size: _, rows: right_rows } => holds(left_rows, right_rows)
+    }
   }
 }
 
 data cal_entry_without_local_declarations: String = "module cal.entry\n\nimport cal.provider { CalOnlyGeneric, CalPayload, CalChoice, CalLeft, CalMiddle, CalRight, cal_top_value, cal_called }\n\ntype CalHolder { field: CalPayload }\n\ntype CalBox { items: List<CalPayload> }\n\ntype CalGenericBox { slots: List<CalOnlyGeneric> }\n\nfn cal_uses_call() -> Int { cal_called(n: 1) }\n\nfn cal_uses_top_value() -> Int { cal_top_value }\n\nfn cal_nullary() -> CalChoice { CalLeft }\n\nfn cal_payload() -> CalChoice { CalRight { n: 2 } }\n\nfn cal_pattern(c: CalChoice) -> Int {\n  match c {\n    CalLeft => 0\n    CalMiddle => 1\n    CalRight { n: n } => n\n  }\n}\n\nfn cal_fn_value() -> Int { cal_called }\n\nfn cal_qualified() -> CalChoice { CalChoice.CalLeft }\n"
 
-// THE IDENTITY OF AN OBSERVATION, FOR THE PURPOSE OF COMPARING TWO SUBJECTS. Occurrence ids are
-// graph-scoped, so they cannot be joined across two compilations, and spans move under exactly the
-// transformations these invariants apply. What survives both is the authored spelling paired with
-// the category the instrument stamped it -- which is also what a reader of the census consumes.
-// Comparison is over the MULTISET of those keys, so a substitution fails even when the totals agree.
+// THE COMPARISON KEY, AND ITS GRAIN IS STATED EXACTLY BECAUSE IT IS WEAKER THAN THE WORD "IDENTITY"
+// WOULD SUGGEST. Occurrence ids are graph-scoped, so they cannot be joined across two compilations,
+// and spans move under exactly the transformations these invariants apply -- which is the contract's
+// law 4 (pre and post may not be joined by byte span or spelling) constraining what is left to use.
+// What survives is the authored spelling paired with the category the instrument stamped, compared as
+// a MULTISET so a substitution fails even when the totals agree.
+//
+// WHAT THAT ESTABLISHES AND WHAT IT DOES NOT, at three grains:
+//   - CARDINALITY: REJECTED. It passes on an unsafe swap and fails on a safe addition.
+//   - TAG PLUS CATEGORY: ESTABLISHED, and discriminating on THIS subject for a specific reason --
+//     every perturbed spelling here is unique in the fixture and re-mentioned by no construct, so no
+//     other occurrence can stand in for it. That is the fixture law doing the work, not the key.
+//   - EXACT AUTHORED-OCCURRENCE IDENTITY: NOT ESTABLISHED BY THESE CONTROLS. The key is not an
+//     OccurrenceId, carries no containment path and no semantic slot, so two authored occurrences of
+//     one spelling in one category are indistinguishable to it. Calling this an "identity set" would
+//     claim a grain it does not have; it is a tag-and-category multiset, and the capability that
+//     would raise it is the same one `Step0DiscriminationCapability` already names.
 fn cal_row_key(row: ReferenceOccurrenceBindingRow) -> String {
   concat(row.authored_name, concat(":", step0_occurrence_category_label(category: row.category) as String))
 }
@@ -141,11 +200,8 @@ fn cal_manifest_without_middle() -> List<FixtureSource> {
   ]
 }
 
-fn cal_denominator_size_without_middle() -> Int {
-  match reference_occurrence_binding_census(sources: cal_manifest_without_middle(), entry: "cal/entry.dag" as NonEmptyStr) {
-    ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
-  }
+fn cal_subject_without_middle() -> CalSubject {
+  cal_subject_from(sources: cal_manifest_without_middle())
 }
 
 fn cal_manifest() -> List<FixtureSource> {
@@ -159,26 +215,23 @@ fn cal_census() -> ReferenceOccurrenceBindingCensus {
   reference_occurrence_binding_census(sources: cal_manifest(), entry: "cal/entry.dag" as NonEmptyStr)
 }
 
-fn cal_observations() -> List<ReferenceOccurrenceBindingRow> {
-  match cal_census() {
-    ReferenceOccurrenceBindingCensusRefused { cause: _ } => []
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: _, observations: observations } => observations
-  }
+fn cal_subject() -> CalSubject {
+  cal_subject_from(sources: cal_manifest())
 }
 
-fn cal_denominator_size() -> Int {
-  match cal_census() {
-    ReferenceOccurrenceBindingCensusRefused { cause: _ } => 0
-    ReferenceOccurrenceBindingCensusObserved { source_digest: _, compiler_digest: _, denominator: denominator, observations: _ } => count(denominator)
-  }
+// THE ROW SELECTORS TAKE THE POPULATION RATHER THAN FETCHING IT, which is the same move: a selector
+// that fetched its own rows would need its own refusal arm, and the only value it could return there
+// is the empty list this file just stopped fabricating.
+fn cal_rows_named(rows: List<ReferenceOccurrenceBindingRow>, spelling: String) -> List<ReferenceOccurrenceBindingRow> {
+  rows |> filter(row => row.authored_name == spelling)
 }
 
-fn cal_rows_named(spelling: String) -> List<ReferenceOccurrenceBindingRow> {
-  cal_observations() |> filter(row => row.authored_name == spelling)
-}
-
-fn cal_rows_named_in_category(spelling: String, category: OccurrenceCategory) -> List<ReferenceOccurrenceBindingRow> {
-  cal_rows_named(spelling: spelling) |> filter(row =>
+fn cal_rows_named_in_category(
+  rows: List<ReferenceOccurrenceBindingRow>,
+  spelling: String,
+  category: OccurrenceCategory
+) -> List<ReferenceOccurrenceBindingRow> {
+  cal_rows_named(rows: rows, spelling: spelling) |> filter(row =>
     (step0_occurrence_category_label(category: row.category) as String)
       == (step0_occurrence_category_label(category: category) as String)
   )
@@ -248,9 +301,11 @@ fn step0_calibration_probe() -> ProcessExit {
 // subject is established as OBSERVED and nonempty before any absence is read as a finding, and the
 // positive control is a spelling the instrument demonstrably does emit.
 test fn the_instrument_observed_this_subject_and_is_not_silent() -> Bool {
-  cal_denominator_size() > 0
-    && count(cal_observations()) == cal_denominator_size()
-    && count(cal_rows_named(spelling: "CalChoice")) > 0
+  cal_subject_holds(subject: cal_subject(), holds: (size, rows) =>
+    size > 0
+      && count(rows) == size
+      && count(cal_rows_named(rows: rows, spelling: "CalChoice")) > 0
+  )
 }
 
 // CONTROL 1. A PAYLOAD CONSTRUCTOR IN EXPRESSION POSITION PRODUCES NO OCCURRENCE. `CalRight { n: 2 }`
@@ -258,7 +313,9 @@ test fn the_instrument_observed_this_subject_and_is_not_silent() -> Bool {
 // surrounding signature DOES get a row, which is why a reader glancing at nearby rows would conclude
 // the construction was seen. This is a family the census is blind to, not one it measures coarsely.
 test fn a_payload_constructor_in_expression_position_produces_no_occurrence() -> Bool {
-  count(cal_rows_named(spelling: "CalRight")) == 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named(rows: rows, spelling: "CalRight")) == 0
+  )
 }
 
 // CONTROL 2. A VARIANT IN PATTERN POSITION PRODUCES NO OCCURRENCE. CalMiddle is authored ONLY inside
@@ -266,7 +323,9 @@ test fn a_payload_constructor_in_expression_position_produces_no_occurrence() ->
 // the payload binder each produce a row, so the arm is represented in the denominator by everything
 // except the name that selects it.
 test fn a_variant_in_pattern_position_produces_no_occurrence() -> Bool {
-  count(cal_rows_named(spelling: "CalMiddle")) == 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named(rows: rows, spelling: "CalMiddle")) == 0
+  )
 }
 
 // CONTROL 3, THE POSITIVE ONE THAT MAKES CONTROLS 1 AND 2 MEAN SOMETHING, and it answers the
@@ -276,8 +335,10 @@ test fn a_variant_in_pattern_position_produces_no_occurrence() -> Bool {
 // separate acquisition path -- and an instrument that separates that while emitting nothing for a
 // payload constructor is discriminating, not uniformly coarse.
 test fn a_call_head_and_a_bare_function_value_are_stamped_differently() -> Bool {
-  count(cal_rows_named_in_category(spelling: "cal_called", category: CallableOccurrence)) == 1
-    && count(cal_rows_named_in_category(spelling: "cal_called", category: LexicalValueOccurrence)) == 1
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "cal_called", category: CallableOccurrence)) == 1
+      && count(cal_rows_named_in_category(rows: rows, spelling: "cal_called", category: LexicalValueOccurrence)) == 1
+  )
 }
 
 // CONTROL 4. THE DENOMINATOR IS WRONG IN THE OTHER DIRECTION TOO. The label of a named argument --
@@ -286,7 +347,9 @@ test fn a_call_head_and_a_bare_function_value_are_stamped_differently() -> Bool 
 // population is short some real occurrences and long some invented ones at the same time, and the
 // two errors are over different populations and cannot cancel.
 test fn a_named_argument_label_is_emitted_as_a_reference_occurrence() -> Bool {
-  count(cal_rows_named_in_category(spelling: "n", category: CallableOccurrence)) > 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "n", category: CallableOccurrence)) > 0
+  )
 }
 
 // CONTROL 5. A NULLARY CONSTRUCTOR IS NOT STAMPED ConstructorOccurrence. `CalLeft` in expression
@@ -294,8 +357,10 @@ test fn a_named_argument_label_is_emitted_as_a_reference_occurrence() -> Bool {
 // bare function value -- so four authored families share one observation key and ConstructorOccurrence
 // is stamped for nothing in this subject.
 test fn a_nullary_constructor_is_stamped_as_a_lexical_value() -> Bool {
-  count(cal_rows_named_in_category(spelling: "CalLeft", category: LexicalValueOccurrence)) > 0
-    && count(cal_rows_named_in_category(spelling: "CalLeft", category: ConstructorOccurrence)) == 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "CalLeft", category: LexicalValueOccurrence)) > 0
+      && count(cal_rows_named_in_category(rows: rows, spelling: "CalLeft", category: ConstructorOccurrence)) == 0
+  )
 }
 
 // CONTROL 6. ONE AUTHORED QUALIFIED REFERENCE BECOMES TWO OCCURRENCES UNDER TWO CATEGORIES, and
@@ -303,8 +368,10 @@ test fn a_nullary_constructor_is_stamped_as_a_lexical_value() -> Bool {
 // the member as a FIELD. A per-occurrence figure over this family is therefore not a count of
 // authored references, which is a multiplicity fact the outcome axis alone would never surface.
 test fn a_qualified_containment_reference_is_split_into_two_occurrences() -> Bool {
-  count(cal_rows_named_in_category(spelling: "CalLeft", category: FieldOccurrence)) == 1
-    && count(cal_rows_named_in_category(spelling: "CalChoice", category: NamespaceSegmentOccurrence)) == 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "CalLeft", category: FieldOccurrence)) == 1
+      && count(cal_rows_named_in_category(rows: rows, spelling: "CalChoice", category: NamespaceSegmentOccurrence)) == 0
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -319,9 +386,10 @@ test fn every_reference_family_is_claimed_by_a_calibration_row() -> Bool {
   count(step0_uncalibrated_families()) == 0
 }
 
-// AND THE STANDING REPORTS BLINDNESS BEFORE CONVERGENCE. Two families are not observed at all, six
-// converge onto a shared observation key, and two are discriminated. The arm matters more than the
-// counts: CalibrationBlindToFamilies and CalibrationCappedByConvergence are different claims, and
+// AND THE STANDING REPORTS BLINDNESS BEFORE CONVERGENCE. Some families are not observed at all, some
+// converge onto a shared observation key, and some are discriminated; the partition is read from the
+// tables rather than transcribed here, because the last transcription of it went stale in place. The
+// arm matters more than the counts: CalibrationBlindToFamilies and CalibrationCappedByConvergence are different claims, and
 // only the second can be reported as coverage at any grain -- a converged family is counted in the
 // wrong bucket, an unobserved family is not counted anywhere. If this file's controls above ever
 // flip because the producer was repaired, THIS is the assertion that goes red and names the table
@@ -334,7 +402,7 @@ test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Boo
       discriminated_family_count: discriminated,
       unauthorable_branch_count: unauthorable,
       denominator_defect_count: defects
-    } => unobserved == 3 && converged == 4 && discriminated == 3 && unauthorable == 2 && defects == 5
+    } => unobserved == 3 && converged == 4 && discriminated == 3 && unauthorable == 2 && defects == 6
     CalibrationCappedByConvergence { converged_family_count: _, discriminated_family_count: _, unauthorable_branch_count: _, capability: _ } => false
     CalibrationDiscriminatesEveryFamily { unauthorable_branch_count: _ } => false
     CalibrationRosterIncomplete { unclaimed_branches: _, uncalibrated_families: _ } => false
@@ -347,9 +415,14 @@ test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Boo
 // change that HAD to move the number if they did, rather than by not finding them in one listing.
 // Both counts are nonzero, so this is not two silences agreeing.
 test fn removing_a_variant_entirely_does_not_change_the_occurrence_count() -> Bool {
-  cal_denominator_size() > 0
-    && cal_denominator_size_without_middle() > 0
-    && cal_denominator_size() == cal_denominator_size_without_middle()
+  match cal_subject() {
+    CalSubjectRefused { cause: _ } => false
+    CalSubjectObserved { denominator_size: with_middle, rows: _ } => match cal_subject_without_middle() {
+      CalSubjectRefused { cause: _ } => false
+      CalSubjectObserved { denominator_size: without_middle, rows: _ } =>
+        with_middle > 0 && without_middle > 0 && with_middle == without_middle
+    }
+  }
 }
 
 // THE TWO AUTHORED TABLES ABOUT ONE INSTRUMENT MUST AGREE. A family the observation table calls
@@ -367,10 +440,12 @@ test fn the_observation_table_and_the_unit_mapping_agree() -> Bool {
 // row's outcome column was unfalsifiable. This control checks the disposition the pair ACTUALLY
 // carries, which is the check whose absence let the wrong claim stand.
 test fn the_qualified_pair_carries_no_definer_resolvable_disposition() -> Bool {
-  count(cal_observations() |> filter(row => cal_disposition_label(disposition: row.disposition) == "unresolved"
-    && (row.authored_name == "CalChoice" || row.authored_name == "CalLeft"))) > 0
-    && count(cal_observations() |> filter(row =>
-        cal_binding_source_of(disposition: row.disposition) == "definer-resolvable")) == 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(rows |> filter(row => cal_disposition_label(disposition: row.disposition) == "unresolved"
+      && (row.authored_name == "CalChoice" || row.authored_name == "CalLeft"))) > 0
+      && count(rows |> filter(row =>
+          cal_binding_source_of(disposition: row.disposition) == "definer-resolvable")) == 0
+  )
 }
 
 // CONTROL 14, THE GENERAL FORM OF CONTROL 13, so the next overstated row goes red without a reviewer
@@ -378,16 +453,18 @@ test fn the_qualified_pair_carries_no_definer_resolvable_disposition() -> Bool {
 // run actually exercises. The fixture exercises the pool-coincidence and unresolved branches and no
 // other, which is why only three of the seventeen family rows carry an observed outcome.
 test fn every_observed_outcome_claims_a_branch_the_run_exercises() -> Bool {
-  count(step0_rows_claiming_observed_outcome()) == 3
-    && count(step0_rows_with_uncalibrated_outcome()) == 14
-    && count(cal_observations() |> filter(row =>
-        cal_binding_source_of(disposition: row.disposition) == "pool-coincidence")) > 0
-    && count(cal_observations() |> filter(row =>
-        cal_disposition_label(disposition: row.disposition) == "unresolved")) > 0
-    && count(cal_observations() |> filter(row =>
-        cal_binding_source_of(disposition: row.disposition) == "listed-import")) == 0
-    && count(cal_observations() |> filter(row =>
-        cal_disposition_label(disposition: row.disposition) == "ambiguous")) == 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(step0_rows_claiming_observed_outcome()) == 3
+      && count(step0_rows_with_uncalibrated_outcome()) == 14
+      && count(rows |> filter(row =>
+          cal_binding_source_of(disposition: row.disposition) == "pool-coincidence")) > 0
+      && count(rows |> filter(row =>
+          cal_disposition_label(disposition: row.disposition) == "unresolved")) > 0
+      && count(rows |> filter(row =>
+          cal_binding_source_of(disposition: row.disposition) == "listed-import")) == 0
+      && count(rows |> filter(row =>
+          cal_disposition_label(disposition: row.disposition) == "ambiguous")) == 0
+  )
 }
 
 // CONTROL 15, AND THE SPELLING IT USES IS THE WHOLE POINT. A generic ARGUMENT produces no reference
@@ -400,8 +477,10 @@ test fn every_observed_outcome_claims_a_branch_the_run_exercises() -> Bool {
 // other half: the head is admitted from the same declaration, so the zero is the argument position
 // and not a declaration the walk skipped.
 test fn a_generic_type_argument_produces_no_occurrence() -> Bool {
-  count(cal_rows_named(spelling: "CalLocalArg")) == 0
-    && count(cal_rows_named_in_category(spelling: "List", category: TypeOccurrence)) > 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named(rows: rows, spelling: "CalLocalArg")) == 0
+      && count(cal_rows_named_in_category(rows: rows, spelling: "List", category: TypeOccurrence)) > 0
+  )
 }
 
 // CONTROL 16, A FABRICATED ROW, AND THE SECOND ONE THIS SUBJECT CARRIES. The FIRST name in an import
@@ -419,9 +498,11 @@ test fn a_generic_type_argument_produces_no_occurrence() -> Bool {
 // had, while neither name's authored USES changed at all. Both counts are nonzero somewhere in the
 // subject, so this is not two silences agreeing.
 test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
-  count(cal_rows_named_in_category(spelling: "CalOnlyGeneric", category: TypeOccurrence)) == 1
-    && count(cal_rows_named(spelling: "CalLocalArg")) == 0
-    && count(cal_rows_named(spelling: "CalMiddle")) == 0
+  cal_subject_holds(subject: cal_subject(), holds: (_, rows) =>
+    count(cal_rows_named_in_category(rows: rows, spelling: "CalOnlyGeneric", category: TypeOccurrence)) == 1
+      && count(cal_rows_named(rows: rows, spelling: "CalLocalArg")) == 0
+      && count(cal_rows_named(rows: rows, spelling: "CalMiddle")) == 0
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -434,9 +515,10 @@ test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
 // A CARDINALITY ASSERTION IS BLIND TO SUBSTITUTION, WHEREVER IT APPEARS. It fails on a safe addition
 // and passes on an unsafe swap, so it is the wrong shape for every completeness question in this
 // lane -- the contract's roster check and the invariants below are the same defect at two layers,
-// and so is every figure this census eventually publishes. These four are therefore stated over
-// IDENTITY SETS. Each changes something that MUST NOT MATTER and asserts the identities do not move;
-// none needs an oracle, because a semantics-preserving transformation supplies its own.
+// and so is every figure this census eventually publishes. These four are therefore stated over the
+// TAG-AND-CATEGORY MULTISET defined above -- not over identities, a grain these controls do not
+// reach. Each changes something that MUST NOT MATTER and asserts the population does not move; none
+// needs an oracle, because a semantics-preserving transformation supplies its own.
 
 // INVARIANT A -- AND IT DOES NOT HOLD, WHICH IS WHY IT IS ASSERTED IN ITS BROKEN FORM. Reordering an
 // import list is meaning-preserving, so the identity set must not move. It moves -- and the SIZE
@@ -451,36 +533,46 @@ test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
 // always meant to be. That inversion is its dissolution condition, and it is the DESIGN 4b(4) rule
 // that a discriminating RED stays enrolled rather than retiring on the climb.
 test fn reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_defect() -> Bool {
-  let base = cal_rows_of(entry_source: cal_entry)
-  let moved = cal_rows_of(entry_source: cal_entry_reordered_imports)
-  (cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: moved)) == false)
-    && count(moved) == count(base)
-    && count(base |> filter(row => row.authored_name == "CalOnlyGeneric")) == 1
-    && count(moved |> filter(row => row.authored_name == "CalOnlyGeneric")) == 0
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry),
+    right: cal_subject_of(entry_source: cal_entry_reordered_imports),
+    holds: (base, moved) =>
+      count(base) > 0
+        && (cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: moved)) == false)
+        && count(moved) == count(base)
+        && count(base |> filter(row => row.authored_name == "CalOnlyGeneric")) == 1
+        && count(moved |> filter(row => row.authored_name == "CalOnlyGeneric")) == 0
+  )
 }
 
 // INVARIANT B, OVER IDENTITIES. Renaming a binder consistently -- the parameter and every use of it
 // -- is meaning-preserving, so the key multiset must map bijectively with only the renamed keys
 // differing: the two runs agree on every key mentioning neither name, and the total is unchanged.
-test fn renaming_a_binder_consistently_disturbs_only_the_renamed_identities() -> Bool {
-  let base = cal_rows_of(entry_source: cal_entry)
-  let renamed = cal_rows_of(entry_source: cal_entry_renamed_binder)
-  cal_key_sets_agree(
-    left: cal_keys_from(rows: base) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false),
-    right: cal_keys_from(rows: renamed) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false)
+test fn renaming_a_binder_consistently_disturbs_only_the_renamed_keys() -> Bool {
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry),
+    right: cal_subject_of(entry_source: cal_entry_renamed_binder),
+    holds: (base, renamed) =>
+      cal_key_sets_agree(
+        left: cal_keys_from(rows: base) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false),
+        right: cal_keys_from(rows: renamed) |> filter(key => cal_key_mentions(key: key, a: "c:", b: "scrutinee:") == false)
+      )
+        && count(renamed) == count(base)
+        && count(base) > 0
   )
-    && count(renamed) == count(base)
-    && count(base) > 0
 }
 
 // INVARIANT C, OVER IDENTITIES. Swapping two independent declarations is meaning-preserving, so the
 // key multiset must be unchanged -- not merely the same size. This is the one that catches an
 // ordinal or a running counter leaking into what gets admitted, which is invariant A's defect shape.
-test fn reordering_independent_declarations_does_not_change_the_identity_set() -> Bool {
-  let base = cal_rows_of(entry_source: cal_entry)
-  let swapped = cal_rows_of(entry_source: cal_entry_reordered_declarations)
-  cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: swapped))
-    && count(base) > 0
+test fn reordering_independent_declarations_does_not_change_the_observed_population() -> Bool {
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry),
+    right: cal_subject_of(entry_source: cal_entry_reordered_declarations),
+    holds: (base, swapped) =>
+      cal_key_sets_agree(left: cal_keys_from(rows: base), right: cal_keys_from(rows: swapped))
+        && count(base) > 0
+  )
 }
 
 // INVARIANT D, AND THE FIRST VERSION OF IT WAS WRONG -- THE CONTROL, NOT THE CENSUS. I stated it as
@@ -497,10 +589,13 @@ test fn reordering_independent_declarations_does_not_change_the_identity_set() -
 // fail. The strict size increase keeps it from being vacuous, and `CalLocalArg` contributing nothing
 // is control 15 restated from the other side -- the added generic argument is admitted by nobody.
 test fn adding_an_unreferenced_declaration_only_adds() -> Bool {
-  let before = cal_rows_of(entry_source: cal_entry_without_local_declarations)
-  let after = cal_rows_of(entry_source: cal_entry)
-  cal_key_set_covers(before: cal_keys_from(rows: before), after: cal_keys_from(rows: after))
-    && count(after) > count(before)
-    && count(before) > 0
-    && count(after |> filter(row => row.authored_name == "CalLocalArg")) == 0
+  cal_pair_holds(
+    left: cal_subject_of(entry_source: cal_entry_without_local_declarations),
+    right: cal_subject_of(entry_source: cal_entry),
+    holds: (before, after) =>
+      cal_key_set_covers(before: cal_keys_from(rows: before), after: cal_keys_from(rows: after))
+        && count(after) > count(before)
+        && count(before) > 0
+        && count(after |> filter(row => row.authored_name == "CalLocalArg")) == 0
+  )
 }

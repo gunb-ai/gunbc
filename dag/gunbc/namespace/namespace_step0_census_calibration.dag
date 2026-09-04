@@ -157,9 +157,11 @@ data step0_census_producer_branch_roster: List<Step0CensusProducerBranch> = [
 // row goes red rather than quietly standing. The direction matters: deriving the table from whatever
 // a run produced would make it unfalsifiable and would let a silent producer define its own grain.
 //
-// THE SECOND ARM IS NOT A CATEGORY AND THAT IS THE POINT. Two families produce NO denominator row at
-// all -- a payload constructor in expression position and a variant named in a match pattern. That
-// is not a coarse observation of those families, it is the absence of one, and it is strictly worse:
+// THE SECOND ARM IS NOT A CATEGORY AND THAT IS THE POINT. Some families produce NO denominator row
+// at all, and WHICH ones is answered by the table below rather than restated here -- an earlier
+// revision of this comment named two while the table had grown to three, which is the divergence the
+// derived defect roster now prevents. That arm is not a coarse observation of those families, it is
+// the absence of one, and it is strictly worse:
 // a converged family is counted in the wrong bucket, an unobserved family is not counted anywhere.
 // It is also invisible to every conservation law we could write, because the denominator and the
 // observations are walked from the same source -- so the rows balance perfectly over a population
@@ -317,11 +319,20 @@ fn step0_unit_mapping_disagreements() -> List<Step0ReferenceFamily> {
   )
 }
 
-// WHERE THE REMOVED-EDGE ROSTER COMES FROM, SETTLED BY MEASUREMENT RATHER THAN BY ARGUMENT. A name
-// inside an import statement's brace list produces NO reference occurrence: adding one to the
-// fixture's import list moved the observed count by zero. So the imported-binding grain -- one row
-// per imported NAME inside a statement -- cannot be sourced from the occurrence walk, and a roster
-// that tried would have come back silently empty, which is the same vacuity one layer further out.
+// WHERE THE REMOVED-EDGE ROSTER COMES FROM, SETTLED BY MEASUREMENT RATHER THAN BY ARGUMENT -- AND
+// THE FIRST MEASUREMENT I RECORDED HERE WAS WRONG IN A WAY THAT MATTERS. I wrote that a name inside
+// an import statement's brace list produces no reference occurrence, on the evidence that adding one
+// to the fixture's import list moved the observed COUNT by zero. The count did not move; the
+// population did. The FIRST name in the list IS emitted as a reference occurrence and every later
+// name carries no role, so adding a name displaces which name holds the row instead of adding one --
+// and a cardinality reading cannot see a substitution. That is the same defect as the roster-count
+// check and the metamorphic invariants stated over sizes: three layers, one blindness.
+//
+// The conclusion survives and is now stronger. The imported-binding grain -- one row per imported
+// NAME inside a statement -- cannot be sourced from the occurrence walk, not because the walk is
+// silent there but because what it emits is FABRICATED and position-dependent: an import-list entry
+// names a binding to introduce, not a reference from a use site, and only its first entry is
+// admitted. A roster sourced from the walk would have been neither empty nor right.
 //
 // It is owned by the STRIP, which parses the statements and their brace lists and is the only thing
 // that knows what it removed. The census therefore has two producers by construction, joined on
@@ -343,9 +354,14 @@ type Step0DenominatorDefect
   | DenominatorAdmitsNonReference { detail: NonEmptyStr }
   | DenominatorSplitsOneAuthoredReference { family: Step0ReferenceFamily, detail: NonEmptyStr }
 
-data step0_denominator_defects: List<Step0DenominatorDefect> = [
-  DenominatorOmitsFamily { family: PayloadConstructorReference },
-  DenominatorOmitsFamily { family: VariantPatternReference },
+// THE OMISSION ROWS ARE DERIVED AND THE REST ARE AUTHORED, because the hand-written version of this
+// list had ALREADY DIVERGED from the observation table it was describing: the table grew a third
+// blind family -- the generic type argument -- and this roster still carried two rows. Two authored
+// lists answering "which families does the denominator omit" is the meaning fork DESIGN section 3
+// forbids, and adding the third row by hand would only reset the clock until the next family lands.
+// So the omission arm is now a projection of `step0_unobserved_families`, which is itself a fold over
+// the single observation table, and only the defects the FAMILY AXIS CANNOT EXPRESS are authored.
+data step0_non_family_denominator_defects: List<Step0DenominatorDefect> = [
   DenominatorAdmitsNonReference {
     detail: "the label of a named argument is emitted as a reference occurrence carrying the label's spelling and stamped CallableOccurrence; it names a parameter of the callee rather than referring to any declaration" as NonEmptyStr
   },
@@ -357,6 +373,12 @@ data step0_denominator_defects: List<Step0DenominatorDefect> = [
     detail: "one authored container.member reference produces TWO occurrences under two different categories -- the container head as a lexical value and the member as a field -- so a per-occurrence count over this family is not a count of authored references, and neither row is a namespace segment" as NonEmptyStr
   }
 ]
+
+fn step0_denominator_defects() -> List<Step0DenominatorDefect> {
+  step0_unobserved_families()
+    |> map(family => DenominatorOmitsFamily { family: family })
+    |> concat(step0_non_family_denominator_defects)
+}
 
 // THE CAPABILITY THAT WOULD SEPARATE A CONVERGED SET, NAMED AS A CAPABILITY AND NOT AS A ROSTER.
 // "a finer family roster" is not a trigger: a roster with no instrument behind it is the prose-law
@@ -664,7 +686,7 @@ fn step0_calibration_standing() -> Step0CalibrationStanding {
       converged_family_count: count(converged),
       discriminated_family_count: count(step0_discriminated_families()),
       unauthorable_branch_count: step0_unauthorable_branch_count(),
-      denominator_defect_count: count(step0_denominator_defects)
+      denominator_defect_count: count(step0_denominator_defects())
     }
   } else {
     match first(converged) {

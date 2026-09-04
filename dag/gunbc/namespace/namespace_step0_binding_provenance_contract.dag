@@ -197,8 +197,10 @@ data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may
 // caution: compile_clean_unlisted_import_census selects UnlistedImportUse rows from a masked
 // type-name emission path, so its coverage of the family roster was UNESTABLISHED. That standing has
 // been discharged in the harder direction. A calibration run over a hand-authored subject shows the
-// reference-occurrence producer emitting no denominator row at all for two families of the roster,
-// and emitting one for a named-argument label, which refers to no declaration. The population is
+// reference-occurrence producer emitting no denominator row at all for several families of the roster
+// -- the roster and the count are owned by namespace_step0_census_calibration, not restated here --
+// and emitting one for a named-argument label and one for the head of an import list, neither of
+// which refers to any declaration. The population is
 // therefore short real occurrences and long invented ones at the same time, and the two errors are
 // over different populations and cannot cancel.
 //
