@@ -99,6 +99,7 @@ import gunbc.recurring_failure_mode.live_argument_threaded_past_the_arm_that_dec
 import gunbc.recurring_failure_mode.check_subject_shape_cannot_represent_the_state_the_check_detects { check_subject_shape_cannot_represent_the_state_the_check_detects }
 import gunbc.recurring_failure_mode.comparison_discards_the_dimension_it_judges { comparison_discards_the_dimension_it_judges }
 import gunbc.recurring_failure_mode.source_text_census_counts_its_own_documentation { source_text_census_counts_its_own_documentation }
+import gunbc.recurring_failure_mode.instrument_renders_one_scope_while_adjudicating_another { instrument_renders_one_scope_while_adjudicating_another }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -189,4 +190,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   check_subject_shape_cannot_represent_the_state_the_check_detects,
   comparison_discards_the_dimension_it_judges,
   source_text_census_counts_its_own_documentation,
+  instrument_renders_one_scope_while_adjudicating_another,
 ]
