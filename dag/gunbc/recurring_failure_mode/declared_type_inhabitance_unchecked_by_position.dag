@@ -27,4 +27,6 @@ data declared_type_inhabitance_unchecked_by_position: RecurringFailureMode = Rec
 
     "**NOT `check_subject_narrower_than_its_declared_claim`**, whose repair is to widen the range a check visits: several of these positions have no inhabitance producer at all, so there is no range to widen. **NOT `absorbing_fallback`**: nothing widens to accept, the value simply reaches a producer of fields where another position reaches a producer of judgments. ",
   ],
+
+  evidence: [],
 }

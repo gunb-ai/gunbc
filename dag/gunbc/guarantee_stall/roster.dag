@@ -46,7 +46,6 @@ import gunbc.guarantee_stall.type_variable_test_keyed_by_spelling_stall { type_v
 import gunbc.guarantee_stall.undetermined_arm_severity_unsettled_stall { undetermined_arm_severity_unsettled_stall }
 import gunbc.guarantee_stall.narrowing_arm_not_a_function_of_the_rendering_stall { narrowing_arm_not_a_function_of_the_rendering_stall }
 import gunbc.guarantee_stall.emitted_field_access_ignores_value_shape_stall { emitted_field_access_ignores_value_shape_stall }
-import gunbc.guarantee_stall.instantiation_unavailable_unreachable_stall { instantiation_unavailable_unreachable_stall }
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
@@ -153,7 +152,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   undetermined_arm_severity_unsettled_stall,
   narrowing_arm_not_a_function_of_the_rendering_stall,
   emitted_field_access_ignores_value_shape_stall,
-  instantiation_unavailable_unreachable_stall,
   roster_re_enumerates_its_own_rows_stall,
 ]
 
