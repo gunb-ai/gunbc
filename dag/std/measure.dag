@@ -329,6 +329,12 @@ type CharacterCount = Measure<Count, One, Nat>
 
 type TokenCount = Measure<Count, One, Nat>
 
+// A count of entries in a merge queue. It sits with its Count siblings rather than in the module
+// that decodes GitHub's merge_queue rule, for the reason those siblings are here: the axis is
+// "count of things at unit scale", and an extdeps module minting its own alias for it would fork
+// that axis once per upstream that happens to count something.
+type MergeQueueEntryCount = Measure<Count, One, Nat>
+
 type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
@@ -970,6 +976,14 @@ fn token_count(count: Nat) -> TokenCount {
 
 fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
+}
+
+fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
+  Measure { count: count }
+}
+
+fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+  measure_count(c)
 }
 
 // A per-second rate of tokens -- the frequency family at One, period marker in the type, sibling of
