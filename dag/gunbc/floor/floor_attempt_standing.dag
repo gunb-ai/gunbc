@@ -418,9 +418,9 @@ fn floor_standing_attempt_verdict(
 //
 // Every job in the first group has `runner_id=0`, `runner_name=""` and `steps=[]`: it never
 // acquired a runner and never executed a step. They are PUSH events on main, where
-// cancel-in-progress is a pull_request predicate and the concurrency group keys on `run_id`, so
-// SUPERSESSION IS IMPOSSIBLE BY CONSTRUCTION -- and the first cut reported
-// `mechanism=workflow-cancelled` for every one of them.
+// the concurrency group falls back to `run_id` for any event carrying no pull_request number, so
+// every push run is alone in its group and SUPERSESSION IS IMPOSSIBLE BY CONSTRUCTION -- and the
+// first cut reported `mechanism=workflow-cancelled` for every one of them.
 //
 // A FABRICATED ATTRIBUTION IS WORSE THAN THE `unestablished` IT OVERWRITES. A non-answer sends
 // the reader to look; a confident wrong answer sends them to look in the WRONG PLACE, which is
