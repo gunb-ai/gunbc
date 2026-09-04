@@ -238,6 +238,9 @@ data crs812_dimensions_datasheet: Crs812Dimensions = Crs812Dimensions {
 // its own PR. The figure is therefore carried as a bare Int with the unit in the field name
 // (mtbf_hours). Same gap as operating_altitude_ft in extdeps.network.arista_7050s_52 — see the
 // open-gap row there for the precedent.
+// 🟡 feature:extdeps-hour-scale — dissolves when std.measure adds a Scale arm for the hour
+//   (Sixty × Sixty, or a dedicated Hour marker in time_scale_factor_seconds). Until then,
+//   carry mtbf_hours as a bare Int with the unit in the field name.
 type Crs812EnvironmentalFacts {
   operating_temp_min: Celsius
   operating_temp_max: Celsius

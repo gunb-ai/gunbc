@@ -195,6 +195,9 @@ type Arista7050s52ChassisFacts {
   storage_temp_max: Celsius
   relative_humidity_min: Percent
   relative_humidity_max: Percent
+  // 🟡 feature:extdeps-foot-length-scale — dissolves when std.measure adds a Scale arm for the
+  //   international foot on the Length axis (a non-decimal, non-SI scale analogous to Minute's
+  //   Sixty on Time). Until then, carry operating_altitude_ft as bare Int.
   operating_altitude_ft: Int
 }
 
