@@ -139,6 +139,24 @@ test fn w_two_releases_have_no_common_scale_in_both_orders() -> Bool {
       alternatives: [ranked_b(rank: 2, payload: 20), ranked_a(rank: 1, payload: 10)]), expected_releases: 2)
 }
 
+// THE COUNT IS OF DISTINCT RELEASES, NOT OF ROWS, and this row is what makes distinctness
+// load-bearing. The two-alternative cross-release row above checks the observed NUMBER, but with one
+// alternative per release the row count and the distinct count coincide -- so replacing
+// distinct_ranking_releases with `length(alternatives)` leaves it green. Here one release
+// contributes two alternatives, so a row count reports 3 where the distinct count reports 2.
+//
+// Both release-block orders are exercised because the dedupe is a fold: an accumulator that only
+// checked the immediately preceding entry, or that seeded itself from the head, would answer
+// correctly in one order and not the other.
+test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
+  is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
+    ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20), ranked_b(rank: 1, payload: 30),
+  ]), expected_releases: 2)
+    && is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
+      ranked_b(rank: 1, payload: 30), ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20),
+    ]), expected_releases: 2)
+}
+
 // A TIE REFUSES rather than picking, in both orders, and reports the same top quality and
 // multiplicity either way. Keeping the earlier entry is the one rule whose answer changes when the
 // roster is reversed, so both orders are required to hold the refusal.
@@ -187,6 +205,7 @@ test fn w_all_release_relative_selection_claims_hold() -> Bool {
     && w_negative_ranks_order_without_a_nonnegative_assumption()
     && w_the_comparator_is_total_at_the_bounds_of_int()
     && w_two_releases_have_no_common_scale_in_both_orders()
+    && w_the_release_count_counts_releases_and_not_rows()
     && w_an_equal_top_rank_refuses_in_both_orders()
     && w_a_tie_beneath_a_unique_maximum_does_not_refuse()
     && w_a_duplicated_top_alternative_is_not_silently_deduplicated()
