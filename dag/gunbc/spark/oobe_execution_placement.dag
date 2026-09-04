@@ -181,6 +181,11 @@ type RendererRefusalCause
   | RendererHasNoNodeRuntime { machine: ObservedMachineIdentity, account: PosixLoginName }
   | RendererHasNoPlaywrightPackage { machine: ObservedMachineIdentity, account: PosixLoginName }
   | RendererHasNoProvisionedBrowser { machine: ObservedMachineIdentity, account: PosixLoginName }
+  | RendererBrowserBuildUnidentified {
+      machine: ObservedMachineIdentity,
+      account: PosixLoginName,
+      cache_entry: PlaywrightBrowserCacheEntry,
+    }
 
 type RendererAssessment
   = RendererMeetsRequirements {
@@ -190,6 +195,7 @@ type RendererAssessment
       node_runtime: NodeRuntimeVersion,
       playwright: PlaywrightBuild,
       browser: ProvisionedBrowser,
+      chromium: ChromiumBuild,
     }
   | RendererAssessmentDeclined { cause: RendererRefusalCause }
 
@@ -257,16 +263,28 @@ type SecretTrafficRefusalCause
 // assessed route the disposition measured on the one we actually drove. Carrying the observation
 // run makes the subject explicit, and demotes the value from something a caller can spend to
 // something a later route admission must consume as evidence.
+// THE SUBJECT IS ONE LEG, NOT THE ROUTE, and the previous name said otherwise. The measured path is
+// renderer -> ephemeral session -> pi1 -> unit; what is admitted here is the pi1 local-forward leg
+// alone. Calling that field route_subject invited the route tranche to inherit a whole-path
+// admission from one hop's evidence.
 type ObservedForwardingUse {
   observed_through: ForwarderLocus
-  route_subject: ForwardingAdmissionSubject
+  forwarding_leg_subject: ForwardingAdmissionSubject
   attested_by: OobeScreenObservationRun
   payload: ForwardingPayloadClass
 }
 
+// THE REFUSAL NAMES THE SAME LEG THE ADMISSION DOES. Without a subject on the refused arm,
+// "observation was admitted and secrets were refused ON THE SAME ROUTE" was two unjoined facts: an
+// admission measured on leg A and a refusal about leg B satisfied every witness we had.
 type ForwardingUseDecision
   = ForwardingUseObserved { observed: ObservedForwardingUse }
-  | ForwardingUseRefused { payload: ForwardingPayloadClass, cause: SecretTrafficRefusalCause }
+  | ForwardingUseRefused {
+      forwarding_leg_subject: ForwardingAdmissionSubject,
+      attested_by: OobeScreenObservationRun,
+      payload: ForwardingPayloadClass,
+      cause: SecretTrafficRefusalCause,
+    }
 
 // ------------------------------------------------------------------------------------------
 // WHAT THIS MODULE DELIBERATELY NO LONGER DECLARES, AND WHY THE DELETION IS THE FIX.
@@ -471,13 +489,15 @@ data pi1_local_forward_to_unit_admission: ForwardingAdmission = ForwardingAdmitt
 data measured_observation_use: ForwardingUseDecision = ForwardingUseObserved {
   observed: ObservedForwardingUse {
     observed_through: gunbc.spark.oobe_execution_placement.measured_proxy_locus,
-    route_subject: gunbc.spark.oobe_execution_placement.pi1_local_forward_to_unit_subject,
+    forwarding_leg_subject: gunbc.spark.oobe_execution_placement.pi1_local_forward_to_unit_subject,
     attested_by: gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
     payload: ObservationPayload,
   },
 }
 
 data measured_secret_use: ForwardingUseDecision = ForwardingUseRefused {
+  forwarding_leg_subject: gunbc.spark.oobe_execution_placement.pi1_local_forward_to_unit_subject,
+  attested_by: gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
   payload: SecretBearingPayload,
   cause: ProxyLocusNotAdmittedForCredentials {
     proxy_locus: gunbc.spark.oobe_execution_placement.measured_proxy_locus,
@@ -501,6 +521,11 @@ data measured_route_use_decisions: List<ForwardingUseDecision> = [
 // unallocated machine cannot be qualified no matter what software it holds. Then UNOBSERVED before
 // ABSENT on every axis, so an axis nobody measured is never reported as a measured deficit -- the
 // distinction §4b keeps off the ladder as "outside the modeled guarantee".
+// THE ASSESSMENT READS THE AXIS IT CARRIES. Before the build_identity arm existed, every
+// PlaywrightBrowserPresent value became RendererMeetsRequirements and the identity was decoration:
+// a cache directory with no identified build counted as complete evidence, which is exactly the
+// conflation ProvisionedBrowser was split to prevent. The witness that distinguished the two
+// checked-in rows compared the ROWS and never entered this function.
 fn renderer_assessment(obs: RendererObservation) -> RendererAssessment {
   match obs.machine {
     UnallocatedMachineObservation { observed_label: l } =>
@@ -526,13 +551,23 @@ fn renderer_assessment(obs: RendererObservation) -> RendererAssessment {
           PlaywrightBrowserAbsent => RendererAssessmentDeclined {
             cause: RendererHasNoProvisionedBrowser { machine: obs.machine, account: obs.account },
           }
-          PlaywrightBrowserPresent { browser: c } => RendererMeetsRequirements {
-            host: h,
-            account: obs.account,
-            architecture: obs.architecture,
-            node_runtime: v,
-            playwright: b,
-            browser: c,
+          PlaywrightBrowserPresent { browser: c } => match c.build_identity {
+            ChromiumBuildUnidentified => RendererAssessmentDeclined {
+              cause: RendererBrowserBuildUnidentified {
+                machine: obs.machine,
+                account: obs.account,
+                cache_entry: c.cache_entry,
+              },
+            }
+            ChromiumBuildIdentified { build: cb } => RendererMeetsRequirements {
+              host: h,
+              account: obs.account,
+              architecture: obs.architecture,
+              node_runtime: v,
+              playwright: b,
+              browser: c,
+              chromium: cb,
+            }
           }
         }
       }
@@ -560,27 +595,39 @@ fn relay_assessment(obs: RadioRelayObservation) -> RelayAssessment {
 // revision. The trigger fired, so they are gone rather than re-argued -- every site below matches
 // the coproduct, which is both shorter and carries the arm the Bool was throwing away.
 
-// THE SELECTORS FOLD THE MEASURED POPULATION rather than naming a winner, so installing Playwright
-// on another host moves the answer with no second edit. A population in which nothing qualifies
-// refuses with the count it considered -- a refusal that says how wide the search was, instead of
-// borrowing some arbitrary member's cause.
-fn renderer_population_size() -> Int {
-  fold(observed_renderers, init: 0, f: (n, _r) => n + 1)
-}
-
-fn relay_population_size() -> Int {
-  fold(observed_relays, init: 0, f: (n, _r) => n + 1)
-}
-
-// THE REFUSAL CARRIES EVERY CAUSE IT CONSIDERED, a correction made by execution rather than review:
-// the first draft folded to a bare count, discarding the one fact a caller needs -- WHY the closest
-// candidate failed -- which is §5's absorbing fallback in miniature, a refusal that widens instead
-// of locating.
-fn renderer_refusal_causes() -> List<RendererRefusalCause> {
-  fold(observed_renderers, init: [],
+// EVERY FOLD TAKES ITS POPULATION AS AN ARGUMENT. Reading the observed rows directly inside these
+// helpers is what made the gap function's dropped-axis defect unauthorable: a witness could not hand
+// the module a world in which both participants are incomplete, so no input could go red. The
+// current-world entry points below are one-line applications of the same folds.
+fn renderer_causes_in(renderers: List<RendererObservation>) -> List<RendererRefusalCause> {
+  fold(renderers, init: [],
     f: (acc, obs) => match renderer_assessment(obs: obs) {
-      RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => acc
+      RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _, chromium: _ } => acc
       RendererAssessmentDeclined { cause: c } => append(acc, c)
+    })
+}
+
+fn relay_causes_in(relays: List<RadioRelayObservation>) -> List<RelayRefusalCause> {
+  fold(relays, init: [],
+    f: (acc, obs) => match relay_assessment(obs: obs) {
+      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => acc
+      RelayAssessmentDeclined { cause: c } => append(acc, c)
+    })
+}
+
+fn renderers_complete_in(renderers: List<RendererObservation>) -> Int {
+  fold(renderers, init: 0,
+    f: (n, obs) => match renderer_assessment(obs: obs) {
+      RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _, chromium: _ } => n + 1
+      RendererAssessmentDeclined { cause: _ } => n
+    })
+}
+
+fn relays_complete_in(relays: List<RadioRelayObservation>) -> Int {
+  fold(relays, init: 0,
+    f: (n, obs) => match relay_assessment(obs: obs) {
+      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => n + 1
+      RelayAssessmentDeclined { cause: _ } => n
     })
 }
 
@@ -605,28 +652,20 @@ fn relay_assessments() -> List<RelayAssessment> {
   fold(observed_relays, init: [], f: (acc, obs) => append(acc, relay_assessment(obs: obs)))
 }
 
+fn renderer_refusal_causes() -> List<RendererRefusalCause> {
+  renderer_causes_in(renderers: observed_renderers)
+}
+
 fn relay_refusal_causes() -> List<RelayRefusalCause> {
-  fold(observed_relays, init: [],
-    f: (acc, obs) => match relay_assessment(obs: obs) {
-      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => acc
-      RelayAssessmentDeclined { cause: c } => append(acc, c)
-    })
+  relay_causes_in(relays: observed_relays)
 }
 
 fn renderers_with_complete_evidence() -> Int {
-  fold(observed_renderers, init: 0,
-    f: (n, obs) => match renderer_assessment(obs: obs) {
-      RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => n + 1
-      RendererAssessmentDeclined { cause: _ } => n
-    })
+  renderers_complete_in(renderers: observed_renderers)
 }
 
 fn relays_with_complete_evidence() -> Int {
-  fold(observed_relays, init: 0,
-    f: (n, obs) => match relay_assessment(obs: obs) {
-      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => n + 1
-      RelayAssessmentDeclined { cause: _ } => n
-    })
+  relays_complete_in(relays: observed_relays)
 }
 
 // THE USE LOOKUP RETURNS A SELECTION, AND THE PREVIOUS VERSION FABRICATED ITS MISSING CAUSE.
@@ -648,7 +687,7 @@ type ForwardingUseSelection
 fn decision_payload(d: ForwardingUseDecision) -> ForwardingPayloadClass {
   match d {
     ForwardingUseObserved { observed: o } => o.payload
-    ForwardingUseRefused { payload: p, cause: _ } => p
+    ForwardingUseRefused { forwarding_leg_subject: _, attested_by: _, payload: p, cause: _ } => p
   }
 }
 
@@ -688,6 +727,10 @@ fn use_decision_for(want: ForwardingPayloadClass) -> ForwardingUseSelection {
 type ParticipantGap
   = NoRendererHasCompleteEvidence { causes: List<RendererRefusalCause> }
   | NoRelayHasCompleteEvidence { causes: List<RelayRefusalCause> }
+  | NeitherParticipantHasCompleteEvidence {
+      renderer_causes: List<RendererRefusalCause>,
+      relay_causes: List<RelayRefusalCause>,
+    }
   | ParticipantEvidenceCompleteRouteUnbuilt { renderers: Int, relays: Int }
 
 // THE SEAL PROBES ARE GONE WITH THE CARRIERS THEY GUARDED. With no sole_constructor type left in
@@ -700,17 +743,34 @@ type ParticipantGap
 // diagnostic -- and that mattered, because the first version of the refusal probe WAS green for an
 // unrelated diagnostic (an unresolvable std.types import the harness cannot supply). I ran the third
 // arm by hand while debugging that and did not enrol it.
-fn current_oobe_participant_gaps() -> ParticipantGap {
-  if (relays_with_complete_evidence() == 0) {
-    NoRelayHasCompleteEvidence { causes: relay_refusal_causes() }
+// PARAMETERIZED SO A DISCRIMINATING INPUT EXISTS. Reading the observed populations directly made
+// the both-incomplete arm unauthorable -- there was no way to hand this function a world where the
+// renderer is also broken, so the defect below could not be caught by any witness.
+fn participant_gaps_over(
+  renderers: List<RendererObservation>,
+  relays: List<RadioRelayObservation>,
+) -> ParticipantGap {
+  if (relays_complete_in(relays: relays) == 0) {
+    if (renderers_complete_in(renderers: renderers) == 0) {
+      NeitherParticipantHasCompleteEvidence {
+        renderer_causes: renderer_causes_in(renderers: renderers),
+        relay_causes: relay_causes_in(relays: relays),
+      }
+    } else {
+      NoRelayHasCompleteEvidence { causes: relay_causes_in(relays: relays) }
+    }
   } else {
-    if (renderers_with_complete_evidence() == 0) {
-      NoRendererHasCompleteEvidence { causes: renderer_refusal_causes() }
+    if (renderers_complete_in(renderers: renderers) == 0) {
+      NoRendererHasCompleteEvidence { causes: renderer_causes_in(renderers: renderers) }
     } else {
       ParticipantEvidenceCompleteRouteUnbuilt {
-        renderers: renderers_with_complete_evidence(),
-        relays: relays_with_complete_evidence(),
+        renderers: renderers_complete_in(renderers: renderers),
+        relays: relays_complete_in(relays: relays),
       }
     }
   }
+}
+
+fn current_oobe_participant_gaps() -> ParticipantGap {
+  participant_gaps_over(renderers: observed_renderers, relays: observed_relays)
 }

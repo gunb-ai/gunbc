@@ -41,6 +41,8 @@ import extdeps.systems.nvidia_dgx_spark_setup {
   FieldMinimumLength,
   FieldMustEqual,
   ObservedFieldValidationRule,
+  OobeInterfaceRevision,
+  OobeScreenRoute,
   PresentsNoConfigurableField,
   SubmitsSelections,
   AcceptsLegalAgreement,
@@ -56,7 +58,9 @@ import gunbc.spark.oobe_screen_observation {
   observed_account_username_probes,
   WalkReachedFlowCompletion,
   WalkHaltedAwaitingOperatorAuthority,
-  observed_oobe_screen_prefix,
+  observed_screens_across_runs,
+  observed_transitions_across_runs,
+  ObservedScreenTransition,
   observed_walk_termination,
   observed_account_walk_termination,
   account_route_direct_navigation,
@@ -73,6 +77,7 @@ import gunbc.spark.oobe_screen_observation {
   ResolvedByHttpRedirect,
   ResolvedByClientSideRoute,
   dgx_spark_0c75_oobe_prefix_run,
+  OobeScreenObservationRun,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -150,19 +155,39 @@ fn account_rule_holds(r: ObservedFieldValidationRule) -> Bool {
   }
 }
 
+fn rule_kind(r: ObservedFieldValidationRule) -> String {
+  match r {
+    FieldRequiredNonEmpty { field: _, message: _ } => "required"
+    FieldMinimumLength { field: _, minimum: _, message: _ } => "minimum"
+    FieldMustEqual { field: _, other: _, message: _ } => "equals"
+  }
+}
+
+fn rule_kind_count(rs: List<ObservedFieldValidationRule>, kind: String) -> Int {
+  fold(rs, init: 0, f: (n, r) => if (rule_kind(r: r) == kind) { n + 1 } else { n })
+}
+
+// EACH NAMED RULE OCCURS EXACTLY ONCE. Arity plus a membership test admits duplicate substitution:
+// required(username), required(username), minimum(password, 6) satisfies both while the
+// confirm-password equality rule has been deleted. The summed-minimum witness is fooled the same
+// way, so counting each rule by identity is what closes it.
 test fn w_account_gate_carries_the_three_measured_validation_rules() -> Bool {
   match oobe_screen_account.advance_gate {
     ForwardControlEnabledOnArrival => false
     ForwardControlEnabledAfterScrollToEnd { scroll_container: _ } => false
     ForwardControlEnabledWhenFieldsValidate { rules: rs } =>
-      length(rs) == 3 && fold(rs, init: true, f: (acc, r) => acc && account_rule_holds(r: r))
+      length(rs) == 3
+      && fold(rs, init: true, f: (acc, r) => acc && account_rule_holds(r: r))
+      && rule_kind_count(rs: rs, kind: "required") == 1
+      && rule_kind_count(rs: rs, kind: "minimum") == 1
+      && rule_kind_count(rs: rs, kind: "equals") == 1
   }
 }
 
-// THE MINIMUM IS SIX AND THAT IS THE POINT. Twelve lowercase letters were accepted, so the
-// wizard enforces length and nothing else. This witness exists so that a later reader cannot
-// mistake the model's silence about complexity for a complexity rule the device applies: the
-// only length rule in the population is this one, and it is 6.
+// THE MINIMUM IS SIX. Twelve lowercase letters were accepted, which refutes the common complexity
+// rules that value would violate -- it does not establish that the wizard enforces length and
+// NOTHING else, which one accepted value cannot show and an earlier version of this comment claimed.
+// What the witness pins is that the only length rule in the population is this one, and it is 6.
 fn declared_minimum_length(r: ObservedFieldValidationRule) -> Int {
   match r {
     FieldMinimumLength { field: _, minimum: n, message: _ } => n
@@ -189,7 +214,7 @@ test fn w_the_only_password_length_rule_is_six_characters() -> Bool {
 // turns it red.
 test fn w_exactly_one_screen_in_the_prefix_accepts_a_legal_agreement() -> Bool {
   fold(
-    observed_oobe_screen_prefix(),
+    observed_screens_across_runs(),
     init: 0,
     f: (n, s) => if (s.effect == AcceptsLegalAgreement) { n + 1 } else { n }
   ) == 1
@@ -223,24 +248,45 @@ fn prefix_route_spelling(screens: List<ObservedOobeScreen>) -> String {
   join(map(screens, s => s.route as String), "|")
 }
 
-test fn w_observed_prefix_is_welcome_settings_eula_then_account_in_order() -> Bool {
-  prefix_route_spelling(screens: observed_oobe_screen_prefix())
-    == "/welcome|/welcome/settings|/welcome/eula|/welcome/account"
+// THE ORDER CLAIM IS SCOPED TO THE RUN THAT ACTUALLY WALKED IT. The predecessor asserted a
+// four-screen order over the UNION of two runs, which read as a route: welcome, settings, eula,
+// account. The last edge was never crossed -- run 2 navigated directly to /welcome/account -- so
+// the assertion is split into the order run 1 observed and the transitions anyone observed.
+test fn w_the_prefix_run_walked_welcome_settings_eula_in_order() -> Bool {
+  prefix_route_spelling(screens: dgx_spark_0c75_oobe_prefix_run.screens)
+    == "/welcome|/welcome/settings|/welcome/eula"
+}
+
+// AND NOTHING WAS OBSERVED TO LEAD TO THE ACCOUNT SCREEN. This is a claim about our evidence, not
+// about the wizard: the edge may well exist. It goes red the moment a run crosses it, which is
+// exactly when the actuator may start assuming it.
+test fn w_no_observed_transition_enters_the_account_screen() -> Bool {
+  !fold(observed_transitions_across_runs(), init: false,
+    f: (acc, t) => acc || (t.to_route as String) == "/welcome/account")
+}
+
+// THE EDGES RUN 1 DID CROSS, asserted so the witness above cannot pass by the transition list being
+// empty for an unrelated reason -- the positive control for a negative claim.
+test fn w_the_prefix_run_crossed_two_observed_transitions() -> Bool {
+  join(map(observed_transitions_across_runs(),
+    t => (t.from_route as String) + ">" + (t.to_route as String)), "|")
+    == "/welcome>/welcome/settings|/welcome/settings>/welcome/eula"
 }
 
 // The receipt must carry the CANONICAL prefix and halt, not merely a well-shaped pair of
 // hosts. Without this a receipt could quietly describe a different walk than the one modeled.
-// EACH RUN CARRIES ITS OWN SCREENS AND THE PREFIX IS THEIR CONCATENATION. The earlier revision
+// EACH RUN CARRIES ITS OWN SCREENS AND THE POPULATION IS THEIR CONCATENATION -- an order over the
+// LIST, which is a fact about how this model composes, and NOT a claim that the four were walked. The earlier revision
 // compared run 1's screens against the whole prefix, which was an identity while one run existed
 // and becomes false the moment a second one does. What must hold now is the derivation: run 1
 // watched three screens, run 2 watched one, and the prefix is exactly those four in that order.
 // Asserting each run's own spelling is what stops a run from claiming a screen it never watched.
-test fn w_each_run_carries_its_own_screens_and_they_compose_the_prefix() -> Bool {
+test fn w_each_run_carries_its_own_screens_and_they_compose_the_population() -> Bool {
   prefix_route_spelling(screens: dgx_spark_0c75_oobe_prefix_run.screens)
     == "/welcome|/welcome/settings|/welcome/eula"
     && prefix_route_spelling(screens: dgx_spark_0c75_oobe_account_run.screens)
       == "/welcome/account"
-    && prefix_route_spelling(screens: observed_oobe_screen_prefix())
+    && prefix_route_spelling(screens: observed_screens_across_runs())
       == "/welcome|/welcome/settings|/welcome/eula|/welcome/account"
 }
 
@@ -420,7 +466,7 @@ fn forward_control_address(c: OobeControl) -> Bool {
 }
 
 test fn w_all_forward_controls_share_one_address_so_identity_must_be_separate() -> Bool {
-  fold(observed_oobe_screen_prefix(), init: true,
+  fold(observed_screens_across_runs(), init: true,
     f: (acc, s) => acc && fold(s.controls, init: true, f: (a, c) => a && forward_control_address(c: c)))
 }
 
@@ -587,7 +633,7 @@ fn screen_creates_account(s: ObservedOobeScreen) -> Bool {
 }
 
 test fn w_exactly_one_screen_in_the_prefix_creates_a_device_account() -> Bool {
-  fold(observed_oobe_screen_prefix(), init: 0, f: (n, s) => if (screen_creates_account(s: s)) { n + 1 } else { n }) == 1
+  fold(observed_screens_across_runs(), init: 0, f: (n, s) => if (screen_creates_account(s: s)) { n + 1 } else { n }) == 1
     && screen_creates_account(s: oobe_screen_account)
     && !screen_creates_account(s: oobe_screen_eula)
 }
@@ -633,4 +679,36 @@ test fn w_account_route_rendered_without_its_predecessors_completing() -> Bool {
       RouteRenderedWithoutPredecessorCompletion => true
       RouteRequiresPredecessorCompletion => false
     }
+}
+
+// EVERY SCREEN A RUN CLAIMS BELONGS TO THE REVISION IT CITES. The two fields were independent, so
+// this was legal and invisible: a run citing a revision whose screen set omits /welcome/account
+// while claiming to have watched exactly that screen. It is not an immutability problem -- it is an
+// ordinary missing join, and it is the relation the route tranche would have inherited.
+fn revision_covers_route(revision: OobeInterfaceRevision, route: OobeScreenRoute) -> Bool {
+  fold(revision.screens, init: false,
+    f: (acc, s) => acc || (s.route as String) == (route as String))
+}
+
+fn run_screens_are_within_its_revision(run: OobeScreenObservationRun) -> Bool {
+  fold(run.screens, init: true,
+    f: (acc, s) => acc && revision_covers_route(revision: run.interface_revision, route: s.route))
+}
+
+test fn w_each_run_only_claims_screens_its_cited_revision_carries() -> Bool {
+  fold(oobe_observation_runs, init: true,
+    f: (acc, run) => acc && run_screens_are_within_its_revision(run: run))
+}
+
+// THE POSITIVE CONTROL: the join is capable of failing. A run whose screens are drawn from a
+// revision that does not carry them must be rejected by the same predicate, or the witness above is
+// green because the predicate is green for everything.
+test fn w_the_revision_join_rejects_a_screen_outside_the_revision() -> Bool {
+  !revision_covers_route(
+    revision: OobeInterfaceRevision {
+      revision: "control/welcome-only" as NonEmptyStr,
+      screens: [oobe_screen_welcome],
+    },
+    route: oobe_screen_account.route,
+  )
 }

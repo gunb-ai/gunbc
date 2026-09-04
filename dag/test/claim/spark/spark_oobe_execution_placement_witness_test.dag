@@ -4,6 +4,7 @@ import std.types { Bool, List, Int, NonEmptyStr }
 import std.types { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.access.posix { PosixLoginName }
+import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render_network_host }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
 import product.placement_supply { HostIdentity }
@@ -82,7 +83,9 @@ import gunbc.spark.oobe_execution_placement {
   ForwardingUseRefused,
   ForwardingUseObserved,
   ObservedForwardingUse,
+  ForwardingAdmissionSubject,
   measured_observation_use,
+  measured_secret_use,
   ForwardingPayloadClass,
   ObservationPayload,
   SecretBearingPayload,
@@ -98,6 +101,12 @@ import gunbc.spark.oobe_execution_placement {
   relays_with_complete_evidence,
   renderer_assessment,
   renderer_assessments,
+  relay_assessments,
+  participant_gaps_over,
+  NeitherParticipantHasCompleteEvidence,
+  RendererBrowserBuildUnidentified,
+  ChromiumBuild,
+  chromium_151_0_7922_34,
   relay_assessment,
   use_decision_for,
   ForwardingUseSelection,
@@ -122,10 +131,11 @@ import gunbc.spark.oobe_execution_placement {
 data disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ==========================================================================================
-// THESE WITNESSES CALL THE ADMISSION FUNCTIONS, which is the whole point of the revision they
-// belong to. The predecessor tested observation ROWS and Bool predicates; nothing it asserted
-// exercised a decision a later browser kernel would take. Every witness below enters through
-// renderer_admission, relay_admission, select_*, or oobe_session_admission.
+// THESE WITNESSES ENTER THROUGH THE ASSESSMENT FUNCTIONS. The header this replaces still named
+// renderer_admission, relay_admission, select_* and oobe_session_admission -- four functions this
+// PR deleted -- which is the same defect the diff exists to remove: a claim describing machinery
+// that is not there. Every witness below enters through renderer_assessment, relay_assessment,
+// participant_gaps_over, or use_decision_for.
 // ==========================================================================================
 
 // THE HEADLINE GAP, PINNED TO THE EXACT ARM. Today no relay has complete evidence, and the reason
@@ -140,6 +150,7 @@ test fn w_the_participant_gap_is_the_unratified_relay_identity() -> Bool {
   match current_oobe_participant_gaps() {
     ParticipantEvidenceCompleteRouteUnbuilt { renderers: _, relays: _ } => false
     NoRendererHasCompleteEvidence { causes: _ } => false
+    NeitherParticipantHasCompleteEvidence { renderer_causes: _, relay_causes: _ } => false
     NoRelayHasCompleteEvidence { causes: cs } =>
       fold(cs, init: false, f: (acc, rcause) => acc || match rcause {
         RelayIdentityUnallocated { observed_label: l } => l == "pi1"
@@ -151,9 +162,9 @@ test fn w_the_participant_gap_is_the_unratified_relay_identity() -> Bool {
 
 // THE POSITIVE CONTROL FOR THAT REFUSAL. Without this, the witness above is satisfied by an
 // admission function that can NEVER be ready, which would make it a permanently-green decoration
-// rather than a wall. The same relay observation with an ALLOCATED machine qualifies, so the
+// rather than a wall. The same relay observation with an ALLOCATED machine has complete evidence, so the
 // refusal is attributable to the allocation and to nothing else.
-test fn w_the_same_relay_with_an_allocated_identity_is_ready() -> Bool {
+test fn w_the_same_relay_with_an_allocated_identity_has_complete_evidence() -> Bool {
   match relay_assessment(obs: RadioAssociated {
     machine: FleetAllocatedMachine { host: operator_host_srv7 },
     radio_interface: "wlan0" as RadioInterfaceName,
@@ -193,13 +204,14 @@ test fn w_an_unmeasured_axis_declines_as_unobserved_not_as_a_measured_absence() 
       RendererHasNoNodeRuntime { machine: _, account: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
     }
   }
 }
 
 // THE MEASURED QUALIFIED RENDERER, entered through the admission function rather than read off a
 // row, and carrying the PlaywrightBuild authority rather than a re-coined version string.
-test fn w_srv4_qualifies_and_carries_the_playwright_build_authority() -> Bool {
+test fn w_srv4_has_complete_evidence_and_carries_the_playwright_build_authority() -> Bool {
   match renderer_assessment(obs: renderer_srv4_briansrls) {
     RendererAssessmentDeclined { cause: _ } => false
     RendererMeetsRequirements { host: h, account: a, architecture: _, node_runtime: nr, playwright: pw, browser: _ } =>
@@ -230,6 +242,7 @@ test fn w_a_measured_absent_runtime_declines_for_the_runtime() -> Bool {
       RendererIdentityUnallocated { observed_label: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
     }
   }
 }
@@ -249,6 +262,7 @@ test fn w_a_present_package_with_an_absent_browser_is_expressible_and_declines()
     RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
     RendererAssessmentDeclined { cause: c } => match c {
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => true
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
       RendererHasNoNodeRuntime { machine: _, account: _ } => false
       RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
       RendererIdentityUnallocated { observed_label: _ } => false
@@ -260,7 +274,7 @@ test fn w_a_present_package_with_an_absent_browser_is_expressible_and_declines()
 // AN UNALLOCATED MACHINE CANNOT QUALIFY AS A RENDERER EITHER, no matter how complete its software
 // is. This is the renderer-side half of the constraint the predecessor dissolved by writing
 // "pi1" as HostIdentity.
-test fn w_a_fully_provisioned_but_unallocated_machine_cannot_qualify() -> Bool {
+test fn w_a_fully_provisioned_but_unallocated_machine_is_declined() -> Bool {
   match renderer_assessment(obs: RendererObservation {
     machine: UnallocatedMachineObservation { observed_label: "some-unnamed-box" as NonEmptyStr },
     account: "briansrls" as PosixLoginName,
@@ -281,6 +295,7 @@ test fn w_a_fully_provisioned_but_unallocated_machine_cannot_qualify() -> Bool {
       RendererHasNoNodeRuntime { machine: _, account: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
     }
   }
 }
@@ -289,7 +304,7 @@ test fn w_a_fully_provisioned_but_unallocated_machine_cannot_qualify() -> Bool {
 // single exclusive coproduct, so recording the secret refusal erased the observation admission and
 // the route's real measured standing survived only in prose. Both are now true simultaneously,
 // and this witness fails if either half is dropped.
-test fn w_observation_is_admitted_and_secrets_are_refused_on_the_same_route() -> Bool {
+test fn w_observation_was_observed_and_secrets_refused_on_the_same_leg() -> Bool {
   match use_decision_for(want: ObservationPayload) {
     ForwardingUseDecisionMissing { payload: _ } => false
     ForwardingUseDecisionAmbiguous { payload: _, decisions: _ } => false
@@ -316,7 +331,7 @@ test fn w_observation_is_admitted_and_secrets_are_refused_on_the_same_route() ->
 // instead of silently changing an answer.
 //
 // BOTH HALVES ARE ASSERTED. A version checking only the renderer count would stay green if a relay
-// began qualifying under a fabricated identity -- the exact regression an earlier head shipped.
+// began carrying complete evidence under a fabricated identity -- the exact regression an earlier head shipped.
 test fn w_exactly_one_renderer_and_no_relay_carry_complete_evidence() -> Bool {
   renderers_with_complete_evidence() == 1 && relays_with_complete_evidence() == 0
 }
@@ -335,7 +350,7 @@ test fn w_the_renderer_with_complete_evidence_is_srv4() -> Bool {
 // composition of three facts rather than one host, and it is folded from the measured population
 // rather than asserted, so installing Playwright on pi1 -- or a radio in srv4 -- retires it by
 // construction instead of leaving a comment that has quietly become false.
-test fn w_no_single_machine_is_both_a_qualified_renderer_and_a_ready_relay() -> Bool {
+test fn w_no_single_machine_has_complete_renderer_and_relay_evidence() -> Bool {
   !fold(observed_renderers, init: false, f: (acc, obs) => acc || match renderer_assessment(obs: obs) {
     RendererAssessmentDeclined { cause: _ } => false
     RendererMeetsRequirements { host: qh, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } =>
@@ -381,6 +396,7 @@ test fn w_an_unobserved_axis_decline_names_which_axis() -> Bool {
       RendererHasNoNodeRuntime { machine: _, account: _ } => false
       RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
       RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
     }
   }
 }
@@ -452,18 +468,148 @@ test fn w_a_cache_entry_alone_does_not_identify_a_chromium_build() -> Bool {
   }
 }
 
-// THE OBSERVED USE NAMES THE RUN AND THE ROUTE IT WAS MEASURED ON. Before this, a lookup by payload
-// class alone would hand a future, never-assessed route the disposition measured on the one we
-// actually drove -- and the annotation claiming otherwise was the only thing standing where the
-// fields should have been.
-test fn w_the_observed_use_is_bound_to_its_run_and_route_subject() -> Bool {
+// BOTH OUTCOMES NAME THE SAME LEG AND THE SAME RUN, WHICH IS WHAT "ON THE SAME ROUTE" HAS TO MEAN.
+// The predecessor checked the admitted side's port and the run's halt route, and left the refusal
+// carrying no subject at all -- so an admission measured on one leg and a refusal about a different
+// one satisfied a witness whose name said they were the same route. It also wildcarded the
+// principal, the direction and the target host, any of which could change without turning it red.
+fn host_spelling(host: NetworkHost) -> String {
+  match render_network_host(host: host) {
+    Present { value: v } => v as String
+    Absent => "unrenderable"
+  }
+}
+
+fn leg_spelling(sub: ForwardingAdmissionSubject) -> String {
+  (match sub.principal {
+    SshLoginPrincipal { login: l } => l as String
+    SshCertificatePrincipal { principal: p } => p as String
+  })
+  + "@"
+  + host_spelling(host: sub.relay)
+  + (match sub.direction { LocalForward => " -L " RemoteForward => " -R " })
+  + host_spelling(host: sub.target.host)
+  + ":"
+  + (sub.target.port as String)
+}
+
+test fn w_observation_and_secret_decisions_name_one_leg_and_one_run() -> Bool {
   match measured_observation_use {
-    ForwardingUseRefused { payload: _, cause: _ } => false
+    ForwardingUseRefused { forwarding_leg_subject: _, attested_by: _, payload: _, cause: _ } => false
     ForwardingUseObserved { observed: o } =>
-      o.route_subject.target.port == 80
-      && match o.attested_by.termination {
-        WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/account"
-        WalkReachedFlowCompletion => false
+      leg_spelling(sub: o.forwarding_leg_subject) == "briansrls@pi1 -L 10.92.7.127:80"
+      && match measured_secret_use {
+        ForwardingUseObserved { observed: _ } => false
+        ForwardingUseRefused { forwarding_leg_subject: rs, attested_by: ra, payload: _, cause: _ } =>
+          leg_spelling(sub: rs) == leg_spelling(sub: o.forwarding_leg_subject)
+          && (ra.observed_on as String) == (o.attested_by.observed_on as String)
+          && match o.attested_by.termination {
+            WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/account"
+            WalkReachedFlowCompletion => false
+          }
       }
   }
+}
+
+// A CACHE ENTRY WITHOUT AN IDENTIFIED BUILD IS NOT COMPLETE EVIDENCE, ASSERTED ON THE PRODUCTION
+// PATH. The earlier witness compared the two checked-in rows and never entered renderer_assessment,
+// so the admitted mutation -- allocated host, Node present, Playwright present, cache entry present,
+// build UNIDENTIFIED -> RendererMeetsRequirements -- was invisible to it. This constructs exactly
+// that observation and requires the refusal.
+test fn w_an_unidentified_browser_build_is_not_complete_renderer_evidence() -> Bool {
+  match renderer_assessment(obs: RendererObservation {
+    machine: machine_srv4,
+    account: "briansrls" as PosixLoginName,
+    architecture: Aarch64,
+    runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
+    package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+    browser: PlaywrightBrowserPresent {
+      browser: ProvisionedBrowser {
+        cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
+        build_identity: ChromiumBuildUnidentified,
+      },
+    },
+  }) {
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _, chromium: _ } => false
+    RendererAssessmentDeclined { cause: c } => match c {
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: e } =>
+        (e as String) == "chromium-1234"
+      RendererIdentityUnallocated { observed_label: _ } => false
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
+      RendererHasNoNodeRuntime { machine: _, account: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+    }
+  }
+}
+
+// THE POSITIVE CONTROL: the SAME observation with the build identified is complete. Without it the
+// witness above passes for an assessment that refuses everything.
+test fn w_the_same_renderer_with_an_identified_build_is_complete() -> Bool {
+  match renderer_assessment(obs: RendererObservation {
+    machine: machine_srv4,
+    account: "briansrls" as PosixLoginName,
+    architecture: Aarch64,
+    runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
+    package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+    browser: PlaywrightBrowserPresent {
+      browser: ProvisionedBrowser {
+        cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
+        build_identity: ChromiumBuildIdentified { build: chromium_151_0_7922_34 },
+      },
+    },
+  }) {
+    RendererAssessmentDeclined { cause: _ } => false
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _, chromium: cb } =>
+      (cb.version as String) == "151.0.7922.34"
+  }
+}
+
+// WHEN BOTH PARTICIPANTS ARE INCOMPLETE, BOTH SETS OF CAUSES SURVIVE. The predecessor checked the
+// relay first and returned, so a world where pi1 stays unallocated AND srv4 loses its runtime
+// reported only relay causes: every renderer problem disappeared and the headline witness stayed
+// green. That is the absorbing fallback one level above the per-row assessments, and it was
+// unauthorable until the gap function took its populations as arguments.
+test fn w_both_incomplete_populations_keep_both_sets_of_causes() -> Bool {
+  match participant_gaps_over(
+    renderers: [RendererObservation {
+      machine: machine_srv4,
+      account: "briansrls" as PosixLoginName,
+      architecture: Aarch64,
+      runtime: NodeRuntimeAbsent,
+      package: PlaywrightPackageAbsent,
+      browser: PlaywrightBrowserAbsent,
+    }],
+    relays: observed_relays,
+  ) {
+    ParticipantEvidenceCompleteRouteUnbuilt { renderers: _, relays: _ } => false
+    NoRendererHasCompleteEvidence { causes: _ } => false
+    NoRelayHasCompleteEvidence { causes: _ } => false
+    NeitherParticipantHasCompleteEvidence { renderer_causes: rc, relay_causes: lc } =>
+      fold(rc, init: false, f: (acc, c) => acc || match c {
+        RendererHasNoNodeRuntime { machine: _, account: _ } => true
+        RendererIdentityUnallocated { observed_label: _ } => false
+        RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
+        RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+        RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+        RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+      })
+      && fold(lc, init: false, f: (acc, c) => acc || match c {
+        RelayIdentityUnallocated { observed_label: l } => l == "pi1"
+        RelayCarriesNoRadio { machine: _ } => false
+        RelayRadioUnassociated { machine: _, radio_interface: _ } => false
+      })
+  }
+}
+
+// THE PUBLISHED RELAY POPULATION HAS A READER. relay_assessments was exported and consumed by
+// nothing, which in this PR is not a style defect: an unread publication is indistinguishable from
+// one that is wrong.
+test fn w_every_observed_relay_is_assessed_and_none_is_complete() -> Bool {
+  length(relay_assessments()) == length(observed_relays)
+    && fold(relay_assessments(), init: true, f: (acc, a) => acc && match a {
+      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => false
+      RelayAssessmentDeclined { cause: _ } => true
+    })
 }

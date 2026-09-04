@@ -146,7 +146,10 @@ data account_route_direct_navigation: ObservedDirectRouteNavigation = ObservedDi
 // let a screen be observed by no run, or a run to claim a screen it never watched, with both
 // tables staying type-correct while they disagree. So the runs are the authority and the prefix
 // is folded out of them (DESIGN section 3).
-fn observed_oobe_screen_prefix() -> List<ObservedOobeScreen> {
+// THE UNION OF WHAT THE RUNS WATCHED -- A POPULATION, NOT A ROUTE. It was named ..._prefix, which
+// asserted an order across two runs that never composed into one walk. Coverage folds want exactly
+// this union; nothing may read it as a sequence.
+fn observed_screens_across_runs() -> List<ObservedOobeScreen> {
   flat_map(oobe_observation_runs, run => run.screens)
 }
 
@@ -227,7 +230,7 @@ fn screen_presents_field(screen: ObservedOobeScreen, field: OobeSetupField) -> B
 // preserve the exact fork the repair exists to remove.
 fn observed_screen_covers_field(field: OobeSetupField) -> Bool {
   fold(
-    observed_oobe_screen_prefix(),
+    observed_screens_across_runs(),
     init: false,
     f: (acc, screen) => acc || screen_presents_field(screen: screen, field: field)
   )
@@ -306,6 +309,21 @@ type OobePortalReach
       unit_origin: Uri,
     }
 
+// A TRANSITION IS OBSERVED OR IT DOES NOT EXIST, and this carrier arrived from a reviewer's
+// objection that the screen list was quietly asserting one. Two runs concatenated into a four-screen
+// "prefix" read as a walk: welcome, settings, eula, account. Three of those screens came from a run
+// that HALTED at the EULA, and the account screen came from a later run that navigated DIRECTLY to
+// /welcome/account. No eula -> account edge was ever crossed, and an actuator that read the list as
+// a route would have driven a transition nobody has evidence for.
+//
+// The transitions are OUR receipt, not NVIDIA's interface: the wizard presumably has that edge, and
+// the claim here is only about what we watched. So they live per-run in this module, and the vendor
+// module's revision stays a population of screens with no order asserted.
+type ObservedScreenTransition {
+  from_route: OobeScreenRoute
+  to_route: OobeScreenRoute
+}
+
 // A RECEIPT NAMES THE EXACT INTERFACE REVISION IT SAW. Carrying the screens alone would bind this
 // run to whatever the canonical rows say today, so editing the vendor model would silently rewrite
 // history -- the hazard the extdeps consolidation created and this field closes. The screens the run
@@ -317,6 +335,7 @@ type OobeScreenObservationRun {
   observed_on: Rfc3339Timestamp
   interface_revision: OobeInterfaceRevision
   screens: List<ObservedOobeScreen>
+  observed_transitions: List<ObservedScreenTransition>
   termination: OobeWalkTermination
 }
 
@@ -341,10 +360,24 @@ data dgx_spark_0c75_oobe_prefix_run: OobeScreenObservationRun = OobeScreenObserv
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_settings,
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_eula,
   ],
+  observed_transitions: [
+    ObservedScreenTransition {
+      from_route: "/welcome" as OobeScreenRoute,
+      to_route: "/welcome/settings" as OobeScreenRoute,
+    },
+    ObservedScreenTransition {
+      from_route: "/welcome/settings" as OobeScreenRoute,
+      to_route: "/welcome/eula" as OobeScreenRoute,
+    },
+  ],
   termination: gunbc.spark.oobe_screen_observation.observed_walk_termination,
 }
 
 // RUN 2 -- the account screen, reached without crossing either boundary run 1 stopped at.
+//
+// ITS observed_transitions IS EMPTY, AND THAT IS THE FINDING. This run reached /welcome/account by
+// direct navigation, so it crossed no edge at all; the account screen's presence in the population
+// is not evidence that anything leads to it.
 //
 // Same unit, same relay, same renderer and the same pinned Playwright build; a different route to
 // it, and a different halt. The renderer is srv4 again deliberately: srv1 carries browser binaries
@@ -378,6 +411,7 @@ data dgx_spark_0c75_oobe_account_run: OobeScreenObservationRun = OobeScreenObser
   observed_on: "2026-09-03T02:42:20Z" as Rfc3339Timestamp,
   interface_revision: extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_oobe_revision_2026_09_03,
   screens: [extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_account],
+  observed_transitions: [],
   termination: gunbc.spark.oobe_screen_observation.observed_account_walk_termination,
 }
 
@@ -385,3 +419,9 @@ data oobe_observation_runs: List<OobeScreenObservationRun> = [
   gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_prefix_run,
   gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
 ]
+
+// EVERY EDGE ANY RUN CROSSED. A consumer asking "can we get from here to there" must fold this and
+// find the edge; an empty answer is a refusal to claim, not a claim of absence in the wizard.
+fn observed_transitions_across_runs() -> List<ObservedScreenTransition> {
+  flat_map(oobe_observation_runs, run => run.observed_transitions)
+}
