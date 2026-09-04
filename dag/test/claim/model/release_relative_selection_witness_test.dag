@@ -154,8 +154,12 @@ test fn w_two_releases_have_no_common_scale_in_both_orders() -> Bool {
 //
 // Only the INTERLEAVED roster [A,B,A] does. There the second A's predecessor is B, so an accumulator
 // carrying just the last entry admits it as new and reports 3 where the distinct count is 2. The
-// claim and the fixture now match: two orders for head-seeding, interleaving for previous-entry-only
-// membership.
+// claim and the fixture now match, and the two facts are held by SEPARATE ROWS so each failure names
+// one cause: this row owns rows-vs-distinct counting and block-order/head-seeding, and
+// `w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent` alone owns previous-entry-only
+// membership. This row deliberately does NOT call that one -- a conjunct here would make the
+// interleaved fact fail BOTH rows under one mutant, which is the opposite of the localization the
+// annotation below claims.
 test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
   is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
     ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20), ranked_b(rank: 1, payload: 30),
@@ -163,7 +167,6 @@ test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
     && is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
       ranked_b(rank: 1, payload: 30), ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20),
     ]), expected_releases: 2)
-    && w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent()
 }
 
 // THE REPEATS ARE SEPARATED, which is the only arrangement that fails a previous-entry-only
