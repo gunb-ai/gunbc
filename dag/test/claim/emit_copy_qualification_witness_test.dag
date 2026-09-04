@@ -254,6 +254,13 @@ test fn ecq_accumulator_expectation_is_linear_holds() -> Bool {
   }
 }
 
+// EVERY ROW IN THIS MODULE IS SPECIFICATION WITHOUT EXECUTION. The workflow job whose
+// `claim_batch --functions` line was its only sanctioned consumer was deleted by the 2026-09-04
+// runner-capacity ruling, so nothing here establishes anything about a running system. The loss,
+// its bounded population and its capability-grain restoration trigger are carried in full by
+// `gunbc.rung_drop` `emit_copy_qualification_without_a_consumer`; read that row before citing any
+// row in this file as coverage.
+//
 // ── Growth judgment discrimination ───────────────────────────────────────────────────────────
 fn rows_constant() -> List<AllocObservationRow> {
   [
