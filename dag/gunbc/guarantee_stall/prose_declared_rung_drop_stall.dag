@@ -1,0 +1,66 @@
+module gunbc.guarantee_stall.prose_declared_rung_drop_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+// THE PROSE HALF OF THE DROP ROSTER, DECLARED AS A STALL BECAUSE THAT IS WHAT IT IS. 26 of
+// gunbc.rung_drop's rows state their DESIGN section 4b(3) fields -- previous rung, temporary rung,
+// reason, population, restoration trigger -- only inside an `authored` paragraph, so for those rows
+// the obligation 4b(3) states is met by a human reading and by nothing a program can fold. The four
+// rows consolidated from the deleted gunbc.guarantee_rung_drop carry the fields typed, which is
+// what makes this a stall with a known repair rather than a limit.
+//
+// GROWTH OF THE ARM IS VISIBLE BUT NOT PREVENTED, AND THIS ROW SAID OTHERWISE FIRST. Its first
+// version asserted that a further prose row was structurally impossible because
+// gunbc.rung_drop LegacyProseIdentity had no constructor for one. That was falsified within hours by
+// spark_serving_local_artifact_not_reproducible, authored on another lane against the
+// pre-consolidation shape and landed in main mid-consolidation; admitting it cost one arm. The
+// enumeration makes growth UNSILENT -- an edit to a named list, visible in review, counted by a fold
+// -- and that is mechanically preventable, not structural. What stalls is the SHRINKING of the arm,
+// which is per-row work with no mechanical oracle:
+// deciding which sentence of a paragraph is its reason and which its population is semantic
+// rewriting, and several of these paragraphs argue at length about that very question. Each split
+// deletes one arm from that coproduct, so the arm count IS the remaining debt and nothing has to be
+// counted separately.
+//
+// THE TRIGGER NAMES THE CAPABILITY, not the last row. A trigger reading "the final row is split"
+// would be satisfiable by a split that fabricated fields, which is the failure the prose arm exists
+// to avoid; the capability is that every drop's five fields are readable AS DATA, which no
+// fabricated split delivers.
+data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a declared section 4b(3) rung drop states its five fields only as prose, so its reason, population and restoration trigger are unreadable by any fold",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: [
+      "gunbc.rung_drop spark_serving_local_artifact_not_reproducible",
+      "gunbc.rung_drop floor_cut",
+      "gunbc.rung_drop measurement_bankruptcy",
+      "gunbc.rung_drop regen_producer",
+      "gunbc.rung_drop cited_symbol_census",
+      "gunbc.rung_drop emit_stage_blocking",
+      "gunbc.rung_drop lens_enforcement_censuses",
+      "gunbc.rung_drop required_gate_bankruptcy",
+      "gunbc.rung_drop text_boundary_identity_wall",
+      "gunbc.rung_drop fabric_evidence_gating",
+      "gunbc.rung_drop emitted_bytes_witness_required_lane",
+      "gunbc.rung_drop direct_call_arg_seam_v2_exemption",
+      "gunbc.rung_drop floor_cost_claim_qualification_unavailable",
+      "gunbc.rung_drop spark_role_scoped_retirement_production_root",
+      "gunbc.rung_drop floor_cut_heal",
+      "gunbc.rung_drop floor_cut_effect_gates",
+      "gunbc.rung_drop floor_cut_fmt_gate",
+      "gunbc.rung_drop floor_cut_merge_admission_stamping",
+      "gunbc.rung_drop floor_cut_falsifier_cadence",
+      "gunbc.rung_drop builtin_signature_arity_pairing_fabricates",
+      "gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding",
+      "gunbc.rung_drop namespace_admission_consumed_row_deletion",
+      "gunbc.rung_drop dashboard_merge_ready_semantic_admissibility",
+      "gunbc.rung_drop floor_cut_behavioural_regression_differential",
+      "gunbc.rung_drop floor_cut_receipt_discriminating_arms",
+      "gunbc.rung_drop floor_cut_regen_second_generation_agreement"
+    ]
+  },
+  next_rung_trigger: "EVERY row in gunbc.rung_drop rung_drop_roster carries TypedDeclaration -- its previous rung, temporary rung, reason, bounded population and restoration trigger readable as data and not as a paragraph -- with each split reviewed as its own readable diff against the paragraph it replaces, at which point LegacyProseIdentity and the AuthoredProse arm are both deleted and the class is structurally impossible rather than empty"
+}
