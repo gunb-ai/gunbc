@@ -50,6 +50,7 @@ import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_ga
 import gunbc.rung_drop.spark_serving_fleet_global_configuration_drop { spark_serving_fleet_global_configuration_drop }
 import gunbc.rung_drop.witness_deferral_freeze_forward_rule_rung_drop { witness_deferral_freeze_forward_rule_rung_drop }
 import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
+import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_debt_straddling_produced_decl }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -83,6 +84,7 @@ data rung_drop_roster: List<RungDrop> = [
   spark_serving_fleet_global_configuration_drop,
   witness_deferral_freeze_forward_rule_rung_drop,
   deleted_cadence_reference_drop,
+  floor_cost_debt_straddling_produced_decl,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
