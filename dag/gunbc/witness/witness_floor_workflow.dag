@@ -1,5 +1,6 @@
 module gunbc.witness_floor_workflow
 
+import std.measure { Minute, minute, minute_count }
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
@@ -1668,6 +1669,7 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // `--behavioral-receipt-plan` / `--behavioral-receipt-selftest` / `--behavioral-receipt-census`,
 // which have no automated consumer, so it is run deliberately or not at all. A declared scope
 // narrowing, not a climb; naming it here keeps its absence from reading as coverage.
+
 fn witness_floor_job() -> Job {
   Job {
     id: floor_lane_job_id,
@@ -1678,12 +1680,26 @@ fn witness_floor_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: 180,
+    timeout_minutes: minute_count(witness_floor_lane_timeout),
     continue_on_error: none,
     concurrency: none,
     permissions: none
   }
 }
+
+// THE LANE'S EXECUTION ENVELOPE, NAMED BECAUSE A SECOND CONSUMER NOW READS IT. The value did not
+// change; it stopped being a literal. gunbc.repo_ruleset derives the merge queue's
+// check_response_timeout from this row, because a queue whose response timeout is BELOW the
+// repository's own execution envelope manufactures queue failures out of runs that were going to
+// pass -- it dequeues green work for being slow. Two numbers that must not drift apart are one
+// row, read twice (DESIGN section 3).
+//
+// IT IS A Minute AND NOT AN Int, because the fact is a duration and std.measure already owns that
+// carrier. The Actions job field is an Int, so the projection unwraps it at the boundary -- which
+// is the right place for the unit to disappear: the YAML key is named `timeout-minutes` and
+// carries the unit in its spelling, while the value this row hands to a second consumer carries it
+// in its type.
+data witness_floor_lane_timeout: Minute = minute(count: 180)
 
 // MERGE_GROUP IS ENROLLED SO THE REQUIRED CHECK CAN RUN ON THE COMPOSED COMMIT, NOT ONLY ON EACH
 // BRANCH HEAD. Without this trigger a merge queue would create its merge-group commit and this
