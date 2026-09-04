@@ -51,6 +51,19 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // projection is a modeled substrate fold emitting the same skeleton facts as
 // fn_arrow_decl_facts_live, retiring the hand-Rust marshal_generic expansion.
 
+// WHAT SHAPE `FnArrowDecl.output` IS, STATED HERE BECAUSE THIS IS WHERE CONSUMERS FIND THE TYPE AND
+// A CONSUMER THAT GUESSES WRONG GETS A GREEN. A skeleton node is `TypeNode { connective: Conj }`,
+// EXCEPT a named call, which carries `ComputationNode { behavior: Transform }` with the callee
+// identity leaf as its first positional child -- the same carrier `v2.compiler.body_lowering_fold`
+// produces for a lowered body, so `v2.std.node_query` `node_is_call` / `call_callee_target` /
+// `call_argument_targets` are the authority over this substrate and a consumer needs no predicate of
+// its own. UNTIL gunbc#10282 THE MARSHAL SPELLED CALLS `Conj` TOO, and the cost of leaving that
+// undocumented is measured rather than hypothetical: every call-shaped lens folding these skeletons
+// was green with no authorable red, and `v2.lens.no_dual_representation_test.scan` grew a private
+// copy of `node_is_call` respelled against `Conj` because the shared one could not read its own
+// input. Both are repaired; this paragraph exists so the next consumer reads the shape instead of
+// inferring it from whichever node it happened to sample.
+
 // THE SUBJECT IS CALLER-NAMED (gunbc#10156 clause 2). `pool_roots` are workspace-relative
 // source roots, and the returned population is every declared function under them and nothing
 // else -- a function of the roots alone, not of whatever module closure the calling claim
