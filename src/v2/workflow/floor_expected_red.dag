@@ -1063,7 +1063,7 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // matrix does not merely locate the defect -- it establishes that the defect is much larger than
 // the row this file used to carry. Measured, all executed:
 //
-//   plain record vs plain record, different fields          ADMITTED  <- this row
+//   plain record vs plain record, different fields          REFUSED   (repaired control)
 //   generic argument at position zero, phantom parameter    ADMITTED  <- this row
 //   generic argument at position zero, carried in a field   ADMITTED  <- this row
 //   generic argument at the MIDDLE of three                 ADMITTED  <- this row
@@ -1076,9 +1076,9 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 //   a blatant primitive mismatch                            refused   (liveness)
 //   a valid source                                          admitted  (opposite control)
 //
-// SO THE HONEST STATEMENT IS NOT ABOUT GENERICS. In declared-return position two NOMINAL types are
-// not compared at all; refusal survives only where a PRIMITIVE is on one side. Every generic row is
-// an instance of that, which is why the plain-record row is enrolled in its own right.
+// SO THE REMAINING DEFECT IS ABOUT APPLICATION TYPES, NOT EVERY NOMINAL TYPE. The plain-record pair
+// is now compared and refused, while two applications still admit mismatched heads or arguments;
+// refusal also survives where a PRIMITIVE is on one side. The six application rows remain enrolled.
 //
 // AN EARLIER REVISION OF THIS ROW CLAIMED THE CONSTRUCTOR HEAD WAS COMPARED and narrowed the defect
 // to the type-argument vector on that basis. Its only evidence was a PRIMITIVE returned where an
