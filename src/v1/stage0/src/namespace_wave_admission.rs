@@ -1107,6 +1107,32 @@ pub struct TransitionAdmission {
 /// on these rows and did not establish what the mechanism establishes. The wall's own run at the
 /// exact head is the proof, and it is the thing to trust.
 ///
+/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10350). All 30 `gunbc#10355` proposal-vocabulary rows
+/// are deleted, and SCM_PROPOSAL_VOCABULARY_LABEL with them. #10355 is in this branch's base, so
+/// every row reports CONSUMED rather than stale, and the wall refused this change with
+/// `30 CONSUMED ADMISSION(S) DUE FOR DELETION ON THIS ROSTER-TOUCH` -- the roster-touch obligation
+/// the entry below predicted for itself, coming due on the first change to touch this file.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, because the entry below
+/// says in terms that a trigger sentence is not evidence the trigger fired. Each row was joined
+/// against MAIN's tree by its own (module, in_declaration, spelling, target) tuple: 30 of 30 name a
+/// spelling DECLARED in `gunbc.scm.proposal`, none open. ROWS CHECKED EQUALS ROWS IN LABEL EQUALS
+/// THE COUNT THE WALL REPORTED -- 30 = 30 = 30 -- so the subject was not silently narrowed.
+///
+/// THE JOIN WAS BUILT TO SURVIVE THIS FILE'S OWN TWO RECORDED FAILURE MODES, and one of them fired.
+/// `RequireBinding` and `RequireBindingAbsent` are COPRODUCT VARIANTS, not `data`/`fn`/`type`
+/// declarations, so an index reading only line-start declarations would have answered "not found"
+/// for both -- in a shape indistinguishable from "not declared", which is exactly the defect the
+/// TWENTY-NINTH DISSOLUTION records catching on its second pass. The join resolves variants and
+/// fields as well as declarations. It was also calibrated rather than trusted: `MergeCommit`,
+/// `ObjectStore` and a fabricated name all answer NOT DECLARED against the same module, so a
+/// uniform "found" was not available to it.
+///
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
+/// paragraphs above -- `admission_consumed_at_base` resolves the full subject through the re-export
+/// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
+/// exact head is the proof.
+///
 /// TWENTY-SECOND TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
 /// two questions, and the spelling `merge` was carrying two contracts: roles, requirements and
 /// supersession -- what the module does -- and two-commit merging, which it does not do and which
@@ -1176,10 +1202,6 @@ pub struct TransitionAdmission {
 const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
     "kernel-identity predicate relocation gunbc#10350 2026-09-04";
 
-const SCM_PROPOSAL_VOCABULARY_LABEL: &str =
-    "gunbc#10355 SCM proposal-vocabulary split: the proposal nouns move from gunbc.scm.merge to \
-     gunbc.scm.proposal";
-
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: KERNEL_IDENTITY_RELOCATION_LABEL,
@@ -1198,310 +1220,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
             spelling: "resolved_node_is_kernel_identity_for_name",
             target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "author_requirement",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "author_requirement",
-            spelling: "Requirement",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "empty_proposal",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "proposal_states_role",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "proposal_states_role",
-            spelling: "requirement_role",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "requirement_replaces_role",
-            spelling: "Requirement",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "requirement_replaces_role",
-            spelling: "requirement_role",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.authoring",
-            in_declaration: "requirements_without_role",
-            spelling: "Requirement",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.read_command",
-            in_declaration: "scm_read_status",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.status",
-            in_declaration: "repository_status",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.status",
-            in_declaration: "staged_role_of",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.status",
-            in_declaration: "staged_role_of",
-            spelling: "RequireBindingAbsent",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.status",
-            in_declaration: "staged_role_of",
-            spelling: "Requirement",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_an_absence_supersedes_a_present_binding_for_that_role",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_an_absence_supersedes_a_present_binding_for_that_role",
-            spelling: "RequireBindingAbsent",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_one_requirement_states_its_role",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_order_of_distinct_roles_is_preserved",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_witness_role_names",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_witness_role_names",
-            spelling: "requirement_role",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_witness_value_for_role",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_witness_value_for_role",
-            spelling: "requirement_role",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_witness_value_name",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_witness_value_name",
-            spelling: "RequireBindingAbsent",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "authoring_witness_value_name",
-            spelling: "Requirement",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "re_authoring_a_role_leaves_other_roles_untouched",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_authoring_witness",
-            in_declaration: "re_authoring_a_role_replaces_rather_than_accumulating",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own_message",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration:
-                "scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_own_message",
-            spelling: "Proposal",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_status_witness",
-            in_declaration:
-                "stated_absence_not_stated_and_stated_binding_are_three_distinct_renderings",
-            spelling: "RequireBinding",
-            target: "gunbc.scm.proposal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_PROPOSAL_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_status_witness",
-            in_declaration:
-                "stated_absence_not_stated_and_stated_binding_are_three_distinct_renderings",
-            spelling: "RequireBindingAbsent",
-            target: "gunbc.scm.proposal",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
