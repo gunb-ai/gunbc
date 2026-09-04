@@ -46,7 +46,6 @@ import gunbc.recurring_failure_mode.executed_conjunct_discriminates_nothing { ex
 import gunbc.recurring_failure_mode.unbacked_execution_claim { unbacked_execution_claim }
 import gunbc.recurring_failure_mode.admitted_module_without_judged_standing { admitted_module_without_judged_standing }
 import gunbc.recurring_failure_mode.refusal_deferred_to_emitted_runtime { refusal_deferred_to_emitted_runtime }
-import gunbc.recurring_failure_mode.emitted_entry_point_succeeds_doing_nothing { emitted_entry_point_succeeds_doing_nothing }
 import gunbc.recurring_failure_mode.mitigation_injected_where_judgment_declined { mitigation_injected_where_judgment_declined }
 import gunbc.recurring_failure_mode.transport_close_read_as_completion { transport_close_read_as_completion }
 import gunbc.recurring_failure_mode.merge_region_excludes_shared_tail { merge_region_excludes_shared_tail }
@@ -198,5 +197,4 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   content_digest_makes_annotations_semantically_load_bearing,
   subject_and_its_digest_as_independent_parameters,
   a_written_row_is_not_a_firing_mechanism,
-  emitted_entry_point_succeeds_doing_nothing,
 ]
