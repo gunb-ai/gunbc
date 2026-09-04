@@ -91,6 +91,13 @@ type HoleFitThresholdStanding
       refusing_rung: Nat
     }
   | ThresholdLadderUnavailable
+  | ThresholdObservationOutOfLadder {
+      ordinal: Nat
+      rung_count: Nat
+    }
+  | ThresholdObservationsHeterogeneous {
+      differing: NonEmptyStr
+    }
 
 // FIT IS MONOTONE IN DIAMETER, AND A POPULATION THAT SAYS OTHERWISE IS NOT AVERAGED.
 //
@@ -110,10 +117,63 @@ fn entry_threshold_from_observations(
   }
 }
 
+// TWO GATES BEFORE ANY ARITHMETIC, BOTH REFUSING RATHER THAN SKIPPING.
+//
+// An ordinal is an index INTO a ladder, and Nat does not say which ladder. Nothing stopped an
+// observation naming rung 40 of an 11-rung coupon, and rung_diameter would have computed a diameter
+// for a hole that was never printed -- a fabricated plausible output, arrived at by arithmetic that
+// cannot fail. Zero was worse than merely invalid: the scan uses 0 as its "nothing seen yet"
+// sentinel, so an observation at ordinal 0 would have been silently absorbed into the initial state
+// and vanished without a diagnostic. Both refuse now, naming the offending ordinal and the ladder
+// that bounds it.
+//
+// The second gate is that a threshold over a MIXED population describes nothing. An M3 refusal folded
+// together with an M4 pass yields a confident bracket that is true of neither fastener, and the same
+// applies to two specimens: rung 3 of one coupon and rung 3 of another are different physical holes.
+// The fold had no notion of a shared subject at all, so it would have produced its most authoritative
+// answer from its least meaningful input.
+//
+// Skipping the offending rows was the tempting arm and is the absorbing fallback: it would compute a
+// narrower bracket over a silently chosen subset and report it with the same confidence.
+fn observations_share_a_subject(observations: List<HoleFitObservation>) -> Bool {
+  match observations.first() {
+    Absent => true
+    Present { value: h } => fold(observations, init: true, f: fn(acc, o) {
+      acc && o.fastener == h.fastener && o.specimen == h.specimen
+    })
+  }
+}
+
+// Carried in a record so the accumulator is Nat rather than an Int literal, and biased by one so that
+// "none found" and "found ordinal zero" stay distinguishable -- the very sentinel collision this gate
+// exists to close would otherwise reappear inside the gate itself.
+type RangeScan sole_constructor { first_bad_plus_one: Nat }
+
+fn first_out_of_ladder(ladder: LengthLadder, observations: List<HoleFitObservation>) -> Nat {
+  let r = fold(observations, init: RangeScan { first_bad_plus_one: 0 }, f: fn(acc, o) {
+    if acc.first_bad_plus_one == 0 && (o.rung_ordinal == 0 || o.rung_ordinal > ladder_rung_count(l: ladder)) {
+      RangeScan { first_bad_plus_one: o.rung_ordinal + 1 }
+    } else { acc }
+  })
+  r.first_bad_plus_one
+}
+
 fn entry_threshold_against_ladder(
   ladder: LengthLadder,
   observations: List<HoleFitObservation>,
 ) -> HoleFitThresholdStanding {
+  let bad = first_out_of_ladder(ladder: ladder, observations: observations)
+  if bad > 0 {
+    ThresholdObservationOutOfLadder {
+      ordinal: bad - 1,
+      rung_count: ladder_rung_count(l: ladder),
+    }
+  } else {
+  if observations_share_a_subject(observations: observations) == false {
+    ThresholdObservationsHeterogeneous {
+      differing: "the population mixes fasteners or specimens; a threshold folded over it would describe neither",
+    }
+  } else {
   let scan = fold(observations, init: FitScan { count: 0, smallest_pass: 0, largest_refuse: 0 },
     f: fn(acc, o) {
       match o.grade {
@@ -164,6 +224,8 @@ fn entry_threshold_against_ladder(
         }
       }
     }
+  }
+  }
   }
 }
 
@@ -230,6 +292,8 @@ type FreePassSelection
     }
   | FreePassUnobserved { missing: NonEmptyStr }
   | FreePassLadderUnavailable
+  | FreePassObservationOutOfLadder { ordinal: Nat, rung_count: Nat }
+  | FreePassObservationsHeterogeneous { differing: NonEmptyStr }
 
 type FreeScan sole_constructor { smallest_free: Nat }
 
@@ -242,6 +306,15 @@ fn select_free_pass_nominal(
     LadderStepIsZero => FreePassLadderUnavailable
     LadderTooFewRungs { supplied: n } => FreePassLadderUnavailable
     LadderReady { ladder: ladder } => {
+      let bad = first_out_of_ladder(ladder: ladder, observations: observations)
+      if bad > 0 {
+        FreePassObservationOutOfLadder { ordinal: bad - 1, rung_count: ladder_rung_count(l: ladder) }
+      } else {
+      if observations_share_a_subject(observations: observations) == false {
+        FreePassObservationsHeterogeneous {
+          differing: "the population mixes fasteners or specimens; a free-pass nominal selected from it would describe neither",
+        }
+      } else {
       let scan = fold(observations, init: FreeScan { smallest_free: 0 }, f: fn(acc, o) {
         match o.grade {
           FitFree => FreeScan {
@@ -263,6 +336,8 @@ fn select_free_pass_nominal(
           basis_rung: scan.smallest_free,
           scope: scope,
         }
+      }
+      }
       }
     }
   }
