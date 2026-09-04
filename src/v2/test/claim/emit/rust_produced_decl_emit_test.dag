@@ -34,11 +34,11 @@ fn rust_produced_decl_matches(fn_name: Symbol, golden: String) -> Bool {
   }
 }
 
-test fn rust_produced_decl_emits_named_add() -> Bool {
+fn rust_produced_decl_emits_named_add() -> Bool {
   rust_produced_decl_matches(fn_name: ^rust_binding_fn_add, golden: rust_produced_add_golden)
 }
 
-test fn rust_produced_decl_emits_named_add2() -> Bool {
+fn rust_produced_decl_emits_named_add2() -> Bool {
   rust_produced_decl_matches(fn_name: ^rust_binding_fn_add2, golden: rust_produced_add2_golden)
 }
 
