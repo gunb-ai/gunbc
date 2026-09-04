@@ -100,6 +100,11 @@ data brand_arms: List<BrandArm> = [
     name: "strip",
     source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: BniA) -> BniB { a as String as BniB }\n",
     expect_blocking: false
+  },
+  BrandArm {
+    name: "undeclared_site",
+    source: "module bni_probe\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: String where brand(\"bni_inline\")) -> BniB { a as BniB }\n",
+    expect_blocking: true
   }
 ]
 
@@ -130,14 +135,14 @@ fn count_occurrences(xs: List<String>, wanted: String) -> Int {
 
 // ASSERT CHECKED EQUALS TOTAL. The next assertion ranges over brand_arms, so a fixture silently
 // dropped from the list would shrink the population without shrinking the green. This states the
-// arity the wall's evidence requires -- two refusing arms and three accepting arms -- so removing
+// arity the wall's evidence requires -- three refusing arms and three accepting arms -- so removing
 // any one of them reds here rather than passing quietly with a narrowed subject.
 
-test fn b_all_five_arms_are_enrolled() -> Bool {
+test fn b_all_six_arms_are_enrolled() -> Bool {
   let total = brand_arms |> count
   let refusing = brand_arms |> filter(a => a.expect_blocking) |> count
   let accepting = brand_arms |> filter(a => !a.expect_blocking) |> count
-  total == 5 && refusing == 2 && accepting == 3 && refusing + accepting == total
+  total == 6 && refusing == 3 && accepting == 3 && refusing + accepting == total
 }
 
 test fn b_arm_names_are_pairwise_distinct() -> Bool {
@@ -147,7 +152,7 @@ test fn b_arm_names_are_pairwise_distinct() -> Bool {
 // THE WALL ITSELF, BOTH DIRECTIONS IN ONE ASSERTION. Splitting refusal and acceptance into separate
 // tests would let a compiler that refuses everything green the refusing half while the accepting
 // half reds somewhere else in the report; joined, the only way to pass is to draw the line exactly
-// where the five fixtures put it.
+// where the six fixtures put it.
 
 test fn b_every_arm_behaves_as_declared() -> Bool {
   brand_arms |> all(a => arm_agrees(a: a))
@@ -183,4 +188,15 @@ test fn b_mismatch_and_construct_are_distinguished() -> Bool {
 
 test fn b_strip_is_accepted_where_bare_mismatch_refuses() -> Bool {
   arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_blocking_by_name(wanted: "strip") == 0
+}
+
+// THE UNDETERMINABLE-SITE RED. This is the arm the first wall got WRONG rather than missing: the
+// declaration key returned "" for a type with no declaring span and the consumer read "" as skip,
+// so this cast -- brand bni_inline flowing into brand bni_beta, the same violation `mismatch`
+// refuses -- COMPILED CLEAN. It is authorable as an ordinary inline refinement, so the state is
+// reachable by fixture and the guard is a wall rather than a decoration. Paired with `mismatch`
+// it asserts that the two forms of one violation now agree.
+
+test fn b_undeclared_site_refuses_like_a_declared_mismatch() -> Bool {
+  arm_blocking_by_name(wanted: "undeclared_site") >= 1 && arm_blocking_by_name(wanted: "mismatch") >= 1
 }
