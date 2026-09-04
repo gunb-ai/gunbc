@@ -31,6 +31,7 @@ import gunbc.roadmap_authority {
   ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
+import gunbc.roadmap_component { activity_round_live_class }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
   theme_toggle_label_prefix, theme_toggle_auto_value,
@@ -642,10 +643,14 @@ fn round_segment_class(k: RoundSegmentKind) -> String {
   }
 }
 
-fn round_segment_node(seg: RoundSegment) -> Fragment {
+fn round_segment_node(seg: RoundSegment, index: Int, pulsing: Bool) -> Fragment {
+  let base_class = round_segment_class(k: seg.kind)
   el_attrs("span", [
-    attr(name: "class", value: round_segment_class(k: seg.kind)),
-    attr(name: "style", value: join(["flex-grow: ", to_string(value: if seg.duration_ms < 1 { 1 } else { seg.duration_ms })], "")),
+    attr(name: "class", value: if pulsing { join([base_class, " ", activity_round_live_class], "") } else { base_class }),
+    attr(name: "style", value: join([
+      "flex-grow: ", to_string(value: if seg.duration_ms < 1 { 1 } else { seg.duration_ms }),
+      "; animation-delay: ", to_string(value: index * 40), "ms",
+    ], "")),
     attr(name: "title", value: join([
       "round ", to_string(value: seg.step), " · ", round_segment_kind_word(k: seg.kind), " · ",
       to_string(value: seg.duration_ms / 1000), "s · ", to_string(value: seg.output_tokens), " tok",
@@ -653,12 +658,17 @@ fn round_segment_node(seg: RoundSegment) -> Fragment {
   ], [])
 }
 
-fn round_strip_nodes(ledger: HarnessRoundLedger) -> List<Fragment> {
+fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   let segs = round_segments(ledger: ledger)
-  if list_length(items: segs) == 0 {
+  let total = list_length(items: segs)
+  if total == 0 {
     []
   } else {
-    [ el_class("div", activity_round_strip_class, map(segs, seg => round_segment_node(seg: seg))) ]
+    let nodes = fold(segs, init: [], f: (acc, seg) => {
+      let index = list_length(items: acc)
+      concat(acc, [round_segment_node(seg: seg, index: index, pulsing: live && index + 1 == total)])
+    })
+    [ el_class("div", activity_round_strip_class, nodes) ]
   }
 }
 
@@ -669,7 +679,7 @@ fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger) -> List<Fr
     ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
       let key = activity_attention_key(a: attention)
       [ activity_container(a: a, attention: key, children: concat(
-          round_strip_nodes(ledger: rounds),
+          round_strip_nodes(ledger: rounds, live: true),
           [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous") ],
         )) ]
     }

@@ -252,6 +252,15 @@ test fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool {
     && string_contains(s: serialize_rules(rules: moodboard_rules()), pattern: "var(--canvas)")
 }
 
+test fn witness_round_strip_percolates_once_and_pulses_forever() -> Bool {
+  let css = serialize_rules(rules: roadmap_rules())
+  string_contains(s: css, pattern: "@keyframes round-fill {")
+    && string_contains(s: css, pattern: "scaleX(0)")
+    && string_contains(s: css, pattern: "animation: round-fill 420ms ease-out 1 both")
+    && string_contains(s: css, pattern: "animation: round-pulse 1200ms ease-in-out infinite")
+    && string_contains(s: reduced_motion_block(rules: roadmap_rules()), pattern: "animation: none")
+}
+
 test fn witness_propagation_scoped_by_demand() -> Bool {
   let base = theme_root_css(base: day_theme, alternate: night_theme)
   let perturbed_day = theme_with_role_material(t: day_theme, target: FigureLitRole, m: probe_figure_lit_material())

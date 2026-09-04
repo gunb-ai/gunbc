@@ -303,6 +303,13 @@ type ServingLaunchAdmission
   = LaunchAdmitted { profile: ServingLaunchProfile }
   | LaunchRefused { cause: NonEmptyStr }
 
+// THE FLEET-GLOBAL CONFIGURATION DROP IS RETIRED. Its restoration trigger read: no realization can
+// be served at a configuration it has not been observed at, AND the fleet-global default no longer
+// confers automatic admission. Both halves now hold by construction in
+// gunbc.spark.serving_realization_config -- the config is looked up per (release, engine) key with
+// no default arm -- so the two rows the drop named are DELETED here rather than left to feed a
+// profile nothing should read. Per DESIGN section 4b(4) the evidence stays: the witness that the
+// live realization refuses today is the executing proof the wall is real.
 fn spark_serving_launch_admission(serving_release: SparkServingRelease) -> ServingLaunchAdmission {
   let key = ServingRealizationKey {
     release_identity: spark_serving_release_identity(spec: serving_release),
@@ -366,11 +373,3 @@ fn spark_serving_automation_principal() -> NamedPrincipal {
   NamedPrincipal { login: spark_serving_automation_principal_login() }
 }
 
-
-// THE FLEET-GLOBAL CONFIGURATION DROP IS RETIRED. Its restoration trigger read: no realization can
-// be served at a configuration it has not been observed at, AND the fleet-global default no longer
-// confers automatic admission. Both halves now hold by construction in
-// gunbc.spark.serving_realization_config -- the config is looked up per (release, engine) key with
-// no default arm -- so the two rows the drop named are DELETED here rather than left to feed a
-// profile nothing should read. Per DESIGN section 4b(4) the evidence stays: the witness that the
-// live realization refuses today is the executing proof the wall is real.

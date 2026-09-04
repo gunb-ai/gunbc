@@ -5,6 +5,9 @@ import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl, css_block,
   serialize_rules, reduced_motion_block,
 }
+import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
+import extdeps.languages.css.properties { Transform, TransformOrigin }
+import gunbc.roadmap_component { activity_round_live_class }
 import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline }
 import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
 import gunbc.design.scale {
@@ -312,6 +315,11 @@ fn band_root_css() -> String {
 // The round strip: a flex row of time-weighted segments. Read rounds take the dim text material so
 // they recede; a write round takes the figure material so it reads at a glance as the event it is;
 // an unmeasured round is outlined rather than filled, so "not observed" never paints as either.
+data round_fill_cycle: MotionCycle = MotionCycle { name: "round-fill", frames: [Keyframe { offset_percent: 0, decls: [decl(prop: Transform, value: "scaleX(0)")] }, Keyframe { offset_percent: 100, decls: [decl(prop: Transform, value: "scaleX(1)")] }] }
+data round_fill_timing: TimingToken = TimingToken { name: "round-fill", duration_ms: 420, easing: "ease-out" }
+data round_pulse_cycle: MotionCycle = MotionCycle { name: "round-pulse", frames: [Keyframe { offset_percent: 0, decls: [decl(prop: Opacity, value: "1")] }, Keyframe { offset_percent: 50, decls: [decl(prop: Opacity, value: "0.3")] }, Keyframe { offset_percent: 100, decls: [decl(prop: Opacity, value: "1")] }] }
+data round_pulse_timing: TimingToken = TimingToken { name: "round-pulse", duration_ms: 1200, easing: "ease-in-out" }
+
 fn activity_round_strip_rules() -> List<BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: activity_round_strip_class }, decls: [
@@ -325,19 +333,26 @@ fn activity_round_strip_rules() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: activity_round_read_class }, decls: [
       decl(prop: MinWidth, value: "2px"),
+      decl(prop: TransformOrigin, value: "left center"),
       role_decl(prop: Background, r: TextDimRole),
       decl(prop: Opacity, value: "0.45"),
     ] },
     StaticRule { selector: ClassSelector { name: activity_round_write_class }, decls: [
       decl(prop: MinWidth, value: "3px"),
+      decl(prop: TransformOrigin, value: "left center"),
       role_decl(prop: Background, r: FigureRole),
     ] },
     StaticRule { selector: ClassSelector { name: activity_round_unmeasured_class }, decls: [
       decl(prop: MinWidth, value: "2px"),
+      decl(prop: TransformOrigin, value: "left center"),
       decl(prop: Background, value: "transparent"),
       decl(prop: BoxShadow, value: "inset 0 0 0 1px currentColor"),
       decl(prop: Opacity, value: "0.35"),
     ] },
+    AmbientRule { selector: ClassSelector { name: activity_round_read_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    AmbientRule { selector: ClassSelector { name: activity_round_write_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    AmbientRule { selector: ClassSelector { name: activity_round_unmeasured_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    AmbientRule { selector: ClassSelector { name: activity_round_live_class }, cycle: round_pulse_cycle, timing: round_pulse_timing, repeat: RunForever },
   ]
 }
 
