@@ -18,7 +18,7 @@ import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
 import v2.std.algebra { fold_list, length }
-import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, heal_repair_declaration_artifact_path }
+import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger, heal_repair_declaration_artifact_path }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -292,28 +292,68 @@ func main_wet() -> ProcessExit {
 // the declaration, because an unwritten declaration that reported success would put the class back
 // in the silent state: the commit would carry no trailer and nothing would say the record is missing
 // rather than empty.
-func heal_repair_declaration() -> ProcessExit {
-  let text = fold(observe_generated_artifact_population(), init: "", f: fn(acc, o) {
+// A LEDGER THAT COULD NOT BE JUDGED IS A REFUSAL, NOT A SKIPPED ROW (review 60099). These two arms
+// previously returned the accumulator unchanged, which is the uncounted degradation DESIGN section 5
+// hard-rejects: a refused observation or an absent committed file means NO VERDICT WAS REACHED for
+// that ledger, and returning `acc` made that indistinguishable from a ledger judged and found whole.
+//
+// THE MASKING IS THE POINT AND IT DEFEATS THE DENOMINATOR ONE LEVEL UP. There are two ledgers. If one
+// is judged and the other is unjudgeable, the declaration file is NONEMPTY -- it carries the first
+// ledger's judged line -- so the commit step's own `-s` refusal passes and heal commits with a
+// denominator covering half the population. The judged token exists precisely so that coverage
+// collapse cannot read as a clean numerator, and a silent skip here reintroduced that below it.
+//
+// It refuses rather than emitting an unjudged marker because the population is TWO artifacts that are
+// always committed: an unobservable design ledger is anomalous, not routine drift, so the line stops
+// and a human looks. Non-ledger artifacts still skip, and that is not a widen -- they have no rows to
+// lose, which artifact_is_ledger decides from ledger_rows rather than by matching the coproduct again.
+fn unjudged_ledger_refusals(observations: List<GeneratedArtifactObservation>) -> List<String> {
+  fold(observations, init: [], f: fn(acc, o) {
     match o {
-      GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation: _ } =>
-        concat(acc, render_ledger_repair_trailers(
-          path: path,
-          c: ledger_row_coherence(
-            a: artifact,
-            generated_content: generated_content,
-            committed_content: committed_content
-          )
-        ))
-      GeneratedArtifactObservationRefused { artifact: _, path: _, cause: _ } => acc
-      GeneratedArtifactCommittedAbsent { artifact: _, path: _, detail: _ } => acc
+      GeneratedArtifactObserved { artifact: _, path: _, generated_content: _, committed_content: _, extra_validation: _ } => acc
+      GeneratedArtifactObservationRefused { artifact, path, cause } =>
+        if artifact_is_ledger(a: artifact) {
+          concat(acc, [concat(path, concat(" (observation refused: ", concat(cause, ")")))])
+        } else { acc }
+      GeneratedArtifactCommittedAbsent { artifact, path, detail } =>
+        if artifact_is_ledger(a: artifact) {
+          concat(acc, [concat(path, concat(" (committed artifact absent: ", concat(detail, ")")))])
+        } else { acc }
     }
   })
-  let w = Filesystem.Write(path: heal_repair_declaration_artifact_path, content: text)
-  if w.success { ExitSuccess } else {
+}
+
+func heal_repair_declaration() -> ProcessExit {
+  let observations = observe_generated_artifact_population()
+  let unjudged = unjudged_ledger_refusals(observations: observations)
+  if length(unjudged) > 0 {
     exit_failure(reason: concat(
-      concat("heal repair declaration could not be written to ", heal_repair_declaration_artifact_path),
-      concat(": ", w.error)
+      "heal repair declaration reached no verdict for a design ledger, so a commit here would record a partial denominator: ",
+      fold(unjudged, init: "", f: fn(a, u) { if a == "" { u } else { concat(a, concat("; ", u)) } })
     ))
+  } else {
+    let text = fold(observations, init: "", f: fn(acc, o) {
+      match o {
+        GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation: _ } =>
+          concat(acc, render_ledger_repair_trailers(
+            path: path,
+            c: ledger_row_coherence(
+              a: artifact,
+              generated_content: generated_content,
+              committed_content: committed_content
+            )
+          ))
+        GeneratedArtifactObservationRefused { artifact: _, path: _, cause: _ } => acc
+        GeneratedArtifactCommittedAbsent { artifact: _, path: _, detail: _ } => acc
+      }
+    })
+    let w = Filesystem.Write(path: heal_repair_declaration_artifact_path, content: text)
+    if w.success { ExitSuccess } else {
+      exit_failure(reason: concat(
+        concat("heal repair declaration could not be written to ", heal_repair_declaration_artifact_path),
+        concat(": ", w.error)
+      ))
+    }
   }
 }
 

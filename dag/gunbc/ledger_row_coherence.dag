@@ -134,6 +134,15 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
   }
 }
 
+// WHETHER AN ARTIFACT IS A LEDGER IS ASKED IN ONE PLACE. A consumer that needs to know -- to decide
+// whether failing to judge it matters -- must not re-derive it by matching the coproduct again,
+// because a second such match is a second authority for the same fact and the two drift the moment a
+// ledger is added. This is a projection of ledger_rows, so a ledger is exactly an artifact that has
+// rows to lose.
+fn artifact_is_ledger(a: GeneratedArtifact) -> Bool {
+  length(ledger_rows(a: a)) > 0
+}
+
 // NOT-A-LEDGER IS AN ARM, NOT AN EMPTY LIST, for the reason DESIGN section 5 gives about degradation
 // arms: an artifact this classifier cannot speak for must not inhabit the same state as an artifact
 // it examined and found whole. Collapsing the two would make every provisioning file report

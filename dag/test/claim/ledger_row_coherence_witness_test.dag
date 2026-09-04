@@ -26,10 +26,13 @@ import gunbc.ledger_row_coherence {
 }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObserved,
+  GeneratedArtifactCommittedAbsent,
+  GeneratedArtifactObservationRefused,
   GeneratedArtifactContentDiffers,
   observation_findings,
   observation_finding_rendered
 }
+import tools.generated_artifact_gate { unjudged_ledger_refusals }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -283,4 +286,67 @@ test fn a_repairing_declaration_reports_both_numerator_and_denominator() -> Bool
   count(parse_ledger_repair_judged(message: msg)) == 1
     && count(parse_ledger_repair_trailers(message: msg)) == 1
     && fold(parse_ledger_repair_trailers(message: msg), init: false, f: fn(acc, d) { acc || d.identity == id })
+}
+
+// THE REFUSAL IS DIRECTED, AND BOTH DIRECTIONS ARE WITNESSED. A ledger that reached no verdict must
+// stop the line; a non-ledger artifact that reached no verdict must not, because it has no rows to
+// lose and refusing on it would make the declaration step fail on ordinary unrelated drift. Only the
+// pair discriminates: a check that refuses on everything and a check that refuses on nothing each
+// pass one of these two and fail the other.
+test fn an_unjudgeable_ledger_refuses_rather_than_skipping() -> Bool {
+  let refusals = unjudged_ledger_refusals(observations: [
+    GeneratedArtifactObserved {
+      artifact: DesignRungDropsArtifact,
+      path: "docs/design-rung-drops.md",
+      generated_content: all_rows_rendered(a: DesignRungDropsArtifact),
+      committed_content: all_rows_rendered(a: DesignRungDropsArtifact),
+      extra_validation: true
+    },
+    GeneratedArtifactObservationRefused {
+      artifact: DesignFailureModesArtifact,
+      path: "docs/design-failure-modes.md",
+      cause: "read failed"
+    }
+  ])
+  count(refusals) == 1
+    && fold(refusals, init: false, f: fn(acc, r) { acc || string_contains(r, "docs/design-failure-modes.md") })
+}
+
+// THE MASKING SHAPE ITSELF: one ledger judged whole beside one ledger never judged. Before the
+// refusal arm this population produced a NONEMPTY declaration -- the judged line for the first
+// ledger -- so the commit step's own emptiness check passed and heal committed over half a
+// population. This is the discriminating input for that composition, not for the arm alone.
+test fn one_judged_ledger_does_not_license_a_commit_over_an_unjudged_one() -> Bool {
+  count(unjudged_ledger_refusals(observations: [
+    GeneratedArtifactObserved {
+      artifact: DesignFailureModesArtifact,
+      path: "docs/design-failure-modes.md",
+      generated_content: all_rows_rendered(a: DesignFailureModesArtifact),
+      committed_content: all_rows_rendered(a: DesignFailureModesArtifact),
+      extra_validation: true
+    },
+    GeneratedArtifactCommittedAbsent {
+      artifact: DesignRungDropsArtifact,
+      path: "docs/design-rung-drops.md",
+      detail: "file not present"
+    }
+  ])) == 1
+}
+
+// A NON-LEDGER ARTIFACT THAT COULD NOT BE JUDGED IS NOT A REFUSAL. Without this arm the check would
+// be true by construction over every observation, which is a wall that cannot fail rather than a
+// wall that holds.
+test fn an_unjudgeable_non_ledger_artifact_does_not_stop_the_line() -> Bool {
+  count(unjudged_ledger_refusals(observations: [
+    GeneratedArtifactObservationRefused {
+      artifact: GitignoreArtifact,
+      path: ".gitignore",
+      cause: "read failed"
+    },
+    GeneratedArtifactCommittedAbsent {
+      artifact: GitignoreArtifact,
+      path: ".gitignore",
+      detail: "file not present"
+    }
+  ])) == 0
 }
