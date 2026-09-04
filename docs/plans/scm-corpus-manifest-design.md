@@ -140,33 +140,42 @@ membership-versus-admissibility split that keeps `StoredEdge.target` exactly `Se
 applied one layer up — and collapsing it is the absorbing fallback of §5, refusing a superset
 because the precise subject was not derived.
 
-**Bumping the closure format tag** would claim the semantic closure protocol widened. It did not:
-the wire schema is unchanged, only the object universe around it grew. A version transition that
-announces a widening that never happened is a §3 meaning fork in the format tag itself.
+**Bumping the closure format tag** was rejected here on the grounds that the wire schema was
+unchanged — and that reasoning was superseded by what the cut turned out to require. The v4 bump
+that landed is the OPPOSITE claim: the writer can no longer emit `{source}` and the reader refuses
+one, so the language got **narrower**, and holding a tag while the language shrinks is the same
+false claim as holding it while it grows. `gunbc-scm-commit-closure-v4`, `gunbc-scm-repository-v3`
+and `scm-object-identity-v2` are what shipped.
 
-The cut is neither. `commit_closure_json_v2` already declares the obligation this change discharges:
-every record the store holds is serialized, which it states is correct *while nothing produces
-unreachable objects*. `CorpusManifestObject` is exactly the event that makes that false, so the
-deferral's own dissolution trigger has fired.
+The cut is neither of the two arms above. `commit_closure_json_v2` already declared the obligation
+this change discharges: every record the store holds is serialized, which it states is correct
+*while nothing produces unreachable objects*. `CorpusManifestObject` is exactly the event that makes
+that false, so the deferral's own dissolution trigger has fired.
 
 So the admitted carrier stops carrying the raw store and carries the **root-reachable semantic
-closure**:
+closure**. The design draft above proposed a two-armed `ClosureObject` with a
+`ClosureAuthoredSource` arm; that arm was found to be **uninhabited** during implementation, because
+no typed path reaches an authored source from a semantic root, and the reviewer's ruling changed to
+nodes only. What shipped is:
 
-- `ClosureObject = ClosureSemanticNode(ObjectRecord) | ClosureAuthoredSource(AuthoredSourceRecord)`
+- `WellKindedClosure { root: SemanticNodeTarget, nodes: List<ObjectRecord> }` — one kind, not a
+  coproduct, because there is nothing else to be reached;
 - the admission walks from the root; at each `SemanticNodeTarget` a node is included and recursed
-  through, an authored source is the existing wrong-kind refusal, and a manifest is a **new**
-  wrong-kind refusal named for what it found;
-- `encode_object` then takes a `ClosureObject` and there is no manifest arm to write. The state is
-  unconstructible rather than validated — §4b rung 4 rather than a commented-over rung 3.
+  through, an authored source and a manifest are each their own named wrong-kind population;
+- the encoder's parameter therefore cannot name a manifest at all: unconstructible rather than
+  validated — §4b rung 4 rather than a commented-over rung 3.
 
-Two consequences bind the implementation. First, **one derivation authority**: both
-`admit_well_kinded_closure` and the partial route through `admitted_well_kinded` must consume the
-same `derive_semantic_closure(store, root)` result. Two independent reachability walks is precisely
-the authority substitution this carrier was introduced to remove, and the failure would be silent —
-ordinary admission narrowed while partial admission still shipped the whole repository. Second,
-`well_kinded_store` **loses its name**: returning a `List<ClosureObject>` under a store-shaped name
-would say the carrier still holds a store. A consumer that genuinely needs an `ObjectStore` should
-have to say so, and that breakage is the useful part.
+Two consequences bind the implementation, and one more was found by review. First, **one derivation
+authority**: both `admit_well_kinded_closure` and the partial route must consume the same
+`derive_semantic_closure(store, root)` result. Second, `well_kinded_store` **loses its name**:
+returning a node list under a store-shaped name would say the carrier still holds a store.
+
+Third, and this is the one the draft missed: `sole_constructor` seals the record LITERAL, and `.dag`
+has no module privacy, so a public mint beside it re-opens everything. The module shipped
+`well_kinded_image(closure)`, which took an unchecked closure, discarded the derivation's census and
+returned encoder input anyway. **The mint is deleted**; the literal appears once, inside the
+else-branch of the census that authorizes it, and the admitted arm carries the unresolved population
+so nothing walks the closure twice to re-derive it.
 
 Unrelated authored sources leaving the document is a consequence, not a regression. "It happened to
 be in the repository store" was never semantic reachability.
@@ -184,11 +193,17 @@ be in the repository store" was never semantic reachability.
 
 ## 10. What the corpus closure does *not* get yet
 
-`CorpusClosure` is modelled now — the manifest-to-authored-source reachability law, its
-complete/partial/wrong-kind outcomes, its identity behaviour, and its witnesses. It does **not** get
-a JSON codec in this PR. A named codec earns an actual boundary, and nothing yet persists or
-transports a corpus closure; building one here would add a representation with no consumer
-immediately before a lane whose stated purpose is to stop doing that.
+`CorpusClosure` is **not** modelled. An earlier revision of this section said it was — naming its
+complete/partial/wrong-kind outcomes, its identity behaviour and its witnesses as landed — and no
+such carrier exists. What exists is `ManifestSourceCensus`, which answers the manifest-source
+reachability question over a finished store in three populations (absent, node-occupied,
+manifest-occupied) and is consumed by both the checked repository writer and the repository reader.
+That is the minimum the write-safety question needed; it is not a closure carrier and does not
+pretend to be one.
+
+It gets no JSON codec here either. A named codec earns an actual boundary, and nothing yet persists
+or transports a corpus closure; building one would add a representation with no consumer immediately
+before a lane whose stated purpose is to stop doing that.
 
 The deferral does not extend to the repository codec. The moment `add`/`commit` persists a
 repository holding manifest objects, commits naming them, or pending corpus state, the repository
@@ -196,3 +211,19 @@ format necessarily advances and must encode manifests — and that lands atomica
 path that saves such a repository, not before and not after. If the repository envelope turns out to
 be the only representation `add`/`commit` needs, a standalone corpus document should never be built
 at all.
+
+## 11. Corrections this document owes to its own earlier revisions
+
+Recorded here rather than silently rewritten, because a plan that quietly agrees with whatever
+shipped is not evidence of anything.
+
+- **The `SourceRef` duplication warning (§2) was about a different construction.** The manifest that
+  shipped holds `(path, AuthoredSourceTarget)` and mints no second source identity, so the warning
+  stands as a rule and does not describe this head.
+- **The manifest was specified as an ordered list and is now a function.** Ordered hashing made a
+  host directory traversal order part of the manifest identity, and admitted one path naming two
+  sources. Entries canonicalize by path and a duplicate path refuses.
+- **`ClosureAuthoredSource` was an uninhabited arm**, as above.
+- **The witness bar in §9 is met, with its second item widened.** A manifest at a semantic
+  requirement is a named wrong-kind refusal in the closure, the checked writer and the reader — the
+  draft only anticipated the closure.
