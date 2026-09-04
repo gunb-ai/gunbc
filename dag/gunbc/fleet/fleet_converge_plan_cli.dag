@@ -19,7 +19,7 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
-import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
@@ -116,6 +116,7 @@ import gunbc.fleet_converge_plan {
   timer_retirement_observed_legacy_srv1,
   fleet_converge_generation_store_path,
   fleet_converge_locked_apply_script,
+  fleet_converge_apply_invoker,
   fleet_converge_parse_nonneg_generation_text,
   fleet_converge_generation_observation,
   fleet_converge_generation_admission,
@@ -280,6 +281,19 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 // is preserved rather than re-decided: Refused and Absent are both non-observations, and a Present
 // arm whose text trims empty is still Absent, because ProcessOutputPresent means the process wrote
 // bytes -- not that those bytes name a host.
+// The effective principal, read the same way the hostname is: a typed observation that is Absent
+// when the probe did not succeed, never an empty name.
+func observe_effective_user_wet() -> NonEmptyStr?
+  uses net: Network
+{
+  match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      if trim(s: t) == "" { none } else { Present { value: trim(s: t) as NonEmptyStr } }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
 func observe_host_short_wet() -> NonEmptyStr?
   uses net: Network
 {
@@ -1085,19 +1099,25 @@ func fleet_converge_apply_bound_wet(
                   PlanBindingRepositoryMismatch { plan: _, apply: _ } =>
                     exit_failure(reason: join(["fleet_converge_apply: ", plan_binding_admission_text(a: binding)], ""))
                   PlanBindingAdmitted => {
-                    let applied = run_shell_commands(
-                      commands: [
-                        bash_program_command(
-                          script: fleet_converge_locked_apply_script(
-                            subject_host: planned_host,
-                            prior_generation: prior_generation,
-                            planned_generation: planned_generation,
-                            apply_shell_path: fleet_converge_plan_apply_shell_path,
-                          ),
-                        ),
-                      ],
-                      transport: LocalExec,
-                    )
+                    let applied = match observe_effective_user_wet() {
+                      Absent =>
+                        exit_failure(reason: "fleet_converge_apply: EffectiveUserUnobserved — whoami did not succeed, so the lease guard cannot decide whether to run as the lease owner")
+                      Present { value: effective_user } =>
+                        run_shell_commands(
+                          commands: [
+                            bash_program_command(
+                              script: fleet_converge_locked_apply_script(
+                                subject_host: planned_host,
+                                prior_generation: prior_generation,
+                                planned_generation: planned_generation,
+                                apply_shell_path: fleet_converge_plan_apply_shell_path,
+                                invoker: fleet_converge_apply_invoker(effective_user: effective_user),
+                              ),
+                            ),
+                          ],
+                          transport: LocalExec,
+                        )
+                    }
                     let actuated = if fleet_converge_scope_matches(planned: routed_scope, observed: SparkServing) {
                       fleet_converge_apply_spark_rows_wet(
                         applied: applied,

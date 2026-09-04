@@ -89,6 +89,10 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
   fleet_converge_scope_wire,
   fleet_converge_generation_store_path,
+  fleet_converge_apply_invoker,
+  InvokerIsLeaseOwner,
+  InvokerImpersonatesLeaseOwner,
+  fleet_converge_lease_owner,
   SparkServing,
   FleetConvergeApplyAdmission,
   ApplyAdmitted,
@@ -527,6 +531,7 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    invoker: InvokerIsLeaseOwner,
   )
   let inner = fleet_converge_locked_apply_inner_script(
     subject_host: "srv1" as NonEmptyStr,
@@ -558,6 +563,7 @@ test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    invoker: InvokerIsLeaseOwner,
   )
   string_contains(s: script, pattern: posix_single_quote(spelling: inner))
     && !string_contains(s: script, pattern: concat("'", concat(inner, "'")))
@@ -773,6 +779,7 @@ test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
+    invoker: InvokerIsLeaseOwner,
   )
   string_contains(s: script, pattern: sudo_n_word(spelling: ci_runner_sudo_binary_path(b: SudoInstall) as String))
     && !string_contains(s: script, pattern: sudo_n_word(spelling: "mkdir"))
@@ -2210,4 +2217,36 @@ test fn plan_subject_host_is_the_target_only_for_spark_serving() -> Bool {
       SubjectHostResolved { host: h } => (h as String) == "srv1"
       SubjectHostRefused { reason: _ } => false
     })
+}
+
+
+// THE GUARD RUNS AS THE LEASE OWNER WHOEVER INVOKES IT. As the owner, no sudo touches flock (CI's
+// runner account holds no grant for it); as anyone else, the flock'd transaction is entered
+// through `sudo -n -u <owner>` so the store is written by the account that owns it. The decision is
+// a pure function of the observed effective user, so both arms are authorable here.
+test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool {
+  let owner = fleet_converge_lease_owner()
+  let as_owner = fleet_converge_locked_apply_script(
+    subject_host: "srv2" as NonEmptyStr,
+    prior_generation: 0,
+    planned_generation: 1,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    invoker: fleet_converge_apply_invoker(effective_user: owner),
+  )
+  let as_operator = fleet_converge_locked_apply_script(
+    subject_host: "srv2" as NonEmptyStr,
+    prior_generation: 0,
+    planned_generation: 1,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    invoker: fleet_converge_apply_invoker(effective_user: "briansrls" as NonEmptyStr),
+  )
+  let flock_word = concat(posix_single_quote(spelling: "flock"), concat(" ", posix_single_quote(spelling: "-x")))
+  let impersonation = join([
+    sudo_n_word(spelling: "-u"), " ", posix_single_quote(spelling: owner as String), " ", flock_word,
+  ], "")
+  (fleet_converge_apply_invoker(effective_user: owner) == InvokerIsLeaseOwner)
+    && (fleet_converge_apply_invoker(effective_user: "briansrls" as NonEmptyStr) == InvokerImpersonatesLeaseOwner)
+    && !string_contains(s: as_owner, pattern: impersonation)
+    && string_contains(s: as_owner, pattern: flock_word)
+    && string_contains(s: as_operator, pattern: impersonation)
 }

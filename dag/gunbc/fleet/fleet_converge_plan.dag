@@ -2489,11 +2489,48 @@ fn fleet_converge_locked_apply_inner_script(
   )
 }
 
+// THE LEASE IS HELD BY ONE PRINCIPAL, AND THE SCRIPT SAYS WHO THE CALLER IS RELATIVE TO IT.
+//
+// The lease directory and store are owned by the CI runner account (fleet_converge_lease_owner),
+// and the flock'd transaction used to run as whoever invoked the binary. In the workflow the two
+// coincide, so nothing noticed; from an operator shell they do not, and the first local apply
+// refused at `flock: cannot open lock file: Permission denied` AFTER the plan gates had admitted
+// it -- a refusal about the executor's identity arriving as a shell error from inside the guard.
+// The identity is now a typed input to the script: an invoker that IS the owner runs the guard
+// directly, exactly as CI does; any other invoker runs it AS the owner through sudo, so the store
+// is always written by the same account and a later CI apply can still read and advance it. The
+// decision is taken in the CLI from an observed effective principal and passed here as a value,
+// so the emitted script never has to guess from `$(id -un)` at run time.
+type FleetConvergeApplyInvoker
+  = InvokerIsLeaseOwner
+  | InvokerImpersonatesLeaseOwner
+
+fn fleet_converge_apply_invoker(effective_user: NonEmptyStr) -> FleetConvergeApplyInvoker {
+  if (effective_user as String) == (fleet_converge_lease_owner() as String) {
+    InvokerIsLeaseOwner
+  } else {
+    InvokerImpersonatesLeaseOwner
+  }
+}
+
+fn fleet_converge_locked_apply_flock_words(invoker: FleetConvergeApplyInvoker) -> List<Node> {
+  match invoker {
+    InvokerIsLeaseOwner => []
+    InvokerImpersonatesLeaseOwner => [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "-u"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+    ]
+  }
+}
+
 fn fleet_converge_locked_apply_script(
   subject_host: NonEmptyStr,
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
+  invoker: FleetConvergeApplyInvoker,
 ) -> String {
   fleet_converge_bash_or_poison(stmts: [
     bash_build_command_with_words(words: [
@@ -2514,7 +2551,7 @@ fn fleet_converge_locked_apply_script(
       bash_build_word_lit(text: fleet_converge_lease_owner() as String),
       bash_build_word_lit(text: fleet_converge_generation_store_dir),
     ]),
-    bash_build_command_with_words(words: [
+    bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
       bash_build_word_lit(text: "flock"),
       bash_build_word_lit(text: "-x"),
       bash_build_word_lit(text: fleet_converge_generation_lock_path),
@@ -2526,7 +2563,7 @@ fn fleet_converge_locked_apply_script(
         planned_generation: planned_generation,
         apply_shell_path: apply_shell_path,
       )),
-    ]),
+    ])),
   ])
 }
 
