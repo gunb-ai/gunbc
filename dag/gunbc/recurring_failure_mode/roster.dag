@@ -106,6 +106,7 @@ import gunbc.recurring_failure_mode.a_written_row_is_not_a_firing_mechanism { a_
 import gunbc.recurring_failure_mode.comparison_discards_the_dimension_it_judges { comparison_discards_the_dimension_it_judges }
 import gunbc.recurring_failure_mode.source_text_census_counts_its_own_documentation { source_text_census_counts_its_own_documentation }
 import gunbc.recurring_failure_mode.instrument_renders_one_scope_while_adjudicating_another { instrument_renders_one_scope_while_adjudicating_another }
+import gunbc.recurring_failure_mode.result_that_confirms_the_hypothesis_exactly { result_that_confirms_the_hypothesis_exactly }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -203,4 +204,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   comparison_discards_the_dimension_it_judges,
   source_text_census_counts_its_own_documentation,
   instrument_renders_one_scope_while_adjudicating_another,
+  result_that_confirms_the_hypothesis_exactly,
 ]
