@@ -1199,9 +1199,6 @@ pub struct TransitionAdmission {
 /// trigger sentence is not evidence that the trigger fired -- and because that join's own two
 /// recorded failure modes, an unseen row and an unseen coproduct variant, both answer "not found"
 /// in a shape indistinguishable from "not declared".
-const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
-    "kernel-identity predicate relocation gunbc#10350 2026-09-04";
-
 /// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10300). All 30 `gunbc#10355` SCM proposal-vocabulary
 /// rows are deleted, and `SCM_PROPOSAL_VOCABULARY_LABEL` with them. This is not a judgement call:
 /// the required namespace-wave-admission phase reported them by identity as `CONSUMED ADMISSION`,
@@ -1212,6 +1209,21 @@ const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
 /// a consumed row's deletion comes due on the roster's next touch, and this change touches the
 /// roster. That rule is what keeps the ledger from growing without bound, and it is why this
 /// dissolution is authored by a PR that has nothing to do with SCM vocabulary.
+///
+/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10300). Both `gunbc#10350` kernel-identity
+/// predicate-relocation rows are deleted, and `KERNEL_IDENTITY_RELOCATION_LABEL` with them. Reported
+/// by identity as `CONSUMED ADMISSION`, 2 of 2, by the required phase on this branch's own head:
+/// #10350 has merged, `v1.compiler.infer::ancestry_binding_is_kernel_identity` and
+/// `v1.compiler.emit_rust::import_name_resolves_to_host_realized_kernel_scalar` both bind
+/// `resolved_node_is_kernel_identity_for_name` to `v1.std.core` at the base, and neither delta is
+/// producible any more.
+///
+/// THE SECOND SUCH PAYMENT ON THIS ONE BRANCH, which is worth recording rather than smoothing over.
+/// The THIRTIETH deleted 30 consumed `gunbc#10355` rows; a merge of main then brought in a fresh
+/// cohort whose own transition had merged in the meantime, and the phase came due again. That is the
+/// treadmill working as designed, not a defect: a long-lived branch touches the roster once per
+/// sync, and each touch pays whatever the base has since consumed. The alternative -- passing it on
+/// -- is what makes an append-only ledger grow without bound.
 ///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
@@ -1231,26 +1243,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "carriers_from_reachable_decls",
             spelling: "param_names_of",
             target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: KERNEL_IDENTITY_RELOCATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer",
-            in_declaration: "ancestry_binding_is_kernel_identity",
-            spelling: "resolved_node_is_kernel_identity_for_name",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: KERNEL_IDENTITY_RELOCATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
-            spelling: "resolved_node_is_kernel_identity_for_name",
-            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
