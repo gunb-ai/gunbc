@@ -321,6 +321,35 @@ service github.Pulls {
     }
   }
 
+  operation Create {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      title: NonEmptyStr
+      head: NonEmptyStr
+      base: NonEmptyStr
+      body: String
+      draft: Bool
+    }
+    output {
+      number: Int from "number"
+      html_url: NonEmptyStr from "html_url"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/pulls",
+      body: { title: title, head: head, base: base, body: body, draft: draft }
+    }
+    response {
+      201 => PullRequest
+      401 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
   operation ListComments {
     input {
       auth_token: Secret
