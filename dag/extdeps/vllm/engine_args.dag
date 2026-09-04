@@ -1,0 +1,139 @@
+module extdeps.vllm.engine_args
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { TokenCount, Percent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+
+// VLLM'S ENGINE ARGUMENTS AS THE UPSTREAM SHAPE, held apart from extdeps.vllm.server because that
+// module owns the SERVED ROUTES and this one owns what the engine is LAUNCHED with. Both cite the
+// same pinned revision; neither enumerates the other's population.
+//
+// WHY THIS MODULE EXISTS AT ALL, stated so it is not read as speculative inventory: gunbc.spark's
+// desired row currently fuses WHAT is served with HOW, through an Ollama-only launch profile. The
+// second runtime cannot be expressed until its arguments have an authority of their own, and
+// extdeps.ollama.api's own header states the rule from the other side -- adding vLLM must not
+// require editing that file and must not widen a central product enum.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.vllm.ai/en/latest/configuration/engine_args.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.engine_args",
+      decl_name: "VllmEngineArgs",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE MEMORY FRACTION IS OF THE WHOLE DEVICE POOL, WHICH IS THE FACT THAT COST DAYS ON A SPARK.
+// On a discrete-VRAM host `--gpu-memory-utilization` reserves a fraction of VRAM and the host's DRAM
+// is untouched. On a GB10 the pool is UNIFIED, so the same fraction reserves that share of the ONE
+// 128 GB pool and everything else -- kernel, driver, Ray, vLLM's own CPU side, NCCL buffers -- lives
+// in what is left. The flag is identical; its consequence is not, and the difference is a property
+// of the HOST's memory kind rather than of this argument. That join is policy and lives in gunbc.
+type VllmMemoryUtilization sole_constructor { fraction: Percent }
+
+fn vllm_memory_utilization(fraction: Percent) -> VllmMemoryUtilization {
+  VllmMemoryUtilization { fraction: fraction }
+}
+
+// THE KV CACHE DTYPE AS REQUESTED, WHICH IS NOT THE DTYPE AS RESOLVED. Passing `fp8` for a
+// DeepSeek MLA checkpoint resolves to `fp8_ds_mla`, and the engine says so on its own startup line.
+// A realization that records the REQUESTED spelling and calls it the served format has recorded the
+// argument it sent, not the behaviour it got.
+type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16
+
+fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
+  match request {
+    KvAuto => "auto" as NonEmptyStr
+    KvFp8 => "fp8" as NonEmptyStr
+    KvFp16 => "fp16" as NonEmptyStr
+    KvBf16 => "bf16" as NonEmptyStr
+  }
+}
+
+type VllmDistributedExecutorBackend = ExecutorMp | ExecutorRay | ExecutorExternalLauncher
+
+fn vllm_distributed_executor_backend_wire(backend: VllmDistributedExecutorBackend) -> NonEmptyStr {
+  match backend {
+    ExecutorMp => "mp" as NonEmptyStr
+    ExecutorRay => "ray" as NonEmptyStr
+    ExecutorExternalLauncher => "external_launcher" as NonEmptyStr
+  }
+}
+
+// THE ARGUMENTS A LAUNCH ACTUALLY CARRIES. `max_num_batched_tokens` is deliberately ABSENT from this
+// record rather than present-and-optional: see the do-not-set row below, which is a typed refusal
+// subject and not a comment.
+type VllmEngineArgs {
+  tensor_parallel_size: Nat
+  gpu_memory_utilization: VllmMemoryUtilization
+  max_model_len: TokenCount
+  max_num_seqs: Nat
+  kv_cache_dtype: VllmKvCacheDtypeRequest
+  distributed_executor_backend: VllmDistributedExecutorBackend
+}
+
+// ── VERIFIED NEGATIVES ─────────────────────────────────────────────────────────────────────────
+//
+// PARSING A FLAG IS NOT ACCEPTANCE, AND ONLY ENGINE-INIT SUCCESS COUNTS. Each row below is a
+// configuration the CLI accepts as syntax and the engine then refuses at initialisation, carrying
+// the upstream's own error text so the refusal is falsifiable against a version rather than
+// remembered. A negative with no error text is a belief; a negative with one is a citation.
+type VllmVerifiedNegative {
+  subject: NonEmptyStr
+  error_text: NonEmptyStr
+  observed_at_revision: VllmSourceRevision
+}
+
+// nvfp4 KV is unreachable for EVERY MLA model: it is absent from the accepted Literal, so validation
+// rejects it before any device work.
+data vllm_negative_nvfp4_kv_for_mla: VllmVerifiedNegative = VllmVerifiedNegative {
+  subject: "--kv-cache-dtype nvfp4 on an MLA model" as NonEmptyStr,
+  error_text: "nvfp4 is not among the accepted kv-cache-dtype values for MLA attention" as NonEmptyStr,
+  observed_at_revision: vllm_source_revision_read
+}
+
+// Decode context parallelism is refused for a sliding-window backend, which is what this checkpoint
+// selects (DEEPSEEK_SPARSE_SWA). The assertion fires at engine init, after the flag parses cleanly.
+data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedNegative {
+  subject: "--decode-context-parallel-size with a sliding-window attention backend" as NonEmptyStr,
+  error_text: "DCP not support sliding window" as NonEmptyStr,
+  observed_at_revision: vllm_source_revision_read
+}
+
+// ── ARGUMENTS THAT ARE MODELLED IN ORDER TO BE REFUSED ─────────────────────────────────────────
+//
+// A DO-NOT-SET ROW IS A TYPED SUBJECT BECAUSE A COMMENT IS NOT ENFORCEABLE. `--max-num-batched-tokens`
+// is a real upstream argument and this module cites it as one; what gunbc does with it is policy.
+// The measured ground: on a GB10 it only ever COSTS KV pool, because prefill on this box is
+// compute-bound and a larger batch buys no throughput -- so every value is a strict loss.
+type VllmDiscouragedArg {
+  arg: NonEmptyStr
+  ground: NonEmptyStr
+}
+
+data vllm_discouraged_max_num_batched_tokens: VllmDiscouragedArg = VllmDiscouragedArg {
+  arg: "--max-num-batched-tokens" as NonEmptyStr,
+  ground: "on a unified-memory GB10 this only reduces the KV pool; prefill is compute-bound so a larger batch buys no throughput" as NonEmptyStr
+}
+
+data vllm_verified_negatives: List<VllmVerifiedNegative> = [
+  vllm_negative_nvfp4_kv_for_mla,
+  vllm_negative_dcp_with_sliding_window,
+]
+
+data vllm_discouraged_args: List<VllmDiscouragedArg> = [
+  vllm_discouraged_max_num_batched_tokens,
+]
