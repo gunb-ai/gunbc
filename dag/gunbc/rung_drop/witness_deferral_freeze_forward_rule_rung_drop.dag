@@ -1,0 +1,31 @@
+module gunbc.rung_drop.witness_deferral_freeze_forward_rule_rung_drop
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
+
+// DECLARED 2026-08-28 IN gunbc.witness.witness_deferral_freeze AND ROSTERED NOWHERE UNTIL NOW.
+
+data witness_deferral_freeze_forward_rule_rung_drop: RungDrop = RungDrop {
+  identity: "witness_deferral_freeze_forward_rule" as NonEmptyStr,
+
+  subject: "gunbc.witness_deferral_freeze forward admission rule",
+
+  declared: "2026-08-28",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: LostAsPassenger { carrier: "the per-PR discovery-corpus batch and the wet/falsifier cadences, deleted by the floor cut of 2026-08-15 (611fd02770, #8283)" },
+    population: [
+    "gunbc.witness_deferral_freeze witness_deferral_freeze_authority_note",
+    "gunbc.explicit_witness_admission explicit_witness_admission_cadence_executes",
+    "v2.workflow.witness_admission witness_path_policy_execution_standing_in",
+    "v1_compiler.cli_run refuse_unexecuted_deferred_witnesses",
+    "v1_compiler.cli_run run_discovery_corpus_with_options_inner"
+    ],
+    restoration_trigger: "BOTH halves: a cadence that actually executes offline-homed witnesses exists, so a green witness under such a path has a truthful admission row to write; AND a required run enters the discovery-corpus path, so refuse_unexecuted_deferred_witnesses can fire when it does not SHARED-CAPABILITY HAZARD, recorded on all three rows that carry it rather than on whichever lands last, because landing order is not knowable at authoring time: this trigger's cadence half is the SAME capability three declared drops wait on -- source_root_ingest_gate_rung_drop, deleted_cadence_reference_drop, and witness_deferral_freeze_forward_rule_rung_drop half (a) -- over DISJOINT populations. Measured 2026-09-03: the required run's own phase announcement enumerates exactly five phases across two lanes (build owns regen and generated-artifact, witnesses owns parse, namespace-wave-admission and floor), and `schedule:`/`cron:` appear zero times across all three workflow files, so the shared blocker is a MISSING CATEGORY rather than a missing invocation. The hazard is therefore not that the trigger is wrong but that ONE event fires three triggers while one author watches one row: whoever lands the first cadence must retire all three or leave the others standing on a trigger that has already fired, which is the precise inverse of retired-by-its-trigger-and-by-nothing-else."
+  }
+}

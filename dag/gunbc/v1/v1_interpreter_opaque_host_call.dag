@@ -117,6 +117,37 @@ fn nested_compile_reaches_not_free_call() -> List<NonEmptyStr> {
     |> map(r => r.arm_identity)
 }
 
+// THE SITE, NOT ONLY THE FORM, AND THE GAP BETWEEN THEM IS REACHABLE RATHER THAN THEORETICAL.
+// `form == FreeCall` says an arm is a free call; it does NOT say the seed dispatches it at
+// `eval_builtin_inner`, which is the one site the reachability recorder is installed at. The
+// roster carries 137 FreeCall rows and 8 of them dispatch at `EvalCallBridgeFamilySite` -- the
+// v4-bridge family -- so the two populations demonstrably differ TODAY.
+//
+// WITHOUT THIS THIRD REFUSAL A FUTURE NESTED-COMPILE REACH COULD RESOLVE TO A FreeCall ROW AT A
+// DIFFERENT SITE, PASS `not_free_call`, LEAVE THE SURFACE GROUNDED, PUBLISH ITS SPELLING, AND
+// NEVER PASS THROUGH THE RECORDER -- so its claims would read `cooperatively_pollable` forever.
+// That is the identical defect gunbc#10354 repairs, admitted through a different door: a surface
+// member the hook cannot observe is indistinguishable from a member no claim reached.
+//
+// THE TYPED MEMBER IS THE JOIN KEY, NEVER A STRING. Matching `dispatch_symbol` against
+// "eval_builtin_inner" would re-introduce a spelling comparison of exactly the kind that made the
+// column constant, and `EvalBuiltinInnerSite` is a closed coproduct member the emitter already
+// carries.
+//
+// NOTHING FURTHER IS OWED DOWNSTREAM OF THIS. `gunbc.v1_interpreter_dispatch_emit` already groups
+// by exact dispatch site and REFUSES generation when two arm identities share one
+// `authored_spelling` at that site, with a planted collision control; the primitive-roster
+// acceptance contract independently asserts the FreeCall spelling shadows are empty. Exact-site
+// admission was the only missing link, so this adds a refusal rather than a second detector.
+fn nested_compile_reaches_wrong_dispatch_site() -> List<NonEmptyStr> {
+  v1_interpreter_nested_compile_reaches()
+    |> filter(r =>
+      roster_arms_for_identity(identity: r.arm_identity)
+        |> any(a => !(a.dispatch_emit_site == EvalBuiltinInnerSite))
+    )
+    |> map(r => r.arm_identity)
+}
+
 // FAIL-CLOSED PROJECTION (DESIGN section 5). The operations list is reachable ONLY through the
 // grounded arm, so a roster that has drifted cannot be read as a shorter population: the consumer
 // matches, and the ungrounded arm carries the two located populations that explain why. A
@@ -128,12 +159,14 @@ type OpaqueHostCallSurface
   | OpaqueHostCallSurfaceUngrounded {
       unresolved: List<NonEmptyStr>
       not_free_call: List<NonEmptyStr>
+      wrong_dispatch_site: List<NonEmptyStr>
     }
 
 fn opaque_host_call_surface() -> OpaqueHostCallSurface {
   let unresolved = nested_compile_reaches_unresolved()
   let wrong_form = nested_compile_reaches_not_free_call()
-  if count(unresolved) == 0 && count(wrong_form) == 0 {
+  let wrong_site = nested_compile_reaches_wrong_dispatch_site()
+  if count(unresolved) == 0 && count(wrong_form) == 0 && count(wrong_site) == 0 {
     OpaqueHostCallSurfaceGrounded {
       operations: v1_interpreter_nested_compile_reaches()
         |> flat_map(r =>
@@ -145,6 +178,7 @@ fn opaque_host_call_surface() -> OpaqueHostCallSurface {
     OpaqueHostCallSurfaceUngrounded {
       unresolved: unresolved,
       not_free_call: wrong_form,
+      wrong_dispatch_site: wrong_site,
     }
   }
 }
