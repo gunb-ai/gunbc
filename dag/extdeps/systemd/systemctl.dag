@@ -195,6 +195,17 @@ fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "start", unit as String]
 }
 
+// RESTART IS A THIRD OPERATION, NOT ENABLE-AND-START SPELLED TOGETHER. It acts on a unit that is
+// already installed and already meant to be running, and it replaces the PROCESS -- which is why the
+// remedy that selects it (gunbc.spark.serving_realization ServingReactivationEffect) is chosen from a
+// running-definition reading and not from anything the install vocabulary observes. Fusing it into
+// enable or start is the defect DCH-0r-a deleted: a restart emitted unconditionally beside an enable
+// is destructive to in-flight work on every converge, and it has no independently matchable identity
+// for a fence to guard.
+fn systemctl_user_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "restart", unit as String]
+}
+
 // STOP AND DISABLE ARE THE RETIREMENT PAIR, AND THEY ARE SEPARATE FOR THE REASON ENABLE AND START
 // ARE. `disable --now` fuses them exactly as `enable --now` fuses the install pair, and the cost is
 // the same distinction: stop ends the RUNNING process, disable removes the install symlinks so the

@@ -200,11 +200,17 @@ fn codex_press_method_itinerary() -> CodexPressItinerary {
 // gunbc.host_layout.ProviderRuntimePlacement.wire_evidence_root (srv1 via
 // srv1_provider_runtime_placement) and GunbcHostLayout.roadmap_codex_home.
 
+// AccountTripMissing MEANS THE RESPONSE WAS NOT THERE. AccountTripResultUnusable means it WAS
+// there, was parsed, and could not be read for what the caller needed. They were one variant
+// until a present initialize result carrying a non-string userAgent rendered and actuated the
+// refusal reason "trip missing initialize result" -- a false statement about the observed input,
+// not a coarse one. Absence and malformed-presence are two facts and each owes its own sentence.
 type AccountTripFrameDisposition
   = AccountTripResultOk
   | AccountTripLoginRequiredSignal
   | AccountTripQuotaSignal
   | AccountTripMissing
+  | AccountTripResultUnusable
   | AccountTripNativeCauseUnknown { message: NonEmptyStr }
   | AccountTripNativeCauseNumericCode { code: Int }
   | AccountTripNativeCauseMessageUnreadable
@@ -219,6 +225,7 @@ type AccountStandingClassification
   | AccountStandingLoginRequired
   | AccountStandingQuotaReached
   | AccountStandingInitializeMissing
+  | AccountStandingInitializeUnusable
   | AccountStandingIncomplete
 
 type CodexRateLimitBucketVerdict
@@ -477,6 +484,7 @@ fn account_standing_projection(classification: AccountStandingClassification) ->
     AccountStandingLoginRequired => "initialize_ok; login_required"
     AccountStandingQuotaReached => "initialize_ok; account_read_ok; rate_limits_quota_reached"
     AccountStandingInitializeMissing => "initialize_missing"
+    AccountStandingInitializeUnusable => "initialize_present_unreadable"
     AccountStandingIncomplete => "initialize_ok; account_or_limits_incomplete"
   }
 }
@@ -598,6 +606,17 @@ fn native_cause_from_json_rpc_error(err: JsonValue) -> AccountTripFrameDispositi
   }
 }
 
+// EVERY NON-STRING VALUE SHAPE IS NAMED RATHER THAN CAUGHT. All five answer AccountTripMissing
+// for the one reason the string arm already states -- the initialize result did not identify a
+// user agent -- so a residual `value: _` would have been shorter and would have read the same
+// today. It would not read the same tomorrow: a seventh JsonValue variant would silently become
+// "missing" here, a plausible answer nobody chose. Named arms make that a refusal at the point
+// the variant is added. `json_number_as_int` in this module already enumerates the same roster.
+//
+// EVERY ARM OF THIS READER DESCRIBES A FRAME THAT ARRIVED. It is reached only for an initialize
+// response that was received and parsed, so nothing it can observe is an ABSENT response -- not a
+// member that is absent, duplicated, hanging off a non-object, or carrying the wrong value shape.
+// All of those are AccountTripResultUnusable, and the one thing they are not is missing.
 fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(
     v: result,
@@ -605,13 +624,18 @@ fn disposition_from_initialize_result(result: JsonValue) -> AccountTripFrameDisp
   ) {
     JsonMemberFound { value: JsonString { value: ua } } =>
       if ua == "" {
-        AccountTripMissing
+        AccountTripResultUnusable
       } else {
         AccountTripResultOk
       }
-    JsonMemberAbsent => AccountTripMissing
-    JsonMemberDuplicated { count: _ } => AccountTripMissing
-    JsonMemberNotAnObject => AccountTripMissing
+    JsonMemberFound { value: JsonNull } => AccountTripResultUnusable
+    JsonMemberFound { value: JsonBool { value: _ } } => AccountTripResultUnusable
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => AccountTripResultUnusable
+    JsonMemberFound { value: JsonArray { elements: _ } } => AccountTripResultUnusable
+    JsonMemberFound { value: JsonObject { members: _ } } => AccountTripResultUnusable
+    JsonMemberAbsent => AccountTripResultUnusable
+    JsonMemberDuplicated { count: _ } => AccountTripResultUnusable
+    JsonMemberNotAnObject => AccountTripResultUnusable
   }
 }
 
@@ -1327,6 +1351,10 @@ fn codex_credential_liveness_from_rate_trip(
       CodexCredentialLivenessUnobserved {
         reason: "account/rateLimits/read response missing on this trip" as NonEmptyStr,
       }
+    AccountTripResultUnusable =>
+      CodexCredentialLivenessUnobserved {
+        reason: "account/rateLimits/read response arrived but could not be read" as NonEmptyStr,
+      }
     AccountTripNativeCauseUnknown { message: m } =>
       CodexCredentialLivenessUnobserved { reason: m }
     AccountTripNativeCauseNumericCode { code: c } =>
@@ -1353,6 +1381,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
     let rate = observation_to_disposition(obs: acc.rate_limits)
     match init {
       AccountTripMissing => AccountStandingInitializeMissing
+      AccountTripResultUnusable => AccountStandingInitializeUnusable
       AccountTripLoginRequiredSignal => AccountStandingLoginRequired
       AccountTripQuotaSignal => AccountStandingIncomplete
       AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
@@ -1362,6 +1391,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
         match acct {
           AccountTripLoginRequiredSignal => AccountStandingLoginRequired
           AccountTripMissing => AccountStandingIncomplete
+          AccountTripResultUnusable => AccountStandingIncomplete
           AccountTripQuotaSignal => AccountStandingIncomplete
           AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
           AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
@@ -1373,6 +1403,7 @@ fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassificat
               AccountTripQuotaSignal => AccountStandingQuotaReached
               AccountTripLoginRequiredSignal => AccountStandingLoginRequired
               AccountTripMissing => AccountStandingIncomplete
+              AccountTripResultUnusable => AccountStandingIncomplete
               AccountTripNativeCauseUnknown { message: _ } => AccountStandingIncomplete
               AccountTripNativeCauseNumericCode { code: _ } => AccountStandingIncomplete
               AccountTripNativeCauseMessageUnreadable => AccountStandingIncomplete
@@ -1536,6 +1567,11 @@ fn outcome_from_standing_receipt(receipt: CodexAccountStandingReceipt) -> CodexP
         AccountStandingInitializeMissing =>
           CodexPressRefused {
             reason: "codex app-server trip missing initialize result" as NonEmptyStr,
+            receipt: receipt,
+          }
+        AccountStandingInitializeUnusable =>
+          CodexPressRefused {
+            reason: "codex app-server initialize result arrived without a readable userAgent" as NonEmptyStr,
             receipt: receipt,
           }
         AccountStandingIncomplete =>

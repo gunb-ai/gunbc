@@ -1168,9 +1168,23 @@ fn spark_serving_observe_host_via_locus(
 // be paired with a sixth that did not -- and the converge slice did exactly that, passing a
 // provenance beside facts it rebuilt itself. One value travels now, and it is the carrier the rest
 // of this module already projects, so there is nothing to recombine and nothing to mispair.
+// THE TWO REACTIVATION IDENTITIES TRAVEL WITH THE OBSERVATION THEY WERE READ IN, AND FOR THE SAME
+// REASON THE FIVE LOOSE FACTS ABOVE STOPPED TRAVELLING APART.
+//
+// A caller deciding whether a running process is stale needs the running definition and the service
+// invocation, and the whole point of DCH-0r-b is that those two are joined to the readback INSIDE
+// one transaction. Handing back only the projection would have forced the caller to acquire a second
+// transaction for them -- two instants, joined by nothing but the host argument -- which is exactly
+// the defect this carrier was built to close. They are projected here from the same `txn` the
+// observation is, so a consumer cannot pair a definition from one look with an invocation from
+// another.
 type SparkServingObservedFacts
   = SparkServingObservedFactsRefused { cause: NonEmptyStr }
-  | SparkServingObservedFactsReady { observation: SparkServingHostObservation }
+  | SparkServingObservedFactsReady {
+      observation: SparkServingHostObservation,
+      running_definition: SparkServingRunningDefinition,
+      invocation: SparkServingInvocationIdentity,
+    }
 
 fn spark_serving_observed_facts_via_locus(
   context: FleetSshExecutionContext,
@@ -1187,6 +1201,8 @@ fn spark_serving_observed_facts_via_locus(
     SparkServingTransactionAdmitted { txn: txn } =>
       SparkServingObservedFactsReady {
         observation: spark_serving_host_observation_from_transaction(txn: txn),
+        running_definition: spark_serving_running_definition_from_transaction(txn: txn),
+        invocation: spark_serving_invocation_identity_from_transaction(txn: txn),
       }
   }
 }
@@ -2116,16 +2132,22 @@ fn spark_serving_running_definition_from_probe_results(
   }
 }
 
-// THIS PROJECTOR HAS NO PRODUCTION CONSUMER BY RULING, NOT BY OVERSIGHT.
+// THIS PROJECTOR NOW HAS A PRODUCTION CONSUMER, AND WHAT THE CONSUMER DOES WITH IT IS REFUSE.
 //
-// ProbeRunningDefinition is captured by the real observation transaction. Its only modeled consumer
-// is gunbc.spark.serving_realization spark_serving_reactivation_remedy, a selector that nothing routes
-// a production convergence through by ruling: DCH-0r-c must land the admission fence and drain first.
-// Until that trigger lands the convergence path remains deliberately dark; this declaration does
-// not make restart selectable from an unfenced observation. This observation discharges conjunct
-// (i) of gunbc.recurring_failure_mode
-// liveness_probe_read_as_currency's next-rung trigger; conjunct (ii), the guarded producer, remains
-// DCH-0r-c. Being named by that trigger is a destination and NOT a production consumer or coverage.
+// The note that stood here said the convergence path was deliberately dark until DCH-0r-c landed the
+// admission fence and the drain. It has: gunbc.spark.serving_converge_slice_wet
+// spark_serving_reactivation_standing_for reads this projection, asks
+// gunbc.spark.serving_realization spark_serving_reactivation_remedy for a verdict, and hands that to
+// the guarded producer in gunbc.spark.serving_admission_fence.
+//
+// WHAT THAT DOES NOT MEAN. The producer refuses on every host today, because the drain half comes
+// from spark_serving_unfenced_production_drain -- no admission-state authority and no active-turn
+// population exist -- so no restart has ever been selected from this reading, fenced or otherwise.
+// The path is reachable and its answer is a located refusal, which is a different and honest state
+// from dark. This observation discharges conjunct (i) of gunbc.recurring_failure_mode
+// liveness_probe_read_as_currency's next-rung trigger; conjunct (ii), the guarded producer, now
+// exists, and the LIVE receipt DCH-0r owes -- a restart against a held fence with a post-restart
+// incarnation readback -- does not.
 fn spark_serving_running_definition_from_transaction(
   txn: SparkServingObservationTransaction,
 ) -> SparkServingRunningDefinition {

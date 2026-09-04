@@ -857,6 +857,17 @@ fn git_observe_meta_shell_fragment() -> String {
 // diff-files: each incorporates the index and can therefore report a false difference when the
 // index is the stale side of the three-way state being diagnosed.
 
+// WHY `DiffNameOnlyNoRenames` EXISTS BESIDE `DiffNameOnly`, WHICH IS THE ONLY DIFFERENCE A READER
+// WILL WANT EXPLAINED. `diff.renames` defaults to true, so a pure rename prints only the
+// DESTINATION path: over a `git mv a.txt b.txt`, `git diff --name-only HEAD~1 HEAD` prints `b.txt`
+// alone while the same diff with `--no-renames` prints `a.txt` and `b.txt` (measured in a scratch
+// repository, 2026-09-03). A caller asking which branches touch a path would therefore be told
+// nobody touches it by the branch that is DELETING it -- the answer least safe to be wrong about,
+// and the reason `gunbc.path_writer_set` requires the rename-blind reading.
+//
+// They are two operations rather than one with a flag because they model two different upstream
+// behaviours -- git's rename-detecting diff and its path-literal diff -- and a caller must choose
+// which question it is asking. `DiffNameOnly` remains correct for the destination-only view.
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -995,6 +1006,21 @@ service git.Core {
     }
     readonly
     transport shell { argv: ["git", "diff", "--name-only", "{base}", "{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameOnlyNoRenames {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      paths: List<FilePath> from "stdout_lines"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "--no-renames", "{base}", "{head}"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"

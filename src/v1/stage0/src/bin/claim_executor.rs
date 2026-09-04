@@ -5,6 +5,94 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use v1_compiler::cli_run::PhaseProfile;
 
+// HAND-RUST GATE explicit deferral. Lane: required-ci-measurement-host-realization. The authority
+// is `v2.workflow.required_ci_measurement`; this seed code realizes its filesystem write, JSON
+// transport, process exit and existing required-phase host diagnostics because required CI runs
+// the bootstrapped `claim_executor` before a generated replacement owns those effects. This adds
+// no competing domain model: the coproduct, blocker fields and build-unreached JSON originate in
+// `.dag`. It dissolves at the concrete ROADMAP row `v1-zero-hand-maintained-rust`, whose boundary
+// requires every tracked Rust file to be generated or deleted; at that row this realization is
+// generated from the measurement model or removed with the v1 seed. Until then this is counted
+// hand-maintained bootstrap surface, not a terminal Rust authority.
+const REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION: u8 = 1;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(tag = "standing", rename_all = "snake_case")]
+enum RequiredCiMeasurementReceipt {
+    MeasurementCompleted { blockers: Vec<RequiredCiBlocker> },
+    MeasurementUnreached { cause: String },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+struct RequiredCiBlocker {
+    phase: String,
+    identity: String,
+    cause: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct VersionedRequiredCiMeasurementReceipt {
+    version: u8,
+    receipt: RequiredCiMeasurementReceipt,
+}
+
+fn write_required_ci_measurement_receipt(
+    path: &str,
+    receipt: RequiredCiMeasurementReceipt,
+) -> Result<(), String> {
+    let encoded = serde_json::to_vec_pretty(&VersionedRequiredCiMeasurementReceipt {
+        version: REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION,
+        receipt,
+    })
+    .map_err(|e| format!("encode required CI measurement receipt: {e}"))?;
+    std::fs::write(path, encoded)
+        .map_err(|e| format!("write required CI measurement receipt {path}: {e}"))
+}
+
+fn adjudicate_required_ci_measurement_receipt(path: &str) -> Result<ExitCode, ExitCode> {
+    let body = std::fs::read(path).map_err(|e| {
+        eprintln!("required-ci: adjudication REFUSED receipt unreadable path={path} cause={e}");
+        ExitCode::from(1)
+    })?;
+    let versioned: VersionedRequiredCiMeasurementReceipt =
+        serde_json::from_slice(&body).map_err(|e| {
+            eprintln!("required-ci: adjudication REFUSED receipt malformed path={path} cause={e}");
+            ExitCode::from(1)
+        })?;
+    if versioned.version != REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION {
+        eprintln!(
+            "required-ci: adjudication REFUSED receipt version={} expected={}",
+            versioned.version, REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION
+        );
+        return Err(ExitCode::from(1));
+    }
+    match versioned.receipt {
+        RequiredCiMeasurementReceipt::MeasurementUnreached { cause } => {
+            eprintln!(
+                "required-ci: adjudication REFUSED standing=measurement_unreached cause={cause}"
+            );
+            Err(ExitCode::from(1))
+        }
+        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } if blockers.is_empty() => {
+            eprintln!("required-ci: adjudication PASSED standing=measurement_completed blockers=0");
+            Ok(ExitCode::SUCCESS)
+        }
+        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } => {
+            for blocker in &blockers {
+                eprintln!(
+                    "required-ci: adjudication BLOCKING phase={} identity={} cause={}",
+                    blocker.phase, blocker.identity, blocker.cause
+                );
+            }
+            eprintln!(
+                "required-ci: adjudication REFUSED standing=measurement_completed blockers={}",
+                blockers.len()
+            );
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
         Some(v) => Ok(v.clone()),
@@ -155,6 +243,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut verify_artifacts_mode = false;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
+    let mut required_ci_measurement_receipt: Option<String> = None;
+    let mut required_ci_adjudicate_receipt: Option<String> = None;
+    let mut required_ci_unreached_receipt: Option<String> = None;
+    let mut required_ci_unreached_cause: Option<String> = None;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
@@ -190,6 +282,26 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-ci" => {
                 required_ci_mode = true;
+            }
+            "--measurement-receipt" => {
+                i += 1;
+                required_ci_measurement_receipt =
+                    Some(require_value(&args, i, "--measurement-receipt")?);
+            }
+            "--adjudicate-measurement-receipt" => {
+                i += 1;
+                required_ci_adjudicate_receipt =
+                    Some(require_value(&args, i, "--adjudicate-measurement-receipt")?);
+            }
+            "--measurement-unreached-receipt" => {
+                i += 1;
+                required_ci_unreached_receipt =
+                    Some(require_value(&args, i, "--measurement-unreached-receipt")?);
+            }
+            "--measurement-unreached-cause" => {
+                i += 1;
+                required_ci_unreached_cause =
+                    Some(require_value(&args, i, "--measurement-unreached-cause")?);
             }
             // NAMES A JOB, NOT A PHASE SET. The workflow asks for a lane and this binary decides
             // which phases that lane owns, so widening or re-routing the roster is a change here
@@ -275,6 +387,23 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
     if verify_artifacts_mode {
         return verify_build_artifacts(&verify_artifacts);
+    }
+
+    if let Some(path) = required_ci_adjudicate_receipt {
+        return adjudicate_required_ci_measurement_receipt(&path);
+    }
+    if let Some(path) = required_ci_unreached_receipt {
+        let cause = required_ci_unreached_cause
+            .unwrap_or_else(|| "measurement process exited before producing a receipt".to_string());
+        return write_required_ci_measurement_receipt(
+            &path,
+            RequiredCiMeasurementReceipt::MeasurementUnreached { cause },
+        )
+        .map(|_| ExitCode::SUCCESS)
+        .map_err(|e| {
+            eprintln!("required-ci: measurement-unreached receipt REFUSED {e}");
+            ExitCode::from(1)
+        });
     }
 
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
@@ -385,6 +514,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     // is the stopped-line AUDIT DESIGN §5 sanctions: it reports, it never greens.
     if required_ci_mode {
         let mut phase_failures: Vec<String> = Vec::new();
+        let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
+        let mut measurement_unreached: Option<String> = None;
         let mut ran: Vec<&'static str> = Vec::new();
         // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
         // the index the parse phase built rather than acquiring the corpus again; holding it
@@ -740,18 +871,23 @@ fn run() -> Result<ExitCode, ExitCode> {
                     report_required_floor_outcome(&outcome);
                     if !required_floor_outcome_is_clean(&outcome) {
                         phase_failures.push("floor".to_string());
+                        measurement_blockers.extend(required_floor_measurement_blockers(&outcome));
                     }
                 }
                 Err(e) => {
                     eprintln!("required-ci: floor refused: {e}");
                     phase_failures.push(format!("floor refused: {e}"));
+                    measurement_unreached = Some(e);
                 }
             }
             ran.push("floor");
         }
 
+        // COUNTER-KEY CENSUS (dashboard node adhoc-af8a3fe8-13d): this is the
+        // phase population. The required-floor aggregate below counts claim outcomes, so the
+        // formerly shared `failed` key gave one spelling two meanings in one process's output.
         eprintln!(
-            "required-ci: lane={} phases_run={} failed={}",
+            "required-ci: lane={} phases_run={} phases_failed={}",
             required_ci_lane
                 .map(|l| l.name())
                 .unwrap_or("all (no --required-lane given)"),
@@ -789,6 +925,40 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         for failure in &phase_failures {
             eprintln!("required-ci: FAILED PHASE {failure}");
+        }
+        if let Some(path) = required_ci_measurement_receipt {
+            // Dissolve this compatibility boundary when every required phase returns its own
+            // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
+            // blocker's phase and identity.
+            for failure in &phase_failures {
+                if !measurement_blockers
+                    .iter()
+                    .any(|b| b.phase == failure.as_str())
+                    && failure != "floor"
+                {
+                    measurement_blockers.push(RequiredCiBlocker {
+                        phase: failure
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("unknown")
+                            .to_string(),
+                        identity: "<phase>".to_string(),
+                        cause: failure.clone(),
+                    });
+                }
+            }
+            let receipt = match measurement_unreached {
+                Some(cause) => RequiredCiMeasurementReceipt::MeasurementUnreached { cause },
+                None => RequiredCiMeasurementReceipt::MeasurementCompleted {
+                    blockers: measurement_blockers,
+                },
+            };
+            if let Err(e) = write_required_ci_measurement_receipt(&path, receipt) {
+                eprintln!("required-ci: measurement REFUSED {e}");
+                return Err(ExitCode::from(1));
+            }
+            eprintln!("required-ci: measurement completed receipt={path}");
+            return Ok(ExitCode::SUCCESS);
         }
         return if phase_failures.is_empty() {
             Ok(ExitCode::SUCCESS)
@@ -1501,7 +1671,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         v1_compiler::cli_run::interrupted_cause_census(&outcome.interrupted_before_verdict);
     eprintln!(
         "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
-         known_red_held={} failed={} stale_quarantine={} \
+         known_red_held={} claims_failed={} stale_quarantine={} \
          interrupted_before_verdict={} interrupted_cpu_deadline={} \
          interrupted_wall_deadline={} completed_over_cost_requirement={} \
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
@@ -1736,6 +1906,53 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         && outcome.changed_witness_blocking.is_empty()
 }
 
+fn required_floor_measurement_blockers(
+    outcome: &v1_compiler::cli_run::RequiredFloorOutcome,
+) -> Vec<RequiredCiBlocker> {
+    let mut blockers = Vec::new();
+    let mut add = |identity: &str, cause: &str| {
+        blockers.push(RequiredCiBlocker {
+            phase: "floor".to_string(),
+            identity: identity.to_string(),
+            cause: cause.to_string(),
+        })
+    };
+    for identity in &outcome.failures {
+        add(identity, "claim_failed");
+    }
+    for identity in &outcome.non_verdict_unenrolled {
+        add(identity, "non_verdict_unenrolled");
+    }
+    for identity in &outcome.stale_non_verdict {
+        add(identity, "stale_non_verdict");
+    }
+    for identity in &outcome.stale_quarantine {
+        add(identity, "stale_quarantine");
+    }
+    for row in &outcome.interrupted_before_verdict {
+        add(&row.qualified, "interrupted_before_verdict");
+    }
+    for identity in &outcome.completed_over_cost_requirement {
+        add(identity, "completed_over_cost_requirement");
+    }
+    for identity in &outcome.host_tool_unresolved {
+        add(identity, "host_tool_unresolved");
+    }
+    for identity in &outcome.route_gap {
+        add(identity, "route_gap");
+    }
+    for identity in &outcome.stale_route_gap {
+        add(identity, "stale_route_gap");
+    }
+    for identity in &outcome.stale_cost_debt {
+        add(identity, "stale_cost_debt");
+    }
+    for identity in &outcome.changed_witness_blocking {
+        add(identity, "changed_witness_blocking");
+    }
+    blockers
+}
+
 fn main() -> ExitCode {
     // NO SECOND ARGV READER. What stood here read std::env::args() directly and dispatched the
     // floor coordinator BEFORE run() parsed anything, so deleting --plan-function from run()'s
@@ -1763,6 +1980,48 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blocking_measurement_round_trips_with_the_planted_identity_and_refuses() {
+        let path =
+            std::env::temp_dir().join(format!("gunbc-d0-blocking-{}.json", std::process::id()));
+        let identity = "fixture.planted_blocking_diagnostic";
+        write_required_ci_measurement_receipt(
+            path.to_str().expect("utf8 temp path"),
+            RequiredCiMeasurementReceipt::MeasurementCompleted {
+                blockers: vec![RequiredCiBlocker {
+                    phase: "floor".to_string(),
+                    identity: identity.to_string(),
+                    cause: "claim_failed".to_string(),
+                }],
+            },
+        )
+        .expect("write receipt");
+        let body = std::fs::read_to_string(&path).expect("read receipt");
+        assert!(
+            body.contains(identity),
+            "receipt must retain the blocking identity"
+        );
+        assert!(adjudicate_required_ci_measurement_receipt(path.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn measurement_unreached_is_a_present_distinct_refusal() {
+        let path =
+            std::env::temp_dir().join(format!("gunbc-d0-unreached-{}.json", std::process::id()));
+        write_required_ci_measurement_receipt(
+            path.to_str().expect("utf8 temp path"),
+            RequiredCiMeasurementReceipt::MeasurementUnreached {
+                cause: "instrument exited".to_string(),
+            },
+        )
+        .expect("write receipt");
+        let body = std::fs::read_to_string(&path).expect("read receipt");
+        assert!(body.contains("measurement_unreached"));
+        assert!(adjudicate_required_ci_measurement_receipt(path.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_file(path);
+    }
 
     fn repo_root_from_manifest() -> PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

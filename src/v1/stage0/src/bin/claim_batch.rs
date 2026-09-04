@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    closure_subject_for_entry, discover_floor_witness_roster,
+    closure_subject_for_entry, discover_floor_witness_roster, entry_closure_source_paths,
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, process_shared_index, resolve_entry_with_index,
     run_claim_measured, witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
@@ -188,6 +188,7 @@ struct ParsedArgs {
     fixture_store: Option<PathBuf>,
     eval_budget_ms: Option<u64>,
     pre_push: bool,
+    print_entry_closure: bool,
 }
 
 struct DiscoveryConfig {
@@ -251,6 +252,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut fixture_store: Option<PathBuf> = None;
     let mut eval_budget_ms: Option<u64> = None;
     let mut pre_push = false;
+    let mut print_entry_closure = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -323,6 +325,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
             }
             "--pre-push" => pre_push = true,
+            "--print-entry-closure" => print_entry_closure = true,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -354,6 +357,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         fixture_store,
         eval_budget_ms,
         pre_push,
+        print_entry_closure,
     })
 }
 
@@ -618,6 +622,7 @@ fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
+    let invocation_started = Instant::now();
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
     if parsed.pre_push {
@@ -633,6 +638,60 @@ fn run() -> Result<ExitCode, ExitCode> {
     if source_roots.is_empty() {
         eprintln!("claim_batch: provide at least one --source-root");
         return Err(ExitCode::from(2));
+    }
+
+    // A closure question must stop at the loader boundary. In particular, keep it ahead of the
+    // whole-pool bare-reference warm, output-policy resolution, mock precompute, and typed entry
+    // resolve below: those are precisely the costs a prospective skip decision must avoid.
+    if parsed.print_entry_closure {
+        if parsed.discovery.is_some() {
+            eprintln!("claim_batch: --print-entry-closure does not accept --roster-from-discovery");
+            return Err(ExitCode::from(2));
+        }
+        if parsed.entry_groups.is_empty() {
+            eprintln!("claim_batch: --print-entry-closure requires at least one --entry");
+            return Err(ExitCode::from(2));
+        }
+        if parsed
+            .entry_groups
+            .iter()
+            .any(|group| !group.functions.is_empty())
+        {
+            eprintln!(
+                "claim_batch: --print-entry-closure is a non-evaluating mode and does not accept --function/--functions"
+            );
+            return Err(ExitCode::from(2));
+        }
+        let query_started = Instant::now();
+        let index = process_shared_index(&source_roots);
+        let mut emitted_paths = 0usize;
+        for group in &parsed.entry_groups {
+            let paths = entry_closure_source_paths(&index, &group.entry).map_err(|why| {
+                eprintln!(
+                    "claim_batch: entry closure failed for {}: {why}",
+                    group.entry
+                );
+                ExitCode::from(1)
+            })?;
+            for path in paths {
+                println!("[entry-closure] {}: file={:?}", group.entry, path);
+                emitted_paths += 1;
+            }
+        }
+        // A terminal positive receipt is load-bearing for a membership query: without it, shell
+        // plumbing that masks a missing/non-running binary can turn zero output into a false
+        // "path is absent" verdict. This line is printed only after every entry answered.
+        println!(
+            "[entry-closure-summary] state=complete entries={} path_rows={}",
+            parsed.entry_groups.len(),
+            emitted_paths
+        );
+        eprintln!(
+            "[entry-closure-timing] total_ms={} own_query_ms={}",
+            invocation_started.elapsed().as_millis(),
+            query_started.elapsed().as_millis()
+        );
+        return Ok(ExitCode::SUCCESS);
     }
 
     // Explicit names are entry-local facts. Refuse stale/typoed argv before the whole-tree
@@ -1086,6 +1145,26 @@ mod cli_path_resolution_wiring_tests {
     }
 
     #[test]
+    fn closure_only_mode_is_parsed_without_a_function() {
+        let ws = workspace_root();
+        let root = ws.join("dag").to_string_lossy().into_owned();
+        let entry = ws
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let parsed = parse_args(&args(&[
+            "--source-root",
+            &root,
+            "--entry",
+            &entry,
+            "--print-entry-closure",
+        ]))
+        .expect("closure-only argv must parse");
+        assert!(parsed.print_entry_closure);
+        assert!(parsed.entry_groups[0].functions.is_empty());
+    }
+
+    #[test]
     fn declared_explicit_function_passes_preflight() {
         let entry = workspace_root()
             .join("dag/test/claim/discovery_census_witness_test.dag")
@@ -1106,6 +1185,8 @@ mod witness_report_line_tests {
 
     fn receipt(wall_ms: u128, cpu_ms: u128) -> PerformanceReceipt {
         PerformanceReceipt {
+            opaque_host_call_reach:
+                v1_compiler::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
             subject_key: "subj".to_string(),
             work_shape: "w".to_string(),
             wall_nanos: wall_ms * 1_000_000,

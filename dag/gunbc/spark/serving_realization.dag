@@ -344,6 +344,20 @@ fn list_tail_of(xs: List<ServingRequirementRefusal>) -> List<ServingRequirementR
   }
 }
 
+fn realization_list_head_of(xs: List<SparkServingRealization>) -> SparkServingRealization? {
+  match list_head(xs: xs) {
+    HeadFound { value: v } => Present { value: v }
+    HeadAbsent => none
+  }
+}
+
+fn realization_list_tail_of(xs: List<SparkServingRealization>) -> List<SparkServingRealization> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => xs
+  }
+}
+
 // ── Normative policy and selection ────────────────────────────────────────────────────────────
 
 // Capabilities and contracts say what is POSSIBLE. They cannot rank two equally capable
@@ -727,10 +741,12 @@ fn spark_serving_reactivation_required(
 // is enforced by execution in test.claim.spark_serving_reactivation_not_executable_witness_test, whose
 // RED is exactly that pairing and which greens again the moment this sum is re-widened.
 //
-// It is admitted properly one gate later, by DCH-0r-c, and the shape is already settled: not
-// membership in this sum but PlannedBoundReactivationExecution { plan, steps }, whose steps are
-// DERIVED from the bound plan rather than authored independently beside it -- the same defect this
-// exclusion holds shut, closed at its root for reactivation instead of inherited from installs.
+// It is admitted properly one gate later, by DCH-0r-c, and that gate has landed WITHOUT touching
+// this sum. gunbc.spark.serving_admission_fence PlannedBoundReactivationExecution carries the bound
+// plan ALONE and derives its steps from it -- the record settled on in the plan carried `steps` as a
+// field, and storing a derived list beside the thing it derives from would have rebuilt this very
+// defect at one remove. So a restart's label beside unrelated commands is not refused over there
+// either: it has no constructor at all, and this exclusion stands unchanged.
 type SparkServingExecutablePlannedEffect
   = PlannedInstallEffect { install: ServingInstallEffect }
   | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
@@ -864,15 +880,15 @@ fn select_spark_serving_realization(
       match policy.privilege {
         LeastRequiredEffects => RealizationSelected { realization: best }
         PreferSystemIntegration =>
-          match list_head_of(xs: admitted) {
+          match realization_list_head_of(xs: admitted) {
             Absent => RealizationSelected { realization: best }
             Present { value: head } =>
-              match list_head_of(xs: list_tail_of(xs: admitted)) {
+              match realization_list_head_of(xs: realization_list_tail_of(xs: admitted)) {
                 Absent => RealizationSelected { realization: head }
                 Present { value: second } => RealizationChoiceRequired {
                   first: head,
                   second: second,
-                  more: list_tail_of(xs: list_tail_of(xs: admitted)),
+                  more: realization_list_tail_of(xs: realization_list_tail_of(xs: admitted)),
                   cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as NonEmptyStr,
                 }
               }

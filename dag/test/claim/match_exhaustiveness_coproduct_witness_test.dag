@@ -125,3 +125,169 @@ test fn w_unresolved_scrutinee_refuses_instead_of_becoming_not_a_coproduct() -> 
   })
   fixture_blocking_class_count(o: run, wanted: "UnresolvedType") > 0
 }
+
+// -- NESTED PATTERNS: THE ARM HEAD IS NOT THE ARM'S COVERAGE --
+//
+// The flat coverage fold keyed on the arm head and discarded `field_bindings`, so
+// `A { i: P { v: v } }` marked the whole of `A` covered. gunbc accepted the negative below
+// with zero blocking diagnostics and rustc refused its emission -- accepted source, uncompilable
+// target. The negative and the positive differ by exactly one arm, `A { i: Q }`.
+
+data nested_missing_source: String = "module exhaust_nested_missing\ntype Inner = P { v: Bool } | Q\ntype Outer = A { i: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { i: P { v: v } } => v\n    B => false\n  }\n}\n"
+
+data nested_complete_source: String = "module exhaust_nested_complete\ntype Inner = P { v: Bool } | Q\ntype Outer = A { i: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { i: P { v: v } } => v\n    A { i: Q } => false\n    B => false\n  }\n}\n"
+
+// A WILDCARD FIELD STILL COVERS ITS VARIANT WHOLE, and so does the bare head. These are the
+// controls that the change refuses only what nesting actually restricts: every arm below binds
+// no constructor at depth, so both must stay clean.
+data nested_wildcard_field_source: String = "module exhaust_nested_wildcard\ntype Inner = P { v: Bool } | Q\ntype Outer = A { i: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { i: _ } => true\n    B => false\n  }\n}\n"
+
+data nested_bare_head_source: String = "module exhaust_nested_bare\ntype Inner = P { v: Bool } | Q\ntype Outer = A { i: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { i: i } => true\n    B => false\n  }\n}\n"
+
+// THE JOINT-COLUMN DISCRIMINATOR, and the reason coverage is not computed one field at a time.
+// Reading the two fields INDEPENDENTLY, x is covered by {P, Q} and y is covered by {P, Q}, so a
+// per-field checker calls this exhaustive. It is not: `A { x: P, y: Q }` matches no arm, and
+// rustc refuses the emission. A checker that greens this witness has replaced one blind spot
+// with a narrower one rather than removing the class.
+data nested_pair_missing_source: String = "module exhaust_nested_pair_missing\ntype Inner = P | Q\ntype Outer = A { x: Inner, y: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { x: P, y: P } => true\n    A { x: Q, y: Q } => false\n    B => false\n  }\n}\n"
+
+data nested_pair_complete_source: String = "module exhaust_nested_pair_complete\ntype Inner = P | Q\ntype Outer = A { x: Inner, y: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { x: P, y: P } => true\n    A { x: P, y: Q } => true\n    A { x: Q, y: P } => false\n    A { x: Q, y: Q } => false\n    B => false\n  }\n}\n"
+
+test fn w_nested_variant_pattern_restricting_a_field_reports_one_non_exhaustive() -> Bool {
+  non_exhaustive_blocking_count(source: nested_missing_source) == 1
+}
+
+test fn w_nested_variant_pattern_covering_every_inner_arm_is_clean() -> Bool {
+  non_exhaustive_blocking_count(source: nested_complete_source) == 0
+}
+
+test fn w_wildcard_field_binding_still_covers_its_variant() -> Bool {
+  non_exhaustive_blocking_count(source: nested_wildcard_field_source) == 0
+}
+
+test fn w_named_field_binding_still_covers_its_variant() -> Bool {
+  non_exhaustive_blocking_count(source: nested_bare_head_source) == 0
+}
+
+test fn w_two_nested_columns_are_judged_jointly_not_per_field() -> Bool {
+  non_exhaustive_blocking_count(source: nested_pair_missing_source) == 1
+}
+
+test fn w_two_nested_columns_covered_pairwise_are_clean() -> Bool {
+  non_exhaustive_blocking_count(source: nested_pair_complete_source) == 0
+}
+
+// THE PRECISION CONTROL FOR THE DEFAULT-MATRIX GATE. Every pair over {P, Q} x {P, Q} is covered:
+// (P, P) and (P, Q) by arm one, (Q, P) by arm two, (Q, Q) by arm three. But the x column DOES
+// carry an irrefutable row, so a checker that takes the default matrix whenever some row head is
+// a wildcard keeps arm two alone, drops the two arms that also cover `x = P`, and refuses this
+// program with `A { x: _, y: Q }` missing. The sound gate is signature COMPLETENESS -- the
+// default matrix is admissible only when some declared constructor appears at no row head at all.
+data nested_overlapping_wildcard_source: String = "module exhaust_nested_overlapping\ntype Inner = P | Q\ntype Outer = A { x: Inner, y: Inner } | B\nfn f(o: Outer) -> Bool {\n  match o {\n    A { x: P, y: _ } => true\n    A { x: _, y: P } => true\n    A { x: Q, y: Q } => false\n    B => false\n  }\n}\n"
+
+test fn w_overlapping_wildcard_columns_are_not_over_refused() -> Bool {
+  non_exhaustive_blocking_count(source: nested_overlapping_wildcard_source) == 0
+}
+
+// -- THE OPTIONAL-NESTED SHAPE, WHICH IS THE FORM THAT ACTUALLY OCCURRED --
+//
+// The synthetic fixtures above nest one authored coproduct inside another. The population
+// specimen nests inside `Present`, over `Optional<T>`: `v1.compiler.dag_collect_support
+// inferred_fingerprint` and `v1.compiler.parse occurrence_allocator_after_inferred_node` both
+// matched `Present { value: Resolved { .. } }` and stayed SILENT when a fourth `InferredNode`
+// variant landed, while SEVEN flat matches of the same coproduct in the same run were refused
+// (gunbc#9964, still-swift-363). Flat flagged, nested silent, one variant, one run.
+//
+// It is a distinct code path and not a restatement: the Optional roster is SYNTHESISED
+// (`Present`/`Absent` with a minted `value` field) rather than read off declared children, so a
+// checker can see through authored nesting and still be blind here. The two sites were repaired
+// at their authority in #9964; this is the checker, so a third such match authored tomorrow is
+// the thing under test.
+data optional_nested_missing_source: String = "module exhaust_optional_nested_missing\ntype Kind = KA { n: Bool } | KB { n: Bool } | KC\nfn f(v: Kind?) -> Bool {\n  match v {\n    Absent => false\n    Present { value: KA { n: n } } => n\n    Present { value: KB { n: n } } => n\n  }\n}\n"
+
+data optional_nested_complete_source: String = "module exhaust_optional_nested_complete\ntype Kind = KA { n: Bool } | KB { n: Bool } | KC\nfn f(v: Kind?) -> Bool {\n  match v {\n    Absent => false\n    Present { value: KA { n: n } } => n\n    Present { value: KB { n: n } } => n\n    Present { value: KC } => true\n  }\n}\n"
+
+test fn w_optional_nested_missing_inner_variant_reports_one_non_exhaustive() -> Bool {
+  non_exhaustive_blocking_count(source: optional_nested_missing_source) == 1
+}
+
+test fn w_optional_nested_covering_every_inner_variant_is_clean() -> Bool {
+  non_exhaustive_blocking_count(source: optional_nested_complete_source) == 0
+}
+
+// -- WHY A MECHANICAL `=> false` IS A TEST-ONLY REPAIR, AND SPENDS FAIL-CLOSURE IN PRODUCTION --
+//
+// Recorded here because this checker's census will keep producing the same shape, and the tempting
+// batch repair is right in one place and wrong in the other by the same reasoning that makes the
+// checker worth having (tidy-lynx-804, ruling on the 2026-09-02 census).
+//
+// In a `test fn ... -> Bool`, `=> false` is a claim ABOUT THE FIXTURE and nothing consumes it but
+// the assertion, so naming each missing shape BUYS fail-closure: add a variant later and the site
+// goes red again. In a production `fn`, the identical arm is a SEMANTIC ANSWER RETURNED TO A REAL
+// CALLER, asserting that false is correct for that variant when nobody established it -- so it
+// SPENDS the same property, converting a site that fails loudly on an unhandled variant into one
+// that silently answers false. Same shape, opposite effect, and the diagnostic cannot tell them
+// apart because it reports the missing witness and not what the enclosing declaration returns.
+//
+// The production repair is therefore per-site: return the typed answer that variant genuinely has,
+// or refuse. And in EITHER setting the arm must name each shape -- `_ => false` swallows variants
+// added later, which is the fail-open this whole class exists to remove.
+//
+// AND THE GREEN AT AN A SITE IS GREEN BY CONSTRUCTION, WHICH IS WHY NO PER-SITE RED EXISTS TO ASK
+// FOR. Every group A enclosing declaration is NULLARY -- `test fn name() -> Bool`, no parameters,
+// verified across all 63 with zero exceptions -- so nothing can be threaded in from outside and the
+// scrutinee is a closed term. Exactly one arm is ever taken, and an arm added for a shape the closed
+// scrutinee does not have is UNREACHABLE: never evaluated, contributing no value.
+//
+// That is the honest reason to neither claim this suite validates a repair batch nor demand a
+// discriminating red per repaired site. There is no red to construct: the arm cannot run. A batch is
+// reviewable by reading the arms against the declaration, and by this file's own witnesses covering
+// the CHECKER, not by expecting the repaired sites to prove themselves.
+//
+// TWO OBLIGATIONS LIVE HERE AND THEY ARE NOT THE SAME ONE. This entry has been wrong in both
+// directions -- first recording a blocking per-site polarity read, then withdrawing it wholesale --
+// and the operator's ruling separates what each move got right.
+//
+// The added arms are unreachable, so the suite passes identically before and after and cannot
+// discriminate a wrong arm. That retires the EXECUTING witness, not the SOURCE read: an arm whose
+// value is never computed is still an authored claim about what the value would be, and only a
+// reading of the source can judge it. The checker's shrinking refusal set is the discriminating
+// evidence for EXHAUSTIVENESS, not for POLARITY.
+//
+// So the executing per-site witness is correctly retired and cannot exist anyway -- an unreachable
+// arm has no runtime behaviour to observe. The source read survives, and unreachability is not what
+// retires it. Conflating the two is what produced both the over-demand and the over-withdrawal.
+//
+// It is restated rather than quietly deleted because a witness carrier outlives the thread that
+// wrote it, so an obligation left in either wrong state here would be read as settled by everyone
+// who touches the census afterwards.
+
+// -- A VARIANT NAMED IN A TYPE POSITION IS JUDGED AGAINST ITS PARENT'S ROSTER --
+//
+// This pair PINS A BEHAVIOUR THAT IS UNDER AN OPEN QUESTION, and says so rather than asserting the
+// behaviour is right. `lookup_type_for` answers with the declaration owning a name, so the column
+// of `VAbsent?` resolves to `VObs` and its full roster is required. By inhabitance only `VAbsent`
+// can occur there, so the demanded arm is unreachable -- which is why a narrowing to the singleton
+// was written first and then removed.
+//
+// WHAT DECIDED IT was not the inhabitance argument but the type system's own answer: on
+// `Present { value: a } => a.tool` the compiler refuses `no field 'tool' on type 'VObs'`
+// (still-swift-363, executed). The corpus sites survive only because they destructure IN THE
+// PATTERN, which works against a variant even when the column is the parent. A roster answering
+// `singleton` while resolution answers `parent` is one concept with two answers inside one compiler,
+// and it would make this checker stop reporting a class rather than report it.
+//
+// So the negative below is the LOUD arm, deliberately: if the substrate later makes a variant a
+// first-class type, this witness FAILS and that failure is the signal to revisit -- which is the
+// point of pinning it rather than leaving the behaviour unwitnessed.
+data variant_type_position_parent_roster_source: String = "module exhaust_variant_type_position\ntype Obs = VPresent | VAbsent { tool: Bool }\nfn producer() -> VAbsent? { none }\nfn f() -> Bool {\n  match producer() {\n    Present { value: VAbsent { tool: t } } => t\n    Absent => false\n  }\n}\n"
+
+data variant_type_position_parent_covered_source: String = "module exhaust_variant_type_position_covered\ntype Obs = VPresent | VAbsent { tool: Bool }\nfn producer() -> VAbsent? { none }\nfn f() -> Bool {\n  match producer() {\n    Present { value: VAbsent { tool: t } } => t\n    Present { value: VPresent } => false\n    Absent => false\n  }\n}\n"
+
+test fn w_variant_named_in_type_position_is_judged_against_its_parent_roster() -> Bool {
+  non_exhaustive_blocking_count(source: variant_type_position_parent_roster_source) == 1
+}
+
+test fn w_variant_type_position_covering_the_parent_roster_is_clean() -> Bool {
+  non_exhaustive_blocking_count(source: variant_type_position_parent_covered_source) == 0
+}

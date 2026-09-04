@@ -91,28 +91,64 @@ fn fixture_store_dir(name: &str) -> PathBuf {
         ))
 }
 
+/// Substitution that REFUSES when the pattern is absent, instead of `str::replace`'s
+/// silent no-op. These rewrites are spelling-keyed to the LIVE `.dag` witness sources: the
+/// harness copies an in-tree witness into a per-run scratch directory and edits its module
+/// path and its `/tmp` targets. `str::replace` returns its input UNCHANGED on a miss, so an
+/// ordinary edit to the `.dag` literal made the copy silently unrewritten — DESIGN §5's
+/// failure arm that WIDENS instead of refusing. Consequences differed per pattern and only
+/// one of them was loud: a missed MODULE-PATH rewrite produced a same-name duplicate that
+/// the module-path collision wall refuses, while a missed `/tmp` rewrite made the witness
+/// write to the SHARED path instead of its unique scratch directory, silently, with the
+/// damage landing as cross-run interference in some other session's witness. Being caught by
+/// a neighbouring wall is a property of that wall, not of this rewrite, so both arms refuse
+/// here. The refusal names the PATTERN and the SOURCE FILE because whoever trips it will be
+/// editing the `.dag` with no reason to know a Rust harness depends on its literal text.
+fn substituted(
+    src: &str,
+    pattern: &str,
+    replacement: &str,
+    source_rel: &str,
+) -> Result<String, String> {
+    if !src.contains(pattern) {
+        return Err(format!(
+            "scratch rewrite of {source_rel} refuses: pattern `{pattern}` is absent from the \
+             source. The Rust harness `interp_recorded_fixture_witness` copies this witness into \
+             a per-run scratch directory and rewrites that literal; if you edited it in the \
+             `.dag`, update this harness to match."
+        ));
+    }
+    Ok(src.replace(pattern, replacement))
+}
+
 fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, String> {
-    let src = fs::read_to_string(ws.join("dag/test/claim/filesystem_write_witness.dag"))
+    const REL: &str = "dag/test/claim/filesystem_write_witness.dag";
+    let src = fs::read_to_string(ws.join(REL))
         .map_err(|e| format!("read filesystem witness dag: {e}"))?;
     let live = scratch.join("fs_witness");
     let absent = scratch.join("fs_witness_absent_should_not_exist_42");
-    let rewritten = src
-        // The scratch copy is a SECOND declaring file for the same content; the
-        // in-tree template keeps its name (one module, one authority — the
-        // module-path collision wall refuses a same-name duplicate), so the copy
-        // declares itself as the scratch variant.
-        .replace(
-            "module test.claim.filesystem_write_witness\n",
-            "module test.claim.filesystem_write_witness_scratch\n",
-        )
-        .replace(
-            "/tmp/gunbc_fs_witness_absent_should_not_exist_42",
-            absent.to_str().ok_or("utf8 scratch path")?,
-        )
-        .replace(
-            "/tmp/gunbc_fs_write_witness",
-            live.to_str().ok_or("utf8 scratch path")?,
-        );
+    // The scratch copy is a SECOND declaring file for the same content; the
+    // in-tree template keeps its name (one module, one authority — the
+    // module-path collision wall refuses a same-name duplicate), so the copy
+    // declares itself as the scratch variant.
+    let rewritten = substituted(
+        &src,
+        "module test.claim.filesystem_write_witness\n",
+        "module test.claim.filesystem_write_witness_scratch\n",
+        REL,
+    )?;
+    let rewritten = substituted(
+        &rewritten,
+        "/tmp/gunbc_fs_witness_absent_should_not_exist_42",
+        absent.to_str().ok_or("utf8 scratch path")?,
+        REL,
+    )?;
+    let rewritten = substituted(
+        &rewritten,
+        "/tmp/gunbc_fs_write_witness",
+        live.to_str().ok_or("utf8 scratch path")?,
+        REL,
+    )?;
     let entry = scratch.join("filesystem_write_witness.dag");
     fs::write(&entry, rewritten)
         .map_err(|e| format!("write rewritten filesystem witness dag: {e}"))?;
@@ -120,19 +156,22 @@ fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, String>
 }
 
 fn closure_scale_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, String> {
-    let src =
-        fs::read_to_string(ws.join("dag/test/claim/filesystem_write_closure_scale_witness.dag"))
-            .map_err(|e| format!("read closure-scale witness dag: {e}"))?;
+    const REL: &str = "dag/test/claim/filesystem_write_closure_scale_witness.dag";
+    let src = fs::read_to_string(ws.join(REL))
+        .map_err(|e| format!("read closure-scale witness dag: {e}"))?;
     let live = scratch.join("fs_closure_scale_witness.txt");
-    let rewritten = src
-        .replace(
-            "module test.claim.filesystem_write_closure_scale_witness\n",
-            "module test.claim.filesystem_write_closure_scale_witness_scratch\n",
-        )
-        .replace(
-            "/tmp/gunbc_fs_closure_scale_witness.txt",
-            live.to_str().ok_or("utf8 scratch path")?,
-        );
+    let rewritten = substituted(
+        &src,
+        "module test.claim.filesystem_write_closure_scale_witness\n",
+        "module test.claim.filesystem_write_closure_scale_witness_scratch\n",
+        REL,
+    )?;
+    let rewritten = substituted(
+        &rewritten,
+        "/tmp/gunbc_fs_closure_scale_witness.txt",
+        live.to_str().ok_or("utf8 scratch path")?,
+        REL,
+    )?;
     let entry = scratch.join("filesystem_write_closure_scale_witness.dag");
     fs::write(&entry, rewritten)
         .map_err(|e| format!("write rewritten closure-scale witness dag: {e}"))?;
@@ -1430,5 +1469,66 @@ fn main() -> ExitCode {
     } else {
         eprintln!("interp_recorded_fixture_witness: {failures} check(s) failed");
         ExitCode::from(1)
+    }
+}
+
+#[cfg(test)]
+mod substituted_refuses_on_absent_pattern {
+    use super::substituted;
+
+    /// POSITIVE CONTROL: a pattern that IS present substitutes, so the refusal below is
+    /// discriminating rather than a function that refuses everything.
+    #[test]
+    fn present_pattern_substitutes() {
+        let out = substituted(
+            "module test.claim.x\nlet p = \"/tmp/gunbc_probe\"\n",
+            "/tmp/gunbc_probe",
+            "/scratch/run-1/probe",
+            "dag/test/claim/x.dag",
+        )
+        .expect("present pattern must substitute");
+        assert!(out.contains("/scratch/run-1/probe"));
+        assert!(!out.contains("/tmp/gunbc_probe"));
+    }
+
+    /// DISCRIMINATING RED: this is the exact input `str::replace` answered on silently —
+    /// the pattern edited out of the `.dag`. Before the repair this returned the source
+    /// unchanged and the harness wrote to the shared `/tmp` path; it now refuses, and the
+    /// refusal names both the pattern and the source file so the `.dag` author who tripped
+    /// it can find the Rust harness that depends on their literal text.
+    #[test]
+    fn absent_pattern_refuses_naming_pattern_and_file() {
+        let err = substituted(
+            "module test.claim.x\nlet p = \"/tmp/gunbc_renamed_by_someone\"\n",
+            "/tmp/gunbc_probe",
+            "/scratch/run-1/probe",
+            "dag/test/claim/x.dag",
+        )
+        .expect_err("an absent pattern must REFUSE, never silently no-op");
+        assert!(
+            err.contains("/tmp/gunbc_probe"),
+            "refusal names the pattern: {err}"
+        );
+        assert!(
+            err.contains("dag/test/claim/x.dag"),
+            "refusal names the source file: {err}"
+        );
+    }
+    /// THE COUNTERFACTUAL, carried inside the test rather than asserted in prose: the
+    /// pre-repair production call was a bare `str::replace`, and on this same input it
+    /// answers with the source UNCHANGED and no error at all. Without this, the RED above
+    /// shows only that a function which refuses, refuses -- it would not show that the
+    /// mechanism it replaced failed OPEN on the identical input, and `substituted` did not
+    /// exist before the repair so the probe cannot be run against the old code to establish
+    /// it.
+    #[test]
+    fn bare_replace_answers_silently_on_the_same_input() {
+        let src = "module test.claim.x\nlet p = \"/tmp/gunbc_renamed_by_someone\"\n";
+        let widened = src.replace("/tmp/gunbc_probe", "/scratch/run-1/probe");
+        assert_eq!(
+            widened, src,
+            "str::replace returns its input unchanged on a miss -- this is the fail-open arm \
+             that `substituted` exists to close"
+        );
     }
 }

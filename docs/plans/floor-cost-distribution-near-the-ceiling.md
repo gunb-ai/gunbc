@@ -33,6 +33,33 @@ run and carries the COMPLETE executed population — the `[over-cost]` lines in 
 re-derivable: a second reader would get different numbers with no way to tell a real change from a
 different sample.
 
+**THE TEN SAMPLED RUNS REFUSE AS OF THE DISJOINT-COLUMN ARTIFACT CHANGE, AND THIS INSTRUMENT WAS
+ITSELF THE SPECIMEN THAT MOTIVATED IT.** Every run named in `floor_cost_sampled_runs` predates that
+change: their `required-floor-claim-cost` carries the old shared `cpu_ms` column, in which a
+completed cost and the lower bound of a claim a safety deadline preempted sit in one field with
+only an adjacent `verdict_reached` to separate them. This analysis resolved `cpu_ms` by name,
+refused correctly on a *missing* column, and never asked for that discriminator — so every band,
+every worst-cost fold and every inflation ratio on this page consumed bounds as costs. The bound's
+magnitude is approximately the ceiling that stopped the row, so the "population dense near the
+ceiling" that a histogram over those rows shows is partly manufactured by the ceiling itself.
+
+`claim_cost_columns` no longer resolves the old header, so those runs load as `RunRefused` — **not
+`RunEmpty`**, which is a distinction the reader must not lose: an artifact whose measurements cannot
+be read is not a run that measured nothing. The cause is typed and named
+`UnsupportedSharedCpuMsVintage`, and `floor_cost_distribution_check` refuses the whole sample.
+
+That is the correct fail-closed answer rather than a regression, but the honest reason is narrower
+than the one this page used to give. It said the two populations "are not separable in those bytes
+at all". **That is overstated.** The old artifact carries `outcome` and `verdict_reached`, and this
+very instrument treats `outcome=budget_interrupted` as an interruption signal — so an identifying
+signal exists. The accurate statement is that the vintage is *known and unsupported*: one `cpu_ms`
+column held both populations, and this version declines to reconstruct the split rather than being
+unable to detect that one is needed. Nothing here obligates a legacy migration; it only forbids
+claiming the bytes are silent when they are not. **The figures this page describes as illustrative should be read as carrying
+that defect, not merely as stale.** Re-pointing `floor_cost_sampled_runs` at runs from the new
+artifact vintage restores the instrument; the derivations are unchanged and their witness runs on a
+hand-built fixture, so nothing but the live figures is waiting on the re-sample.
+
 **An incomplete sample refuses.** `floor_cost_distribution_check` exits non-zero naming every run
 that failed to load. One artifact in an eleventh run (`33667468330`) downloaded empty during the
 original analysis and silently emptied a ten-way identity intersection before it was caught — a run
@@ -163,3 +190,248 @@ drift is frozen in `v2.workflow.floor_cost_debt` precisely so it is not granted 
 
 Which of the two remedies fits the emit and execution families — and whether a `bind_outcome` repair
 buys real margin or only a rank change — is a decision this measurement informs and does not make.
+
+## 6. The premise is measured false: there is no fixed above-ceiling identity set, and the budget is not mis-set
+
+*Added after the §5 question was worked. It is recorded here rather than in the thread that produced
+it because the belief it refutes is the one a reader re-forms from the same symptom — a red floor
+lane naming a handful of emit rows — and re-deriving it costs a night.*
+
+**The claim being retired: "three (later seven) self-host witness modules sit above the 500ms hard
+CPU ceiling." Measured, no fixed above-ceiling identity set exists.** Completed green runs place this
+family's band below 500ms; run variance can carry its top across, and four completed-over-cost rows
+were observed at 506–515ms. What is retired is that the family is *intrinsically* above the ceiling —
+a row does not stably "sit" on either side of an attempt-safety boundary — not the crossings
+themselves, which are real and recur. Both remedies §5 names are
+refused for this family on evidence, and the ceiling is correctly denominated. What remains is a
+different subject, stated at the end.
+
+### How to re-derive this, because there is no instrument module for it
+
+The §5 instrument reads one artifact per run. The join below needs a second axis — the same
+identities measured off-CI — and **no authority owns it today**, which is a gap and not a style
+choice. The recipe, at identity grain:
+
+```
+# CI side: per-claim identity/outcome/cpu_ms for a completed run
+gh run download <run-id> -R gunb-ai/gunbc -n required-floor-claim-cost -D /tmp/ci/<run-id>
+
+# local side: ONE function per process, which matches the floor's fresh-frame-per-claim
+claim_batch --source-root dag --source-root src/v2 \
+  --eval-budget-ms 300000 --entry <entry> --functions <one identity>
+```
+
+Join on identity. Use runs whose rows **completed**; prefer green runs for the baseline factor.
+
+### Three readings that are wrong, and the control that exposes each
+
+**An `interrupted_before_verdict` figure is the budget, not the row.** The deadline preempted the
+measurement, so the cost is unbounded above 500. Every interrupted row reports approximately whatever
+ceiling stopped it, so a set of them looks like a tight cluster "just over" no matter what the true
+costs are. Only `completed_over_cost_requirement` rows carry costs. Raising `--eval-budget-ms` on a
+probe is how you measure one; that is instrumenting, and is not the ceiling-raise §5 repudiates.
+
+**The crossing set is not the expensive set.** Measured with the budget raised, the row in
+`v2.test.emit.rust_body_add_emit` that *passed* on CI is the most expensive of its four, and the
+three that were interrupted are all cheaper — a single-digit-ms spread separates survivor from
+casualty. Repairing "the rows that crossed" therefore fits noise. **Always measure the non-crossing
+siblings**; they are what reveals the band.
+
+**A one-anchor local→CI factor does not transfer.** A factor taken from one identity predicted
+another row comfortably under the ceiling that CI had in fact interrupted. Take the factor from
+many identities across several runs, or not at all.
+
+### What the join shows
+
+Joined over the emit and execution rows of this family across three main runs, the local→CI cpu
+factor is **stable across green runs and materially higher on a failed one** — the same tree and the
+same rows, with every row inflated together. At the green factor the family's whole band lands well
+inside the ceiling; at the failed run's factor its top crosses. That is CI run-to-run variance, and
+it independently corroborates the inflation distribution §3 measures from the other direction — two
+instruments built for different purposes agreeing on one phenomenon.
+
+`v2.test.execution.emit_host_fold_closure_equals_eval` is the worked example: interrupted at
+`cpu_at_least=522ms` on one job, it completes under budget on every green run in the join.
+
+**The host-independent form of this, which is stronger and needs no factor at all.** `eval_steps` is
+carried in the same artifact and does not depend on the machine. Across the three runs, **every row
+of this family that completed has a byte-identical step count** — identical work — while its
+`cpu_ms` swings by up to the full green-to-failed ratio. Milliseconds move; the work does not. That
+settles the question without any local→CI conversion, and it is the axis to use.
+
+The single row whose step count differs is the one that was **interrupted** on the failed run: its
+count is truncated where the deadline stopped it. So the one apparent exception is a second
+demonstration of the first misreading above — an interrupted row is not measured, in steps or in
+milliseconds. *(The `eval_steps`-as-control technique is `gunbc#10158`'s; see the caveat below.)*
+
+### Why reducing the cost is the only lever, and what the cost is
+
+Both §5 remedies are refused for this family:
+
+- **Reduce what the witness reaches for** — refused by measurement. Decomposing `rust_target_model`
+  component-by-component (each in its own process, against a baseline replicated across four
+  independently written probe modules) shows every component except the bundle costs nothing, and
+  the bundle is what the emission reads. There is no oversized subject to trim, the test fixture is
+  free, and both cost-shape defects were looked for and are absent — the module fold is linear, and
+  the two `list_snoc_item`-in-a-fold sites operate over ~8 and 3 elements.
+- **Enroll it in a lane declaring its own dated ceiling** — no such lane exists. Every candidate
+  either withholds rows from execution (`v2.workflow.floor_cost_debt`, whose own header states
+  membership deletes coverage, and which is shrink-only and closed to new crossers) or names a
+  cadence with no workflow (`FalsifierSubstrateLongLane`; no workflow in the tree carries a
+  `schedule:` trigger). Taking that arm would mean *building* a lane.
+
+The per-claim cost is a **fixed floor plus a small per-declaration term**, not per-declaration work:
+the second declaration emitted in a frame costs a fraction of the first, and the module fold adds
+nothing over separate calls. The fixed part splits into `rust_target_model` construction, the
+arrow-body projection, and two smaller serialize steps. The projection term is **measured at the
+`v2.std.compilers.target_model` `target_project_arrow_body_to_value_expression` frame and attributed
+by elimination** to the primitive-apply step beneath it — the neighbouring candidates
+(`dag_value_expression_projection`, `dag_surface_operator_canonicalization_member`, the
+translation-rules lookup, the inner-arrow construction) each measure zero, the last two tested with
+inputs that would have exposed a table build even on a miss.
+
+**One live lead, left undetermined on purpose.** The first projection in a frame costs; subsequent
+ones do not, *regardless of which declaration body is projected*. That is equally consistent with a
+memo keyed above the body and with a one-time warm of a shared structure that any first caller pays.
+Those want different providers, so the mechanism must be separated before any provider is proposed —
+that ambiguity, not the cost, is the open question. Two prior sharing attempts on this surface are
+already refused: a `data`-row promotion cannot reach the floor at all (`required_floor_runner` builds
+a fresh evaluation frame per claim, so `data_cache` never spans claims), and `rust_target_model` was
+enrolled in `v2.workflow.floor_pure_producer_share` and withdrawn after measuring this exact cluster
+*worse* — read that roster's header before re-proposing either.
+
+**One caveat on that withdrawal, added because `gunbc#10158` landed while this section was being
+written.** The roster's rust-row measurements were normalised against *rows in no consumer module of
+any enrolled key*, and #10158 shows that control is **biased by composition** — it demonstrated the
+point by splitting a subject's own rows on `eval_steps` into those the serve reached and those doing
+byte-identical work, and finding the supposedly untouched group moved almost as much. Rows elsewhere
+are an assumption about the corpus; rows doing byte-identical work are an observation about the row.
+That does not overturn the withdrawal, and the roster's own next trigger still governs — but the
+strength of "measured worse" now rests on a control known to be biased, so a re-proposal should
+re-measure against the step-split control rather than treat the question as closed.
+
+A value check was run before treating any of this as a caching opportunity: the projections of
+`x + y` and `y + x` are compared and **differ**, carrying both a positive control that the equality
+works and a by-construction-false row proving the harness reports failures at all. A cheaper-looking
+result that lost operand order would have been a correctness defect, not a saving.
+
+### The subject, restated
+
+The floor is not flipping because a few rows are too expensive. **The emit surface sits at roughly
+two-thirds to four-fifths of the per-claim budget on a normal run, and CI run-to-run variance is
+large enough to carry its top across the line** — so which rows cross is a property of the run, not
+of the rows. Reducing the shared fixed cost raises the margin against that variance. Nothing else
+currently on the table does, and per-row repair aimed at whichever identities crossed last is
+repairing the sample rather than the population.
+
+## 7. The margin of §3 is a two-run point estimate; the between-run envelope is wider
+
+*Commissioned after `v2.test.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates`
+passed at 406ms against the 500ms ceiling on green `main` and refused at `cpu_at_least=516ms` on an
+unchanged tree — a required-floor refusal with `claims_failed=0`.*
+
+*This section and §8 are the quantitative form of §6's conclusion. §6 establishes from a local→CI
+join that no fixed above-ceiling identity set exists; these two measure how wide the variance that
+makes membership unstable actually is, from the CI artifact alone.*
+
+**§3's figures index over rows inside one pair of runs, not over runs — and its prose says
+otherwise.** §3 reads "run-to-run variation on the same identity across the sample", but the
+producer behind it, `identity_inflation_permille`, takes a `base` and an `other` and is driven with
+exactly two named runs (`floor_cost_baseline_run`, `floor_cost_contended_run`). Its percentiles are
+therefore computed across ROWS inside one pair, and describe how unevenly one host-pair ratio lands
+over different rows. Two runs are one sample of the between-run quantity and one sample has no
+spread, so the pairwise median is a point estimate wearing a distribution's clothes. The instrument
+was right and the sentence over it was not, which is the failure the "name the producer" rule exists
+to make detectable. If the admitted execution envelope set is wider than the
+pair sampled, it is a **lower bound**, and a budget set from it moves the cliff rather than closing
+it. §3 is not withdrawn — it measures what it measures — but it may not be used as a budget input.
+
+**The producer for this section is `gunbc.floor_cost_distribution` `identity_envelopes` /
+`complete_envelopes` / `work_invariant_envelopes` / `worst_envelope_permille` /
+`run_extreme_census`, driven by `tools.floor_cost_distribution_instrument`
+`floor_cost_envelope_report`.** The sample is twelve green `main` runs of `witnesses.yml` on twelve
+distinct runner registrations across three hosts, named with their runners in
+`floor_cost_envelope_sampled_runs` — the runner is not in the artifact and is acquired from the
+run's `required-witnesses-floor` job. Re-derive rather than trust this page; where the two disagree
+the instrument is right.
+
+`floor_cost_envelope_check` is the exit-code actuator and refuses an incomplete sample by name;
+`floor_cost_envelope_report` returns the lines, and `gunbc run` renders them through its
+entry-point refusal because the host requires a `ProcessExit` from an entry function — the sibling
+report in §1 has the same shape.
+
+One row's envelope is its max over the twelve runs against its min over the same twelve, computed
+only over identities present in every run with a verdict and a baseline at or above 50ms, and
+restricted to rows whose `eval_steps` were identical in all twelve so the remaining movement is
+inflation rather than a tree change.
+
+**Between-run envelope, work-invariant population (n=398 of 400 complete rows, 3,628 identities
+observed across the twelve runs):** median **1.367x**, p90 **1.653x**, p95 **1.819x**, p99
+**2.046x**, worst observed **2.280x** — the instrument's own order statistics, which select an
+observed member and never interpolate. §3's pairwise median of 1.16x understates the median by a
+fifth and the worst case by more than half.
+
+**That step equality is a filter, not a finding, and it must not be read as evidence of
+invariance.** Selecting rows whose counts agree across all twelve runs removes tree movement from
+the sample so the residual is inflation; it says nothing about whether `eval_steps` is invariant in
+general. It is not: the rung-drop row's missing item (b) has since been measured properly on one
+identical tree (gunbc#10228) and **refutes** — `eval_steps` disagreed on 18 of 3,519 joined rows
+against `cpu_ms`'s 1,394. Far more stable, and not invariant.
+
+**No cost trend.** Restricting the population by baseline leaves the envelope essentially flat —
+p50 1.37 / p90 1.65 at ≥50ms, 1.35 / 1.58 at ≥100ms, 1.36 / 1.64 at ≥200ms, 1.47 / 1.51 at ≥300ms
+— which confirms §3's refutation of "expensive rows inflate more" over runs rather than over one
+pair, and is what makes a single global margin defensible.
+
+## 8. §6's "property of the run" conclusion, quantified — and it reaches host grain
+
+§6 concludes from a local→CI join that "which rows cross is a property of the run, not of the rows".
+This section reaches the same conclusion from the other direction — the CI artifact alone, no
+local→CI conversion — and carries it one grain further, to the machine.
+
+A median run factor cannot answer this: it is robust exactly where the envelope is driven. The
+discriminator is `run_extreme_census`, which counts how often each run holds a row's maximum and its
+minimum. Under per-row jitter each of twelve runs is the extreme for about a twelfth of the
+population.
+
+It is not close to that. Over the 398 work-invariant rows, run `33766436293` (**srv4-09**) holds the
+minimum for **367**; run `33775106554` (**srv1-19**) holds the maximum for **160**. At host grain
+srv1 holds the maximum for **279 of 398 rows from 3 of 12 runs**, against 83 for srv3 (5 runs) and 36
+for srv4 (4 runs). The extremes are concentrated on particular machines, so a row near the line is
+adjudicated by which host dequeued the job.
+
+**An earlier reading of this measurement said the opposite and is corrected here rather than
+deleted.** Per-run *median* factors span only 0.878–1.118 and per-host medians are nearly identical
+(srv1 1.069, srv3 0.985, srv4 0.992), which reads as "the host does not matter". It is the wrong
+statistic for the question: a ceiling is crossed by the extreme, not by the median, and the extreme
+census shows the concentration the median averages away.
+
+## 9. What this bounds, and what it does not
+
+**The subject row.** `rust_produced_decl_name_discriminates` measured **313–444ms across the twelve
+runs** (envelope 1.42x, `eval_steps` 169,297 in every one — the work never changed). Its minimum,
+313ms, is above the clean-run budget the measured p90 implies (500 / 1.653 = **302ms**) and well above
+the worst-case budget (500 / 2.280 = **219ms**). The row is inside the variance cliff by measurement,
+not by anecdote, and the 516ms refusal is an ordinary member of this distribution.
+
+**The bound is a floor, not a bound.** Twelve runs on three hosts are a subset of the admitted
+execution envelopes. A wider sample can only find a larger worst case, so 2.280x may only rise and the
+implied budget may only fall.
+
+**Raising the ceiling remains not an option** for the reasons §5 gives. What this measurement
+supplies is a re-derivation the authority already asked for: `docs/design-rung-drops.md`, *Per-claim
+cost qualification is unavailable at the subject grain the gate consumes*, sizes its attention
+constant as the ceiling over the largest inflation floor observed to date and states that the
+constant **must be re-derived the moment a larger floor is measured**. The floor it was sized against
+was 1.777 from a single 501→282 pair. This sample measures **2.280**, so the constant falls from 280ms
+to **219ms**, and the row is updated accordingly. Restricting the derivation to rows at or above
+200ms — where whole-millisecond quantisation cannot dominate — gives 1.874 and a constant of 266ms,
+so the direction of the re-derivation does not depend on the small-baseline tail.
+
+**Which remedy the subject family takes is not decided here, and §6 has already narrowed it.** §6
+refuses both of §5's sanctioned arms for this family on evidence — there is no oversized subject to
+trim, and no lane with its own dated ceiling exists to rehome into — leaving the shared fixed cost as
+the only lever. What this section adds is the size of the gap that lever has to close: at the p90
+envelope the family needs to come down to 302ms on a clean run, and at the worst observed to 219ms.
+The subject's cheapest of twelve observations is 313ms, so the required reduction is real and
+quantified rather than "some".

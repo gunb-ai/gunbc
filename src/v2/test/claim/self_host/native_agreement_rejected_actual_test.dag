@@ -1,0 +1,106 @@
+module v2.test.claim.self_host.native_agreement_rejected_actual_test
+
+import v2.compiler.self_host.native_agreement_support {
+  native_agreement_divergence_from_verdict
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  Rejected,
+  Textual,
+  WholeFile,
+  Unavailable,
+  AmbiguousIntent,
+  diagnostics_singleton
+}
+import v2.std.node { Node, TypeNode, Atom, OccurrenceSynthetic }
+import v2.std.optional { Optional, Present, Absent }
+import v2.std.runtime { RuntimeValue, RuntimePrimitive, RuntimePrimitiveValue }
+import v2.std.machine { Byte }
+import v2.std.host_run { ValueDiff }
+import v2.std.test_claim_falsification { FalsificationReceipt, EvidenceNone }
+import v2.std.verdict { Verdict, SemanticMismatch }
+import v2.std.native_agreement { NativeAgreementDivergence }
+
+// THE NATIVE SIDE CAN REFUSE, AND A REFUSAL IS NOT AN ABSENT VALUE. `SemanticMismatch` carries
+// `actual: Outcome<RuntimeValue>`, so `Rejected` is one of its two inhabitants; the divergence
+// carrier has three String fields and no channel for a refusal reason, so the native side is
+// named by the sentinel this file's siblings already use for "no value here" while the
+// INTERPRETED side keeps the real value the falsification receipt holds. Reporting "?" for both
+// would discard a value in hand, which is the loss v2.std.native_agreement exists to prevent.
+
+fn rejected_probe_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^native_agreement_rejected_probe_type } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rejected_probe_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rejected_probe_type_node(),
+      bytes: [Byte { bits: [true] }, Byte { bits: [false] }]
+    }
+  }
+}
+
+fn rejected_probe_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^native_agreement_native_side_refused,
+    at: Textual { file: ^native_agreement_rejected_actual_test, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn rejected_probe_receipt() -> FalsificationReceipt<String, RuntimeValue> {
+  FalsificationReceipt {
+    subject: "native_agreement_rejected_actual_probe",
+    expected: rejected_probe_value(),
+    actual: rejected_probe_value(),
+    divergence: ValueDiff { expected: rejected_probe_value(), actual: rejected_probe_value() },
+    evidence: EvidenceNone
+  }
+}
+
+fn rejected_actual_verdict(
+  falsification: Optional<FalsificationReceipt<String, RuntimeValue>>
+) -> Verdict<String, RuntimeValue> {
+  SemanticMismatch {
+    actual: Rejected { diagnostics: diagnostics_singleton(d: rejected_probe_diagnostic()) },
+    falsification: falsification
+  }
+}
+
+fn rejected_actual_divergence(
+  falsification: Optional<FalsificationReceipt<String, RuntimeValue>>
+) -> Optional<NativeAgreementDivergence> {
+  native_agreement_divergence_from_verdict(
+    member_id: "rejected_probe",
+    verdict: rejected_actual_verdict(falsification: falsification)
+  )
+}
+
+test fn rejected_native_side_is_named_and_the_interpreted_value_survives() -> Bool {
+  match rejected_actual_divergence(
+    falsification: Present { value: rejected_probe_receipt() }
+  ) {
+    Present { value: d } =>
+      d.member_id == "rejected_probe"
+        && d.native_value == "rejected"
+        && d.interpreted_value != "?"
+    Absent => false
+  }
+}
+
+// THE CONTROL THAT KEEPS THE ARM ABOVE HONEST: the same refused native side WITHOUT a
+// falsification receipt must keep answering "?" on both sides. Without this, an arm that
+// answered "rejected"/"?" for every `Rejected` would satisfy the assertion above while having
+// swallowed the neighbouring case.
+test fn rejected_without_a_receipt_still_reports_both_sides_unknown() -> Bool {
+  match rejected_actual_divergence(falsification: Absent) {
+    Present { value: d } =>
+      d.interpreted_value == "?" && d.native_value == "?"
+    Absent => false
+  }
+}

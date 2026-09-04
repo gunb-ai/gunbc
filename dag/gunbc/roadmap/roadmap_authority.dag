@@ -3170,7 +3170,7 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
   load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path)
 }
 
-// roadmap_acceptance_event_history is the single authority for acceptance facts, loaded from
+// roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading from
 // dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl (append-only JSONL carrier).
 // roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked
 // events only — never a second editable receipt list; LoadRefused is a typed

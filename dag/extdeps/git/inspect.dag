@@ -139,6 +139,21 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // makes the output the MATCHED TEXT instead of whole lines, and a caller who needs whole lines is
 // asking a different question with a different output size. The prefix `<ref>:<path>:` that git puts
 // on each match is the reason a caller gets the path for free rather than joining for it.
+// ListTreeEntriesAtRevision IS NOT ListTreePathsAtRevision WITH MORE COLUMNS, and the difference is
+// what a consumer can refuse. `--name-only` answers WHICH PATHS a revision contains and erases what
+// each one IS: a regular blob, a symlink, and a submodule gitlink all arrive as a path, so a consumer
+// reading content from that list must treat every entry as a readable file and discover otherwise by
+// failing. The full record carries mode, object type and object id, which lets an entry kind the
+// consumer does not model become a TYPED refusal naming the entry rather than a read error at some
+// later stage -- and it carries the object id, so a population read out of a revision can name each
+// member by content identity instead of by path alone.
+//
+// BOTH OPERATIONS SURVIVE. A consumer that only needs paths pays neither the wider output nor the
+// parse, and asking for identity when you wanted names is the same collapse ResolveRefCommit and
+// ShowTree are kept apart to prevent. The record separator is NUL and the fields are separated by
+// SP SP TAB (`<mode> <type> <object>\t<path>`), which is what makes a path containing a newline, a
+// quote or a tab-free space unambiguous -- git's own -z contract, not a convention this repository
+// invents.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -230,6 +245,21 @@ service git.Inspect {
     }
     readonly
     transport shell { argv: ["git", "ls-tree", "-rz", "--name-only", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ListTreeEntriesAtRevision {
+    input { ref: GitRef }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "ls-tree", "-rz", "{ref}"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"

@@ -6,6 +6,7 @@
 // src/extdeps_container_oci_digest.rs
 // src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
+// src/extdeps_filesystem_rust_realization.rs
 // src/extdeps_languages_dag_emit.rs
 // src/extdeps_languages_dag_syntax.rs
 // src/extdeps_languages_dag_types.rs
@@ -148,8 +149,10 @@
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
+// src/v1_tests_claim_type_declaration_occurrence_control_test.rs
 // src/wt_a.rs
 // src/wt_b.rs
 // src/wt_common.rs
