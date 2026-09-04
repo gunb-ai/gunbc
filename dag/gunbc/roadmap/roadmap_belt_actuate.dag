@@ -355,7 +355,7 @@ import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_n
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv }
-import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
+import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderRunning, ProviderStarting, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
   content_hash_tagged_structural,
@@ -4634,8 +4634,7 @@ fn belt_verify_attempt_for_instance(
   progress: WorkflowAttemptProgress,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
-  match progress.provider {
-    ProviderCompleted { activity: _ } =>
+  if belt_provider_is_terminal(provider: progress.provider) {
       match belt_lookup_node(node_id: progress.node_id) {
         AuthorityProjectionRefused { detail: detail } =>
           VerifyDeferred {
@@ -4811,11 +4810,27 @@ fn belt_verify_attempt_for_instance(
           }
         }
       }
-    _ =>
-      VerifyDeferred {
-        node_id: progress.node_id,
-        reason: "the agent obligation is not satisfied, so there is nothing to verify yet",
-      }
+  } else {
+    VerifyDeferred {
+      node_id: progress.node_id,
+      reason: "the agent has not reached a terminal state, so there is nothing to verify yet",
+    }
+  }
+}
+
+// A TERMINAL WORKER IS VERIFIED WHETHER IT FINISHED OR FAILED. Two belt-dispatched attempts exhausted
+// their round budget with partial work in the worktree, reported as turn.failed; gating verification
+// on ProviderCompleted alone left that work unjudged. The verdict is the judge of partial work, and
+// publication is gated on the verdict, so verifying a failed provider's head is strictly more honest
+// than skipping it. Only a running or not-yet-started worker has nothing to verify.
+fn belt_provider_is_terminal(provider: ProviderExecutionState) -> Bool {
+  match provider {
+    ProviderNotStarted => false
+    ProviderStarting { activity: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderCompleted { activity: _ } => true
+    ProviderFailed { activity: _, detail: _ } => true
+    ProviderEventsRefused { activity: _, detail: _ } => false
   }
 }
 

@@ -23,7 +23,13 @@ fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attem
         CommitNeeded { message: belt_commit_message(node_id: node_id, attempt_key: attempt_key) }
       }
     }
-    ProviderFailed { activity: _, detail: _ } => CommitNotNeeded { reason: "provider not completed" }
+    ProviderFailed { activity: _, detail: _ } => {
+      if entries_nul == "" {
+        CommitNotNeeded { reason: "worktree clean" }
+      } else {
+        CommitNeeded { message: belt_commit_message(node_id: node_id, attempt_key: attempt_key) }
+      }
+    }
     ProviderEventsRefused { activity: _, detail: _ } => CommitNotNeeded { reason: "provider not completed" }
   }
 }

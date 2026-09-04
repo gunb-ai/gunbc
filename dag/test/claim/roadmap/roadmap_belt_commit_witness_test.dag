@@ -39,3 +39,10 @@ test fn commit_is_not_needed_while_the_provider_runs() -> Bool {
     CommitNeeded { message: _ } => false
   }
 }
+
+test fn a_failed_provider_with_a_dirty_worktree_still_commits() -> Bool {
+  match belt_commit_decision(provider: ProviderFailed { activity: "agent turn failed", detail: "step budget exhausted" }, node_id: "n1", attempt_key: "abc", entries_nul: " M a.dag\0") {
+    CommitNeeded { message } => message as String == "dispatch: n1 aabc"
+    CommitNotNeeded { reason: _ } => false
+  }
+}
