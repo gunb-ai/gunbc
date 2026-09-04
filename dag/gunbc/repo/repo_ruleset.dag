@@ -4,15 +4,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { HttpStatus, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
-import gunbc.membership_reconcile {
-  MembershipPlan,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
-  membership_write_count,
-  membership_removal_count,
-  membership_refusal_count,
-}
-import gunbc.ownership { Ownership, Owned }
 import gunbc.repository { gunbc_repository }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import std.measure { Minute, minute, minute_count, measure_add, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
@@ -400,41 +391,6 @@ fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> Ruleset
       ),
     }
   }
-}
-
-// THE CONTEXT ROSTER IS RECONCILED, NOT COMPARED. gunbc.membership_reconcile is the repository's
-// grain-agnostic desired-vs-observed diff and it answers the question this module actually has:
-// which contexts are missing, which are present that should not be, and which cannot be acted on.
-// Ownership is Owned rather than Ensured -- the opposite of gunbc.repo_local_git_config's choice,
-// and deliberately so. There, a binding absent from desired is someone else's git config and is
-// never torn down. Here, "witnesses is the ONE required context" is the whole claim: an extra
-// required context is exactly the drift this module exists to see, so a removal must be PLANNED
-// rather than refused. Ensured would have made the module blind to the additive half of its own
-// subject.
-type RequiredContextMemberAt = String
-
-fn required_context_key(c: RequiredStatusCheckWire) -> String { c.context }
-fn required_context_key_eq(a: String, b: String) -> Bool { a == b }
-fn required_context_value_eq(a: RequiredStatusCheckWire, b: RequiredStatusCheckWire) -> Bool {
-  a.integration_id == b.integration_id
-}
-fn required_context_ownership(_: RequiredStatusCheckWire) -> Ownership? {
-  Present { value: Owned }
-}
-
-fn required_context_reconcile(
-  observed: List<RequiredStatusCheckWire>,
-) -> MembershipPlan<RequiredStatusCheckWire, RequiredContextMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired_required_status_checks(),
-      observed: observed,
-      key_of: required_context_key,
-      key_eq: required_context_key_eq,
-      value_eq: required_context_value_eq,
-      ownership_of: required_context_ownership,
-    ),
-  )
 }
 
 // EVERY WAY THE LIVE RULESET CAN DISAGREE WITH DESIRED, AS A VALUE. A Bool verdict here would be
