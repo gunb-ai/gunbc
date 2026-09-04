@@ -1,0 +1,133 @@
+module test.claim.namespace_cut_stale_citation_witness
+
+// THE DISCRIMINATING RED FOR THE STALE-CITATION REFUSAL ARM, authored where an invalid state is
+// authorable. It previously lived as two knowingly-wrong HostRustItemProbe rows in the OPERATIONAL
+// roster, which is where codex review 60319 found it: the roster is the instrument's live subject
+// list, so deliberate false rows there are not preserved evidence but contamination with a note
+// attached -- every pre-cut run reported UNOBSERVABLE about a subject it was supposed to testify
+// about. DESIGN section 4b locates authorable invalid states in source handed to the compiler by a
+// FIXTURE, and host_probe_over_items is parameterized on its item population for exactly this
+// reason, so the arm is reachable here with no tree read and no live-corpus falsehood.
+//
+// Under section 4b(4) this stays enrolled after the wall lands: it is the executing evidence that
+// the refusal is real, and it is what goes red if the arm is weakened back into ABSENT.
+
+import std.types { Bool, List, String }
+import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
+import gunbc.namespace_cut_subject_roster { HostRustItemProbe, NamespaceCutSubjectProbe }
+import gunbc.namespace_cut_subject_observation {
+  SubjectProbeObservation,
+  SubjectProbeAbsent,
+  SubjectProbePresent,
+  SubjectProbeUnobservable,
+  host_probe_over_items,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE POPULATION IS THE REAL RELOCATION THAT MOTIVATED THE ARM, reduced to two rows: the item as
+// it is TODAY (in entry_resolve.rs) plus one unrelated item sharing the file the stale probe cites.
+// The second row matters -- without an item from cli_run.rs the probe would take the unread-file
+// arm instead, and the fixture would not reach the branch it exists to discriminate.
+fn moved_item() -> RustItemIdentity {
+  RustItemIdentity {
+    repo_path: "src/v1/stage0/src/cli_run/entry_resolve.rs",
+    kind: RustFunction,
+    name: "build_import_adjacency",
+    impl_subject: "",
+    enclosing_module: "",
+    start_line: 257,
+    loc: 20
+  }
+}
+
+fn item_still_in_cited_file() -> RustItemIdentity {
+  RustItemIdentity {
+    repo_path: "src/v1/stage0/src/cli_run.rs",
+    kind: RustFunction,
+    name: "compile_entry_on_declared_import_closure_only",
+    impl_subject: "",
+    enclosing_module: "",
+    start_line: 8083,
+    loc: 30
+  }
+}
+
+fn population() -> List<RustItemIdentity> {
+  [moved_item(), item_still_in_cited_file()]
+}
+
+fn probe_citing(path: String, name: String) -> NamespaceCutSubjectProbe {
+  HostRustItemProbe { crate_relative_file: path, item_name: name }
+}
+
+fn observe(path: String, name: String) -> SubjectProbeObservation {
+  host_probe_over_items(p: probe_citing(path: path, name: name), path: path, name: name, items: population())
+}
+
+fn is_present(o: SubjectProbeObservation) -> Bool {
+  match o {
+    SubjectProbePresent { probe: _ } => true
+    SubjectProbeAbsent { probe: _ } => false
+    SubjectProbeUnobservable { probe: _, why: _ } => false
+  }
+}
+
+fn is_absent(o: SubjectProbeObservation) -> Bool {
+  match o {
+    SubjectProbePresent { probe: _ } => false
+    SubjectProbeAbsent { probe: _ } => true
+    SubjectProbeUnobservable { probe: _, why: _ } => false
+  }
+}
+
+fn unobservable_why(o: SubjectProbeObservation) -> String {
+  match o {
+    SubjectProbePresent { probe: _ } => ""
+    SubjectProbeAbsent { probe: _ } => ""
+    SubjectProbeUnobservable { probe: _, why } => why
+  }
+}
+
+// THE RED. A probe citing the file the item USED TO occupy must refuse, and the refusal must name
+// both the cited path and the path the item was actually found at -- naming only one leaves the
+// reader unable to tell a relocation from a deletion, which is the conflation the arm exists to
+// break. If the arm is ever weakened back to ABSENT this goes red, because ABSENT is the
+// instrument's SUCCESS verdict and would report a live authority deleted.
+test fn stale_citation_refuses_and_names_both_paths() -> Bool {
+  let o = observe(path: "src/v1/stage0/src/cli_run.rs", name: "build_import_adjacency")
+  let why = unobservable_why(o: o)
+  !is_present(o: o)
+    && !is_absent(o: o)
+    && string_contains(s: why, pattern: "STALE CITATION")
+    && string_contains(s: why, pattern: "src/v1/stage0/src/cli_run.rs")
+    && string_contains(s: why, pattern: "src/v1/stage0/src/cli_run/entry_resolve.rs")
+}
+
+// THE POSITIVE CONTROL that must keep passing beside the red: a probe citing where the item now
+// actually is resolves PRESENT. Without this the red above is satisfiable by an arm that refuses
+// everything, which would be a wall that never lets a true answer through.
+test fn correct_citation_is_present() -> Bool {
+  is_present(o: observe(path: "src/v1/stage0/src/cli_run/entry_resolve.rs", name: "build_import_adjacency"))
+}
+
+// THE SECOND POSITIVE CONTROL, and the one that keeps the refusal NARROW: a name that exists
+// NOWHERE in the population, cited against a file the population has been read from, is a genuine
+// ABSENT and must not be swept into the refusal. This is what stops the arm degrading into
+// "refuse whenever unsure", which section 5 names as failing open while looking careful.
+test fn genuine_absence_in_a_scanned_file_stays_absent() -> Bool {
+  is_absent(o: observe(path: "src/v1/stage0/src/cli_run.rs", name: "an_item_that_never_existed"))
+}
+
+// THE THIRD ARM, kept distinct from the second: an unread file cannot distinguish a deleted item
+// from a file the scan never covered, so it refuses with a DIFFERENT reason. Asserting the reasons
+// differ is what proves the two refusal arms are two verdicts and not one message reused.
+test fn unread_file_refuses_with_a_distinct_reason() -> Bool {
+  let o = observe(path: "src/v1/stage0/src/never_scanned.rs", name: "an_item_that_never_existed")
+  let why = unobservable_why(o: o)
+  !is_present(o: o)
+    && !is_absent(o: o)
+    && !string_contains(s: why, pattern: "STALE CITATION")
+    && string_contains(s: why, pattern: "cannot distinguish a deleted item from an unread file")
+}

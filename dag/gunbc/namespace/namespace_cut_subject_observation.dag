@@ -237,7 +237,15 @@ fn host_probe_over_items(
 }
 
 // Parameterized on the observation so a witness can author every arm -- the refusal, a hit, a
-// scanned-file miss and an unread file -- without a tree read. The live caller hands it the one
+// scanned-file miss and an unread file -- without a tree read. THAT WITNESS NOW EXISTS and is this
+// arm's enrolled evidence under DESIGN section 4b(4):
+// test.claim.namespace_cut_stale_citation_witness. It carries the discriminating RED (a probe
+// citing the file an item has moved out of must refuse and name both paths) beside two positive
+// controls (a correct citation resolves PRESENT, a genuinely missing name in a scanned file stays
+// ABSENT) -- the pair is what stops the arm being satisfied either by never refusing or by
+// refusing everything. The RED formerly lived as two knowingly-stale rows in the OPERATIONAL
+// roster, which made every pre-cut run report UNOBSERVABLE about its own subjects; codex review
+// 60319 named that contamination and the rows were corrected. The live caller hands it the one
 // acquisition taken per report.
 fn observe_host_probe(
   p: NamespaceCutSubjectProbe,
@@ -316,38 +324,91 @@ fn probe_is_v1(p: NamespaceCutSubjectProbe) -> Bool {
 // population is a whole-tree read of the namespace-claimed Rust trees, so it is taken once and
 // every host probe resolved against it -- the same shape and reason as the per-root split above:
 // the acquisition, not the resolution, is what costs.
-fn subject_report_lines() -> List<String> {
+// THE OBSERVATION IS THE AUTHORITY; THE LINES AND THE VERDICT ARE TWO PROJECTIONS OF IT. An
+// earlier revision rendered straight to List<String>, which left the command with nothing but
+// prose to decide on -- so it wrote a report saying UNOBSERVABLE and exited 0. A report that
+// cannot refuse is the absorbing-fallback shape DESIGN section 5 names: the deficit produces no
+// signal, so it never ranks for fixing. The rows below are acquired ONCE and both the body and
+// the refusal are folded from the same structure, never from the rendered text.
+type SubjectObservationRow {
+  header: String
+  observations: List<SubjectProbeObservation>
+}
+
+fn subject_observation_rows() -> List<SubjectObservationRow> {
   let v1_facts = decl_facts(pool_roots: subject_roster_v1_pool_roots)
   let v1_modules = module_declaration_facts_live(pool_roots: subject_roster_v1_pool_roots)
   let v2_facts = decl_facts(pool_roots: subject_roster_v2_pool_roots)
   let v2_modules = module_declaration_facts_live(pool_roots: subject_roster_v2_pool_roots)
   let host = observe_current_live_hand_rust()
   namespace_cut_subjects
-    |> flat_map(s => concat(
-      [concat("subject: ", concat(namespace_cut_subject_label(s: s) as String, concat(" -- deleted at ", namespace_cut_stage_label(s: subject_deleted_at_stage(s: s)) as String)))],
-      subject_probe_list(s: s)
-        |> map(p => concat("  ",
+    |> map(s => SubjectObservationRow {
+      header: concat("subject: ", concat(namespace_cut_subject_label(s: s) as String, concat(" -- deleted at ", namespace_cut_stage_label(s: subject_deleted_at_stage(s: s)) as String))),
+      observations: subject_probe_list(s: s)
+        |> map(p =>
           if probe_is_host(p: p) {
-            observation_render(o: observe_host_probe(p: p, observation: host))
+            observe_host_probe(p: p, observation: host)
           } else {
             if probe_is_v1(p: p) {
-              observation_render(o: observe_probe(p: p, facts: v1_facts, modules: v1_modules))
+              observe_probe(p: p, facts: v1_facts, modules: v1_modules)
             } else {
-              observation_render(o: observe_probe(p: p, facts: v2_facts, modules: v2_modules))
+              observe_probe(p: p, facts: v2_facts, modules: v2_modules)
             }
-          }))
-    ))
+          }),
+    })
 }
 
+fn row_lines(r: SubjectObservationRow) -> List<String> {
+  concat([r.header], r.observations |> map(o => concat("  ", observation_render(o: o))))
+}
+
+fn observation_rows_lines(rows: List<SubjectObservationRow>) -> List<String> {
+  rows |> flat_map(r => row_lines(r: r))
+}
+
+fn subject_report_lines() -> List<String> {
+  observation_rows_lines(rows: subject_observation_rows())
+}
+
+// THE REFUSAL DIGEST. Folded from the observation coproduct, so an arm added to
+// SubjectProbeObservation without a decision here fails to compile rather than defaulting to
+// "not a problem". Present and Absent are both OBSERVED verdicts and neither refuses: ABSENT is
+// this instrument's success verdict.
+fn unobservable_in_observation(acc: String, o: SubjectProbeObservation) -> String {
+  match o {
+    SubjectProbePresent { probe: _ } => acc
+    SubjectProbeAbsent { probe: _ } => acc
+    SubjectProbeUnobservable { probe, why } =>
+      concat(acc, concat("\n  ", concat(probe_render(p: probe), concat(" -- ", why))))
+  }
+}
+
+fn unobservable_in_row(acc: String, r: SubjectObservationRow) -> String {
+  fold(r.observations, init: acc, f: fn(a, o) { unobservable_in_observation(acc: a, o: o) })
+}
+
+fn unobservable_digest(rows: List<SubjectObservationRow>) -> String {
+  fold(rows, init: "", f: fn(a, r) { unobservable_in_row(acc: a, r: r) })
+}
+
+// THE COMMAND REFUSES ON ANY UNOBSERVABLE PROBE, and writes the report first. Writing before
+// refusing is the stopped-line audit of DESIGN section 5: the operator gets the full evidence to
+// analyse, and the line still stops. It does not green.
 fn subject_roster_report(out: String) -> ProcessExit {
   if out == "" {
     exit_failure(reason: "subject_roster_report: --arg out=<path> is required -- the roster is written, not printed")
   } else {
-    let body = fold(subject_report_lines(), init: "namespace cut subject roster -- observed\n\n", f: fn(acc, line) {
+    let rows = subject_observation_rows()
+    let body = fold(observation_rows_lines(rows: rows), init: "namespace cut subject roster -- observed\n\n", f: fn(acc, line) {
       concat(acc, concat(line, "\n"))
     })
     if Filesystem.Write(path: out, content: body).success {
-      ExitSuccess
+      let unobservable = unobservable_digest(rows: rows)
+      if unobservable == "" {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("subject_roster_report: refusing -- the roster cannot testify about every probe. The full report was written to ", concat(out, concat(" for analysis. Unobservable probe(s):", unobservable))))
+      }
     } else {
       exit_failure(reason: concat("subject_roster_report: derived and could not be written to ", out))
     }
