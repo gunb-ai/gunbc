@@ -63,7 +63,11 @@ data fixture_contract: WorkContract = WorkContract {
   output_contract: "outputs:1",
 }
 
-data subject_work: Work<NonEmptyStr> = work_for(principal: "gunbc", contract: fixture_contract, requirements: fixture_requirements)
+data owning_principal: NonEmptyStr = "gunbc"
+
+data foreign_principal: NonEmptyStr = "other-tenant"
+
+data subject_work: Work<NonEmptyStr> = work_for(principal: owning_principal, contract: fixture_contract, requirements: fixture_requirements)
 
 data other_contract: WorkContract = WorkContract {
   program: "gunbc.required-witnesses-build.program:2",
@@ -75,11 +79,11 @@ data other_contract: WorkContract = WorkContract {
   output_contract: "outputs:1",
 }
 
-data other_work: Work<NonEmptyStr> = work_for(principal: "gunbc", contract: other_contract, requirements: fixture_requirements)
+data other_work: Work<NonEmptyStr> = work_for(principal: owning_principal, contract: other_contract, requirements: fixture_requirements)
 
 // Same contract, DIFFERENT principal. FabricIdentity equality is over the pair, so this work is
 // not the subject work even though the derived key half is identical -- the cross-tenant case.
-data foreign_work: Work<NonEmptyStr> = work_for(principal: "other-tenant", contract: fixture_contract, requirements: fixture_requirements)
+data foreign_work: Work<NonEmptyStr> = work_for(principal: foreign_principal, contract: fixture_contract, requirements: fixture_requirements)
 
 data first_attempt: Attempt<NonEmptyStr> = Attempt {
   id: FabricIdentity { principal: "gunbc", key: "attempt-1" },
