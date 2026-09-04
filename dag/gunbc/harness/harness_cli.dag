@@ -1,6 +1,7 @@
 module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import std.measure { TokenCount, token_count, token_count_value, Second, second }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
@@ -48,6 +49,14 @@ data harness_probe_events_path: FilePath = "/tmp/gunbc-harness-probe-events.json
 data harness_default_duration_limit_seconds: Int = 120
 
 data harness_default_step_budget: Int = 8
+
+// THE REASONING MODE THE WORKER RUNS IN, DECLARED. Until 2026-09-04 nothing declared it, and on a
+// vLLM realization the undeclared default is non-think, so every measured run drove the model
+// without reasoning while the harness decoded thinking blocks that never arrived. Think Max is the
+// operator's choice for coding work. The switch reaches the model as chat_template_kwargs on the
+// harness's own endpoint -- proven honored there -- and not as the Anthropic thinking field, which
+// vLLM's messages endpoint ignores for this model (probed: it answered cold).
+data harness_reasoning_mode: DeepseekV4ReasoningMode = DeepseekV4ThinkMax
 
 // THE OUTPUT BUDGET, DERIVED FROM WHAT THE MODEL ACTUALLY DECLARES -- which is that it declares no
 // output ceiling at all. extdeps.deepseek.deepseek_v4 records the research: no primary source
@@ -134,6 +143,7 @@ fn harness_macbook_config() -> HarnessTurnConfig {
     backend_url: harness_router_backend_url(),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
     system_prompt: harness_default_system_prompt,
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
@@ -211,6 +221,7 @@ fn harness_worker_config(
     backend_url: harness_router_backend_url(),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
     system_prompt: harness_worker_system_prompt,
     request_scratch_path: request_scratch_path,
     events_path: events_path,

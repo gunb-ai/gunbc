@@ -15,7 +15,10 @@ import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import std.measure { token_count_value, second_count }
 import gunbc.harness.harness_wire { harness_router_context_window, harness_router_admission_cap }
 import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
-import gunbc.harness.harness_turn { harness_stop_reason_truncated }
+import gunbc.harness.harness_turn { harness_stop_reason_truncated, harness_reasoning_kwargs, harness_text_carries_leaked_reasoning }
+import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock }
+import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax }
+import extdeps.languages.json.emit { json_object, serialize_json }
 import extdeps.llm.anthropic_messages_api { MaxTokens, ToolUse, EndTurn }
 
 // WHAT THESE TEST, AND WHAT THEY DELIBERATELY DO NOT.
@@ -160,4 +163,50 @@ test fn a_max_tokens_stop_is_recognised_as_truncation() -> Bool {
 test fn an_ordinary_tool_use_stop_is_not_truncation() -> Bool {
   !harness_stop_reason_truncated(reason: ToolUse)
     && !harness_stop_reason_truncated(reason: EndTurn)
+}
+
+// THE REASONING SWITCH REACHES THE WIRE AS THE TEMPLATE'S OWN KWARGS, with the effort label the
+// extdeps module owns. Think Max must serialize as "max": an earlier revision of the extdeps row
+// said "xhigh", which the official guide lists as a compatibility alias for HIGH -- a harness that
+// asked for max with it would have received high and never known.
+test fn think_max_serializes_as_the_max_effort_kwarg() -> Bool {
+  serialize_json(v: json_object(harness_reasoning_kwargs(mode: DeepseekV4ThinkMax)))
+    .contains("\"reasoning_effort\": \"max\"")
+    && serialize_json(v: json_object(harness_reasoning_kwargs(mode: DeepseekV4ThinkMax)))
+    .contains("\"thinking\": true")
+}
+
+// NON-THINK SENDS NOTHING. On vLLM the absence of the kwarg IS non-think; a false would assert a key
+// whose absence means the same, and would be a second spelling of one fact.
+test fn non_think_emits_no_kwargs() -> Bool {
+  list_length(items: harness_reasoning_kwargs(mode: DeepseekV4NonThink)) == 0
+}
+
+// REASONING IN A TEXT BLOCK IS DETECTED BY THE MODEL'S OWN CLOSING TAG. Probed 2026-09-04 against
+// the live serving units: with thinking on and no --reasoning-parser, the chain of thought arrives
+// inline and ends in </think>. This is the discriminating input the refusal fires on.
+test fn text_carrying_a_think_closer_is_leaked_reasoning() -> Bool {
+  harness_text_carries_leaked_reasoning(blocks: [
+    WireTextBlock { text: "We need 17*23. 17*20=340, 17*3=51, total 391.</think>391" },
+  ])
+}
+
+// THE CONTROL: a real thinking block, as a parser-equipped server returns it, is NOT a leak -- and
+// neither is ordinary text. A detector that fired on any reasoning would refuse the exact state the
+// server flag produces.
+test fn a_thinking_block_and_plain_text_are_not_leaks() -> Bool {
+  !harness_text_carries_leaked_reasoning(blocks: [
+    WireThinkingBlock { thinking: "We need 17*23." },
+    WireTextBlock { text: "391" },
+  ])
+}
+
+
+// THINK HIGH SENDS THE THINKING SWITCH AND NO EFFORT KEY. Measured on the live artifact: with
+// thinking on, an effort of "high" leaves prompt_tokens at 5 while "max" raises it to 84 -- only max
+// has a preamble in the canonical encoder. An effort key that renders nothing is a second spelling
+// of its own absence.
+test fn think_high_sends_thinking_without_an_effort_key() -> Bool {
+  let wire = serialize_json(v: json_object(harness_reasoning_kwargs(mode: DeepseekV4ThinkHigh)))
+  wire.contains("\"thinking\": true") && !wire.contains("reasoning_effort")
 }

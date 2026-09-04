@@ -113,3 +113,103 @@ data deepseek_v4_vllm_reasoning_effort_kwarg: NonEmptyStr = "reasoning_effort" a
 // client that drops or re-labels the reasoning channel on replay is not merely losing information;
 // it is handing the model a transcript that was never produced.
 data deepseek_v4_tool_use_requires_reasoning_replay: Bool = true
+
+// THE CANONICAL PROMPT ENCODER, CITED BY FILE AND REVISION. The release ships no Jinja chat
+// template: tokenizer_config.json carries no chat_template key and the model card says so
+// directly, providing encoding/encoding_dsv4.py instead. Every fact below is read from that file at
+// the pinned revision rather than from a runtime's template, because a runtime's template is one
+// realization of the encoder and can differ from it -- the fp8 snapshot on one serving pair carries
+// no template at all, while the IQ3_S artifact on another renders the encoder's text exactly.
+data deepseek_v4_encoder_repo: NonEmptyStr = "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr
+data deepseek_v4_encoder_path: NonEmptyStr = "encoding/encoding_dsv4.py" as NonEmptyStr
+data deepseek_v4_encoder_revision: NonEmptyStr = "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr
+data deepseek_v4_encoder_revision_modified: NonEmptyStr = "2026-06-22T12:12:13Z" as NonEmptyStr
+
+// THINKING IS STRUCTURAL, NOT WORDED. encode_messages takes thinking_mode "chat" or "thinking";
+// a thinking turn ends the prompt with the start token so the model reasons and closes it, a chat
+// turn ends the prompt with the END token already present, so there is nothing to reason into.
+// Turning thinking off is therefore a prefill, and no sentence in a system prompt can do it.
+type DeepseekV4EncoderThinkingMode = EncoderChat | EncoderThinking
+
+fn deepseek_v4_encoder_thinking_mode_wire(m: DeepseekV4EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    EncoderChat => "chat" as NonEmptyStr
+    EncoderThinking => "thinking" as NonEmptyStr
+  }
+}
+
+data deepseek_v4_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
+data deepseek_v4_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+
+fn deepseek_v4_encoder_prefill(m: DeepseekV4EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    EncoderChat => deepseek_v4_thinking_end_token
+    EncoderThinking => deepseek_v4_thinking_start_token
+  }
+}
+
+// EFFORT IS A PREAMBLE, AND ONLY MAX HAS ONE. The encoder's reasoning_effort accepts "max", "high"
+// or None, and the file contains preamble text for "max" alone: Think High IS the thinking mode
+// with nothing added, and there is no "low" in the encoder -- low exists only on the hosted API.
+// The preamble is carried verbatim because it is the trained conditioning string: a paraphrase
+// under the same tier name is a different string the weights were never conditioned on, and the
+// fleet's dashboard was found on 2026-09-04 to be injecting exactly such a paraphrase under
+// DeepSeek's tier names -- a section 3 nickname at the prompt layer.
+data deepseek_v4_encoder_effort_values: List<NonEmptyStr> = ["max" as NonEmptyStr, "high" as NonEmptyStr]
+
+data deepseek_v4_think_max_preamble: NonEmptyStr = "Reasoning Effort: Absolute maximum with no shortcuts permitted.\nYou MUST be very thorough in your thinking and comprehensively decompose the problem to resolve the root cause, rigorously stress-testing your logic against all potential paths, edge cases, and adversarial scenarios.\nExplicitly write out your entire deliberation process, documenting every intermediate step, considered alternative, and rejected hypothesis to ensure absolutely no assumption is left unchecked.\n\n" as NonEmptyStr
+
+fn deepseek_v4_effort_has_preamble(mode: DeepseekV4ReasoningMode) -> Bool {
+  match mode {
+    DeepseekV4NonThink => false
+    DeepseekV4ThinkHigh => false
+    DeepseekV4ThinkMax => true
+  }
+}
+
+// TOOL CALLS ARE DSML, NOT JSON, on the wire the model actually emits; a serving runtime's tool
+// parser (vLLM's deepseek_v4) translates them. Carried so a harness reading raw completions knows
+// what it is looking at.
+data deepseek_v4_dsml_token: NonEmptyStr = "｜DSML｜" as NonEmptyStr
+data deepseek_v4_dsml_tool_calls_open: NonEmptyStr = "<｜DSML｜tool_calls>" as NonEmptyStr
+data deepseek_v4_dsml_tool_calls_close: NonEmptyStr = "</｜DSML｜tool_calls>" as NonEmptyStr
+
+// WHETHER A SERVING REALIZATION RENDERS THE EFFORT KWARG IS A MEASURED FACT ABOUT THAT
+// REALIZATION, and it is typed by provenance so a number measured here cannot be mistaken for one
+// relayed from another session. The instrument is prompt_tokens on a one-token completion: the
+// preamble adds tokens or it does not. Measured on the IQ3_S artifact served through the fleet
+// router (vLLM, owned_by sparks): an effort key with thinking OFF renders nothing at any value;
+// with thinking ON, "high", "low" and an unknown value render nothing and "max" adds 79 -- the
+// canonical preamble's length -- so this artifact renders the encoder faithfully. The relayed row
+// is the routing session's report against the fp8 safetensors pair, which carries no template; it
+// was measured WITHOUT the thinking switch, which on this evidence renders nothing everywhere, so
+// it establishes only that reasoning_effort alone is a no-op there, not that thinking+max is.
+type DeepseekV4RenderingProvenance
+  = MeasuredByThisRepository { observed_at: NonEmptyStr }
+  | RelayedFromRoutingSession { observed_at: NonEmptyStr }
+
+type DeepseekV4EffortRenderingObservation {
+  artifact: NonEmptyStr
+  engine: NonEmptyStr
+  prompt_tokens_thinking_off: Int
+  prompt_tokens_thinking_high: Int
+  prompt_tokens_thinking_max: Int
+  prompt_tokens_thinking_unknown_effort: Int
+  provenance: DeepseekV4RenderingProvenance
+}
+
+data deepseek_v4_effort_rendering_iq3s_split_vllm: DeepseekV4EffortRenderingObservation = DeepseekV4EffortRenderingObservation {
+    artifact: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    engine: "vllm (owned_by sparks, via fleet router)" as NonEmptyStr,
+    prompt_tokens_thinking_off: 5,
+    prompt_tokens_thinking_high: 5,
+    prompt_tokens_thinking_max: 84,
+    prompt_tokens_thinking_unknown_effort: 5,
+    provenance: MeasuredByThisRepository { observed_at: "2026-09-04T05:30Z" as NonEmptyStr },
+  }
+
+fn deepseek_v4_rendering_distinguishes_max(o: DeepseekV4EffortRenderingObservation) -> Bool {
+  o.prompt_tokens_thinking_max > o.prompt_tokens_thinking_high
+    && o.prompt_tokens_thinking_high == o.prompt_tokens_thinking_off
+    && o.prompt_tokens_thinking_unknown_effort == o.prompt_tokens_thinking_off
+}
