@@ -903,64 +903,45 @@ pub struct TransitionAdmission {
 /// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
 /// forget; the required run reports them as consumed admissions due for deletion on that change.
 ///
+/// TWENTIETH TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
+/// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
+/// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
+/// `TargetChanged` and is not auto-admitted.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the generic
+/// `find_by_identity` returns `T?` and the Optional does not survive inference, so a `match` over
+/// its result reads as the bare element type and reports `Present` as a missing variant of it, at
+/// that type's declaration, in another file. Two callers had each privately worked around this with
+/// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
+/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it, so
+/// the move is the §3 repair and these two rows are its measured cost.
+///
+/// DISSOLVE-ON is gunbc#10324 merging, and the trigger names the capability: once main carries the
+/// wrapper in `gunbc.host_converge`, base and head agree and no run can produce these deltas. Their
+/// deletion is charged to whoever next touches this roster, per this module's own rule.
+///
+/// SIX ROWS ARE DELETED HERE, WHICH IS THAT SAME RULE BEING PAID RATHER THAN DEFERRED. The two
+/// gunbc#10206 rows and the four gunbc#10028 rows were reported CONSUMED by the required run at
+/// this base -- satisfied by their own merges -- and this roster's convention charges their removal
+/// to its next toucher. That is this change.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
+        label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type (converge_cli_codex_runtime_knob_registered_for_host)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
+            module: "gunbc.fleet_converge_cli",
+            in_declaration: "converge_cli_codex_runtime_knob_registered_for_host",
+            spelling: "host_converge_for_identity",
+            target: "gunbc.host_converge",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
+        label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type (converge_cli_run_host_knobs)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_preamble_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "collect_pattern_rc_variant_guards",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_typed_match_arm_strs",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_arm_has_refutable_plain_field",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_pattern_preludes",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
+            module: "gunbc.fleet_converge_cli",
+            in_declaration: "converge_cli_run_host_knobs",
+            spelling: "host_converge_for_identity",
+            target: "gunbc.host_converge",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

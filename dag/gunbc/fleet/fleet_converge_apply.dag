@@ -8,6 +8,7 @@ import gunbc.host_converge {
   ConvergePolicyUnsound,
   HostConverge,
   fleet_converge_policy,
+  find_by_identity,
   host_converge_for_identity,
 }
 import gunbc.host_effect {
