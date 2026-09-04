@@ -31,16 +31,29 @@ import gunbc.rung_drop { RungDrop, rung_drop_roster, rung_drop_declaration_messa
 // frequency was zero by construction and nothing ranked it. Here the repair SUCCEEDS and destroys
 // the same fact. A silent repair is indistinguishable from an absent defect.
 //
-// MEASURED POPULATION, 2026-09-04, and the caveats belong with the number rather than beside it:
-// of 35 heal commits reachable from any branch in one 24-hour window, 18 had a parent that was
-// authority-ahead-of-projection, 11 had a coherent parent and repaired something else, and 6 are
-// UNMEASURABLE because their parent predates the failure-mode preamble index. So 18 is a FLOOR over
-// a 29-commit measurable denominator, NOT a rate over 35. The distribution is the persuasive part
-// and is not a uniform trickle: one repair covered 14 identities and another 11, against thirteen
-// single-identity repairs. A branch head was rendering fourteen fewer rows than its own authority
-// declared, and the whole record of it is one indistinguishable heal commit. This function is the
-// instrument that re-derives that classification, so the number is its OUTPUT and not a fact in
-// prose -- DESIGN section 6 names the instrument and never transcribes its output.
+// THE CLASS HAS A MEASURED POPULATION AND THIS FUNCTION IS THE INSTRUMENT THAT DERIVES IT, which is
+// why no count appears in this comment. DESIGN section 6 says to name the instrument and never to
+// transcribe its output: a number copied into prose is unreachable from the thing that owns it, so
+// it rots without anyone touching either end, and the first re-measurement leaves this paragraph
+// quietly wrong. The derivation is: for each heal commit -- a commit whose regeneration rewrote a
+// committed projection -- classify its PARENT with ledger_row_coherence, taking the committed side
+// from the parent tree and the generated side from the parent's own authorities. A parent that
+// classifies LedgerRowsMissingFromCommitted is a repair that was performed and never recorded.
+//
+// TWO PROPERTIES OF THAT SERIES ARE STRUCTURAL RATHER THAN OBSERVED, so they belong here where a
+// count does not, and both are about how its ZEROS must be read.
+//
+// FIRST, THE DENOMINATOR IS SMALLER THAN THE COMMIT COUNT. A heal commit whose parent predates the
+// failure-mode preamble index cannot be classified from that index at all, so it is UNMEASURABLE
+// rather than clean, and any rate quoted over all heal commits understates the class. What this
+// series yields is a FLOOR over the measurable subset, never a rate over the whole.
+//
+// SECOND, A ZERO ON A SURFACE MAY MEAN UNREADABLE. The rung-drop ledger carries no identity index in
+// its projection and its only machine-visible join is a count that is already off by one for a
+// structural reason -- that projection injects a compile-phase-frontier heading which is not a row.
+// A zero meaning "no defects" and a zero meaning "cannot be read" are the same character. Deriving
+// the rows from the ROSTER, as ledger_rows does, is what removes that asymmetry: this classifier
+// answers for both ledgers without either projection carrying an index.
 //
 // THE ZERO ON THE RUNG-DROP SURFACE MEANS UNREADABLE, NOT CLEAN, and the distinction is the whole
 // reason this classifier keys off the AUTHORITY side. The retrospective measurement above could
