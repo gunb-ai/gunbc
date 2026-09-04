@@ -26,7 +26,7 @@ import std.minted_identity { minted_id_ordinal }
 import v2.std.node { Symbol }
 import gunbc.scm.object_store { SemanticNodeObjectRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
-import gunbc.scm.merge {
+import gunbc.scm.proposal {
   Requirement,
   RequireBinding,
   RequireBindingAbsent,
@@ -51,7 +51,7 @@ type StatusCheckout
 
 // THREE STATES, NOT TWO, AND THE THIRD IS THE ONE A SURFACE LOSES BY ACCIDENT. It is not enough that
 // a stated absence be distinguishable from a present binding: the load-bearing distinction is from
-// NOT MENTIONED AT ALL, because merge's silence-means-preserve rule makes "role not stated" and
+// NOT MENTIONED AT ALL, because the integration's silence-means-preserve rule makes "role not stated" and
 // "role stated absent" SEMANTICALLY OPPOSITE -- one preserves the target's binding, the other
 // deletes it. A rendering where a stated absence looks like an empty slot is the not-applicable
 // versus malformed conflation carried all the way into a user surface, and the user acts on it.

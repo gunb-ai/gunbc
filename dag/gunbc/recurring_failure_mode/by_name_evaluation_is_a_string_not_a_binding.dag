@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.by_name_evaluation_is_a_string_not_a_binding
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data by_name_evaluation_is_a_string_not_a_binding: RecurringFailureMode = RecurringFailureMode {
+  identity: "by_name_evaluation_is_a_string_not_a_binding" as NonEmptyStr,
+
+  receipts: [
+    "**A by-name evaluation TYPE-CHECKS AGAINST ANY CONTEXT AND ANY NAME, so the relationship between the evaluation context and the namespace it can reach is carried nowhere the compiler can see.** `run_in_context(ctx, \"gunbc.x.y\", false)` compiles whether or not `ctx` is scoped for `gunbc.*`. The binding is a STRING at compile time and a lookup at run time, and every static gate passes over the gap. ",
+
+    "MEASURED 2026-09-04 on gunbc#10319 before it was pushed. `floor_required_opaque_host_call_surface` read `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface` through the `hermetic` frame, which is scoped for `v2.workflow.*`. `cargo check`, `cargo clippy --all-targets -- -D warnings` and `cargo test -p v1-compiler --lib` were ALL GREEN on it. The floor would have been the first thing to evaluate it. ",
+
+    "**THE BLAST RADIUS WAS THE WHOLE FLOOR, AND THE FAIL-CLOSED ARM IS WHAT MADE IT SO.** The reader refuses rather than arming an empty surface, which is correct -- but an UNREACHABLE MODULE and an UNGROUNDED SURFACE collapse to the same refusal, and that refusal is the entire run rather than one column. A FAIL-CLOSED ARM AMPLIFIES A TARGETING ERROR; IT DOES NOT CONTAIN ONE. The review tell follows: a reviewer looking at a fail-closed arm reads it as safety and stops. ",
+
+    "THE RULE WAS ALREADY WRITTEN IN THE FILE BEING EDITED, WHICH IS WHY THIS IS A CLASS AND NOT AN ACCIDENT. `cli_run`'s comment on `REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES` states it exactly: `a new by-name evaluation adds its module here or refuses at its own call site`. Four modules were enrolled, `gunbc.output_policy` among them, reached through `floor_authority_frame` rather than the hermetic context. The author had read that comment an hour earlier for an unrelated reason and it still did not fire. ",
+
+    "**A PROSE RULE BESIDE THE CONSTRUCT IT GOVERNS IS CONSUMED BY WHOEVER HAPPENS TO READ IT**, and the population of people who will edit a 40000-line module is not the population who have read its constants' comments. ",
+
+    "REPAIRED BY ENROLLING THE MODULE AND READING THROUGH ITS OWN AUTHORITY FRAME -- evaluated in its exact scope rather than privileged with a wider namespace than the claims it bounds, which is what the enrolment comment says the enrolment is FOR. Enrolling the module WITHOUT also fixing the frame would have been the same defect with a longer list. ",
+
+    "**FOUND AT AUTHORING TIME BY READING HOW A NEIGHBOURING `gunbc.*` MODULE IS REACHED, NOT BY ANY GATE.** That is the honest provenance and it is also the measure of the gap: the only thing standing between this and a corpus-wide refusal on an unrelated author's pull request was one person deciding to check a call they had already written and already compiled. ",
+
+    "CEILING: STRUCTURALLY IMPOSSIBLE, and the class is decidable so the ceiling is real rather than aspirational -- the set of modules an evaluation context can reach is known when the context is constructed, and the module a by-name call names is a literal at the call site. ",
+
+    "**NEXT TRIGGER, NAMED AS THE CAPABILITY AND WITH WHAT IT MUST BE SUFFICIENT FOR:** a by-name evaluation carries its reachable namespace in its TYPE, so a call naming a module the context cannot reach FAILS TO COMPILE -- sufficient for no by-name read being able to pass `cargo check` while being unresolvable at evaluation. A lint over call sites, or a runtime assertion at the call, is the artifact-grained version: both leave the invalid state writable and depend on the mechanism executing. ",
+
+  ],
+
+  evidence: [],
+}

@@ -1200,6 +1200,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_reference_occurrence_binding_census" },
+      form: FreeCall,
+      authored_spelling: "compile_dag_reference_occurrence_binding_census",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.observe_declared_import_closure_symbol_binding" },
       form: FreeCall,
       authored_spelling: "observe_declared_import_closure_symbol_binding",

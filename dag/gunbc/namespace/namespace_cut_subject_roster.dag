@@ -48,7 +48,7 @@ fn namespace_cut_subject_label(s: NamespaceCutSubjectIdentity) -> NonEmptyStr {
     ImportGrammarProductions => "the v2 import grammar: lex rule, formal rows, productions, emit rows" as NonEmptyStr
     ImportParseSurfaceV1 => "the v1 import parse surface" as NonEmptyStr
     ImportAstCarriers => "the import AST carriers on both frontends" as NonEmptyStr
-    ResolverImportNameUniverse => "the resolver import-name universe: source_visible_names and the import admission folds" as NonEmptyStr
+    ResolverImportNameUniverse => "the resolver import-name universe: source_visible_names AND authored_import_names, with the import admission folds and the callable-visibility policy that reads the second" as NonEmptyStr
     ImportScopeOverlays => "the import scope overlays in v1 inference" as NonEmptyStr
     ImportDerivedModuleAdjacency => "import-derived module adjacency and the build ordering it feeds" as NonEmptyStr
     HostImportClosureAssembly => "host import-closure assembly in the stage0 CLI" as NonEmptyStr
@@ -114,6 +114,9 @@ fn subject_probes(s: NamespaceCutSubjectIdentity) -> NamespaceCutSubjectProbes {
       rest: [
         DagDeclarationProbe { module_path: "v1.compiler.resolve", decl_name: "resolve_module_imports" },
         DagDeclarationProbe { module_path: "v2.compiler.name_resolve", decl_name: "admit_imports" },
+        DagDeclarationFieldProbe { module_path: "v1.compiler.infer_env", decl_name: "TypeEnv", field_name: "authored_import_names" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer_lookup", decl_name: "AuthorNamedVisibility" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer_lookup", decl_name: "author_named_visibility" },
       ],
     }
     ImportScopeOverlays => NamespaceCutSubjectProbes {
