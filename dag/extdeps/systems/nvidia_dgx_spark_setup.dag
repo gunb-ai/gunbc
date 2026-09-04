@@ -435,33 +435,28 @@ type ObservedOobeScreen {
 // language selector is one screen early. That off-by-one is exactly the kind of defect a
 // guessed flow produces and a measured one cannot.
 // ------------------------------------------------------------------------------------------
-// THE INTERFACE REVISION IS WHAT A RECEIPT CITES, AND ITS IMMUTABILITY IS CONVENTIONAL TODAY.
+// AN OBSERVATION SESSION IS WHAT A RECEIPT CITES, AND WE HAVE NEVER MEASURED A FIRMWARE IDENTITY.
 //
-// Consolidating these screens here created a hazard the split itself introduced: a run receipt in
-// gunbc that points at "the canonical screen rows" points at whatever they say TODAY, so a future
-// firmware revision edited into these rows would retroactively change what an earlier run is said
-// to have observed. A receipt that moves when its subject is edited is not a receipt.
+// The first version of this called itself a REVISION and carried all four screens under one date.
+// That fabricated a join: three screens were watched on 2026-09-02 and the account screen on
+// 2026-09-03, and nothing this repository measured says the unit presented the same interface on
+// both days. A firmware or image version would say it; the wizard never showed one, and the probe
+// never asked. So a receipt citing the aggregate asserted a temporal certainty its evidence does not
+// carry -- DESIGN §4b's external reality, fabricated rather than observed or refused.
 //
-// So a revision is APPENDED, never edited. dgx_spark_oobe_revision_2026_09_03 names the exact
-// interface this repository drove on that date; when NVIDIA ships a different wizard, a new
-// revision row joins it and the old one stays byte-stable with its receipts still pointing at it.
+// So what is declared here is ONE SESSION: the screens seen on one unit, on one date, in one sitting.
+// Whether two sessions saw the same underlying interface is a question about OUR evidence and is
+// answered in the observing layer, where its refusal can be modeled; it is deliberately not
+// answerable from these rows.
 //
-// TWO DIFFERENT RUNGS, AND CONFLATING THEM WOULD BE THE INFLATION §4b NAMES. Which subject a
-// receipt cites is STRUCTURAL: a run carries an OobeInterfaceRevision, so it cannot cite "whatever
-// the canonical rows say today" -- that sentence has no constructor. Whether the cited row still
-// holds the bytes it held when the run was recorded is MITIGATABLE ONLY: nothing stops an author
-// editing these screens in place, and no witness can catch it, because a witness comparing the row
-// to itself is green by construction and one comparing it to a transcribed copy is a second
-// authority for the same fact.
-//
-// NEXT-RUNG TRIGGER: a compiler-computed content hash over a DECLARATION SUBTREE, exposed to the
-// model, so the revision's identity is derived from its screens rather than asserted beside them
-// and a receipt binds the digest. std.content_hash today hashes a NonEmptyStr through
-// content_hash_of_value; it has no fold over a data declaration, so the capability is absent rather
-// than unused. Until it exists this is authoring discipline, and it is named as such here rather
-// than described in a way that would let a reader mistake it for a wall.
-type OobeInterfaceRevision {
-  revision: NonEmptyStr
+// IMMUTABILITY IS CONVENTIONAL, and the rung honesty from the previous head stands unchanged: a
+// session row is APPENDED, never edited, and nothing enforces that. The receipt's cited SUBJECT is
+// structural -- a run carries an OobeInterfaceSession, so "whatever the rows say today" has no
+// constructor -- while byte-stability of the cited row is mitigatable only, no witness can catch an
+// in-place edit, and the next-rung trigger is a compiler-computed content hash over a declaration
+// subtree, which std.content_hash does not offer today.
+type OobeInterfaceSession {
+  session: NonEmptyStr
   screens: List<ObservedOobeScreen>
 }
 
@@ -678,14 +673,19 @@ type ClientUsernameAdmission
     }
 
 
-// The revision observed on 2026-09-03 against unit spark-0c75, in presentation order. Appended, not
-// edited: a later firmware gets its own row.
-data dgx_spark_oobe_revision_2026_09_03: OobeInterfaceRevision = OobeInterfaceRevision {
-  revision: "2026-09-03/spark-0c75" as NonEmptyStr,
+// THE TWO SESSIONS, EACH CARRYING EXACTLY WHAT ITS SITTING SAW. Neither is a claim about the other:
+// the 09-02 sitting halted at the EULA and never reached the account screen, and the 09-03 sitting
+// went straight to the account screen and saw none of the three before it.
+data dgx_spark_oobe_session_2026_09_02: OobeInterfaceSession = OobeInterfaceSession {
+  session: "2026-09-02/spark-0c75" as NonEmptyStr,
   screens: [
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_welcome,
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_settings,
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_eula,
-    extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_account,
   ],
+}
+
+data dgx_spark_oobe_session_2026_09_03: OobeInterfaceSession = OobeInterfaceSession {
+  session: "2026-09-03/spark-0c75" as NonEmptyStr,
+  screens: [extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_account],
 }

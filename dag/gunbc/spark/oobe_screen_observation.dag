@@ -12,8 +12,9 @@ import extdeps.automation.playwright {
 }
 import extdeps.systems.nvidia_dgx_spark_setup {
   OobeSetupField,
-  OobeInterfaceRevision,
-  dgx_spark_oobe_revision_2026_09_03,
+  OobeInterfaceSession,
+  dgx_spark_oobe_session_2026_09_02,
+  dgx_spark_oobe_session_2026_09_03,
   OobeLanguage,
   OobeTimeZone,
   OobeKeyboardLayout,
@@ -324,16 +325,17 @@ type ObservedScreenTransition {
   to_route: OobeScreenRoute
 }
 
-// A RECEIPT NAMES THE EXACT INTERFACE REVISION IT SAW. Carrying the screens alone would bind this
-// run to whatever the canonical rows say today, so editing the vendor model would silently rewrite
-// history -- the hazard the extdeps consolidation created and this field closes. The screens the run
-// actually walked stay here because a run may see a SUBSET; the revision says which interface that
-// subset was drawn from.
+// A RECEIPT NAMES THE EXACT SESSION IT SAW -- ITS OWN, NEVER AN AGGREGATE. Carrying the screens
+// alone would bind this run to whatever the canonical rows say today, so editing the vendor model
+// would silently rewrite history; that is the hazard the extdeps consolidation created and this
+// field closes. What the field may NOT do is assert more than the sitting establishes, which the
+// first version did by pointing both runs at a four-screen revision dated 09-03: the 09-02 run
+// cannot have seen a screen first observed the next day.
 type OobeScreenObservationRun {
   environment: OobePortalObservationEnvironment
   portal_reach: OobePortalReach
   observed_on: Rfc3339Timestamp
-  interface_revision: OobeInterfaceRevision
+  interface_session: OobeInterfaceSession
   screens: List<ObservedOobeScreen>
   observed_transitions: List<ObservedScreenTransition>
   termination: OobeWalkTermination
@@ -354,7 +356,7 @@ data dgx_spark_0c75_oobe_prefix_run: OobeScreenObservationRun = OobeScreenObserv
   },
   portal_reach: PortalReachUnrecorded,
   observed_on: "2026-09-02T02:39:00Z" as Rfc3339Timestamp,
-  interface_revision: extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_oobe_revision_2026_09_03,
+  interface_session: extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_oobe_session_2026_09_02,
   screens: [
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_welcome,
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_settings,
@@ -409,7 +411,7 @@ data dgx_spark_0c75_oobe_account_run: OobeScreenObservationRun = OobeScreenObser
     },
   },
   observed_on: "2026-09-03T02:42:20Z" as Rfc3339Timestamp,
-  interface_revision: extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_oobe_revision_2026_09_03,
+  interface_session: extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_oobe_session_2026_09_03,
   screens: [extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_account],
   observed_transitions: [],
   termination: gunbc.spark.oobe_screen_observation.observed_account_walk_termination,
@@ -424,4 +426,19 @@ data oobe_observation_runs: List<OobeScreenObservationRun> = [
 // find the edge; an empty answer is a refusal to claim, not a claim of absence in the wizard.
 fn observed_transitions_across_runs() -> List<ObservedScreenTransition> {
   flat_map(oobe_observation_runs, run => run.observed_transitions)
+}
+
+// WHETHER THE TWO SITTINGS SAW ONE INTERFACE IS UNOBSERVED, AND THIS SAYS SO RATHER THAN ASSUMING IT.
+//
+// The wizard never displayed a firmware or image version and the probe never asked for one, so no
+// measured fact joins the 2026-09-02 screens to the 2026-09-03 account screen. The convenient
+// assumption -- same unit, one day apart, nothing was flashed -- is exactly the fabricated temporal
+// certainty a receipt may not carry. An actuator that needs the four screens to be one interface
+// must first RETIRE this row by re-observing, not by reasoning about it.
+type InterfaceContinuityEvidence
+  = SessionsProvenSameInterface { firmware_identity: NonEmptyStr }
+  | SessionContinuityUnobserved { missing: NonEmptyStr }
+
+data spark_0c75_session_continuity: InterfaceContinuityEvidence = SessionContinuityUnobserved {
+  missing: "no firmware or image identity was displayed by the wizard or requested by the probe, so the 2026-09-02 and 2026-09-03 sittings are not joined" as NonEmptyStr,
 }
