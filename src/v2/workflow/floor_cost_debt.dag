@@ -19,8 +19,8 @@ import v2.std.collection { List }
 //
 // WHY IT IS NOT THE EXPECTED-RED ROSTER, stated first because the two are easy to fuse.
 //
-// Any identity enrolled here is withheld FOR COST, and in neither evidence class is it a known
-// red. The PROVEN class passes and its measured marginal CPU exceeds
+// Any identity enrolled here is withheld FOR COST, and in none of the three evidence classes is it
+// a known red. The PROVEN class passes and its measured marginal CPU exceeds
 // `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`; the CENSORED class was
 // preempted before a verdict, so it asserts only that the row did not finish inside the ceiling
 // on the charged clock. NEITHER is a failure, which is the distinction that matters here.
@@ -722,6 +722,83 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
   Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
 }
 
+// THE THIRD EVIDENCE CLASS: STRADDLING (2026-09-04, gunbc#10366-era main).
+//
+// A STRADDLING ROW REACHES A VERDICT AND PASSES, ITS DETERMINISTIC WORK MEASURE IS INVARIANT
+// ACROSS RUNS, AND ITS CHARGED CPU CROSSES THE 500ms CEILING ON SOME RUNNERS AND NOT OTHERS. It
+// is neither of the two classes above and must not be filed as either: PROVEN asserts a measured
+// marginal cost that EXCEEDS the ceiling, which is false of these rows on half their observations,
+// and CENSORED asserts the row did not finish inside the ceiling on the charged clock, which is
+// false of them on all of them -- they finish, every time. Filing a straddler as proven would put
+// a universal over-ceiling claim on a row measured under the ceiling three runs out of five,
+// which is the exact defect review 57258 refused when this file was one flat list.
+//
+// WHAT IS ENROLLED, AND WHY IT IS THE WHOLE OF WHAT IS ENROLLED. Two identities in
+// `v2.test.emit.produced_decl_two_target`. Their third sibling,
+// `produced_decl_unwired_target_still_refuses`, STAYS ON THE FLOOR and is not touched: it is the
+// same module, the same emission subject and the same shape of work, so it remains as the
+// executing control that this module still runs, still refuses an unwired target, and is still
+// measured every floor. A withhold that took the module is a module going dark; this one leaves a
+// witness behind that fails loudly if the emission path breaks.
+//
+// THE DISCRIMINATING EVIDENCE IS `eval_steps`, NOT A CLOCK, and that column is the whole reason
+// this class is separable from the two above rather than a softer wording of PROVEN. Three main
+// floor jobs, read from their own `[over-cost]` lines:
+//
+//   run 33840229008 job 100920850069 (FloorRefused)
+//     produced_decl_module_folds_declarations_in_order  eval_steps=170746  cpu=568  over
+//     produced_decl_two_targets_render_own_order        eval_steps=197227  cpu=502  over
+//   run 33841016028 job 100923146660 (FloorClean)
+//     produced_decl_module_folds_declarations_in_order  eval_steps=170746  cpu=447  under
+//     produced_decl_two_targets_render_own_order        eval_steps=197227  cpu=456  under
+//   run 33840785132 job 100922476884 (FloorClean)
+//     produced_decl_module_folds_declarations_in_order  eval_steps=170746  cpu=411  under
+//     produced_decl_two_targets_render_own_order        eval_steps=197227  cpu=419  under
+//
+// The step counts are IDENTICAL to the unit across all three runs and the CPU figures move by up
+// to 38%. The work the claim does is a stable property of the claim; the charge is not. That is
+// `gunbc.rung_drop floor_cost_claim_qualification_unavailable` observed at identity grain, and
+// this class is that row's population arriving in the one carrier that can act on it.
+//
+// WHAT WAS REFUSED, AND WHY, BECAUSE THE TWO EASY MOVES ARE BOTH WRONG HERE.
+// RAISING THE CEILING is refused: 500 -> 600 tunes a literal so a check passes on a basis the
+// declared drop says is unstable at ANY threshold, and buys nothing the next runner slot cannot
+// take back at 602ms. It is also the tree-copied oracle DESIGN section 5 forbids -- the number
+// would come from this same tree's current measurement.
+// THE EXPECTED-RED ROSTER is refused, and the floor's own diagnostic refuses it for us in the
+// sentence it prints beside these two rows: "This is a cost debt only -- it is not a defect and
+// it does not belong on the expected-red roster, which asserts an expected FAILURE this row does
+// not exhibit." Enrolling a passing row there would encode a false claim to buy a green.
+//
+// WHAT IS GIVEN UP, STATED SO NOBODY HAS TO INFER IT. Two passing emission witnesses stop running
+// on ordinary required floors: that a two-target produced declaration renders in each target's own
+// order, and that a produced-decl module folds its declarations in order. That coverage is GONE in
+// steady state, not deferred. It is recovered on any change that TOUCHES these identities, which
+// executes them under `ChangedCostDebtVerdictOnly` -- they must PASS, and the 500ms line is
+// observed and published rather than gating -- so debt cannot smuggle an unverified edit to the
+// witnesses it withholds.
+//
+// THE ADDITION IS DECLARED AGAINST THE SHRINK-ONLY DIRECTION RATHER THAN QUIETLY MADE. This
+// contract's stated forward hole is that a NEW or REGRESSED row over 500ms simply refuses. These
+// two are neither new nor regressed: `eval_steps` is unchanged run to run, so nothing about the
+// witnesses moved. What moved is which runner the job landed on. An addition on that ground is
+// the one the direction was never meant to forbid -- the alternative it leaves is a required lane
+// whose verdict is decided by hardware -- and it is enrolled here, at identity grain, counted every
+// run, and rostered as a DESIGN section 4b(3) drop at
+// `gunbc.rung_drop.floor_cost_debt_straddling_produced_decl` rather than resolved by silence.
+//
+// TRIGGER, A CAPABILITY AND NOT A ROSTER ERASURE, AND EITHER ARM RETIRES THE ROW. (a) The
+// produced-decl consumers stop paying to rebuild the rust `TargetModel` per claim -- the measured
+// serve-below-recompute ON THOSE CONSUMERS SPECIFICALLY that `v2.workflow.floor_pure_producer_share`
+// names as its own next trigger -- so the row's own work, not its luck, puts it under the line.
+// (b) The floor qualifies a claim's cost on a measure that IS a stable property of the claim, at
+// which point `floor_cost_claim_qualification_unavailable` retires and these rows are decided by
+// their work rather than their slot. Deleting these two lines, emptying the roster, or shrinking
+// the emission subject the witnesses assert over satisfies NEITHER arm.
+fn floor_cost_debt_straddling_chunk_00() -> List<String> {
+  Cons { head: "v2.test.emit.produced_decl_two_target.produced_decl_module_folds_declarations_in_order", tail: Cons { head: "v2.test.emit.produced_decl_two_target.produced_decl_two_targets_render_own_order", tail: Empty {} } }
+}
+
 // THIS ROW WITHHOLDS REAL COVERAGE IN STEADY STATE. The claim remains authored, with two
 // reversed-order controls and a missing-marker control, but is withheld from ordinary required
 // floors while enrolled here. A change that touches the identity OVERRIDES that withhold: the
@@ -745,10 +822,12 @@ fn floor_cost_debt_proven_chunk_13() -> List<String> {
   Cons { head: "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback", tail: Empty {} }
 }
 
-// THE TWO EVIDENCE CLASSES ARE SEPARATE FUNCTIONS, NOT ONE LIST WITH A NOTE BESIDE IT.
+// THE EVIDENCE CLASSES ARE SEPARATE FUNCTIONS, NOT ONE LIST WITH A NOTE BESIDE IT. Two are
+// described here; the third, STRADDLING, is defined at `floor_cost_debt_straddling_chunk_00`
+// above, beside the rows it holds and the runs it was read from.
 //
-// Both are withheld and both take `DeclinedCostDebt`, because the DISPOSITION answers why a site
-// is not planned and the answer is the same for both: it costs too much to run. What differs is
+// All are withheld and all take `DeclinedCostDebt`, because the DISPOSITION answers why a site
+// is not planned and the answer is the same for each: it costs too much to run. What differs is
 // the EVIDENCE, and review 57258 was right that a single flat roster let a universal claim about
 // proven marginal cost stand over rows where no such cost was ever measured.
 //
@@ -887,9 +966,17 @@ fn floor_cost_debt_censored_roster() -> List<String> {
   list_flat_map(xs: floor_cost_debt_censored_chunks(), f: fn(c) { c })
 }
 
+fn floor_cost_debt_straddling_chunks() -> List<List<String>> {
+  Cons { head: floor_cost_debt_straddling_chunk_00(), tail: Empty {} }
+}
+
+fn floor_cost_debt_straddling_roster() -> List<String> {
+  list_flat_map(xs: floor_cost_debt_straddling_chunks(), f: fn(c) { c })
+}
+
 fn floor_cost_debt_roster() -> List<String> {
   list_flat_map(
-    xs: Cons { head: floor_cost_debt_proven_roster(), tail: Cons { head: floor_cost_debt_censored_roster(), tail: Empty {} } },
+    xs: Cons { head: floor_cost_debt_proven_roster(), tail: Cons { head: floor_cost_debt_censored_roster(), tail: Cons { head: floor_cost_debt_straddling_roster(), tail: Empty {} } } },
     f: fn(c) { c }
   )
 }
@@ -938,6 +1025,10 @@ fn floor_cost_debt_censored_population() -> Int {
   list_length(items: floor_cost_debt_censored_roster())
 }
 
+fn floor_cost_debt_straddling_population() -> Int {
+  list_length(items: floor_cost_debt_straddling_roster())
+}
+
 fn floor_cost_debt_population_report() -> String {
   join(
     [
@@ -945,6 +1036,8 @@ fn floor_cost_debt_population_report() -> String {
       to_string(floor_cost_debt_proven_population()),
       " censored=",
       to_string(floor_cost_debt_censored_population()),
+      " straddling=",
+      to_string(floor_cost_debt_straddling_population()),
       " total=",
       to_string(list_length(items: floor_cost_debt_roster())),
     ],

@@ -633,9 +633,24 @@ fn floor_cost_envelope_check() -> ProcessExit {
 // structurally blind to this population -- pointing this census at it would measure zero over a
 // sample that cannot contain a member, and a zero from a blind sample is the strongest possible
 // misreading. These are runs of `witnesses.yml` whose required floor recorded
-// `completed_over_cost_requirement` at or above one, taken from the same 131-run scan that
-// commissioned this family.
+// `completed_over_cost_requirement` at or above one.
+//
+// THE ROSTER IS AN APPEND SURFACE AND THAT IS THIS CENSUS'S GROWTH PATH, NOT A DEFECT IN IT. The
+// `preemption_reachability` column is NEW, so the older a sampled run is the likelier its artifact
+// predates the column and refuses -- which is why the first sample could answer for only three of
+// its seven runs. Appending runs discovered by a later scan needs no code change and the census
+// strengthens on its own as refused runs accumulate. Two scans have contributed so far: the
+// commissioning scan over 131 runs, and a second over the 90 runs that completed after it, whose
+// three additions all carry the column and so DOUBLE the answerable population.
+//
+// A RUN EARNS ITS PLACE BY ITS FLOOR'S OWN RECEIPT, never by what this census would conclude from
+// it. The admission predicate is `completed_over_cost_requirement >= 1` read off the run, so no
+// row is here because it looked interesting once loaded -- a sample selected by its own analysis
+// output is a view, not a population.
 data floor_cost_crossing_sampled_runs: List<NonEmptyStr> = [
+  "33840420183" as NonEmptyStr,
+  "33839967352" as NonEmptyStr,
+  "33836628401" as NonEmptyStr,
   "33832675896" as NonEmptyStr,
   "33832137832" as NonEmptyStr,
   "33826628566" as NonEmptyStr,
