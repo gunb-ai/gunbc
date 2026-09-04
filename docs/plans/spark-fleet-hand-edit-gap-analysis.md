@@ -129,7 +129,7 @@ plainest form, and the credential should be rotated once the fleet is stable.
 
 ### 7. Runner configuration lives in the environment, and the identity model reads argv
 
-`gunbc.model.choice` keys a serving realization on, among other things, a fixed runtime
+`gunbc.model.ollama_choice` keys a serving realization on, among other things, a fixed runtime
 mode derived from the runner's **argv**. Every runner on this fleet is launched as bare
 `ollama serve` with its entire configuration in `Environment=` lines. So two runners
 differing in context window and slot count — a material difference the selector exists to
