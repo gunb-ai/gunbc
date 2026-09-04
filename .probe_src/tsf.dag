@@ -1,2 +1,0 @@
-module probe
-fn prim_mismatch() -> Int { "not an int" }
