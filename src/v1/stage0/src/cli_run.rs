@@ -20490,6 +20490,7 @@ mod closure_bare_disposition_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {

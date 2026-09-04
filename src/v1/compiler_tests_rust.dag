@@ -969,7 +969,7 @@ fn ct_resource_item_is_not_a_type_item_test() -> String {
     "    #[test]\n",
     "    fn a_resource_item_is_not_read_as_a_type_item() {\n",
     "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
-    "        use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemResource, ModuleItemTypeDeclaration};\n",
+    "        use crate::v1_std_core::ParsedModuleItemKind::\{ModuleItemResource, ModuleItemTypeDeclaration};\n",
     "\n",
     "        // POSITIVE CONTROL: a bare leaf carrying no properties at all is still a type item.\n",
     "        let plain = item_of_kind(\"Symbol\", ModuleItemTypeDeclaration, Vec::new());\n",
