@@ -1,0 +1,362 @@
+module extdeps.network.mikrotik_crs812
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure {
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
+  CpuCoreCount, cpu_core_count, cpu_core_count_value,
+  PowerCordCount, power_cord_count, power_cord_count_value,
+  UsdWholeDollars, usd_whole_dollars, usd_whole_dollars_count,
+  Bandwidth, bandwidth, bandwidth_count,
+  BitWidth, bit_width,
+  Watt, watt,
+  Milliwatt, milliwatt,
+  Hertz, hertz,
+  Volt, volt,
+  Millimeter, millimeter,
+  Celsius, celsius,
+  Gigabyte, gigabyte,
+  Mebibyte, mebibyte,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.network.switch_types { NetworkSwitchCatalogRow, SwitchPortGroup, TrackedGap }
+import extdeps.vendor.mikrotik { mikrotik }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import v2.std.optional { Absent }
+
+// THE CRS812-8DS-2DQ-2DDQ-RM, MIKROTIK'S 400G TOP-OF-RACK / LEAF SWITCH. This is the orderable
+// rack-mount product code (the "RM" suffix); MikroTik markets the family as "CRS812 DDQ".
+// Modelled from three first-party MikroTik documents read 2026-09-03: the product page
+// (crs812_ddq), the RouterOS hardware manual page, and the product datasheet PDF. Every field
+// below is a reading of one of those three, and where two of them disagree the disagreement is
+// carried as two rows rather than smoothed over.
+//
+// WHY THIS MODULE IS ONE SUBJECT, NOT TWO: the port inventory and the platform are properties of
+// one orderable part. A separate orderable accessory (400G DAC, optical transceiver) is a
+// different subject with its own module when it is modelled.
+//
+// PROCUREMENT IS NOT A VENDOR FACT. The operator purchased this switch on eBay (order
+// 22-15092-90152, 2026-09-02); that purchase is a workflow/ops fact whose home is the fleet and
+// procurement layer (product.inventory), not extdeps -- the pattern fleet_physical_inventory
+// states ("Amazon order IDs/URLs are procurement provenance, never asset identity"). The eBay
+// listing is cited nowhere below because it adds no product fact the three first-party documents
+// do not already carry.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "mikrotik.com/product/crs812_ddq"
+  }
+}
+
+data crs812_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manual.mikrotik.com/hardware/crs812-8ds-2dq-2ddq-rm/"
+  }
+}
+
+data crs812_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdn.mikrotik.com/web-assets/product_files/CRS812-8DS-2DQ-2DDQ-RM_251055.pdf"
+  }
+}
+
+// ================= THE SHARED CATALOG ROW =================
+//
+// The port rates below are the vendor's own callouts, and the two Ethernet ports carry a
+// subtlety worth stating: the product-page heading calls them "1G/2.5G/5G/10G" ports but the
+// parenthetical -- echoed by the manual and the datasheet -- says supported rates are
+// 10M/100M/1G/10G. The supported set is modelled, and the heading's 2.5G/5G is recorded as a
+// vendor-side inconsistency (the heading calls 2.5G/5G rates the port does not support,
+// recorded in crs812_open_gaps). The QSFP56-DD and QSFP56 port
+// rates are the datasheet's "40G/50G/100G/200G/400G" and "40G/50G/100G/200G" callouts.
+data crs812_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogRow {
+  model: "CRS812-8DS-2DQ-2DDQ-RM",
+  manufacturer: mikrotik,
+  port_inventory: [
+    SwitchPortGroup {
+      connector: "RJ45",
+      port_count: 2,
+      data_rates: [
+        bandwidth(10000000),
+        bandwidth(100000000),
+        bandwidth(1000000000),
+        bandwidth(10000000000),
+      ],
+    },
+    SwitchPortGroup {
+      connector: "SFP56",
+      port_count: 8,
+      data_rates: [
+        bandwidth(1000000000),
+        bandwidth(2500000000),
+        bandwidth(5000000000),
+        bandwidth(10000000000),
+        bandwidth(25000000000),
+        bandwidth(50000000000),
+      ],
+    },
+    SwitchPortGroup {
+      connector: "QSFP56",
+      port_count: 2,
+      data_rates: [
+        bandwidth(40000000000),
+        bandwidth(50000000000),
+        bandwidth(100000000000),
+        bandwidth(200000000000),
+      ],
+    },
+    SwitchPortGroup {
+      connector: "QSFP56-DD",
+      port_count: 2,
+      data_rates: [
+        bandwidth(40000000000),
+        bandwidth(50000000000),
+        bandwidth(100000000000),
+        bandwidth(200000000000),
+        bandwidth(400000000000),
+      ],
+    },
+  ],
+  fanless: false,
+  switching_capacity: Absent,
+  max_power_draw: milliwatt(134000),
+}
+
+// MIKROTIK DOES NOT PUBLISH A SWITCHING CAPACITY for this model, on the product page or the
+// datasheet. `Absent` is the honest row; a derived figure would be a fabricated fact, and the
+// witness asserts the absence.
+
+// ================= PLATFORM =================
+
+type Crs812PlatformFacts {
+  cpu_model: NonEmptyStr
+  cpu_architecture: NonEmptyStr
+  cpu_core_count: CpuCoreCount
+  cpu_thread_count: HardwareThreadCount
+  cpu_nominal_frequency: Hertz
+  switch_chip_model: NonEmptyStr
+  ram: Gigabyte
+  ram_type: NonEmptyStr
+  storage: Mebibyte
+  storage_type: NonEmptyStr
+  operating_system: NonEmptyStr
+  routeros_license_level: Int
+}
+
+data crs812_platform: Crs812PlatformFacts = Crs812PlatformFacts {
+  cpu_model: "AL52400",
+  cpu_architecture: "ARM 64bit",
+  cpu_core_count: cpu_core_count(4),
+  cpu_thread_count: hardware_thread_count(4),
+  cpu_nominal_frequency: hertz(2000000000),
+  switch_chip_model: "98DX7335",
+  ram: gigabyte(4),
+  ram_type: "DDR4",
+  storage: mebibyte(512),
+  storage_type: "NAND",
+  operating_system: "RouterOS v7",
+  routeros_license_level: 6,
+}
+
+// ================= POWER =================
+
+// The product page and the manual agree on the powering envelope: two AC input slots, 100-240 V,
+// 50-60 Hz, dual-redundant hot-swap PSUs. The manual states the PSU rating (250 W) and the input
+// current (7 A max) that the product page leaves out. "Without attachments" is the product page's
+// own figure -- the manual restates it as "maximum power consumption without attachments is 81 W".
+type Crs812PowerFacts {
+  ac_input_count: Int
+  ac_input_range_min: Volt
+  ac_input_range_max: Volt
+  input_frequency: NonEmptyStr
+  psu_slot_count: Int
+  psu_rating: Watt
+  psu_hot_swap: Bool
+  max_power_draw: Watt
+  max_power_draw_without_attachments: Watt
+}
+
+data crs812_power: Crs812PowerFacts = Crs812PowerFacts {
+  ac_input_count: 2,
+  ac_input_range_min: volt(100),
+  ac_input_range_max: volt(240),
+  input_frequency: "50-60 Hz",
+  psu_slot_count: 2,
+  psu_rating: watt(250),
+  psu_hot_swap: true,
+  max_power_draw: watt(134),
+  max_power_draw_without_attachments: watt(81),
+}
+
+// ================= COOLING =================
+
+type Crs812CoolingFacts {
+  fan_count: Int
+  fan_hot_swap: Bool
+}
+
+data crs812_cooling: Crs812CoolingFacts = Crs812CoolingFacts {
+  fan_count: 4,
+  fan_hot_swap: true,
+}
+
+// ================= CHASSIS =================
+
+// THE DEPTH IS WHERE THE TWO FIRST-PARTY DOCUMENTS DISAGREE, AND THE DISAGREEMENT IS CARRIED
+// RATHER THAN RESOLVED. The RouterOS hardware manual reads "443 x 156 x 44 mm"; the product
+// datasheet PDF reads "443 x 268 x 44 mm". 156 mm is a plausible bare-chassis depth and 268 mm
+// a plausible rack-mount depth with ears and PSUs, but neither document says which it measured,
+// so neither figure is promoted to the canonical row and a reader sees both readings with their
+// sources. The length and height agree across both documents.
+type Crs812Dimensions {
+  length_mm: Millimeter
+  depth_mm: Millimeter
+  height_mm: Millimeter
+  source: ExternalAuthority
+}
+
+data crs812_dimensions_manual: Crs812Dimensions = Crs812Dimensions {
+  length_mm: millimeter(443),
+  depth_mm: millimeter(156),
+  height_mm: millimeter(44),
+  source: crs812_manual_authority,
+}
+
+data crs812_dimensions_datasheet: Crs812Dimensions = Crs812Dimensions {
+  length_mm: millimeter(443),
+  depth_mm: millimeter(268),
+  height_mm: millimeter(44),
+  source: crs812_datasheet_authority,
+}
+
+// MTBF is a duration measured in hours. No Hour type exists at the Scale level (Minute uses the
+// Sixty prefix; Hour would need Sixty*Sixty = 3600, which no existing Scale arm provides).
+// A correct Hour type requires adding a new Scale arm, which is a load-bearing std change and
+// its own PR. The figure is therefore carried as a bare Int with the unit in the field name
+// (mtbf_hours). Same class as feature:extdeps-foot-length-scale in extdeps.network.arista_7050s_52.
+// See crs812_tracked_gaps below for the dissolution condition.
+type Crs812EnvironmentalFacts {
+  operating_temp_min: Celsius
+  operating_temp_max: Celsius
+  mtbf_hours: Int
+  certification: List<NonEmptyStr>
+  ip_rating: NonEmptyStr
+}
+
+data crs812_environmental: Crs812EnvironmentalFacts = Crs812EnvironmentalFacts {
+  operating_temp_min: celsius(-10),
+  operating_temp_max: celsius(50),
+  mtbf_hours: 200000,
+  certification: ["CE", "EAC", "ROHS"],
+  ip_rating: "IP20",
+}
+
+// ================= CONSOLE AND BREAKOUT =================
+
+// The manual specifies the serial console exactly: RJ45, 115200 bit/s, 8 data bits, 1 stop bit,
+// no parity. The breakout capability is the datasheet's sentence "QSFP56/QSFP-DD ports also
+// support break-out modes to 1G/2.5G/5G/10G/25G/50G"; the rates are carried as a typed list.
+// STOP BITS ARE A CLOSED SET {1, 1.5, 2}; the coproduct below prevents out-of-range values.
+type StopBits
+  = OneStopBit
+  | OneAndHalfStopBits
+  | TwoStopBits
+
+type Crs812ConsoleFacts {
+  connector: NonEmptyStr
+  data_rate: Bandwidth
+  data_bits: BitWidth
+  stop_bits: StopBits
+  parity: NonEmptyStr
+}
+
+data crs812_console: Crs812ConsoleFacts = Crs812ConsoleFacts {
+  connector: "RJ45",
+  data_rate: bandwidth(115200),
+  data_bits: bit_width(8),
+  stop_bits: OneStopBit,
+  parity: "none",
+}
+
+data crs812_qsfp_breakout_rates: List<Bandwidth> = [
+  bandwidth(1000000000),
+  bandwidth(2500000000),
+  bandwidth(5000000000),
+  bandwidth(10000000000),
+  bandwidth(25000000000),
+  bandwidth(50000000000),
+]
+
+// ================= PRICING, INCLUDED PARTS, ACCESSORIES =================
+
+// The product page states a suggested price of $1,295.00. The operator's eBay purchase price
+// ($1,409.93) is procurement, not a vendor fact, and is deliberately not modelled here.
+data crs812_suggested_price: UsdWholeDollars = usd_whole_dollars(1295)
+
+type Crs812IncludedParts {
+  power_cords: PowerCordCount
+  rackmount_ears: Bool
+  rackmount_rear_support_ears: Bool
+  fastening_set: Bool
+}
+
+data crs812_included_parts: Crs812IncludedParts = Crs812IncludedParts {
+  power_cords: power_cord_count(2),
+  rackmount_ears: true,
+  rackmount_rear_support_ears: true,
+  fastening_set: true,
+}
+
+type Crs812Accessory {
+  part_number: NonEmptyStr
+  description: NonEmptyStr
+}
+
+data crs812_accessories: List<Crs812Accessory> = [
+  Crs812Accessory { part_number: "DDQ+DA0001", description: "400G DAC, 1 m" },
+  Crs812Accessory { part_number: "DDQ+DA00031", description: "400G DAC, 3 m" },
+  Crs812Accessory { part_number: "DDQ+85MP01D", description: "400G 100 m optical transceiver" },
+]
+
+// ================= OPEN GAPS =================
+
+data crs812_tracked_gaps: List<TrackedGap> = [
+  TrackedGap {
+    feature_tag: "extdeps-hour-scale",
+    dissolves_on: "std.measure adds a Scale arm for hour (Sixty × Sixty, or a dedicated Hour marker in time_scale_factor_seconds)",
+    note: "mtbf_hours as bare Int with unit in field name. Same gate class as extdeps-foot-length-scale in extdeps.network.arista_7050s_52.",
+  },
+]
+
+data crs812_open_gaps: List<String> = [
+  "The product-page spec table heads the two Ethernet ports '1G/2.5G/5G/10G Ethernet ports' while its own parenthetical, the manual and the datasheet all say the supported rates are 10M/100M/1G/10G. The supported set is modelled; the heading's 2.5G/5G claim is unmodelled vendor copy that contradicts the parenthetical.",
+  "No first-party MikroTik document read for this model publishes a switching capacity or forwarding rate. The shared catalog row carries switching_capacity: Absent, and no derived figure is authored.",
+  "The manual and the datasheet disagree on the chassis depth: 156 mm vs 268 mm. Both readings are carried with their sources; neither is promoted. A measurement of the delivered unit would settle it.",
+]
+
+fn crs812_gap_count() -> Int {
+  count(crs812_open_gaps)
+}
+
+fn crs812_tracked_gap_count() -> Int {
+  count(crs812_tracked_gaps)
+}
+
+// ================= MODEL SCOPE =================
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.network.mikrotik_crs812",
+      decl_name: "crs812_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [crs812_manual_authority, crs812_datasheet_authority]
+}

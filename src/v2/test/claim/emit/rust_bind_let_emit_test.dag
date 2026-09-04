@@ -8,9 +8,9 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_lex_rule,
-  rust_target_model_bundle_core,
   rust_fn_add_lex_rules
 }
+import v2.extdeps.languages.rust_test { rust_bind_let_target_model_bundle_core }
 import v2.std.algebra { list_append }
 import v2.std.collection {
   Map,
@@ -83,7 +83,7 @@ fn rust_bind_let_binding_spellings() -> Map<Symbol, String> {
 fn rust_bind_let_target_model() -> TargetModel {
   TargetModel {
     produced_decl_support: ProducedDeclUnwired,
-    bundle: rust_target_model_bundle_core(),
+    bundle: rust_bind_let_target_model_bundle_core(),
     lex: rust_bind_let_lex(),
     binding_spellings: rust_bind_let_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,

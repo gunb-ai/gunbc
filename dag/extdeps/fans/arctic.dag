@@ -1,9 +1,12 @@
 module extdeps.fans.arctic
 
 import std.types { List }
-import std.measure { millimeter, percent, rpm }
+import std.measure { micrometer, millimeter, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
+  FanMountingPattern,
+  fan_mounting_pattern,
+  ConventionUnverified,
   FanCatalogRow,
   FanSpeedRangePublished,
   FanStopsBelowPwm,
@@ -22,7 +25,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // THE PUBLISHED FIGURES ARE A SPEED RANGE AND NOTHING ELSE, AND THAT IS THE WHOLE ROW.
 //
-// The listing gives 200-3000 rpm, 4-pin PWM, 12 V, 1.08 W, an 80 x 80 x 25 mm frame, and a noise
+// The listing gives 200-3000 rpm, 4-pin PWM, 12 V, 1.08 W, an 80 x 80 x 25 mm frame (now declared
+// as arctic_p8_mounting_pattern below rather than left in this sentence), and a noise
 // figure of 0.3 SONES. Two duty points are therefore authorable - the bottom and the top of the
 // controllable range - and neither carries a sound pressure level.
 //
@@ -86,3 +90,19 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
+
+// THE MOUNTING PATTERN, LIFTED OUT OF THE ANNOTATION ABOVE INTO A ROW A CONSUMER CAN READ.
+//
+// The frame edge is the listing's own 80 mm. The 71.5 mm pitch and 4.4 mm clearance are the 80 mm
+// axial convention and are NOT from the listing, which is why the evidence arm says convention
+// rather than relayed -- the grades differ and collapsing them would report an unverified number as
+// a vendor statement. The first printed fan mount is the discriminating test: the fan bolts up or it
+// does not, and a caliper on a held fan retires the row outright.
+data arctic_p8_mounting_pattern: FanMountingPattern = fan_mounting_pattern(
+  frame_edge: micrometer(count: 80000),
+  hole_pitch: micrometer(count: 71500),
+  hole_clearance_diameter: micrometer(count: 4400),
+  evidence: ConventionUnverified {
+    convention: "80 mm axial fan square mounting pattern, unverified against a held part",
+  },
+)
