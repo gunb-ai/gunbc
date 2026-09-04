@@ -77,6 +77,38 @@ type ActionsRunCoordinate
   | ActionsRunCoordinateMissing { variable: String }
   | ActionsRunCoordinateEmpty { variable: String }
 
+// THE THREE OBSERVATIONS TOGETHER, BECAUSE TWO CONSUMERS ALREADY CARRIED THEM AS ONE FACT AND
+// SPELLED IT TWICE. `gunbc.emit_subject_clean_frontier` held them as three loose fields on its
+// observation context; the floor's terminal ledger was about to declare a second triple beside it.
+// One concept named once, per DESIGN section 2 -- net concepts must not grow by re-invention.
+//
+// IT IS NAMED FOR WHAT IT OBSERVES AND NOT FOR A COORDINATE, DELIBERATELY. An earlier draft called
+// this `ActionsRunLocation`, which would have put RUNNER_NAME inside a type whose name asserts it
+// is part of the run coordinate -- contradicting, three declarations below its own comment, the
+// rule stated above that RUNNER_NAME IS NOT A RUN COORDINATE. A type name is a claim about what
+// its fields mean, and that claim would have licensed exactly the machine-flavored inference the
+// separation exists to prevent. The run identity locates an EXECUTION; the runner names a MACHINE.
+//
+// THE RUNNER IS AN OPAQUE IDENTITY AND NOTHING MAY BE DERIVED FROM ITS SPELLING. A host family is
+// not recoverable from a slot name by taking a prefix: `gunbc.build_cache_endpoint_observe` is the
+// one place in this repository that decomposes a runner unit name, and it parses only an INDEX
+// while taking the host from a CARRIED fact, refusing to `OwnerContextUndecided` rather than
+// fabricating one. This type carries no accessor that splits the runner, and a host-family concept,
+// if one is ever needed, is a separately modeled fact with its own evidence.
+//
+// ONE SHAPE, TWO POLICIES, AND THE RULE THAT DECIDES WHICH IS LIFETIME. Consumers legitimately
+// differ on what to do about a partial observation, and the difference is not preference. A
+// MEASUREMENT CONTEXT is consumed immediately by the thing that produced it, so a partial
+// environment merely degrades a reading already in hand and rendering "UNSET:GITHUB_RUN_ID" keeps
+// the population alive. A CITATION is consumed later by someone else, so a partial one rots
+// silently at a distance and cannot be checked at the point of use -- it must refuse instead. Both
+// are correct over this one shape, and neither should be "fixed" into the other.
+type ActionsRunEnvironmentObservations {
+  run_identity: ActionsRunCoordinate
+  run_attempt: ActionsRunCoordinate
+  runner: ActionsRunCoordinate
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
