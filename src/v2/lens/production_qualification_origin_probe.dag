@@ -25,6 +25,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.fn_index {
   FnArrowDecl,
   atom_identities_in_node,
+  atom_identities_in_subtree,
   fn_arrow_decl_facts_live
 }
 import v2.std.grammar { node_atom_identity_optional }
@@ -289,7 +290,10 @@ fn decl_contains_callee(decl: FnArrowDecl, callee: String) -> Bool {
 }
 
 fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
-  node_contains_atom_text(node: decl.output, wanted: atom)
+  any(
+    xs: atom_identities_in_subtree(node: decl.output),
+    predicate: fn(sym) { string_eq(a: symbol_lexeme(sym: sym), b: atom) }
+  )
 }
 
 fn decl_has_qualifying_mint_callee(decl: FnArrowDecl) -> Bool {
@@ -543,6 +547,34 @@ fn structural_red_control_planted_decl() -> FnArrowDecl {
       children: [
         Edge { label: Positional, target: probe_mint_callee_atom_node() },
         Edge { label: Positional, target: probe_fixture_tree_atom_node() }
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    params: []
+  }
+}
+
+// A declaration root is not a node-walk step: the marker in a marshalled block body can sit below
+// an immediate statement record. This control keeps decl_contains_atom on the whole-subtree reader;
+// atom_identities_in_node sees the mint at depth one but misses this fixture marker at depth two.
+fn nested_fixture_marker_planted_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "synthetic.production_qualification_origin_probe.nested_fixture_marker",
+    name: "nested_fixture_marker_planted_decl",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: probe_mint_callee_atom_node() },
+        Edge {
+          label: Positional,
+          target: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge { label: Positional, target: probe_fixture_tree_atom_node() }
+            ],
+            occurrence_id: OccurrenceSynthetic
+          }
+        }
       ],
       occurrence_id: OccurrenceSynthetic
     },
