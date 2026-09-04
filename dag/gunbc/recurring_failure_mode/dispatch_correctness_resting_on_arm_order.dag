@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.dispatch_correctness_resting_on_arm_order
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data dispatch_correctness_resting_on_arm_order: RecurringFailureMode = RecurringFailureMode {
+  identity: "dispatch_correctness_resting_on_arm_order" as NonEmptyStr,
+
+  receipts: [
+    "Two predicates in one ordered dispatch chain both answer TRUE for the same item, and the wrong answer is suppressed only because the right arm is tested FIRST. Nothing in either predicate excludes the other's subject, so the chain is correct by ACCIDENT OF ORDER rather than by construction. The invalid state -- an item satisfying two mutually exclusive classifications -- remains fully writable, and the guard against it is a line number.",
+
+    "RECEIPT, 2026-09-04, gunbc#10350, in v1.compiler.emit_core_support. is_resource_def_item claims any item with no transport, no children, no body and AT LEAST ONE PROPERTY. That is the same property-COUNTING shape v1.compiler.parse already had to repair: `type X sole_constructor { .. }` carries exactly one property, minted by parsed_sole_constructor_properties as a TYPE MODIFIER, so counting properties swallowed 202 sole-constructor types across 100 modules into the resource bucket. The parse side was repaired by asking WHICH property rather than HOW MANY; the emit side still counts.",
+
+    "IT IS DORMANT AND THAT IS EXACTLY WHY IT IS DANGEROUS. In all three emitters -- v1.compiler.emit_python, v1.compiler.emit_go, v1.compiler.emit_rust -- is_type_decl_item is tested BEFORE is_resource_def_item, so a sole-constructor type is claimed by the type arm and never reaches the resource arm. The defect therefore produces no wrong output today, files no diagnostic, and appears in no census. It is not prevented; it is UNREACHED.",
+
+    "THE DISTINGUISHING FACT, and it is the whole reason this row exists: the mask is ARM ORDER and nothing else. Reordering two predicate arms is the archetypal harmless-looking edit -- a reviewer reads it as style, a formatter or a refactor could motivate it, and no test names the ordering as load-bearing. That single edit would arm a misclassification over 202 items across 100 modules, silently, with the emitters producing resource output for ordinary types. A correctness property whose only guard is the sequence of else-if arms is one careless tidy-up away from firing.",
+
+    "THIS IS WHY THE ACCOMPANYING REPAIR DID NOT REORDER. The census refusal that surfaced this class -- CensusUnavailable { cause: DeclarationDomainDisagrees } on `resource Network` and `resource AuthContext` -- could have been made to disappear by moving the resource arm ahead of the type arms. That would have ARMED this defect while greening the instrument, which is the fail-open trade in its purest form: a passing signal bought by widening a latent wrong answer. The repair instead excluded resource items from the type predicates by asking v1.compiler.parse parsed_item_carries_resource_entries, the single authority that already decides what a resource item is, so the two readers agree by DERIVATION rather than by sequence.",
+
+    "WHAT IS NOT CLAIMED, because the harm here is potential and stating it as realized would be the same inflation this ledger exists to catch. No wrong output has been observed from is_resource_def_item. The 202-item figure is the count v1.compiler.parse's own note records for the population that WOULD be claimed, measured when the parse-side instance was live, not a count of items currently miscompiled. The claim is precisely: the invalid state is writable, it is currently unreached, and what keeps it unreached is not a property of either predicate.",
+
+    "RECOGNITION RULE: when two arms of an ordered dispatch can both answer TRUE for one input, the chain does not classify -- it PRIORITIZES, and the priority is invisible at both definition sites. Ask of any else-if chain whether reordering it would change an answer; if yes, the arms are not a partition and the ordering is load-bearing logic living in syntax. The tell that generalises: a predicate whose correctness argument mentions where it appears rather than what it tests.",
+
+    "CEILING AND NEXT-RUNG TRIGGER. The class is decidable and its ceiling is STRUCTURALLY IMPOSSIBLE, DESIGN section 4b rung 4: an item's kind is a closed variant carried positively on the item, so dispatch is a total match over that kind and two arms CANNOT both claim one item -- the overlapping state has no constructor. Today the class sits at MITIGATABLE: the wrong answer is reachable in principle and is contained only by the order of an if-chain, which is not a mechanism that executes a check. The NEXT-RUNG TRIGGER, naming the capability rather than an artifact, is: A POSITIVE ITEM KIND CARRIED ON THE EMIT SIDE, from which every emitter's item dispatch is derived as an exhaustive match, so that classification cannot be order-sensitive and a kind belonging to no arm fails to compile. The trigger is NOT the repair that accompanies this row -- that repair removes one overlapping PAIR and leaves the chain a priority list. v1.compiler.parse's note reaches the same place from the other side, calling a positive item kind 'the third receipt' after two shape-predicate defects it had to fix; this is the fourth, and it is on the reader that note deliberately did not touch.",
+  ],
+
+  evidence: [],
+}

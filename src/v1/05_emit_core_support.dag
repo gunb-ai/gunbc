@@ -7,6 +7,7 @@ import v1.std.core {
   Connective, NoConnective
 }
 
+import v1.compiler.parse { parsed_item_carries_resource_entries }
 import v1.compiler.artifact { RenderTarget }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
@@ -339,12 +340,37 @@ fn is_bare_leaf_item(item: Node) -> Bool {
   item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
 }
 
+// A RESOURCE ITEM IS NOT A TYPE ITEM, AND THIS SIDE IS THE HALF THAT WAS LEFT UNREPAIRED.
+// v1.compiler.parse parsed_module_item_kind gained a resource arm and dropped the corpus-wide
+// divergence from 202 items across 100 modules to two; its note ends by saying the emit-side shape
+// predicates are a different authority and deliberately not repaired there. This is that repair.
+// Until it landed, `resource Network` and `resource AuthContext` -- the two resources declaring no
+// capabilities, so no children, no body, no params and no connective -- satisfied is_bare_leaf_item
+// and were read here as TYPE DECLARATIONS while the parser correctly read them as resources. The
+// disagreement is what made gunbc.type_reference_decl_file_occurrence_census refuse with
+// CensusUnavailable { cause: DeclarationDomainDisagrees }, and the two readers previously AGREED
+// they were types, which is why the population looked clean before the parse arm existed.
+//
+// THE EXCLUSION DERIVES RATHER THAN RE-SPELLING. It asks the same single authority the parser asks
+// -- parsed_item_carries_resource_entries -- so "what a resource item is" has ONE definition and
+// these predicates are two consumers of it, not a second place to keep in sync. Spelling the shape
+// again here (properties present, children absent) is what produced the divergence being repaired.
+//
+// IT IS NOT PLACED IN is_bare_leaf_item, WHICH WOULD HAVE BEEN THE SHORTER EDIT. That predicate is
+// a statement about SHAPE and a capability-less resource genuinely is a bare leaf; it also has a
+// consumer outside these two arms (v1.compiler.emit_rust, and trait_derive_emit's alias-hop
+// reasoning depends on its params-count meaning), so narrowing it would have silently changed
+// alias hopping rather than resource classification.
 fn is_type_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
+  is_bare_leaf_item(item: item)
+  && !parsed_item_carries_resource_entries(node: item)
+  && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
 }
 
 fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
+  (is_bare_leaf_item(item: item)
+    && !parsed_item_carries_resource_entries(node: item)
+    && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
   || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
 }
 
