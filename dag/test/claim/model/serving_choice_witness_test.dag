@@ -15,11 +15,11 @@ import std.content_hash {
 import extdeps.ollama.binary_release {
   ollama_v0_32_9_release, ollama_v0_32_9_jetpack5_release, ollama_v0_32_9_jetpack6_release,
 }
-import gunbc.model.choice {
+import gunbc.model.ollama_choice {
   PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
   FreshPrefillObservation, prefill_rate_at_floor,
-  ServingRealizationIdentity, serving_realization_equal, serving_realization_identity,
-  ServingRuntimeIdentity, serving_runtime_identity_for_release,
+  OllamaServingRealizationIdentity, serving_realization_equal, serving_realization_identity,
+  OllamaServingRuntimeIdentity, serving_runtime_identity_for_release,
   serving_runtime_identity_from_observation,
   ObservedOllamaLaunchConfiguration, observed_ollama_launch_configuration,
   ExactRuntimeConfigurationIdentity, exact_runtime_configuration_identity,
@@ -37,13 +37,13 @@ import gunbc.model.choice {
   RealizationComparison, RealizationSame, RealizationDifferent, RealizationIncomparable,
   compare_serving_realization, realization_comparison_fold,
   FreshSessionPrefill, WarmContinuation, serving_regime_wire,
-  QuantizedCandidate, ServingConstraints,
-  CandidateVerdict, ServingCandidateAdmissible, ServingCandidateRejected,
+  OllamaQuantizedCandidate, OllamaServingConstraints,
+  OllamaCandidateVerdict, ServingCandidateAdmissible, ServingCandidateRejected,
   RejectionAxis, DoesNotFitMemory, ContextBelowFloor, PrefillBelowFloor,
-  ServingChoice, ChoseCandidate, NoCandidateAdmissible, SelectionUnanswerable,
+  OllamaServingChoice, ChoseCandidate, NoCandidateAdmissible, SelectionUnanswerable,
   UnanswerableCause, UnresolvedCandidateCouldWin, CrossReleaseQualityOrderAbsent, QualityRankTie,
   ServingCandidateUnanswerable, MissingFact, MemoryFitUnobservedAtConfiguration,
-  evaluate_candidate, choose_serving_candidate, verdict_is_admissible, verdict_is_unanswerable,
+  qualify_ollama_candidate, choose_ollama_serving_candidate, verdict_is_admissible, verdict_is_unanswerable,
 }
 
 // THE FIXTURE IS MEASURED, not invented. Every number here was read off the running nodes or
@@ -59,14 +59,14 @@ import gunbc.model.choice {
 // lengths of 512, so a token costs 43 * 1 * (512+512) * 2 = 88,064 bytes." That number is DERIVED
 // from architecture and was labelled measured, in the fixture for a module whose subject is refusing
 // exactly that substitution. Loading the build and reading it back falsified both the constant and
-// the linear form it was multiplied through (see gunbc.model.choice OllamaRunnerMemoryObservation).
+// the linear form it was multiplied through (see gunbc.model.ollama_choice OllamaRunnerMemoryObservation).
 //
 // Every footprint below is now a reading. Re-derive any of them by loading the build at an explicit
 // num_ctx and reading `size_vram` back from the Ollama /api/ps surface on the named node; that
 // instrument, not any number transcribed here, is the authority.
 // THE NODE THE OBSERVATIONS WERE TAKEN ON. A NodeCapacity carrier stood here, with the vendor
 // nominal, the kernel-visible total and a declared runtime overhead. It is gone with the comparison
-// that consumed it -- see gunbc.model.choice. Fit is now established by whether a configuration
+// that consumed it -- see gunbc.model.ollama_choice. Fit is now established by whether a configuration
 // LOADED on a named node, so what the selector needs from the host is its identity and not its
 // arithmetic.
 data serving_node: NonEmptyStr = "spark-a3ee" as NonEmptyStr
@@ -84,7 +84,7 @@ data ps_instrument: NonEmptyStr = "/api/ps size and size_vram after load at expl
 // `serving_runtime_identity_for_release` is total because the release row is a closed authority; the
 // observation-side mint beside it is the one that can come back Absent, and w_an_unknown_runtime_
 // asset_has_no_identity below holds it to that.
-data ollama_runtime: ServingRuntimeIdentity = serving_runtime_identity_for_release(rel: ollama_v0_32_9_release)
+data ollama_runtime: OllamaServingRuntimeIdentity = serving_runtime_identity_for_release(rel: ollama_v0_32_9_release)
 
 // THE MINTS ARE PARTIAL NOW, SO THE FIXTURE HAS TO SAY WHAT AN UNADMITTED READING MEANS.
 //
@@ -128,8 +128,8 @@ fn realization(
   release_id: ReleaseIdentity,
   quant: NonEmptyStr,
   artifact: ContentHash,
-  runtime: ServingRuntimeIdentity,
-) -> ServingRealizationIdentity {
+  runtime: OllamaServingRuntimeIdentity,
+) -> OllamaServingRealizationIdentity {
   serving_realization_identity(
     release_id: release_id,
     quant_label: quant,
@@ -188,11 +188,11 @@ type FixtureBuild {
   release_id: ReleaseIdentity
   quant: NonEmptyStr
   artifact: ContentHash
-  runtime: ServingRuntimeIdentity
+  runtime: OllamaServingRuntimeIdentity
   configuration: ObservedOllamaLaunchConfiguration
 }
 
-fn realization_of(b: FixtureBuild) -> ServingRealizationIdentity {
+fn realization_of(b: FixtureBuild) -> OllamaServingRealizationIdentity {
   serving_realization_identity(
     release_id: b.release_id, quant_label: b.quant, artifact_digest: b.artifact,
     runtime: b.runtime)
@@ -289,16 +289,16 @@ data b_fixture_high: FixtureBuild = fixture_build(quant: "HIGH" as NonEmptyStr)
 data b_tied_a: FixtureBuild = fixture_build(quant: "TIED-A" as NonEmptyStr)
 data b_tied_b: FixtureBuild = fixture_build(quant: "TIED-B" as NonEmptyStr)
 
-data r_iq2_xxs: ServingRealizationIdentity = realization_of(b: b_iq2_xxs)
-data r_iq3_s: ServingRealizationIdentity = realization_of(b: b_iq3_s)
-data r_unmeasured: ServingRealizationIdentity = realization_of(b: b_unmeasured)
-data r_qwen: ServingRealizationIdentity = realization_of(b: b_qwen)
-data r_fixture_low: ServingRealizationIdentity = realization_of(b: b_fixture_low)
-data r_fixture_high: ServingRealizationIdentity = realization_of(b: b_fixture_high)
-data r_tied_a: ServingRealizationIdentity = realization_of(b: b_tied_a)
-data r_tied_b: ServingRealizationIdentity = realization_of(b: b_tied_b)
+data r_iq2_xxs: OllamaServingRealizationIdentity = realization_of(b: b_iq2_xxs)
+data r_iq3_s: OllamaServingRealizationIdentity = realization_of(b: b_iq3_s)
+data r_unmeasured: OllamaServingRealizationIdentity = realization_of(b: b_unmeasured)
+data r_qwen: OllamaServingRealizationIdentity = realization_of(b: b_qwen)
+data r_fixture_low: OllamaServingRealizationIdentity = realization_of(b: b_fixture_low)
+data r_fixture_high: OllamaServingRealizationIdentity = realization_of(b: b_fixture_high)
+data r_tied_a: OllamaServingRealizationIdentity = realization_of(b: b_tied_a)
+data r_tied_b: OllamaServingRealizationIdentity = realization_of(b: b_tied_b)
 
-fn verified_at(r: ServingRealizationIdentity, depth: Nat) -> SemanticContextEvidence? {
+fn verified_at(r: OllamaServingRealizationIdentity, depth: Nat) -> SemanticContextEvidence? {
   Present { value: SemanticContextEvidence {
     realization: r,
     verified_to: token_count(count: depth),
@@ -308,7 +308,7 @@ fn verified_at(r: ServingRealizationIdentity, depth: Nat) -> SemanticContextEvid
 // The two builds actually installed. Quality rank is ordinal WITHIN this identity: 3-bit outranks
 // 2-bit. It says nothing about any other model, which is why cross-release quality never enters
 // this function as a comparable number.
-data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
+data build_iq2_xxs: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_iq2_xxs,
   quality_rank: 2,
   declared_context: token_count(count: 1048576),
@@ -326,7 +326,7 @@ data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
   ]),
 }
 
-data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
+data build_iq3_s: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_iq3_s,
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
@@ -338,13 +338,13 @@ data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
   ]),
 }
 
-fn installed() -> List<QuantizedCandidate> {
+fn installed() -> List<OllamaQuantizedCandidate> {
   [build_iq2_xxs, build_iq3_s]
 }
 
 // The operator's stated floor: 400k of context, one hot session, no prefill floor asserted (that
 // axis is a known cost rather than a refusal threshold today).
-data floor_400k: ServingConstraints = ServingConstraints {
+data floor_400k: OllamaServingConstraints = OllamaServingConstraints {
   context_floor: token_count(count: 400000),
   hot_sessions: 1,
   prefill_floor: tokens_per_second(count: 0),
@@ -354,7 +354,7 @@ data floor_400k: ServingConstraints = ServingConstraints {
 
 // The same floor at four concurrent sessions, so one candidate can be asked the same memory
 // question at two points on the concurrency axis.
-data floor_400k_four_sessions: ServingConstraints = ServingConstraints {
+data floor_400k_four_sessions: OllamaServingConstraints = OllamaServingConstraints {
   context_floor: token_count(count: 400000),
   hot_sessions: 4,
   prefill_floor: tokens_per_second(count: 0),
@@ -362,7 +362,7 @@ data floor_400k_four_sessions: ServingConstraints = ServingConstraints {
   configuration: serving_configuration,
 }
 
-data floor_8k: ServingConstraints = ServingConstraints {
+data floor_8k: OllamaServingConstraints = OllamaServingConstraints {
   context_floor: token_count(count: 8192),
   hot_sessions: 1,
   prefill_floor: tokens_per_second(count: 0),
@@ -370,7 +370,7 @@ data floor_8k: ServingConstraints = ServingConstraints {
   configuration: serving_configuration,
 }
 
-fn chosen_label(choice: ServingChoice) -> String {
+fn chosen_label(choice: OllamaServingChoice) -> String {
   match choice {
     SelectionUnanswerable { cause: _, evaluations: _ } => "unanswerable"
     NoCandidateAdmissible { rejections: _ } => "none"
@@ -387,7 +387,7 @@ fn chosen_label(choice: ServingChoice) -> String {
 
 // THE CAPACITY-GRAINS WITNESS STOOD HERE, asserting that nominal, kernel-visible and allocatable
 // are three different quantities and that only kernel-visible is spendable. It is deleted with its
-// subject: firmware_carveout and allocatable left gunbc.model.choice when the memory arm stopped
+// subject: firmware_carveout and allocatable left gunbc.model.ollama_choice when the memory arm stopped
 // subtracting a runner buffer figure from an OS memory total. The distinction it defended is real
 // and already cost one wrong decision, so it belongs to whatever authority owns node capacity --
 // but a witness whose functions no longer exist in the module under test is not evidence, and
@@ -408,7 +408,7 @@ fn chosen_label(choice: ServingChoice) -> String {
 // and no prefill observation, so it is UNANSWERABLE on semantic context. Unknown is not qualified,
 // exactly as unknown is not rejected.
 test fn w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved() -> Bool {
-  match evaluate_candidate(candidate: build_iq3_s, node: serving_node, constraints: floor_400k) {
+  match qualify_ollama_candidate(candidate: build_iq3_s, node: serving_node, constraints: floor_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
         SemanticContextUnverifiedAtFloor { floor: f, declared: d } =>
@@ -428,7 +428,7 @@ test fn w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolve
 // being unresolved, so a selection would be a default win for whoever happened to be measured. The
 // selector refuses, and the refusal names the unresolved candidate as the reason.
 test fn w_the_real_roster_refuses_while_the_higher_rank_is_unresolved() -> Bool {
-  match choose_serving_candidate(
+  match choose_ollama_serving_candidate(
     candidates: installed(), node: serving_node, constraints: floor_400k) {
     SelectionUnanswerable { cause: c, evaluations: e } =>
       length(e) == 2
@@ -505,7 +505,7 @@ fn is_unobserved(evidence: MemoryFitEvidence) -> Bool {
 // in exactly ONE component, and requires MemoryFitUnobserved. Together with the positive control
 // they establish that every component of the join key is load-bearing: flip any one and the evidence
 // stops answering.
-fn iq2_xxs_answers_for(r: ServingRealizationIdentity, node: NonEmptyStr) -> Bool {
+fn iq2_xxs_answers_for(r: OllamaServingRealizationIdentity, node: NonEmptyStr) -> Bool {
   match memory_fit_evidence(
     observations: build_iq2_xxs.runtime_memory_observations,
     realization: r,
@@ -549,7 +549,7 @@ test fn w_evidence_from_another_realization_or_node_cannot_qualify() -> Bool {
 // IQ3_S -- which has no receipt of its own -- handed IQ2_XXS's receipt. Before the join it would
 // have been admitted on borrowed evidence, because the receipt was a bare depth with no subject.
 test fn w_a_retrieval_receipt_from_another_realization_does_not_qualify() -> Bool {
-  let borrowed = QuantizedCandidate {
+  let borrowed = OllamaQuantizedCandidate {
     realization: r_iq3_s,
     quality_rank: build_iq3_s.quality_rank,
     declared_context: build_iq3_s.declared_context,
@@ -557,7 +557,7 @@ test fn w_a_retrieval_receipt_from_another_realization_does_not_qualify() -> Boo
     fresh_prefill_observations: build_iq3_s.fresh_prefill_observations,
     runtime_memory_observations: build_iq3_s.runtime_memory_observations,
   }
-  match evaluate_candidate(candidate: borrowed, node: serving_node, constraints: floor_400k) {
+  match qualify_ollama_candidate(candidate: borrowed, node: serving_node, constraints: floor_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       is_semantic_gap(missing: m)
     ServingCandidateAdmissible { candidate: _, fit: _ } => false
@@ -614,7 +614,7 @@ fn fixture_attempt(
 // These two are declared fixtures exercising the ordering rule, NOT fleet observations. They share a
 // release, so a maximum over them exists, and they differ only in quality_rank and weights. Without
 // this control every other claim here is satisfied by a function that returns its first argument.
-data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
+data fixture_low_rank: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_fixture_low,
   quality_rank: 1,
   declared_context: token_count(count: 1048576),
@@ -625,7 +625,7 @@ data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
   runtime_memory_observations: present_memory(xs: [fixture_footprint(b: b_fixture_low, resident: 28000000000)]),
 }
 
-data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
+data fixture_high_rank: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_fixture_high,
   quality_rank: 9,
   declared_context: token_count(count: 1048576),
@@ -637,10 +637,10 @@ data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
 }
 
 test fn w_the_higher_quality_candidate_wins_when_both_are_admissible() -> Bool {
-  chosen_label(choice: choose_serving_candidate(
+  chosen_label(choice: choose_ollama_serving_candidate(
     candidates: [fixture_low_rank, fixture_high_rank],
     node: fixture_node, constraints: floor_8k)) == "HIGH"
-    && chosen_label(choice: choose_serving_candidate(
+    && chosen_label(choice: choose_ollama_serving_candidate(
       candidates: [fixture_high_rank, fixture_low_rank],
       node: fixture_node, constraints: floor_8k)) == "HIGH"
 }
@@ -650,7 +650,7 @@ test fn w_the_higher_quality_candidate_wins_when_both_are_admissible() -> Bool {
 // This is the rung error the publication layer removed, re-tested one module downstream where the
 // selector could have quietly reintroduced it.
 test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bool {
-  match evaluate_candidate(candidate: build_iq3_s, node: serving_node, constraints: floor_8k) {
+  match qualify_ollama_candidate(candidate: build_iq3_s, node: serving_node, constraints: floor_8k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
         SemanticContextUnverifiedAtFloor { floor: _, declared: d } =>
@@ -704,7 +704,7 @@ test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool
 // refusal actually observed for it, rather than on a context or prefill axis that happens to fail
 // too. The count survives as a closure check -- no third row -- not as the whole assertion.
 fn rejection_on_memory_for(
-  rejections: List<CandidateVerdict>,
+  rejections: List<OllamaCandidateVerdict>,
   quant: NonEmptyStr,
 ) -> Bool {
   length(filter(rejections, v =>
@@ -724,7 +724,7 @@ fn rejection_on_memory_for(
 }
 
 test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
-  match choose_serving_candidate(
+  match choose_ollama_serving_candidate(
     candidates: [oom_low(), oom_high()],
     node: fixture_node,
     constraints: floor_400k,
@@ -773,14 +773,14 @@ test fn w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor() ->
 // And the same mismatch reaching the SELECTOR, so the refusal is not merely a property of the helper.
 // A warm floor over the installed builds is Unanswerable, and it names the regime it lacked.
 test fn w_a_warm_floor_over_fresh_only_receipts_is_unanswerable() -> Bool {
-  let warm_400k = ServingConstraints {
+  let warm_400k = OllamaServingConstraints {
     context_floor: token_count(count: 400000),
     hot_sessions: 1,
     prefill_floor: tokens_per_second(count: 1),
     prefill_regime: WarmContinuation,
     configuration: serving_configuration,
   }
-  match evaluate_candidate(candidate: build_iq2_xxs, node: serving_node, constraints: warm_400k) {
+  match qualify_ollama_candidate(candidate: build_iq2_xxs, node: serving_node, constraints: warm_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
         PrefillRateUnmeasuredAtFloor { floor: _, regime: g } =>
@@ -808,10 +808,10 @@ fn is_semantic_gap(missing: MissingFact) -> Bool {
 }
 
 fn with_memory_observations(
-  base: QuantizedCandidate,
+  base: OllamaQuantizedCandidate,
   observations: List<OllamaRunnerMemoryObservation>,
-) -> QuantizedCandidate {
-  QuantizedCandidate {
+) -> OllamaQuantizedCandidate {
+  OllamaQuantizedCandidate {
     realization: base.realization,
     quality_rank: base.quality_rank,
     declared_context: base.declared_context,
@@ -825,12 +825,12 @@ data out_of_memory: RunnerAttemptOutcome = RunnerRefusedForMemory {
   detail: "llama_model_load: unable to allocate KV cache buffer" as NonEmptyStr,
 }
 
-fn oom_low() -> QuantizedCandidate {
+fn oom_low() -> OllamaQuantizedCandidate {
   with_memory_observations(base: fixture_low_rank,
     observations: present_memory(xs: [fixture_attempt(b: b_fixture_low, depth: 400000, outcome: out_of_memory)]))
 }
 
-fn oom_high() -> QuantizedCandidate {
+fn oom_high() -> OllamaQuantizedCandidate {
   with_memory_observations(base: fixture_high_rank,
     observations: present_memory(xs: [fixture_attempt(b: b_fixture_high, depth: 400000, outcome: out_of_memory)]))
 }
@@ -847,7 +847,7 @@ test fn w_only_a_typed_memory_refusal_rejects_on_memory() -> Bool {
       cause: "chat template rendering failed" as NonEmptyStr,
     }),
   ]))
-  let rejects_on_memory = match evaluate_candidate(
+  let rejects_on_memory = match qualify_ollama_candidate(
     candidate: oom_low(), node: fixture_node, constraints: floor_400k) {
     ServingCandidateRejected { identity: _, quant_label: _, axis: a } =>
       match a {
@@ -858,7 +858,7 @@ test fn w_only_a_typed_memory_refusal_rejects_on_memory() -> Bool {
     ServingCandidateAdmissible { candidate: _, fit: _ } => false
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
   }
-  let other_is_unanswerable = match evaluate_candidate(
+  let other_is_unanswerable = match qualify_ollama_candidate(
     candidate: broken, node: fixture_node, constraints: floor_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
@@ -882,7 +882,7 @@ test fn w_only_a_typed_memory_refusal_rejects_on_memory() -> Bool {
 // a small failed receipt beat a large successful one and flipped admission into rejection -- and the
 // reverse pairing admitted a candidate whose attempt had failed. Both orders are exercised here, and
 // both must refuse: two qualifying attempts that disagree are a question, not a measurement.
-fn is_contradiction_refusal(verdict: CandidateVerdict) -> Bool {
+fn is_contradiction_refusal(verdict: OllamaCandidateVerdict) -> Bool {
   match verdict {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
@@ -921,7 +921,7 @@ fn fixture_served_at(
 // refusal filter to `depth >= floor` and this candidate flips to a contradiction refusal, which
 // would make every complete sweep unanswerable at exactly the floor it measured.
 test fn w_a_success_at_the_floor_survives_an_oom_above_it() -> Bool {
-  is_admissible(verdict: evaluate_candidate(
+  is_admissible(verdict: qualify_ollama_candidate(
     candidate: with_memory_observations(base: fixture_low_rank, observations: present_memory(xs: [
       fixture_served_at(b: b_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
       fixture_attempt(b: b_fixture_low, depth: 1048576, outcome: out_of_memory),
@@ -940,20 +940,20 @@ test fn w_one_candidate_answers_admissible_quiet_and_rejected_busy() -> Bool {
     fixture_served_at(b: b_fixture_low, depth: 400000, sessions: 1, resident: 28000000000),
     attempt_of(b: b_fixture_low, node: fixture_node, instrument: fixture_instrument, depth: 400000, sessions: 4, outcome: out_of_memory),
   ]))
-  is_admissible(verdict: evaluate_candidate(
+  is_admissible(verdict: qualify_ollama_candidate(
     candidate: mixed, node: fixture_node, constraints: floor_400k))
-    && is_memory_rejection(verdict: evaluate_candidate(
+    && is_memory_rejection(verdict: qualify_ollama_candidate(
       candidate: mixed, node: fixture_node, constraints: floor_400k_four_sessions))
 }
 
 test fn w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes() -> Bool {
   let big_success = fixture_footprint(b: b_fixture_low, resident: 99000000000)
   let small_failure = fixture_attempt(b: b_fixture_low, depth: 400000, outcome: out_of_memory)
-  is_contradiction_refusal(verdict: evaluate_candidate(
+  is_contradiction_refusal(verdict: qualify_ollama_candidate(
     candidate: with_memory_observations(base: fixture_low_rank,
       observations: present_memory(xs: [big_success, small_failure])),
     node: fixture_node, constraints: floor_400k))
-    && is_contradiction_refusal(verdict: evaluate_candidate(
+    && is_contradiction_refusal(verdict: qualify_ollama_candidate(
       candidate: with_memory_observations(base: fixture_low_rank,
         observations: present_memory(xs: [small_failure, big_success])),
       node: fixture_node, constraints: floor_400k))
@@ -962,7 +962,7 @@ test fn w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes() 
 // And the POSITIVE CONTROL for the same pair: with the memory refusal removed, the identical
 // large-buffer success admits. So the refusal above is the disagreement and not the magnitude.
 test fn w_the_large_buffer_success_alone_still_admits() -> Bool {
-  match evaluate_candidate(
+  match qualify_ollama_candidate(
     candidate: with_memory_observations(base: fixture_low_rank,
       observations: present_memory(xs: [fixture_footprint(b: b_fixture_low, resident: 99000000000)])),
     node: fixture_node, constraints: floor_400k) {
@@ -992,11 +992,11 @@ test fn w_a_refusal_generalizes_to_no_easier_point_but_a_success_does() -> Bool 
     observations: present_memory(xs: [fixture_attempt(b: b_fixture_low, depth: 400000, outcome: out_of_memory)]))
   let served_deep = with_memory_observations(base: fixture_low_rank,
     observations: present_memory(xs: [fixture_footprint(b: b_fixture_low, resident: 28000000000)]))
-  is_unobserved_verdict(verdict: evaluate_candidate(
+  is_unobserved_verdict(verdict: qualify_ollama_candidate(
     candidate: refused_deep, node: fixture_node, constraints: floor_400k))
-    && is_memory_rejection(verdict: evaluate_candidate(
+    && is_memory_rejection(verdict: qualify_ollama_candidate(
       candidate: refused_at_point, node: fixture_node, constraints: floor_400k))
-    && is_admissible(verdict: evaluate_candidate(
+    && is_admissible(verdict: qualify_ollama_candidate(
       candidate: served_deep, node: fixture_node, constraints: floor_400k))
 }
 
@@ -1010,13 +1010,13 @@ test fn w_the_concurrency_axis_carries_the_same_asymmetry() -> Bool {
     served(b: b_fixture_low, node: fixture_node, instrument: fixture_instrument,
       depth: 400000, sessions: 4, resident: 28000000000),
   ]))
-  is_unobserved_verdict(verdict: evaluate_candidate(
+  is_unobserved_verdict(verdict: qualify_ollama_candidate(
     candidate: refused_at_four, node: fixture_node, constraints: floor_400k))
-    && is_admissible(verdict: evaluate_candidate(
+    && is_admissible(verdict: qualify_ollama_candidate(
       candidate: served_at_four, node: fixture_node, constraints: floor_400k))
 }
 
-fn is_unobserved_verdict(verdict: CandidateVerdict) -> Bool {
+fn is_unobserved_verdict(verdict: OllamaCandidateVerdict) -> Bool {
   match verdict {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
@@ -1032,7 +1032,7 @@ fn is_unobserved_verdict(verdict: CandidateVerdict) -> Bool {
   }
 }
 
-fn is_memory_rejection(verdict: CandidateVerdict) -> Bool {
+fn is_memory_rejection(verdict: OllamaCandidateVerdict) -> Bool {
   match verdict {
     ServingCandidateRejected { identity: _, quant_label: _, axis: a } =>
       match a {
@@ -1045,7 +1045,7 @@ fn is_memory_rejection(verdict: CandidateVerdict) -> Bool {
   }
 }
 
-fn is_admissible(verdict: CandidateVerdict) -> Bool {
+fn is_admissible(verdict: OllamaCandidateVerdict) -> Bool {
   verdict_is_admissible(verdict: verdict)
 }
 
@@ -1131,7 +1131,7 @@ data b_iq2_xxs_structural_artifact: FixtureBuild = FixtureBuild {
   configuration: b_iq2_xxs.configuration,
 }
 
-fn r_iq2_xxs_structural_artifact() -> ServingRealizationIdentity {
+fn r_iq2_xxs_structural_artifact() -> OllamaServingRealizationIdentity {
   realization_of(b: b_iq2_xxs_structural_artifact)
 }
 
@@ -1154,7 +1154,7 @@ test fn w_an_irrelevant_cross_family_reading_does_not_stall_the_candidate() -> B
     served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument,
       depth: 400000, sessions: 1, resident: 87692389907),
   ]))
-  is_admissible(verdict: evaluate_candidate(
+  is_admissible(verdict: qualify_ollama_candidate(
     candidate: mixed, node: serving_node, constraints: floor_400k))
 }
 
@@ -1164,7 +1164,7 @@ test fn w_an_irrelevant_cross_family_reading_does_not_stall_the_candidate() -> B
 // digest was recorded in a different hash family left the population silently, and the candidate
 // reported SemanticContextUnverifiedAtFloor or PrefillRateUnmeasuredAtFloor -- telling the operator
 // to go measure something that has already been measured. Both must now surface the axis instead.
-fn incomparable_axis_of_verdict(verdict: CandidateVerdict) -> NonEmptyStr? {
+fn incomparable_axis_of_verdict(verdict: OllamaCandidateVerdict) -> NonEmptyStr? {
   match verdict {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
@@ -1180,7 +1180,7 @@ fn incomparable_axis_of_verdict(verdict: CandidateVerdict) -> NonEmptyStr? {
   }
 }
 
-fn refuses_on_artifact_digest(verdict: CandidateVerdict) -> Bool {
+fn refuses_on_artifact_digest(verdict: OllamaCandidateVerdict) -> Bool {
   match incomparable_axis_of_verdict(verdict: verdict) {
     Present { value: a } => (a as String) == "artifact digest"
     Absent => false
@@ -1190,7 +1190,7 @@ fn refuses_on_artifact_digest(verdict: CandidateVerdict) -> Bool {
 // Memory fit is established by a good reading, so the selector reaches the semantic-context test --
 // where the only receipt on hand belongs to a realization whose digest cannot be lined up.
 test fn w_a_cross_family_semantic_receipt_refuses_rather_than_reading_as_unverified() -> Bool {
-  let c = QuantizedCandidate {
+  let c = OllamaQuantizedCandidate {
     realization: r_iq2_xxs,
     quality_rank: 1,
     declared_context: token_count(count: 1048576),
@@ -1198,14 +1198,14 @@ test fn w_a_cross_family_semantic_receipt_refuses_rather_than_reading_as_unverif
     fresh_prefill_observations: present_prefill(xs: [prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 400060, rate: 135)]),
     runtime_memory_observations: present_memory(xs: [served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument, depth: 400000, sessions: 1, resident: 87692389907)]),
   }
-  refuses_on_artifact_digest(verdict: evaluate_candidate(
+  refuses_on_artifact_digest(verdict: qualify_ollama_candidate(
     candidate: c, node: serving_node, constraints: floor_400k))
 }
 
 // Memory and semantic context both pass, so the selector reaches prefill -- where the only reading
 // at the demanded point belongs to an unalignable realization.
 test fn w_a_cross_family_prefill_receipt_refuses_rather_than_reading_as_unmeasured() -> Bool {
-  let c = QuantizedCandidate {
+  let c = OllamaQuantizedCandidate {
     realization: r_iq2_xxs,
     quality_rank: 1,
     declared_context: token_count(count: 1048576),
@@ -1213,7 +1213,7 @@ test fn w_a_cross_family_prefill_receipt_refuses_rather_than_reading_as_unmeasur
     fresh_prefill_observations: present_prefill(xs: [prefill_of(b: b_iq2_xxs_structural_artifact, node: serving_node, sessions: 1, depth: 400060, rate: 135)]),
     runtime_memory_observations: present_memory(xs: [served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument, depth: 400000, sessions: 1, resident: 87692389907)]),
   }
-  refuses_on_artifact_digest(verdict: evaluate_candidate(
+  refuses_on_artifact_digest(verdict: qualify_ollama_candidate(
     candidate: c, node: serving_node, constraints: floor_400k))
 }
 
@@ -1230,7 +1230,7 @@ test fn w_a_redundant_incomparable_success_does_not_overturn_established_fit() -
     served(b: b_iq2_xxs_structural_artifact, node: serving_node, instrument: ps_instrument,
       depth: 1048576, sessions: 1, resident: 88865253620),
   ]))
-  is_admissible(verdict: evaluate_candidate(
+  is_admissible(verdict: qualify_ollama_candidate(
     candidate: c, node: serving_node, constraints: floor_400k))
 }
 
@@ -1244,7 +1244,7 @@ test fn w_an_incomparable_exact_refusal_beside_a_success_still_stalls() -> Bool 
     attempt_of(b: b_iq2_xxs_structural_artifact, node: serving_node, instrument: ps_instrument,
       depth: 400000, sessions: 1, outcome: out_of_memory),
   ]))
-  refuses_on_artifact_digest(verdict: evaluate_candidate(
+  refuses_on_artifact_digest(verdict: qualify_ollama_candidate(
     candidate: c, node: serving_node, constraints: floor_400k))
 }
 
@@ -1254,7 +1254,7 @@ test fn w_an_incomparable_exact_refusal_beside_a_success_still_stalls() -> Bool 
 // listed first -- and attempt_failure_cause then reported that cause in the diagnosis. Reversing the
 // roster reversed the answer. The reported cause must now be the same in both orders.
 fn failure_cause_reported(observations: List<OllamaRunnerMemoryObservation>) -> NonEmptyStr? {
-  match evaluate_candidate(
+  match qualify_ollama_candidate(
     candidate: with_memory_observations(base: build_iq2_xxs, observations: observations),
     node: serving_node, constraints: floor_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
@@ -1299,7 +1299,7 @@ test fn w_two_failures_differing_only_in_cause_report_the_same_one_in_both_order
 // The comparable reading clears the floor (135 >= 100); the incomparable one does not (50 < 100).
 // Answering 135 asserts the 50 belongs to somebody else -- which is exactly what could not be
 // decided.
-data floor_400k_prefill_100: ServingConstraints = ServingConstraints {
+data floor_400k_prefill_100: OllamaServingConstraints = OllamaServingConstraints {
   context_floor: token_count(count: 400000),
   hot_sessions: 1,
   prefill_floor: tokens_per_second(count: 100),
@@ -1312,7 +1312,7 @@ test fn w_a_slower_incomparable_prefill_beside_a_passing_one_stalls_at_the_rate_
     prefill_of(b: b_iq2_xxs, node: serving_node, sessions: 1, depth: 400060, rate: 135),
     prefill_of(b: b_iq2_xxs_structural_artifact, node: serving_node, sessions: 1, depth: 400060, rate: 50),
   ]
-  let c = QuantizedCandidate {
+  let c = OllamaQuantizedCandidate {
     realization: r_iq2_xxs,
     quality_rank: 1,
     declared_context: token_count(count: 1048576),
@@ -1320,7 +1320,7 @@ test fn w_a_slower_incomparable_prefill_beside_a_passing_one_stalls_at_the_rate_
     fresh_prefill_observations: present_prefill(xs: rows),
     runtime_memory_observations: present_memory(xs: [served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument, depth: 400000, sessions: 1, resident: 87692389907)]),
   }
-  refuses_on_artifact_digest(verdict: evaluate_candidate(
+  refuses_on_artifact_digest(verdict: qualify_ollama_candidate(
     candidate: c, node: serving_node, constraints: floor_400k_prefill_100))
 }
 
@@ -1336,7 +1336,7 @@ fn incomparable_beside_comparable_failure(reversed: Bool) -> Bool {
     instrument: ps_instrument, depth: 400000, sessions: 1,
     outcome: RunnerFailedForOtherCause { cause: "a" as NonEmptyStr })
   let rows = if reversed { [unalignable, comparable] } else { [comparable, unalignable] }
-  refuses_on_artifact_digest(verdict: evaluate_candidate(
+  refuses_on_artifact_digest(verdict: qualify_ollama_candidate(
     candidate: with_memory_observations(base: build_iq2_xxs, observations: present_memory(xs: rows)),
     node: serving_node, constraints: floor_400k))
 }
@@ -1346,7 +1346,7 @@ fn incomparable_beside_comparable_failure(reversed: Bool) -> Bool {
 // this candidate's own and loses on the rate floor, and the failure pair reports a cause. So the
 // refusals above are the unresolved identity and not the presence of a second row.
 test fn w_the_same_two_prefill_rows_answer_once_their_identity_is_comparable() -> Bool {
-  let c = QuantizedCandidate {
+  let c = OllamaQuantizedCandidate {
     realization: r_iq2_xxs,
     quality_rank: 1,
     declared_context: token_count(count: 1048576),
@@ -1357,7 +1357,7 @@ test fn w_the_same_two_prefill_rows_answer_once_their_identity_is_comparable() -
     ]),
     runtime_memory_observations: present_memory(xs: [served(b: b_iq2_xxs, node: serving_node, instrument: ps_instrument, depth: 400000, sessions: 1, resident: 87692389907)]),
   }
-  match evaluate_candidate(candidate: c, node: serving_node, constraints: floor_400k_prefill_100) {
+  match qualify_ollama_candidate(candidate: c, node: serving_node, constraints: floor_400k_prefill_100) {
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => true
     ServingCandidateAdmissible { candidate: _, fit: _ } => false
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
@@ -1387,7 +1387,7 @@ test fn w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved() -> B
     served(b: b_iq2_xxs_structural_artifact, node: serving_node, instrument: ps_instrument,
       depth: 400000, sessions: 1, resident: 87692389907),
   ]))
-  match evaluate_candidate(candidate: cross_family, node: serving_node, constraints: floor_400k) {
+  match qualify_ollama_candidate(candidate: cross_family, node: serving_node, constraints: floor_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
         EvidenceIdentityIncomparable { axis: a } => (a as String) == "artifact digest"
@@ -1423,7 +1423,7 @@ test fn w_realization_comparison_reaches_all_three_states_and_different_wins() -
 // DERIVED THROUGH THE ELIMINATOR, NOT RE-MATCHED. Each of these hand-matched RealizationComparison,
 // which is a second classification of a coproduct that already has one -- so a fourth arm would leave
 // them silently answering `false` instead of failing to compile. They now route through
-// realization_comparison_fold, the single eliminator in gunbc.model.choice.
+// realization_comparison_fold, the single eliminator in gunbc.model.ollama_choice.
 fn is_same(c: RealizationComparison) -> Bool {
   realization_comparison_fold(comparison: c, same: true, different: false, incomparable: false)
 }
@@ -1528,7 +1528,7 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
 
 // A candidate whose KV cost was never measured has not FAILED the memory test -- it has not taken
 // it. The selector must refuse rather than hand the win to the measured candidate by default.
-data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
+data build_unmeasured: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_unmeasured,
   quality_rank: 4,
   declared_context: token_count(count: 1048576),
@@ -1540,7 +1540,7 @@ data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
 }
 
 test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
-  match evaluate_candidate(candidate: build_unmeasured, node: serving_node, constraints: floor_400k) {
+  match qualify_ollama_candidate(candidate: build_unmeasured, node: serving_node, constraints: floor_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
         MemoryFitUnobservedAtConfiguration { floor: f, sessions: n } =>
@@ -1559,7 +1559,7 @@ test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
 // THE LOAD-BEARING CLAIM. A measured, admissible candidate must NOT win while an unmeasured one is
 // outstanding: choosing the best ANSWERABLE candidate is not choosing the best candidate.
 test fn w_selection_refuses_while_an_unresolved_candidate_could_win() -> Bool {
-  match choose_serving_candidate(
+  match choose_ollama_serving_candidate(
     candidates: [build_iq2_xxs, build_unmeasured], node: serving_node, constraints: floor_400k) {
     SelectionUnanswerable { cause: c, evaluations: _ } =>
       match c {
@@ -1574,7 +1574,7 @@ test fn w_selection_refuses_while_an_unresolved_candidate_could_win() -> Bool {
 
 // Preference is ordinal WITHIN a release, so two admissible releases have no join and a maximum over
 // them does not exist. Returning one would manufacture an ordering the inputs never contained.
-data other_release: QuantizedCandidate = QuantizedCandidate {
+data other_release: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_qwen,
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
@@ -1589,7 +1589,7 @@ data other_release: QuantizedCandidate = QuantizedCandidate {
 }
 
 test fn w_two_admissible_releases_refuse_for_want_of_a_cross_release_order() -> Bool {
-  match choose_serving_candidate(
+  match choose_ollama_serving_candidate(
     candidates: [build_iq2_xxs, other_release], node: serving_node, constraints: floor_400k) {
     SelectionUnanswerable { cause: c, evaluations: _ } =>
       match c {
@@ -1625,7 +1625,7 @@ test fn w_all_answerability_claims_hold() -> Bool {
 // rather than yield to roster order. The second call reverses the roster: a tie-break by position
 // would return a different winner for the same inputs, which is why "stable under re-ordering" and
 // "keep the earlier one" cannot both be true.
-data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
+data fixture_tied_a: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_tied_a,
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
@@ -1636,7 +1636,7 @@ data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
   runtime_memory_observations: present_memory(xs: [fixture_footprint(b: b_tied_a, resident: 28000000000)]),
 }
 
-data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
+data fixture_tied_b: OllamaQuantizedCandidate = OllamaQuantizedCandidate {
   realization: r_tied_b,
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
@@ -1647,7 +1647,7 @@ data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
   runtime_memory_observations: present_memory(xs: [fixture_footprint(b: b_tied_b, resident: 29000000000)]),
 }
 
-fn is_tie_refusal(choice: ServingChoice) -> Bool {
+fn is_tie_refusal(choice: OllamaServingChoice) -> Bool {
   match choice {
     SelectionUnanswerable { cause: c, evaluations: _ } =>
       match c {
@@ -1661,8 +1661,8 @@ fn is_tie_refusal(choice: ServingChoice) -> Bool {
 }
 
 test fn w_tied_quality_ranks_refuse_in_both_roster_orders() -> Bool {
-  is_tie_refusal(choice: choose_serving_candidate(
+  is_tie_refusal(choice: choose_ollama_serving_candidate(
     candidates: [fixture_tied_a, fixture_tied_b], node: fixture_node, constraints: floor_8k))
-    && is_tie_refusal(choice: choose_serving_candidate(
+    && is_tie_refusal(choice: choose_ollama_serving_candidate(
       candidates: [fixture_tied_b, fixture_tied_a], node: fixture_node, constraints: floor_8k))
 }

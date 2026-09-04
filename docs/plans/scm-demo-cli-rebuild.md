@@ -241,8 +241,11 @@ today and is the honest reading of `add` for this substrate.
   and construct via `RepositoryCommitRef { identity: MintedId { ordinal } }`.
 - Annotations inside a declaration body are parse errors; hoist them above the declaration.
   An indented `//` is also a parse error — annotations are module-item grain only.
-- `gunbc.scm.merge` is roles/requirements/supersession, NOT two-commit merging. The operator's
-  ask for practising merges/conflict resolution needs merge DESIGN first; it is not a wiring job.
+- There is no two-commit merge in the model. `gunbc.scm.role_requirement_integration`
+  (formerly `gunbc.scm.merge`, renamed because one spelling was carrying two materially different
+  contracts) integrates authored role requirements into ONE target commit; its vocabulary lives in
+  `gunbc.scm.proposal`. The operator's ask for practising merges/conflict resolution needs
+  commit-merge DESIGN first; it is not a wiring job.
 
 ## Not in scope here
 
