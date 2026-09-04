@@ -148,11 +148,11 @@ pub use crate::v1_compiler_emit::{
     emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
     extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
     is_self_recursive, is_tco_eligible, is_tco_identity_passthrough,
-    keyed_container_has_target_inhabitant, lookup_item, module_emit_scope, order_typed_call_args,
-    render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
-    seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    shell_emission_refusal_fact, shell_result_channel_key, tco_reassign_core,
-    transport_binding_refusal_fact,
+    keyed_container_has_target_inhabitant, lookup_item, module_emit_scope,
+    order_typed_call_args_from_semantics, render_node_type, render_tuple_parts,
+    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
+    service_field_ctors, service_field_decls, shell_emission_refusal_fact,
+    shell_result_channel_key, tco_reassign_core, transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
@@ -247,6 +247,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+    ResolvedDirectCallSemantics,
 };
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
@@ -305,8 +306,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
     DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ResolvedCallFormal,
+    StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -22330,9 +22331,36 @@ pub fn call_semantics_is_function_value(cs: Option<Rc<CallSemantics>>) -> bool {
     }
 }
 
+pub fn call_semantics_application_plan(
+    cs: Option<Rc<CallSemantics>>,
+) -> Rc<Vec<Rc<ResolvedCallFormal>>> {
+    match cs.clone().as_deref().cloned() {
+        Some(CallSemantics::ResolvedDirectCallSemantics {
+            application_plan: plan,
+            ..
+        }) => plan.clone(),
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn call_semantics_supplied_application_plan(
+    cs: Option<Rc<CallSemantics>>,
+) -> Rc<Vec<Rc<ResolvedCallFormal>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for application in call_semantics_application_plan(cs.clone()).iter().cloned() {
+            if (application.matched_argument_index.clone() != std::option::Option::None) {
+                __result.push(application);
+            }
+        }
+        __result
+    })
+}
+
 pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIdentity> {
     match cs.clone().as_deref().cloned() {
         Some(CallSemantics::PlainCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::ResolvedDirectCallSemantics { target, .. }) => target.clone(),
         Some(CallSemantics::LookupCallSemantics { target: target, .. }) => target.clone(),
         Some(CallSemantics::FunctionValueCallSemantics) => {
             Rc::new(CallTargetIdentity::CallableTargetUndetermined)
@@ -22392,6 +22420,7 @@ pub fn emit_rust_expr_call(
                 f.clone(),
                 expr.children.clone(),
                 expr.inferred.clone(),
+                cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
                 call_semantics_target(cs.clone()),
                 registry.clone(),
@@ -23372,6 +23401,7 @@ pub fn emit_typed_call_expr(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
+    call_semantics: Option<Rc<CallSemantics>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -23426,6 +23456,7 @@ pub fn emit_typed_call_expr(
                 emit_typed_call(
                     func.clone(),
                     args.clone(),
+                    call_semantics.clone(),
                     callee_is_function_value.clone(),
                     call_target.clone(),
                     registry.clone(),
@@ -23659,6 +23690,7 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
+    call_semantics: Option<Rc<CallSemantics>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -23682,9 +23714,10 @@ pub fn emit_typed_call(
         let target_is_runtime = call_target_is_runtime_primitive(call_target.clone());
         if (target_is_runtime.clone() && (func.clone() == "get".to_string())) {
             {
-                let get_args = crate::v1_compiler_emit::order_typed_call_args(
+                let get_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let get_list = get_args.clone().first().cloned();
@@ -23734,9 +23767,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "with".to_string())) {
             {
-                let with_args = crate::v1_compiler_emit::order_typed_call_args(
+                let with_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 if ((with_args.clone().len() as i64) == 0) {
@@ -23854,9 +23888,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "to_string".to_string())) {
             {
-                let to_string_args = crate::v1_compiler_emit::order_typed_call_args(
+                let to_string_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let ts_result = match to_string_args.clone().first().cloned() {
@@ -23884,9 +23919,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "utf8_decode_bytes".to_string())) {
             {
-                let decode_args = crate::v1_compiler_emit::order_typed_call_args(
+                let decode_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let decode_result = match decode_args.clone().first().cloned() {
@@ -23898,9 +23934,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "discriminant".to_string())) {
             {
-                let disc_args = crate::v1_compiler_emit::order_typed_call_args(
+                let disc_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let disc_result = match disc_args.clone().first().cloned() {
@@ -23919,11 +23956,13 @@ pub fn emit_typed_call(
                 return disc_result;
             }
         }
-        let ordered_args = crate::v1_compiler_emit::order_typed_call_args(
+        let ordered_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
             args.clone(),
             func.clone(),
+            call_semantics.clone(),
             scope.clone(),
         );
+        let application_plan = call_semantics_supplied_application_plan(call_semantics.clone());
         let callee = match (*call_target.clone()).clone() {
             CallTargetIdentity::SourceDeclarationCall {
                 owner_module_path: owner,
@@ -23972,6 +24011,21 @@ pub fn emit_typed_call(
                 __result.push({
                     let idx = pair.0.clone();
                     let a = pair.1.clone();
+                    let arg_emit_info = match application_plan
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(idx.clone() as usize)
+                        .next()
+                    {
+                        Some(application) => {
+                            crate::v1_compiler_infer_emit_info::emit_info_with_expected_type(
+                                emit_info.clone(),
+                                Some(application.formal.clone().substitution_basis.clone()),
+                            )
+                        }
+                        std::option::Option::None => emit_info.clone(),
+                    };
                     let arg_scope = lambda_argument_scope(
                         crate::v1_std_core::arg_value(a.clone()),
                         scope.clone(),
@@ -23984,7 +24038,7 @@ pub fn emit_typed_call(
                                 arg_scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
-                                emit_info.clone(),
+                                arg_emit_info.clone(),
                             );
                             v1_rt::concat("&".to_string(), base.clone())
                         }
@@ -23996,7 +24050,7 @@ pub fn emit_typed_call(
                                 arg_scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
-                                emit_info.clone(),
+                                arg_emit_info.clone(),
                             );
                             let unwrapped = rust_call_arg_fail_closed_unwrap(
                                 base.clone(),
@@ -31358,6 +31412,7 @@ pub fn emit_rust_tco_non_self_call(
             let call_str = emit_typed_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
+                cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
                 call_semantics_target(cs.clone()),
                 registry.clone(),
@@ -38558,22 +38613,40 @@ pub fn emit_bootstrap_dag_operation_match_arm(
             __result
         })
         .join(&", ".to_string());
-        let public_args = Rc::new({
-            let mut __result = Vec::new();
-            for arg in binding.public_operands.clone().iter().cloned() {
-                __result.push(v1_rt::concat(
-                    v1_rt::concat(
+        let public_args = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for arg in binding.public_operands.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("(\"".to_string(), arg.parameter.clone()),
-                            "\".to_string(), ".to_string(),
+                            v1_rt::concat(
+                                v1_rt::concat("(\"".to_string(), arg.parameter.clone()),
+                                "\".to_string(), ".to_string(),
+                            ),
+                            arg.operand_field.clone(),
                         ),
-                        arg.operand_field.clone(),
-                    ),
-                    ")".to_string(),
-                ));
-            }
-            __result
-        })
+                        ")".to_string(),
+                    ));
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for opt in binding.public_options.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("(\"".to_string(), opt.parameter.clone()),
+                                "\".to_string(), ".to_string(),
+                            ),
+                            opt.option_field.clone(),
+                        ),
+                        ")".to_string(),
+                    ));
+                }
+                __result
+            }),
+        )
         .join(&", ".to_string());
         match binding.execution_class.clone() {
             CliBootstrapExecutionClass::BootstrapSuccessorOperation => {

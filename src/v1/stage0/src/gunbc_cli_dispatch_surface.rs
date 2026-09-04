@@ -149,6 +149,7 @@ pub enum CliBootstrapExecutionClass {
 #[serde(tag = "_variant")]
 pub enum AdmittedBootstrapOperationIdentity {
     GunbcProductBuildBootstrapOperation,
+    GunbcFleetConvergeOperation,
 }
 
 pub fn admitted_bootstrap_operation_declaration(
@@ -158,6 +159,9 @@ pub fn admitted_bootstrap_operation_declaration(
         AdmittedBootstrapOperationIdentity::GunbcProductBuildBootstrapOperation => {
             gunbc_build_operation_ref()
         }
+        AdmittedBootstrapOperationIdentity::GunbcFleetConvergeOperation => {
+            gunbc_fleet_converge_operation_ref()
+        }
     }
 }
 
@@ -165,6 +169,12 @@ pub fn admitted_bootstrap_operation_declaration(
 pub struct CliBootstrapOperandBinding {
     pub parameter: String,
     pub operand_field: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CliBootstrapOptionBinding {
+    pub parameter: String,
+    pub option_field: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -179,6 +189,7 @@ pub struct CliBootstrapDagOperationBinding {
     pub entry_path: String,
     pub source_roots: Rc<Vec<String>>,
     pub public_operands: Rc<Vec<Rc<CliBootstrapOperandBinding>>>,
+    pub public_options: Rc<Vec<Rc<CliBootstrapOptionBinding>>>,
     pub receipt: Rc<CliBootstrapReceiptChannel>,
     pub execution_class: CliBootstrapExecutionClass,
 }
@@ -328,6 +339,58 @@ pub fn gunbc_build_operation_ref() -> Rc<DeclarationRef> {
     })
 }
 
+pub fn gunbc_fleet_converge_operation_ref() -> Rc<DeclarationRef> {
+    Rc::new(DeclarationRef {
+        module_path: "gunbc.fleet_converge_plan_cli".to_string(),
+        decl_name: "fleet_converge_operator_cli_entry".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    })
+}
+
+pub fn gunbc_fleet_converge_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
+    Rc::new(CliBootstrapDagOperationBinding {
+        operation: AdmittedBootstrapOperationIdentity::GunbcFleetConvergeOperation {},
+        entry_path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag".to_string(),
+        source_roots: Rc::new(vec!["dag".to_string(), "src/v2".to_string()]),
+        public_operands: Rc::new(vec![]),
+        public_options: Rc::new(vec![
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "host".to_string(),
+                option_field: "host".to_string(),
+            }),
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "mode".to_string(),
+                option_field: "mode".to_string(),
+            }),
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "scope".to_string(),
+                option_field: "scope".to_string(),
+            }),
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "plan_run_id".to_string(),
+                option_field: "plan_run_id".to_string(),
+            }),
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "plan_hash".to_string(),
+                option_field: "plan_hash".to_string(),
+            }),
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "target".to_string(),
+                option_field: "target".to_string(),
+            }),
+            Rc::new(CliBootstrapOptionBinding {
+                parameter: "candidate_branch".to_string(),
+                option_field: "candidate_branch".to_string(),
+            }),
+        ]),
+        receipt: Rc::new(CliBootstrapReceiptChannel {
+            parameter: "receipt_path".to_string(),
+            path: ".gunbc-converge-receipts".to_string(),
+        }),
+        execution_class: CliBootstrapExecutionClass::BootstrapSuccessorOperation {},
+    })
+}
+
 pub fn gunbc_build_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
     Rc::new(CliBootstrapDagOperationBinding {
         operation: AdmittedBootstrapOperationIdentity::GunbcProductBuildBootstrapOperation {},
@@ -337,6 +400,7 @@ pub fn gunbc_build_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
             parameter: "program".to_string(),
             operand_field: "program".to_string(),
         })]),
+        public_options: Rc::new(vec![]),
         receipt: Rc::new(CliBootstrapReceiptChannel {
             parameter: "receipt_path".to_string(),
             path: ".gunbc-build-receipts".to_string(),
@@ -508,7 +572,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }), Rc::new(CliSubcommandRow {
     verb: "converge".to_string(),
     variant: "Converge".to_string(),
-    doc: Rc::new(vec!["Apply a host's typed converge policy in-process".to_string(), "(`gunbc.fleet_converge_cli.converge_cli_run`) and print a".to_string(), "`converge-receipt` line on the byte-locked receipt grammar.".to_string()]),
+    doc: Rc::new(vec!["Plan or apply fleet convergence for the host this process runs on, through the same".to_string(), "plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,".to_string(), "under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and".to_string(), "prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash;".to_string(), "`--mode deploy` converges the srv1 dashboard deployment from this checkout's HEAD.".to_string()]),
     operands: Rc::new(vec![]),
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "host".to_string(),
@@ -517,11 +581,65 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["Fleet host identity (e.g. \"srv1\") to converge".to_string()]),
+    doc: Rc::new(vec!["Fleet host identity (e.g. \"srv1\") this process is expected to be running on; refuses on mismatch".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "mode".to_string(),
+    long: "mode".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["plan | apply | deploy".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "scope".to_string(),
+    long: "scope".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("scope:full-host".to_string()),
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "plan_run_id".to_string(),
+    long: "plan-run-id".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("".to_string()),
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Run id printed by the plan receipt; required for --mode apply".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "plan_hash".to_string(),
+    long: "plan-hash".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("".to_string()),
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Fnv1a64Structural bundle digest printed by the plan; required for --mode apply".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "target".to_string(),
+    long: "target".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("".to_string()),
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "candidate_branch".to_string(),
+    long: "candidate-branch".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("main".to_string()),
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
-    realization: Rc::new(CliArmRealization::CliRefusesUnwired {
-    successor: "gunbc.fleet_converge_apply".to_string(),
+    realization: Rc::new(CliArmRealization::CliInvokesBootstrapDagOperation {
+    binding: gunbc_fleet_converge_operation_binding(),
 }),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliSubcommandRow {
@@ -799,6 +917,8 @@ pub struct AbsentFromShippedDispatch;
 pub struct BootstrapSuccessorOperation;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GunbcProductBuildBootstrapOperation;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GunbcFleetConvergeOperation;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliAbsoluteLabelOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

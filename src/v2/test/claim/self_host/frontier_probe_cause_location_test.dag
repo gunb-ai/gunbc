@@ -17,6 +17,7 @@ import v2.compiler.self_host.frontier_probe_types {
   NoFrontierProbeDetail
 }
 import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {
   ByteRange,
   Diagnostic,
@@ -27,6 +28,7 @@ import v2.std.diagnostic {
   node_locus,
   invariant_port_locus
 }
+import v2.std.node { Atom, Node, TypeNode }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -78,7 +80,11 @@ fn textual_diagnostic() -> Diagnostic {
 fn node_locus_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^cause_location_probe_unclassified_reason,
-    at: node_locus(node: Empty),
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: ^cause_location_probe_node } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    }),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

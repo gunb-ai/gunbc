@@ -184,6 +184,24 @@ fn ci_deploy_srv1_operator_ssh_access() -> DeployAccess {
 
 data ci_deploy_srv1_operator_access: DeployAccess = ci_deploy_srv1_operator_ssh_access()
 
+// THE OPERATOR ON THE HOST ITSELF. The SSH operator access above runs the emitted script on srv1
+// from wherever the login shell lands, so its relative paths -- the checkout's target/release
+// binary, the source tree it syncs -- resolve against nothing in particular. `gunbc converge --mode
+// deploy` runs on srv1 from the checkout being deployed, so the transport is LocalShell exactly as
+// the CI path's is, and only the principal differs: the operator rather than the runner account.
+// The privileged-command roster is grounded on that principal by the same projection.
+fn ci_deploy_srv1_operator_local_shell_access() -> DeployAccess {
+  let principal = fleet_posix_operator_principal()
+  DeployAccess {
+    principal: principal,
+    host: srv1_host,
+    transport: LocalShell,
+    privileged_commands: grounded_principal_privileged_commands(p: principal),
+  }
+}
+
+data ci_deploy_srv1_operator_local_access: DeployAccess = ci_deploy_srv1_operator_local_shell_access()
+
 fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> String {
   concat(
     concat(grounded_posix_principal_name(p: access.principal) as String, " ALL=(ALL) NOPASSWD: "),

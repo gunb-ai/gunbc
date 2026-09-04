@@ -32,7 +32,7 @@ import gunbc.spark.serving_desired {
   spark_serving_desired_admission,
   spark_serving_desired_hosts,
   spark_serving_desired_model_artifact,
-  spark_serving_desired_launch_profile,
+  spark_serving_desired_engine,
 }
 import gunbc.spark.serving_release {
   SparkServingRelease,
@@ -129,7 +129,7 @@ import gunbc.membership_reconcile {
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }
 import gunbc.spark.serving_observed_members { LingerObservedEnabled }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 
 // SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement.
 // Every claim here is written so that reverting the role assignment, or restoring the empty removal
@@ -506,7 +506,7 @@ fn w_occurrence(host: HostIdentity) -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: w_release()),
-    launch_profile: spark_serving_desired_launch_profile(),
+    engine: spark_serving_desired_engine(),
   }
 }
 
@@ -659,6 +659,7 @@ fn w_artifact(host: HostIdentity) -> FleetConvergePlanArtifactOutcome {
         observed_slots: [],
         observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       )
   }
 }
