@@ -1,0 +1,18 @@
+module gunbc.guarantee_stall.required_regen_host_derivation_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+// The candidate-tree producer drop is retired separately in gunbc.rung_drop: executed clean and
+// drift arms both produced and named the candidate before adjudication. That restoration does not
+// make the hand-maintained host mirror structural. Keeping this as its own stall prevents a new
+// climb obligation from extending the lifetime of the retired producer drop.
+data required_regen_host_derivation_stall: GuaranteeStall = GuaranteeStall {
+  subject: "required-regen host ordering is hand-maintained beside its modeled carrier",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1_compiler.required_regen_host.run_required_regen", tail: Empty {} } },
+  next_rung_trigger: "v1_compiler.required_regen_host run_required_regen is derived from v2.workflow.required_regen required_regen_run, with that derivation SUFFICIENT FOR preserving the carrier's exhaustive verdict mapping: every host verdict after successful emission carries the CandidateTree adjudicated for that verdict, and only an emission that produced no tree reaches a tree-less host arm. A generator that merely emits the host, or agreement on one verdict arm, does not satisfy this trigger; the whole host mapping must be constructed from the carrier so candidate production before adjudication has one authority rather than a modeled carrier and a hand-maintained host mirror"
+}
