@@ -1149,6 +1149,7 @@ type RepositoryRulesetConvergenceRefusal
   | RepositoryRulesetBypassRosterUnobservable { ruleset_id: Int, reader: NonEmptyStr, detail: NonEmptyStr }
   | RepositoryRulesetObservedLiveBypassActors { ruleset_id: Int, detail: NonEmptyStr }
   | RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: Int, detail: NonEmptyStr }
+  | RepositoryRulesetDriftUnrepaired { ruleset_id: Int, drift: NonEmptyStr }
 
 type RepositoryRulesetActuationAdmission
   = RepositoryRulesetActuationAdmitted
@@ -1332,24 +1333,75 @@ fn world_repo_ruleset_differences(
 // cause asserting any of those would assert the negation of what was just decided. No such cause
 // remains constructible: the five located causes carry no unsigned-desire standing at all, which
 // is the earlier inversion having been fixed in the type rather than in the arm. The honest cause
-// is RepositoryRulesetActuationRealizationUnbound: this tree carries no admitted write
-// realization, which is exactly why the arm refuses. #10204 owns the read-back transaction after
-// operator sign-off; admission cannot silently become a write. (Found in review on gunbc#10324: the arm is unreachable today, so it
-// misdiagnoses nothing in production -- but a diagnostic that is wrong only once a writer lands is
-// wrong at the one moment it is read.)
+// is RepositoryRulesetDriftUnrepaired, AND IT CARRIES THE DRIFT RATHER THAN NAMING ONLY THE MISSING
+// WRITER. This function is reached only when the difference step already found divergences -- the
+// fold routes agreement to the unchanged receipt and never calls apply -- so EVERY refusal returned
+// here is returned in the presence of a computed, discarded-if-unused divergence list. An earlier
+// revision took `_: List<RulesetDivergence>` and answered
+// RepositoryRulesetActuationRealizationUnbound, which reported a name, enforcement, target or
+// required-context drift as "no admitted actuation realization": the failure status survived and the
+// LOCATED CAUSE did not, which is §5's typed-and-located diagnostic losing its located half, and §3's
+// replacement erasing a distinction the thing it replaced preserved -- the former verifier rendered
+// the concrete divergences. Review 60298 caught it. #10204 owns the read-back transaction after
+// operator sign-off; admission still cannot silently become a write, and this arm still refuses.
+//
+// THE HOLD ARMS DELIBERATELY STILL WIN OVER THE DRIFT, and that is not the same concealment. A hold
+// means the admission question could not be answered safely at all -- an unobservable bypass roster,
+// an unexpected live rule, a signed policy this projection cannot carry. Those are typed and located
+// about their own subject, and reporting drift instead of them would answer a question nobody asked
+// while suppressing a safety refusal. What §5 forbids is losing the located cause, not ordering two
+// located causes.
+// THE NAMED KERNEL, SPLIT OUT SO A CLAIM CAN REACH IT. The handler adapter below takes the context
+// positionally as `_: Bool`, which no witness can supply by name, so the decision would otherwise be
+// reachable only through a live read. This is the same split `world_repo_ruleset_observation`
+// already carries behind `world_observe_repo_ruleset`, and it exists for the same reason: a
+// diagnostic with no way to be asserted is a diagnostic nobody can hold to its claim.
+// NOTHING IS HELD AND THE ONLY OBJECTION IS THE MISSING WRITER. Enumerated rather than written as a
+// wildcard so that a seventh cause cannot silently join the drift-reporting branch: a new hold added
+// later must be classified here by hand, which is the fail-closed direction.
+fn repo_ruleset_hold_is_only_the_unbound_writer(
+  cause: RepositoryRulesetConvergenceRefusal,
+) -> Bool {
+  match cause {
+    RepositoryRulesetActuationRealizationUnbound { ruleset_id: _ } => true
+    RepositoryRulesetObservationRefused { cause: _ } => false
+    RepositoryRulesetUnexpectedLiveRule { ruleset_id: _, detail: _ } => false
+    RepositoryRulesetBypassRosterUnobservable { ruleset_id: _, reader: _, detail: _ } => false
+    RepositoryRulesetObservedLiveBypassActors { ruleset_id: _, detail: _ } => false
+    RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: _, detail: _ } => false
+    RepositoryRulesetDriftUnrepaired { ruleset_id: _, drift: _ } => false
+  }
+}
+
+fn repo_ruleset_drift_actuation(
+  subject: RepositoryRulesetConvergenceSubject,
+  observed: RulesetObservation,
+  differences: List<RulesetDivergence>,
+) -> WorldActuation<RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal> {
+  let drift_refusal = WorldActuationRefused {
+    cause: RepositoryRulesetDriftUnrepaired {
+      ruleset_id: subject.ruleset_id,
+      drift: render_divergences(ds: differences) as NonEmptyStr,
+    },
+  }
+  match repo_ruleset_actuation_admission(subject: subject, observed: observed) {
+    RepositoryRulesetActuationAdmitted => drift_refusal
+    RepositoryRulesetActuationRefused { cause: cause } =>
+      if repo_ruleset_hold_is_only_the_unbound_writer(cause: cause) {
+        drift_refusal
+      } else {
+        WorldActuationRefused { cause: cause }
+      }
+  }
+}
+
 fn world_repo_ruleset_apply(
   subject: RepositoryRulesetConvergenceSubject,
   _: Bool,
   observed: RulesetObservation,
-  _: List<RulesetDivergence>,
+  differences: List<RulesetDivergence>,
 ) -> WorldActuation<RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal> {
-  match repo_ruleset_actuation_admission(subject: subject, observed: observed) {
-    RepositoryRulesetActuationRefused { cause: cause } => WorldActuationRefused { cause: cause }
-    RepositoryRulesetActuationAdmitted =>
-      WorldActuationRefused {
-        cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: subject.ruleset_id },
-      }
-  }
+  repo_ruleset_drift_actuation(subject: subject, observed: observed, differences: differences)
 }
 
 fn world_repo_ruleset_unchanged_receipt(
@@ -1370,10 +1422,10 @@ data repo_ruleset_world_convergence_handler: RepoRulesetWorldConvergenceHandler 
 }
 
 // The repository binding is read-only until the separately signed ruleset proposal can preserve
-// every live bypass actor. Drift reaches one of the five located causes of
-// RepositoryRulesetConvergenceRefusal, terminating at RepositoryRulesetActuationRealizationUnbound
-// when nothing more specific holds; there is no mutating entry point beside the world-convergence
-// root.
+// every live bypass actor. Drift reaches one of the located causes of
+// RepositoryRulesetConvergenceRefusal, terminating at RepositoryRulesetDriftUnrepaired -- which
+// RENDERS THE DIVERGENCES -- when no earlier hold fires; there is no mutating entry point beside
+// the world-convergence root.
 func verify() -> ProcessExit {
   match world_converge(
     subject: RepositoryRulesetConvergenceSubject {
@@ -1388,6 +1440,8 @@ func verify() -> ProcessExit {
       exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
     WorldNotConverged { subject: _, refusal: RepositoryRulesetActuationRealizationUnbound { ruleset_id: id } } =>
       exit_failure(reason: concat("repo ruleset verify refused: no admitted actuation realization for ruleset ", to_string(id)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetDriftUnrepaired { ruleset_id: id, drift: drift } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset has drifted from the desired projection, for ruleset ", to_string(id)), concat(" -- ", drift as String)))
     WorldNotConverged { subject: _, refusal: RepositoryRulesetUnexpectedLiveRule { ruleset_id: id, detail: detail } } =>
       exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset carries a rule this projection cannot express, for ruleset ", to_string(id)), concat(" -- ", detail as String)))
     WorldNotConverged { subject: _, refusal: RepositoryRulesetBypassRosterUnobservable { ruleset_id: id, reader: reader, detail: detail } } =>

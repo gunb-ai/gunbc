@@ -1,7 +1,7 @@
 module test.claim.repo_ruleset_world_converge_witness
 
 import std.types { String, Bool, NonEmptyStr }
-import gunbc.world_converge { WorldUnobservable }
+import gunbc.world_converge { WorldUnobservable, WorldActuationRefused }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.rulesets {
   BypassRosterObserved,
@@ -28,6 +28,9 @@ import gunbc.repo_ruleset {
   RepositoryRulesetActuationRealizationUnbound,
   RepositoryRulesetUnexpectedLiveRule,
   RepositoryRulesetSignedPolicyProjectionUnrepresentable,
+  RepositoryRulesetDriftUnrepaired,
+  RulesetNameDrift,
+  repo_ruleset_drift_actuation,
   repo_ruleset_actuation_admission,
   repo_ruleset_observed_actuation_admission,
   desired_ruleset_rule_types,
@@ -168,4 +171,45 @@ test fn a_signed_but_unprojectable_policy_is_not_reported_as_unsigned() -> Bool 
     } => string_contains(s: detail as String, pattern: "projection deficit")
     _ => false
   }
+}
+
+// DRIFT IS NAMED, NOT REPORTED AS A MISSING WRITER. The difference step is the only caller of the
+// actuation kernel and it runs only when divergences exist, so every refusal this kernel returns is
+// returned WITH a computed divergence list in hand. An earlier revision discarded that list and
+// answered RepositoryRulesetActuationRealizationUnbound, so a name, enforcement or target drift read
+// as "no admitted actuation realization" -- the failure status survived and the located cause did
+// not. Review 60298 caught it against the former verifier, which rendered the concrete divergences.
+//
+// THE CONTROL IS INSIDE THE CLAIM. Asserting only that drift is named would be satisfied by a kernel
+// that answered DriftUnrepaired unconditionally -- including when a bypass hold should have won. So
+// both halves are asserted together: the SAME differences under an empty roster must name the drift,
+// and under an observed live bypass actor must NOT, reaching the hold instead. A realization that
+// ignored admission and always reported drift fails the second half.
+test fn drift_is_named_and_a_hold_still_wins_over_it() -> Bool {
+  let drifted = [RulesetNameDrift { observed: "drifted-name" }]
+  let admitted = repo_ruleset_drift_actuation(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved { actors: [] }),
+    differences: drifted,
+  )
+  let names_the_drift = match admitted {
+    WorldActuationRefused {
+      cause: RepositoryRulesetDriftUnrepaired { ruleset_id: id, drift: d },
+    } => id == 4242 && string_contains(s: d as String, pattern: "ruleset name is drifted-name")
+    _ => false
+  }
+  let held = repo_ruleset_drift_actuation(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved {
+      actors: [RulesetBypassActor { actor_type: "Team", actor_id: 7, bypass_mode: "always" }],
+    }),
+    differences: drifted,
+  )
+  let hold_wins = match held {
+    WorldActuationRefused {
+      cause: RepositoryRulesetObservedLiveBypassActors { ruleset_id: _, detail: _ },
+    } => true
+    _ => false
+  }
+  names_the_drift && hold_wins
 }
