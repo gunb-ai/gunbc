@@ -90,3 +90,26 @@ test fn witness_unknown_subject_identity_refuses_before_realization() -> Bool {
     _ => false
   }
 }
+
+// THE TRANSPORT CLASS THIS FILE HAS ALWAYS GUARDED, RE-ENROLLED AGAINST THE NEW ROOT RATHER THAN
+// RETIRED WITH IT. The old claim called converge_apply, which world convergence replaced, so it
+// could not survive verbatim -- but DESIGN 4b(4) retires the obsolete PRODUCTION machinery, never
+// the class's evidence. The subject is unchanged: an EmitArtifactThenThinRun transport must not
+// silently converge. The identity, policy and handler are the ones the sibling claims use, so the
+// transport is the only varied input and a green here cannot be borrowed from another arm.
+test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
+  match world_converge(
+    subject: HostConvergenceSubject { identity: operator_host_srv3 },
+    context: HostConvergenceContext {
+      policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+      transport: EmitArtifactThenThinRun {
+        bootstrap: BootstrapFragment { script: "true" },
+        invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
+      },
+    },
+    handler: host_world_convergence_handler,
+  ) {
+    WorldConverged { subject: _, observed: _, receipt: _ } => false
+    WorldNotConverged { subject: _, refusal: _ } => true
+  }
+}

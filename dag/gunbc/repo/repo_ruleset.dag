@@ -1207,9 +1207,15 @@ fn world_repo_ruleset_differences(
   }
 }
 
-// An admitted subject still refuses here: the admitted write realization is deliberately unbound on
-// this tree. #10204 owns the read-back transaction after operator sign-off; admission cannot
-// silently become a write.
+// An admitted subject still refuses here, and the cause it refuses with must name the state the
+// admission ESTABLISHED rather than one it ruled out. Admission is reached only when the bypass
+// roster projects, no live rule is unexpected, and the desire IS signed -- so refusing an admitted
+// subject with UnsignedDesire would assert the negation of what was just decided. The honest cause
+// is ActuationUnbound: this tree carries no admitted write realization, which is exactly why the
+// arm refuses. #10204 owns the read-back transaction after operator sign-off; admission cannot
+// silently become a write. (Found in review on gunbc#10324: the arm is unreachable today, so it
+// misdiagnoses nothing in production -- but a diagnostic that is wrong only once a writer lands is
+// wrong at the one moment it is read.)
 fn world_repo_ruleset_apply(
   subject: RepositoryRulesetConvergenceSubject,
   _: Bool,
@@ -1220,7 +1226,7 @@ fn world_repo_ruleset_apply(
     RepositoryRulesetActuationRefused { cause: cause } => WorldActuationRefused { cause: cause }
     RepositoryRulesetActuationAdmitted =>
       WorldActuationRefused {
-        cause: RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: subject.ruleset_id },
+        cause: RepositoryRulesetActuationUnbound { ruleset_id: subject.ruleset_id },
       }
   }
 }
