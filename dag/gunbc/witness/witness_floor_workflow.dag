@@ -59,6 +59,7 @@ import gunbc.ci_heal_credential {
 }
 import gunbc.ci_spec {
   gunbc_ci_heal_regen_invoke,
+  gunbc_ci_heal_repair_declaration_invoke,
   gunbc_ci_heal_repo_local_git_config_invoke,
   gunbc_ci_heal_commit_push_script,
   ci_heal_author_commit_artifact_dir,
@@ -1845,6 +1846,25 @@ fn heal_regen_step() -> Step {
   }
 }
 
+// THE ONLY MOMENT THE REPAIR IS OBSERVABLE IS BEFORE THE ACTUATOR RUNS. This step reads the
+// committed projections while they are still the drifted ones and writes the trailer lines the
+// commit step folds into heal's message. Ordering is the whole content of this step: placed after
+// the regeneration it would observe a tree that agrees with its authority by construction and
+// declare nothing, every time, while still looking like a live mechanism.
+fn heal_repair_declaration_step() -> Step {
+  RunStep {
+    name: Present { value: "Declare which ledger rows this heal will repair" },
+    id: none,
+    run: gunbc_ci_heal_repair_declaration_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 // The generated pre-commit hook re-asserts core.hooksPath and the generated-artifact merge driver
 // binding. Converging it here is what makes the commit below run under the same hook configuration
 // a developer's clone has, rather than under whatever a fresh runner checkout defaults to.
@@ -1962,6 +1982,11 @@ fn heal_generated_artifacts_bound_steps() -> List<WitnessFloorBoundStep> {
       step: witness_floor_build_step(step_name: heal_build_step_name, build_script: heal_generated_artifacts_build_script()),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: heal_build_step_name,
+    },
+    WitnessFloorBoundStep {
+      step: heal_repair_declaration_step(),
+      role: capability_neutral,
+      step_name: "Declare which ledger rows this heal will repair",
     },
     WitnessFloorBoundStep {
       step: heal_regen_step(),
