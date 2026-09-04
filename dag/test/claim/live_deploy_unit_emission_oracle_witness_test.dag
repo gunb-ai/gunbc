@@ -95,7 +95,7 @@ fn live_revision() -> ReleaseRevisionBinding {
 // when this unit is next applied.
 test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_belt_service_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_run_once_cli\n"
+  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli\n"
 }
 
 // gunbc-roadmap-belt.timer, as deployed on srv1 2026-08-19.
