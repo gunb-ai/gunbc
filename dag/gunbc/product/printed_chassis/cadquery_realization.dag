@@ -40,6 +40,9 @@ import product.printed_chassis.realization_contract {
 import product.printed_chassis.fan_mount {
   FanMountGeometry, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
 }
+import product.printed_chassis.standoff_gauge {
+  StandoffGaugeGeometry, standoff_gauge_plate, standoff_gauge_holes,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // THE HANDLER TAKES ONE ARGUMENT AND IT IS THE CAPABILITY, WHICH IS THE WHOLE DESIGN.
 //
@@ -527,4 +530,15 @@ fn plate_part_emission_plan(p: AdmittedPlatePartV0) -> CadQueryEmissionPlanV0 {
 
 fn realize_plate_part(p: AdmittedPlatePartV0) -> CadQueryEmission {
   emit_instruction_plan(plan: plate_part_emission_plan(p: p))
+}
+
+// The gauge's holes are already the population its admission settled, in the order it settled them,
+// so this mint carries no ordering decision of its own -- unlike the fan mount, whose bore and
+// mounting holes live in separate fields and must be sequenced here.
+fn plate_part_from_standoff_gauge(g: StandoffGaugeGeometry) -> AdmittedPlatePartV0 {
+  AdmittedPlatePartV0 {
+    plate: standoff_gauge_plate(g: g),
+    holes: standoff_gauge_holes(g: g),
+    part: "standoff_gauge",
+  }
 }

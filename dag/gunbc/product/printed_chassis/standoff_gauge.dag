@@ -163,3 +163,17 @@ data altrad8ud_standoff_gauge: StandoffGaugeAdmission = admit_standoff_gauge(
   margin: gauge_edge_margin,
   thickness: gauge_thickness,
 )
+
+// ═══ ACCESSORS FOR REALIZATION ═══
+//
+// StandoffGaugeGeometry is sole_constructor, so holding one is proof that admit_standoff_gauge ran
+// and that none of its refusals -- unenumerated, duplicated, coincident, envelope-exceeded -- fired.
+// That same seal stops the realization layer reading the fields, so these exist to let an admitted
+// gauge become a program without any other module being able to assemble one.
+//
+// Readers only. The span fields are deliberately NOT exposed here: they are what the gauge exists to
+// CHECK, not something a cut needs, and handing them to an emitter would invite a second derivation
+// of a distance the admission already settled.
+fn standoff_gauge_plate(g: StandoffGaugeGeometry) -> PlateDimensions { g.plate }
+
+fn standoff_gauge_holes(g: StandoffGaugeGeometry) -> List<CouponOperation> { g.holes }
