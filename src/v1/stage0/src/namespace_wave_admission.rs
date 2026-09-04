@@ -1006,7 +1006,2593 @@ pub struct TransitionAdmission {
 const SPARK_OOBE_VENDOR_INTERFACE_LABEL: &str =
     "spark OOBE vendor-interface consolidation gunbc#10254 2026-09-04";
 
+/// OLLAMA-CHOICE RECLASSIFICATION (2026-09-04, gunbc#10358). `gunbc.model.choice` advertised a
+/// runtime-neutral domain it never served: every runtime identity was minted solely from Ollama
+/// release authority, the configuration carrier was an `ObservedOllamaLaunchConfiguration`, and the
+/// fit evidence was an `OllamaRunnerMemoryObservation`. The module and its Ollama-specific
+/// declarations are renamed to say so, and no compatibility re-export is left behind, so the
+/// compile failures at the old import sites ARE the census (DESIGN section 3 delete-first).
+///
+/// EVERY ROW BELOW IS A PURE RELOCATION. Not one declaration changes what it denotes; the witness
+/// binds the same spellings through the renamed authority, so the wall reports `TargetChanged` at
+/// each binding site. A binding whose MEANING had moved would refuse on its own row rather than be
+/// covered here. The rows are enumerated by exact identity rather than matched by the module pair,
+/// because a pattern would admit a genuine rebind that happened to land in the same two modules --
+/// and the whole point of a rename wave is that it must not be able to hide one.
+///
+/// WHY ONLY THE WITNESS MODULE APPEARS. The wall's binding channel is authored NAME OCCURRENCES
+/// resolved per module, and `test.claim.model.serving_choice_witness_test` is the only consumer
+/// that imports these spellings by bare name. The other three touched files -- `gunbc.model.population`,
+/// `gunbc.spark.serving_convergence_withholding` and `std.measure` -- carry the old module name only
+/// in prose, which the binding channel does not and should not observe.
+///
+/// TRIGGER: these rows go when #10358 merges. Once the rename is on main, merge commit and base both
+/// carry it, no run can produce these deltas, and all 255 report stale -- which refuses every
+/// unrelated PR. The shrink is the fix, not housekeeping.
+const OLLAMA_CHOICE_RECLASS_LABEL: &str = "ollama-choice reclassification gunbc#10358 2026-09-04";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "FixtureBuild",
+            spelling: "ObservedOllamaLaunchConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "attempt_from_receipt",
+            spelling: "ExecutedRequestReceipt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "attempt_from_receipt",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "attempt_from_receipt",
+            spelling: "observed_memory_attempt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "attempt_of",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "attempt_of",
+            spelling: "RunnerAttemptOutcome",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "attempt_of",
+            spelling: "observed_memory_attempt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "busy_only_prefill",
+            spelling: "FreshPrefillObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "chosen_label",
+            spelling: "ChoseCandidate",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "chosen_label",
+            spelling: "NoCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "chosen_label",
+            spelling: "SelectionUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "chosen_label",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "chosen_label",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "chosen_label",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "failure_cause_reported",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_attempt",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_attempt",
+            spelling: "RunnerAttemptOutcome",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_build",
+            spelling: "serving_runtime_identity_for_release",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_configuration",
+            spelling: "ObservedOllamaLaunchConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_configuration",
+            spelling: "observed_ollama_launch_configuration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_footprint",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_receipt",
+            spelling: "ExecutedRequestReceipt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_receipt",
+            spelling: "NoModelOrRequestContextOverride",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_receipt",
+            spelling: "executed_request_receipt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "fixture_served_at",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "floor_400k",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "floor_400k_four_sessions",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "floor_400k_prefill_100",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "floor_8k",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_axis_of_verdict",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "incomparable_beside_comparable_failure",
+            spelling: "RunnerFailedForOtherCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_answers_for",
+            spelling: "MemoryFitAttemptFailedOtherwise",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_answers_for",
+            spelling: "MemoryFitContradicted",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_answers_for",
+            spelling: "MemoryFitEstablished",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_answers_for",
+            spelling: "MemoryFitIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_answers_for",
+            spelling: "MemoryFitRefusedForMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_answers_for",
+            spelling: "MemoryFitUnobserved",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_answers_for",
+            spelling: "memory_fit_evidence",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "iq2_xxs_footprint",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_admissible",
+            spelling: "verdict_is_admissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_contradiction_refusal",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_different",
+            spelling: "RealizationComparison",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_different",
+            spelling: "realization_comparison_fold",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_incomparable",
+            spelling: "RealizationComparison",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_incomparable",
+            spelling: "realization_comparison_fold",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_memory_rejection",
+            spelling: "ContextBelowFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_memory_rejection",
+            spelling: "DoesNotFitMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_memory_rejection",
+            spelling: "PrefillBelowFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_memory_rejection",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_memory_rejection",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_memory_rejection",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_same",
+            spelling: "RealizationComparison",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_same",
+            spelling: "realization_comparison_fold",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_semantic_gap",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_semantic_gap",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_semantic_gap",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_semantic_gap",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_semantic_gap",
+            spelling: "MissingFact",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_semantic_gap",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_semantic_gap",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_tie_refusal",
+            spelling: "ChoseCandidate",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_tie_refusal",
+            spelling: "CrossReleaseQualityOrderAbsent",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_tie_refusal",
+            spelling: "NoCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_tie_refusal",
+            spelling: "QualityRankTie",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_tie_refusal",
+            spelling: "SelectionUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_tie_refusal",
+            spelling: "UnresolvedCandidateCouldWin",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved",
+            spelling: "MemoryFitAttemptFailedOtherwise",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved",
+            spelling: "MemoryFitContradicted",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved",
+            spelling: "MemoryFitEstablished",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved",
+            spelling: "MemoryFitEvidence",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved",
+            spelling: "MemoryFitIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved",
+            spelling: "MemoryFitRefusedForMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved",
+            spelling: "MemoryFitUnobserved",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "is_unobserved_verdict",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "ollama_runtime",
+            spelling: "serving_runtime_identity_for_release",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "one_slot_configuration",
+            spelling: "ObservedOllamaLaunchConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "one_slot_configuration",
+            spelling: "observed_ollama_launch_configuration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "out_of_memory",
+            spelling: "RunnerAttemptOutcome",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "out_of_memory",
+            spelling: "RunnerRefusedForMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "plain_receipt",
+            spelling: "ExecutedRequestReceipt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "plain_receipt",
+            spelling: "NoModelOrRequestContextOverride",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "plain_receipt",
+            spelling: "executed_request_receipt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "prefill_of",
+            spelling: "FreshPrefillObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "prefill_of",
+            spelling: "observed_fresh_prefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "present_memory",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "present_prefill",
+            spelling: "FreshPrefillObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "quiet_rate_at",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "quiet_rate_at",
+            spelling: "prefill_rate_at_floor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "realization",
+            spelling: "serving_realization_identity",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "realization_of",
+            spelling: "serving_realization_identity",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "receipt_admits",
+            spelling: "ExecutedRequestReceipt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "rejection_on_memory_for",
+            spelling: "ContextBelowFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "rejection_on_memory_for",
+            spelling: "DoesNotFitMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "rejection_on_memory_for",
+            spelling: "PrefillBelowFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "rejection_on_memory_for",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "rejection_on_memory_for",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "rejection_on_memory_for",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "rejection_on_memory_for",
+            spelling: "outcome_is_memory_refusal",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "served",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "served",
+            spelling: "RunnerServed",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "serving_configuration",
+            spelling: "ObservedOllamaLaunchConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "serving_configuration",
+            spelling: "observed_ollama_launch_configuration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "verified_at",
+            spelling: "SemanticContextEvidence",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_busier_prefill_reading_does_not_answer_a_quieter_demand",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_busier_prefill_reading_does_not_answer_a_quieter_demand",
+            spelling: "prefill_rate_at_floor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_declared_context_never_qualifies_without_a_retrieval_receipt",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor",
+            spelling: "WarmContinuation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor",
+            spelling: "prefill_rate_at_floor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_prefill_receipt_from_another_realization_does_not_qualify",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_prefill_receipt_from_another_realization_does_not_qualify",
+            spelling: "prefill_rate_at_floor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_retrieval_receipt_from_another_realization_does_not_qualify",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_retrieval_receipt_from_another_realization_does_not_qualify",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_retrieval_receipt_from_another_realization_does_not_qualify",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_shallow_or_more_concurrent_demand_has_no_qualifying_footprint",
+            spelling: "memory_fit_evidence",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor",
+            spelling: "FreshSessionPrefill",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor",
+            spelling: "prefill_rate_at_floor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "WarmContinuation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_a_warm_floor_over_fresh_only_receipts_is_unanswerable",
+            spelling: "serving_regime_wire",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_observed_request_override_moves_the_bound_the_server_default_set",
+            spelling: "RequestContextOverrideObserved",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_observed_request_override_moves_the_bound_the_server_default_set",
+            spelling: "executed_request_receipt",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_an_unmeasured_candidate_is_unanswerable_not_rejected",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_evidence_from_another_realization_or_node_cannot_qualify",
+            spelling: "serving_runtime_identity_for_release",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_nothing_admissible_refuses_and_reports_every_rejection",
+            spelling: "ChoseCandidate",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_nothing_admissible_refuses_and_reports_every_rejection",
+            spelling: "NoCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_nothing_admissible_refuses_and_reports_every_rejection",
+            spelling: "SelectionUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "ContextBelowFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "DoesNotFitMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "EvidenceIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "MemoryAttemptFailedForNonMemoryCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "MemoryFitContradictedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "MemoryFitUnobservedAtConfiguration",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "PrefillBelowFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "PrefillRateUnmeasuredAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "RunnerFailedForOtherCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "SemanticContextUnverifiedAtFloor",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_only_a_typed_memory_refusal_rejects_on_memory",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_realization_comparison_reaches_all_three_states_and_different_wins",
+            spelling: "compare_serving_realization",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_selection_refuses_while_an_unresolved_candidate_could_win",
+            spelling: "ChoseCandidate",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_selection_refuses_while_an_unresolved_candidate_could_win",
+            spelling: "CrossReleaseQualityOrderAbsent",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_selection_refuses_while_an_unresolved_candidate_could_win",
+            spelling: "NoCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_selection_refuses_while_an_unresolved_candidate_could_win",
+            spelling: "QualityRankTie",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_selection_refuses_while_an_unresolved_candidate_could_win",
+            spelling: "SelectionUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_selection_refuses_while_an_unresolved_candidate_could_win",
+            spelling: "UnresolvedCandidateCouldWin",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_large_buffer_success_alone_still_admits",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_large_buffer_success_alone_still_admits",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_large_buffer_success_alone_still_admits",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "ChoseCandidate",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "CrossReleaseQualityOrderAbsent",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "NoCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "QualityRankTie",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "SelectionUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "UnresolvedCandidateCouldWin",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "verdict_is_admissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_real_roster_refuses_while_the_higher_rank_is_unresolved",
+            spelling: "verdict_is_unanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_the_same_two_failures_report_a_cause_once_their_identity_is_comparable",
+            spelling: "RunnerFailedForOtherCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_same_two_prefill_rows_answer_once_their_identity_is_comparable",
+            spelling: "ServingCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_same_two_prefill_rows_answer_once_their_identity_is_comparable",
+            spelling: "ServingCandidateRejected",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_same_two_prefill_rows_answer_once_their_identity_is_comparable",
+            spelling: "ServingCandidateUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "MemoryFitAttemptFailedOtherwise",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "MemoryFitContradicted",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "MemoryFitEstablished",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "MemoryFitIdentityIncomparable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "MemoryFitRefusedForMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "MemoryFitUnobserved",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "RunnerFailedForOtherCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "RunnerRefusedForMemory",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "RunnerServed",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_the_two_bit_build_is_resident_established_at_the_floor",
+            spelling: "memory_fit_evidence",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_two_admissible_releases_refuse_for_want_of_a_cross_release_order",
+            spelling: "ChoseCandidate",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_two_admissible_releases_refuse_for_want_of_a_cross_release_order",
+            spelling: "CrossReleaseQualityOrderAbsent",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_two_admissible_releases_refuse_for_want_of_a_cross_release_order",
+            spelling: "NoCandidateAdmissible",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_two_admissible_releases_refuse_for_want_of_a_cross_release_order",
+            spelling: "QualityRankTie",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_two_admissible_releases_refuse_for_want_of_a_cross_release_order",
+            spelling: "SelectionUnanswerable",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "w_two_admissible_releases_refuse_for_want_of_a_cross_release_order",
+            spelling: "UnresolvedCandidateCouldWin",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration:
+                "w_two_failures_differing_only_in_cause_report_the_same_one_in_both_orders",
+            spelling: "RunnerFailedForOtherCause",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: OLLAMA_CHOICE_RECLASS_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.model.serving_choice_witness_test",
+            in_declaration: "with_memory_observations",
+            spelling: "OllamaRunnerMemoryObservation",
+            target: "gunbc.model.ollama_choice",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: SPARK_OOBE_VENDOR_INTERFACE_LABEL,
         subject: AdmissionSubject::Binding {
