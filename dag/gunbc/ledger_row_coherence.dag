@@ -1,7 +1,18 @@
 module gunbc.ledger_row_coherence
 
 import std.types { String, List, Bool }
-import gunbc.generated_artifact { GeneratedArtifact }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
+  GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  DesignFailureModesArtifact, DesignRungDropsArtifact,
+  GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
+  RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
+  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact,
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
+}
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 import gunbc.rung_drop { RungDrop, rung_drop_roster, rung_drop_declaration_message }
@@ -70,13 +81,21 @@ type LedgerRow {
   body: String
 }
 
-// THE TWO LEDGERS ARE NOT ENUMERATED BY NAME HERE AS A SECOND ROSTER. The match is over the closed
-// GeneratedArtifact coproduct, so a newly registered artifact does not silently acquire an empty
-// row population by default -- the wildcard arm answers NOT-A-LEDGER, which is the honest answer
-// for provisioning files and plan documents, and the two ledger arms are the only ones that carry a
-// row identity at all. If a third ledger is ever registered its arm must be written here, and until
-// it is, this classifier reports NotALedgerArtifact for it rather than reporting zero missing rows,
-// which is the difference between "cannot speak for this" and "this is fine".
+// EVERY VARIANT IS WRITTEN OUT AND THERE IS NO WILDCARD, WHICH IS THE WHOLE PROPERTY THIS FUNCTION
+// CLAIMS. An earlier revision ended in `_ => []` and carried a comment asserting that "a newly
+// registered artifact does not silently acquire an empty row population by default". THAT COMMENT
+// WAS FALSE WHILE THE WILDCARD STOOD: a new ledger added to GeneratedArtifact would have fallen
+// into `_`, reported NotALedgerArtifact, and been excluded from coherence checking forever with
+// nothing anywhere to say so. The required nfr_roster_receipt test caught the residue and refused
+// the merge -- a wall doing exactly its job on an author who had written the right sentence over
+// the wrong construction.
+//
+// With the coproduct exhausted, adding a variant to GeneratedArtifact FAILS TO COMPILE until
+// somebody decides which arm it belongs in. That is the difference between a claim about behaviour
+// and a construction that enforces it, and it is why the verbosity is the point rather than a cost:
+// the twenty-two non-ledger arms are not noise, they are the record that each was CONSIDERED and
+// classified. NotALedgerArtifact remains a distinct arm from LedgerRowsAllRendered, so "cannot
+// speak for this" never reads as "this is fine".
 fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
   match a {
     DesignFailureModesArtifact =>
@@ -89,7 +108,28 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
         identity: (d.identity as String),
         body: rung_drop_declaration_message(d: d)
       })
-    _ => []
+    WitnessFloorYamlArtifact => []
+    FleetConvergeYamlArtifact => []
+    FleetDesiredAdmissionYamlArtifact => []
+    GitignoreArtifact => []
+    GitattributesArtifact => []
+    RoadmapArtifact => []
+    DesignArtifact => []
+    GithooksPrePushArtifact => []
+    GithooksPreCommitArtifact => []
+    GeneratedArtifactMergeDriverArtifact => []
+    RunnerDeployArtifact => []
+    Stage0CrateLayoutGeneratedDagArtifact => []
+    Stage0CrateLayoutGeneratedRsArtifact => []
+    Stage0CratePartitionGeneratedDagArtifact => []
+    Stage0ExecutableAssemblyGeneratedDagArtifact => []
+    V1InterpreterDispatchGeneratedRsArtifact => []
+    EvaluationBudgetConsequenceGeneratedRsArtifact => []
+    FileTransportRealizationGeneratedRsArtifact => []
+    CouponCadQueryProgramArtifact => []
+    AutoinstallUserDataArtifact { spec: _ } => []
+    RunnerHostSudoersArtifact { host: _ } => []
+    PlanArtifact { plan: _ } => []
   }
 }
 
