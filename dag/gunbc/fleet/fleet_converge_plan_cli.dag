@@ -158,7 +158,8 @@ import gunbc.spark.serving_converge_apply {
   spark_serving_step_failure_causes_wire,
 }
 import gunbc.fleet_multi_principal_probe {
-  spark_converge_target_selection,
+  spark_converge_target_selection_of,
+  spark_converge_target_env_name,
   SparkConvergeTargetSingle,
   SparkConvergeTargetAllObserveOnly,
   SparkConvergeTargetRefused,
@@ -180,7 +181,7 @@ import gunbc.actions_run_binding {
 }
 import gunbc.fleet_converge_receipt {
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
-  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir,
+  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
   fleet_converge_expected_host_env_name, fleet_converge_plan_run_id_env_name,
   write_fleet_converge_plan_receipt, write_fleet_converge_apply_receipt,
   ReceiptWritten, ReceiptWriteRefused,
@@ -692,10 +693,10 @@ type FleetConvergeSubjectHost
 // WHICH HOST THE PLAN IS ABOUT. Every scope but spark-serving is about the executor itself. The
 // Spark scope reads SPARK_CONVERGE_TARGET through the same selector the spark_* modes use, with
 // execute_apply true because a plan names ONE subject and never fans out.
-fn fleet_converge_plan_subject_host(scope: FleetConvergeScope, executor: NonEmptyStr) -> FleetConvergeSubjectHost {
+fn fleet_converge_plan_subject_host(scope: FleetConvergeScope, executor: NonEmptyStr, target: NonEmptyStr?) -> FleetConvergeSubjectHost {
   match scope {
     SparkServing =>
-      match spark_converge_target_selection(execute_apply: true) {
+      match spark_converge_target_selection_of(raw: target, execute_apply: true) {
         SparkConvergeTargetSingle { host: h } => SubjectHostResolved { host: (h as String) as NonEmptyStr }
         SparkConvergeTargetAllObserveOnly =>
           SubjectHostRefused { reason: "fleet_converge_plan: scope:spark-serving plans one subject and SPARK_CONVERGE_TARGET named none" }
@@ -740,7 +741,12 @@ func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
         ActionsVariablePresent { value: expected_host } =>
-          fleet_converge_plan_scoped_bound_wet(run: run, expected_host: expected_host, scope: scope)
+          fleet_converge_plan_scoped_bound_wet(
+            run: run,
+            expected_host: expected_host,
+            scope: scope,
+            target: fleet_converge_target_from_env(),
+          )
       }
           }
       }
@@ -751,10 +757,24 @@ func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
 // beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
 // that a scope could only widen. Routing plan through the same observer means the population the
 // plan hashes and the population apply re-observes come from one authority.
+// THE WORKFLOW READS THE TARGET OFF THE ENVIRONMENT ONCE, HERE, and every decision below takes it
+// as a value, so the subject resolver is pure and its refusals are witnessable.
+fn fleet_converge_target_from_env() -> NonEmptyStr? {
+  match actions_variable_read(name: spark_converge_target_env_name as String) {
+    ActionsVariableAbsent { variable: _, detail: _ } => none
+    ActionsVariablePresent { value: v } => Present { value: v as NonEmptyStr }
+  }
+}
+
+fn fleet_converge_target_of_text(text: String) -> NonEmptyStr? {
+  if trim(s: text) == "" { none } else { Present { value: trim(s: text) as NonEmptyStr } }
+}
+
 func fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
   scope: FleetConvergeScope,
+  target: NonEmptyStr?,
 ) -> ProcessExit
   uses net: Network
 {
@@ -766,7 +786,7 @@ func fleet_converge_plan_scoped_bound_wet(
         exit_failure(reason: join(["fleet_converge_plan: ExpectedHostMismatch — the workflow input names ", expected_host, " but this runner observes ", host as String], ""))
       } else {
   let host_short = host as String
-  match fleet_converge_plan_subject_host(scope: scope, executor: host) {
+  match fleet_converge_plan_subject_host(scope: scope, executor: host, target: target) {
     SubjectHostRefused { reason: why } => exit_failure(reason: why)
     SubjectHostResolved { host: subject_host } =>
   match observe_generation_store_wet(subject_host: subject_host) {
@@ -1279,7 +1299,7 @@ func observe_operator_local_run_binding() -> OperatorLocalRunBinding
   }
 }
 
-func fleet_converge_local_plan_wet(scope: String) -> ProcessExit
+func fleet_converge_local_plan_wet(scope: String, target: String) -> ProcessExit
   uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope) {
@@ -1294,8 +1314,95 @@ func fleet_converge_local_plan_wet(scope: String) -> ProcessExit
             Absent =>
               exit_failure(reason: "fleet_converge_local_plan: HostObservationFailed — hostname probe did not succeed or returned empty output")
             Present { value: host } =>
-              fleet_converge_plan_scoped_bound_wet(run: run, expected_host: host as String, scope: decoded)
+              fleet_converge_plan_scoped_bound_wet(
+                run: run,
+                expected_host: host as String,
+                scope: decoded,
+                target: fleet_converge_target_of_text(text: target),
+              )
           }
+      }
+  }
+}
+
+// ── The converge verb ────────────────────────────────────────────────────────────────────────────
+//
+// `gunbc converge` reaches this declaration through the generated dispatch as a bootstrap .dag
+// operation (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding): every option is
+// handed over by name as a String, and receipt_path is the channel the launcher prints back. The
+// verb is a thin router over the two local entries above; it adds exactly two things -- the
+// operator's declared host, refused on mismatch before any observer runs, and the receipt copy --
+// and nothing else, so the CLI and the workflow keep one spine.
+//
+// THE RECEIPT IS WRITTEN ON EVERY ARM. The launcher reads receipt_path after the operation returns
+// and refuses if it is unreadable, BEFORE it renders the terminal, so an operation that wrote no
+// receipt on its failure arm would have its typed refusal masked by an unreadable-receipt refusal.
+// A failure therefore writes its reason to the channel; a success writes the plan or apply receipt.
+data fleet_converge_operator_mode_plan: String = "plan"
+data fleet_converge_operator_mode_apply: String = "apply"
+
+func fleet_converge_operator_cli_entry(
+  host: String,
+  mode: String,
+  scope: String,
+  plan_run_id: String,
+  plan_hash: String,
+  target: String,
+  receipt_path: String,
+) -> ProcessExit
+  uses net: Network
+{
+  let outcome = fleet_converge_operator_cli_dispatch(
+    host: host, mode: mode, scope: scope, plan_run_id: plan_run_id, plan_hash: plan_hash, target: target,
+  )
+  let receipt_source = if mode == fleet_converge_operator_mode_apply {
+    fleet_converge_apply_receipt_path
+  } else {
+    fleet_converge_plan_receipt_path
+  }
+  let receipt_text = match outcome {
+    ExitSuccess => {
+      let r = Filesystem.Read(path: receipt_source)
+      if r.success { r.content } else { join(["receipt unreadable at ", receipt_source, ": ", r.error], "") }
+    }
+    ExitFailure { code: _, reason: why } => join(["converge-refused ", why, "\n"], "")
+  }
+  let w = Filesystem.Write(path: receipt_path, content: receipt_text)
+  if !w.success {
+    exit_failure(reason: join(["fleet_converge_operator_cli_entry: receipt write refused at ", receipt_path, ": ", w.error], ""))
+  } else {
+    outcome
+  }
+}
+
+func fleet_converge_operator_cli_dispatch(
+  host: String,
+  mode: String,
+  scope: String,
+  plan_run_id: String,
+  plan_hash: String,
+  target: String,
+) -> ProcessExit
+  uses net: Network
+{
+  match observe_host_short_wet() {
+    Absent =>
+      exit_failure(reason: "gunbc converge: HostObservationFailed — hostname probe did not succeed or returned empty output")
+    Present { value: observed } =>
+      if (observed as String) != trim(s: host) {
+        exit_failure(reason: join(["gunbc converge: ExpectedHostMismatch — --host names ", trim(s: host), " but this process runs on ", observed as String], ""))
+      } else if mode == fleet_converge_operator_mode_plan {
+        fleet_converge_local_plan_wet(scope: scope, target: target)
+      } else if mode == fleet_converge_operator_mode_apply {
+        if trim(s: plan_run_id) == "" || trim(s: plan_hash) == "" {
+          exit_failure(reason: "gunbc converge: --mode apply requires --plan-run-id and --plan-hash from the plan receipt")
+        } else if trim(s: target) != "" {
+          exit_failure(reason: "gunbc converge: --target is a plan-time input; apply reads the subject off the plan artifact")
+        } else {
+          fleet_converge_local_apply_wet(plan_run_id: trim(s: plan_run_id), plan_hash: trim(s: plan_hash))
+        }
+      } else {
+        exit_failure(reason: join(["gunbc converge: --mode must be plan or apply, got ", mode], ""))
       }
   }
 }

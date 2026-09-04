@@ -38550,22 +38550,40 @@ pub fn emit_bootstrap_dag_operation_match_arm(
             __result
         })
         .join(&", ".to_string());
-        let public_args = Rc::new({
-            let mut __result = Vec::new();
-            for arg in binding.public_operands.clone().iter().cloned() {
-                __result.push(v1_rt::concat(
-                    v1_rt::concat(
+        let public_args = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for arg in binding.public_operands.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("(\"".to_string(), arg.parameter.clone()),
-                            "\".to_string(), ".to_string(),
+                            v1_rt::concat(
+                                v1_rt::concat("(\"".to_string(), arg.parameter.clone()),
+                                "\".to_string(), ".to_string(),
+                            ),
+                            arg.operand_field.clone(),
                         ),
-                        arg.operand_field.clone(),
-                    ),
-                    ")".to_string(),
-                ));
-            }
-            __result
-        })
+                        ")".to_string(),
+                    ));
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for opt in binding.public_options.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("(\"".to_string(), opt.parameter.clone()),
+                                "\".to_string(), ".to_string(),
+                            ),
+                            opt.option_field.clone(),
+                        ),
+                        ")".to_string(),
+                    ));
+                }
+                __result
+            }),
+        )
         .join(&", ".to_string());
         match binding.execution_class.clone() {
             CliBootstrapExecutionClass::BootstrapSuccessorOperation => {

@@ -63,13 +63,29 @@ pub enum Commands {
         #[arg(value_name = "PROGRAM")]
         program: String,
     },
-    /// Apply a host's typed converge policy in-process
-    /// (`gunbc.fleet_converge_cli.converge_cli_run`) and print a
-    /// `converge-receipt` line on the byte-locked receipt grammar.
+    /// Plan or apply fleet convergence for the host this process runs on, through the same
+    /// plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,
+    /// under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and
+    /// prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash.
     Converge {
-        /// Fleet host identity (e.g. "srv1") to converge
+        /// Fleet host identity (e.g. "srv1") this process is expected to be running on; refuses on mismatch
         #[arg(long)]
         host: String,
+        /// plan | apply
+        #[arg(long)]
+        mode: String,
+        /// Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving
+        #[arg(long, default_value = "scope:full-host")]
+        scope: String,
+        /// Run id printed by the plan receipt; required for --mode apply
+        #[arg(long, default_value = "")]
+        plan_run_id: String,
+        /// Fnv1a64Structural bundle digest printed by the plan; required for --mode apply
+        #[arg(long, default_value = "")]
+        plan_hash: String,
+        /// Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere
+        #[arg(long, default_value = "")]
+        target: String,
     },
     /// Long-running HTTP server: compile once, then answer each request by
     /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
@@ -189,10 +205,36 @@ pub fn dispatch<H: CliDispatchHost>(
             "receipt_path",
             ".gunbc-build-receipts",
         ),
-        (Commands::Converge { .. }, _) => {
-            eprintln!("REFUSED: gunbc.fleet_converge_apply is not wired");
+        (Commands::Converge { .. }, true) => {
+            eprintln!("REFUSED: --dry-run cannot execute a bootstrap successor operation");
             std::process::exit(2);
         }
+        (
+            Commands::Converge {
+                host,
+                mode,
+                scope,
+                plan_run_id,
+                plan_hash,
+                target,
+            },
+            false,
+        ) => crate::cli_run::run_bootstrap_dag_operation(
+            &["dag".to_string(), "src/v2".to_string()],
+            "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+            "gunbc.fleet_converge_plan_cli",
+            "fleet_converge_operator_cli_entry",
+            vec![
+                ("host".to_string(), host),
+                ("mode".to_string(), mode),
+                ("scope".to_string(), scope),
+                ("plan_run_id".to_string(), plan_run_id),
+                ("plan_hash".to_string(), plan_hash),
+                ("target".to_string(), target),
+            ],
+            "receipt_path",
+            ".gunbc-converge-receipts",
+        ),
         (
             Commands::Serve {
                 source_roots,

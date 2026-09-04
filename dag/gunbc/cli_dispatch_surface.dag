@@ -185,17 +185,33 @@ type CliBootstrapExecutionClass = BootstrapSuccessorOperation {}
 // Closed admission population for the temporary interpreter boundary. An ordinary target
 // producer has no constructor here, so it cannot acquire BootstrapSuccessorOperation by tagging
 // an arbitrary DeclarationRef.
-type AdmittedBootstrapOperationIdentity = GunbcProductBuildBootstrapOperation {}
+type AdmittedBootstrapOperationIdentity
+  = GunbcProductBuildBootstrapOperation {}
+  | GunbcFleetConvergeOperation {}
 
 fn admitted_bootstrap_operation_declaration(identity: AdmittedBootstrapOperationIdentity) -> DeclarationRef {
   match identity {
     GunbcProductBuildBootstrapOperation {} => gunbc_build_operation_ref()
+    GunbcFleetConvergeOperation {} => gunbc_fleet_converge_operation_ref()
   }
 }
 
 type CliBootstrapOperandBinding {
   parameter: String
   operand_field: String
+}
+
+// AN OPTION BINDS THE SAME WAY AN OPERAND DOES -- a bound field handed to a parameter by name --
+// and it is a second type rather than a second use of the first because the two halves of the
+// grammar differ in what they admit (see the operand annotation above); a binding that could not
+// say which half it came from would let a row bind an option under an operand's name and vice
+// versa. Only CliRequired text options are bindable this way: the launcher hands the operation a
+// `Vec<(String, String)>`, so an optional field has no spelling in it. A verb that wants an
+// optional input gives the option a text default and lets the operation refuse the empty value
+// under the mode that needs it, which is the honest shape until the launcher carries Optional.
+type CliBootstrapOptionBinding {
+  parameter: String
+  option_field: String
 }
 
 type CliBootstrapReceiptChannel {
@@ -208,6 +224,7 @@ type CliBootstrapDagOperationBinding {
   entry_path: String
   source_roots: List<String>
   public_operands: List<CliBootstrapOperandBinding>
+  public_options: List<CliBootstrapOptionBinding>
   receipt: CliBootstrapReceiptChannel
   execution_class: CliBootstrapExecutionClass
 }
@@ -331,6 +348,39 @@ fn gunbc_build_operation_ref() -> DeclarationRef {
   }
 }
 
+// THE CONVERGE VERB IS A .dag OPERATION, NOT A HOST HANDLER. PR #8286 left it refusing with a
+// successor naming the knob-grain spine behind a timer retired 2026-08-13, while the live spine
+// -- plan, hashed bundle, lease, apply, receipts -- was reachable only inside a GitHub Actions run.
+// Wiring it the way `build` is wired puts the verb on the generated dispatch with no new Rust body:
+// the operation is gunbc.fleet_converge_plan_cli fleet_converge_operator_cli_entry, which mints an
+// operator-local run binding and hands it to the same bound entries the workflow runs.
+fn gunbc_fleet_converge_operation_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.fleet_converge_plan_cli",
+    decl_name: "fleet_converge_operator_cli_entry",
+    field: WholeDeclaration,
+  }
+}
+
+fn gunbc_fleet_converge_operation_binding() -> CliBootstrapDagOperationBinding {
+  CliBootstrapDagOperationBinding {
+    operation: GunbcFleetConvergeOperation {},
+    entry_path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+    source_roots: ["dag", "src/v2"],
+    public_operands: [],
+    public_options: [
+      CliBootstrapOptionBinding { parameter: "host", option_field: "host" },
+      CliBootstrapOptionBinding { parameter: "mode", option_field: "mode" },
+      CliBootstrapOptionBinding { parameter: "scope", option_field: "scope" },
+      CliBootstrapOptionBinding { parameter: "plan_run_id", option_field: "plan_run_id" },
+      CliBootstrapOptionBinding { parameter: "plan_hash", option_field: "plan_hash" },
+      CliBootstrapOptionBinding { parameter: "target", option_field: "target" },
+    ],
+    receipt: CliBootstrapReceiptChannel { parameter: "receipt_path", path: ".gunbc-converge-receipts" },
+    execution_class: BootstrapSuccessorOperation {},
+  }
+}
+
 fn gunbc_build_operation_binding() -> CliBootstrapDagOperationBinding {
   CliBootstrapDagOperationBinding {
     operation: GunbcProductBuildBootstrapOperation {},
@@ -339,6 +389,7 @@ fn gunbc_build_operation_binding() -> CliBootstrapDagOperationBinding {
     public_operands: [
       CliBootstrapOperandBinding { parameter: "program", operand_field: "program" },
     ],
+    public_options: [],
     receipt: CliBootstrapReceiptChannel { parameter: "receipt_path", path: ".gunbc-build-receipts" },
     execution_class: BootstrapSuccessorOperation {},
   }
@@ -501,9 +552,10 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       verb: "converge",
       variant: "Converge",
       doc: [
-        "Apply a host's typed converge policy in-process",
-        "(`gunbc.fleet_converge_cli.converge_cli_run`) and print a",
-        "`converge-receipt` line on the byte-locked receipt grammar."
+        "Plan or apply fleet convergence for the host this process runs on, through the same",
+        "plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,",
+        "under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and",
+        "prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash."
       ],
       operands: [],
       options: [
@@ -512,11 +564,51 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           long: "host",
           value: CliTextValue { text_default: none },
           arity: CliRequired,
-          doc: ["Fleet host identity (e.g. \"srv1\") to converge"],
+          doc: ["Fleet host identity (e.g. \"srv1\") this process is expected to be running on; refuses on mismatch"],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "mode",
+          long: "mode",
+          value: CliTextValue { text_default: none },
+          arity: CliRequired,
+          doc: ["plan | apply"],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "scope",
+          long: "scope",
+          value: CliTextValue { text_default: Present { value: "scope:full-host" } },
+          arity: CliRequired,
+          doc: ["Plan scope wire: scope:full-host | scope:launch-environment | scope:fabric-execution-cells-only | scope:fabric-allocation-store-only | scope:spark-serving"],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "plan_run_id",
+          long: "plan-run-id",
+          value: CliTextValue { text_default: Present { value: "" } },
+          arity: CliRequired,
+          doc: ["Run id printed by the plan receipt; required for --mode apply"],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "plan_hash",
+          long: "plan-hash",
+          value: CliTextValue { text_default: Present { value: "" } },
+          arity: CliRequired,
+          doc: ["Fnv1a64Structural bundle digest printed by the plan; required for --mode apply"],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "target",
+          long: "target",
+          value: CliTextValue { text_default: Present { value: "" } },
+          arity: CliRequired,
+          doc: ["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere"],
           emission: CarriedByGeneratedDispatch
         }
       ],
-      realization: CliRefusesUnwired { successor: "gunbc.fleet_converge_apply" },
+      realization: CliInvokesBootstrapDagOperation { binding: gunbc_fleet_converge_operation_binding() },
       emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {

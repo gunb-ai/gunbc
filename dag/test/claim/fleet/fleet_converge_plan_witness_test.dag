@@ -150,6 +150,9 @@ import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.fleet_converge_plan_cli {
   fleet_converge_plan_cli_note,
   fleet_converge_apply_observation_subject,
+  fleet_converge_plan_subject_host,
+  SubjectHostResolved,
+  SubjectHostRefused,
   spark_axis_for_unobserved_cli,
   fleet_converge_apply_spark_admission,
   ApplySparkAxisAdmitted,
@@ -2181,4 +2184,30 @@ test fn apply_observation_subject_is_the_planned_host_only_for_spark_serving() -
   (fleet_converge_apply_observation_subject(scope: SparkServing, executor: executor, planned: planned) as String) == "srv5"
     && (fleet_converge_apply_observation_subject(scope: FullHost, executor: executor, planned: planned) as String) == "srv1"
     && (fleet_converge_apply_observation_subject(scope: LaunchEnvironment, executor: executor, planned: planned) as String) == "srv1"
+}
+
+
+// THE PLAN SUBJECT IS THE EXECUTOR FOR EVERY SCOPE BUT SPARK, AND FOR SPARK IT IS THE NAMED TARGET
+// OR A REFUSAL. The target is a value, not an environment read, so all three arms are authorable
+// here: a Spark plan with no target refuses rather than fanning out, a Spark plan naming a
+// non-Spark refuses, and a full-host plan ignores the target entirely.
+test fn plan_subject_host_is_the_target_only_for_spark_serving() -> Bool {
+  let executor = "srv1" as NonEmptyStr
+  let srv5 = Present { value: "srv5" as NonEmptyStr }
+  (match fleet_converge_plan_subject_host(scope: SparkServing, executor: executor, target: srv5) {
+    SubjectHostResolved { host: h } => (h as String) == "srv5"
+    SubjectHostRefused { reason: _ } => false
+  })
+    && (match fleet_converge_plan_subject_host(scope: SparkServing, executor: executor, target: none) {
+      SubjectHostResolved { host: _ } => false
+      SubjectHostRefused { reason: _ } => true
+    })
+    && (match fleet_converge_plan_subject_host(scope: SparkServing, executor: executor, target: Present { value: "srv3" as NonEmptyStr }) {
+      SubjectHostResolved { host: _ } => false
+      SubjectHostRefused { reason: _ } => true
+    })
+    && (match fleet_converge_plan_subject_host(scope: FullHost, executor: executor, target: srv5) {
+      SubjectHostResolved { host: h } => (h as String) == "srv1"
+      SubjectHostRefused { reason: _ } => false
+    })
 }
