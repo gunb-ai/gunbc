@@ -961,21 +961,34 @@ pub struct TransitionAdmission {
 /// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
 /// spelling to product.placement_supply, the delta stops being producible, and this row is owed
 /// deletion by the next roster-touching change.
-// THE ONE gunbc#10218 ROW IS DELETED HERE, NOT CARRIED. It was CONSUMED -- its relocation is
-// already satisfied at the base because that PR merged -- and this roster's own rule is that a
-// consumed row's deletion is owed on the roster's next touch. This is that touch.
-//
-// WHAT THESE 19 ROWS ADMIT, AND WHY THEY ARE ALL ONE MOVE. gunbc.fleet_asset_identity was extracted
-// so that a printer's network endpoint and its inventory row could cite ONE declaration of
-// printer_01 rather than agreeing by label string. Binding the endpoint to the asset would otherwise
-// have made gunbc.fleet_intent_network and gunbc.fleet_physical_inventory import each other, and
-// DESIGN section 3 states the import graph's one structural law is acyclicity.
-//
-// Every delta below is the same shape: a spelling that resolved to gunbc.fleet_physical_inventory
-// now resolves to gunbc.fleet_asset_identity. No name changed, no value changed, and no consumer
-// reads a different constant -- the declarations moved beneath their readers rather than away from
-// them. The four test.claim.cooling_qualification_witness rows are the same move seen from a
-// witness that reads cooler_srv3 through the same namespace.
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04, gunbc#10344). The 19 `fleet_asset_identity` rows are
+/// deleted by their own trigger, which fired: #10344 merged as 61274d0eb08, so the base binds every
+/// one of those spellings to `gunbc.fleet_asset_identity` and no run after it can produce those
+/// deltas. Required run 33854290231 on 1b4f50210c8 refused with `namespace-wave-admission
+/// (0 unadjudicated delta(s), 0 stale admission(s), 16 consumed admission(s) due for deletion on
+/// this roster-touching change)`, and that same job reports `completed_over_cost_requirement=0` --
+/// so the phase failure was this and nothing else, and no claim of this branch's crossed a budget.
+///
+/// THE COUNT MOVED FROM 16 TO 19 BETWEEN THAT RUN AND THIS COMMIT, WHICH IS THE ROSTER WORKING AND
+/// NOT A DISCREPANCY. The run measured a head predating this branch's merge of main; the merge then
+/// took main's roster wholesale, carrying #10344's rows in. The consumed set is a property of the
+/// base one now sits on, not of the base one measured under, so it is re-derived here rather than
+/// copied from the reported number -- the check this file warns costs a required run when guessed.
+///
+/// DECIDED PER ROW AGAINST THE BASE, NOT INFERRED FROM THE COUNT. Each of the ten distinct
+/// spellings -- six chassis, two coolers, `pdu_01`, `switch_01` -- is declared in
+/// `dag/gunbc/fleet/fleet_asset_identity.dag` on main, and `gunbc.fleet_physical_inventory` imports
+/// them from there, so every one of the 19 deltas is unproducible.
+///
+/// THE POSITIVE CONTROL IS THE PAIR THAT SURVIVES, without which this is a sweep rather than a paid
+/// trigger: `host_converge_for_identity` is NOT declared in `gunbc.host_converge` on main and IS
+/// still declared in `gunbc.fleet_converge_cli`, so its delta is still producible and its two rows
+/// stay. A rule that deleted those too would be emptying the roster, not honouring a trigger.
+///
+/// THE OBLIGATION IS CHARGED TO THE TOUCHER AND THIS COMMIT IS ONE. This branch touched the roster
+/// to admit its own two rows and thereby inherited the deletion of nineteen it did not cause -- the
+/// recurring cost the TWENTIETH DISSOLUTION recorded. Fifth firing of this trigger: 57, 3, 47, and
+/// now 19.
 /// TWENTY-FIRST TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
 /// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
 /// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
@@ -1001,234 +1014,6 @@ pub struct TransitionAdmission {
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "fleet_host_spatial_facts",
-            spelling: "chassis_srv1",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "fleet_host_spatial_facts",
-            spelling: "chassis_srv2",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "fleet_host_spatial_facts",
-            spelling: "chassis_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "fleet_host_spatial_facts",
-            spelling: "chassis_srv4",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "fleet_host_spatial_facts",
-            spelling: "chassis_srv5_placeholder",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "fleet_host_spatial_facts",
-            spelling: "chassis_srv6_placeholder",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "installed_cooler_containments",
-            spelling: "cooler_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "installed_cooler_containments",
-            spelling: "cooler_srv4",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "installed_cooling_realizations",
-            spelling: "cooler_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "installed_cooling_realizations",
-            spelling: "cooler_srv4",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "pdu_01_asset",
-            spelling: "pdu_01",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "srv1_chassis_asset",
-            spelling: "chassis_srv1",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "srv3_cooler_asset",
-            spelling: "cooler_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "srv4_cooler_asset",
-            spelling: "cooler_srv4",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_physical_inventory",
-            in_declaration: "switch_01_asset",
-            spelling: "switch_01",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cooling_qualification_witness",
-            in_declaration: "catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence",
-            spelling: "cooler_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cooling_qualification_witness",
-            in_declaration: "duplicate_cooling_ab",
-            spelling: "cooler_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cooling_qualification_witness",
-            in_declaration: "duplicate_cooling_ba",
-            spelling: "cooler_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label:
-            "gunbc#10344 asset-identity extraction: the 13 PhysicalAssetIdentity constants move \
-            beneath both their users so the printer endpoint can cite one declaration",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cooling_qualification_witness",
-            in_declaration: "srv3_installed_cooling",
-            spelling: "cooler_srv3",
-            target: "gunbc.fleet_asset_identity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside \
                 its type (converge_cli_codex_runtime_knob_registered_for_host)",
