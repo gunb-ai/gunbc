@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.detector_promoted_to_an_actuator_predicate
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data detector_promoted_to_an_actuator_predicate: RecurringFailureMode = RecurringFailureMode {
+  identity: "detector_promoted_to_an_actuator_predicate" as NonEmptyStr,
+
+  receipts: [
+    "**a correct detector is wired to a side effect that is only valid on a subset of what it detects** (INVALID STATE: a predicate that TRULY and COMPLETELY describes a condition is promoted to select the population an ACTUATOR runs over, without the additional clause that separates the members needing the action from the members for which the same condition is the CORRECT and HEALTHY state. The detection is not wrong at any point. The promotion is. ",
+
+    "**WHAT MAKES IT DANGEROUS IS AN ASYMMETRY BETWEEN READING AND ACTING, and it is the whole reason the classes must be kept apart: OBSERVING a member the predicate correctly returns costs nothing, and ACTING on it can be destructive.** So a predicate can be perfectly validated as a description and still be unsafe as a trigger, and no amount of confirming the DESCRIPTION discovers it. ",
+
+    "**THE RECOGNITION RULE, and it is checkable in one question before any code changes: WAS THE PREDICATE VALIDATED AGAINST THE SPECIMEN THAT PROMPTED IT, OR AGAINST THE POPULATION IT WILL ACT ON?** These are different sets and the second is the only one that matters. The prompting specimen is by construction a member needing the action -- that is why it prompted -- so it can never expose the healthy majority. Nobody asks a detector what ELSE it returns, because it was built from the one thing it was supposed to return. ",
+
+    "**SPECIMEN WITH A RECEIPT, 2026-09-04, gunbc CI sweep, and both halves are mine.** A fleet sweep for parked workflow runs filtered on `status == completed AND conclusion == action_required`. A peer found a THIRD parked shape that filter could not reach -- `conclusion == cancelled` with an empty job list on a live head -- and correctly diagnosed the cause: the population was selected by a CONTAINER FIELD, so it admitted only the shape already seen. That is `population_selector_that_cannot_admit_a_counterexample`, committed inside the sweep whose author had relayed that row hours earlier. The proposed repair was to drop the conclusion predicate and filter on TERMINAL AND ZERO JOBS, which is a true and complete description of the parked state. ",
+
+    "**AND IT WOULD HAVE BEEN CATASTROPHIC AS A TRIGGER.** Run at member grain over the last 100 runs it returns TWENTY-ONE hits across ELEVEN branches, all `conclusion=cancelled` -- and roughly twenty are SUPERSEDED HEADS, cancelled before scheduling because the author pushed again. Zero jobs is exactly CORRECT for those: the run was killed as obsolete. The branch clustering shows the healthy population is the BULK and not an edge -- four runs on one branch, three on another, two on a third. Rerunning them would resurrect dead heads, register checks against commits nobody is trying to land, and spend runner capacity in a queue already measured at eighty-plus minutes deep. **n=1 CONFIRMING, n=20 REFUTING, AND THE TWENTY WERE NEVER QUERIED.** ",
+
+    "**THE MISSING CLAUSE IS LIVENESS, AND IT IS A DISCRIMINATOR RATHER THAN A HEURISTIC: `terminal AND zero jobs AND head_sha == the CURRENT head of an OPEN pull request`.** A superseded run fails the third clause BY CONSTRUCTION -- being superseded is precisely what made its head stale -- so the clause separates the two populations structurally rather than by threshold or confidence. Detect at member grain; GATE THE ACTUATOR ON LIVENESS; then branch on the conclusion only to choose the instrument, since `approve` releases an existing run and `rerun` starts a new attempt. ",
+
+    "**THE CONTROL THAT MADE THE CORRECTED SWEEP'S ZERO READABLE, recorded because the sweep returned zero and a zero is the value a broken join also returns.** After adding the liveness clause the sweep found no parked runs on live heads. That zero was checked by running the head-matcher against a KNOWN-LIVE head -- the author's own open PR -- and confirming it returned one. Without that control the result is indistinguishable from a join that matches nothing, which is `absent_reads_identically_to_never_looked`. ",
+
+    "**THE SAME DEFECT RECURRED ONE LAYER UP, IN THE REPORTING, WITHIN THE HOUR.** The sweep's author had been reporting `the fleet is clear` all night. That was true of the population the filter owned -- no runs AWAITING APPROVAL -- and was stated as the wider claim, no PARKED runs. A summary is a predicate too, and it inherits the narrowness of the query beneath it while its WORDS name the wider set. Anyone reading those reports as coverage of the parked class was reading a claim nobody had measured. ",
+
+    "**THE BOUNDARIES, since three roster rows sit adjacent and none covers this.** `population_selector_that_cannot_admit_a_counterexample`: there the QUERY IS WRONG and cannot return the negative; here the query is RIGHT and returns the whole population faithfully. `repair_enumerates_its_own_blast_radius_by_inspection`: there a COUNT of affected sites is stated with no decidable search behind it; here the search is decidable, executed, and correct, and the count is not in dispute. `guard_precondition_discharged_by_the_route_that_uses_it`: there a check stops discriminating because its precondition moved; here nothing has moved and the check discriminates exactly as designed. The distinguishing fact for this row is that DETECTION AND ACTUATION HAVE DIFFERENT ADMISSIBLE POPULATIONS and one predicate was used for both. ",
+
+    "**RUNG: 1 (mitigatable)** -- caught by asking the recognition question before wiring a predicate to an effect. **CEILING: 3 (structurally guaranteed), because the property is decidable from the modeled call graph:** whether a predicate reaching an effectful operation carries a clause the pure-observation path does not is a static question over the same `Node` tree a lens already reads. **NEXT-RUNG TRIGGER, a capability and not an artifact: an actuator carrier whose subject is constructed from a DETECTED member plus an ADMISSIBILITY receipt, with no constructor from a detection result alone** -- so a predicate cannot reach a side effect without a separate proof that this member admits it, and the promotion fails to construct rather than being caught by a reviewer who thought to ask. ",
+  ],
+
+  evidence: [],
+}
