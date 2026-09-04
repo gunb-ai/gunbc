@@ -94,8 +94,12 @@ import gunbc.scm.object_store {
   find_node_record,
 }
 import gunbc.scm.commit_closure { table_unresolved_identities, table_source_occupied_identities }
-import gunbc.scm.commit_closure_json_v2 {
-  ClosureDocRefusal,
+// THE TABLE MACHINERY NOW COMES FROM THE TABLE'S OWN MODULE, which is what this import used to
+// contradict: a repository read its accumulators, positions and codec upward out of the commit
+// closure, a layer whose own header says the repository is the one above it. What still comes from
+// the closure is what the closure genuinely owns -- its refusal type and that type's classifier,
+// because a repository document embeds a closure document and must be able to say so.
+import gunbc.scm.object_table_json {
   DecodeAcc,
   DecodePositions,
   EncodeAcc,
@@ -103,10 +107,13 @@ import gunbc.scm.commit_closure_json_v2 {
   object_id_key,
   position_of,
   node_position_of,
-  encoded_root_reference,
   decode_object_table,
-  unexpected_member_key,
   resolve_reference,
+}
+import gunbc.scm.commit_closure_json_v2 {
+  ClosureDocRefusal,
+  encoded_root_reference,
+  unexpected_member_key,
   closure_document_load_standing,
 }
 import gunbc.scm.load_standing {

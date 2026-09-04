@@ -175,3 +175,1221 @@ fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
     ObjectTableManifestSourceIsCorpusManifest { reference: _ } => LoadDocumentMalformed
   }
 }
+
+import std.types { Bool, Int, List, String, list_length }
+import std.content_hash { fnv1a64_structural_hex_digest }
+import gunbc.scm.load_standing {
+  LoadStanding,
+  LoadComplete,
+  LoadPartial,
+  LoadRequiresNodeAtAuthoredSource,
+  LoadUnsupportedProtocol,
+  LoadDocumentMalformed,
+  LoadIdentityCollision,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject,
+  JsonKeyValue,
+  json_kv,
+  json_array,
+  json_object,
+  json_string,
+}
+import gunbc.scm.json_member {
+  MemberReadRefusal,
+  MemberReadSubjectNotObject,
+  MemberReadMissing,
+  MemberReadDuplicated,
+  MemberReadWrongShape,
+  MemberString,
+  MemberArray,
+  MemberObject,
+  MemberFailed,
+  read_member,
+  read_string_member,
+  unexpected_member_key,
+}
+import gunbc.scm.target_reference {
+  TargetReferenceRefusal,
+  TargetReference,
+  TargetContainedAt,
+  TargetUncontained,
+  TargetReferenceRefused,
+  TargetReferenceMemberReadRefused,
+  TargetReferenceUnexpectedMember,
+  TargetReferenceNotOneArm,
+  TargetReferenceUncontainedDigestInvalid,
+  decode_target_reference,
+}
+import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
+import extdeps.languages.json.parse {
+  JsonMemberLookup,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+import v2.std.node {
+  EdgeLabel,
+  Named,
+  Positional,
+  NodeKind,
+  TypeNode,
+  ComputationNode,
+  Connective,
+  Atom,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
+  Match,
+  Symbol,
+}
+import v2.std.compilers.lexing { symbol_lexeme, symbol_intern_lexeme }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectRecord,
+  ObjectStore,
+  ScmObject,
+  SemanticNodeObject,
+  AuthoredSourceObject,
+  CorpusManifestObject,
+  CorpusManifestEntry,
+  authored_source_target_locator,
+  AuthoredSourceContent,
+  AuthoredSourceEmpty,
+  AuthoredSourceText,
+  StoredEdge,
+  SemanticNodeTarget,
+  node_target_locator,
+  ScmObjectRef,
+  SemanticNodeRef,
+  AuthoredSourceRef,
+  CorpusManifestRef,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  SourceStoreOutcome,
+  SourceStored,
+  SourceLocatorCollision,
+  empty_store,
+  insert_from_structure,
+  store_authored_source,
+  object_id_eq,
+  scm_object_identity,
+  store_records_in_dependency_order,
+}
+
+// ---------------------------------------------------------------------------
+// The object-table codec
+// ---------------------------------------------------------------------------
+
+// THE CODE THAT SPEAKS THE VOCABULARY ABOVE NOW LIVES BESIDE IT, and this is a move rather than a
+// change: no document's bytes, acceptance, refusal standing or remedy differs because of it. What
+// moved is the authority.
+//
+// It was homed in gunbc.scm.commit_closure_json_v2 because that was once the only consumer. It has
+// not been for some time -- gunbc.scm.repository_envelope imported the accumulators, the position
+// helpers and the table encode and decode upward from a module whose own header says the closure is
+// the layer it deliberately is not. The commit-closure v4 cut is what made the split undeniable:
+// that document's table is NODES ONLY, while a repository's is a mixed population of semantic nodes,
+// authored sources and corpus manifests. One module cannot be the authority for two closed entry
+// vocabularies without one of them being a guest.
+//
+// The entry schemas come here whole, including the node entry and the kind and edge shapes, and that
+// is deliberate rather than over-reach: {kind, children}, the kind variants and the edge variants are
+// literally ONE schema in both tables. Leaving a copy in the closure would have given one schema two
+// authorities, which is the fork this move exists to close.
+//
+// What stays with the closure is what is genuinely its own: the format tag, the envelope member set,
+// the root reference, the node-only table walk, and the refusal type that wraps this one at that
+// boundary.
+
+
+// THE SAME QUESTION ASKED OF AN OBJECT-TABLE ENTRY, and it is a separate function rather than one
+// function over a widened context because the two answers now belong to different authorities. A
+// shared one would have to return whichever refusal type its caller wanted, which is the upward
+// borrowing this cut removes.
+fn table_member_set_refusal(
+  v: JsonValue,
+  allowed: List<String>,
+  context: ObjectTableMemberContext
+) -> ObjectTableDecodeRefusal? {
+  match unexpected_member_key(v: v, allowed: allowed) {
+    Absent => none
+    Present { value: key } => Present { value: ObjectTableUnexpectedMember { context: context, key: key } }
+  }
+}
+
+// WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
+//
+// encode_closure_document takes a store AND A ROOT, so what it represents is one commit's closure: a program,
+// identified. It therefore CANNOT represent an empty repository -- the state `gunbc init` creates --
+// because there is no root to designate and decode_closure_document refuses a root that names no object. That
+// refusal is correct at this grain and must not be softened into an empty-store fallback, which
+// would be the empty-observation narrow DESIGN section 5 names: "no objects" and "could not tell
+// what the objects were" would become one state.
+//
+// The repository image is the LAYER ABOVE this one, and it is where optionality belongs: a current
+// commit that may be absent, a list of retained commits, a pending proposal, source projections.
+// Modeling that here by making the root optional would push a repository-lifecycle fact into the
+// commit-closure carrier and give this module two subjects.
+//
+// Not yet modeled, named so the omissions are declared rather than assumed absent:
+//   - REACHABILITY SCOPING. Every record the store holds is serialized, not just the closure
+//     reachable from retained subjects. That is correct while nothing produces unreachable objects,
+//     and it is the natural first garbage-collection rule once something does.
+//   - THE IDENTITY-RULE VERSION. closure_document_format_tag versions the SCHEMA. It does not name the node
+//     identity protocol the reconstruction depends on, and those are separate axes: the schema could
+//     hold still while canonicalize_node_for_content_hash or the fnv1a64 folding changed, and every
+//     stored image would then silently reconstruct to different identities. Naming the rule in the
+//     image is what turns that from a silent reinterpretation into a refusal.
+
+// ---------------------------------------------------------------------------
+// Encoding
+// ---------------------------------------------------------------------------
+
+fn connective_tag(c: Connective) -> String {
+  match c {
+    Atom { identity: _ } => "atom"
+    Conj => "conj"
+    Disj => "disj"
+    Arrow => "arrow"
+    Cardinality => "cardinality"
+    Instantiation => "instantiation"
+  }
+}
+
+fn behavior_tag(b: Behavior) -> String {
+  match b {
+    Value => "value"
+    Transform => "transform"
+    Branch => "branch"
+    Loop => "loop"
+    Bind => "bind"
+    Match => "match"
+  }
+}
+
+// An Atom carries a Symbol and every other connective carries nothing, so the identity member is
+// present exactly when the tag is "atom". Encoding it as an absent member elsewhere -- rather than
+// an empty string -- is what lets the decoder refuse a hand-edited image that supplies one.
+fn encode_connective(c: Connective) -> List<JsonKeyValue> {
+  match c {
+    Atom { identity: id } =>
+      [
+        json_kv(key: "connective", value: json_string(s: connective_tag(c: c))),
+        json_kv(key: "identity", value: json_string(s: symbol_lexeme(sym: id))),
+      ]
+    _ => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+  }
+}
+
+fn encode_kind(k: NodeKind) -> JsonValue {
+  match k {
+    TypeNode { connective: c } =>
+      json_object(
+        members: concat(
+          [json_kv(key: "kind", value: json_string(s: "type"))],
+          encode_connective(c: c)
+        )
+      )
+    ComputationNode { behavior: b } =>
+      json_object(
+        members: [
+          json_kv(key: "kind", value: json_string(s: "computation")),
+          json_kv(key: "behavior", value: json_string(s: behavior_tag(b: b))),
+        ]
+      )
+  }
+}
+
+fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
+  match l {
+    Named { name: n } =>
+      [
+        json_kv(key: "label", value: json_string(s: "named")),
+        json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: n))),
+      ]
+    Positional => [json_kv(key: "label", value: json_string(s: "positional"))]
+  }
+}
+
+// POSITIONS ARE KEYED, NOT SCANNED, AND THE COST SHAPE IS THE REASON.
+//
+// The first version carried a List and answered position_of by folding it, once per edge, while the
+// list itself grew by concat-at-end inside a fold. That is O(n^2) in accumulator copying and
+// O(objects x edges) in lookup -- the copied-accumulator and quadratic-fold pair DESIGN section 6
+// names under bare minimum cost, where the rule is that a proven cost shape is ALWAYS fixed
+// regardless of the realized n. An earlier revision of this module excused it on the grounds that
+// object_store already scans linearly, which is precisely the "n is small here" reasoning that rule
+// rejects: inheriting a defect is not a licence to add one.
+//
+// WHY A MAP IS ADMISSIBLE HERE WHEN object_store REFUSES ONE. That refusal is about TRAVERSAL: a
+// store whose iteration order leaked into a digest would hash one program two ways. Nothing here
+// iterates a map -- these are point lookups only, and the emitted order comes from
+// store_records_in_dependency_order, not from the map. The determinism hazard is absent because the
+// operation that carries it is absent.
+//
+// The key is the digest STRING rather than the ObjectId record, so lookup identity is exactly the
+// equality object_id_eq already defines, rather than whatever structural equality a record key would
+// impose.
+// TWO INDEXES, BECAUSE THE TABLE AND THE TARGETS ASK DIFFERENT QUESTIONS.
+//
+// `by_identity` is every object's position, and it must be, because the table emits every object and
+// a position is just its offset. `nodes_by_identity` holds ONLY semantic nodes, and it exists because
+// a CHILD TARGET asks something narrower: "does this document carry a PROGRAM at that locator".
+//
+// One map answered both, and that was the third leg of the wrong-kind defect. A file occupying a
+// node's locator is in the object table, so a kind-blind lookup found it and encode_target emitted
+// the CONTAINED spelling -- bytes whose own decoder then refuses them, because decode resolves that
+// position to an authored source in a node position. The refusal was correct; the emission was not.
+//
+// SPLITTING THE INDEX IS WHAT MAKES THE CONTAINED SPELLING OF A FILE UNWRITABLE, and that is all it
+// does -- an earlier version of this note credited the split alone with closing the raw route, which
+// it never did. `.dag` has no module privacy, so guarding the two intended entry points left
+// encode_closure_document importable and the wrong-kind state representable through it.
+//
+// The raw route is closed by a CARRIER, not by this split: encode_closure_document now takes a
+// WellKindedClosure, which is sole_constructor and mintable only through admit_well_kinded_closure.
+// The two facts are separate and both are needed. The index means no caller can emit a CONTAINED
+// reference to a file, because there is no entry to find; the carrier means no caller can hand the
+// writer a wrong-kind closure at all, so it cannot emit the UNCONTAINED spelling for one either --
+// which was the leak the index split moved the defect into rather than removed.
+type EncodePositions {
+  by_identity: Map<String, String>
+  nodes_by_identity: Map<String, String>
+  next: Int
+}
+
+fn position_reference(n: Int) -> String {
+  json_int_lexeme(n: n) as String
+}
+
+fn object_id_key(identity: ObjectId) -> String {
+  identity.digest as String
+}
+
+fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
+  map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
+}
+
+// The lookup a CHILD TARGET gets. Absent means this document carries no program at that locator --
+// whether because nothing is there or because a file is, which are the encoder's same answer and the
+// census's different ones.
+fn node_position_of(positions: EncodePositions, identity: ObjectId) -> String? {
+  map_lookup(m: positions.nodes_by_identity, key: object_id_key(identity: identity))
+}
+
+// A MISSING NODE POSITION IS THE UNCONTAINED ARM, NOT AN ERROR -- and this note said the opposite.
+//
+// It read "a missing position is UNREACHABLE rather than defended against", which was true when a
+// closure could only be encoded complete. It is false now and dangerously so: an ADMITTED PARTIAL
+// closure encodes targets whose objects it deliberately does not carry, and a missing node position is
+// exactly how such a target becomes {"uncontained": digest}. Reading this as unreachable would make a
+// future author treat the Absent arm as dead and "simplify" the format's whole reason for existing.
+//
+// The narrower statement that survives: a missing node position for a target that dependency ordering
+// says SHOULD be contained is an ordering failure, and that case is held by execution rather than by
+// this paragraph -- a_complete_closure_spells_its_child_contained requires the contained arm for a
+// closure whose child is carried, and its partial sibling requires the uncontained arm when it is not.
+// A TARGET IS ONE OF TWO ARMS, AND WHICH ONE IS A FACT ABOUT THIS DOCUMENT, NOT ABOUT THE WORLD.
+//
+//   {"at": "3"}          this document CARRIES that object, at that position
+//   {"uncontained": "<digest>"}   this document does NOT carry it, and here is its content address
+//
+// The two arms exist because they answer different questions and only one of them CAN be answered
+// both ways. A contained object needs no identity on the wire -- it is right there and its identity
+// is derived from its own bytes, so there is no field to lie in. An uncontained object needs one,
+// because a position denotes nothing outside the document that defines it, and that is the single
+// place a digest cannot be mis-bound: no payload here binds to it.
+//
+// Exactly one member, checked. Both arms present, or neither, is a typed refusal rather than a
+// last-wins read -- the same reason every member set in this module is closed.
+fn encode_target(positions: EncodePositions, target: ObjectId) -> JsonValue {
+  match node_position_of(positions: positions, identity: target) {
+    Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
+    Absent =>
+      json_object(
+        members: [json_kv(key: "uncontained", value: json_string(s: object_id_key(identity: target)))]
+      )
+  }
+}
+
+fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
+  json_object(
+    members: concat(
+      encode_label(l: e.label),
+      [json_kv(
+        key: "target",
+        value: encode_target(positions: positions, target: node_target_locator(target: e.target)),
+      )]
+    )
+  )
+}
+
+fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "kind", value: encode_kind(k: record.kind)),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: map(record.children, e => encode_edge(positions: positions, e: e))
+        )
+      ),
+    ]
+  )
+}
+
+// THE TWO ENTRY SHAPES ARE DISJOINT MEMBER SETS, AND THAT IS THE DISCRIMINATOR.
+//
+// A node entry keeps `{kind, children}` unchanged, byte for byte. An authored source entry is
+// `{source}`.
+//
+// AN EARLIER REVISION CALLED THAT "a strict extension, not a format version". IT IS NOT, and the
+// module's own policy is what refutes it: a schema that grows a member grows a NEW FORMAT TAG. This
+// codec emits gunbc-scm-commit-closure-v3 and REFUSES the frozen predecessor tag outright rather than
+// accepting it, so the claim that every document the predecessor accepted still decodes here is false
+// at the first member the decoder reads. The unchanged node-entry shape is a fact about one entry
+// kind, not about compatibility of the format. Nothing matches both, and an entry
+// matching NEITHER refuses by member set rather than being read as the closest fit: shape-sniffing
+// is admissible only when the shapes partition, and the refusal is what keeps it a partition rather
+// than a guess.
+//
+// THE CONTENT IS ONE JSON STRING AND THE EMPTY FILE IS THE EMPTY ONE. AuthoredSourceContent's arms
+// partition exactly on emptiness, so the encoding is total and the decode reconstructs the same arm
+// through authored_source_content -- no tag beside the payload that could disagree with it.
+fn encode_authored_source_content(content: AuthoredSourceContent) -> JsonValue {
+  match content {
+    AuthoredSourceEmpty => json_string(s: "")
+    AuthoredSourceText(text) => json_string(s: text as String)
+  }
+}
+
+// A MANIFEST ENTRY'S SOURCE RESOLVES THROUGH THE WHOLE-OBJECT INDEX, NOT THE NODE INDEX, and the
+// asymmetry is the point rather than an oversight. A child edge requires a NODE at its target, so it
+// looks only at node positions and a file there becomes uncontained rather than silently binding. A
+// manifest entry requires an AUTHORED SOURCE, so the node index would find nothing and every entry
+// would encode as uncontained even for sources this very document carries. The required kind differs,
+// so the index consulted differs; what stays constant is that the decoder re-checks the kind it
+// resolved rather than trusting the position.
+fn encode_source_target(positions: EncodePositions, target: ObjectId) -> JsonValue {
+  match position_of(positions: positions, identity: target) {
+    Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
+    Absent =>
+      json_object(
+        members: [json_kv(key: "uncontained", value: json_string(s: object_id_key(identity: target)))]
+      )
+  }
+}
+
+fn encode_manifest_entry(positions: EncodePositions, entry: CorpusManifestEntry) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "path", value: json_string(s: entry.path as String)),
+      json_kv(
+        key: "source",
+        value: encode_source_target(
+          positions: positions,
+          target: authored_source_target_locator(target: entry.source),
+        ),
+      ),
+    ]
+  )
+}
+
+fn encode_object(positions: EncodePositions, object: ScmObject) -> JsonValue {
+  match object {
+    SemanticNodeObject(record) => encode_record(positions: positions, record: record)
+    AuthoredSourceObject(record) =>
+      json_object(
+        members: [
+          json_kv(key: "source", value: encode_authored_source_content(content: record.content)),
+        ]
+      )
+    CorpusManifestObject(record) =>
+      json_object(
+        members: [
+          json_kv(
+            key: "manifest",
+            value: json_array(
+              elements: map(record.entries, e => encode_manifest_entry(positions: positions, entry: e))
+            ),
+          ),
+        ]
+      )
+  }
+}
+
+type EncodeAcc {
+  positions: EncodePositions
+  objects: List<JsonValue>
+}
+
+// OBJECTS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, the corpus idiom (std.markdown, std.realization,
+// std.selected_witness_bundle all reverse a prepending fold). concat-at-end copies the whole
+// accumulator on every step; prepending does not, so the emitted order is restored by one linear
+// reverse instead of being bought with a quadratic.
+fn encode_step(acc: EncodeAcc, object: ScmObject) -> EncodeAcc {
+  let key = object_id_key(identity: scm_object_identity(object: object))
+  let reference = position_reference(n: acc.positions.next)
+  EncodeAcc {
+    positions: EncodePositions {
+      by_identity: map_insert(m: acc.positions.by_identity, key: key, value: reference),
+      nodes_by_identity: match object {
+        SemanticNodeObject(_) =>
+          map_insert(m: acc.positions.nodes_by_identity, key: key, value: reference)
+        AuthoredSourceObject(_) => acc.positions.nodes_by_identity
+        CorpusManifestObject(_) => acc.positions.nodes_by_identity
+      },
+      next: acc.positions.next + 1,
+    },
+    objects: concat([encode_object(positions: acc.positions, object: object)], acc.objects),
+  }
+}
+
+// THE OBJECT TABLE IS SEPARATE FROM WHATEVER DESIGNATES ROOTS IN IT, and that split is what lets a
+// repository hold SEVERAL commits over ONE node population. Embedding a complete closure per commit
+// would re-serialize every unchanged object once per commit -- the same duplication that backward
+// positions already refuse within a single closure, reintroduced one layer up. Encoding the store
+// once and letting each root be an ordinary reference into that table is the same move at the
+// repository's grain.
+//
+// encode_closure_document below is now one caller of this: the single-root case.
+fn encode_object_table(store: ObjectStore) -> EncodeAcc {
+  match fold(
+    store_records_in_dependency_order(store: store),
+    init: EncodeAcc {
+      positions: EncodePositions {
+        by_identity: empty_map(),
+        nodes_by_identity: empty_map(),
+        next: 0,
+      },
+      objects: [],
+    },
+    f: fn(acc, object) { encode_step(acc: acc, object: object) }
+  ) {
+    EncodeAcc { positions: positions, objects: reversed } =>
+      EncodeAcc { positions: positions, objects: reverse(reversed) }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Decoding
+// ---------------------------------------------------------------------------
+
+type ConnectiveDecode
+  = ConnectiveDecoded { connective: Connective }
+  | ConnectiveDecodeFailed { cause: ObjectTableDecodeRefusal }
+
+// The identity member is read ONLY on the atom arm. A non-atom tag never consults it, so an image
+// that supplies one is not silently carrying an ignored field into a program whose identity does not
+// depend on it -- the unknown-tag arm below is the only way a connective name enters at all.
+fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
+  if tag == "atom" {
+    match read_string_member(v: kind_value, key: "identity") {
+      MemberString { value: lexeme } =>
+        ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
+      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+      _ => ConnectiveDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
+    }
+  } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
+  else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
+  else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
+  else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
+  else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
+  else { ConnectiveDecodeFailed { cause: ObjectTableUnknownConnectiveTag { found: tag } } }
+}
+
+type BehaviorDecode
+  = BehaviorDecoded { behavior: Behavior }
+  | BehaviorDecodeFailed { cause: ObjectTableDecodeRefusal }
+
+fn decode_behavior(tag: String) -> BehaviorDecode {
+  if tag == "value" { BehaviorDecoded { behavior: Value } }
+  else if tag == "transform" { BehaviorDecoded { behavior: Transform } }
+  else if tag == "branch" { BehaviorDecoded { behavior: Branch } }
+  else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
+  else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
+  else if tag == "match" { BehaviorDecoded { behavior: Match } }
+  else { BehaviorDecodeFailed { cause: ObjectTableUnknownBehaviorTag { found: tag } } }
+}
+
+type KindDecode
+  = KindDecoded { kind: NodeKind }
+  | KindDecodeFailed { cause: ObjectTableDecodeRefusal }
+
+// THE MEMBER SET IS CHECKED AFTER THE VARIANT IS KNOWN AND BEFORE THE VARIANT IS BUILT. It cannot be
+// checked earlier: `identity` is required on an atom and forbidden on every other connective, so
+// "unexpected" has no meaning until the connective tag has been read. Checking it before building
+// means a Conj carrying an identity refuses rather than decoding into a node whose stated identity
+// silently played no part in the node that resulted.
+fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
+  match table_member_set_refusal(
+    v: kind_value,
+    allowed: if ctag == "atom" { ["kind", "connective", "identity"] } else { ["kind", "connective"] },
+    context: if ctag == "atom" { ObjectTableAtomKindMembers } else { ObjectTableTypeKindMembers }
+  ) {
+    Present { value: c } => KindDecodeFailed { cause: c }
+    Absent =>
+      match decode_connective(kind_value: kind_value, tag: ctag) {
+        ConnectiveDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+        ConnectiveDecoded { connective: c } => KindDecoded { kind: TypeNode { connective: c } }
+      }
+  }
+}
+
+fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
+  match table_member_set_refusal(
+    v: kind_value,
+    allowed: ["kind", "behavior"],
+    context: ObjectTableComputationKindMembers
+  ) {
+    Present { value: c } => KindDecodeFailed { cause: c }
+    Absent =>
+      match decode_behavior(tag: btag) {
+        BehaviorDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+        BehaviorDecoded { behavior: b } => KindDecoded { kind: ComputationNode { behavior: b } }
+      }
+  }
+}
+
+fn decode_kind(kind_value: JsonValue) -> KindDecode {
+  match read_string_member(v: kind_value, key: "kind") {
+    MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+    MemberString { value: tag } =>
+      if tag == "type" {
+        match read_string_member(v: kind_value, key: "connective") {
+          MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+          MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
+          _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
+        }
+      } else if tag == "computation" {
+        match read_string_member(v: kind_value, key: "behavior") {
+          MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+          MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
+          _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
+        }
+      } else {
+        KindDecodeFailed { cause: ObjectTableUnknownKindTag { found: tag } }
+      }
+    _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
+  }
+}
+
+// THE DECODE SIDE CARRIES THE SAME KEYED SHAPE FOR THE SAME REASON. Growing a List by
+// concat-at-end per object and folding it once per edge made load O(objects x edges) for work that
+// is O(n log n); the refusal semantics are unchanged, because a reference still resolves ONLY
+// against positions already decoded -- the map is populated in the same forward order the list was,
+// so a forward or fabricated reference is still absent and still refuses.
+// THE POSITION MAP CARRIES THE KIND, WHICH IS WHY A FILE CANNOT ARRIVE AS A CHILD. It held a bare
+// ObjectId, so a resolved edge target came back as an address and the decoder had nothing to
+// discriminate on -- an entry that decoded to an authored source was written into a node's child
+// edge and only failed much later, at checkout, as a refusal owned by the wrong layer. Storing the
+// branded reference makes the kind available exactly where the document is being believed.
+type DecodePositions = Map<String, ScmObjectRef>
+
+fn resolve_reference(positions: DecodePositions, reference: String) -> ScmObjectRef? {
+  map_lookup(m: positions, key: reference)
+}
+
+type LabelDecode
+  = LabelDecoded { label: EdgeLabel }
+  | LabelDecodeFailed { cause: ObjectTableDecodeRefusal }
+
+// The member set here is the whole EDGE object, `target` included, because the label tag is what
+// closes it: a positional edge carrying a `name` is refused rather than read as a positional edge
+// whose name went nowhere.
+fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
+  match table_member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "name", "target"],
+    context: ObjectTableNamedEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "name") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+        MemberString { value: lexeme } =>
+          LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
+        _ => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+      }
+  }
+}
+
+fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
+  match table_member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "target"],
+    context: ObjectTablePositionalEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent => LabelDecoded { label: Positional }
+  }
+}
+
+fn decode_label(edge_value: JsonValue) -> LabelDecode {
+  match read_string_member(v: edge_value, key: "label") {
+    MemberFailed { cause: c } => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+    MemberString { value: tag } =>
+      if tag == "named" {
+        decode_named_label(edge_value: edge_value)
+      } else if tag == "positional" {
+        decode_positional_label(edge_value: edge_value)
+      } else {
+        LabelDecodeFailed { cause: ObjectTableUnknownLabelTag { found: tag } }
+      }
+    _ => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
+  }
+}
+
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER, and here the order is not
+// merely cosmetic: this list is handed to insert_from_structure, which feeds it to
+// content_hash_of_children. A dropped or doubled reverse would change every derived ObjectId
+// silently, leaving objects unreachable by the identity they were stored under -- so the round-trip
+// claims, not inspection, are what establish this is right.
+type EdgeAcc {
+  edges: List<StoredEdge>
+  refusal: ObjectTableDecodeRefusal?
+}
+
+// THE UNRESOLVED-TARGET ARM IS THE ONE THAT MAKES POSITIONS SAFE. Positions are only trustworthy
+// because a reference that names nothing already decoded REFUSES here rather than resolving to some
+// nearby object. Only earlier positions are in scope -- the accumulator holds exactly what has been
+// decoded so far -- so a forward reference and a fabricated one are the same refusal, and neither
+// can quietly bind to whatever happens to sit at that index later.
+// DECODING A TARGET, AND THE ONE ARM THAT IS NOT A FAILURE.
+//
+// A CONTAINED arm resolves against earlier positions exactly as before: only what has already been
+// decoded is in scope, so a forward reference and a fabricated one are the same refusal and neither
+// binds to whatever later sits at that index.
+//
+// An UNCONTAINED arm is NOT a decode failure. It is a well-formed statement that this document does
+// not carry that object, and it decodes to a successful PARTIAL closure whose missing members the
+// consumer finds by joining against the store it has. Treating it as a refusal would put the codec
+// in the business of deciding whether a partial closure is acceptable, which is policy.
+//
+// EXACTLY ONE ARM, COUNTED BEFORE EITHER IS READ, and the counting is the whole point rather than a
+// tidier spelling of the same thing.
+//
+// The closed member set admits BOTH keys, because either is individually legal -- so it cannot be
+// what enforces the choice between them. An earlier revision relied on it anyway and then read "at"
+// first, which meant a target carrying BOTH arms resolved to the position and SILENTLY DROPPED the
+// digest: a document saying two contradictory things about one target quietly answered with one of
+// them. That is the last-wins read this module exists to refuse, and the docstring above it claimed
+// the opposite was already true (found by review, not by the witnesses -- which is why one now
+// executes it).
+//
+// THE ARM IS SELECTED ON PRESENCE, NOT ON READ SUCCESS, and that distinction is the whole repair.
+//
+// An earlier revision matched `read_string_member(v, "at")` and treated ANY failure as "this is the
+// uncontained arm". But a missing `at` and a MALFORMED `at` both arrive as MemberFailed, and they are
+// opposite facts: absence means the other arm applies, while duplication or a non-string means THIS
+// arm is broken. Conflating them sent a target carrying `at` twice into the uncontained read, where
+// `uncontained` is legitimately absent, and the document was refused as a wrong-shape `uncontained`
+// -- a diagnostic naming the wrong key, for a defect in the other one, with the duplication never
+// mentioned. The arm-count comment in gunbc.scm.target_reference asserted the opposite was already
+// (found by review, and the witness that now executes it is the reason the claim is worth anything).
+//
+fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match decode_label(edge_value: edge_value) {
+        LabelDecodeFailed { cause: c } => EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+        LabelDecoded { label: label } =>
+          match read_member(v: edge_value, key: "target") {
+            MemberFailed { cause: c } =>
+              EdgeAcc { edges: acc.edges, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
+            MemberObject { value: target_value } =>
+              match decode_target_reference(target_value: target_value) {
+                TargetReferenceRefused { cause: c } =>
+                  EdgeAcc {
+                    edges: acc.edges,
+                    refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
+                  }
+                TargetUncontained { digest: identity } =>
+                  EdgeAcc {
+                    edges: concat(
+                      [StoredEdge { label: label, target: SemanticNodeTarget { locator: identity } }],
+                      acc.edges,
+                    ),
+                    refusal: acc.refusal,
+                  }
+                TargetContainedAt { reference: reference } =>
+                  match resolve_reference(positions: positions, reference: reference) {
+                    Present { value: SemanticNodeRef(node) } =>
+                      EdgeAcc {
+                        edges: concat(
+                          [StoredEdge { label: label, target: node_target_of(reference: node) }],
+                          acc.edges,
+                        ),
+                        refusal: acc.refusal,
+                      }
+                    Present { value: AuthoredSourceRef(_) } =>
+                      EdgeAcc {
+                        edges: acc.edges,
+                        refusal: Present { value: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } },
+                      }
+                    Present { value: CorpusManifestRef(_) } =>
+                      EdgeAcc {
+                        edges: acc.edges,
+                        refusal: Present { value: ObjectTableEdgeTargetIsCorpusManifest { reference: reference } },
+                      }
+                    Absent =>
+                      EdgeAcc {
+                        edges: acc.edges,
+                        refusal: Present { value: ObjectTableEdgeTargetUnresolved { reference: reference } },
+                      }
+                  }
+              }
+            _ =>
+              EdgeAcc {
+                edges: acc.edges,
+                refusal: Present { value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "target" } } },
+              }
+          }
+      }
+  }
+}
+
+type DecodeAcc {
+  store: ObjectStore
+  positions: DecodePositions
+  next: Int
+  refusal: ObjectTableDecodeRefusal?
+}
+
+fn decode_acc_refused(acc: DecodeAcc, cause: ObjectTableDecodeRefusal) -> DecodeAcc {
+  DecodeAcc {
+    store: acc.store,
+    positions: acc.positions,
+    next: acc.next,
+    refusal: Present { value: cause },
+  }
+}
+
+// CLASSIFY BEFORE READING, AND REFUSE WHEN NEITHER SHAPE FITS.
+//
+// The two entry shapes have disjoint member sets, so which one an entry is is decided by whether it
+// carries `source`. That question is asked FIRST, because asking it after attempting the node read
+// would report a node-shaped complaint about a file-shaped entry -- the not-applicable-rendered-as-
+// malformed failure. An entry carrying neither is refused by the node member set, which is the
+// pre-existing behaviour for an unrecognized entry and stays the default: a new shape has to be
+// added here deliberately, it cannot arrive by resembling something.
+// ONLY *MISSING* IS EVIDENCE THAT THE ENTRY MIGHT BE A NODE, and the first cut of this
+// classifier ignored that. It matched every MemberFailed cause and fell through to the node
+// arm, so `{"source": null}`, a DUPLICATED source, and a source whose subject is not an
+// object were all reclassified as "not a source" and then reported as a missing `kind` or
+// an unexpected member. Each of those still refused, but for the WRONG OWNER -- the
+// not-applicable-rendered-as-malformed failure this module's own header names, reintroduced
+// by the classifier added to avoid it. gunbc.scm.json_member separates the four causes
+// precisely so a consumer does not have to collapse them; collapsing them here threw that
+// away. Found by external review of gunbc#9891.
+fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match read_member(v: object_value, key: "manifest") {
+        MemberArray { elements: entry_values } =>
+          match table_member_set_refusal(
+            v: object_value,
+            allowed: ["manifest"],
+            context: ObjectTableCorpusManifestMembers
+          ) {
+            Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+            Absent => decode_corpus_manifest(acc: acc, entry_values: entry_values)
+          }
+        MemberString { value: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
+          )
+        MemberObject { value: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
+          )
+        MemberFailed { cause: manifest_cause } =>
+          match manifest_cause {
+            MemberReadMissing { key: _ } =>
+              decode_object_or_source_step(acc: acc, object_value: object_value)
+            MemberReadDuplicated { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableMemberReadRefused { cause: MemberReadDuplicated { key: k } }
+              )
+            MemberReadWrongShape { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: k } }
+              )
+            MemberReadSubjectNotObject =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableMemberReadRefused { cause: MemberReadSubjectNotObject }
+              )
+          }
+      }
+  }
+}
+
+// THE SOURCE-OR-NODE HALF, unchanged from when those were the only two entry shapes. It is reached
+// only after the manifest member is known ABSENT rather than merely unread, so a malformed
+// `manifest` cannot arrive here as "not a manifest" and be re-reported as a missing `kind` -- the
+// not-applicable-rendered-as-malformed collapse this function's own history records one member up.
+fn decode_object_or_source_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match read_member(v: object_value, key: "source") {
+        MemberString { value: text } =>
+          match table_member_set_refusal(
+            v: object_value,
+            allowed: ["source"],
+            context: ObjectTableAuthoredSourceMembers
+          ) {
+            Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+            Absent => decode_authored_source(acc: acc, text: text)
+          }
+        MemberArray { elements: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
+          )
+        MemberObject { value: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
+          )
+        MemberFailed { cause: c } =>
+          match c {
+            MemberReadMissing { key: _ } =>
+              match table_member_set_refusal(
+                v: object_value,
+                allowed: ["kind", "children"],
+                context: ObjectTableSemanticNodeMembers
+              ) {
+                Present { value: set_cause } => decode_acc_refused(acc: acc, cause: set_cause)
+                Absent => decode_object_members(acc: acc, object_value: object_value)
+              }
+            MemberReadDuplicated { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableMemberReadRefused { cause: MemberReadDuplicated { key: k } }
+              )
+            MemberReadWrongShape { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: k } }
+              )
+            MemberReadSubjectNotObject =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableMemberReadRefused { cause: MemberReadSubjectNotObject }
+              )
+          }
+      }
+  }
+}
+
+// A MANIFEST ENTRY'S SOURCE TAKES BOTH TARGET ARMS FOR THE SAME REASON AN EDGE DOES: a repository
+// may legitimately carry a manifest whose sources it does not itself hold, and an uncontained arm is
+// a well-formed statement of that rather than a decode failure. What it may NOT do is resolve to the
+// wrong kind -- a position holding a node or another manifest is not a source, and binding it anyway
+// would put an authored-source identity on an object that is not one, which is the whole reason
+// AuthoredSourceTarget is its own type.
+type ManifestEntryAcc {
+  entries: List<CorpusManifestEntry>
+  refusal: ObjectTableDecodeRefusal?
+}
+
+fn manifest_entry_refused(acc: ManifestEntryAcc, cause: ObjectTableDecodeRefusal) -> ManifestEntryAcc {
+  ManifestEntryAcc {
+    entries: acc.entries,
+    refusal: Present { value: cause },
+  }
+}
+
+fn manifest_entry_with(
+  acc: ManifestEntryAcc,
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget
+) -> ManifestEntryAcc {
+  ManifestEntryAcc {
+    entries: concat(acc.entries, [CorpusManifestEntry { path: path, source: source }]),
+    refusal: acc.refusal,
+  }
+}
+
+fn decode_manifest_source(
+  positions: DecodePositions,
+  acc: ManifestEntryAcc,
+  path: NonEmptyStr,
+  source_value: JsonValue
+) -> ManifestEntryAcc {
+  match decode_target_reference(target_value: source_value) {
+    TargetReferenceRefused { cause: c } =>
+      ManifestEntryAcc {
+        entries: acc.entries,
+        refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
+      }
+    TargetUncontained { digest: identity } =>
+      manifest_entry_with(acc: acc, path: path, source: AuthoredSourceTarget { locator: identity })
+    TargetContainedAt { reference: reference } =>
+      match resolve_reference(positions: positions, reference: reference) {
+        Present { value: AuthoredSourceRef(source) } =>
+          manifest_entry_with(
+            acc: acc,
+            path: path,
+            source: authored_source_target_of(reference: source),
+          )
+        Present { value: SemanticNodeRef(_) } =>
+          manifest_entry_refused(
+            acc: acc,
+            cause: ObjectTableManifestSourceIsSemanticNode { reference: reference },
+          )
+        Present { value: CorpusManifestRef(_) } =>
+          manifest_entry_refused(
+            acc: acc,
+            cause: ObjectTableManifestSourceIsCorpusManifest { reference: reference },
+          )
+        Absent =>
+          manifest_entry_refused(
+            acc: acc,
+            cause: ObjectTableManifestSourceUnresolved { reference: reference },
+          )
+      }
+  }
+}
+
+// AN EMPTY PATH REFUSES RATHER THAN BEING CAST. CorpusManifestEntry.path is a NonEmptyStr, so the
+// empty string has no inhabitant to become -- the check is what makes the cast honest rather than a
+// second place the invariant is asserted.
+fn decode_manifest_entry(
+  positions: DecodePositions,
+  acc: ManifestEntryAcc,
+  entry_value: JsonValue
+) -> ManifestEntryAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match table_member_set_refusal(
+        v: entry_value,
+        allowed: ["path", "source"],
+        context: ObjectTableManifestEntryMembers
+      ) {
+        Present { value: c } =>
+          ManifestEntryAcc { entries: acc.entries, refusal: Present { value: c } }
+        Absent =>
+          match read_string_member(v: entry_value, key: "path") {
+            MemberFailed { cause: c } =>
+              ManifestEntryAcc {
+                entries: acc.entries,
+                refusal: Present { value: ObjectTableMemberReadRefused { cause: c } },
+              }
+            MemberString { value: path } =>
+              if path == "" {
+                manifest_entry_refused(acc: acc, cause: ObjectTableManifestPathEmpty)
+              } else {
+                match read_member(v: entry_value, key: "source") {
+                  MemberFailed { cause: c } =>
+                    ManifestEntryAcc {
+                      entries: acc.entries,
+                      refusal: Present { value: ObjectTableMemberReadRefused { cause: c } },
+                    }
+                  MemberObject { value: source_value } =>
+                    decode_manifest_source(
+                      positions: positions,
+                      acc: acc,
+                      path: path as NonEmptyStr,
+                      source_value: source_value,
+                    )
+                  _ =>
+                    ManifestEntryAcc {
+                      entries: acc.entries,
+                      refusal: Present {
+                        value: ObjectTableMemberReadRefused {
+                          cause: MemberReadWrongShape { key: "source" }
+                        }
+                      },
+                    }
+                }
+              }
+            _ =>
+              ManifestEntryAcc {
+                entries: acc.entries,
+                refusal: Present {
+                  value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "path" } }
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE DECODER IS NOT A THIRD PRODUCER OF MANIFEST IDENTITIES EITHER, for the reason the authored-source
+// decode records below: it hands the entries to store_corpus_manifest, which derives the identity by
+// the one rule, so a document cannot assert a manifest identity it did not derive.
+fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> DecodeAcc {
+  match fold(
+    entry_values,
+    init: ManifestEntryAcc { entries: [], refusal: none },
+    f: fn(inner, entry_value) {
+      decode_manifest_entry(positions: acc.positions, acc: inner, entry_value: entry_value)
+    }
+  ) {
+    ManifestEntryAcc { entries: entries, refusal: refusal } =>
+      match refusal {
+        Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+        Absent =>
+          match store_corpus_manifest(store: acc.store, entries: entries) {
+            CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableObjectCollision { identity: i },
+              )
+            CorpusManifestStored { store: next_store, manifest: manifest } =>
+              DecodeAcc {
+                store: next_store,
+                positions: map_insert(
+                  m: acc.positions,
+                  key: position_reference(n: acc.next),
+                  value: CorpusManifestRef(manifest),
+                ),
+                next: acc.next + 1,
+                refusal: acc.refusal,
+              }
+          }
+      }
+  }
+}
+
+// THE DECODER IS NOT A THIRD PRODUCER OF AUTHORED IDENTITIES. It hands the bytes to
+// store_authored_source, which derives the identity by the one rule -- so an image cannot assert an
+// identity for a file any more than it can for a node, and the position map records what the store
+// derived rather than what the document said.
+fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
+  match store_authored_source(store: acc.store, text: text) {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      DecodeAcc {
+        store: acc.store,
+        positions: acc.positions,
+        next: acc.next,
+        refusal: Present { value: ObjectTableObjectCollision { identity: i } },
+      }
+    SourceStored { store: next_store, source: source } =>
+      DecodeAcc {
+        store: next_store,
+        positions: map_insert(
+          m: acc.positions,
+          key: position_reference(n: acc.next),
+          value: AuthoredSourceRef(source),
+        ),
+        next: acc.next + 1,
+        refusal: acc.refusal,
+      }
+  }
+}
+
+fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match read_member(v: object_value, key: "kind") {
+        MemberFailed { cause: c } =>
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
+        MemberObject { value: kind_value } =>
+          match decode_kind(kind_value: kind_value) {
+            KindDecodeFailed { cause: c } =>
+              DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+            KindDecoded { kind: kind } =>
+              match read_member(v: object_value, key: "children") {
+                MemberFailed { cause: c } =>
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
+                MemberArray { elements: child_values } =>
+                  match fold(
+                    child_values,
+                    init: EdgeAcc { edges: [], refusal: none },
+                    f: fn(edge_acc, edge_value) {
+                      decode_edge_step(positions: acc.positions, acc: edge_acc, edge_value: edge_value)
+                    }
+                  ) {
+                    EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
+                      match edge_refusal {
+                        Present { value: c } =>
+                          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+                        Absent =>
+                          match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
+                            LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                              DecodeAcc {
+                                store: acc.store,
+                                positions: acc.positions,
+                                next: acc.next,
+                                refusal: Present { value: ObjectTableObjectCollision { identity: i } },
+                              }
+                            Stored { store: next_store, node: node } =>
+                              DecodeAcc {
+                                store: next_store,
+                                positions: map_insert(
+                                  m: acc.positions,
+                                  key: position_reference(n: acc.next),
+                                  value: SemanticNodeRef(node),
+                                ),
+                                next: acc.next + 1,
+                                refusal: acc.refusal,
+                              }
+                          }
+                      }
+                  }
+                _ =>
+                  DecodeAcc {
+                    store: acc.store,
+                    positions: acc.positions,
+                    next: acc.next,
+                    refusal: Present {
+                      value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
+                    },
+                  }
+              }
+          }
+        _ =>
+          DecodeAcc {
+            store: acc.store,
+            positions: acc.positions,
+            next: acc.next,
+            refusal: Present {
+              value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
+            },
+          }
+      }
+  }
+}
+
+// THE MIXED TABLE DECODE, exposed for the same reason the table encode is: a repository resolves SEVERAL
+// roots against one decoded population. Returning the accumulator rather than a finished store means
+// the caller keeps the position-to-identity map it needs to resolve those roots, which a
+// store-only return would have discarded -- forcing the caller to re-derive positions it cannot see.
+fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
+  fold(
+    object_values,
+    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
+  )
+}
