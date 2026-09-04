@@ -3,17 +3,17 @@ module test.claim.world_converge_witness
 import std.types { String, Bool, List }
 import gunbc.world_converge {
   WorldObservation, WorldObserved, WorldUnobservable,
-  WorldDifference, WorldDiverged,
+  WorldDifference, WorldDiverged, WorldInAgreement,
   WorldActuation, WorldActuationRefused,
   WorldConvergenceHandler,
-  WorldNotConverged,
+  WorldNotConverged, WorldConverged,
   world_converge,
 }
 
 type FixtureSubject { key: String }
 type FixtureObserved { value: String }
-type FixtureDifference = FixtureDrift
-type FixtureReceipt = FixtureApplied
+type FixtureDrift { field: String }
+type FixtureApplied { field: String }
 type FixtureRefusal = FixtureUnreadable | FixtureApplyShouldNotRun
 
 fn fixture_observe(_: FixtureSubject, readable: Bool) -> WorldObservation<FixtureObserved, FixtureRefusal> {
@@ -24,19 +24,23 @@ fn fixture_observe(_: FixtureSubject, readable: Bool) -> WorldObservation<Fixtur
   }
 }
 
-fn fixture_differences(_: FixtureSubject, _: Bool, _: FixtureObserved) -> WorldDifference<FixtureDifference> {
-  WorldDiverged { differences: [FixtureDrift] }
+fn fixture_differences(_: FixtureSubject, agreed: Bool, _: FixtureObserved) -> WorldDifference<FixtureDrift> {
+  if agreed {
+    WorldInAgreement
+  } else {
+    WorldDiverged { differences: [FixtureDrift { field: "enforcement" }] }
+  }
 }
 
-fn fixture_apply(_: FixtureSubject, _: Bool, _: FixtureObserved, _: List<FixtureDifference>) -> WorldActuation<FixtureReceipt, FixtureRefusal> {
+fn fixture_apply(_: FixtureSubject, _: Bool, _: FixtureObserved, _: List<FixtureDrift>) -> WorldActuation<FixtureApplied, FixtureRefusal> {
   WorldActuationRefused { cause: FixtureApplyShouldNotRun }
 }
 
-fn fixture_unchanged(_: FixtureSubject, _: Bool, _: FixtureObserved) -> FixtureReceipt {
-  FixtureApplied
+fn fixture_unchanged(_: FixtureSubject, _: Bool, _: FixtureObserved) -> FixtureApplied {
+  FixtureApplied { field: "unchanged" }
 }
 
-type FixtureWorldHandler = WorldConvergenceHandler<FixtureSubject, Bool, FixtureObserved, FixtureDifference, FixtureReceipt, FixtureRefusal>
+type FixtureWorldHandler = WorldConvergenceHandler<FixtureSubject, Bool, FixtureObserved, FixtureDrift, FixtureApplied, FixtureRefusal>
 
 data fixture_world_handler: FixtureWorldHandler = WorldConvergenceHandler {
   observe: fixture_observe,
@@ -54,6 +58,20 @@ test fn unreadable_subject_refuses_the_run_before_apply() -> Bool {
     handler: fixture_world_handler,
   ) {
     WorldNotConverged { subject: _, refusal: FixtureUnreadable } => true
+    _ => false
+  }
+}
+
+// The positive control the refusal claim is measured against: the same root, the same handler, a
+// readable subject in agreement. Without it the RED above is satisfiable by a root that refuses
+// everything.
+test fn agreeing_subject_converges_on_the_unchanged_receipt() -> Bool {
+  match world_converge(
+    subject: FixtureSubject { key: "fixture" },
+    context: true,
+    handler: fixture_world_handler,
+  ) {
+    WorldConverged { subject: _, observed: _, receipt: r } => r.field == "unchanged"
     _ => false
   }
 }
